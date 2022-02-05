@@ -98,7 +98,7 @@ private:
         tok_isNumConst,
         tok_isVariable,
         // all terminal tokens: at the end of the list ! (occupy only one character in program, combining token type and index)
-        tok_isOperator,                                         
+        tok_isOperator,
         tok_isLeftParenthesis,
         tok_isRightParenthesis,
         tok_isCommaSeparator,
@@ -433,7 +433,6 @@ private:
 
     bool _varDefAssignmentFound = false;
     bool _extFunctionBlockOpen = false;                         // commands within FUNCTION...END block are being parsed (excluding END command)
-    bool _isProgram = false;
     bool _leadingSpaceCheck { false };
 
     // parsing stack: value supplied when pushing data to stack OR value returned when stack drops 
@@ -482,17 +481,18 @@ private:
     bool checkCommandSyntax( parseTokenResult_type& result );
     void prettyPrintParsedInstruction( char* pPretty, int charsPretty );
     void deleteAllIdentifierNames( char** pIdentArray, int identifiersInUse );
-    void deleteAllAlphanumStrValues();
-    bool checkExtFunctionArguments(  parseTokenResult_type& result, int8_t& minArgCnt, int8_t& maxArgCnt );
+    bool checkExtFunctionArguments( parseTokenResult_type& result, int8_t& minArgCnt, int8_t& maxArgCnt );
     bool checkArrayDimCountAndSize( parseTokenResult_type& result, int8_t* arrayDef_dims, int8_t& dimCnt );
     int getIdentifier( char** pIdentArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int8_t identLength, bool& createNew );
     bool allExternalFunctionsDefined( int& index );
     bool checkFuncArgArrayPattern( parseTokenResult_type& result, bool isFunctionClosingParenthesis );
-    bool initVariable(int8_t varTokenStep, int8_t constTokenStep);
+    bool initVariable( int16_t varTokenStep, int16_t constTokenStep );
 
 public:
 
     MyParser();                                                 // constructor
+    void resetMachine();
+    void deleteAllAlphanumStrValues( char* pToken );
     int8_t parseSource( char* const inputLine, char* info, char* pretty, int charsPrettyLine );
     void deleteParsedData();
 };
@@ -515,6 +515,7 @@ public:
     static constexpr int8_t arrayElemAssignmentAllowedBit { B00100000 };
 
     static constexpr int PROG_MEM_SIZE { 2000 };
+    static constexpr int IMM_MEM_SIZE { 200 };
     static constexpr int MAX_VARNAMES { 64 };                       // max. vars (all types: global, static, local, parameter). Absolute limit: 255
     static constexpr int MAX_STAT_VARS { 32 };                      // max. static vars (only). Absolute limit: 255
     static constexpr int MAX_LOC_VARS_IN_FUNC { 16 };               // max. local and parameter vars (only) in an individual function. Absolute limit: 127 (index: bit 7 used in extFunctionData[]...)
@@ -558,8 +559,20 @@ public:
     // bits b10: variable type (b1: spare) 
     // stored with variable attributes, but NOT in 'variable' token, because only fixed for arrays (scalars: type can dynamically change at runtime)
     static constexpr int8_t var_typeMask = 0x01;                    // mask: float, char* 
-    static constexpr int8_t var_isFloat = 0 << 0;                   
+    static constexpr int8_t var_isFloat = 0 << 0;
     static constexpr int8_t var_isStringPointer = 1 << 0;
+
+
+
+
+    static constexpr  int _maxInstructionChars { 300 };
+    static constexpr  int _maxCharsPretty { 2000 };//// verkleinen, print instructie per instructie
+
+    char _instruction [_maxInstructionChars + 1] = "";
+    int _instructionCharCount { 0 };
+    char _pretty [_maxCharsPretty];
+    char _parsingInfo [200];
+    bool _programMode { false };
 
 
     int _varNameCount { 0 };                                        // counts number of variable names (global variables: also stores values) 
@@ -571,7 +584,9 @@ public:
     int16_t _paramIsArrayPattern { 0 };
 
     // program storage
-    char _programStorage [PROG_MEM_SIZE];
+    char _programStorage [PROG_MEM_SIZE + IMM_MEM_SIZE];
+    char* _programStart;
+    int  _programSize;                            
 
     // variable name storage                                         
     char* varNames [MAX_VARNAMES];                                  // store distinct variable names
@@ -598,7 +613,7 @@ public:
     // ------------------------------------
 
     Calculator();               // constructor
-    int8_t processSource( char* const inputLine, char* info, char* pretty, int charsPrettyLine );
+    bool processCharacter( char c );
 };
 
 extern Calculator calculator;

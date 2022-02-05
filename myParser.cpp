@@ -202,7 +202,6 @@ MyParser::MyParser() {
 
     _blockLevel = 0;
     _extFunctionBlockOpen = false;
-    _isProgram = true;
 
 }
 
@@ -230,10 +229,9 @@ void MyParser::deleteAllIdentifierNames( char** pIdentNameArray, int identifiers
 
 // must be called before deleting tokens (list elements) 
 
-void MyParser::deleteAllAlphanumStrValues() {
+void MyParser::deleteAllAlphanumStrValues( char* pToken ) {
     char* pAnum;
     TokPnt prgmCnt;
-    prgmCnt.pToken = calculator._programStorage;
     int8_t tokenType = *prgmCnt.pToken & 0x0F;
 
     while ( tokenType != '\0' ) {                                                                    // for all tokens in token list
@@ -245,7 +243,7 @@ void MyParser::deleteAllAlphanumStrValues() {
 #endif
             delete [] pAnum;
         }
-        int8_t tokenLength = (tokenType >= tok_isOperator) ? 1 : (*prgmCnt.pToken >> 4) & 0x0F;   
+        int8_t tokenLength = (tokenType >= tok_isOperator) ? 1 : (*prgmCnt.pToken >> 4) & 0x0F;
         prgmCnt.pToken += tokenLength;
         tokenType = *prgmCnt.pToken & 0x0F;
     }
@@ -303,17 +301,11 @@ bool MyParser::allExternalFunctionsDefined( int& index ) {
 }
 
 
-// --------------------------------------------------------------------------------------------
-// *   parse and execute all instructions in a character string (ended by a '\0' character)   *
-// --------------------------------------------------------------------------------------------
+// --------------------
+// *   reset parser   *
+// --------------------
 
-int8_t MyParser::parseSource( char* const pInputLine, char* pInfo, char* pPrettyLine, int maxCharsPrettyLine ) {
-    char* pNext;
-    int8_t cnt = 0;                                                                     // no token parsed yet                   
-    pNext = pInputLine;                                                                 // set to first character in string
-    parseTokenResult_type result;
-    strcpy( pPrettyLine, "" );
-
+void MyParser::resetMachine() {
     // delete identifier name objects on the heap (variable names, external function names) 
     deleteAllIdentifierNames( calculator.varNames, calculator._varNameCount );
     deleteAllIdentifierNames( calculator.extFunctionNames, calculator._extFunctionCount );
@@ -346,20 +338,42 @@ int8_t MyParser::parseSource( char* const pInputLine, char* pInfo, char* pPretty
         index++;
     }
 
+    // delete alphanumeric constants: before clearing program memory
+    deleteAllAlphanumStrValues( calculator._programStorage );
+    deleteAllAlphanumStrValues( calculator._programStorage + calculator.PROG_MEM_SIZE );
 
-    deleteAllAlphanumStrValues();                                                       // before deleting the tokens themselves
     myStack.deleteList();                                                               // delete list to keep track of open parentheses and open command blocks
-
-    calculator._programCounter = calculator._programStorage;
-    *calculator._programCounter = '\0';                                                 // is currently end of program
     _blockLevel = 0;
     _extFunctionBlockOpen = false;
-    _isProgram = true;
 
+    // set to immediate mode and init program counter
+    calculator._programMode = false;
+    calculator._programStart = calculator._programStorage + calculator.PROG_MEM_SIZE;
+    calculator._programSize = calculator.IMM_MEM_SIZE;
+    calculator._programCounter = calculator._programStart;                          // start of 'immediate mode' program area
+
+    *calculator._programStorage = '\0';                                                     //  current end of program 
+    *calculator._programStart = '\0';                                                    //  current end of program (immediate mode)
+
+    // init calculator variables: AFTER deleting heap objects
     calculator._varNameCount = 0;
     calculator._staticVarCount = 0;
     calculator._localVarCountInFunction = 0;
     calculator._extFunctionCount = 0;
+
+}
+
+
+// --------------------------------------------------------------------------------------------
+// *   parse and execute all instructions in a character string (ended by a '\0' character)   *
+// --------------------------------------------------------------------------------------------
+
+int8_t MyParser::parseSource( char* const pInputLine, char* pInfo, char* pPrettyLine, int maxCharsPrettyLine ) {
+    char* pNext;
+    int8_t cnt = 0;                                                                     // no token parsed yet                   
+    pNext = pInputLine;                                                                 // set to first character in string
+    parseTokenResult_type result;
+    strcpy( pPrettyLine, "" );
 
     do {
         result = parseInstruction( pNext, pInfo, cnt );                                 // parse one instruction (ending with ';' character, if found)
@@ -373,10 +387,17 @@ int8_t MyParser::parseSource( char* const pInputLine, char* pInfo, char* pPretty
     prettyPrintParsedInstruction( pPrettyLine, maxCharsPrettyLine );                    // append pretty printed instruction to string
     if ( result == result_tokenFound ) {                                                // prepare message with parsing result
         if ( cnt == 0 ) { sprintf( pInfo, "\r\nNothing to parse\r\n" ); }
-        else { sprintf( pInfo, "\r\nSuccessfully parsed %d token(s)\r\n", cnt ); }
+        else {
+
+            sprintf( pInfo, "\r\nSuccessfully parsed %d token(s)\r\n", cnt );
+        }
     }
     else {                                                                              // error
-        sprintf( pInfo, "\r\nError %d at position %d\r\n", result, pNext - pInputLine + 1 );
+        myStack.deleteList();                                                               // delete list to keep track of open parentheses and open command blocks
+        _blockLevel = 0;
+        _extFunctionBlockOpen = false;
+
+        sprintf( pInfo, "\r\n%s\r\nError %d at position %d\r\n", pInputLine, result, pNext - pInputLine + 1 );
         if ( result == result_undefinedFunction ) {
             char s [50] = "";
             sprintf( s, ">> Definition for '%s' ?\r\n", calculator.extFunctionNames [notDefIndex] );
@@ -503,21 +524,22 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
             CmdBlockDef cmdBlockDef = _resWords [_tokenIndex].cmdBlockDef;
             int8_t cmdRestriction = _pCmdAllowedParTypes [0] & cmd_restrictMask;
 
-            _isExtFunctionCmd = (cmdBlockDef.blockType == block_extFunction);           
+            _isExtFunctionCmd = (cmdBlockDef.blockType == block_extFunction);
             _isGlobalVarCmd = ((cmdBlockDef.blockType == block_none) && (cmdBlockDef.blockPosOrAction == cmd_globalVar));
-            _isLocalVarCmd = ((cmdBlockDef.blockType == block_none) && (cmdBlockDef.blockPosOrAction == cmd_localVar)) ;
+            _isLocalVarCmd = ((cmdBlockDef.blockType == block_none) && (cmdBlockDef.blockPosOrAction == cmd_localVar));
             _isStaticVarCmd = ((cmdBlockDef.blockType == block_none) && (cmdBlockDef.blockPosOrAction == cmd_staticVar));
             _isAnyVarCmd = _isGlobalVarCmd || _isLocalVarCmd || _isStaticVarCmd;      //  VAR, LOCAL, STATIC
 
             // is command allowed here ? Check restrictions
-            if ( _isProgram && (cmdRestriction == cmd_onlyImmediate) ) { result = result_notInsideProgram; return false; }
-            if ( !_isProgram && (cmdRestriction == cmd_onlyInProgram) ) { result = result_onlyInsideProgram; return false; }
+            if ( calculator._programMode && (cmdRestriction == cmd_onlyImmediate) ) { result = result_notInsideProgram; return false; }
+            if ( !calculator._programMode && (cmdRestriction == cmd_onlyInProgram) ) { result = result_onlyInsideProgram; return false; }
             if ( _extFunctionBlockOpen && (cmdRestriction == cmd_onlyOutsideFunction) ) { result = result_notAllowedInsideFunction; return false; }
             if ( !_extFunctionBlockOpen && (cmdRestriction == cmd_onlyInFunction) ) { result = result_noOpenFunction; return false; }
             if ( _extFunctionBlockOpen && _isExtFunctionCmd ) { result = result_functionDefsCannotBeNested; return false; }
 
             // not a block command: nothing more to do here 
             if ( cmdBlockDef.blockType == block_none ) { return true; }
+
             if ( cmdBlockDef.blockPosOrAction == block_startPos ) {                        // is a block start command ?                          
                 _blockLevel++;                                                          // increment stack counter and create corresponding list element
                 _pCurrStackLvl = (LE_stack*) myStack.appendListElement( sizeof( LE_stack ) );
@@ -570,9 +592,9 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
 
             if ( cmdBlockDef.blockPosOrAction == block_endPos ) {                          // is this a block END command token ? 
                 if ( _pCurrStackLvl->openBlock.cmdBlockDef.blockType == block_extFunction ) { _extFunctionBlockOpen = false; }       // FUNCTON definition blocks cannot be nested
-
                 memcpy( ((TokenIsResWord*) (calculator._programStorage + _lastTokenStep))->toTokenStep, &_blockStartCmdTokenStep, sizeof( char [2] ) );
                 myStack.deleteListElement( nullptr );                                   // decrement stack counter and delete corresponding list element
+
                 _blockLevel--;                                                          // also set pointer to currently last element in stack (if it exists)
                 if ( _blockLevel + _parenthesisLevel > 0 ) { _pCurrStackLvl = (LE_stack*) myStack.getLastListElement(); }
                 if ( _blockLevel > 0 ) {
@@ -591,6 +613,7 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
                 }
             }
             else { _pCurrStackLvl->openBlock.cmdBlockDef = cmdBlockDef; }           // overwrite (block type (same or generic end), position, min & max predecessor)
+
             return true;
         };
     }
@@ -715,7 +738,7 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
 // *   initialize a variable or an array with (a) constant(s)   *
 // --------------------------------------------------------------
 
-bool MyParser::initVariable( int8_t varTokenStep, int8_t constTokenStep ) {
+bool MyParser::initVariable( int16_t varTokenStep, int16_t constTokenStep ) {
     float f;        // last token is a number constant: dimension spec
     char* pString;
 
@@ -747,7 +770,9 @@ bool MyParser::initVariable( int8_t varTokenStep, int8_t constTokenStep ) {
     }
 
     else {                                  // scalar
-        if ( isNumberCst ) { ((float*) pVarStorage) [varValueIndex] = f; }      // store numeric constant
+        if ( isNumberCst ) {
+            ((float*) pVarStorage) [varValueIndex] = f;
+        }      // store numeric constant
         else {                                                  // alphanumeric constant
             if ( length == 0 ) {
                 ((char**) pVarStorage) [varValueIndex] = nullptr;       // an empty string does not create a heap object
@@ -796,7 +821,7 @@ bool MyParser::parseAsResWord( char*& pNext, int8_t& cnt, parseTokenResult_type&
         _tokenIndex = resWordIndex;                                                     // needed in case it's the start of a command (to determine parameters)
 
         // token is a reserved word, and it's allowed here
-        if ( (calculator._programCounter + sizeof( TokenIsFloatCst ) + 1) > (calculator._programStorage + calculator.PROG_MEM_SIZE) ) { pNext = pch; result = result_progMemoryFull; return false; };
+        if ( (calculator._programCounter + sizeof( TokenIsFloatCst ) + 1) > (calculator._programStart + calculator._programSize) ) { pNext = pch; result = result_progMemoryFull; return false; };
         TokenIsResWord* pToken = (TokenIsResWord*) calculator._programCounter;
         pToken->tokenType = tok_isReservedWord | (sizeof( TokenIsResWord ) << 4);
         pToken->tokenIndex = resWordIndex;
@@ -842,12 +867,11 @@ bool MyParser::parseAsNumber( char*& pNext, int8_t& cnt, parseTokenResult_type& 
     if ( isParamDecl && (_lastTokenType != tok_isOperator) ) { pNext = pch; result = result_numConstNotAllowedHere; return false; }
 
     // token is a number, and it's allowed here
-    if ( (calculator._programCounter + sizeof( TokenIsFloatCst ) + 1) > (calculator._programStorage + calculator.PROG_MEM_SIZE) ) { pNext = pch; result = result_progMemoryFull; return false; };
+    if ( (calculator._programCounter + sizeof( TokenIsFloatCst ) + 1) > (calculator._programStart + calculator._programSize) ) { pNext = pch; result = result_progMemoryFull; return false; };
     TokenIsFloatCst* pToken = (TokenIsFloatCst*) calculator._programCounter;
     pToken->tokenType = tok_isNumConst | (sizeof( TokenIsFloatCst ) << 4);
     memcpy( pToken->numConst, &f, sizeof( f ) );                                           // float not necessarily aligned with word size: copy memory instead
     bool isVarInit = (((_isGlobalVarCmd) || (_isStaticVarCmd)) && (_lastTokenType == tok_isOperator));
-
     _lastTokenStep = calculator._programCounter - calculator._programStorage;
     _lastTokenType = tok_isNumConst;
 
@@ -1219,7 +1243,7 @@ bool MyParser::parseTerminalToken( char*& pNext, int8_t& cnt, parseTokenResult_t
         // Case 3: is token a comma separator ?
         // ------------------------------------
 
-        flags = _pCurrStackLvl->openPar.flags;
+        flags = (_parenthesisLevel > 0) ? _pCurrStackLvl->openPar.flags : 0;
 
         // token is comma separator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
         if ( !(_lastTokenGroup_sequenceCheck & lastTokenGroups_5_2) ) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
@@ -1292,7 +1316,6 @@ bool MyParser::parseTerminalToken( char*& pNext, int8_t& cnt, parseTokenResult_t
 
 
         // token is a comma separator, and it's allowed here
-
         tokenType = tok_isCommaSeparator;                                               // remember: token is a comma separator
         break; }
 
@@ -1342,7 +1365,7 @@ bool MyParser::parseTerminalToken( char*& pNext, int8_t& cnt, parseTokenResult_t
     }
 
     // create token
-    if ( (calculator._programCounter + sizeof( TokenIsFloatCst ) + 1) > (calculator._programStorage + calculator.PROG_MEM_SIZE) ) { pNext = pch; result = result_progMemoryFull; return false; };
+    if ( (calculator._programCounter + sizeof( TokenIsFloatCst ) + 1) > (calculator._programStart + calculator._programSize) ) { pNext = pch; result = result_progMemoryFull; return false; };
     TokenIsTerminal* pToken = (TokenIsTerminal*) calculator._programCounter;
     pToken->tokenTypeAndIndex = tokenType | (singleCharIndex << 4);     // terminal tokens only: token type character includes token index too 
 
@@ -1382,7 +1405,7 @@ bool MyParser::parseAsInternFunction( char*& pNext, int8_t& cnt, parseTokenResul
         _minFunctionArgs = _functions [funcIndex].minArgs;                       // set min & max for allowed argument count (note: minimum is 0)
         _maxFunctionArgs = _functions [funcIndex].maxArgs;
 
-        if ( (calculator._programCounter + sizeof( TokenIsFloatCst ) + 1) > (calculator._programStorage + calculator.PROG_MEM_SIZE) ) { pNext = pch; result = result_progMemoryFull; return false; };
+        if ( (calculator._programCounter + sizeof( TokenIsFloatCst ) + 1) > (calculator._programStart + calculator._programSize) ) { pNext = pch; result = result_progMemoryFull; return false; };
         TokenIsIntFunction* pToken = (TokenIsIntFunction*) calculator._programCounter;
         pToken->tokenType = tok_isInternFunction | (sizeof( TokenIsIntFunction ) << 4);
         pToken->tokenIndex = funcIndex;
@@ -1473,7 +1496,7 @@ bool MyParser::parseAsExternFunction( char*& pNext, int8_t& cnt, parseTokenResul
     _maxFunctionArgs = (funcName [_maxIdentifierNameLen + 1]) & 0x0F;
     _extFunctionIndex = index;
 
-    if ( (calculator._programCounter + sizeof( TokenIsFloatCst ) + 1) > (calculator._programStorage + calculator.PROG_MEM_SIZE) ) { pNext = pch; result = result_progMemoryFull; return false; };
+    if ( (calculator._programCounter + sizeof( TokenIsFloatCst ) + 1) > (calculator._programStart + calculator._programSize) ) { pNext = pch; result = result_progMemoryFull; return false; };
     TokenIsExtFunction* pToken = (TokenIsExtFunction*) calculator._programCounter;
     pToken->tokenType = tok_isExternFunction | (sizeof( TokenIsExtFunction ) << 4);
     pToken->identNameIndex = index;
@@ -1712,7 +1735,7 @@ bool MyParser::parseAsVariable( char*& pNext, int8_t& cnt, parseTokenResult_type
     // 6. Store token in program memory
     // --------------------------------
 
-    if ( (calculator._programCounter + sizeof( TokenIsFloatCst ) + 1) > (calculator._programStorage + calculator.PROG_MEM_SIZE) ) { pNext = pch; result = result_progMemoryFull; return false; };
+    if ( (calculator._programCounter + sizeof( TokenIsFloatCst ) + 1) > (calculator._programStart + calculator._programSize) ) { pNext = pch; result = result_progMemoryFull; return false; };
     TokenIsVariable* pToken = (TokenIsVariable*) calculator._programCounter;
     pToken->tokenType = tok_isVariable | (sizeof( TokenIsVariable ) << 4);
     pToken->identInfo = varQualifier | (isArray ? calculator.var_isArray : 0);              // qualifier, array flag ? (fixed -> store in token)
@@ -1783,7 +1806,7 @@ bool MyParser::parseAsAlphanumConstant( char*& pNext, int8_t& cnt, parseTokenRes
     }
     pNext++;                                                                            // skip closing quote
 
-    if ( (calculator._programCounter + sizeof( TokenIsFloatCst ) + 1) > ( calculator._programStorage + calculator.PROG_MEM_SIZE ) ) { pNext = pch; result = result_progMemoryFull; return false; };
+    if ( (calculator._programCounter + sizeof( TokenIsFloatCst ) + 1) > ( calculator._programStart + calculator._programSize ) ) { pNext = pch; result = result_progMemoryFull; return false; };
     TokenIsAlphanumCst* pToken = (TokenIsAlphanumCst*) calculator._programCounter;
     pToken->tokenType = tok_isAlphaConst | (sizeof( TokenIsAlphanumCst ) << 4);
     memcpy( pToken->pAlphanumConst, &pAlphanumCst, sizeof( pAlphanumCst ) );            // pointer not necessarily aligned with word size: copy memory instead
@@ -1827,7 +1850,7 @@ void MyParser::prettyPrintParsedInstruction( char* pPretty, int maxCharsPretty )
     bool isArray;
 
     TokPnt prgmCnt;
-    prgmCnt.pToken = calculator._programStorage;
+    prgmCnt.pToken = calculator._programStart;
     int8_t tokenType = *prgmCnt.pToken & 0x0F;
     char pTokenStepPointedTo [2];
     int16_t toTokenStep;
