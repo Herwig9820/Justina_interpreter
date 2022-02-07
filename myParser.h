@@ -132,10 +132,10 @@ private:
 
 public:
     enum parseTokenResult_type {                                // token parsing result
-        result_tokenFound,                                      // token found
+        result_tokenFound,                                      
 
         // incomplete expression errors
-        result_tokenNotFound = 1000,                                   // no token found
+        result_tokenNotFound = 1000,                                   
         result_expressionNotComplete,
         result_missingLeftParenthesis,
 
@@ -156,7 +156,7 @@ public:
         result_functionDefExpected,
 
         // used memory errors
-        result_maxVariableNamesReached = 1300,                               // more errors 
+        result_maxVariableNamesReached = 1300,                                
         result_maxLocalVariablesReached,
         result_maxStaticVariablesReached,
         result_maxExtFunctionsReached,

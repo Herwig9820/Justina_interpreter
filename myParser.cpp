@@ -125,6 +125,7 @@ char* MyLinkedLists::getLastListElement() {
 char* MyLinkedLists::getPrevListElement( void* pPayload ) {                                 // input: pointer to payload of a list element  
     if ( pPayload == nullptr ) { return nullptr; }                                          // nullptr: return
     ListElemHead* pElem = ((ListElemHead*) pPayload) - 1;                                     // points to list element header
+    if ( pElem->pPrev == nullptr ) { return nullptr; }
     return (char*) (pElem->pPrev + 1);                                                      // points to payload of previous element
 }
 
@@ -136,6 +137,7 @@ char* MyLinkedLists::getPrevListElement( void* pPayload ) {                     
 char* MyLinkedLists::getNextListElement( void* pPayload ) {
     if ( pPayload == nullptr ) { return nullptr; }                                          // nullptr: return
     ListElemHead* pElem = ((ListElemHead*) pPayload) - 1;                                     // points to list element header
+    if ( pElem->pNext == nullptr ) { return nullptr; }
     return (char*) (pElem->pNext + 1);                                                      // points to payload of previous element
 }
 
@@ -165,8 +167,9 @@ const char MyParser::cmdPar_F [4] { cmd_onlyInProgram | cmdPar_extFunction, cmdP
 
 
 // reserved words: names, allowed parameters (if used as command, starting an instruction) and type of block command
-const MyParser::ResWordDef MyParser::_resWords [] { {"CLEAR", cmdPar_N, cmdBlockNone},
-//// PROGRAM...END, DEBUG (in programma), STEP (manueel), PRINTPROG, CLEARPROG, CLEARALL, CLEARSTATIC, PEEK, POKE
+//// PROGRAM...END, DEBUG (in programma), STEP (manueel), PRINTPROG, CLEARPROG, CLEARALL, CLEARSTATIC, CLEARUVARS, PEEK, POKE
+const MyParser::ResWordDef MyParser::_resWords [] {
+{"CLEAR", cmdPar_N, cmdBlockNone},
 {"VARS",cmdPar_N, cmdBlockNone},
 {"DELETE",cmdPar_V, cmdBlockNone},                                                      // variable list
 {"FUNCTION",cmdPar_F, cmdBlockExtFunction},
@@ -1434,7 +1437,7 @@ bool MyParser::parseAsExternFunction( char*& pNext, int8_t& cnt, parseTokenResul
         index = getIdentifier( calculator.extFunctionNames, calculator._extFunctionCount, calculator.MAX_EXT_FUNCS, pch, pNext - pch, createNewName );
         if ( index == -1 ) { pNext = pch; result = result_undefinedFunction_ImmMode; return false; }
     }
-    
+
     // has storage already been created for this function ? (because of a previous function definition or a previous function call)
     createNewName = true;                                                              // if new external function, create storage for it
     index = getIdentifier( calculator.extFunctionNames, calculator._extFunctionCount, calculator.MAX_EXT_FUNCS, pch, pNext - pch, createNewName );
@@ -1664,6 +1667,7 @@ bool MyParser::parseAsVariable( char*& pNext, int8_t& cnt, parseTokenResult_type
 
 
     // 5. If NOT a new variable, check if it corresponds to the variable definition (scalar or array) and retrieve array dimension count (if array)
+    //    If it is a FOR loop control variable, check that it is not in use by a FOR outer loop (in same function)
     // --------------------------------------------------------------------------------------------------------------------------------------------
 
     int8_t varQualifier = calculator.globalVarType [varNameIndex] & calculator.var_qualifierMask;  // use to determine parameter, local, static, global
@@ -1697,7 +1701,8 @@ bool MyParser::parseAsVariable( char*& pNext, int8_t& cnt, parseTokenResult_type
             if ( existingArray ^ isArray ) { pNext = pch; result = isArray ? result_varDefinedAsScalar : result_varDefinedAsArray; return false; }
         }
 
-        // if existing array: retrieve dimension count against existing definition
+
+        // if existing array: retrieve dimension count against existing definition, for testing against definition afterwards
         if ( existingArray ) {
             float* pArray = nullptr;
             if ( isStaticVar ) { pArray = calculator.staticVarValues [valueIndex].pNumArray; }
@@ -1705,6 +1710,34 @@ bool MyParser::parseAsVariable( char*& pNext, int8_t& cnt, parseTokenResult_type
             else if ( isLocalVar ) { pArray = (float*) calculator.localVarDims [valueIndex]; }   // dimensions and count are stored in a float
             // retrieve dimension count from array element 0, character 3 (char 0 to 2 contain the dimensions) 
             calculator._arrayDimCount = isParam ? calculator.MAX_ARRAY_DIMS : ((char*) pArray) [3];
+        }
+
+
+        // if FOR loop control variable, check it is not in use in a FOR outer loop of same function  
+        if ( (_lastTokenType = tok_isReservedWord) && (_blockLevel > 1) ) {     // minimum 1 other (outer) open block
+            TokPnt prgmCnt;
+            prgmCnt.pToken = calculator._programStorage + _lastTokenStep;  // address of reserved word
+            int8_t tokenIndex = prgmCnt.pResW->tokenIndex;
+            CmdBlockDef cmdBlockDef = _resWords [tokenIndex].cmdBlockDef;
+            // variable is a control variable of a FOR loop ?
+            if ( cmdBlockDef.blockType == block_for ) {
+
+                // check if control variable is in use in a FOR outer loop
+                LE_stack* pStackLvl = (LE_stack*) myStack.getLastListElement();        // current open block level
+                do {
+                    pStackLvl = (LE_stack*) myStack.getPrevListElement( pStackLvl );    // an outer block stack level
+                    if ( pStackLvl == nullptr ) { break; }
+                    if ( pStackLvl->openBlock.cmdBlockDef.blockType == block_for ) {    // outer block is FOR loop as well
+                        // check control variable for this outer loop
+                        int16_t tokStep;
+                        memcpy(&tokStep, pStackLvl->openBlock.tokenStep, sizeof(char[2])) ;
+                        tokStep = tokStep + sizeof( TokenIsResWord );  // now pointing to control variable of outer loop
+                        // compare variable info, name index and value index with inner loop control variable
+
+                        ////
+                    }
+                } while ( true );
+            }
         }
     }
 
@@ -1803,7 +1836,7 @@ bool MyParser::parseAsAlphanumConstant( char*& pNext, int8_t& cnt, parseTokenRes
     cnt++;                                                                              // count tokens parsed
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
-}
+    }
 
 
 // ----------------------------
@@ -1815,17 +1848,17 @@ void MyParser::printParsingResult( parseTokenResult_type result, int funcNotDefI
     if ( result == result_tokenFound ) {                                                // prepare message with parsing result
         sprintf( parsingInfo, "\r\nFinished parsing" );
     }
-    
-    else  if(result == result_undefinedFunction_ProgMode ) {     // in program mode only (because function can be defined after a call)
-        sprintf( parsingInfo, "\r\nError %d. Function: %s", result, calculator.extFunctionNames[funcNotDefIndex]);
+
+    else  if ( result == result_undefinedFunction_ProgMode ) {     // in program mode only (because function can be defined after a call)
+        sprintf( parsingInfo, "\r\nError %d. Function: %s", result, calculator.extFunctionNames [funcNotDefIndex] );
     }
-    
-    else{                                                                              // error
-        char point[pErrorPos - pInputLine+2];
-        memset(point,0x20, pErrorPos - pInputLine );
-        point[pErrorPos - pInputLine]= '^';
+
+    else {                                                                              // error
+        char point [pErrorPos - pInputLine + 2];
+        memset( point, ' ', pErrorPos - pInputLine );
+        point [pErrorPos - pInputLine] = '^';
         point [pErrorPos - pInputLine + 1] = '\0';
-        sprintf( parsingInfo, "\r\n%s\r\n%s\r\nError %d at position %d", pInputLine,point, result, pErrorPos - pInputLine + 1 );
+        sprintf( parsingInfo, "\r\n%s\r\n%s\r\nError %d", pInputLine, point, result );
     }
     pTerminal->println( parsingInfo );
     pTerminal->println( "========================================" );
@@ -1835,10 +1868,10 @@ void MyParser::printParsingResult( parseTokenResult_type result, int funcNotDefI
 // *   pretty print a parsed instruction   *
 // -----------------------------------------
 
-void MyParser::prettyPrintProgram(  ) {
+void MyParser::prettyPrintProgram() {
     // define these variables outside switch statement, to prevent undefined behaviour
-    const int maxCharsPretty{3000};
-    char pPretty[ maxCharsPretty] = "";
+    const int maxCharsPretty { 3000 };
+    char pPretty [maxCharsPretty] = "";
     int identNameIndex, valueIndex;
     char qual [20] = "";
     char s [100] = "";
@@ -1862,7 +1895,7 @@ void MyParser::prettyPrintProgram(  ) {
     TokenIsResWord* pToken;
 
     while ( tokenType != '\0' ) {                                                                    // for all tokens in token list
-        int16_t tokenStep = (int16_t) ((uint32_t) prgmCnt.pToken - (uint32_t) calculator._programStorage);
+        int16_t tokenStep = (int16_t) (prgmCnt.pToken - calculator._programStorage);
 
         switch ( tokenType ) {
         case tok_isReservedWord:
@@ -1966,7 +1999,7 @@ void MyParser::prettyPrintProgram(  ) {
         tokenType = *prgmCnt.pToken & 0x0F;
 
     }
-    if(strlen(pPretty) > 0) {pTerminal->println(pPretty);}
+    if ( strlen( pPretty ) > 0 ) { pTerminal->println( pPretty ); }
 }
 
 

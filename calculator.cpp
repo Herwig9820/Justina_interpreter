@@ -55,7 +55,7 @@ void Calculator::processCharacter( char c ) {
         _programCounter = _programStart;                          // start of 'immediate mode' program area
 
         requestMachineReset = _programMode;                         // reset machine when parsing starts, not earlier (in case there is a program in memory)
-        Serial.println( _programMode ? "+++ program mode +++" : "+++ immediate mode +++" );
+        pTerminal->println( _programMode ? "+++ program mode +++" : "+++ immediate mode +++" );
         return;
     }
     else if ( isParserReset ) {
@@ -65,7 +65,7 @@ void Calculator::processCharacter( char c ) {
 
         _programMode = false;
         myParser.resetMachine();
-        Serial.println( "+++ machine reset +++" );
+        pTerminal->println( "+++ machine reset +++" );
         return;
     }
     else if ( (c < ' ') && (c != '\n') && (c != EOFchar) ) { return; }                  // skip control-chars except new line and EOF character
@@ -83,7 +83,7 @@ void Calculator::processCharacter( char c ) {
             myParser.resetMachine();                                // prepare for parsing next program( stay in program mode )
 
             requestMachineReset = false;
-            Serial.println( "+++ machine reset +++" );
+            pTerminal->println( "+++ machine reset +++" );
         }
 
 
@@ -136,7 +136,7 @@ void Calculator::processCharacter( char c ) {
             // end of file: always back to immediate mode
             // do not touch program memory itself: there could be a program in it 
             _programMode = false;
-            Serial.println( "+++ immediate mode +++" );
+            pTerminal->println( "+++ immediate mode +++" );
 
             if ( result != MyParser::result_tokenFound ) {
                 myParser.resetMachine();      // message not needed here
@@ -150,7 +150,7 @@ void Calculator::processCharacter( char c ) {
                 *_programStart = '\0';                                      //  current end of program (immediate mode)
             }
             else {
-                Serial.println( "********** evaluation phase **********" );
+                pTerminal->println( "********** evaluation phase **********" );
             }
             // delete alphanumeric constants because they are in the heap
             myParser.deleteAllAlphanumStrValues( calculator._programStorage + calculator.PROG_MEM_SIZE );  // always
