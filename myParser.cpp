@@ -1,6 +1,8 @@
 #include "myParser.h"
 
-#define printCreateDeleteHeapObjects 1
+#define printCreateDeleteHeapObjects 0
+
+extern Stream* pTerminal;
 
 
 /***********************************************************
@@ -346,20 +348,18 @@ void MyParser::resetMachine() {
     _blockLevel = 0;
     _extFunctionBlockOpen = false;
 
-    // set to immediate mode and init program counter
-    calculator._programMode = false;
-    calculator._programStart = calculator._programStorage + calculator.PROG_MEM_SIZE;
-    calculator._programSize = calculator.IMM_MEM_SIZE;
-    calculator._programCounter = calculator._programStart;                          // start of 'immediate mode' program area
-
-    *calculator._programStorage = '\0';                                                     //  current end of program 
-    *calculator._programStart = '\0';                                                    //  current end of program (immediate mode)
-
     // init calculator variables: AFTER deleting heap objects
     calculator._varNameCount = 0;
     calculator._staticVarCount = 0;
     calculator._localVarCountInFunction = 0;
     calculator._extFunctionCount = 0;
+
+    calculator._programStart = calculator._programStorage + (calculator._programMode ? 0 : calculator.PROG_MEM_SIZE);
+    calculator._programSize = calculator._programSize + (calculator._programMode ? calculator.PROG_MEM_SIZE : calculator.IMM_MEM_SIZE);
+    calculator._programCounter = calculator._programStart;                          // start of 'immediate mode' program area
+
+    *calculator._programStorage = '\0';                                    //  current end of program 
+    *calculator._programStart = '\0';                                      //  current end of program (immediate mode)
 
 }
 
@@ -368,43 +368,15 @@ void MyParser::resetMachine() {
 // *   parse and execute all instructions in a character string (ended by a '\0' character)   *
 // --------------------------------------------------------------------------------------------
 
-int8_t MyParser::parseSource( char* const pInputLine, char* pInfo, char* pPrettyLine, int maxCharsPrettyLine ) {
+MyParser::parseTokenResult_type MyParser::parseSource( char* const pInputLine, char*& pErrorPos ) {
     char* pNext;
     int8_t cnt = 0;                                                                     // no token parsed yet                   
     pNext = pInputLine;                                                                 // set to first character in string
     parseTokenResult_type result;
-    strcpy( pPrettyLine, "" );
 
-    do {
-        result = parseInstruction( pNext, pInfo, cnt );                                 // parse one instruction (ending with ';' character, if found)
-    } while ( (pNext [0] != '\0') && (result == result_tokenFound) );                   // as long as valid tokens were found and not at end of list: continue parsing
-
-    int notDefIndex;
-    if ( result == result_tokenFound ) {
-        if ( !allExternalFunctionsDefined( notDefIndex ) ) { result = result_undefinedFunction; }
-        if ( _blockLevel > 0 ) { result = result_noBlockEnd; }
-    }
-    prettyPrintParsedInstruction( pPrettyLine, maxCharsPrettyLine );                    // append pretty printed instruction to string
-    if ( result == result_tokenFound ) {                                                // prepare message with parsing result
-        if ( cnt == 0 ) { sprintf( pInfo, "\r\nNothing to parse\r\n" ); }
-        else {
-
-            sprintf( pInfo, "\r\nSuccessfully parsed %d token(s)\r\n", cnt );
-        }
-    }
-    else {                                                                              // error
-        myStack.deleteList();                                                               // delete list to keep track of open parentheses and open command blocks
-        _blockLevel = 0;
-        _extFunctionBlockOpen = false;
-
-        sprintf( pInfo, "\r\n%s\r\nError %d at position %d\r\n", pInputLine, result, pNext - pInputLine + 1 );
-        if ( result == result_undefinedFunction ) {
-            char s [50] = "";
-            sprintf( s, ">> Definition for '%s' ?\r\n", calculator.extFunctionNames [notDefIndex] );
-            strcat( pInfo, s );
-        }
-    }
-    strcat( pInfo, "========================================\r\n" );
+    result = parseInstruction( pNext, cnt );                                 // parse one instruction (ending with ';' character, if found)
+    pErrorPos = pNext;                                                      // in case of error
+    return result;
 }
 
 
@@ -412,7 +384,7 @@ int8_t MyParser::parseSource( char* const pInputLine, char* pInfo, char* pPretty
 // *   parse ONE instructions (ended by a ';' or '\0' character) in a character string   *
 // ----------------------------------------------------------------------------------------
 
-MyParser::parseTokenResult_type MyParser::parseInstruction( char*& pInputStart, char* pInfo, int8_t& cnt ) {
+MyParser::parseTokenResult_type MyParser::parseInstruction( char*& pInputStart, int8_t& cnt ) {
     _lastTokenType_hold = tok_no_token;
     _lastTokenType = tok_no_token;                                                      // no token yet
     _parenthesisLevel = 0;
@@ -1456,6 +1428,13 @@ bool MyParser::parseAsExternFunction( char*& pNext, int8_t& cnt, parseTokenResul
     int index = getIdentifier( calculator.varNames, calculator._varNameCount, calculator.MAX_VARNAMES, pch, pNext - pch, createNewName );
     if ( index != -1 ) { pNext = pch; return true; }                // is a variable
 
+    // in immediate mode: the function must be defined earlier (in a program)
+    if ( !calculator._programMode ) {
+        createNewName = false;                                                              // only check if function is defined, do NOT YET create storage for it
+        index = getIdentifier( calculator.extFunctionNames, calculator._extFunctionCount, calculator.MAX_EXT_FUNCS, pch, pNext - pch, createNewName );
+        if ( index == -1 ) { pNext = pch; result = result_undefinedFunction_ImmMode; return false; }
+    }
+    
     // has storage already been created for this function ? (because of a previous function definition or a previous function call)
     createNewName = true;                                                              // if new external function, create storage for it
     index = getIdentifier( calculator.extFunctionNames, calculator._extFunctionCount, calculator.MAX_EXT_FUNCS, pch, pNext - pch, createNewName );
@@ -1827,13 +1806,39 @@ bool MyParser::parseAsAlphanumConstant( char*& pNext, int8_t& cnt, parseTokenRes
 }
 
 
+// ----------------------------
+// *   print parsing result   *
+// ----------------------------
+
+void MyParser::printParsingResult( parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, char* const pErrorPos ) {
+    char parsingInfo [200];
+    if ( result == result_tokenFound ) {                                                // prepare message with parsing result
+        sprintf( parsingInfo, "\r\nFinished parsing" );
+    }
+    
+    else  if(result == result_undefinedFunction_ProgMode ) {     // in program mode only (because function can be defined after a call)
+        sprintf( parsingInfo, "\r\nError %d. Function: %s", result, calculator.extFunctionNames[funcNotDefIndex]);
+    }
+    
+    else{                                                                              // error
+        char point[pErrorPos - pInputLine+2];
+        memset(point,0x20, pErrorPos - pInputLine );
+        point[pErrorPos - pInputLine]= '^';
+        point [pErrorPos - pInputLine + 1] = '\0';
+        sprintf( parsingInfo, "\r\n%s\r\n%s\r\nError %d at position %d", pInputLine,point, result, pErrorPos - pInputLine + 1 );
+    }
+    pTerminal->println( parsingInfo );
+    pTerminal->println( "========================================" );
+};
+
 // -----------------------------------------
 // *   pretty print a parsed instruction   *
 // -----------------------------------------
 
-void MyParser::prettyPrintParsedInstruction( char* pPretty, int maxCharsPretty ) {
+void MyParser::prettyPrintProgram(  ) {
     // define these variables outside switch statement, to prevent undefined behaviour
-
+    const int maxCharsPretty{3000};
+    char pPretty[ maxCharsPretty] = "";
     int identNameIndex, valueIndex;
     char qual [20] = "";
     char s [100] = "";
@@ -1927,7 +1932,7 @@ void MyParser::prettyPrintParsedInstruction( char* pPretty, int maxCharsPretty )
 
         case tok_isOperator:
             len = strlen( singleCharTokens );
-            index = (prgmCnt.pTerminal->tokenTypeAndIndex >> 4) & 0x0F;
+            index = (prgmCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F;
             if ( index < len ) { pch [0] = singleCharTokens [index]; pch [1] = '\0'; }
             else {
                 strcat( pch, ((index == len) ? "<=" : (index == len + 1) ? ">=" : "<>") );
@@ -1936,19 +1941,19 @@ void MyParser::prettyPrintParsedInstruction( char* pPretty, int maxCharsPretty )
             break;
 
         case tok_isCommaSeparator:
-            sprintf( s, "(step %d) Sep: %c \r\n", tokenStep, singleCharTokens [(prgmCnt.pTerminal->tokenTypeAndIndex >> 4) & 0x0F] );
+            sprintf( s, "(step %d) Sep: %c \r\n", tokenStep, singleCharTokens [(prgmCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F] );
             break;
 
         case tok_isSemiColonSeparator:
-            sprintf( s, "(step %d) Sep: %c \r\n", tokenStep, singleCharTokens [(prgmCnt.pTerminal->tokenTypeAndIndex >> 4) & 0x0F] );
+            sprintf( s, "(step %d) Sep: %c \r\n", tokenStep, singleCharTokens [(prgmCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F] );
             break;
 
         case tok_isLeftParenthesis:
-            sprintf( s, "(step %d) Par: %c \r\n", tokenStep, singleCharTokens [(prgmCnt.pTerminal->tokenTypeAndIndex >> 4) & 0x0F] );
+            sprintf( s, "(step %d) Par: %c \r\n", tokenStep, singleCharTokens [(prgmCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F] );
             break;
 
         case tok_isRightParenthesis:
-            sprintf( s, "(step %d) Par.: %c \r\n", tokenStep, singleCharTokens [(prgmCnt.pTerminal->tokenTypeAndIndex >> 4) & 0x0F] );
+            sprintf( s, "(step %d) Par.: %c \r\n", tokenStep, singleCharTokens [(prgmCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F] );
             break;
 
         }
@@ -1961,6 +1966,7 @@ void MyParser::prettyPrintParsedInstruction( char* pPretty, int maxCharsPretty )
         tokenType = *prgmCnt.pToken & 0x0F;
 
     }
+    if(strlen(pPretty) > 0) {pTerminal->println(pPretty);}
 }
 
 

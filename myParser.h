@@ -130,6 +130,7 @@ private:
         cmd_staticVar
     };
 
+public:
     enum parseTokenResult_type {                                // token parsing result
         result_tokenFound,                                      // token found
 
@@ -171,7 +172,6 @@ private:
         // function errors
         result_nameInUseForVariable = 1500,
         result_wrong_arg_count,
-        result_undefinedFunction,                              // external (user) function errors
         result_functionAlreadyDefinedBefore,
         result_mandatoryArgFoundAfterOptionalArgs,
         result_functionDefMaxArgsExceeded,
@@ -179,6 +179,8 @@ private:
         result_functionDefsCannotBeNested,
         result_fcnScalarAndArrayArgOrderNotConsistent,
         result_redefiningIntFunctionNotAllowed,
+        result_undefinedFunction_ProgMode,  
+        result_undefinedFunction_ImmMode,
 
         // variable errors
         result_varNameInUseForFunction = 1600,
@@ -297,7 +299,7 @@ private:
         TokenIsIntFunction* pIntFnc;
         TokenIsExtFunction* pExtFnc;
         TokenIsVariable* pVar;
-        TokenIsTerminal* pTerminal;                             // terminal token
+        TokenIsTerminal* pTermTok;                             // terminal token
     };
 
     // stack for open blocks and open parenthesis (shared)
@@ -432,7 +434,6 @@ private:
     bool _isAnyVarCmd = false;                                     // VAR, LOCAL or STATIC command is being parsed
 
     bool _varDefAssignmentFound = false;
-    bool _extFunctionBlockOpen = false;                         // commands within FUNCTION...END block are being parsed (excluding END command)
     bool _leadingSpaceCheck { false };
 
     // parsing stack: value supplied when pushing data to stack OR value returned when stack drops 
@@ -448,7 +449,6 @@ private:
     int8_t _functionNo;                                         // index into list of internal (intrinsic) functions
     int8_t _lastTokenGroup_sequenceCheck = 0;                   // bits indicate which token group the last token parsed belongs to          
     int8_t _parenthesisLevel = 0;                               // current number of open parentheses
-    int8_t _blockLevel = 0;                                     // current number of open blocks
 
 
     const char* _pCmdAllowedParTypes;
@@ -461,6 +461,10 @@ private:
     tokenType_type _lastTokenType_hold = tok_no_token;
     tokenType_type _previousTokenType = tok_no_token;
 
+
+public:    
+    bool _extFunctionBlockOpen = false;                         // commands within FUNCTION...END block are being parsed (excluding END command)
+    int8_t _blockLevel = 0;                                     // current number of open blocks
     MyLinkedLists myStack;                                      // during parsing: linked list keeping track of open parentheses and open blocks
 
 
@@ -470,7 +474,6 @@ private:
 
 private:
 
-    parseTokenResult_type  parseInstruction( char*& pInputLine, char* pInfo, int8_t& cnt );
     bool parseAsResWord( char*& pNext, int8_t& cnt, parseTokenResult_type& result );
     bool parseAsNumber( char*& pNext, int8_t& cnt, parseTokenResult_type& result );
     bool parseTerminalToken( char*& pNext, int8_t& cnt, parseTokenResult_type& result );
@@ -479,22 +482,24 @@ private:
     bool parseAsVariable( char*& pNext, int8_t& cnt, parseTokenResult_type& result );
     bool parseAsAlphanumConstant( char*& pNext, int8_t& cnt, parseTokenResult_type& result );
     bool checkCommandSyntax( parseTokenResult_type& result );
-    void prettyPrintParsedInstruction( char* pPretty, int charsPretty );
     void deleteAllIdentifierNames( char** pIdentArray, int identifiersInUse );
     bool checkExtFunctionArguments( parseTokenResult_type& result, int8_t& minArgCnt, int8_t& maxArgCnt );
     bool checkArrayDimCountAndSize( parseTokenResult_type& result, int8_t* arrayDef_dims, int8_t& dimCnt );
     int getIdentifier( char** pIdentArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int8_t identLength, bool& createNew );
-    bool allExternalFunctionsDefined( int& index );
     bool checkFuncArgArrayPattern( parseTokenResult_type& result, bool isFunctionClosingParenthesis );
     bool initVariable( int16_t varTokenStep, int16_t constTokenStep );
+    parseTokenResult_type  parseInstruction( char*& pInputLine, int8_t& cnt );
 
 public:
 
     MyParser();                                                 // constructor
     void resetMachine();
     void deleteAllAlphanumStrValues( char* pToken );
-    int8_t parseSource( char* const inputLine, char* info, char* pretty, int charsPrettyLine );
+    parseTokenResult_type parseSource( char* const inputLine, char* &pErrorPos);
     void deleteParsedData();
+    bool allExternalFunctionsDefined( int& index );
+    void prettyPrintProgram(  );
+    void printParsingResult( parseTokenResult_type result, int funcNotDefIndex,  char* const pInputLine, char* const pErrorPos );
 };
 
 
@@ -531,7 +536,7 @@ public:
 
     struct ExtFunctionData {
         char* pExtFunctionStartToken;                           // ext. function: pointer to start of function (token)
-        char locVarCnt_statVarInit;                             // needed to reserve run time storage for local variables
+        char locVarCnt_statVarInit;                             // needed to reserve run time storage for local variables //// check name (enkel local use)
         char paramIsArrayPattern [2];                         // parameter pattern: b15 flag set when parsing function definition or first function call; b14-b0 flags set when corresponding parameter or argument is array      
     };
 
@@ -566,14 +571,12 @@ public:
 
 
     static constexpr  int _maxInstructionChars { 300 };
-    static constexpr  int _maxCharsPretty { 2000 };//// verkleinen, print instructie per instructie
 
     char _instruction [_maxInstructionChars + 1] = "";
     int _instructionCharCount { 0 };
-    char _pretty [_maxCharsPretty];
-    char _parsingInfo [200];
     bool _programMode { false };
-
+    bool _withinString { false };
+    bool _flushAllUntilEOF { false };
 
     int _varNameCount { 0 };                                        // counts number of variable names (global variables: also stores values) 
     int _localVarCountInFunction { 0 };                             // counts number of local variables in a specific function (names only, values not used)
@@ -586,7 +589,7 @@ public:
     // program storage
     char _programStorage [PROG_MEM_SIZE + IMM_MEM_SIZE];
     char* _programStart;
-    int  _programSize;                            
+    int  _programSize;
 
     // variable name storage                                         
     char* varNames [MAX_VARNAMES];                                  // store distinct variable names
@@ -613,7 +616,7 @@ public:
     // ------------------------------------
 
     Calculator();               // constructor
-    bool processCharacter( char c );
+    void processCharacter( char c );
 };
 
 extern Calculator calculator;

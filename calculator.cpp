@@ -4,12 +4,12 @@ extern Stream* pTerminal;
 
 Calculator::Calculator() {
 
-    _instruction [0] = '\0';                // empty input
     _instructionCharCount = 0;
-    _pretty [0] = '\0';                     // empty output
-    _parsingInfo [0] = '\0';                // empty parsing info
 
-    // init 'machine' (no call of 'resetMachine', because this clears heap objects for this calculator object, and there are none)
+    // init 'machine' (not a complete reset, because this clears heap objects for this calculator object, and there are none)
+    _instructionCharCount = 0;
+    _flushAllUntilEOF = false;
+
     _varNameCount = 0;
     _staticVarCount = 0;
     _localVarCountInFunction = 0;
@@ -19,7 +19,7 @@ Calculator::Calculator() {
     _programStart = _programStorage + PROG_MEM_SIZE;
     _programSize = IMM_MEM_SIZE;
     _programCounter = _programStart;                          // start of 'immediate mode' program area
-    
+
     *_programStorage = '\0';                                    //  current end of program 
     *_programStart = '\0';                                      //  current end of program (immediate mode)
 };
@@ -29,77 +29,148 @@ Calculator::Calculator() {
 // *   process an input character   *
 // ----------------------------------
 
-bool Calculator::processCharacter( char c ) {
+void Calculator::processCharacter( char c ) {
     // process character
-    bool isEOF { false };
+    static bool withinStringEscSequence { false };
+    static char* pErrorPos {};
+    static MyParser::parseTokenResult_type result {};
+    static bool requestMachineReset { false };
+    static bool instructionsParsed { false };
+
     char EOFchar = 0x1A;
+    if ( !_programMode && (c == '\n') ) { c = EOFchar; }
+    bool endOfFileChar = (c == EOFchar);                                      // end of input: EOF in program mode, LF or EOF in immediate mode
 
     bool isProgramCtrl = (c == 2);                                   // switch between program and immediate mode ?
     bool isParserReset = (c == 3);                                     // reset parser ?
-    bool isInstructionSeparator = (c == ';');
 
     if ( isProgramCtrl ) {
-        _instruction [0] = '\0';
         _instructionCharCount = 0;
-        _pretty [0] = '\0';
-        _parsingInfo [0] = '\0';
+        _flushAllUntilEOF = false;
 
+        // do not touch program memory itself: there could be a program in it 
         _programMode = !_programMode;
         _programStart = _programStorage + (_programMode ? 0 : PROG_MEM_SIZE);
         _programSize = _programSize + (_programMode ? PROG_MEM_SIZE : IMM_MEM_SIZE);
         _programCounter = _programStart;                          // start of 'immediate mode' program area
 
-        Serial.println( _programMode ? "program mode " : "immediate mode" );
-        return true;
+        requestMachineReset = _programMode;                         // reset machine when parsing starts, not earlier (in case there is a program in memory)
+        Serial.println( _programMode ? "+++ program mode +++" : "+++ immediate mode +++" );
+        return;
     }
     else if ( isParserReset ) {
-        _instruction [0] = '\0';
+        instructionsParsed = false;
         _instructionCharCount = 0;
-        _pretty [0] = '\0';
-        _parsingInfo [0] = '\0';
+        _flushAllUntilEOF = false;
 
+        _programMode = false;
         myParser.resetMachine();
-        Serial.println( "machine reset" );
-        return true;
+        Serial.println( "+++ machine reset +++" );
+        return;
     }
-    else if ( (c < ' ') && (c != '\n') && (c != EOFchar) ) { return false; }                  // skip control-chars except new line and EOF character
+    else if ( (c < ' ') && (c != '\n') && (c != EOFchar) ) { return; }                  // skip control-chars except new line and EOF character
 
-    // end of input detected ? (EOF in program mode, LF in immediate mode)
-    bool inputTerminated = (isProgramCtrl && (c == EOFchar)) || ((!isProgramCtrl) && (c == '\n'));
-    // add character to instruction buffer (if still romm)
-    if ( (!inputTerminated) && (_instructionCharCount <= _maxInstructionChars - 2) ) {       // at least two positions available: fill the first position
-        _instruction [_instructionCharCount] = c;                                             // at least last position available for terminating \n
-        _instructionCharCount++;
+
+
+
+    if ( !endOfFileChar ) {
+        if ( _flushAllUntilEOF ) { return; }                       // discard characters (after parsing error)
+
+        bool leadingWhiteSpace = (((c == ' ') || (c == '\n')) && (_instructionCharCount == 0));
+        if ( leadingWhiteSpace ) { return; };                        // but always process end of file character
+
+        if ( requestMachineReset ) {
+            myParser.resetMachine();                                // prepare for parsing next program( stay in program mode )
+
+            requestMachineReset = false;
+            Serial.println( "+++ machine reset +++" );
+        }
+
+
+        // currently within a string ?
+        if ( _instructionCharCount == 0 ) { _withinString = false; withinStringEscSequence = false; }          // a string cannot be mlulti-line
+        if ( _withinString ) {
+            if ( c == '\\' ) { withinStringEscSequence = !withinStringEscSequence; }
+            else if ( c == '\"' ) { _withinString = withinStringEscSequence; withinStringEscSequence = false; }
+            else { withinStringEscSequence = false; }                 // any other character within string
+        }
+        else {                                                                                              // not within a string
+            if ( c == '\"' ) { _withinString = true; }
+            else if ( c == '\n' ) { c = ' '; }                       // not within string: replace a new line with a space (white space in multi-line instruction)
+        }
+
+        // less than 2 positions available in buffer: discard character (last position will be for terminating '\n' then)  
+        if ( (_instructionCharCount <= _maxInstructionChars - 2) && !endOfFileChar ) {
+            _instruction [_instructionCharCount] = c;                               // still room: add character
+            _instructionCharCount++;
+        }
     }
 
-    bool instructionComplete = ((c == isInstructionSeparator) || inputTerminated);
-    if ( instructionComplete ) {
-        _instruction [_instructionCharCount] = '\0';
-        uint8_t  result = myParser.parseSource( _instruction, _parsingInfo, _pretty, _maxCharsPretty );
+    bool isInstructionSeparator = (!_withinString) && (c == ';');   // only if before end of file character 
+    bool instructionComplete = isInstructionSeparator || (endOfFileChar && (_instructionCharCount > 0));
 
-        pTerminal->println( "--------------------------------------\r\npretty: " );
-        if ( strcmp( _pretty, "" ) ) { pTerminal->println( _pretty ); }
-        pTerminal->println( _parsingInfo );
-
-        _instruction [0] = '\0';
+    if ( instructionComplete ) {                                                // terminated by a semicolon if not end of input
+        _instruction [_instructionCharCount] = '\0';                            // add string terminator
+        result = myParser.parseSource( _instruction, pErrorPos );
+        if ( result != MyParser::result_tokenFound ) { _flushAllUntilEOF = true; }
+        instructionsParsed = true;
         _instructionCharCount = 0;
-        _pretty [0] = '\0';
-        _parsingInfo [0] = '\0';
     }
 
-    if ( inputTerminated ) {
-        if (!_programMode) {myParser.deleteAllAlphanumStrValues( calculator._programStorage + calculator.PROG_MEM_SIZE );}
+    if ( endOfFileChar ) {
+        if ( instructionsParsed ) {
+            int funcNotDefIndex;
+            if ( result == MyParser::result_tokenFound ) {
+                // checks at the end of parsing
+                if ( calculator._programMode && (!myParser.allExternalFunctionsDefined( funcNotDefIndex )) ) { result = MyParser::result_undefinedFunction_ProgMode; }
+                if ( myParser._blockLevel > 0 ) { result = MyParser::result_noBlockEnd; }
+            }
 
-        _programMode = false; // always exit program mode when program is parsed 
-        _programStart = _programStorage + PROG_MEM_SIZE;
-        _programSize = IMM_MEM_SIZE;
-        _programCounter = _programStart;                          // start of 'immediate mode' program area
+            myParser.prettyPrintProgram();                    // append pretty printed instruction to string
+            myParser.printParsingResult( result, funcNotDefIndex, _instruction, pErrorPos );      
+        }
 
-        *_programStart = '\0';                                      //  current end of program (immediate mode)
 
+        bool wasReset = false;
+        if ( _programMode ) {
+            // end of file: always back to immediate mode
+            // do not touch program memory itself: there could be a program in it 
+            _programMode = false;
+            Serial.println( "+++ immediate mode +++" );
+
+            if ( result != MyParser::result_tokenFound ) {
+                myParser.resetMachine();      // message not needed here
+                wasReset = true;
+            }
+        }
+        // was in immediate mode
+        else {
+            if ( result != MyParser::result_tokenFound ) {
+                *_programStorage = '\0';                                    //  current end of program 
+                *_programStart = '\0';                                      //  current end of program (immediate mode)
+            }
+            else {
+                Serial.println( "********** evaluation phase **********" );
+            }
+            // delete alphanumeric constants because they are in the heap
+            myParser.deleteAllAlphanumStrValues( calculator._programStorage + calculator.PROG_MEM_SIZE );  // always
+        }
+
+
+        if ( !wasReset ) {
+            myParser.myStack.deleteList();                      // safety
+            myParser._blockLevel = 0;
+            myParser._extFunctionBlockOpen = false;
+
+            _programStart = _programStorage + PROG_MEM_SIZE;        // already set immediate mode 
+            _programSize = _programSize + IMM_MEM_SIZE;
+            _programCounter = _programStart;                          // start of 'immediate mode' program area
+        }
+
+        instructionsParsed = false;
+        _instructionCharCount = 0;
+        _flushAllUntilEOF = false;
     }
-    return true;    //// return value wordt niet gebruikt
-};
-
+}
 
 Calculator calculator;

@@ -141,6 +141,7 @@ void readRequest( int& receivedRequestChars ) {                                 
 
     // fetch character
     char c;
+    
     if ( readChar( &Serial, c ) ) {                                 // read character from Serial, if available (also if in remote mode)
         bool isTerminalCtrl = (c == 1);                                  // swith between local and remote mode ?
         if ( isTerminalCtrl ) {
@@ -157,6 +158,7 @@ void readRequest( int& receivedRequestChars ) {                                 
     else if ( readChar( myTCPconnection.getClient(), c ) ) {        // read character from remote client, if availabe (even if server is in local mode)
         if ( !isRemoteMode ) { return; }                            // not in remote mode ? discard character (exit) 
     }
+    
     else { return; }                                                         // no character available
 
     calculator.processCharacter( c );
