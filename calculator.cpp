@@ -68,9 +68,7 @@ void Calculator::processCharacter( char c ) {
         pTerminal->println( "+++ machine reset +++" );
         return;
     }
-    else if ( (c < ' ') && (c != '\n') && (c != EOFchar) ) { return; }                  // skip control-chars except new line and EOF character
-
-
+    else if ( (c < ' ') && (c != '\n') && (! endOfFileChar) ) { return; }                  // skip control-chars except new line and EOF character
 
 
     if ( !endOfFileChar ) {

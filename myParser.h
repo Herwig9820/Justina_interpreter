@@ -132,10 +132,10 @@ private:
 
 public:
     enum parseTokenResult_type {                                // token parsing result
-        result_tokenFound,                                      
+        result_tokenFound,
 
         // incomplete expression errors
-        result_tokenNotFound = 1000,                                   
+        result_tokenNotFound = 1000,
         result_expressionNotComplete,
         result_missingLeftParenthesis,
 
@@ -156,18 +156,19 @@ public:
         result_functionDefExpected,
 
         // used memory errors
-        result_maxVariableNamesReached = 1300,                                
+        result_maxVariableNamesReached = 1300,
         result_maxLocalVariablesReached,
         result_maxStaticVariablesReached,
         result_maxExtFunctionsReached,
 
         // token errors
         result_identifierTooLong = 1400,
-        result_alphaConstTooLong,
-        result_alphaConstInvalidEscSeq,
-        result_closingQuoteMissing,
         result_spaceMissing,
         result_token_not_recognised,
+        result_alphaConstTooLong,
+        result_alphaConstInvalidEscSeq,
+        result_alphaNoCtrlCharAllowed,
+        result_alphaClosingQuoteMissing,
 
         // function errors
         result_nameInUseForVariable = 1500,
@@ -179,7 +180,7 @@ public:
         result_functionDefsCannotBeNested,
         result_fcnScalarAndArrayArgOrderNotConsistent,
         result_redefiningIntFunctionNotAllowed,
-        result_undefinedFunction_ProgMode,  
+        result_undefinedFunction_ProgMode,
         result_undefinedFunction_ImmMode,
 
         // variable errors
@@ -188,6 +189,8 @@ public:
         result_varRedeclared,
         result_varDefinedAsArray,
         result_varDefinedAsScalar,
+        result_varLocalInit_zeroValueExpected,
+        result_varLocalInit_emptyStringExpected,
 
         // array errors
         result_arrayDefNoDims = 1700,
@@ -197,7 +200,7 @@ public:
         result_arrayUseNoDims,
         result_arrayUseWrongDimCount,
         result_arrayParamExpected,
-        result_noMassInitWithNonEmptyStrings,
+        result_arrayInit_emptyStringExpected,
 
         // command errors 
         result_resWordExpectedAsCmdPar = 1800,
@@ -208,15 +211,21 @@ public:
         result_cmdHasTooManyParameters,
 
         // block command errors
-        result_noOpenBlock = 1900,
-        result_notAllowedInThisOpenBlock,
-        result_notAllowedInsideFunction,
-        result_wrongBlockSequence,
+        result_controlVarInUse = 1900,
+
+        result_onlyImmediateMode,
+        result_onlyInsideProgram,
+        result_onlyInsideFunction,
+        result_onlyOutsideFunction,
+        result_onlyImmediateOrInFunction,
+        result_onlyInProgOutsideFunction,
+
+        result_noOpenBlock,
         result_noBlockEnd,
         result_noOpenLoop,
         result_noOpenFunction,
-        result_notInsideProgram,
-        result_onlyInsideProgram,
+        result_notAllowedInThisOpenBlock,
+        result_wrongBlockSequence,
 
         // other program errors
         result_progMemoryFull = 2000
@@ -242,6 +251,7 @@ private:
         const char* _resWordName;
         const char* pCmdAllowedParTypes;
         const CmdBlockDef cmdBlockDef;                          // block commands: position in command block and min, max required position of previous block command 
+        const char restrictions;                                // specifies where he use of a keyword is allowed (in a program, in a function, ...)
     };
 
     struct FuncDef {                                            // function names with min & max number of arguments allowed 
@@ -369,27 +379,23 @@ private:
     static constexpr int8_t cmdPar_multipleFlag = 0x08;             // may be combined with value of one of the allowed types: will be allowed 0 to n times
 
     // first parameter only: indicate command (not parameter) usage restrictions in bits 7654
-    static constexpr int8_t cmd_restrictMask = 0xF0;            // mask for checking where command is allowed
-    static constexpr int8_t cmd_noRestrictions = 0x00;          // command has no usage restrictions 
-    static constexpr int8_t cmd_onlyInProgram = 0x10;           // command is only allowed insde a program
-    static constexpr int8_t cmd_onlyImmediate = 0x20;           // command is only allowed in immediate mode
-    static constexpr int8_t cmd_onlyInFunction = 0x30;          // command is only allowed inside a function block
-    static constexpr int8_t cmd_onlyOutsideFunction = 0x40;     // command is only allowed inside a function block
+    static constexpr char cmd_restrictMask = 0xF0;                    // mask for checking where command is allowed
+    static constexpr char cmd_noRestrictions = 0x00;                  // command has no usage restrictions 
+    static constexpr char cmd_onlyInProgram = 0x10;                   // command is only allowed insde a program
+    static constexpr char cmd_onlyInProgramOutsideFunctionBlock = 0x20;    // command is only allowed insde a program
+    static constexpr char cmd_onlyInFunctionBlock = 0x30;               // command is only allowed inside a function block
+    static constexpr char cmd_onlyImmediate = 0x40;                   // command is only allowed in immediate mode
+    static constexpr char cmd_onlyOutsideFunctionBlock = 0x50;             // command is only allowed inside a function block
+    static constexpr char cmd_onlyImmediateOrInsideFunctionBlock = 0x60;   // command is only allowed inside a function block
 
 
     // commands (FUNCTION, FOR, ...): allowed command parameters (naming: cmdPar_<n[nnn]> with A'=variable with (optional) assignment, 'E'=expression, 'E'=expression, 'R'=reserved word
-    static const char cmdPar_fnc_AA_mult [4];                   // only within functin block: allow: 'A'=variable with (optional) assignment : 1 + (0 to n) times                       
-    static const char cmdPar_fnc_VV_mult [4];                   // only within functin block: allow: 'A'=variable (only) : 1 + (0 to n) times                       
-    static const char cmdPar_noFnc_AA_mult [4];                 // only outside function block: allow: 'A'=variable (only) : 1 + (0 to n) times 
-
-    static const char cmdPar_EVEV [4];                          //// test
     static const char cmdPar_N [4];                             // command takes no parameters
     static const char cmdPar_E [4];                             // allow: 'E'=expression  
     static const char cmdPar_V [4];                             // allow: 'V'=variable (only)
-    static const char cmdPar_A [4];                             // allow: 'A'=variable with (optional) assignment
-    static const char cmdPar_R [4];                             // allow: 'R'=reserved word
     static const char cmdPar_F [4];                             // allow: 'F'=function definition 
     static const char cmdPar_AEE [4];                           // allow: 'A'=variable with (optional) assignment, 'E'=expression, 'E'=expression
+    static const char cmdPar_AA_mult [4];                       // allow: 'A'=variable with (optional) assignment : 1 + (0 to n) times                       
 
 
     // block commands only (FOR, END, etc.): type of block, position in block OR (block_none:) action, sequence check in block: allowed previous block commands 
@@ -462,7 +468,7 @@ private:
     tokenType_type _previousTokenType = tok_no_token;
 
 
-public:    
+public:
     bool _extFunctionBlockOpen = false;                         // commands within FUNCTION...END block are being parsed (excluding END command)
     int8_t _blockLevel = 0;                                     // current number of open blocks
     MyLinkedLists myStack;                                      // during parsing: linked list keeping track of open parentheses and open blocks
@@ -495,11 +501,11 @@ public:
     MyParser();                                                 // constructor
     void resetMachine();
     void deleteAllAlphanumStrValues( char* pToken );
-    parseTokenResult_type parseSource( char* const inputLine, char* &pErrorPos);
+    parseTokenResult_type parseSource( char* const inputLine, char*& pErrorPos );
     void deleteParsedData();
     bool allExternalFunctionsDefined( int& index );
-    void prettyPrintProgram(  );
-    void printParsingResult( parseTokenResult_type result, int funcNotDefIndex,  char* const pInputLine, char* const pErrorPos );
+    void prettyPrintProgram();
+    void printParsingResult( parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, char* const pErrorPos );
 };
 
 
