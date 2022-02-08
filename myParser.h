@@ -505,7 +505,7 @@ public:
     void deleteParsedData();
     bool allExternalFunctionsDefined( int& index );
     void prettyPrintProgram();
-    void printParsingResult( parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, char* const pErrorPos );
+    void printParsingResult( parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* const pErrorPos );
 };
 
 

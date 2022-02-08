@@ -501,7 +501,6 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
 
             // is command allowed here ? Check restrictions
             char cmdRestriction = _resWords [_tokenIndex].restrictions;
-            Serial.print( "restriction:" ); Serial.println( cmdRestriction, HEX );
             if ( calculator._programMode && (cmdRestriction == cmd_onlyImmediate) ) { result = result_onlyImmediateMode; return false; }
             if ( !calculator._programMode && (cmdRestriction == cmd_onlyInProgram) ) { result = result_onlyInsideProgram; return false; }
             if ( !_extFunctionBlockOpen && (cmdRestriction == cmd_onlyInFunctionBlock) ) { result = result_onlyInsideFunction; return false; }
@@ -1742,7 +1741,6 @@ bool MyParser::parseAsVariable( char*& pNext, int8_t& cnt, parseTokenResult_type
                         int16_t tokenStep;
                         memcpy( &tokenStep, pStackLvl->openBlock.tokenStep, sizeof( char [2] ) );
                         tokenStep = tokenStep + sizeof( TokenIsResWord );  // now pointing to control variable of outer loop
-                        Serial.print( "step: " ); Serial.println( tokenStep );
 
                         // compare variable qualifier, name index and value index of outer and inner loop control variable
                         prgmCnt.pToken = calculator._programStorage + tokenStep;  // address of outer loop control variable
@@ -1796,7 +1794,7 @@ bool MyParser::parseAsAlphanumConstant( char*& pNext, int8_t& cnt, parseTokenRes
     while ( pNext [0] != '\"' ) {                                                       // do until closing quote, if any
         // if no closng quote found, an invalid escape sequence or a control character detected, reset pointer to first character to parse, indicate error and return
         if ( pNext [0] == '\0' ) { pNext = pch; result = result_alphaClosingQuoteMissing; return false; }
-        if ( pNext [0] = ' ' ) { pNext = pch; result = result_alphaNoCtrlCharAllowed; return false; }
+        if ( pNext [0] < ' ' ) { pNext = pch; result = result_alphaNoCtrlCharAllowed; return false; }
         if ( pNext [0] == '\\' ) {
             if ( (pNext [1] == '\\') || (pNext [1] == '\"') ) { pNext++; escChars++; }  // valid escape sequences: ' \\ ' (add backslash) and ' \" ' (add double quote)
             else { pNext = pch; result = result_alphaConstInvalidEscSeq; return false; }
@@ -1862,7 +1860,7 @@ bool MyParser::parseAsAlphanumConstant( char*& pNext, int8_t& cnt, parseTokenRes
 // *   print parsing result   *
 // ----------------------------
 
-void MyParser::printParsingResult( parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, char* const pErrorPos ) {
+void MyParser::printParsingResult( parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* const pErrorPos ) {
     char parsingInfo [200];
     if ( result == result_tokenFound ) {                                                // prepare message with parsing result
         sprintf( parsingInfo, "\r\nFinished parsing" );
@@ -1877,7 +1875,8 @@ void MyParser::printParsingResult( parseTokenResult_type result, int funcNotDefI
         memset( point, ' ', pErrorPos - pInputLine );
         point [pErrorPos - pInputLine] = '^';
         point [pErrorPos - pInputLine + 1] = '\0';
-        sprintf( parsingInfo, "\r\n%s\r\n%s\r\nError %d", pInputLine, point, result );
+        if ( calculator._programMode ) { sprintf( parsingInfo, "\r\n%s\r\n%s\r\nStatement ending at line %d: error %d", pInputLine, point, lineCount, result ); }
+        else { sprintf( parsingInfo, "\r\n%s\r\n%s\r\nError %d", pInputLine, point, result ); }
     }
     pTerminal->println( parsingInfo );
     pTerminal->println( "========================================" );
