@@ -48,7 +48,7 @@ public:
 
 private:
 
-    static int8_t _listIDcounter;                               // number of lists created
+    static int _listIDcounter;                               // number of lists created
 
     ListElemHead* _pFirstElement = nullptr;                      // pointers to first and last list element
     ListElemHead* _pLastElement = nullptr;
@@ -56,7 +56,7 @@ private:
     listType_type _listType {};
 
 public:
-    int8_t _listID { 0 };                                       // list ID (in order of creation) 
+    int _listID { 0 };                                       // list ID (in order of creation) 
 
 
     // ------------------------------------
@@ -66,7 +66,7 @@ public:
 public:
 
     MyLinkedLists();                   // constructor
-    char* appendListElement( uint8_t size );
+    char* appendListElement( int size );
     char* deleteListElement( void* pPayload );                  // pointer to payload of list element to be removed
     void deleteList();
     char* getFirstListElement();
@@ -271,7 +271,7 @@ private:
     struct TokenIsResWord {                                     // reserved word token (command): length 4 (if not a block command, token step is not stored and length will be 2)
         char tokenType;                                         // will be set to specific token type
         char tokenIndex;                                        // index into list of tokens of a specific type
-        char toTokenStep [2];                                     // tokens for block commands (IF, FOR, BREAK, END, ...): step n° of block start token or next block token (int16_t)
+        char toTokenStep [2];                                     // tokens for block commands (IF, FOR, BREAK, END, ...): step n° of block start token or next block token (uint16_t)
     };
     struct TokenIsFloatCst {                                    // token storage for a numeric constant token: length 5
         char tokenType;                                         // will be set to specific token type
@@ -354,34 +354,34 @@ private:
     static constexpr char extFunctionMaxArgs = 0xF;             // must fit in 4 bits
 
     // these constants are used to check to which token group (or group of token groups) a parsed token belongs
-    static constexpr int8_t lastTokenGroup_0 = 1 << 0;          // operator, comma
-    static constexpr int8_t lastTokenGroup_1 = 1 << 1;          // (line start), semicolon, reserved word
-    static constexpr int8_t lastTokenGroup_2 = 1 << 2;          // number, alphanumeric constant, right bracket
-    static constexpr int8_t lastTokenGroup_3 = 1 << 3;          // internal or external function name
-    static constexpr int8_t lastTokenGroup_4 = 1 << 4;          // left parenthesis
-    static constexpr int8_t lastTokenGroup_5 = 1 << 5;          // variable
+    static constexpr uint8_t lastTokenGroup_0 = 1 << 0;          // operator, comma
+    static constexpr uint8_t lastTokenGroup_1 = 1 << 1;          // (line start), semicolon, reserved word
+    static constexpr uint8_t lastTokenGroup_2 = 1 << 2;          // number, alphanumeric constant, right bracket
+    static constexpr uint8_t lastTokenGroup_3 = 1 << 3;          // internal or external function name
+    static constexpr uint8_t lastTokenGroup_4 = 1 << 4;          // left parenthesis
+    static constexpr uint8_t lastTokenGroup_5 = 1 << 5;          // variable
 
     // groups of token groups: combined token groups (for testing valid token sequences when next token will be parsed)
-    static constexpr int8_t lastTokenGroups_4_1_0 = lastTokenGroup_4 | lastTokenGroup_1 | lastTokenGroup_0;
-    static constexpr int8_t lastTokenGroups_5_2_1 = lastTokenGroup_5 | lastTokenGroup_2 | lastTokenGroup_1;
-    static constexpr int8_t lastTokenGroups_5_4_2 = lastTokenGroup_5 | lastTokenGroup_4 | lastTokenGroup_2;
-    static constexpr int8_t lastTokenGroups_5_4_3_1_0 = lastTokenGroup_5 | lastTokenGroup_4 | lastTokenGroup_3 | lastTokenGroup_1 | lastTokenGroup_0;
-    static constexpr int8_t lastTokenGroups_5_2 = lastTokenGroup_5 | lastTokenGroup_2;
+    static constexpr uint8_t lastTokenGroups_4_1_0 = lastTokenGroup_4 | lastTokenGroup_1 | lastTokenGroup_0;
+    static constexpr uint8_t lastTokenGroups_5_2_1 = lastTokenGroup_5 | lastTokenGroup_2 | lastTokenGroup_1;
+    static constexpr uint8_t lastTokenGroups_5_4_2 = lastTokenGroup_5 | lastTokenGroup_4 | lastTokenGroup_2;
+    static constexpr uint8_t lastTokenGroups_5_4_3_1_0 = lastTokenGroup_5 | lastTokenGroup_4 | lastTokenGroup_3 | lastTokenGroup_1 | lastTokenGroup_0;
+    static constexpr uint8_t lastTokenGroups_5_2 = lastTokenGroup_5 | lastTokenGroup_2;
 
 
 
 
     // commands parameters: types allowed
-    static constexpr int8_t cmdPar_none = 0;
-    static constexpr int8_t cmdPar_resWord = 1;            // !!! note: reserved words as parameters: not implemented
-    static constexpr int8_t cmdPar_varNameOnly = 2;
-    static constexpr int8_t cmdPar_varOptAssignment = 3;
-    static constexpr int8_t cmdPar_expression = 4;
-    static constexpr int8_t cmdPar_extFunction = 5;
-    static constexpr int8_t cmdPar_numConstOnly = 6;
-    static constexpr int8_t cmdPar_programName = 7;
+    static constexpr uint8_t cmdPar_none = 0;
+    static constexpr uint8_t cmdPar_resWord = 1;            // !!! note: reserved words as parameters: not implemented
+    static constexpr uint8_t cmdPar_varNameOnly = 2;
+    static constexpr uint8_t cmdPar_varOptAssignment = 3;
+    static constexpr uint8_t cmdPar_expression = 4;
+    static constexpr uint8_t cmdPar_extFunction = 5;
+    static constexpr uint8_t cmdPar_numConstOnly = 6;
+    static constexpr uint8_t cmdPar_programName = 7;
 
-    static constexpr int8_t cmdPar_multipleFlag = 0x08;             // may be combined with value of one of the allowed types: will be allowed 0 to n times
+    static constexpr uint8_t cmdPar_multipleFlag = 0x08;             // may be combined with value of one of the allowed types: will be allowed 0 to n times
 
 
     // first parameter only: indicate command (not parameter) usage restrictions 
@@ -433,8 +433,8 @@ private:
     static const ResWordDef _resWords [];                       // reserved word names
     static const FuncDef _functions [];                         // function names with min & max arguments allowed 
     static const char* const singleCharTokens;                  // all one-character tokens (and possibly first character of two-character tokens)
-    static const int8_t _maxIdentifierNameLen { 14 };           // max length of identifier names, excluding terminating '\0'
-    static const int8_t _maxAlphaCstLen { 15 };                 // max length of alphanumeric constants, excluding terminating '\0' (also if stored in variables)
+    static const uint8_t _maxIdentifierNameLen { 14 };           // max length of identifier names, excluding terminating '\0'
+    static const uint8_t _maxAlphaCstLen { 15 };                 // max length of alphanumeric constants, excluding terminating '\0' (also if stored in variables)
 
 
     // -----------------
@@ -461,17 +461,17 @@ private:
     int _variableNameIndex { 0 };
     bool _arrayElemAssignmentAllowed { false };                    // value returned: assignment to array element is allowed next
 
-    int8_t _commandParNo { 0 };
-    int8_t _tokenIndex { 0 };
-    int8_t _resWordNo;                                          // index into list of reserved words
-    int8_t _functionNo;                                         // index into list of internal (intrinsic) functions
-    int8_t _lastTokenGroup_sequenceCheck = 0;                   // bits indicate which token group the last token parsed belongs to          
-    int8_t _parenthesisLevel = 0;                               // current number of open parentheses
+    int _commandParNo { 0 };
+    int _tokenIndex { 0 };
+    int _resWordNo;                                          // index into list of reserved words
+    int _functionNo;                                         // index into list of internal (intrinsic) functions
+    int _parenthesisLevel = 0;                               // current number of open parentheses
 
+    int _lastTokenGroup_sequenceCheck = 0;                   // bits indicate which token group the last token parsed belongs to          
 
     const char* _pCmdAllowedParTypes;
-    int16_t _lastTokenStep, _lastVariableTokenStep;
-    int16_t _blockCmdTokenStep, _blockStartCmdTokenStep;   // pointers to reserved words used as block commands                           
+    uint16_t _lastTokenStep, _lastVariableTokenStep;
+    uint16_t _blockCmdTokenStep, _blockStartCmdTokenStep;   // pointers to reserved words used as block commands                           
     LE_stack* _pCurrStackLvl;
     LE_stack* _pFunctionDefStackLvl;
 
@@ -482,7 +482,7 @@ private:
 
 public:
     bool _extFunctionBlockOpen = false;                         // commands within FUNCTION...END block are being parsed (excluding END command)
-    int8_t _blockLevel = 0;                                     // current number of open blocks
+    int _blockLevel = 0;                                     // current number of open blocks
     MyLinkedLists myStack;                                      // during parsing: linked list keeping track of open parentheses and open blocks
 
 
@@ -503,11 +503,11 @@ private:
     
     bool checkCommandSyntax( parseTokenResult_type& result );
     void deleteAllIdentifierNames( char** pIdentArray, int identifiersInUse );
-    bool checkExtFunctionArguments( parseTokenResult_type& result, int8_t& minArgCnt, int8_t& maxArgCnt );
-    bool checkArrayDimCountAndSize( parseTokenResult_type& result, int8_t* arrayDef_dims, int8_t& dimCnt );
-    int getIdentifier( char** pIdentArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int8_t identLength, bool& createNew );
+    bool checkExtFunctionArguments( parseTokenResult_type& result, int& minArgCnt, int& maxArgCnt );
+    bool checkArrayDimCountAndSize( parseTokenResult_type& result, int* arrayDef_dims, int& dimCnt );
+    int getIdentifier( char** pIdentArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNew );
     bool checkFuncArgArrayPattern( parseTokenResult_type& result, bool isFunctionClosingParenthesis );
-    bool initVariable( int16_t varTokenStep, int16_t constTokenStep );
+    bool initVariable( uint16_t varTokenStep, uint16_t constTokenStep );
 
 public:
 
@@ -532,12 +532,12 @@ class Calculator {
 
 public:
 
-    static constexpr int8_t extFunctionBit { B00000001 };
-    static constexpr int8_t extFunctionPrevDefinedBit { B00000010 };
-    static constexpr int8_t intFunctionBit { B00000100 };
-    static constexpr int8_t openParenthesisBit { B00001000 };                                  // not a function
-    static constexpr int8_t arrayBit { B00010000 };
-    static constexpr int8_t arrayElemAssignmentAllowedBit { B00100000 };
+    static constexpr uint8_t extFunctionBit { B00000001 };
+    static constexpr uint8_t extFunctionPrevDefinedBit { B00000010 };
+    static constexpr uint8_t intFunctionBit { B00000100 };
+    static constexpr uint8_t openParenthesisBit { B00001000 };                                  // not a function
+    static constexpr uint8_t arrayBit { B00010000 };
+    static constexpr uint8_t arrayElemAssignmentAllowedBit { B00100000 };
 
     static constexpr int PROG_MEM_SIZE { 2000 };
     static constexpr int IMM_MEM_SIZE { 200 };
@@ -564,28 +564,28 @@ public:
     // variable type: 
 
     // bit b7: variable name has a global variable associated with it. Only used during parsing, not stored in token
-    static constexpr int8_t var_hasGlobalValue = 0x80;              // flag: global variable attached to this name
+    static constexpr uint8_t var_hasGlobalValue = 0x80;              // flag: global variable attached to this name
 
     // bits b654: variable qualifier. Use: (1) during parsing: temporarily store the variable type associated with a particular reference of a variable name 
     // (2) stored in 'variable' token to indicate the variable type associated with a particular reference of a variable name 
-    static constexpr int8_t var_qualifierMask = 0x70;               // mask
-    static constexpr int8_t var_isGlobal = 4 << 4;                  // variable is global, in or outside function
-    static constexpr int8_t var_isStaticInFunc = 3 << 4;            // variable is static in function
-    static constexpr int8_t var_isLocalInFunc = 2 << 4;             // variable is local in function
-    static constexpr int8_t var_isParamInFunc = 1 << 4;             // variable is function parameter
-    static constexpr int8_t var_qualToSpecify = 0 << 4;             // qualifier is not yet defined (temporary use during parsing; never stored in token)
+    static constexpr uint8_t var_qualifierMask = 0x70;               // mask
+    static constexpr uint8_t var_isGlobal = 4 << 4;                  // variable is global, in or outside function
+    static constexpr uint8_t var_isStaticInFunc = 3 << 4;            // variable is static in function
+    static constexpr uint8_t var_isLocalInFunc = 2 << 4;             // variable is local in function
+    static constexpr uint8_t var_isParamInFunc = 1 << 4;             // variable is function parameter
+    static constexpr uint8_t var_qualToSpecify = 0 << 4;             // qualifier is not yet defined (temporary use during parsing; never stored in token)
 
     // bit b3: global variable definition encountered in program during parsing ('VAR' cmd) 
-    static constexpr int8_t var_globalDefInProg = 0x08;             // temporary use during parsing; never stored in token
+    static constexpr uint8_t var_globalDefInProg = 0x08;             // temporary use during parsing; never stored in token
 
     // bit b2: variable is an array (and not a scalar)
-    static constexpr int8_t var_isArray = 0x04;                     // stored with variable attributes and in 'variable' token. Can not be changed at runtime
+    static constexpr uint8_t var_isArray = 0x04;                     // stored with variable attributes and in 'variable' token. Can not be changed at runtime
 
     // bits b10: variable type (b1: spare) 
     // stored with variable attributes, but NOT in 'variable' token, because only fixed for arrays (scalars: type can dynamically change at runtime)
-    static constexpr int8_t var_typeMask = 0x01;                    // mask: float, char* 
-    static constexpr int8_t var_isFloat = 0 << 0;
-    static constexpr int8_t var_isStringPointer = 1 << 0;
+    static constexpr uint8_t var_typeMask = 0x01;                    // mask: float, char* 
+    static constexpr uint8_t var_isFloat = 0 << 0;
+    static constexpr uint8_t var_isStringPointer = 1 << 0;
 
 
 
@@ -604,7 +604,7 @@ public:
     int _extFunctionCount { 0 };                                    // external function count
     char _arrayDimCount { 0 };
     char* _programCounter { nullptr };                                // pointer to token memory address (not token step n°)
-    int16_t _paramIsArrayPattern { 0 };
+    uint16_t _paramIsArrayPattern { 0 };
 
     // program storage
     char _programStorage [PROG_MEM_SIZE + IMM_MEM_SIZE];

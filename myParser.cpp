@@ -14,7 +14,7 @@ extern Stream* pTerminal;
 // *   initialisation of static class member   *
 // ---------------------------------------------
 
-int8_t MyLinkedLists::_listIDcounter = 0;
+int MyLinkedLists::_listIDcounter = 0;
 
 
 // -------------------
@@ -31,7 +31,7 @@ MyLinkedLists::MyLinkedLists() {
 // *   append a list element to the end of a list   *
 // --------------------------------------------------
 
-char* MyLinkedLists::appendListElement( uint8_t size ) {
+char* MyLinkedLists::appendListElement( int size ) {
     ListElemHead* p = (ListElemHead*) (new char [sizeof( ListElemHead ) + size]);       // create list object with payload of specified size in bytes
 
     if ( _pFirstElement == nullptr ) {                                                  // not yet any elements
@@ -236,7 +236,7 @@ void MyParser::deleteAllAlphanumStrValues( char* programStart ) {
     char* pAnum;
     TokPnt prgmCnt;
     prgmCnt.pToken = programStart;
-    int8_t tokenType = *prgmCnt.pToken & 0x0F;
+    uint8_t tokenType = *prgmCnt.pToken & 0x0F;
     while ( tokenType != '\0' ) {                                                                    // for all tokens in token list
         if ( (tokenType == tok_isAlphaConst) || (tokenType == tok_isProgramName) ) {
 #if printCreateDeleteHeapObjects
@@ -246,7 +246,7 @@ void MyParser::deleteAllAlphanumStrValues( char* programStart ) {
 #endif
             delete [] pAnum;
         }
-        int8_t tokenLength = (tokenType >= tok_isOperator) ? 1 : (*prgmCnt.pToken >> 4) & 0x0F;
+        uint8_t tokenLength = (tokenType >= tok_isOperator) ? 1 : (*prgmCnt.pToken >> 4) & 0x0F;
         prgmCnt.pToken += tokenLength;
         tokenType = *prgmCnt.pToken & 0x0F;
     }
@@ -257,7 +257,7 @@ void MyParser::deleteAllAlphanumStrValues( char* programStart ) {
 // *   check if identifier storage exists already, optionally create new   *
 // -------------------------------------------------------------------------
 
-int MyParser::getIdentifier( char** pIdentNameArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int8_t identLength, bool& createNewName ) {
+int MyParser::getIdentifier( char** pIdentNameArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNewName ) {
 
     char* pIdentifierName;
     int index = 0;          // points to last variable in use
@@ -407,7 +407,7 @@ MyParser::parseTokenResult_type MyParser::parseInstruction( char*& pInputStart )
             if ( _blockLevel > 0 ) { result = result_noBlockEnd; }
             // if currently parsing a command, check that all parameters are entered
             if ( _isCommand ) {
-                int8_t allowedParType = (_commandParNo == sizeof( _pCmdAllowedParTypes )) ? cmdPar_none : (int8_t) (_pCmdAllowedParTypes [_commandParNo]);
+                uint8_t allowedParType = (_commandParNo == sizeof( _pCmdAllowedParTypes )) ? cmdPar_none : (uint8_t) (_pCmdAllowedParTypes [_commandParNo]);
                 if ( (allowedParType != cmdPar_none) && !(allowedParType & cmdPar_multipleFlag) ) { result = result_cmdParameterMissing; }       // no more parameters expected: ok
             }
             break;
@@ -424,14 +424,14 @@ MyParser::parseTokenResult_type MyParser::parseInstruction( char*& pInputStart )
             _lastTokenType_hold = _lastTokenType;                                       // remember the last parsed token during parsing of a next token
             pNext_hold = pNext;
             bool resOK = true;
-            if ( resOK = !parseAsResWord( pNext, result ) ) { break; } if ( result == result_tokenFound ) { continue; }            // check before checking for identifier  
-            if ( resOK = !parseAsNumber( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }            // check before checking for single char token
+            if ( resOK = !parseAsResWord( pNext, result ) ) { break; } if ( result == result_tokenFound ) { continue; }             // check before checking for identifier  
+            if ( resOK = !parseAsNumber( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }             // check before checking for single char token
             if ( resOK = !parseAsAlphanumConstant( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }
             if ( resOK = !parseTerminalToken( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }
-            if ( resOK = !parseAsInternFunction( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }    // check before checking for identifier (ext. function / variable) 
-            if ( resOK = !parseAsExternFunction( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }    // check before checking for variable
+            if ( resOK = !parseAsInternFunction( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }     // check before checking for identifier (ext. function / variable) 
+            if ( resOK = !parseAsExternFunction( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }     // check before checking for variable
             if ( resOK = !parseAsVariable( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }
-            if ( resOK = !parseAsIdentifierName( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }
+            if ( resOK = !parseAsIdentifierName( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }     // at the end
             resOK = false;                                                              // error: token not recognised
             result = result_token_not_recognised;
         } while ( false );
@@ -457,7 +457,7 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
     static bool expressionStartsWithExternFunction = false;//// niet gebruikt ???
     static bool expressionStartsWithGenericName = false;
     static bool isExpression = false;
-    static int8_t allowedParType = cmdPar_none;                                         // init
+    static uint8_t allowedParType = cmdPar_none;                                         // init
 
     // is the start of a new command ? Check previous token 
     bool isInstructionStart = (_lastTokenType_hold == tok_no_token) || (_lastTokenType_hold == tok_isSemiColonSeparator);
@@ -573,10 +573,10 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
                 if ( _blockLevel > 0 ) {
                     // retrieve pointer to block start command token and last block command token of open block
                     memcpy( &_blockStartCmdTokenStep, _pCurrStackLvl->openBlock.tokenStep, sizeof( char [2] ) );         // pointer to block start command token of open block       
-                    int16_t tokenStep = _blockStartCmdTokenStep;                            // init pointer to last block command token of open block
-                    int16_t tokenStepPointedTo;
+                    uint16_t tokenStep = _blockStartCmdTokenStep;                            // init pointer to last block command token of open block
+                    uint16_t tokenStepPointedTo;
                     memcpy( &tokenStepPointedTo, ((TokenIsResWord*) (calculator._programStorage + tokenStep))->toTokenStep, sizeof( char [2] ) );
-                    while ( tokenStepPointedTo != -1 )
+                    while ( tokenStepPointedTo != 0xFFFF )
                     {
                         tokenStep = tokenStepPointedTo;
                         memcpy( &tokenStepPointedTo, ((TokenIsResWord*) (calculator._programStorage + tokenStep))->toTokenStep, sizeof( char [2] ) );
@@ -628,7 +628,7 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
     // if first token of a command parameter or a semicolon: check command parameter count  
     bool multipleParameter = false;
     if ( isResWord || isExpressionFirstToken || isSemiColonSep ) {
-        allowedParType = (_commandParNo == sizeof( _pCmdAllowedParTypes )) ? cmdPar_none : (int8_t) (_pCmdAllowedParTypes [_commandParNo]);
+        allowedParType = (_commandParNo == sizeof( _pCmdAllowedParTypes )) ? cmdPar_none : (uint8_t) (_pCmdAllowedParTypes [_commandParNo]);
         multipleParameter = (allowedParType & cmdPar_multipleFlag);
         if ( !multipleParameter ) { _commandParNo++; }                                   // increase parameter count, unless multiple parameters of this type are accepted  
         allowedParType = allowedParType & ~cmdPar_multipleFlag;
@@ -717,7 +717,7 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
 // *   initialize a variable or an array with (a) constant(s)   *
 // --------------------------------------------------------------
 
-bool MyParser::initVariable( int16_t varTokenStep, int16_t constTokenStep ) {
+bool MyParser::initVariable( uint16_t varTokenStep, uint16_t constTokenStep ) {
     float f;        // last token is a number constant: dimension spec
     char* pString;
 
@@ -737,9 +737,9 @@ bool MyParser::initVariable( int16_t varTokenStep, int16_t constTokenStep ) {
 
     if ( isArrayVar ) {
         pArrayStorage = ((void**) pVarStorage) [varValueIndex];        // void pointer to an array 
-        int8_t dimensions = (((char*) pArrayStorage) [3]);  // can range from 1 to MAX_ARRAY_DIMS
+        int dimensions = (((char*) pArrayStorage) [3]);  // can range from 1 to MAX_ARRAY_DIMS
         int arrayElements = 1;                                  // determine array size
-        for ( int8_t dimCnt = 0; dimCnt < dimensions; dimCnt++ ) { arrayElements *= (int) ((((char*) pArrayStorage) [dimCnt])); }
+        for ( int dimCnt = 0; dimCnt < dimensions; dimCnt++ ) { arrayElements *= (int) ((((char*) pArrayStorage) [dimCnt])); }
         // fill up with numeric constants or (empty strings:) null pointers
         if ( isNumberCst ) { for ( int arrayElem = 1; arrayElem <= arrayElements; arrayElem++ ) { ((float*) pArrayStorage) [arrayElem] = f; } }
         else {                                                      // alphanumeric constant
@@ -780,7 +780,7 @@ bool MyParser::initVariable( int16_t varTokenStep, int16_t constTokenStep ) {
 bool MyParser::parseAsResWord( char*& pNext, parseTokenResult_type& result ) {
     result = result_tokenNotFound;                                                      // init: flag 'no token found'
     char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
-    int8_t resWordIndex;
+    int resWordIndex;
 
     if ( !isalpha( pNext [0] ) ) { return true; }                                       // first character is not a letter ? Then it's not a reserved word (it can still be something else)
     while ( isalnum( pNext [0] ) || (pNext [0] == '_') ) { pNext++; }                   // do until first character after alphanumeric token (can be anything, including '\0')
@@ -810,7 +810,7 @@ bool MyParser::parseAsResWord( char*& pNext, parseTokenResult_type& result ) {
         TokenIsResWord* pToken = (TokenIsResWord*) calculator._programCounter;
         pToken->tokenType = tok_isReservedWord | ((sizeof( TokenIsResWord ) - (hasTokenStep ? 0 : 2)) << 4);
         pToken->tokenIndex = resWordIndex;
-        if ( hasTokenStep ) { pToken->toTokenStep [0] = 0xFF; pToken->toTokenStep [1] = 0xFF; }                  // -1: no token ref. Because int16_t not necessarily aligned with word size: store as two sep. bytes                            
+        if ( hasTokenStep ) { pToken->toTokenStep [0] = 0xFF; pToken->toTokenStep [1] = 0xFF; }                  // -1: no token ref. Because uint16_t not necessarily aligned with word size: store as two sep. bytes                            
 
         _lastTokenStep = calculator._programCounter - calculator._programStorage;
         _lastTokenType = tok_isReservedWord;
@@ -888,7 +888,7 @@ bool MyParser::parseAsNumber( char*& pNext, parseTokenResult_type& result ) {
 bool MyParser::parseAsAlphanumConstant( char*& pNext, parseTokenResult_type& result ) {
     result = result_tokenNotFound;                                                      // init: flag 'no token found'
     char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
-    int8_t escChars = 0;
+    int escChars = 0;
 
     if ( (pNext [0] != '\"') ) { return true; }                                         // no opening quote ? Is not an alphanumeric cst (it can still be something else)
     pNext++;                                                                            // skip opening quote
@@ -970,7 +970,7 @@ bool MyParser::parseAsAlphanumConstant( char*& pNext, parseTokenResult_type& res
 // External function definition statement parsing: check order of mandatory and optional arguments, check if max. n° not exceeded
 // -------------------------------------------------------------------------------------------------------------------------------
 
-bool MyParser::checkExtFunctionArguments( parseTokenResult_type& result, int8_t& minArgCnt, int8_t& maxArgCnt ) {
+bool MyParser::checkExtFunctionArguments( parseTokenResult_type& result, int& minArgCnt, int& maxArgCnt ) {
     bool argWasMandatory = (_lastTokenType == tok_isVariable) || (_lastTokenType == tok_isRightParenthesis);         // variable without assignment to a constant or param array def. parenthesis
     bool alreadyOptArgs = (minArgCnt != maxArgCnt);
     if ( argWasMandatory && alreadyOptArgs ) { result = result_mandatoryArgFoundAfterOptionalArgs; return false; }
@@ -984,7 +984,7 @@ bool MyParser::checkExtFunctionArguments( parseTokenResult_type& result, int8_t&
 // Array parsing: check that max dimension count and maximum array size is not exceeded
 // ------------------------------------------------------------------------------------
 
-bool MyParser::checkArrayDimCountAndSize( parseTokenResult_type& result, int8_t* arrayDef_dims, int8_t& dimCnt ) {
+bool MyParser::checkArrayDimCountAndSize( parseTokenResult_type& result, int* arrayDef_dims, int& dimCnt ) {
     if ( _lastTokenType == tok_isLeftParenthesis ) { result = result_arrayDefNoDims; return false; }
 
     dimCnt++;
@@ -993,9 +993,9 @@ bool MyParser::checkArrayDimCountAndSize( parseTokenResult_type& result, int8_t*
     float f;        // last token is a number constant: dimension spec
     memcpy( &f, ((TokenIsFloatCst*) (calculator._programStorage + _lastTokenStep))->numConst, sizeof( f ) );
     if ( f < 1 ) { result = result_arrayDefNegativeDim; return false; }
-    arrayDef_dims [dimCnt - 1] = (int8_t) f;
+    arrayDef_dims [dimCnt - 1] = (int) f;
     int arrayElements = 1;
-    for ( int8_t cnt = 0; cnt < dimCnt; cnt++ ) { arrayElements *= arrayDef_dims [cnt]; }
+    for ( int cnt = 0; cnt < dimCnt; cnt++ ) { arrayElements *= arrayDef_dims [cnt]; }
     Serial.print( dimCnt ); Serial.print( "count - elements: " ); Serial.println( arrayElements );
 
     if ( arrayElements > calculator.MAX_ARRAY_ELEM ) { result = result_arrayDefMaxElementsExceeded; return false; }
@@ -1007,8 +1007,8 @@ bool MyParser::checkArrayDimCountAndSize( parseTokenResult_type& result, int8_t*
 bool MyParser::checkFuncArgArrayPattern( parseTokenResult_type& result, bool isFunctionClosingParenthesis ) {
 
     int funcIndex = _pCurrStackLvl->openPar.identifierIndex;            // note: also stored in stack for FUNCTION definition block level; here we can pick one of both
-    int8_t argNumber = _pCurrStackLvl->openPar.actualArgsOrDims;
-    int16_t paramIsArrayPattern;
+    int argNumber = _pCurrStackLvl->openPar.actualArgsOrDims;
+    uint16_t paramIsArrayPattern;
     memcpy( &paramIsArrayPattern, calculator.extFunctionData [funcIndex].paramIsArrayPattern, sizeof( char [2] ) );
 
     if ( argNumber > 0 ) {
@@ -1020,7 +1020,7 @@ bool MyParser::checkFuncArgArrayPattern( parseTokenResult_type& result, bool isF
             isArray = (((TokenIsVariable*) (calculator._programStorage + _lastTokenStep))->identInfo) & calculator.var_isArray;
         }
 
-        int16_t paramArrayMask = 1 << (argNumber - 1);
+        uint16_t paramArrayMask = 1 << (argNumber - 1);
         if ( paramIsArrayPattern & 0x8000 ) {                   // function not used yet (before it was defined now: no need to check, just set array bit)
             paramIsArrayPattern = paramIsArrayPattern | (isArray ? paramArrayMask : 0);
         }
@@ -1041,12 +1041,12 @@ bool MyParser::checkFuncArgArrayPattern( parseTokenResult_type& result, bool isF
 bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result ) {
 
     // external function definition statement parsing: count number of mandatory and optional arguments in function definition for storage
-    static int8_t extFunctionDef_minArgCounter { 0 };
-    static int8_t extFunctionDef_maxArgCounter { 0 };
+    static int extFunctionDef_minArgCounter { 0 };
+    static int extFunctionDef_maxArgCounter { 0 };
 
     // array definition statement parsing: record dimensions (if 1 dimension only: set dim 2 to zero) 
-    static int8_t array_dimCounter { 0 };
-    static int8_t arrayDef_dims [calculator.MAX_ARRAY_DIMS] { 0 };
+    static int array_dimCounter { 0 };
+    static int arrayDef_dims [calculator.MAX_ARRAY_DIMS] { 0 };
 
     result = result_tokenNotFound;                                                      // init: flag 'no token found'
     char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
@@ -1054,9 +1054,9 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
     if ( pSingleChar == nullptr ) { return true; }                                      // token is not a one-character token (and it's not a two-char token, because these start with same character)
 
     pNext++;                                                                            // move to next character
-    int8_t singleCharIndex = pSingleChar - singleCharTokens;                            // index defines single (or double) character token
+    int singleCharIndex = pSingleChar - singleCharTokens;                            // index defines single (or double) character token
     tokenType_type tokenType;
-    int8_t flags { B0 };
+    uint8_t flags { B0 };
     char* peek;
 
     switch ( pch [0] ) {
@@ -1107,7 +1107,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         // if LOCAL, STATIC or GLOBAL array DEFINITION or USE (NOT: parameter array): initialize variables for reading dimensions 
         if ( flags & calculator.arrayBit ) {                    // always count, also if not first definition (could happen for global variables)
             array_dimCounter = 0;
-            for ( int8_t i = 0; i < calculator.MAX_ARRAY_DIMS; i++ ) { arrayDef_dims [i] = 0; }        // init dimensions (dimension count will result from dimensins being non-zero
+            for ( int i = 0; i < calculator.MAX_ARRAY_DIMS; i++ ) { arrayDef_dims [i] = 0; }        // init dimensions (dimension count will result from dimensins being non-zero
         }
 
         // left parenthesis only ? (not a function or array opening parenthesis): min & max allowed argument count not yet initialised
@@ -1166,10 +1166,10 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 
                 int funcIndex = _pCurrStackLvl->openPar.identifierIndex;            // note: also stored in stack for FUNCTION definition block level; here we can pick one of both
                 // if previous calls, check if range of actual argument counts that occured in previous calls corresponds to mandatory and optional arguments defined now
-                bool previousCalls = ((int8_t) calculator.extFunctionNames [funcIndex][_maxIdentifierNameLen + 1]) != extFunctionFirstOccurFlag;
+                bool previousCalls = (calculator.extFunctionNames [funcIndex][_maxIdentifierNameLen + 1]) != extFunctionFirstOccurFlag;
                 if ( previousCalls ) {                                                      // stack contains current range of actual args occured in previous calls
-                    if ( ((int8_t) _pCurrStackLvl->openPar.minArgs < extFunctionDef_minArgCounter) ||
-                        (int8_t) _pCurrStackLvl->openPar.maxArgs > extFunctionDef_maxArgCounter ) {
+                    if ( ((int) _pCurrStackLvl->openPar.minArgs < extFunctionDef_minArgCounter) ||
+                        (int) _pCurrStackLvl->openPar.maxArgs > extFunctionDef_maxArgCounter ) {
                         pNext = pch; result = result_prevCallsWrongArgCount; return false;  // argument count in previous calls to this function does not correspond 
                     }
                 }
@@ -1191,7 +1191,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
             if ( !checkArrayDimCountAndSize( result, arrayDef_dims, array_dimCounter ) ) { pNext = pch; return false; }
 
             int varNameIndex = _pCurrStackLvl->openPar.identifierIndex;
-            int8_t varQualifier = calculator.globalVarType [varNameIndex] & calculator.var_qualifierMask;  // use to determine parametern param local, static, global
+            uint8_t varQualifier = calculator.globalVarType [varNameIndex] & calculator.var_qualifierMask;  // use to determine parametern param local, static, global
 
             bool isGlobalVar = (_extFunctionBlockOpen && (varQualifier == calculator.var_isGlobal)) ||
                 (!_extFunctionBlockOpen && (calculator.globalVarType [varNameIndex] & calculator.var_hasGlobalValue));  // NOTE: outside a function, test against 'var_hasGlobalValue'
@@ -1201,11 +1201,11 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 
             float* pArray;
             int arrayElements = 1;              // init
-            int8_t valueIndex = isGlobalVar ? varNameIndex : calculator.varValueIndex [varNameIndex];
+            int valueIndex = isGlobalVar ? varNameIndex : calculator.varValueIndex [varNameIndex];
 
             // global and static arrays: create array on the heap. Array dimensions will be stored in array element 0
             if ( isGlobalVar || isStaticVar ) {
-                for ( int8_t dimCnt = 0; dimCnt < array_dimCounter; dimCnt++ ) { arrayElements *= arrayDef_dims [dimCnt]; }
+                for ( int dimCnt = 0; dimCnt < array_dimCounter; dimCnt++ ) { arrayElements *= arrayDef_dims [dimCnt]; }
                 pArray = new float [arrayElements + 1];
 
 #if printCreateDeleteHeapObjects
@@ -1241,7 +1241,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
             // global, static and local arrays: store array dimensions (local arrays: temporary storage during parsing only)
             if ( !isParam ) {                                            // parameter array: dimensions to be checked during runtime
             // store dimensions in element 0: char 0 to 2 is dimensions; char 3 = dimension count 
-                for ( int8_t i = 0; i < calculator.MAX_ARRAY_DIMS; i++ ) {
+                for ( int i = 0; i < calculator.MAX_ARRAY_DIMS; i++ ) {
                     ((char*) pArray) [i] = arrayDef_dims [i];
                 }
                 ((char*) pArray) [3] = array_dimCounter;        // (note: for param arrays, set to max dimension count during parsing)
@@ -1256,7 +1256,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
             // if empty function call argument list, then do not increment argument count (function call without arguments)
             bool emptyArgList = (_lastTokenType == tok_isLeftParenthesis);            // ok because no nesting allowed
             _pCurrStackLvl->openPar.actualArgsOrDims += (emptyArgList ? 0 : 1);
-            int8_t actualArgs = (int8_t) _pCurrStackLvl->openPar.actualArgsOrDims;
+            int actualArgs = (int) _pCurrStackLvl->openPar.actualArgsOrDims;
 
             // call to not yet defined external function ? (there might be previous calls)
             bool callToNotYetDefinedFunc = ((flags & (calculator.extFunctionBit | calculator.extFunctionPrevDefinedBit)) == calculator.extFunctionBit);
@@ -1267,12 +1267,12 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
                 // if at least one previous call (maybe a nested call) is completely parsed, retrieve current range of actual args that occured in these previous calls
                 // and update this range with the argument count of the current external function call that is at its closing parenthesis
                 int funcIndex = _pCurrStackLvl->openPar.identifierIndex;            // of current function call: stored in stack for current PARENTHESIS level
-                bool prevExtFuncCompletelyParsed = ((int8_t) calculator.extFunctionNames [funcIndex][_maxIdentifierNameLen + 1]) != extFunctionFirstOccurFlag;
+                bool prevExtFuncCompletelyParsed = (calculator.extFunctionNames [funcIndex][_maxIdentifierNameLen + 1]) != extFunctionFirstOccurFlag;
                 if ( prevExtFuncCompletelyParsed ) {
                     _pCurrStackLvl->openPar.minArgs = ((calculator.extFunctionNames [funcIndex][_maxIdentifierNameLen + 1]) >> 4) & 0x0F;
                     _pCurrStackLvl->openPar.maxArgs = (calculator.extFunctionNames [funcIndex][_maxIdentifierNameLen + 1]) & 0x0F;
-                    if ( (int8_t) _pCurrStackLvl->openPar.minArgs > actualArgs ) { _pCurrStackLvl->openPar.minArgs = actualArgs; }
-                    if ( (int8_t) _pCurrStackLvl->openPar.maxArgs < actualArgs ) { _pCurrStackLvl->openPar.maxArgs = actualArgs; }
+                    if ( (int) _pCurrStackLvl->openPar.minArgs > actualArgs ) { _pCurrStackLvl->openPar.minArgs = actualArgs; }
+                    if ( (int) _pCurrStackLvl->openPar.maxArgs < actualArgs ) { _pCurrStackLvl->openPar.maxArgs = actualArgs; }
                 }
                 // no previous call: simply set this range to the argument count of the current external function call that is at its closing parenthesis
                 else { _pCurrStackLvl->openPar.minArgs = actualArgs; _pCurrStackLvl->openPar.maxArgs = actualArgs; }
@@ -1285,8 +1285,8 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
             else {
                 bool isOpenParenthesis = (flags & calculator.openParenthesisBit);
                 if ( isOpenParenthesis ) { _pCurrStackLvl->openPar.minArgs = 1; _pCurrStackLvl->openPar.maxArgs = 1; }
-                bool argCountWrong = ((actualArgs < (int8_t) _pCurrStackLvl->openPar.minArgs) ||
-                    (actualArgs > ( int8_t ) _pCurrStackLvl->openPar.maxArgs));
+                bool argCountWrong = ((actualArgs < (int) _pCurrStackLvl->openPar.minArgs) ||
+                    (actualArgs > ( int ) _pCurrStackLvl->openPar.maxArgs));
                 if ( argCountWrong ) { pNext = pch; result = result_wrong_arg_count; return false; }
             }
 
@@ -1304,13 +1304,13 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
             if ( _lastTokenType != tok_isLeftParenthesis ) { _pCurrStackLvl->openPar.actualArgsOrDims++; }
 
             int varNameIndex = _pCurrStackLvl->openPar.identifierIndex;
-            int8_t varQualifier = calculator.globalVarType [varNameIndex] & calculator.var_qualifierMask;  // use to determine parametern param local, static, global
+            uint8_t varQualifier = calculator.globalVarType [varNameIndex] & calculator.var_qualifierMask;  // use to determine parametern param local, static, global
             bool isParam = (_extFunctionBlockOpen && (varQualifier == calculator.var_isParamInFunc));            // but not function parameter definitions
 
-            int8_t actualDimCount = _pCurrStackLvl->openPar.actualArgsOrDims;
+            int actualDimCount = _pCurrStackLvl->openPar.actualArgsOrDims;
             if ( actualDimCount == 0 ) { pNext = pch; result = result_arrayUseNoDims; return false; } // dim count too high: already handled when preceding comma was parsed
             if ( !isParam ) {
-                if ( actualDimCount != (int8_t) _pCurrStackLvl->openPar.arrayDimCount ) { pNext = pch; result = result_arrayUseWrongDimCount; return false; }
+                if ( actualDimCount != (int) _pCurrStackLvl->openPar.arrayDimCount ) { pNext = pch; result = result_arrayUseWrongDimCount; return false; }
             }
         }
 
@@ -1382,7 +1382,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         else if ( flags & (calculator.intFunctionBit | calculator.extFunctionBit | calculator.openParenthesisBit) ) {
             // note that actual argument count is at least one more than actual argument count, because at least one more to go (after the comma)
             _pCurrStackLvl->openPar.actualArgsOrDims++;           // include argument before the comma in argument count     
-            int8_t actualArgs = (int8_t) _pCurrStackLvl->openPar.actualArgsOrDims;
+            int actualArgs = (int) _pCurrStackLvl->openPar.actualArgsOrDims;
 
             // call to not yet defined external function ? (because there might be previous calls as well)
             bool callToNotYetDefinedFunc = ((_pCurrStackLvl->openPar.flags & (calculator.extFunctionBit | calculator.extFunctionPrevDefinedBit)) == calculator.extFunctionBit);
@@ -1393,7 +1393,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 
             // if call to previously defined external function, to an internal function, or if open parenthesis, then check argument count 
             else {
-                bool argCountWrong = (actualArgs >= (int8_t) _pCurrStackLvl->openPar.maxArgs);       // check against allowed maximum number of arguments for this function
+                bool argCountWrong = (actualArgs >= (int) _pCurrStackLvl->openPar.maxArgs);       // check against allowed maximum number of arguments for this function
                 if ( argCountWrong ) { pNext = pch; result = result_wrong_arg_count; return false; }
             }
 
@@ -1408,7 +1408,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         else if ( flags & calculator.arrayBit ) {
             // check if array dimension count corresponds (individual dimension adherence can only be checked at runtime)
             _pCurrStackLvl->openPar.actualArgsOrDims++;
-            if ( (int8_t) _pCurrStackLvl->openPar.actualArgsOrDims == (int8_t) _pCurrStackLvl->openPar.arrayDimCount ) { pNext = pch; result = result_arrayUseWrongDimCount; return false; }
+            if ( (int) _pCurrStackLvl->openPar.actualArgsOrDims == (int) _pCurrStackLvl->openPar.arrayDimCount ) { pNext = pch; result = result_arrayUseWrongDimCount; return false; }
         }
 
         else {}     // for documentation only: all cases handled
@@ -1495,7 +1495,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 bool MyParser::parseAsInternFunction( char*& pNext, parseTokenResult_type& result ) {
     result = result_tokenNotFound;                                                      // init: flag 'no token found'
     char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
-    int8_t funcIndex;
+    int funcIndex;
 
     if ( !isalpha( pNext [0] ) ) { return true; }                                       // first character is not a letter ? Then it's not a function name (it can still be something else)
     while ( isalnum( pNext [0] ) || (pNext [0] == '_') ) { pNext++; }                   // do until first character after alphanumeric token (can be anything, including '\0')
@@ -1749,13 +1749,13 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
     if ( _extFunctionBlockOpen ) {
         // first use of a particular variable NAME in a function ?  (in a variable declaration, or just using the name in an expression)
         // this defines the qualifier (global, param, local, static) for all references of this name within the current procedure
-        bool isFirstVarNameRefInFnc = (((int8_t) calculator.globalVarType [varNameIndex] & calculator.var_qualifierMask) == calculator.var_qualToSpecify);
+        bool isFirstVarNameRefInFnc = (((uint8_t) calculator.globalVarType [varNameIndex] & calculator.var_qualifierMask) == calculator.var_qualToSpecify);
         if ( isFirstVarNameRefInFnc ) {                                                                         // variable not yet referenced within currently parsed procedure
             // this is either a NEW param / local / static variable declaration, or a first use (not an explicit declaration) of a NEW or EXISTING global variable within the function 
 
             // determine variable qualifier (param, local, static, global)
             // NOTE qualifier 'calculator.var_qualToSpecify' : will either change into 'calculator.var_isGlobal' (if a previously defined global var is used in this function) or an error will be produced if not 
-            int8_t varQual = _isExtFunctionCmd ? calculator.var_isParamInFunc : _isLocalVarCmd ? calculator.var_isLocalInFunc : _isStaticVarCmd ? calculator.var_isStaticInFunc : calculator.var_qualToSpecify;
+            uint8_t varQual = _isExtFunctionCmd ? calculator.var_isParamInFunc : _isLocalVarCmd ? calculator.var_isLocalInFunc : _isStaticVarCmd ? calculator.var_isStaticInFunc : calculator.var_qualToSpecify;
             calculator.globalVarType [varNameIndex] = (calculator.globalVarType [varNameIndex] & ~calculator.var_qualifierMask) | varQual;     //set qualifier bits (will be stored in token AND needed during parsing current procedure)
 
             if ( _isStaticVarCmd ) {                                             // definition of NEW static variable for function
@@ -1883,7 +1883,7 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
         if ( (_lastTokenType = tok_isReservedWord) && (_blockLevel > 1) ) {     // minimum 1 other (outer) open block
             TokPnt prgmCnt;
             prgmCnt.pToken = calculator._programStorage + _lastTokenStep;  // address of reserved word
-            int8_t tokenIndex = prgmCnt.pResW->tokenIndex;
+            int tokenIndex = prgmCnt.pResW->tokenIndex;
             CmdBlockDef cmdBlockDef = _resWords [tokenIndex].cmdBlockDef;
 
             // variable is a control variable of a FOR loop ?
@@ -1896,7 +1896,7 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
                     if ( pStackLvl == nullptr ) { break; }
                     if ( pStackLvl->openBlock.cmdBlockDef.blockType == block_for ) {    // outer block is FOR loop as well
                         // find token for control variable for this outer loop
-                        int16_t tokenStep;
+                        uint16_t tokenStep;
                         memcpy( &tokenStep, pStackLvl->openBlock.tokenStep, sizeof( char [2] ) );
                         tokenStep = tokenStep + sizeof( TokenIsResWord );  // now pointing to control variable of outer loop
 
@@ -2016,26 +2016,26 @@ void MyParser::prettyPrintProgram() {
     char s [100] = "";
     char pch [3] = "";
     int len;
-    int8_t index;
+    int index;
     char* identifierName, * varStrValue;
     bool isStringValue;
     float f;
     char* pAnum;
     uint32_t funcStart = 0;
     char tokenInfo = 0;
-    int8_t varQualifier = 0;
+    uint8_t varQualifier = 0;
     bool isArray;
     bool hasTokenStep;
 
     TokPnt prgmCnt;
     prgmCnt.pToken = calculator._programStart;
-    int8_t tokenType = *prgmCnt.pToken & 0x0F;
+    int tokenType = *prgmCnt.pToken & 0x0F;
     char pTokenStepPointedTo [2];
-    int16_t toTokenStep;
+    uint16_t toTokenStep;
     TokenIsResWord* pToken;
 
     while ( tokenType != '\0' ) {                                                                    // for all tokens in token list
-        int16_t tokenStep = (int16_t) (prgmCnt.pToken - calculator._programStorage);
+        uint16_t tokenStep = (uint16_t) (prgmCnt.pToken - calculator._programStorage);
         strcpy( prettyToken, "" );
 
         switch ( tokenType ) {
@@ -2143,9 +2143,9 @@ void MyParser::prettyPrintProgram() {
 
         // append pretty printed token to character string (if still place left)
         if ( strlen( s ) <= maxCharsPretty ) { strcat( prettyToken, s ); }
-        ////if ( strlen( prettyToken ) > 0 ) { pTerminal->println( prettyToken ); }
+        if ( strlen( prettyToken ) > 0 ) { pTerminal->println( prettyToken ); }
 
-        int8_t tokenLength = (tokenType >= tok_isOperator) ? 1 : (*prgmCnt.pToken >> 4) & 0x0F;
+        int tokenLength = (tokenType >= tok_isOperator) ? 1 : (*prgmCnt.pToken >> 4) & 0x0F;
         prgmCnt.pToken += tokenLength;
         tokenType = *prgmCnt.pToken & 0x0F;
     }

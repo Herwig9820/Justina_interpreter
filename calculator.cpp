@@ -36,7 +36,7 @@ void Calculator::processCharacter( char c ) {
     static MyParser::parseTokenResult_type result {};
     static bool requestMachineReset { false };
     static bool instructionsParsed { false };
-    static int lineCount { 0 };
+    static int lineCount { 1 };
     static bool lastCharWasWhiteSpace { false };
     static bool lastCharWasSemiColon { false };
 
@@ -61,7 +61,7 @@ void Calculator::processCharacter( char c ) {
         instructionsParsed = false;
         lastCharWasWhiteSpace = false;
         lastCharWasSemiColon = false;
-        lineCount = 0;
+        lineCount = 1;
         _instructionCharCount = 0;
         _flushAllUntilEOF = false;
 
@@ -75,7 +75,7 @@ void Calculator::processCharacter( char c ) {
         instructionsParsed = false;
         lastCharWasWhiteSpace = false;
         lastCharWasSemiColon = false;
-        lineCount = 0;
+        lineCount = 1;
         _instructionCharCount = 0;
         _flushAllUntilEOF = false;
 
@@ -173,7 +173,7 @@ void Calculator::processCharacter( char c ) {
         else if (instructionsParsed) {
 
             if ( result == MyParser::result_tokenFound ) {
-                pTerminal->println( "------------------ (hier komt evaluatie)" );
+                pTerminal->println( "------------------ (hier komt evaluatie) --------------------------" );
             }
             // delete alphanumeric constants because they are on the heap. Identifiers must stay avaialble
             myParser.deleteAllAlphanumStrValues( calculator._programStorage + calculator.PROG_MEM_SIZE );  // always
@@ -195,7 +195,7 @@ void Calculator::processCharacter( char c ) {
         }
 
         instructionsParsed = false;
-        lineCount = 0;
+        lineCount = 1;
         _instructionCharCount = 0;
         _flushAllUntilEOF = false;
     }

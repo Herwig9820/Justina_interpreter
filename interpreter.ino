@@ -110,6 +110,18 @@ void setup() {
     Serial.println( s );
 
     dtostrf( 1.0, 4, 1, s );   // not used, but needed to circumvent a bug in sprintf function with %F, %E, %G specifiers
+
+
+    Serial.println("****** test");
+    char c = 130;
+    int i = 130;
+    Serial.println( i ==  c );
+    Serial.println( i == (int8_t) c );
+    Serial.println( i == (uint8_t) c );
+    Serial.println( i == (int16_t) c );
+    Serial.println( i == (uint16_t) c );
+    Serial.println( i == (int) c );
+    Serial.println( i == (uint) c );
 }
 
 
