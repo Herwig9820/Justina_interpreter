@@ -110,7 +110,6 @@ void setup() {
     Serial.println( s );
 
     dtostrf( 1.0, 4, 1, s );   // not used, but needed to circumvent a bug in sprintf function with %F, %E, %G specifiers
-
 }
 
 

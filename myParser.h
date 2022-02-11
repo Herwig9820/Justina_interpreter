@@ -97,6 +97,7 @@ private:
         tok_isExternFunction,
         tok_isNumConst,
         tok_isVariable,
+        tok_isProgramName,
         // all terminal tokens: at the end of the list ! (occupy only one character in program, combining token type and index)
         tok_isOperator,
         tok_isLeftParenthesis,
@@ -124,10 +125,12 @@ private:
         block_inOpenFunctionBlock,                              // command can only occur if currently a function block is open
         block_inOpenLoopBlock,                                   // command can only occur if at least one loop block is open
 
-        // alternative for value 2: action (only if block type = block_none)
+        // alternative for value 2: type of command (only if block type = block_none)
+        cmd_program,
         cmd_globalVar,
         cmd_localVar,
-        cmd_staticVar
+        cmd_staticVar,
+        cmd_deleteVar
     };
 
 public:
@@ -180,8 +183,7 @@ public:
         result_functionDefsCannotBeNested,
         result_fcnScalarAndArrayArgOrderNotConsistent,
         result_redefiningIntFunctionNotAllowed,
-        result_undefinedFunction_ProgMode,
-        result_undefinedFunction_ImmMode,
+        result_undefinedFunction,
 
         // variable errors
         result_varNameInUseForFunction = 1600,
@@ -191,6 +193,7 @@ public:
         result_varDefinedAsScalar,
         result_varLocalInit_zeroValueExpected,
         result_varLocalInit_emptyStringExpected,
+        result_varControlVarInUse,
 
         // array errors
         result_arrayDefNoDims = 1700,
@@ -207,13 +210,14 @@ public:
         result_expressionExpectedAsCmdPar,
         result_varWithoutAssignmentExpectedAsCmdPar,
         result_variableExpectedAsCmdPar,
+        result_nameExpectedAsCmdPar,
         result_cmdParameterMissing,
         result_cmdHasTooManyParameters,
 
         // block command errors
-        result_controlVarInUse = 1900,
-
+        result_programCmdMissing = 1900,
         result_onlyImmediateMode,
+        result_onlyProgramStart,
         result_onlyInsideProgram,
         result_onlyInsideFunction,
         result_onlyOutsideFunction,
@@ -264,7 +268,7 @@ private:
     // storage for tokens
     // note: to avoid boundary alignment of structure members, character placeholders of correct size are used for all structure members
 
-    struct TokenIsResWord {                                     // generic token: length 4
+    struct TokenIsResWord {                                     // reserved word token (command): length 4 (if not a block command, token step is not stored and length will be 2)
         char tokenType;                                         // will be set to specific token type
         char tokenIndex;                                        // index into list of tokens of a specific type
         char toTokenStep [2];                                     // tokens for block commands (IF, FOR, BREAK, END, ...): step n° of block start token or next block token (int16_t)
@@ -370,36 +374,39 @@ private:
     // commands parameters: types allowed
     static constexpr int8_t cmdPar_none = 0;
     static constexpr int8_t cmdPar_resWord = 1;            // !!! note: reserved words as parameters: not implemented
-    static constexpr int8_t cmdPar_varOnly = 2;
+    static constexpr int8_t cmdPar_varNameOnly = 2;
     static constexpr int8_t cmdPar_varOptAssignment = 3;
     static constexpr int8_t cmdPar_expression = 4;
     static constexpr int8_t cmdPar_extFunction = 5;
     static constexpr int8_t cmdPar_numConstOnly = 6;
+    static constexpr int8_t cmdPar_programName = 7;
 
     static constexpr int8_t cmdPar_multipleFlag = 0x08;             // may be combined with value of one of the allowed types: will be allowed 0 to n times
 
-    // first parameter only: indicate command (not parameter) usage restrictions in bits 7654
-    static constexpr char cmd_restrictMask = 0xF0;                    // mask for checking where command is allowed
+
+    // first parameter only: indicate command (not parameter) usage restrictions 
     static constexpr char cmd_noRestrictions = 0x00;                  // command has no usage restrictions 
-    static constexpr char cmd_onlyInProgram = 0x10;                   // command is only allowed insde a program
-    static constexpr char cmd_onlyInProgramOutsideFunctionBlock = 0x20;    // command is only allowed insde a program
-    static constexpr char cmd_onlyInFunctionBlock = 0x30;               // command is only allowed inside a function block
-    static constexpr char cmd_onlyImmediate = 0x40;                   // command is only allowed in immediate mode
-    static constexpr char cmd_onlyOutsideFunctionBlock = 0x50;             // command is only allowed inside a function block
-    static constexpr char cmd_onlyImmediateOrInsideFunctionBlock = 0x60;   // command is only allowed inside a function block
+    static constexpr char cmd_onlyInProgram = 0x01;                   // command is only allowed insde a program
+    static constexpr char cmd_onlyInProgramOutsideFunctionBlock = 0x02;    // command is only allowed insde a program
+    static constexpr char cmd_onlyInFunctionBlock = 0x03;               // command is only allowed inside a function block
+    static constexpr char cmd_onlyImmediate = 0x04;                   // command is only allowed in immediate mode
+    static constexpr char cmd_onlyOutsideFunctionBlock = 0x05;             // command is only allowed inside a function block
+    static constexpr char cmd_onlyImmediateOrInsideFunctionBlock = 0x06;   // command is only allowed inside a function block
+    static constexpr char cmd_onlyProgramTop = 0x07;                        // only as first program statement
 
 
     // commands (FUNCTION, FOR, ...): allowed command parameters (naming: cmdPar_<n[nnn]> with A'=variable with (optional) assignment, 'E'=expression, 'E'=expression, 'R'=reserved word
     static const char cmdPar_N [4];                             // command takes no parameters
+    static const char cmdPar_P [4];                             // allow: 'P'=identifier name  
     static const char cmdPar_E [4];                             // allow: 'E'=expression  
     static const char cmdPar_V [4];                             // allow: 'V'=variable (only)
     static const char cmdPar_F [4];                             // allow: 'F'=function definition 
     static const char cmdPar_AEE [4];                           // allow: 'A'=variable with (optional) assignment, 'E'=expression, 'E'=expression
+    static const char cmdPar_P_mult [4];                        // allow: 'P'=identifier name : 1 + (0 to n) times
     static const char cmdPar_AA_mult [4];                       // allow: 'A'=variable with (optional) assignment : 1 + (0 to n) times                       
 
 
-    // block commands only (FOR, END, etc.): type of block, position in block OR (block_none:) action, sequence check in block: allowed previous block commands 
-    static constexpr CmdBlockDef cmdBlockNone { block_none, block_na,block_na,block_na };                                   // not a 'block' command
+    // block commands only (FOR, END, etc.): type of block, position in block, sequence check in block: allowed previous block commands 
     static constexpr CmdBlockDef cmdBlockExtFunction { block_extFunction,block_startPos,block_na,block_na };                // 'IF' block mid position 2, min & max previous position is block start & block position 1, resp.
     static constexpr CmdBlockDef cmdBlockWhile { block_while,block_startPos,block_na,block_na };                            // 'WHILE' block start
     static constexpr CmdBlockDef cmdBlockFor { block_for, block_startPos,block_na,block_na };                               // 'FOR' block start
@@ -407,15 +414,18 @@ private:
     static constexpr CmdBlockDef cmdBlockIf_elseIf { block_if,block_midPos1,block_startPos,block_midPos1 };                 // 'IF' block mid position 1, min & max previous position is block start & block position 1, resp.
     static constexpr CmdBlockDef cmdBlockIf_else { block_if,block_midPos2,block_startPos,block_midPos1 };                   // 'IF' block mid position 2, min & max previous position is block start & block position 1, resp.
 
-    // second value: action
-    static constexpr CmdBlockDef cmdGlobalVar { block_none, cmd_globalVar , block_na , block_na };
-    static constexpr CmdBlockDef cmdLocalVar { block_none, cmd_localVar , block_na , block_na };
-    static constexpr CmdBlockDef cmdStaticVar { block_none, cmd_staticVar , block_na , block_na };
-
     // 'alter flow' block commands require an open block of a specific type, NOT necessary in the current inner open block 
     // the second value ('position in block') is specified to indicate which type of open block is required (e.g. a RETURN command can only occur within a FUNCTION...END block)
     static constexpr CmdBlockDef cmdBlockOpenBlock_loop { block_alterFlow,block_inOpenLoopBlock,block_na,block_na };        // only if an open FOR or WHILE block 
     static constexpr CmdBlockDef cmdBlockOpenBlock_function { block_alterFlow,block_inOpenFunctionBlock,block_na,block_na };// only if an open FUNCTION definition block 
+
+    // other commands: first value indicates it's not a block command, second value specifies command (last positions not used)
+    static constexpr CmdBlockDef cmdProgram { block_none, cmd_program , block_na , block_na };
+    static constexpr CmdBlockDef cmdGlobalVar { block_none, cmd_globalVar , block_na , block_na };
+    static constexpr CmdBlockDef cmdLocalVar { block_none, cmd_localVar , block_na , block_na };
+    static constexpr CmdBlockDef cmdStaticVar { block_none, cmd_staticVar , block_na , block_na };
+    static constexpr CmdBlockDef cmdDeleteVar { block_none, cmd_deleteVar , block_na , block_na };
+    static constexpr CmdBlockDef cmdBlockOther { block_none, block_na,block_na,block_na };                                   // not a 'block' command
 
     // used to close any type of currently open inner block
     static constexpr CmdBlockDef cmdBlockGenEnd { block_genericEnd,block_endPos,block_na,block_endPos };            // all block types: block end 
@@ -433,11 +443,13 @@ private:
 
 private:
     bool _isCommand = false;                                    // a command is being parsed (instruction starting with a reserved word)
+    bool _isProgramCmd = false;
     bool _isExtFunctionCmd = false;                             // FUNCTION command is being parsed (not the complete function)
     bool _isGlobalVarCmd = false;                                // VAR command is being parsed
     bool _isLocalVarCmd = false;                                // LOCAL command is being parsed
     bool _isStaticVarCmd = false;                               // STATIC command is being parsed
     bool _isAnyVarCmd = false;                                     // VAR, LOCAL or STATIC command is being parsed
+    bool _isDeleteVarCmd = false;
 
     bool _varDefAssignmentFound = false;
     bool _leadingSpaceCheck { false };
@@ -480,13 +492,15 @@ public:
 
 private:
 
-    bool parseAsResWord( char*& pNext, int8_t& cnt, parseTokenResult_type& result );
-    bool parseAsNumber( char*& pNext, int8_t& cnt, parseTokenResult_type& result );
-    bool parseTerminalToken( char*& pNext, int8_t& cnt, parseTokenResult_type& result );
-    bool parseAsInternFunction( char*& pNext, int8_t& cnt, parseTokenResult_type& result );
-    bool parseAsExternFunction( char*& pNext, int8_t& cnt, parseTokenResult_type& result );
-    bool parseAsVariable( char*& pNext, int8_t& cnt, parseTokenResult_type& result );
-    bool parseAsAlphanumConstant( char*& pNext, int8_t& cnt, parseTokenResult_type& result );
+    bool parseAsResWord( char*& pNext,  parseTokenResult_type& result );
+    bool parseAsNumber( char*& pNext,  parseTokenResult_type& result );
+    bool parseAsAlphanumConstant( char*& pNext,  parseTokenResult_type& result );
+    bool parseTerminalToken( char*& pNext,  parseTokenResult_type& result );
+    bool parseAsInternFunction( char*& pNext,  parseTokenResult_type& result );
+    bool parseAsExternFunction( char*& pNext,  parseTokenResult_type& result );
+    bool parseAsVariable( char*& pNext,  parseTokenResult_type& result );
+    bool parseAsIdentifierName( char*& pNext,  parseTokenResult_type& result );
+    
     bool checkCommandSyntax( parseTokenResult_type& result );
     void deleteAllIdentifierNames( char** pIdentArray, int identifiersInUse );
     bool checkExtFunctionArguments( parseTokenResult_type& result, int8_t& minArgCnt, int8_t& maxArgCnt );
@@ -494,7 +508,6 @@ private:
     int getIdentifier( char** pIdentArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int8_t identLength, bool& createNew );
     bool checkFuncArgArrayPattern( parseTokenResult_type& result, bool isFunctionClosingParenthesis );
     bool initVariable( int16_t varTokenStep, int16_t constTokenStep );
-    parseTokenResult_type  parseInstruction( char*& pInputLine, int8_t& cnt );
 
 public:
 
@@ -502,6 +515,7 @@ public:
     void resetMachine();
     void deleteAllAlphanumStrValues( char* pToken );
     parseTokenResult_type parseSource( char* const inputLine, char*& pErrorPos );
+    parseTokenResult_type  parseInstruction( char*& pInputLine);
     void deleteParsedData();
     bool allExternalFunctionsDefined( int& index );
     void prettyPrintProgram();
