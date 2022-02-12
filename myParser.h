@@ -141,6 +141,7 @@ public:
         result_tokenNotFound = 1000,
         result_expressionNotComplete,
         result_missingLeftParenthesis,
+        result_missingRightParenthesis,
 
         // token not allowed errors
         result_separatorNotAllowedHere = 1100,
@@ -348,7 +349,7 @@ private:
     // *   constants   *
     // -----------------
 
-private:
+public:
 
     static constexpr char extFunctionFirstOccurFlag = 0x10;     // flag: min > max means not initialized
     static constexpr char extFunctionMaxArgs = 0xF;             // must fit in 4 bits
@@ -367,6 +368,9 @@ private:
     static constexpr uint8_t lastTokenGroups_5_4_2 = lastTokenGroup_5 | lastTokenGroup_4 | lastTokenGroup_2;
     static constexpr uint8_t lastTokenGroups_5_4_3_1_0 = lastTokenGroup_5 | lastTokenGroup_4 | lastTokenGroup_3 | lastTokenGroup_1 | lastTokenGroup_0;
     static constexpr uint8_t lastTokenGroups_5_2 = lastTokenGroup_5 | lastTokenGroup_2;
+
+private:
+
 
 
 
@@ -465,9 +469,7 @@ private:
     int _tokenIndex { 0 };
     int _resWordNo;                                          // index into list of reserved words
     int _functionNo;                                         // index into list of internal (intrinsic) functions
-    int _parenthesisLevel = 0;                               // current number of open parentheses
 
-    int _lastTokenGroup_sequenceCheck = 0;                   // bits indicate which token group the last token parsed belongs to          
 
     const char* _pCmdAllowedParTypes;
     uint16_t _lastTokenStep, _lastVariableTokenStep;
@@ -481,6 +483,8 @@ private:
 
 
 public:
+    int _parenthesisLevel = 0;                               // current number of open parentheses
+    uint8_t _lastTokenGroup_sequenceCheck = 0;                   // bits indicate which token group the last token parsed belongs to          
     bool _extFunctionBlockOpen = false;                         // commands within FUNCTION...END block are being parsed (excluding END command)
     int _blockLevel = 0;                                     // current number of open blocks
     MyLinkedLists myStack;                                      // during parsing: linked list keeping track of open parentheses and open blocks
@@ -492,15 +496,15 @@ public:
 
 private:
 
-    bool parseAsResWord( char*& pNext,  parseTokenResult_type& result );
-    bool parseAsNumber( char*& pNext,  parseTokenResult_type& result );
-    bool parseAsAlphanumConstant( char*& pNext,  parseTokenResult_type& result );
-    bool parseTerminalToken( char*& pNext,  parseTokenResult_type& result );
-    bool parseAsInternFunction( char*& pNext,  parseTokenResult_type& result );
-    bool parseAsExternFunction( char*& pNext,  parseTokenResult_type& result );
-    bool parseAsVariable( char*& pNext,  parseTokenResult_type& result );
-    bool parseAsIdentifierName( char*& pNext,  parseTokenResult_type& result );
-    
+    bool parseAsResWord( char*& pNext, parseTokenResult_type& result );
+    bool parseAsNumber( char*& pNext, parseTokenResult_type& result );
+    bool parseAsAlphanumConstant( char*& pNext, parseTokenResult_type& result );
+    bool parseTerminalToken( char*& pNext, parseTokenResult_type& result );
+    bool parseAsInternFunction( char*& pNext, parseTokenResult_type& result );
+    bool parseAsExternFunction( char*& pNext, parseTokenResult_type& result );
+    bool parseAsVariable( char*& pNext, parseTokenResult_type& result );
+    bool parseAsIdentifierName( char*& pNext, parseTokenResult_type& result );
+
     bool checkCommandSyntax( parseTokenResult_type& result );
     void deleteAllIdentifierNames( char** pIdentArray, int identifiersInUse );
     bool checkExtFunctionArguments( parseTokenResult_type& result, int& minArgCnt, int& maxArgCnt );
@@ -515,7 +519,7 @@ public:
     void resetMachine();
     void deleteAllAlphanumStrValues( char* pToken );
     parseTokenResult_type parseSource( char* const inputLine, char*& pErrorPos );
-    parseTokenResult_type  parseInstruction( char*& pInputLine);
+    parseTokenResult_type  parseInstruction( char*& pInputLine );
     void deleteParsedData();
     bool allExternalFunctionsDefined( int& index );
     void prettyPrintProgram();
@@ -595,7 +599,6 @@ public:
     char _instruction [_maxInstructionChars + 1] = "";
     int _instructionCharCount { 0 };
     bool _programMode { false };
-    bool _withinString { false };
     bool _flushAllUntilEOF { false };
 
     int _varNameCount { 0 };                                        // counts number of variable names (global variables: also stores values) 

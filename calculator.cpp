@@ -7,9 +7,6 @@ Calculator::Calculator() {
     _instructionCharCount = 0;
 
     // init 'machine' (not a complete reset, because this clears heap objects for this calculator object, and there are none)
-    _instructionCharCount = 0;
-    _flushAllUntilEOF = false;
-
     _varNameCount = 0;
     _staticVarCount = 0;
     _localVarCountInFunction = 0;
@@ -31,23 +28,32 @@ Calculator::Calculator() {
 
 void Calculator::processCharacter( char c ) {
     // process character
-    static bool withinStringEscSequence { false };
-    static char* pErrorPos {};
     static MyParser::parseTokenResult_type result {};
     static bool requestMachineReset { false };
+    static bool withinStringEscSequence { false };
     static bool instructionsParsed { false };
-    static int lineCount { 1 };
     static bool lastCharWasWhiteSpace { false };
     static bool lastCharWasSemiColon { false };
 
-    char EOFchar = 0x1A;
-    if ( !_programMode && (c == '\n') ) { c = EOFchar; }
-    bool endOfFileChar = (c == EOFchar);                                      // end of input: EOF in program mode, LF or EOF in immediate mode
+    static bool withinComment { false };
+    static bool withinString { false };
 
+    static char* pErrorPos {};
+    static int lineCount { 0 };                             // taking into account new line after 'load program' command ////
+
+
+    char EOFchar = 0x1A;
+    char commentStartChar = '$';
+
+    bool redundantSpaces = false;                                       // init
+    bool redundantSemiColon = false;
+
+    if ( !_programMode && (c == '\n') ) { c = EOFchar; }
+    bool isEndOfFile = (c == EOFchar);                                      // end of input: EOF in program mode, LF or EOF in immediate mode
     bool isProgramCtrl = (c == 2);                                   // switch between program and immediate mode ?
     bool isParserReset = (c == 3);                                     // reset parser ?
-    bool redundantSpaces = false;
-    bool redundantSemiColon = false;
+    bool isCommentStartChar = (c == '$');                               // character can also be part of comment
+
 
     if ( isProgramCtrl ) {
         // do not touch program memory itself: there could be a program in it 
@@ -61,11 +67,14 @@ void Calculator::processCharacter( char c ) {
         instructionsParsed = false;
         lastCharWasWhiteSpace = false;
         lastCharWasSemiColon = false;
-        lineCount = 1;
+        lineCount = 0;
         _instructionCharCount = 0;
         _flushAllUntilEOF = false;
 
-        pTerminal->println( _programMode ? "+++ program mode +++" : "+++ immediate mode +++" );
+        withinString = false; withinStringEscSequence = false;
+        withinComment = false;
+
+        pTerminal->println( _programMode ? "Waiting for program..." : "Ready >" );
         return;
     }
     else if ( isParserReset ) {  // temporary
@@ -75,85 +84,101 @@ void Calculator::processCharacter( char c ) {
         instructionsParsed = false;
         lastCharWasWhiteSpace = false;
         lastCharWasSemiColon = false;
-        lineCount = 1;
+        lineCount = 0;
         _instructionCharCount = 0;
         _flushAllUntilEOF = false;
 
-        pTerminal->println( "+++ machine reset +++" );
+        withinString = false; withinStringEscSequence = false;
+        withinComment = false;
+
+        Serial.println( "(machine reset na manual parser reset)" );
         return;
     }
-    else if ( (c < ' ') && (c != '\n') && (!endOfFileChar) ) { return; }                  // skip control-chars except new line and EOF character
+    else if ( (c < ' ') && (c != '\n') && (!isEndOfFile) ) { return; }                  // skip control-chars except new line and EOF character
 
 
-    if ( !endOfFileChar ) {
+
+    if ( !isEndOfFile ) {
         if ( _flushAllUntilEOF ) { return; }                       // discard characters (after parsing error)
 
-        if ( c == '\n' ) { lineCount++; }                           // input file
+        if ( c == '\n' ) { lineCount++; }                           // while reading program in input file
 
-        bool leadingWhiteSpace = (((c == ' ') || (c == '\n')) && (_instructionCharCount == 0));
-        if ( leadingWhiteSpace ) { return; };                        // but always process end of file character
-
-        instructionsParsed = true;
-
-        if ( requestMachineReset ) {
-            myParser.resetMachine();                                // prepare for parsing next program( stay in current mode )
-            requestMachineReset = false;
-            pTerminal->println( "+++ machine reset +++" );
-        }
-
-        // currently within a string ?
-        if ( _instructionCharCount == 0 ) { _withinString = false; withinStringEscSequence = false; }          // a string cannot be mlulti-line
-        if ( _withinString ) {
+        // currently within a string or within a comment ?
+        if ( withinString ) {
             if ( c == '\\' ) { withinStringEscSequence = !withinStringEscSequence; }
-            else if ( c == '\"' ) { _withinString = withinStringEscSequence; withinStringEscSequence = false; }
+            else if ( c == '\"' ) { withinString = withinStringEscSequence; withinStringEscSequence = false; }
             else { withinStringEscSequence = false; }                 // any other character within string
             lastCharWasWhiteSpace = false;
             lastCharWasSemiColon = false;
+
+        }
+        else if ( withinComment ) {
+            if ( c == '\n' ) { withinComment = false; return; }                // comment stops at end of line
         }
         else {                                                                                              // not within a string
-            if ( c == '\"' ) { _withinString = true; }
-            else if ( c == '\n' ) { c = ' '; }                       // not within string: replace a new line with a space (white space in multi-line instruction)
+            bool leadingWhiteSpace = (((c == ' ') || (c == '\n')) && (_instructionCharCount == 0));
+            if ( leadingWhiteSpace ) { return; };                        // but always process end of file character
+
+            if ( !withinComment && (c == '\"') ) { withinString = true; }
+            else if ( !withinString && (c == commentStartChar) ) { withinComment = true; return; }
+            else if ( c == '\n' ) { c = ' '; }                       // not within string or comment: replace a new line with a space (white space in multi-line instruction)
+
             redundantSpaces = (_instructionCharCount > 0) && (c == ' ') && lastCharWasWhiteSpace;
             redundantSemiColon = (c == ';') && lastCharWasSemiColon;
             lastCharWasWhiteSpace = (c == ' ');                     // remember
             lastCharWasSemiColon = (c == ';');
         }
 
+        instructionsParsed = true;                                  // instructions found
+        if ( requestMachineReset ) {
+            myParser.resetMachine();                                // prepare for parsing next program( stay in current mode )
+            requestMachineReset = false;
+            Serial.println( "(machine reset bij start parsen)" );
+        }
+
         // less than 2 positions available in buffer: discard character (last position will be for terminating '\n' then)  
-        if ( (_instructionCharCount <= _maxInstructionChars - 2) && !endOfFileChar && !redundantSpaces && !redundantSemiColon ) {
+        if ( (_instructionCharCount <= _maxInstructionChars - 2) && !isEndOfFile && !redundantSpaces && !redundantSemiColon && !withinComment ) {
             _instruction [_instructionCharCount] = c;                               // still room: add character
             _instructionCharCount++;
         }
     }
 
 
-    bool isInstructionSeparator = (!_withinString) && (c == ';') && !redundantSemiColon;   // only if before end of file character 
-    bool instructionComplete = isInstructionSeparator || (endOfFileChar && (_instructionCharCount > 0));
+    bool isInstructionSeparator = (!withinString) && (!withinComment) && (c == ';') && !redundantSemiColon;   // only if before end of file character 
+    isInstructionSeparator = isInstructionSeparator || (withinString && (c == '\n'));  // new line sent to parser as well
+    bool instructionComplete = isInstructionSeparator || (isEndOfFile && (_instructionCharCount > 0));
+
 
     if ( instructionComplete ) {                                                // terminated by a semicolon if not end of input
         _instruction [_instructionCharCount] = '\0';                            // add string terminator
-        
+
         char* pInstruction = _instruction;                                                 // because passed by reference 
         result = myParser.parseInstruction( pInstruction );                                 // parse one instruction (ending with ';' character, if found)
-        pErrorPos = _instruction;                                                      // in case of error
-
+        pErrorPos = pInstruction;                                                      // in case of error
         if ( result != MyParser::result_tokenFound ) { _flushAllUntilEOF = true; }
         _instructionCharCount = 0;
+        withinString = false; withinStringEscSequence = false;
+
     }
 
-    if ( endOfFileChar ) {
+
+
+
+    if ( isEndOfFile ) {
         if ( instructionsParsed ) {
             int funcNotDefIndex;
             if ( result == MyParser::result_tokenFound ) {
                 // checks at the end of parsing
                 if ( calculator._programMode && (!myParser.allExternalFunctionsDefined( funcNotDefIndex )) ) { result = MyParser::result_undefinedFunction; }
-                if ( myParser._blockLevel > 0 ) { result = MyParser::result_noBlockEnd; }
+
+                else if ( myParser._parenthesisLevel > 0 ) { result = myParser.result_missingRightParenthesis; }
+                else if  (!(myParser._lastTokenGroup_sequenceCheck & myParser.lastTokenGroups_5_2_1)) { result = myParser.result_expressionNotComplete; }
+                else if ( myParser._blockLevel > 0 ) { ; result = MyParser::result_noBlockEnd; }
             }
 
             myParser.prettyPrintProgram();                    // append pretty printed instruction to string
             myParser.printParsingResult( result, funcNotDefIndex, _instruction, lineCount, pErrorPos );
         }
-
 
         bool wasReset = false;      // init
         if ( _programMode ) {               //// waarschijnlijk aan te passen als LOADPROG cmd implemented (-> steeds vanuit immediate mode)
@@ -164,13 +189,14 @@ void Calculator::processCharacter( char c ) {
             // if program parsing error: reset machine, because variable storage is not consistent with program 
             if ( result != MyParser::result_tokenFound ) {
                 myParser.resetMachine();      // message not needed here
+                Serial.println( "(Machine reset na parsing error)" );       // program mode parsing only !
                 wasReset = true;
             }
             pTerminal->println( "Ready >" );                  // end of parsing
 
         }
         // was in immediate mode
-        else if (instructionsParsed) {
+        else if ( instructionsParsed ) {
 
             if ( result == MyParser::result_tokenFound ) {
                 pTerminal->println( "------------------ (hier komt evaluatie) --------------------------" );
@@ -195,9 +221,11 @@ void Calculator::processCharacter( char c ) {
         }
 
         instructionsParsed = false;
-        lineCount = 1;
+        lineCount = 0;
         _instructionCharCount = 0;
         _flushAllUntilEOF = false;
+
+
     }
 }
 

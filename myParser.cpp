@@ -403,10 +403,8 @@ MyParser::parseTokenResult_type MyParser::parseInstruction( char*& pInputStart )
         while ( pNext [0] == ' ' ) { pNext++; }                                         // skip leading spaces
         if ( pNext [0] == '\0' ) {                                                      // nothing more to process
             // check if any instruction currently being parsed is complete, and that there are no open command blocks
-            if ( (!(_lastTokenGroup_sequenceCheck & lastTokenGroups_5_2_1)) || (_parenthesisLevel > 0) ) { result = result_expressionNotComplete; }
-            if ( _blockLevel > 0 ) { result = result_noBlockEnd; }
             // if currently parsing a command, check that all parameters are entered
-            if ( _isCommand ) {
+            if ( _isCommand ) {         //// waarom hier ??? fout
                 uint8_t allowedParType = (_commandParNo == sizeof( _pCmdAllowedParTypes )) ? cmdPar_none : (uint8_t) (_pCmdAllowedParTypes [_commandParNo]);
                 if ( (allowedParType != cmdPar_none) && !(allowedParType & cmdPar_multipleFlag) ) { result = result_cmdParameterMissing; }       // no more parameters expected: ok
             }
@@ -996,8 +994,6 @@ bool MyParser::checkArrayDimCountAndSize( parseTokenResult_type& result, int* ar
     arrayDef_dims [dimCnt - 1] = (int) f;
     int arrayElements = 1;
     for ( int cnt = 0; cnt < dimCnt; cnt++ ) { arrayElements *= arrayDef_dims [cnt]; }
-    Serial.print( dimCnt ); Serial.print( "count - elements: " ); Serial.println( arrayElements );
-
     if ( arrayElements > calculator.MAX_ARRAY_ELEM ) { result = result_arrayDefMaxElementsExceeded; return false; }
 }
 
@@ -1287,7 +1283,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
                 if ( isOpenParenthesis ) { _pCurrStackLvl->openPar.minArgs = 1; _pCurrStackLvl->openPar.maxArgs = 1; }
                 bool argCountWrong = ((actualArgs < (int) _pCurrStackLvl->openPar.minArgs) ||
                     (actualArgs > ( int ) _pCurrStackLvl->openPar.maxArgs));
-                if ( argCountWrong ) { pNext = pch; result = result_wrong_arg_count; return false; }
+                if ( argCountWrong ) { pNext = pch; result = (flags & calculator.openParenthesisBit) ? result_missingRightParenthesis : result_wrong_arg_count; return false; }
             }
 
             // check that order of arrays and scalar variables is consistent with previous callsand function definition
@@ -1379,7 +1375,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         // 3.3 Internal or external function call argument separator ?
         // -----------------------------------------------------------
 
-        else if ( flags & (calculator.intFunctionBit | calculator.extFunctionBit | calculator.openParenthesisBit) ) {
+        else if ( flags & (calculator.intFunctionBit | calculator.extFunctionBit | calculator.openParenthesisBit) ) { 
             // note that actual argument count is at least one more than actual argument count, because at least one more to go (after the comma)
             _pCurrStackLvl->openPar.actualArgsOrDims++;           // include argument before the comma in argument count     
             int actualArgs = (int) _pCurrStackLvl->openPar.actualArgsOrDims;
@@ -1394,7 +1390,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
             // if call to previously defined external function, to an internal function, or if open parenthesis, then check argument count 
             else {
                 bool argCountWrong = (actualArgs >= (int) _pCurrStackLvl->openPar.maxArgs);       // check against allowed maximum number of arguments for this function
-                if ( argCountWrong ) { pNext = pch; result = result_wrong_arg_count; return false; }
+                if ( argCountWrong ) { pNext = pch; result = (flags & calculator.openParenthesisBit) ? result_missingRightParenthesis : result_wrong_arg_count; return false; }
             }
 
             // check that order of arrays and scalar variables is consistent with previous callsand function definition
@@ -1427,8 +1423,8 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         if ( calculator._programCounter == calculator._programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
         // token is semicolon separator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
+        if ( _parenthesisLevel > 0 ) { pNext = pch; result = result_missingRightParenthesis; return false; }
         if ( !(_lastTokenGroup_sequenceCheck & lastTokenGroups_5_2_1) ) { pNext = pch; result = result_expressionNotComplete; return false; }
-        if ( _parenthesisLevel > 0 ) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
 
         // token is a semicolon separator, and it's allowed here
         tokenType = tok_isSemiColonSeparator;                                           // remember: token is a semicolon separator
@@ -1978,31 +1974,6 @@ bool MyParser::parseAsIdentifierName( char*& pNext, parseTokenResult_type& resul
 }
 
 
-// ----------------------------
-// *   print parsing result   *
-// ----------------------------
-
-void MyParser::printParsingResult( parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* const pErrorPos ) {
-    char parsingInfo [200];
-    if ( result == result_tokenFound ) {                                                // prepare message with parsing result
-        strcpy( parsingInfo, "" );
-    }
-
-    else  if ( (result == result_undefinedFunction) && calculator._programMode ) {     // in program mode only (because function can be defined after a call)
-        sprintf( parsingInfo, "\r\nError %d. Function: %s", result, calculator.extFunctionNames [funcNotDefIndex] );
-    }
-
-    else {                                                                              // error
-        char point [pErrorPos - pInputLine + 2];
-        memset( point, ' ', pErrorPos - pInputLine );
-        point [pErrorPos - pInputLine] = '^';
-        point [pErrorPos - pInputLine + 1] = '\0';
-        if ( calculator._programMode ) { sprintf( parsingInfo, "\r\n%s\r\n%s\r\nStatement ending at line %d: error %d", pInputLine, point, lineCount, result ); }
-        else { sprintf( parsingInfo, "\r\n%s\r\n%s\r\nError %d", pInputLine, point, result ); }
-    }
-    if ( strlen( parsingInfo ) > 0 ) { pTerminal->println( parsingInfo ); }
-};
-
 // -----------------------------------------
 // *   pretty print a parsed instruction   *
 // -----------------------------------------
@@ -2012,15 +1983,15 @@ void MyParser::prettyPrintProgram() {
     const int maxCharsPretty { 100 };       //// check lengte
     char prettyToken [maxCharsPretty] = "";
     int identNameIndex, valueIndex;
+    char s [100] = "";      //// check op overrun
     char qual [20] = "";
-    char s [100] = "";
     char pch [3] = "";
     int len;
     int index;
     char* identifierName, * varStrValue;
     bool isStringValue;
     float f;
-    char* pAnum;
+    char *pAnum;
     uint32_t funcStart = 0;
     char tokenInfo = 0;
     uint8_t varQualifier = 0;
@@ -2143,14 +2114,42 @@ void MyParser::prettyPrintProgram() {
 
         // append pretty printed token to character string (if still place left)
         if ( strlen( s ) <= maxCharsPretty ) { strcat( prettyToken, s ); }
-        if ( strlen( prettyToken ) > 0 ) { pTerminal->println( prettyToken ); }
-
+        if ( strlen( prettyToken ) > 0 ) { 
+        ////pTerminal->println( prettyToken ); 
+        Serial.println(prettyToken); }
         int tokenLength = (tokenType >= tok_isOperator) ? 1 : (*prgmCnt.pToken >> 4) & 0x0F;
         prgmCnt.pToken += tokenLength;
         tokenType = *prgmCnt.pToken & 0x0F;
     }
 }
 
+
+// ----------------------------
+// *   print parsing result   *
+// ----------------------------
+
+void MyParser::printParsingResult( parseTokenResult_type result, int funcNotDefIndex, char* const pInstruction, int lineCount, char* const pErrorPos ) {
+    char parsingInfo [calculator._maxInstructionChars];
+    if ( result == result_tokenFound ) {                                                // prepare message with parsing result
+        strcpy( parsingInfo, calculator._programMode ? "Parsed without errors" : "" );
+    }
+
+    else  if ( (result == result_undefinedFunction) && calculator._programMode ) {     // in program mode only (because function can be defined after a call)
+        sprintf( parsingInfo, "\r\nError %d: function: %s", result, calculator.extFunctionNames [funcNotDefIndex] );
+    }
+    
+    else {                                                                              // error
+        char point [pErrorPos - pInstruction + 2];
+        memset( point, ' ', pErrorPos - pInstruction );
+        point [pErrorPos - pInstruction] = '^';
+        point [pErrorPos - pInstruction + 1] = '\0';
+        pTerminal->println( pInstruction );
+        pTerminal->println( point );
+        if ( calculator._programMode ) { sprintf( parsingInfo, "Error %d: statement ending at line %d",  result, lineCount ); }
+        else { sprintf( parsingInfo, "Error %d", result ); }
+    }
+    if ( strlen( parsingInfo ) > 0 ) { pTerminal->println( parsingInfo ); }
+};
 
 // object
 
