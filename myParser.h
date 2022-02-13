@@ -369,7 +369,6 @@ public:
     static constexpr uint8_t lastTokenGroups_5_4_3_1_0 = lastTokenGroup_5 | lastTokenGroup_4 | lastTokenGroup_3 | lastTokenGroup_1 | lastTokenGroup_0;
     static constexpr uint8_t lastTokenGroups_5_2 = lastTokenGroup_5 | lastTokenGroup_2;
 
-private:
 
 
 
@@ -385,8 +384,12 @@ private:
     static constexpr uint8_t cmdPar_numConstOnly = 6;
     static constexpr uint8_t cmdPar_programName = 7;
 
-    static constexpr uint8_t cmdPar_multipleFlag = 0x08;             // may be combined with value of one of the allowed types: will be allowed 0 to n times
+    // flags may be combined with value of one of the allowed types above
+    static constexpr uint8_t cmdPar_flagMask = 0x18;             // allowed 0 to n times. Only for last command parameter
+    static constexpr uint8_t cmdPar_multipleFlag = 0x08;             // allowed 0 to n times. Only for last command parameter
+    static constexpr uint8_t cmdPar_optionalFlag = 0x10;             // allowed 0 to 1 times. If parameter is present, next parameters do not have to be optional 
 
+private:
 
     // first parameter only: indicate command (not parameter) usage restrictions 
     static constexpr char cmd_noRestrictions = 0x00;                  // command has no usage restrictions 
@@ -408,6 +411,8 @@ private:
     static const char cmdPar_AEE [4];                           // allow: 'A'=variable with (optional) assignment, 'E'=expression, 'E'=expression
     static const char cmdPar_P_mult [4];                        // allow: 'P'=identifier name : 1 + (0 to n) times
     static const char cmdPar_AA_mult [4];                       // allow: 'A'=variable with (optional) assignment : 1 + (0 to n) times                       
+
+    static const char cmdPar_test [4];                          //// test                      
 
 
     // block commands only (FOR, END, etc.): type of block, position in block, sequence check in block: allowed previous block commands 
@@ -446,7 +451,6 @@ private:
     // -----------------
 
 private:
-    bool _isCommand = false;                                    // a command is being parsed (instruction starting with a reserved word)
     bool _isProgramCmd = false;
     bool _isExtFunctionCmd = false;                             // FUNCTION command is being parsed (not the complete function)
     bool _isGlobalVarCmd = false;                                // VAR command is being parsed
@@ -465,13 +469,11 @@ private:
     int _variableNameIndex { 0 };
     bool _arrayElemAssignmentAllowed { false };                    // value returned: assignment to array element is allowed next
 
-    int _commandParNo { 0 };
     int _tokenIndex { 0 };
     int _resWordNo;                                          // index into list of reserved words
     int _functionNo;                                         // index into list of internal (intrinsic) functions
 
 
-    const char* _pCmdAllowedParTypes;
     uint16_t _lastTokenStep, _lastVariableTokenStep;
     uint16_t _blockCmdTokenStep, _blockStartCmdTokenStep;   // pointers to reserved words used as block commands                           
     LE_stack* _pCurrStackLvl;
@@ -483,6 +485,9 @@ private:
 
 
 public:
+    const char* _pCmdAllowedParTypes;
+    int _commandParNo { 0 };
+    bool _isCommand = false;                                    // a command is being parsed (instruction starting with a reserved word)
     int _parenthesisLevel = 0;                               // current number of open parentheses
     uint8_t _lastTokenGroup_sequenceCheck = 0;                   // bits indicate which token group the last token parsed belongs to          
     bool _extFunctionBlockOpen = false;                         // commands within FUNCTION...END block are being parsed (excluding END command)

@@ -136,13 +136,19 @@ void Calculator::processCharacter( char c ) {
             Serial.println( "(machine reset bij start parsen)" );
         }
 
-        // less than 2 positions available in buffer: discard character (last position will be for terminating '\n' then)  
-        if ( (_instructionCharCount <= _maxInstructionChars - 2) && !isEndOfFile && !redundantSpaces && !redundantSemiColon && !withinComment ) {
+        // less than 3 positions available in buffer: discard character (keep 2 free positions to add optional ';' and for terminating '\0')  
+        if ( (_instructionCharCount <= _maxInstructionChars - 3) && !isEndOfFile && !redundantSpaces && !redundantSemiColon && !withinComment ) {
             _instruction [_instructionCharCount] = c;                               // still room: add character
             _instructionCharCount++;
         }
     }
 
+    if (( _instructionCharCount > 0 ) && isEndOfFile) {             // if last instruction before EOF does not contain a semicolon separator at the end, add it 
+        if(_instruction [_instructionCharCount-1] != ';'){
+            _instruction [_instructionCharCount] = ';';                               // still room: add character
+            _instructionCharCount++;
+        }
+    }
 
     bool isInstructionSeparator = (!withinString) && (!withinComment) && (c == ';') && !redundantSemiColon;   // only if before end of file character 
     isInstructionSeparator = isInstructionSeparator || (withinString && (c == '\n'));  // new line sent to parser as well
@@ -168,12 +174,9 @@ void Calculator::processCharacter( char c ) {
         if ( instructionsParsed ) {
             int funcNotDefIndex;
             if ( result == MyParser::result_tokenFound ) {
-                // checks at the end of parsing
+                // checks at the end of parsing: any undefined functions (program mode only) ?  any open blocks ?
                 if ( calculator._programMode && (!myParser.allExternalFunctionsDefined( funcNotDefIndex )) ) { result = MyParser::result_undefinedFunction; }
-
-                else if ( myParser._parenthesisLevel > 0 ) { result = myParser.result_missingRightParenthesis; }
-                else if  (!(myParser._lastTokenGroup_sequenceCheck & myParser.lastTokenGroups_5_2_1)) { result = myParser.result_expressionNotComplete; }
-                else if ( myParser._blockLevel > 0 ) { ; result = MyParser::result_noBlockEnd; }
+                if ( myParser._blockLevel > 0 ) { ; result = MyParser::result_noBlockEnd; }
             }
 
             myParser.prettyPrintProgram();                    // append pretty printed instruction to string
