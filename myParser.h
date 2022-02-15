@@ -552,20 +552,27 @@ public:
     static constexpr int IMM_MEM_SIZE { 200 };
     static constexpr int MAX_VARNAMES { 64 };                       // max. vars (all types: global, static, local, parameter). Absolute limit: 255
     static constexpr int MAX_STAT_VARS { 32 };                      // max. static vars (only). Absolute limit: 255
-    static constexpr int MAX_LOC_VARS_IN_FUNC { 16 };               // max. local and parameter vars (only) in an individual function. Absolute limit: 127 (index: bit 7 used in extFunctionData[]...)
+    static constexpr int MAX_LOC_VARS_IN_FUNC { 16 };               // max. local and parameter vars (only) in an INDIVIDUAL function. Absolute limit: 255 
     static constexpr int MAX_EXT_FUNCS { 16 };                      // max. external functions. Absolute limit: 255
     static constexpr int MAX_ARRAY_DIMS { 3 };                        // 1, 2 or 3 is allwed: must fit in 3 bytes
     static constexpr int MAX_ARRAY_ELEM { 200 };                      // max. n° of floats in a single array
 
     union Val {
+        // global, static, local variables; parameters with default initialisation (if no argument provided)
         float numConst;                                         // variable contains number: float
         char* pAlphanumConst;                                   // variable contains string: pointer to a character string
         float* pNumArray;                                       // variable is an array: pointer to array
+        
+        // function parameters only: extra level of indirection
+        // not used if default initialisation (if no argument provided)
+        float* pnumConst;                                         // variable contains number: float
+        char** ppAlphanumConst;                                   // variable contains string: pointer to a character string
+        float** ppNumArray;                                       // variable is an array: pointer to array
     };
 
     struct ExtFunctionData {
         char* pExtFunctionStartToken;                           // ext. function: pointer to start of function (token)
-        char locVarCnt_statVarInit;                             // needed to reserve run time storage for local variables //// check name (enkel local use)
+        char localVarCountInFunction;                             // needed to reserve run time storage for local variables //// check name (enkel local use)
         char paramIsArrayPattern [2];                         // parameter pattern: b15 flag set when parsing function definition or first function call; b14-b0 flags set when corresponding parameter or argument is array      
     };
 
@@ -606,6 +613,9 @@ public:
     bool _programMode { false };
     bool _flushAllUntilEOF { false };
 
+    int _lineCount { 0 };                             // taking into account new line after 'load program' command ////
+    int _StarCmdCharCount { 0 };
+
     int _varNameCount { 0 };                                        // counts number of variable names (global variables: also stores values) 
     int _localVarCountInFunction { 0 };                             // counts number of local variables in a specific function (names only, values not used)
     int _staticVarCount { 0 };                                      // static variable count (across all functions)
@@ -644,7 +654,11 @@ public:
     // ------------------------------------
 
     Calculator();               // constructor
-    void processCharacter( char c );
+    bool run();
+    bool processCharacter( char c );
+    void (*_callbackFcn)();                                         // pointer to callback function for heartbeat
+    void setHeartbeatCallback( void (*func)() );                   // set callback function for connection state change
+
 };
 
 extern Calculator calculator;

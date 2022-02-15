@@ -1,16 +1,42 @@
 #include "myParser.h"
+#include "myComm.h"
 
+// objects defined in main program
+extern MyTCPconnection myTCPconnection;
 extern Stream* pTerminal;
 
-Calculator::Calculator() {
+// -------------------
+// *   constructor   *
+// -------------------
 
-    _instructionCharCount = 0;
+Calculator::Calculator() {
+    _callbackFcn = nullptr;                 // call back function for heartbeat
+};
+
+
+// ----------------------------
+// *   calculator main loop   *
+// ----------------------------
+
+void Calculator::setHeartbeatCallback( void (*func)() ) { _callbackFcn = func; }
+
+
+// ----------------------------
+// *   calculator main loop   *
+// ----------------------------
+
+bool Calculator::run() {
 
     // init 'machine' (not a complete reset, because this clears heap objects for this calculator object, and there are none)
     _varNameCount = 0;
     _staticVarCount = 0;
     _localVarCountInFunction = 0;
     _extFunctionCount = 0;
+
+    _instructionCharCount = 0;
+    _lineCount = 0;                             // taking into account new line after 'load program' command ////
+    _flushAllUntilEOF = false;
+    _StarCmdCharCount = 0;
 
     _programMode = false;
     _programStart = _programStorage + PROG_MEM_SIZE;
@@ -19,14 +45,32 @@ Calculator::Calculator() {
 
     *_programStorage = '\0';                                    //  current end of program 
     *_programStart = '\0';                                      //  current end of program (immediate mode)
-};
 
+    char c;
+    Serial.println( "+++++ starting calculator +++++" );
+    pTerminal->println( "Ready >" );                  // end of parsing
+
+    do {
+        myTCPconnection.maintainConnection();                           // important to execute regularly; place at beginning of loop()
+        if ( _callbackFcn != nullptr ) { _callbackFcn(); }
+
+        bool found = (pTerminal->available() > 0);
+        if ( pTerminal->available() > 0 ) {     // if terminal character available for reading
+            c = pTerminal->read();
+            bool quitNow = calculator.processCharacter( c );        // process one character
+            if ( quitNow ) { break; }               // exit processing characters
+        }
+    } while ( true );
+
+    Serial.println( "+++++ quitting calculator" );
+    return true;
+}
 
 // ----------------------------------
 // *   process an input character   *
 // ----------------------------------
 
-void Calculator::processCharacter( char c ) {
+bool Calculator::processCharacter( char c ) {
     // process character
     static MyParser::parseTokenResult_type result {};
     static bool requestMachineReset { false };
@@ -39,8 +83,8 @@ void Calculator::processCharacter( char c ) {
     static bool withinString { false };
 
     static char* pErrorPos {};
-    static int lineCount { 0 };                             // taking into account new line after 'load program' command ////
 
+    const char quitCalc [8] = "*quit*";
 
     char EOFchar = 0x1A;
     char commentStartChar = '$';
@@ -48,11 +92,12 @@ void Calculator::processCharacter( char c ) {
     bool redundantSpaces = false;                                       // init
     bool redundantSemiColon = false;
 
-    if ( !_programMode && (c == '\n') ) { c = EOFchar; }
-    bool isEndOfFile = (c == EOFchar);                                      // end of input: EOF in program mode, LF or EOF in immediate mode
+    bool isEndOfFile = (!_programMode && (c == '\n')) || (c == EOFchar);                                      // end of input: EOF in program mode, LF or EOF in immediate mode
+    bool isCommentStartChar = (c == '$');                               // character can also be part of comment
+
+    //// tijdelijk
     bool isProgramCtrl = (c == 2);                                   // switch between program and immediate mode ?
     bool isParserReset = (c == 3);                                     // reset parser ?
-    bool isCommentStartChar = (c == '$');                               // character can also be part of comment
 
 
     if ( isProgramCtrl ) {
@@ -64,44 +109,58 @@ void Calculator::processCharacter( char c ) {
 
         requestMachineReset = _programMode;                         // reset machine when parsing starts, not earlier (in case there is a program in memory)
 
-        instructionsParsed = false;
+        _instructionCharCount = 0;
+        _lineCount = 0;                             // taking into account new line after 'load program' command ////
+        _StarCmdCharCount = 0;
+        _flushAllUntilEOF = false;
+
         lastCharWasWhiteSpace = false;
         lastCharWasSemiColon = false;
-        lineCount = 0;
-        _instructionCharCount = 0;
-        _flushAllUntilEOF = false;
 
         withinString = false; withinStringEscSequence = false;
         withinComment = false;
 
         pTerminal->println( _programMode ? "Waiting for program..." : "Ready >" );
-        return;
+        return false;
     }
     else if ( isParserReset ) {  // temporary
         _programMode = false;
         myParser.resetMachine();
-
         instructionsParsed = false;
+
+        _instructionCharCount = 0;
+        _lineCount = 0;                             // taking into account new line after 'load program' command ////
+        _StarCmdCharCount = 0;
+        _flushAllUntilEOF = false;
+
         lastCharWasWhiteSpace = false;
         lastCharWasSemiColon = false;
-        lineCount = 0;
-        _instructionCharCount = 0;
-        _flushAllUntilEOF = false;
 
         withinString = false; withinStringEscSequence = false;
         withinComment = false;
 
         Serial.println( "(machine reset na manual parser reset)" );
-        return;
+        return false;
     }
-    else if ( (c < ' ') && (c != '\n') && (!isEndOfFile) ) { return; }                  // skip control-chars except new line and EOF character
+    else if ( (c < ' ') && (c != '\n') && (!isEndOfFile) ) { return false; }                  // skip control-chars except new line and EOF character
 
 
 
     if ( !isEndOfFile ) {
-        if ( _flushAllUntilEOF ) { return; }                       // discard characters (after parsing error)
+        if ( _flushAllUntilEOF ) { return false; }                       // discard characters (after parsing error)
 
-        if ( c == '\n' ) { lineCount++; }                           // while reading program in input file
+        bool isLeadingSpace = ((_StarCmdCharCount == 0) && (c == ' '));
+        if ( c == '\n' ) { _lineCount++; _StarCmdCharCount = 0; }                           // while reading program in input file
+
+        // check for exit command if not in program mode, a printable character (not a leading space) and checking still underway 
+        if ( !_programMode && !isLeadingSpace && !(c == '\n') && (_StarCmdCharCount >= 0) ) {
+            if ( c == quitCalc [_StarCmdCharCount] ) {
+                _StarCmdCharCount++;
+                if ( quitCalc [_StarCmdCharCount] == '\0' ) { return true; }         // perfect match: exit calculator
+                else  if ( _StarCmdCharCount == strlen( quitCalc ) ) { _StarCmdCharCount = -1; }  // -1: no match: no further checking for now
+            }
+            else { _StarCmdCharCount = -1; };     // -1: no match: no further checking for now
+        }
 
         // currently within a string or within a comment ?
         if ( withinString ) {
@@ -113,27 +172,20 @@ void Calculator::processCharacter( char c ) {
 
         }
         else if ( withinComment ) {
-            if ( c == '\n' ) { withinComment = false; return; }                // comment stops at end of line
+            if ( c == '\n' ) { withinComment = false; return false; }                // comment stops at end of line
         }
         else {                                                                                              // not within a string
             bool leadingWhiteSpace = (((c == ' ') || (c == '\n')) && (_instructionCharCount == 0));
-            if ( leadingWhiteSpace ) { return; };                        // but always process end of file character
+            if ( leadingWhiteSpace ) { return false; };                        // but always process end of file character
 
             if ( !withinComment && (c == '\"') ) { withinString = true; }
-            else if ( !withinString && (c == commentStartChar) ) { withinComment = true; return; }
+            else if ( !withinString && (c == commentStartChar) ) { withinComment = true; return false; }
             else if ( c == '\n' ) { c = ' '; }                       // not within string or comment: replace a new line with a space (white space in multi-line instruction)
 
             redundantSpaces = (_instructionCharCount > 0) && (c == ' ') && lastCharWasWhiteSpace;
             redundantSemiColon = (c == ';') && lastCharWasSemiColon;
             lastCharWasWhiteSpace = (c == ' ');                     // remember
             lastCharWasSemiColon = (c == ';');
-        }
-
-        instructionsParsed = true;                                  // instructions found
-        if ( requestMachineReset ) {
-            myParser.resetMachine();                                // prepare for parsing next program( stay in current mode )
-            requestMachineReset = false;
-            Serial.println( "(machine reset bij start parsen)" );
         }
 
         // less than 3 positions available in buffer: discard character (keep 2 free positions to add optional ';' and for terminating '\0')  
@@ -143,8 +195,8 @@ void Calculator::processCharacter( char c ) {
         }
     }
 
-    if (( _instructionCharCount > 0 ) && isEndOfFile) {             // if last instruction before EOF does not contain a semicolon separator at the end, add it 
-        if(_instruction [_instructionCharCount-1] != ';'){
+    if ( (_instructionCharCount > 0) && isEndOfFile ) {             // if last instruction before EOF does not contain a semicolon separator at the end, add it 
+        if ( _instruction [_instructionCharCount - 1] != ';' ) {
             _instruction [_instructionCharCount] = ';';                               // still room: add character
             _instructionCharCount++;
         }
@@ -154,9 +206,14 @@ void Calculator::processCharacter( char c ) {
     isInstructionSeparator = isInstructionSeparator || (withinString && (c == '\n'));  // new line sent to parser as well
     bool instructionComplete = isInstructionSeparator || (isEndOfFile && (_instructionCharCount > 0));
 
-
     if ( instructionComplete ) {                                                // terminated by a semicolon if not end of input
         _instruction [_instructionCharCount] = '\0';                            // add string terminator
+
+        if ( requestMachineReset ) {
+            myParser.resetMachine();                                // prepare for parsing next program( stay in current mode )
+            requestMachineReset = false;
+            Serial.println( "(machine reset bij start parsen)" );
+        }
 
         char* pInstruction = _instruction;                                                 // because passed by reference 
         result = myParser.parseInstruction( pInstruction );                                 // parse one instruction (ending with ';' character, if found)
@@ -165,6 +222,7 @@ void Calculator::processCharacter( char c ) {
         _instructionCharCount = 0;
         withinString = false; withinStringEscSequence = false;
 
+        instructionsParsed = true;                                  // instructions found
     }
 
 
@@ -180,7 +238,7 @@ void Calculator::processCharacter( char c ) {
             }
 
             myParser.prettyPrintProgram();                    // append pretty printed instruction to string
-            myParser.printParsingResult( result, funcNotDefIndex, _instruction, lineCount, pErrorPos );
+            myParser.printParsingResult( result, funcNotDefIndex, _instruction, _lineCount, pErrorPos );
         }
 
         bool wasReset = false;      // init
@@ -224,12 +282,16 @@ void Calculator::processCharacter( char c ) {
         }
 
         instructionsParsed = false;
-        lineCount = 0;
+
         _instructionCharCount = 0;
+        _lineCount = 0;
+        _StarCmdCharCount = 0;
         _flushAllUntilEOF = false;
 
 
     }
+
+    return false;  // and wait for next character
 }
 
 Calculator calculator;

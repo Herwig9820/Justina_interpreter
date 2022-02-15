@@ -72,7 +72,7 @@ connectionState_type MyTCPconnection::getConnectionState() { return _connectionS
 void MyTCPconnection::changeConnectionState( connectionState_type newState ) {  // *** change connection state and report to serial monitor
     if ( _verbose ) { printConnectionStateInfo( newState ); }            // before _connectionState is changed
     _connectionState = newState;
-    if ( _callbackFcn != nullptr ) { _callbackFcn( _connectionState ); }
+    if ( _callbackFcn != nullptr ) {    ; _callbackFcn(_connectionState); }
 }
 
 
