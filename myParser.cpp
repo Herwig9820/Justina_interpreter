@@ -1,8 +1,8 @@
 #include "myParser.h"
 
-#define printCreateDeleteHeapObjects 0
+#define printCreateDeleteHeapObjects 1
 
-extern Stream* pTerminal;
+extern Stream* pTerminal;//// via constructor
 
 
 /***********************************************************
@@ -156,7 +156,7 @@ const char MyParser::cmdPar_N [4] { cmdPar_none, cmdPar_none, cmdPar_none, cmdPa
 const char MyParser::cmdPar_P [4] { cmdPar_programName, cmdPar_none, cmdPar_none, cmdPar_none };
 const char MyParser::cmdPar_E [4] { cmdPar_expression, cmdPar_none, cmdPar_none, cmdPar_none };
 const char MyParser::cmdPar_F [4] { cmdPar_extFunction, cmdPar_none, cmdPar_none, cmdPar_none };
-const char MyParser::cmdPar_AEE [4] { cmdPar_varOptAssignment, cmdPar_expression, cmdPar_expression, cmdPar_none };
+const char MyParser::cmdPar_AEE [4] { cmdPar_varOptAssignment, cmdPar_expression, cmdPar_expression | cmdPar_optionalFlag , cmdPar_none };
 const char MyParser::cmdPar_P_mult [4] { cmdPar_programName, cmdPar_programName | cmdPar_multipleFlag, cmdPar_none, cmdPar_none };
 const char MyParser::cmdPar_AA_mult [4] { cmdPar_varOptAssignment,cmdPar_varOptAssignment | cmdPar_multipleFlag, cmdPar_none, cmdPar_none };
 
@@ -200,13 +200,22 @@ const char* const MyParser::singleCharTokens = "(),;:+-*/^<>=";                 
 // *   constructor   *
 // -------------------
 
-MyParser::MyParser() {
+MyParser::MyParser(Calculator* const pcalculator) : _pcalculator( pcalculator ) {
     _resWordNo = (sizeof( _resWords )) / sizeof( _resWords [0] );
     _functionNo = (sizeof( _functions )) / sizeof( _functions [0] );
 
     _blockLevel = 0;
     _extFunctionBlockOpen = false;
 
+}
+
+
+// ---------------------
+// *   deconstructor   *
+// ---------------------
+
+MyParser::~MyParser() {
+    resetMachine();             // delete all objects created on the heap
 }
 
 
@@ -299,8 +308,8 @@ int MyParser::getIdentifier( char** pIdentNameArray, int& identifiersInUse, int 
 
 bool MyParser::allExternalFunctionsDefined( int& index ) {
     index = 0;
-    while ( index < calculator._extFunctionCount ) {                       // points to variable in use
-        if ( calculator.extFunctionData [index].pExtFunctionStartToken == nullptr ) { return false; }
+    while ( index < _pcalculator->_extFunctionCount ) {                       // points to variable in use
+        if ( _pcalculator->extFunctionData [index].pExtFunctionStartToken == nullptr ) { return false; }
         index++;
     }
     return true;
@@ -313,19 +322,19 @@ bool MyParser::allExternalFunctionsDefined( int& index ) {
 
 void MyParser::resetMachine() {
     // delete identifier name objects on the heap (variable names, external function names) 
-    deleteAllIdentifierNames( calculator.varNames, calculator._varNameCount );
-    deleteAllIdentifierNames( calculator.extFunctionNames, calculator._extFunctionCount );
+    deleteAllIdentifierNames( _pcalculator->varNames, _pcalculator->_varNameCount );
+    deleteAllIdentifierNames( _pcalculator->extFunctionNames, _pcalculator->_extFunctionCount );
 
     // delete global array and string objects on the heap
     int index = 0;
-    while ( index < calculator._varNameCount ) {
-        if ( calculator.globalVarType [index] & (calculator.var_hasGlobalValue) ) { // global value ?
-            if ( calculator.globalVarType [index] & (calculator.var_isArray | calculator.var_isStringPointer) ) {              // float array or scalar string
+    while ( index < _pcalculator->_varNameCount ) {
+        if ( _pcalculator->globalVarType [index] & (_pcalculator->var_hasGlobalValue) ) { // global value ?
+            if ( _pcalculator->globalVarType [index] & (_pcalculator->var_isArray | _pcalculator->var_isStringPointer) ) {              // float array or scalar string
 #if printCreateDeleteHeapObjects
                 Serial.print( "(HEAP) Deleting global var array or string, addr " );
-                Serial.println( (uint32_t) calculator.globalVarValues [index].pAlphanumConst - RAMSTART );     // applicable to string and array (same pointer)
+                Serial.println( (uint32_t) _pcalculator->globalVarValues [index].pAlphanumConst - RAMSTART );     // applicable to string and array (same pointer)
 #endif
-                delete []  calculator.globalVarValues [index].pAlphanumConst;                                  // applicable to string and array (same pointer)
+                delete []  _pcalculator->globalVarValues [index].pAlphanumConst;                                  // applicable to string and array (same pointer)
             }
         }
         index++;
@@ -333,37 +342,37 @@ void MyParser::resetMachine() {
 
     // delete static array and string objects on the heap
     index = 0;
-    while ( index < calculator._staticVarCount ) {
-        if ( calculator.staticVarType [index] & (calculator.var_isArray | calculator.var_isStringPointer) ) {               // float array or scalar string
+    while ( index < _pcalculator->_staticVarCount ) {
+        if ( _pcalculator->staticVarType [index] & (_pcalculator->var_isArray | _pcalculator->var_isStringPointer) ) {               // float array or scalar string
 #if printCreateDeleteHeapObjects
             Serial.print( "(HEAP) Deleting static var array or string, addr " );
-            Serial.println( (uint32_t) calculator.staticVarValues [index].pAlphanumConst - RAMSTART );                      // applicable to string and array (same pointer)
+            Serial.println( (uint32_t) _pcalculator->staticVarValues [index].pAlphanumConst - RAMSTART );                      // applicable to string and array (same pointer)
 #endif
-            delete []  calculator.staticVarValues [index].pAlphanumConst;                                                   // applicable to string and array (same pointer)
+            delete []  _pcalculator->staticVarValues [index].pAlphanumConst;                                                   // applicable to string and array (same pointer)
         }
         index++;
     }
 
     // delete alphanumeric constants: before clearing program memory
-    deleteAllAlphanumStrValues( calculator._programStorage );
-    deleteAllAlphanumStrValues( calculator._programStorage + calculator.PROG_MEM_SIZE );
+    deleteAllAlphanumStrValues( _pcalculator->_programStorage );
+    deleteAllAlphanumStrValues( _pcalculator->_programStorage + _pcalculator->PROG_MEM_SIZE );
 
     myStack.deleteList();                                                               // delete list to keep track of open parentheses and open command blocks
     _blockLevel = 0;
     _extFunctionBlockOpen = false;
 
     // init calculator variables: AFTER deleting heap objects
-    calculator._varNameCount = 0;
-    calculator._staticVarCount = 0;
-    calculator._localVarCountInFunction = 0;
-    calculator._extFunctionCount = 0;
+    _pcalculator->_varNameCount = 0;
+    _pcalculator->_staticVarCount = 0;
+    _pcalculator->_localVarCountInFunction = 0;
+    _pcalculator->_extFunctionCount = 0;
 
-    calculator._programStart = calculator._programStorage + (calculator._programMode ? 0 : calculator.PROG_MEM_SIZE);
-    calculator._programSize = calculator._programSize + (calculator._programMode ? calculator.PROG_MEM_SIZE : calculator.IMM_MEM_SIZE);
-    calculator._programCounter = calculator._programStart;                          // start of 'immediate mode' program area
+    _pcalculator->_programStart = _pcalculator->_programStorage + (_pcalculator->_programMode ? 0 : _pcalculator->PROG_MEM_SIZE);
+    _pcalculator->_programSize = _pcalculator->_programSize + (_pcalculator->_programMode ? _pcalculator->PROG_MEM_SIZE : _pcalculator->IMM_MEM_SIZE);
+    _pcalculator->_programCounter = _pcalculator->_programStart;                          // start of 'immediate mode' program area
 
-    *calculator._programStorage = '\0';                                    //  current end of program 
-    *calculator._programStart = '\0';                                      //  current end of program (immediate mode)
+    *_pcalculator->_programStorage = '\0';                                    //  current end of program 
+    *_pcalculator->_programStart = '\0';                                      //  current end of program (immediate mode)
 
 }
 
@@ -417,7 +426,7 @@ MyParser::parseTokenResult_type MyParser::parseInstruction( char*& pInputStart )
         pNext_hold = pNext;
 
         do {                                                                                                                // one loop only
-            if ( (calculator._programCounter + sizeof( TokenIsAlphanumCst ) + 1) > (calculator._programStart + calculator._programSize) ) { result = result_progMemoryFull; break; };
+            if ( (_pcalculator->_programCounter + sizeof( TokenIsAlphanumCst ) + 1) > (_pcalculator->_programStart + _pcalculator->_programSize) ) { result = result_progMemoryFull; break; };
             if (  !parseAsResWord( pNext, result ) ) { break; } if ( result == result_tokenFound ) { continue; }             // check before checking for identifier  
             if (  !parseAsNumber( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }             // check before checking for single char token
             if (  !parseAsAlphanumConstant( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }
@@ -496,12 +505,12 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
             else {
                 if ( _lastTokenStep == 0 ) { result = result_programCmdMissing; return false; }
             }
-            if ( calculator._programMode && (cmdRestriction == cmd_onlyImmediate) ) { result = result_onlyImmediateMode; return false; }
-            if ( !calculator._programMode && (cmdRestriction == cmd_onlyInProgram) ) { result = result_onlyInsideProgram; return false; }
+            if ( _pcalculator->_programMode && (cmdRestriction == cmd_onlyImmediate) ) { result = result_onlyImmediateMode; return false; }
+            if ( !_pcalculator->_programMode && (cmdRestriction == cmd_onlyInProgram) ) { result = result_onlyInsideProgram; return false; }
             if ( !_extFunctionBlockOpen && (cmdRestriction == cmd_onlyInFunctionBlock) ) { result = result_onlyInsideFunction; return false; }
             if ( _extFunctionBlockOpen && (cmdRestriction == cmd_onlyOutsideFunctionBlock) ) { result = result_onlyOutsideFunction; return false; }
-            if ( ((!calculator._programMode) || _extFunctionBlockOpen) && (cmdRestriction == cmd_onlyInProgramOutsideFunctionBlock) ) { result = result_onlyInProgOutsideFunction; return false; };
-            if ( (calculator._programMode && !_extFunctionBlockOpen) && (cmdRestriction == cmd_onlyImmediateOrInsideFunctionBlock) ) { result = result_onlyImmediateOrInFunction; return false; };
+            if ( ((!_pcalculator->_programMode) || _extFunctionBlockOpen) && (cmdRestriction == cmd_onlyInProgramOutsideFunctionBlock) ) { result = result_onlyInProgOutsideFunction; return false; };
+            if ( (_pcalculator->_programMode && !_extFunctionBlockOpen) && (cmdRestriction == cmd_onlyImmediateOrInsideFunctionBlock) ) { result = result_onlyImmediateOrInFunction; return false; };
 
             if ( _extFunctionBlockOpen && _isExtFunctionCmd ) { result = result_functionDefsCannotBeNested; return false; } // separate message to indicate 'no nesting'
 
@@ -529,14 +538,14 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
                     if ( (pStackLvl->openBlock.cmdBlockDef.blockType == block_extFunction) &&   // an open external function block has been found (call or definition)
                         (cmdBlockDef.blockPosOrAction == block_inOpenFunctionBlock) ) {                // and current flow altering command is allowed in open function block
                         // store pointer from 'alter flow' token (command) to block start command token of compatible open block (from RETURN to FUNCTION token)
-                        memcpy( ((TokenIsResWord*) (calculator._programStorage + _lastTokenStep))->toTokenStep, pStackLvl->openBlock.tokenStep, sizeof( char [2] ) );
+                        memcpy( ((TokenIsResWord*) (_pcalculator->_programStorage + _lastTokenStep))->toTokenStep, pStackLvl->openBlock.tokenStep, sizeof( char [2] ) );
                         break;                                                                      // -> applicable open block level found
                     }
                     if ( ((pStackLvl->openBlock.cmdBlockDef.blockType == block_for) ||
                         (pStackLvl->openBlock.cmdBlockDef.blockType == block_while)) &&         // an open loop block has been found (e.g. FOR ... END block)
                         (cmdBlockDef.blockPosOrAction == block_inOpenLoopBlock) ) {                    // and current flow altering command is allowed in open loop block
                         // store pointer from 'alter flow' token (command) to block start command token of compatible open block (e.g. from BREAK to FOR token)
-                        memcpy( ((TokenIsResWord*) (calculator._programStorage + _lastTokenStep))->toTokenStep, pStackLvl->openBlock.tokenStep, sizeof( char [2] ) );
+                        memcpy( ((TokenIsResWord*) (_pcalculator->_programStorage + _lastTokenStep))->toTokenStep, pStackLvl->openBlock.tokenStep, sizeof( char [2] ) );
                         break;                                                                      // -> applicable open block level found
                     }
                     pStackLvl = (LE_stack*) myStack.getPrevListElement( pStackLvl );
@@ -555,12 +564,12 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
             if ( !withinRange ) { result = result_wrongBlockSequence; return false; }   // sequence of block commands (for current stack level) is not OK: error
 
             // pointer from previous open block token to this open block token (e.g. pointer from IF token to ELSEIF or ELSE token)
-            memcpy( ((TokenIsResWord*) (calculator._programStorage + _blockCmdTokenStep))->toTokenStep, &_lastTokenStep, sizeof( char [2] ) );
+            memcpy( ((TokenIsResWord*) (_pcalculator->_programStorage + _blockCmdTokenStep))->toTokenStep, &_lastTokenStep, sizeof( char [2] ) );
             _blockCmdTokenStep = _lastTokenStep;                                              // remember pointer to last block command token of open block
 
             if ( cmdBlockDef.blockPosOrAction == block_endPos ) {                          // is this a block END command token ? 
                 if ( _pCurrStackLvl->openBlock.cmdBlockDef.blockType == block_extFunction ) { _extFunctionBlockOpen = false; }       // FUNCTON definition blocks cannot be nested
-                memcpy( ((TokenIsResWord*) (calculator._programStorage + _lastTokenStep))->toTokenStep, &_blockStartCmdTokenStep, sizeof( char [2] ) );
+                memcpy( ((TokenIsResWord*) (_pcalculator->_programStorage + _lastTokenStep))->toTokenStep, &_blockStartCmdTokenStep, sizeof( char [2] ) );
                 myStack.deleteListElement( nullptr );                                   // decrement stack counter and delete corresponding list element
 
                 _blockLevel--;                                                          // also set pointer to currently last element in stack (if it exists)
@@ -570,11 +579,11 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
                     memcpy( &_blockStartCmdTokenStep, _pCurrStackLvl->openBlock.tokenStep, sizeof( char [2] ) );         // pointer to block start command token of open block       
                     uint16_t tokenStep = _blockStartCmdTokenStep;                            // init pointer to last block command token of open block
                     uint16_t tokenStepPointedTo;
-                    memcpy( &tokenStepPointedTo, ((TokenIsResWord*) (calculator._programStorage + tokenStep))->toTokenStep, sizeof( char [2] ) );
+                    memcpy( &tokenStepPointedTo, ((TokenIsResWord*) (_pcalculator->_programStorage + tokenStep))->toTokenStep, sizeof( char [2] ) );
                     while ( tokenStepPointedTo != 0xFFFF )
                     {
                         tokenStep = tokenStepPointedTo;
-                        memcpy( &tokenStepPointedTo, ((TokenIsResWord*) (calculator._programStorage + tokenStep))->toTokenStep, sizeof( char [2] ) );
+                        memcpy( &tokenStepPointedTo, ((TokenIsResWord*) (_pcalculator->_programStorage + tokenStep))->toTokenStep, sizeof( char [2] ) );
                     }
 
                     _blockCmdTokenStep = tokenStep;                                        // pointer to last block command token of open block                       
@@ -718,17 +727,17 @@ bool MyParser::initVariable( uint16_t varTokenStep, uint16_t constTokenStep ) {
     char* pString;
 
     // fetch variable location and attributes
-    bool isArrayVar = ((TokenIsVariable*) (calculator._programStorage + varTokenStep))->identInfo & calculator.var_isArray;
-    bool isGlobalVar = (((TokenIsVariable*) (calculator._programStorage + varTokenStep))->identInfo & calculator.var_qualifierMask) == calculator.var_isGlobal;
-    int varValueIndex = ((TokenIsVariable*) (calculator._programStorage + varTokenStep))->identValueIndex;
-    void* pVarStorage = isGlobalVar ? calculator.globalVarValues : calculator.staticVarValues;
-    char* pVarTypeStorage = isGlobalVar ? calculator.globalVarType : calculator.staticVarType;
+    bool isArrayVar = ((TokenIsVariable*) (_pcalculator->_programStorage + varTokenStep))->identInfo & _pcalculator->var_isArray;
+    bool isGlobalVar = (((TokenIsVariable*) (_pcalculator->_programStorage + varTokenStep))->identInfo & _pcalculator->var_qualifierMask) == _pcalculator->var_isGlobal;
+    int varValueIndex = ((TokenIsVariable*) (_pcalculator->_programStorage + varTokenStep))->identValueIndex;
+    void* pVarStorage = isGlobalVar ? _pcalculator->globalVarValues : _pcalculator->staticVarValues;
+    char* pVarTypeStorage = isGlobalVar ? _pcalculator->globalVarType : _pcalculator->staticVarType;
     void* pArrayStorage;        // array storage (if array) 
 
     // fetch constant (numeric or alphanumeric) 
-    bool isNumberCst = (tokenType_type) ((((TokenIsFloatCst*) (calculator._programStorage + constTokenStep))->tokenType) & 0x0F) == tok_isNumConst;
-    if ( isNumberCst ) { memcpy( &f, ((TokenIsFloatCst*) (calculator._programStorage + constTokenStep))->numConst, sizeof( f ) ); }
-    else { memcpy( &pString, ((TokenIsAlphanumCst*) (calculator._programStorage + constTokenStep))->pAlphanumConst, sizeof( pString ) ); }
+    bool isNumberCst = (tokenType_type) ((((TokenIsFloatCst*) (_pcalculator->_programStorage + constTokenStep))->tokenType) & 0x0F) == tok_isNumConst;
+    if ( isNumberCst ) { memcpy( &f, ((TokenIsFloatCst*) (_pcalculator->_programStorage + constTokenStep))->numConst, sizeof( f ) ); }
+    else { memcpy( &pString, ((TokenIsAlphanumCst*) (_pcalculator->_programStorage + constTokenStep))->pAlphanumConst, sizeof( pString ) ); }
     int length = isNumberCst ? 0 : strlen( pString );
 
     if ( isArrayVar ) {
@@ -764,7 +773,7 @@ bool MyParser::initVariable( uint16_t varTokenStep, uint16_t constTokenStep ) {
             }
         }
     }
-    pVarTypeStorage [varValueIndex] = (pVarTypeStorage [varValueIndex] & ~calculator.var_typeMask) | (isNumberCst ? calculator.var_isFloat : calculator.var_isStringPointer);
+    pVarTypeStorage [varValueIndex] = (pVarTypeStorage [varValueIndex] & ~_pcalculator->var_typeMask) | (isNumberCst ? _pcalculator->var_isFloat : _pcalculator->var_isStringPointer);
     return true; // success
 };
 
@@ -802,16 +811,16 @@ bool MyParser::parseAsResWord( char*& pNext, parseTokenResult_type& result ) {
         // if NOT a block command, bytes for token step are not needed 
         bool hasTokenStep = (_resWords [resWordIndex].cmdBlockDef.blockType != block_none);
 
-        TokenIsResWord* pToken = (TokenIsResWord*) calculator._programCounter;
+        TokenIsResWord* pToken = (TokenIsResWord*) _pcalculator->_programCounter;
         pToken->tokenType = tok_isReservedWord | ((sizeof( TokenIsResWord ) - (hasTokenStep ? 0 : 2)) << 4);
         pToken->tokenIndex = resWordIndex;
         if ( hasTokenStep ) { pToken->toTokenStep [0] = 0xFF; pToken->toTokenStep [1] = 0xFF; }                  // -1: no token ref. Because uint16_t not necessarily aligned with word size: store as two sep. bytes                            
 
-        _lastTokenStep = calculator._programCounter - calculator._programStorage;
+        _lastTokenStep = _pcalculator->_programCounter - _pcalculator->_programStorage;
         _lastTokenType = tok_isReservedWord;
 
-        calculator._programCounter += sizeof( TokenIsResWord ) - (hasTokenStep ? 0 : 2);
-        *calculator._programCounter = '\0';                                                 // indicates end of program
+        _pcalculator->_programCounter += sizeof( TokenIsResWord ) - (hasTokenStep ? 0 : 2);
+        *_pcalculator->_programCounter = '\0';                                                 // indicates end of program
         result = result_tokenFound;                                                     // flag 'valid token found'
         return true;
     }
@@ -841,14 +850,14 @@ bool MyParser::parseAsNumber( char*& pNext, parseTokenResult_type& result ) {
         if ( sequenceOK ) { return true; }
     }
 
-    if ( calculator._programCounter == calculator._programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
+    if ( _pcalculator->_programCounter == _pcalculator->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
     // token is a number, but is it allowed here ? 
     if ( !sequenceOK ) { result = result_numConstNotAllowedHere; }                   // is not a '+' or '-' operator either: indicate error 
 
     // within commands: skip this test (if '_isCommand' is true, then test expression is false)
-    // allow if in immediate mode or inside a function ( '(!calculator._programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
-    if ( !(_isCommand || (!calculator._programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_numConstNotAllowedHere; return false; ; }
+    // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
+    if ( !(_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_numConstNotAllowedHere; return false; ; }
 
     // Note: in a declaration statement, operators other than assignment are not allowed, which is detected in special character parsing
     // -> if previous token was operator: it's an assignment
@@ -856,20 +865,20 @@ bool MyParser::parseAsNumber( char*& pNext, parseTokenResult_type& result ) {
     if ( isParamDecl && (_lastTokenType != tok_isOperator) ) { pNext = pch; result = result_numConstNotAllowedHere; return false; }
 
     // token is a number, and it's allowed here
-    TokenIsFloatCst* pToken = (TokenIsFloatCst*) calculator._programCounter;
+    TokenIsFloatCst* pToken = (TokenIsFloatCst*) _pcalculator->_programCounter;
     pToken->tokenType = tok_isNumConst | (sizeof( TokenIsFloatCst ) << 4);
     memcpy( pToken->numConst, &f, sizeof( f ) );                                           // float not necessarily aligned with word size: copy memory instead
     bool doNonLocalVarInit = ((_isGlobalVarCmd || _isStaticVarCmd) && (_lastTokenType == tok_isOperator));
     bool checkLocalVarInit = (_isLocalVarCmd && (_lastTokenType == tok_isOperator));
     if ( checkLocalVarInit && (f != 0) ) { pNext = pch; result = result_varLocalInit_zeroValueExpected; return false; }
 
-    _lastTokenStep = calculator._programCounter - calculator._programStorage;
+    _lastTokenStep = _pcalculator->_programCounter - _pcalculator->_programStorage;
     _lastTokenType = tok_isNumConst;
 
     if ( doNonLocalVarInit ) { initVariable( _lastVariableTokenStep, _lastTokenStep ); }     // initialisation of global / static variable ? (operator: is always assignment)
 
-    calculator._programCounter += sizeof( TokenIsFloatCst );
-    *calculator._programCounter = '\0';                                                 // indicates end of program
+    _pcalculator->_programCounter += sizeof( TokenIsFloatCst );
+    *_pcalculator->_programCounter = '\0';                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
 }
@@ -887,14 +896,14 @@ bool MyParser::parseAsAlphanumConstant( char*& pNext, parseTokenResult_type& res
     if ( (pNext [0] != '\"') ) { return true; }                                         // no opening quote ? Is not an alphanumeric cst (it can still be something else)
     pNext++;                                                                            // skip opening quote
 
-    if ( calculator._programCounter == calculator._programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
+    if ( _pcalculator->_programCounter == _pcalculator->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
     // token is an alphanumeric constant, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
     if ( !(_lastTokenGroup_sequenceCheck & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
 
     // within commands: skip this test (if '_isCommand' is true, then test expression is false)
-    // allow if in immediate mode or inside a function ( '(!calculator._programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
-    if ( !(_isCommand || (!calculator._programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; ; }
+    // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
+    if ( !(_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; ; }
 
     // Note: in a declaration statement, operators other than assignment are not allowed, which is detected in special character parsing
     // -> if previous token was operator: it's an assignment
@@ -935,22 +944,22 @@ bool MyParser::parseAsAlphanumConstant( char*& pNext, parseTokenResult_type& res
     }
     pNext++;                                                                            // skip closing quote
 
-    TokenIsAlphanumCst* pToken = (TokenIsAlphanumCst*) calculator._programCounter;
+    TokenIsAlphanumCst* pToken = (TokenIsAlphanumCst*) _pcalculator->_programCounter;
     pToken->tokenType = tok_isAlphaConst | (sizeof( TokenIsAlphanumCst ) << 4);
     memcpy( pToken->pAlphanumConst, &pAlphanumCst, sizeof( pAlphanumCst ) );            // pointer not necessarily aligned with word size: copy memory instead
     bool doNonLocalVarInit = ((_isGlobalVarCmd || _isStaticVarCmd) && (_lastTokenType == tok_isOperator));          // (operator: is always assignment)
     bool checkLocalVarInit = (_isLocalVarCmd && (_lastTokenType == tok_isOperator));
     if ( checkLocalVarInit && (strlen( pAlphanumCst ) > 0) ) { pNext = pch; result = result_varLocalInit_emptyStringExpected; return false; }
 
-    _lastTokenStep = calculator._programCounter - calculator._programStorage;
+    _lastTokenStep = _pcalculator->_programCounter - _pcalculator->_programStorage;
     _lastTokenType = tok_isAlphaConst;
 
     if ( doNonLocalVarInit ) {                                     // initialisation of global / static variable ? 
         if ( !initVariable( _lastVariableTokenStep, _lastTokenStep ) ) { pNext = pch; result = result_arrayInit_emptyStringExpected; return false; };
     }
 
-    calculator._programCounter += sizeof( TokenIsAlphanumCst );
-    *calculator._programCounter = '\0';                                                 // indicates end of program
+    _pcalculator->_programCounter += sizeof( TokenIsAlphanumCst );
+    *_pcalculator->_programCounter = '\0';                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
 }
@@ -982,14 +991,14 @@ bool MyParser::checkArrayDimCountAndSize( parseTokenResult_type& result, int* ar
 
     dimCnt++;
 
-    if ( dimCnt > calculator.MAX_ARRAY_DIMS ) { result = result_arrayDefMaxDimsExceeded; return false; }
+    if ( dimCnt > _pcalculator->MAX_ARRAY_DIMS ) { result = result_arrayDefMaxDimsExceeded; return false; }
     float f;        // last token is a number constant: dimension spec
-    memcpy( &f, ((TokenIsFloatCst*) (calculator._programStorage + _lastTokenStep))->numConst, sizeof( f ) );
+    memcpy( &f, ((TokenIsFloatCst*) (_pcalculator->_programStorage + _lastTokenStep))->numConst, sizeof( f ) );
     if ( f < 1 ) { result = result_arrayDefNegativeDim; return false; }
     arrayDef_dims [dimCnt - 1] = (int) f;
     int arrayElements = 1;
     for ( int cnt = 0; cnt < dimCnt; cnt++ ) { arrayElements *= arrayDef_dims [cnt]; }
-    if ( arrayElements > calculator.MAX_ARRAY_ELEM ) { result = result_arrayDefMaxElementsExceeded; return false; }
+    if ( arrayElements > _pcalculator->MAX_ARRAY_ELEM ) { result = result_arrayDefMaxElementsExceeded; return false; }
 }
 
 // Array parsing: check that order of arrays and scalar variables is consistent with previous calls and function definition 
@@ -1000,14 +1009,14 @@ bool MyParser::checkFuncArgArrayPattern( parseTokenResult_type& result, bool isF
     int funcIndex = _pCurrStackLvl->openPar.identifierIndex;            // note: also stored in stack for FUNCTION definition block level; here we can pick one of both
     int argNumber = _pCurrStackLvl->openPar.actualArgsOrDims;
     uint16_t paramIsArrayPattern;
-    memcpy( &paramIsArrayPattern, calculator.extFunctionData [funcIndex].paramIsArrayPattern, sizeof( char [2] ) );
+    memcpy( &paramIsArrayPattern, _pcalculator->extFunctionData [funcIndex].paramIsArrayPattern, sizeof( char [2] ) );
     if ( argNumber > 0 ) {
 
         bool isArray = false;
         if ( _isExtFunctionCmd ) { isArray = (_lastTokenType == tok_isRightParenthesis); }  // function definition: if variable name followed by empty parameter list ' () ': array parameter
         else if ( _lastTokenType == tok_isVariable ) {                                      // function call and last token is variable name ? Could be an array name                                                                                      // function call
             // check if variable is defined as array (then it will NOT be part of an expression )
-            isArray = (((TokenIsVariable*) (calculator._programStorage + _lastTokenStep))->identInfo) & calculator.var_isArray;
+            isArray = (((TokenIsVariable*) (_pcalculator->_programStorage + _lastTokenStep))->identInfo) & _pcalculator->var_isArray;
         }
 
         uint16_t paramArrayMask = 1 << (argNumber - 1);
@@ -1020,7 +1029,7 @@ bool MyParser::checkFuncArgArrayPattern( parseTokenResult_type& result, bool isF
     }
 
     if ( isFunctionClosingParenthesis ) { paramIsArrayPattern = paramIsArrayPattern & ~0x8000; }    // function name used now: order of scalar and array parameters is now fixed
-    memcpy( calculator.extFunctionData [funcIndex].paramIsArrayPattern, &paramIsArrayPattern, sizeof( char [2] ) );
+    memcpy( _pcalculator->extFunctionData [funcIndex].paramIsArrayPattern, &paramIsArrayPattern, sizeof( char [2] ) );
 }
 
 
@@ -1036,7 +1045,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 
     // array definition statement parsing: record dimensions (if 1 dimension only: set dim 2 to zero) 
     static int array_dimCounter { 0 };
-    static int arrayDef_dims [calculator.MAX_ARRAY_DIMS] { 0 };
+    static int arrayDef_dims [_pcalculator->MAX_ARRAY_DIMS] { 0 };
 
     result = result_tokenNotFound;                                                      // init: flag 'no token found'
     char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
@@ -1056,14 +1065,14 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         // Case 1: is token a left parenthesis ?
         // -------------------------------------
 
-        if ( calculator._programCounter == calculator._programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
+        if ( _pcalculator->_programCounter == _pcalculator->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
         // token is left parenthesis, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
         if ( !(_lastTokenGroup_sequenceCheck & lastTokenGroups_5_4_3_1_0) ) { pNext = pch;  result = result_parenthesisNotAllowedHere; return false; }
 
         // within commands: skip this test (if '_isCommand' is true, then test expression is false)
-        // allow if in immediate mode or inside a function ( '(!calculator._programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
-        if ( !(_isCommand || (!calculator._programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; ; }
+        // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
+        if ( !(_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; ; }
 
         if ( _isAnyVarCmd && (_parenthesisLevel > 0) ) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }     // no parenthesis nesting in array declarations
         // parenthesis nesting in function definitions, only to declare an array parameter AND only if followed by a closing parenthesis 
@@ -1075,18 +1084,18 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         // token is a left parenthesis, and it's allowed here
 
         // store specific flags in stack, because if nesting functions or parentheses, values will be overwritten
-        flags = (_lastTokenType == tok_isExternFunction) ? calculator.extFunctionBit :
-            (_lastTokenType == tok_isInternFunction) ? calculator.intFunctionBit :
-            (_lastTokenType == tok_isVariable) ? calculator.arrayBit : calculator.openParenthesisBit;     // is it following a(n internal or external) function name ?
+        flags = (_lastTokenType == tok_isExternFunction) ? _pcalculator->extFunctionBit :
+            (_lastTokenType == tok_isInternFunction) ? _pcalculator->intFunctionBit :
+            (_lastTokenType == tok_isVariable) ? _pcalculator->arrayBit : _pcalculator->openParenthesisBit;     // is it following a(n internal or external) function name ?
         // external function (call or definition) opening parenthesis
         if ( _lastTokenType == tok_isExternFunction ) {
-            if ( calculator.extFunctionData [_extFunctionIndex].pExtFunctionStartToken != nullptr ) { flags = flags | calculator.extFunctionPrevDefinedBit; }
+            if ( _pcalculator->extFunctionData [_extFunctionIndex].pExtFunctionStartToken != nullptr ) { flags = flags | _pcalculator->extFunctionPrevDefinedBit; }
         }
         bool isSecondSubExpressionToken = ((_previousTokenType == tok_no_token) || (_previousTokenType == tok_isSemiColonSeparator) ||
             (_previousTokenType == tok_isLeftParenthesis) || (_previousTokenType == tok_isCommaSeparator) || (_previousTokenType == tok_isReservedWord));
         // last token before left parenthesis is variable name AND the start of a (sub-) expression, but NOT part of a variable definition command
         bool assignmentOK = (_lastTokenType == tok_isVariable) && isSecondSubExpressionToken;
-        if ( assignmentOK ) { flags = flags | calculator.arrayElemAssignmentAllowedBit; }      // after the corresponding closing parenthesis, assignment will be allowed
+        if ( assignmentOK ) { flags = flags | _pcalculator->arrayElemAssignmentAllowedBit; }      // after the corresponding closing parenthesis, assignment will be allowed
 
         // if function DEFINITION: initialize variables for counting of allowed mandatory and optional arguments (not an array parameter, would be parenthesis level 1)
         if ( _isExtFunctionCmd && (_parenthesisLevel == 0) ) {      // not an array parameter (would be parenthesis level 1)
@@ -1095,9 +1104,9 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         }
 
         // if LOCAL, STATIC or GLOBAL array DEFINITION or USE (NOT: parameter array): initialize variables for reading dimensions 
-        if ( flags & calculator.arrayBit ) {                    // always count, also if not first definition (could happen for global variables)
+        if ( flags & _pcalculator->arrayBit ) {                    // always count, also if not first definition (could happen for global variables)
             array_dimCounter = 0;
-            for ( int i = 0; i < calculator.MAX_ARRAY_DIMS; i++ ) { arrayDef_dims [i] = 0; }        // init dimensions (dimension count will result from dimensions being non-zero
+            for ( int i = 0; i < _pcalculator->MAX_ARRAY_DIMS; i++ ) { arrayDef_dims [i] = 0; }        // init dimensions (dimension count will result from dimensions being non-zero
         }
 
         // left parenthesis only ? (not a function or array opening parenthesis): min & max allowed argument count not yet initialised
@@ -1112,7 +1121,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         _pCurrStackLvl->openPar.minArgs = _minFunctionArgs;
         _pCurrStackLvl->openPar.maxArgs = _maxFunctionArgs;
         _pCurrStackLvl->openPar.actualArgsOrDims = 0;
-        _pCurrStackLvl->openPar.arrayDimCount = calculator._arrayDimCount;         // dimensions of previously defined array. If zero, then this array did not yet exist, or it's a sclarar variable
+        _pCurrStackLvl->openPar.arrayDimCount = _pcalculator->_arrayDimCount;         // dimensions of previously defined array. If zero, then this array did not yet exist, or it's a sclarar variable
         _pCurrStackLvl->openPar.flags = flags;
         _pCurrStackLvl->openPar.identifierIndex = (_lastTokenType == tok_isExternFunction) ? _extFunctionIndex :
             (_lastTokenType == tok_isVariable) ? _variableNameIndex : 0;
@@ -1126,14 +1135,14 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         // Case 2: is token a right parenthesis ?
         // --------------------------------------
 
-        if ( calculator._programCounter == calculator._programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
+        if ( _pcalculator->_programCounter == _pcalculator->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
         // token is right parenthesis, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
         if ( !(_lastTokenGroup_sequenceCheck & lastTokenGroups_5_4_2) ) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
 
         // within commands: skip this test (if '_isCommand' is true, then test expression is false)
-        // allow if in immediate mode or inside a function ( '(!calculator._programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
-        if ( !(_isCommand || (!calculator._programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; ; }
+        // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
+        if ( !(_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; ; }
         if ( _parenthesisLevel == 0 ) { pNext = pch; result = result_missingLeftParenthesis; return false; }
 
         flags = _pCurrStackLvl->openPar.flags;
@@ -1156,7 +1165,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 
                 int funcIndex = _pCurrStackLvl->openPar.identifierIndex;            // note: also stored in stack for FUNCTION definition block level; here we can pick one of both
                 // if previous calls, check if range of actual argument counts that occured in previous calls corresponds to mandatory and optional arguments defined now
-                bool previousCalls = (calculator.extFunctionNames [funcIndex][_maxIdentifierNameLen + 1]) != extFunctionFirstOccurFlag;
+                bool previousCalls = (_pcalculator->extFunctionNames [funcIndex][_maxIdentifierNameLen + 1]) != extFunctionFirstOccurFlag;
                 if ( previousCalls ) {                                                      // stack contains current range of actual args occured in previous calls
                     if ( ((int) _pCurrStackLvl->openPar.minArgs < extFunctionDef_minArgCounter) ||
                         (int) _pCurrStackLvl->openPar.maxArgs > extFunctionDef_maxArgCounter ) {
@@ -1166,7 +1175,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 
                 // store min required & max allowed n° of arguments in identifier storage
                 // this replaces the range of actual argument counts that occured in previous calls (if any)
-                calculator.extFunctionNames [funcIndex][_maxIdentifierNameLen + 1] = (extFunctionDef_minArgCounter << 4) | (extFunctionDef_maxArgCounter);
+                _pcalculator->extFunctionNames [funcIndex][_maxIdentifierNameLen + 1] = (extFunctionDef_minArgCounter << 4) | (extFunctionDef_maxArgCounter);
 
                 // check that order of arrays and scalar variables is consistent with previous callsand function definition
                 if ( !checkFuncArgArrayPattern( result, true ) ) { pNext = pch; return false; };       // verify that the order of scalar and array parameters is consistent with arguments
@@ -1181,17 +1190,17 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
             if ( !checkArrayDimCountAndSize( result, arrayDef_dims, array_dimCounter ) ) { pNext = pch; return false; }
 
             int varNameIndex = _pCurrStackLvl->openPar.identifierIndex;
-            uint8_t varQualifier = calculator.globalVarType [varNameIndex] & calculator.var_qualifierMask;  // use to determine parametern param local, static, global
+            uint8_t varQualifier = _pcalculator->globalVarType [varNameIndex] & _pcalculator->var_qualifierMask;  // use to determine parametern param local, static, global
 
-            bool isGlobalVar = (_extFunctionBlockOpen && (varQualifier == calculator.var_isGlobal)) ||
-                (!_extFunctionBlockOpen && (calculator.globalVarType [varNameIndex] & calculator.var_hasGlobalValue));  // NOTE: outside a function, test against 'var_hasGlobalValue'
-            bool isStaticVar = (_extFunctionBlockOpen && (varQualifier == calculator.var_isStaticInFunc));
-            bool isLocalVar = (_extFunctionBlockOpen && (varQualifier == calculator.var_isLocalInFunc));            // but not function parameter definitions
-            bool isParam = (_extFunctionBlockOpen && (varQualifier == calculator.var_isParamInFunc));            // but not function parameter definitions
+            bool isGlobalVar = (_extFunctionBlockOpen && (varQualifier == _pcalculator->var_isGlobal)) ||
+                (!_extFunctionBlockOpen && (_pcalculator->globalVarType [varNameIndex] & _pcalculator->var_hasGlobalValue));  // NOTE: outside a function, test against 'var_hasGlobalValue'
+            bool isStaticVar = (_extFunctionBlockOpen && (varQualifier == _pcalculator->var_isStaticInFunc));
+            bool isLocalVar = (_extFunctionBlockOpen && (varQualifier == _pcalculator->var_isLocalInFunc));            // but not function parameter definitions
+            bool isParam = (_extFunctionBlockOpen && (varQualifier == _pcalculator->var_isParamInFunc));            // but not function parameter definitions
 
             float* pArray;
             int arrayElements = 1;              // init
-            int valueIndex = isGlobalVar ? varNameIndex : calculator.varValueIndex [varNameIndex];
+            int valueIndex = isGlobalVar ? varNameIndex : _pcalculator->varValueIndex [varNameIndex];
 
             // global and static arrays: create array on the heap. Array dimensions will be stored in array element 0
             if ( isGlobalVar || isStaticVar ) {
@@ -1204,12 +1213,12 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 #endif
                 // only now, the array flag can be set, because only now the object exists
                 if ( isGlobalVar ) {
-                    calculator.globalVarValues [valueIndex].pNumArray = pArray;
-                    calculator.globalVarType [varNameIndex] = calculator.globalVarType [varNameIndex] | calculator.var_isArray;             // set array bit
+                    _pcalculator->globalVarValues [valueIndex].pNumArray = pArray;
+                    _pcalculator->globalVarType [varNameIndex] = _pcalculator->globalVarType [varNameIndex] | _pcalculator->var_isArray;             // set array bit
                 }
                 else if ( isStaticVar ) {
-                    calculator.staticVarValues [valueIndex].pNumArray = pArray;
-                    calculator.staticVarType [calculator._staticVarCount - 1] = calculator.staticVarType [calculator._staticVarCount - 1] | calculator.var_isArray;             // set array bit
+                    _pcalculator->staticVarValues [valueIndex].pNumArray = pArray;
+                    _pcalculator->staticVarType [_pcalculator->_staticVarCount - 1] = _pcalculator->staticVarType [_pcalculator->_staticVarCount - 1] | _pcalculator->var_isArray;             // set array bit
                 }
 
                 // global and static variables are initialized at parsing time. If no explicit initializer, initialize array elements to zero now
@@ -1225,13 +1234,13 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
             // the array flag has been set when local variable was created (including function parameters, which are also local variables)
             // dimensions are not stored in array value array (because created at runtime) but are temporarily stored here during function parsing  
             else if ( isLocalVar ) {
-                pArray = (float*) calculator.localVarDims [calculator._localVarCountInFunction - 1];
+                pArray = (float*) _pcalculator->localVarDims [_pcalculator->_localVarCountInFunction - 1];
             }
 
             // global, static and local arrays: store array dimensions (local arrays: temporary storage during parsing only)
             if ( !isParam ) {                                            // parameter array: dimensions to be checked during runtime
             // store dimensions in element 0: char 0 to 2 is dimensions; char 3 = dimension count 
-                for ( int i = 0; i < calculator.MAX_ARRAY_DIMS; i++ ) {
+                for ( int i = 0; i < _pcalculator->MAX_ARRAY_DIMS; i++ ) {
                     ((char*) pArray) [i] = arrayDef_dims [i];
                 }
                 ((char*) pArray) [3] = array_dimCounter;        // (note: for param arrays, set to max dimension count during parsing)
@@ -1242,14 +1251,14 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         // 2.3 Internal or external function call, or parenthesis pair, closing parenthesis ?
         // ----------------------------------------------------------------------------------
 
-        else if ( flags & (calculator.intFunctionBit | calculator.extFunctionBit | calculator.openParenthesisBit) ) {
+        else if ( flags & (_pcalculator->intFunctionBit | _pcalculator->extFunctionBit | _pcalculator->openParenthesisBit) ) {
             // if empty function call argument list, then do not increment argument count (function call without arguments)
             bool emptyArgList = (_lastTokenType == tok_isLeftParenthesis);            // ok because no nesting allowed
             _pCurrStackLvl->openPar.actualArgsOrDims += (emptyArgList ? 0 : 1);
             int actualArgs = (int) _pCurrStackLvl->openPar.actualArgsOrDims;
 
             // call to not yet defined external function ? (there might be previous calls)
-            bool callToNotYetDefinedFunc = ((flags & (calculator.extFunctionBit | calculator.extFunctionPrevDefinedBit)) == calculator.extFunctionBit);
+            bool callToNotYetDefinedFunc = ((flags & (_pcalculator->extFunctionBit | _pcalculator->extFunctionPrevDefinedBit)) == _pcalculator->extFunctionBit);
             if ( callToNotYetDefinedFunc ) {
                 // check that max argument count is not exceeded (number must fit in 4 bits)
                 if ( actualArgs > extFunctionMaxArgs ) { pNext = pch; result = result_functionDefMaxArgsExceeded; return false; }
@@ -1257,10 +1266,10 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
                 // if at least one previous call (maybe a nested call) is completely parsed, retrieve current range of actual args that occured in these previous calls
                 // and update this range with the argument count of the current external function call that is at its closing parenthesis
                 int funcIndex = _pCurrStackLvl->openPar.identifierIndex;            // of current function call: stored in stack for current PARENTHESIS level
-                bool prevExtFuncCompletelyParsed = (calculator.extFunctionNames [funcIndex][_maxIdentifierNameLen + 1]) != extFunctionFirstOccurFlag;
+                bool prevExtFuncCompletelyParsed = (_pcalculator->extFunctionNames [funcIndex][_maxIdentifierNameLen + 1]) != extFunctionFirstOccurFlag;
                 if ( prevExtFuncCompletelyParsed ) {
-                    _pCurrStackLvl->openPar.minArgs = ((calculator.extFunctionNames [funcIndex][_maxIdentifierNameLen + 1]) >> 4) & 0x0F;
-                    _pCurrStackLvl->openPar.maxArgs = (calculator.extFunctionNames [funcIndex][_maxIdentifierNameLen + 1]) & 0x0F;
+                    _pCurrStackLvl->openPar.minArgs = ((_pcalculator->extFunctionNames [funcIndex][_maxIdentifierNameLen + 1]) >> 4) & 0x0F;
+                    _pCurrStackLvl->openPar.maxArgs = (_pcalculator->extFunctionNames [funcIndex][_maxIdentifierNameLen + 1]) & 0x0F;
                     if ( (int) _pCurrStackLvl->openPar.minArgs > actualArgs ) { _pCurrStackLvl->openPar.minArgs = actualArgs; }
                     if ( (int) _pCurrStackLvl->openPar.maxArgs < actualArgs ) { _pCurrStackLvl->openPar.maxArgs = actualArgs; }
                 }
@@ -1268,12 +1277,12 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
                 else { _pCurrStackLvl->openPar.minArgs = actualArgs; _pCurrStackLvl->openPar.maxArgs = actualArgs; }
 
                 // store the up to date range of actual argument counts in identifier storage
-                calculator.extFunctionNames [funcIndex][_maxIdentifierNameLen + 1] = (_pCurrStackLvl->openPar.minArgs << 4) | (_pCurrStackLvl->openPar.maxArgs);
+                _pcalculator->extFunctionNames [funcIndex][_maxIdentifierNameLen + 1] = (_pCurrStackLvl->openPar.minArgs << 4) | (_pCurrStackLvl->openPar.maxArgs);
             }
 
             // if call to previously defined external function, to an internal function, or if open parenthesis, then check argument count 
             else {
-                bool isOpenParenthesis = (flags & calculator.openParenthesisBit);
+                bool isOpenParenthesis = (flags & _pcalculator->openParenthesisBit);
                 if ( isOpenParenthesis ) { _pCurrStackLvl->openPar.minArgs = 1; _pCurrStackLvl->openPar.maxArgs = 1; }
                 bool argCountWrong = ((actualArgs < (int) _pCurrStackLvl->openPar.minArgs) ||
                     (actualArgs > ( int ) _pCurrStackLvl->openPar.maxArgs));
@@ -1282,7 +1291,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 
             // external functions only: check that order of arrays and scalar variables is consistent with previous calls and function definition
             // note: internal functions only accept scalars
-            bool extFunction = flags & calculator.extFunctionBit;
+            bool extFunction = flags & _pcalculator->extFunctionBit;
             if ( extFunction ) {
                 if ( !checkFuncArgArrayPattern( result, true ) ) { pNext = pch; return false; };       // verify that the order of scalar and array parameters is consistent with arguments
             }
@@ -1292,14 +1301,14 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         // 2.4 Array element spec closing parenthesis ?
         // --------------------------------------------
 
-        else if ( flags & calculator.arrayBit ) {
+        else if ( flags & _pcalculator->arrayBit ) {
             // check if array dimension count corresponds (individual dimension adherence can only be checked at runtime)
             // if previous token is left parenthesis (' () '), then do not increment argument count
             if ( _lastTokenType != tok_isLeftParenthesis ) { _pCurrStackLvl->openPar.actualArgsOrDims++; }
 
             int varNameIndex = _pCurrStackLvl->openPar.identifierIndex;
-            uint8_t varQualifier = calculator.globalVarType [varNameIndex] & calculator.var_qualifierMask;  // use to determine parametern param local, static, global
-            bool isParam = (_extFunctionBlockOpen && (varQualifier == calculator.var_isParamInFunc));            // but not function parameter definitions
+            uint8_t varQualifier = _pcalculator->globalVarType [varNameIndex] & _pcalculator->var_qualifierMask;  // use to determine parametern param local, static, global
+            bool isParam = (_extFunctionBlockOpen && (varQualifier == _pcalculator->var_isParamInFunc));            // but not function parameter definitions
 
             int actualDimCount = _pCurrStackLvl->openPar.actualArgsOrDims;
             if ( actualDimCount == 0 ) { pNext = pch; result = result_arrayUseNoDims; return false; } // dim count too high: already handled when preceding comma was parsed
@@ -1313,7 +1322,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 
         // token is a right parenthesis, and it's allowed here
 
-        _arrayElemAssignmentAllowed = (flags & calculator.arrayElemAssignmentAllowedBit);          // assignment possible next ? (to array element)
+        _arrayElemAssignmentAllowed = (flags & _pcalculator->arrayElemAssignmentAllowedBit);          // assignment possible next ? (to array element)
         myStack.deleteListElement( nullptr );                                           // decrement open parenthesis stack counter and delete corresponding list element
         _parenthesisLevel--;
 
@@ -1329,14 +1338,14 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         // Case 3: is token a comma separator ?
         // ------------------------------------
 
-        if ( calculator._programCounter == calculator._programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
+        if ( _pcalculator->_programCounter == _pcalculator->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
         // token is comma separator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
         if ( !(_lastTokenGroup_sequenceCheck & lastTokenGroups_5_2) ) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
 
         // within commands: skip this test (if '_isCommand' is true, then test expression is false)
-        // allow if in immediate mode or inside a function ( '(!calculator._programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
-        if ( !(_isCommand || (!calculator._programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_separatorNotAllowedHere; return false; ; }
+        // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
+        if ( !(_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_separatorNotAllowedHere; return false; ; }
 
         // if no open parenthesis, a comma can only occur to separate command parameters
         if ( (_parenthesisLevel == 0) && !_isCommand ) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
@@ -1373,13 +1382,13 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         // 3.3 Internal or external function call argument separator ?
         // -----------------------------------------------------------
 
-        else if ( flags & (calculator.intFunctionBit | calculator.extFunctionBit | calculator.openParenthesisBit) ) {
+        else if ( flags & (_pcalculator->intFunctionBit | _pcalculator->extFunctionBit | _pcalculator->openParenthesisBit) ) {
             // note that actual argument count is at least one more than actual argument count, because at least one more to go (after the comma)
             _pCurrStackLvl->openPar.actualArgsOrDims++;           // include argument before the comma in argument count     
             int actualArgs = (int) _pCurrStackLvl->openPar.actualArgsOrDims;
 
             // call to not yet defined external function ? (because there might be previous calls as well)
-            bool callToNotYetDefinedFunc = ((_pCurrStackLvl->openPar.flags & (calculator.extFunctionBit | calculator.extFunctionPrevDefinedBit)) == calculator.extFunctionBit);
+            bool callToNotYetDefinedFunc = ((_pCurrStackLvl->openPar.flags & (_pcalculator->extFunctionBit | _pcalculator->extFunctionPrevDefinedBit)) == _pcalculator->extFunctionBit);
             if ( callToNotYetDefinedFunc ) {
                 // check that max argument count is not exceeded (number must fit in 4 bits)
                 if ( actualArgs > extFunctionMaxArgs ) { pNext = pch; result = result_functionDefMaxArgsExceeded; return false; }
@@ -1387,7 +1396,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 
             // if call to previously defined external function, to an internal function, or if open parenthesis, then check argument count 
             else {
-                bool isOpenParenthesis = (flags & calculator.openParenthesisBit);
+                bool isOpenParenthesis = (flags & _pcalculator->openParenthesisBit);
                 if ( isOpenParenthesis ) { _pCurrStackLvl->openPar.minArgs = 1; _pCurrStackLvl->openPar.maxArgs = 1; }
                 bool argCountWrong = (actualArgs >= (int) _pCurrStackLvl->openPar.maxArgs);       // check against allowed maximum number of arguments for this function
                 if ( argCountWrong ) { pNext = pch; result = isOpenParenthesis ? result_missingRightParenthesis : result_wrong_arg_count; return false; }
@@ -1395,7 +1404,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 
             // external functions only: check that order of arrays and scalar variables is consistent with previous calls and function definition
             // note: internal functions only accept scalars
-            bool extFunction = flags & calculator.extFunctionBit;
+            bool extFunction = flags & _pcalculator->extFunctionBit;
             if ( extFunction ) {
                 if ( !checkFuncArgArrayPattern( result, false ) ) { pNext = pch; return false; };       // verify that the order of scalar and array parameters is consistent with arguments
             }
@@ -1405,7 +1414,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         // 3.4 Array element spec separator ?
         // ----------------------------------
 
-        else if ( flags & calculator.arrayBit ) {
+        else if ( flags & _pcalculator->arrayBit ) {
             // check if array dimension count corresponds (individual dimension adherence can only be checked at runtime)
             _pCurrStackLvl->openPar.actualArgsOrDims++;
             if ( (int) _pCurrStackLvl->openPar.actualArgsOrDims == (int) _pCurrStackLvl->openPar.arrayDimCount ) { pNext = pch; result = result_arrayUseWrongDimCount; return false; }
@@ -1424,7 +1433,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         // Case 4: is token a semicolon separator ?
         // ----------------------------------------
 
-        if ( calculator._programCounter == calculator._programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
+        if ( _pcalculator->_programCounter == _pcalculator->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
         // token is semicolon separator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
         if ( _parenthesisLevel > 0 ) { pNext = pch; result = result_missingRightParenthesis; return false; }
@@ -1440,14 +1449,14 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         // Case 5: token is a one- or two-character operator
         // -------------------------------------------------
 
-        if ( calculator._programCounter == calculator._programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
+        if ( _pcalculator->_programCounter == _pcalculator->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
         // token is an operator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
         if ( !(_lastTokenGroup_sequenceCheck & lastTokenGroups_5_2) ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
 
         // within commands: skip this test (if '_isCommand' is true, then test expression is false)
-        // allow if in immediate mode or inside a function ( '(!calculator._programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
-        if ( !(_isCommand || (!calculator._programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_operatorNotAllowedHere; return false; ; }
+        // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
+        if ( !(_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_operatorNotAllowedHere; return false; ; }
 
         if ( _isProgramCmd || _isDeleteVarCmd ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
 
@@ -1474,14 +1483,14 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
     }
 
     // create token
-    TokenIsTerminal* pToken = (TokenIsTerminal*) calculator._programCounter;
+    TokenIsTerminal* pToken = (TokenIsTerminal*) _pcalculator->_programCounter;
     pToken->tokenTypeAndIndex = tokenType | (singleCharIndex << 4);     // terminal tokens only: token type character includes token index too 
 
-    _lastTokenStep = calculator._programCounter - calculator._programStorage;
+    _lastTokenStep = _pcalculator->_programCounter - _pcalculator->_programStorage;
     _lastTokenType = tokenType;
 
-    calculator._programCounter += sizeof( TokenIsTerminal );
-    *calculator._programCounter = '\0';                                                 // indicates end of program
+    _pcalculator->_programCounter += sizeof( TokenIsTerminal );
+    *_pcalculator->_programCounter = '\0';                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
 }
@@ -1503,14 +1512,14 @@ bool MyParser::parseAsInternFunction( char*& pNext, parseTokenResult_type& resul
         if ( strlen( _functions [funcIndex].funcName ) != pNext - pch ) { continue; }   // token has correct length ? If not, skip remainder of loop ('continue')                            
         if ( strncmp( _functions [funcIndex].funcName, pch, pNext - pch ) != 0 ) { continue; }      // token corresponds to function name ? If not, skip remainder of loop ('continue')    
 
-        if ( calculator._programCounter == calculator._programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
+        if ( _pcalculator->_programCounter == _pcalculator->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
         // token is a function, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
         if ( !(_lastTokenGroup_sequenceCheck & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_functionNotAllowedHere; return false; }
 
         // within commands: skip this test (if '_isCommand' is true, then test expression is false)
-        // allow if in immediate mode or inside a function ( '(!calculator._programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
-        if ( !(_isCommand || (!calculator._programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_functionNotAllowedHere; return false; ; }
+        // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
+        if ( !(_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_functionNotAllowedHere; return false; ; }
 
         if ( _isExtFunctionCmd ) { pNext = pch; result = result_redefiningIntFunctionNotAllowed; return false; }
         if ( _isAnyVarCmd ) { pNext = pch; result = result_variableNameExpected; return false; }        // is a variable declaration: internal function name not allowed
@@ -1519,15 +1528,15 @@ bool MyParser::parseAsInternFunction( char*& pNext, parseTokenResult_type& resul
         _minFunctionArgs = _functions [funcIndex].minArgs;                       // set min & max for allowed argument count (note: minimum is 0)
         _maxFunctionArgs = _functions [funcIndex].maxArgs;
 
-        TokenIsIntFunction* pToken = (TokenIsIntFunction*) calculator._programCounter;
+        TokenIsIntFunction* pToken = (TokenIsIntFunction*) _pcalculator->_programCounter;
         pToken->tokenType = tok_isInternFunction | (sizeof( TokenIsIntFunction ) << 4);
         pToken->tokenIndex = funcIndex;
 
-        _lastTokenStep = calculator._programCounter - calculator._programStorage;
+        _lastTokenStep = _pcalculator->_programCounter - _pcalculator->_programStorage;
         _lastTokenType = tok_isInternFunction;
 
-        calculator._programCounter += sizeof( TokenIsIntFunction );
-        *calculator._programCounter = '\0';                                                 // indicates end of program
+        _pcalculator->_programCounter += sizeof( TokenIsIntFunction );
+        *_pcalculator->_programCounter = '\0';                                                 // indicates end of program
         result = result_tokenFound;                                                     // flag 'valid token found'
         return true;
     }
@@ -1563,29 +1572,29 @@ bool MyParser::parseAsExternFunction( char*& pNext, parseTokenResult_type& resul
 
     // name already in use as variable name ?
     bool createNewName = false;
-    int index = getIdentifier( calculator.varNames, calculator._varNameCount, calculator.MAX_VARNAMES, pch, pNext - pch, createNewName );
+    int index = getIdentifier( _pcalculator->varNames, _pcalculator->_varNameCount, _pcalculator->MAX_VARNAMES, pch, pNext - pch, createNewName );
     if ( index != -1 ) { pNext = pch; return true; }                // is a variable
 
 
     // 2. Is a function name allowed here ? 
     // ------------------------------------
 
-    if ( calculator._programCounter == calculator._programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
+    if ( _pcalculator->_programCounter == _pcalculator->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
     // token is an external function, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
     if ( !(_lastTokenGroup_sequenceCheck & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_functionNotAllowedHere; return false; }
 
     // within commands: skip this test (if '_isCommand' is true, then test expression is false)
-    // allow if in immediate mode or inside a function ( '(!calculator._programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
-    if ( !(_isCommand || (!calculator._programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_functionNotAllowedHere; return false; ; }
+    // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
+    if ( !(_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_functionNotAllowedHere; return false; ; }
 
     // if function name is too long, reset pointer to first character to parse, indicate error and return
     if ( pNext - pch > _maxIdentifierNameLen ) { pNext = pch; result = result_identifierTooLong;  return false; }
 
     // if in immediate mode: the function must be defined earlier (in a program)
-    if ( !calculator._programMode ) {
+    if ( !_pcalculator->_programMode ) {
         createNewName = false;                                                              // only check if function is defined, do NOT YET create storage for it
-        index = getIdentifier( calculator.extFunctionNames, calculator._extFunctionCount, calculator.MAX_EXT_FUNCS, pch, pNext - pch, createNewName );
+        index = getIdentifier( _pcalculator->extFunctionNames, _pcalculator->_extFunctionCount, _pcalculator->MAX_EXT_FUNCS, pch, pNext - pch, createNewName );
         if ( index == -1 ) { pNext = pch; result = result_undefinedFunction; return false; }
     }
 
@@ -1596,31 +1605,31 @@ bool MyParser::parseAsExternFunction( char*& pNext, parseTokenResult_type& resul
     // --------------------------------------------------------------------------------------------------------------------------------------------------
 
     createNewName = true;                                                              // if new external function, create storage for it
-    index = getIdentifier( calculator.extFunctionNames, calculator._extFunctionCount, calculator.MAX_EXT_FUNCS, pch, pNext - pch, createNewName );
+    index = getIdentifier( _pcalculator->extFunctionNames, _pcalculator->_extFunctionCount, _pcalculator->MAX_EXT_FUNCS, pch, pNext - pch, createNewName );
     if ( index == -1 ) { pNext = pch; result = result_maxExtFunctionsReached; return false; }
-    char* funcName = calculator.extFunctionNames [index];                                    // either new or existing function
+    char* funcName = _pcalculator->extFunctionNames [index];                                    // either new or existing function
     if ( createNewName ) {
         // init max (bits 7654) & min (bits 3210) allowed n° OR actual n° of arguments; store in last position (behind string terminating character)
         funcName [_maxIdentifierNameLen + 1] = extFunctionFirstOccurFlag;                          // max (bits 7654) < (bits 3210): indicates value is not yet updated by parsing previous calls closing parenthesis
-        calculator.extFunctionData [index].pExtFunctionStartToken = nullptr;                      // initialize. Pointer will be set when function definition is parsed (checked further down)
-        calculator.extFunctionData [index].paramIsArrayPattern [1] = 0x80;                        // set flag to indicate a new function name is parsed (definition or call)
-        calculator.extFunctionData [index].paramIsArrayPattern [0] = 0x00;                        // boundary alignment 
+        _pcalculator->extFunctionData [index].pExtFunctionStartToken = nullptr;                      // initialize. Pointer will be set when function definition is parsed (checked further down)
+        _pcalculator->extFunctionData [index].paramIsArrayPattern [1] = 0x80;                        // set flag to indicate a new function name is parsed (definition or call)
+        _pcalculator->extFunctionData [index].paramIsArrayPattern [0] = 0x00;                        // boundary alignment 
     }
 
     // if function storage was created already: check for double function definition
     else if ( _isExtFunctionCmd ) {                                                     // this is a function definition (not a call)
         // pointer to function starting token already defined: this is a double definition
-        if ( calculator.extFunctionData [index].pExtFunctionStartToken != nullptr ) { pNext = pch; result = result_functionAlreadyDefinedBefore; return false; }
+        if ( _pcalculator->extFunctionData [index].pExtFunctionStartToken != nullptr ) { pNext = pch; result = result_functionAlreadyDefinedBefore; return false; }
     }
 
     // Is this an external function definition( not a function call ) ?
     if ( _isExtFunctionCmd ) {
-        calculator.extFunctionData [index].pExtFunctionStartToken = calculator._programCounter;            // store pointer to function start token 
+        _pcalculator->extFunctionData [index].pExtFunctionStartToken = _pcalculator->_programCounter;            // store pointer to function start token 
         // variable name usage array: reset in-procedure reference flags to be able to keep track of in-procedure variable types used
         // KEEP all other settings
-        for ( int i = 0; i < calculator._varNameCount; i++ ) { calculator.globalVarType [i] = (calculator.globalVarType [i] & ~calculator.var_qualifierMask) | calculator.var_qualToSpecify; }
-        calculator._localVarCountInFunction = 0;             // reset local and parameter variable count in function
-        calculator.extFunctionData [index].localVarCountInFunction = 0;
+        for ( int i = 0; i < _pcalculator->_varNameCount; i++ ) { _pcalculator->globalVarType [i] = (_pcalculator->globalVarType [i] & ~_pcalculator->var_qualifierMask) | _pcalculator->var_qualToSpecify; }
+        _pcalculator->_localVarCountInFunction = 0;             // reset local and parameter variable count in function
+        _pcalculator->extFunctionData [index].localVarCountInFunction = 0;
 
         _pFunctionDefStackLvl = _pCurrStackLvl;               // stack level for FUNCTION definition block
         _pFunctionDefStackLvl->openBlock.fcnBlock_functionIndex = index;  // store in BLOCK stack level: only if function def
@@ -1638,15 +1647,15 @@ bool MyParser::parseAsExternFunction( char*& pNext, parseTokenResult_type& resul
     // 4. Store token in program memory
     // --------------------------------
 
-    TokenIsExtFunction* pToken = (TokenIsExtFunction*) calculator._programCounter;
+    TokenIsExtFunction* pToken = (TokenIsExtFunction*) _pcalculator->_programCounter;
     pToken->tokenType = tok_isExternFunction | (sizeof( TokenIsExtFunction ) << 4);
     pToken->identNameIndex = index;
 
-    _lastTokenStep = calculator._programCounter - calculator._programStorage;
+    _lastTokenStep = _pcalculator->_programCounter - _pcalculator->_programStorage;
     _lastTokenType = tok_isExternFunction;
 
-    calculator._programCounter += sizeof( TokenIsExtFunction );
-    *calculator._programCounter = '\0';                                                 // indicates end of program
+    _pcalculator->_programCounter += sizeof( TokenIsExtFunction );
+    *_pcalculator->_programCounter = '\0';                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
 }
@@ -1673,14 +1682,14 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
     // 2. Is a variable name allowed here ? 
     // ------------------------------------
 
-    if ( calculator._programCounter == calculator._programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
+    if ( _pcalculator->_programCounter == _pcalculator->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
     // token is a variable, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
     if ( !(_lastTokenGroup_sequenceCheck & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_variableNotAllowedHere; return false; }
 
     // within commands: skip this test (if '_isCommand' is true, then test expression is false)
-    // allow if in immediate mode or inside a function ( '(!calculator._programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
-    if ( !(_isCommand || (!calculator._programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_variableNotAllowedHere; return false; ; }
+    // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
+    if ( !(_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_variableNotAllowedHere; return false; ; }
 
     // scalar or matrix variable ? (could still be function 'array' argument; this will be detected further below)
     char* peek1 = pNext; while ( peek1 [0] == ' ' ) { peek1++; }                                                // peek next character: is it a left parenthesis ?
@@ -1715,22 +1724,22 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
 
     // name already in use as external function name ?
     bool createNewName = false;
-    int varNameIndex = getIdentifier( calculator.extFunctionNames, calculator._extFunctionCount, calculator.MAX_EXT_FUNCS, pch, pNext - pch, createNewName );
+    int varNameIndex = getIdentifier( _pcalculator->extFunctionNames, _pcalculator->_extFunctionCount, _pcalculator->MAX_EXT_FUNCS, pch, pNext - pch, createNewName );
     if ( varNameIndex != -1 ) { pNext = pch; result = result_varNameInUseForFunction; return false; }
 
     // has storage already been created for this variable NAME ? If not, create 
     // note that multiple distinct variables (global, static, local) and function parameters can all share the same name, which is only stored once 
 
     createNewName = true;                              // if new variable, create storage for name and global value  
-    varNameIndex = getIdentifier( calculator.varNames, calculator._varNameCount, calculator.MAX_VARNAMES, pch, pNext - pch, createNewName );
+    varNameIndex = getIdentifier( _pcalculator->varNames, _pcalculator->_varNameCount, _pcalculator->MAX_VARNAMES, pch, pNext - pch, createNewName );
 
     if ( createNewName ) {                                                             // variable NAME did not yet exist: create name
         if ( varNameIndex == -1 ) { pNext = pch; result = result_maxVariableNamesReached; return false; }      // creation not successful
-        char* varName = calculator.varNames [varNameIndex];                         // ref to variable name
+        char* varName = _pcalculator->varNames [varNameIndex];                         // ref to variable name
 
         // variable name is new: in usage array, CLEAR 'has global value' flag, reset in-procedure reference flags
         // variable type (array, float or string) will be set later, if it will appear to be a global variable
-        calculator.globalVarType [varNameIndex] = calculator.var_qualToSpecify;
+        _pcalculator->globalVarType [varNameIndex] = _pcalculator->var_qualToSpecify;
     }
 
 
@@ -1746,46 +1755,46 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
     if ( _extFunctionBlockOpen ) {
         // first use of a particular variable NAME in a function ?  (in a variable declaration, or just using the name in an expression)
         // this defines the qualifier (global, param, local, static) for all references of this name within the current procedure
-        bool isFirstVarNameRefInFnc = (((uint8_t) calculator.globalVarType [varNameIndex] & calculator.var_qualifierMask) == calculator.var_qualToSpecify);
+        bool isFirstVarNameRefInFnc = (((uint8_t) _pcalculator->globalVarType [varNameIndex] & _pcalculator->var_qualifierMask) == _pcalculator->var_qualToSpecify);
         if ( isFirstVarNameRefInFnc ) {                                                                         // variable not yet referenced within currently parsed procedure
             // this is either a NEW param / local / static variable declaration, or a first use (not an explicit declaration) of a NEW or EXISTING global variable within the function 
 
             // determine variable qualifier (param, local, static, global)
-            // NOTE qualifier 'calculator.var_qualToSpecify' : will either change into 'calculator.var_isGlobal' (if a previously defined global var is used in this function) or an error will be produced if not 
-            uint8_t varQual = _isExtFunctionCmd ? calculator.var_isParamInFunc : _isLocalVarCmd ? calculator.var_isLocalInFunc : _isStaticVarCmd ? calculator.var_isStaticInFunc : calculator.var_qualToSpecify;
-            calculator.globalVarType [varNameIndex] = (calculator.globalVarType [varNameIndex] & ~calculator.var_qualifierMask) | varQual;     //set qualifier bits (will be stored in token AND needed during parsing current procedure)
+            // NOTE qualifier '_pcalculator->var_qualToSpecify' : will either change into '_pcalculator->var_isGlobal' (if a previously defined global var is used in this function) or an error will be produced if not 
+            uint8_t varQual = _isExtFunctionCmd ? _pcalculator->var_isParamInFunc : _isLocalVarCmd ? _pcalculator->var_isLocalInFunc : _isStaticVarCmd ? _pcalculator->var_isStaticInFunc : _pcalculator->var_qualToSpecify;
+            _pcalculator->globalVarType [varNameIndex] = (_pcalculator->globalVarType [varNameIndex] & ~_pcalculator->var_qualifierMask) | varQual;     //set qualifier bits (will be stored in token AND needed during parsing current procedure)
 
             if ( _isStaticVarCmd ) {                                             // definition of NEW static variable for function
                 isNewVariableToCreate = true;
-                if ( calculator._staticVarCount == calculator.MAX_STAT_VARS ) { pNext = pch; result = result_maxStaticVariablesReached; return false; }
-                calculator.varValueIndex [varNameIndex] = calculator._staticVarCount;
-                if ( !isArray ) { calculator.staticVarValues [calculator._staticVarCount].numConst = 0.; }           // initialize variable (if initializer and/or array: will be overwritten)
-                calculator.staticVarType [calculator._staticVarCount] = calculator.var_isFloat;                                         // init (for array or scalar)
-                calculator.staticVarType [calculator._staticVarCount] = (calculator.staticVarType [calculator._staticVarCount] & ~calculator.var_isArray); // init (array flag will be added when storage is created)    
-                calculator._staticVarCount++;
+                if ( _pcalculator->_staticVarCount == _pcalculator->MAX_STAT_VARS ) { pNext = pch; result = result_maxStaticVariablesReached; return false; }
+                _pcalculator->varValueIndex [varNameIndex] = _pcalculator->_staticVarCount;
+                if ( !isArray ) { _pcalculator->staticVarValues [_pcalculator->_staticVarCount].numConst = 0.; }           // initialize variable (if initializer and/or array: will be overwritten)
+                _pcalculator->staticVarType [_pcalculator->_staticVarCount] = _pcalculator->var_isFloat;                                         // init (for array or scalar)
+                _pcalculator->staticVarType [_pcalculator->_staticVarCount] = (_pcalculator->staticVarType [_pcalculator->_staticVarCount] & ~_pcalculator->var_isArray); // init (array flag will be added when storage is created)    
+                _pcalculator->_staticVarCount++;
             }
 
             else if ( _isExtFunctionCmd || _isLocalVarCmd ) {               // definition of NEW parameter (in function definition) or NEW local variable for function
                 isNewVariableToCreate = true;
-                if ( calculator._localVarCountInFunction == calculator.MAX_LOC_VARS_IN_FUNC ) { pNext = pch; result = result_maxLocalVariablesReached; return false; }
-                calculator.varValueIndex [varNameIndex] = calculator._localVarCountInFunction;
+                if ( _pcalculator->_localVarCountInFunction == _pcalculator->MAX_LOC_VARS_IN_FUNC ) { pNext = pch; result = result_maxLocalVariablesReached; return false; }
+                _pcalculator->varValueIndex [varNameIndex] = _pcalculator->_localVarCountInFunction;
                 // param and local variables: array flag temporarily stored during function parsing       
                 // storage space creation and initialisation will occur when function is called durig execution 
-                calculator.localVarType [calculator._localVarCountInFunction] = (calculator.localVarType [calculator._localVarCountInFunction] & ~calculator.var_isArray) |
-                    (isArray ? calculator.var_isArray : 0); // init (no storage needs to be created: set array flag here) 
-                calculator._localVarCountInFunction++;
+                _pcalculator->localVarType [_pcalculator->_localVarCountInFunction] = (_pcalculator->localVarType [_pcalculator->_localVarCountInFunction] & ~_pcalculator->var_isArray) |
+                    (isArray ? _pcalculator->var_isArray : 0); // init (no storage needs to be created: set array flag here) 
+                _pcalculator->_localVarCountInFunction++;
 
                 // ext. function index: in stack level for FUNCTION definition command
                 int fcnIndex = _pFunctionDefStackLvl->openBlock.fcnBlock_functionIndex;
-                calculator.extFunctionData [fcnIndex].localVarCountInFunction = calculator._localVarCountInFunction;        // after incrementing count
+                _pcalculator->extFunctionData [fcnIndex].localVarCountInFunction = _pcalculator->_localVarCountInFunction;        // after incrementing count
             }
 
             else {                                                          // not a variable definition:  CAN BE the use of an EXISTING global variable, within a function
-                isNewVariableToCreate = (!(calculator.globalVarType [varNameIndex] & calculator.var_hasGlobalValue));
+                isNewVariableToCreate = (!(_pcalculator->globalVarType [varNameIndex] & _pcalculator->var_hasGlobalValue));
                 if ( isNewVariableToCreate ) {                                                             // variable is NEW ? Global variable has not been declared in program (outside of function being parsed)
                     pNext = pch; result = result_varNotDeclared; return false;
                 }
-                calculator.globalVarType [varNameIndex] = (calculator.globalVarType [varNameIndex] & ~calculator.var_qualifierMask) | calculator.var_isGlobal;
+                _pcalculator->globalVarType [varNameIndex] = (_pcalculator->globalVarType [varNameIndex] & ~_pcalculator->var_qualifierMask) | _pcalculator->var_isGlobal;
             }                                                                                               // IS the use of an EXISTING global variable, within a function
 
         }
@@ -1801,9 +1810,9 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
     // ------------------------------------
 
     else {
-        isNewVariableToCreate = !(calculator.globalVarType [varNameIndex] & calculator.var_hasGlobalValue);
+        isNewVariableToCreate = !(_pcalculator->globalVarType [varNameIndex] & _pcalculator->var_hasGlobalValue);
         // qualifier 'var_isGlobal': set, because could be cleared by previously parsed function (will be stored in token)
-        calculator.globalVarType [varNameIndex] = (calculator.globalVarType [varNameIndex] & ~calculator.var_qualifierMask) | calculator.var_isGlobal;
+        _pcalculator->globalVarType [varNameIndex] = (_pcalculator->globalVarType [varNameIndex] & ~_pcalculator->var_qualifierMask) | _pcalculator->var_isGlobal;
 
         if ( isNewVariableToCreate ) {
             if ( !_isGlobalVarCmd ) {                           // Global variable must be defined in program before using it 
@@ -1813,17 +1822,17 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
             // is a global variable declaration of a new variable 
 
             // set 'has global value' flag. Keep variable type.Variable qualifier : don't care (reset at start of next external function parsing)
-            if ( !isArray ) { calculator.globalVarValues [varNameIndex].numConst = 0.; }                  // initialize variable (if initializer and/or array: will be overwritten)
-            calculator.globalVarType [varNameIndex] = calculator.globalVarType [varNameIndex] | calculator.var_isFloat;         // init (for scalar and array)
-            calculator.globalVarType [varNameIndex] = calculator.globalVarType [varNameIndex] | calculator.var_hasGlobalValue;   // set 'has global value' bit
-            calculator.globalVarType [varNameIndex] = (calculator.globalVarType [varNameIndex] & ~calculator.var_isArray); // init (array flag will be added when storage is created) 
-            calculator.globalVarType [varNameIndex] = calculator.globalVarType [varNameIndex] | calculator.var_globalDefInProg; // set in order to check double declarations of variable
+            if ( !isArray ) { _pcalculator->globalVarValues [varNameIndex].numConst = 0.; }                  // initialize variable (if initializer and/or array: will be overwritten)
+            _pcalculator->globalVarType [varNameIndex] = _pcalculator->globalVarType [varNameIndex] | _pcalculator->var_isFloat;         // init (for scalar and array)
+            _pcalculator->globalVarType [varNameIndex] = _pcalculator->globalVarType [varNameIndex] | _pcalculator->var_hasGlobalValue;   // set 'has global value' bit
+            _pcalculator->globalVarType [varNameIndex] = (_pcalculator->globalVarType [varNameIndex] & ~_pcalculator->var_isArray); // init (array flag will be added when storage is created) 
+            _pcalculator->globalVarType [varNameIndex] = _pcalculator->globalVarType [varNameIndex] | _pcalculator->var_globalDefInProg; // set in order to check double declarations of variable
         }
 
         else {  // the global variable exists already
             // if global variable declaration, check that a previous declaration in program DOES NOT exist (the variable itself exists, e.g. from a previous run or user created)
             // if global variable use, then check that a previous declaration in the program DOES exist
-            bool varDefinedInprog = calculator.globalVarType [varNameIndex] & calculator.var_globalDefInProg;
+            bool varDefinedInprog = _pcalculator->globalVarType [varNameIndex] & _pcalculator->var_globalDefInProg;
             if ( !(_isGlobalVarCmd ^ varDefinedInprog) ) { pNext = pch; result = _isGlobalVarCmd ? result_varRedeclared : result_varNotDeclared; return false; }
         }
     }
@@ -1833,27 +1842,27 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
     //    If it is a FOR loop control variable, check that it is not in use by a FOR outer loop (in same function)
     // --------------------------------------------------------------------------------------------------------------------------------------------
 
-    uint8_t varQualifier = calculator.globalVarType [varNameIndex] & calculator.var_qualifierMask;  // use to determine parameter, local, static, global
-    bool isGlobalVar = (_extFunctionBlockOpen && (varQualifier == calculator.var_isGlobal)) ||
-        (!_extFunctionBlockOpen && (calculator.globalVarType [varNameIndex] & calculator.var_hasGlobalValue));  // NOTE: outside a function, test against 'var_hasGlobalValue'
-    bool isStaticVar = (_extFunctionBlockOpen && (varQualifier == calculator.var_isStaticInFunc));
-    bool isLocalVar = (_extFunctionBlockOpen && (varQualifier == calculator.var_isLocalInFunc));
-    bool isParam = (_extFunctionBlockOpen && (varQualifier == calculator.var_isParamInFunc));
-    int valueIndex = isGlobalVar ? varNameIndex : calculator.varValueIndex [varNameIndex];
+    uint8_t varQualifier = _pcalculator->globalVarType [varNameIndex] & _pcalculator->var_qualifierMask;  // use to determine parameter, local, static, global
+    bool isGlobalVar = (_extFunctionBlockOpen && (varQualifier == _pcalculator->var_isGlobal)) ||
+        (!_extFunctionBlockOpen && (_pcalculator->globalVarType [varNameIndex] & _pcalculator->var_hasGlobalValue));  // NOTE: outside a function, test against 'var_hasGlobalValue'
+    bool isStaticVar = (_extFunctionBlockOpen && (varQualifier == _pcalculator->var_isStaticInFunc));
+    bool isLocalVar = (_extFunctionBlockOpen && (varQualifier == _pcalculator->var_isLocalInFunc));
+    bool isParam = (_extFunctionBlockOpen && (varQualifier == _pcalculator->var_isParamInFunc));
+    int valueIndex = isGlobalVar ? varNameIndex : _pcalculator->varValueIndex [varNameIndex];
 
 
     if ( !isNewVariableToCreate ) {  // not a variable definition but a variable use
         bool existingArray = false;
-        calculator._arrayDimCount = 0;                  // init: if new variable (or no array), then set dimension count to zero
+        _pcalculator->_arrayDimCount = 0;                  // init: if new variable (or no array), then set dimension count to zero
 
-        existingArray = isGlobalVar ? (calculator.globalVarType [valueIndex] & calculator.var_isArray) :
-            isStaticVar ? (calculator.staticVarType [valueIndex] & calculator.var_isArray) :
-            (calculator.localVarType [valueIndex] & calculator.var_isArray);           // param or local
+        existingArray = isGlobalVar ? (_pcalculator->globalVarType [valueIndex] & _pcalculator->var_isArray) :
+            isStaticVar ? (_pcalculator->staticVarType [valueIndex] & _pcalculator->var_isArray) :
+            (_pcalculator->localVarType [valueIndex] & _pcalculator->var_isArray);           // param or local
 
         // if not a function definition: array name does not have to be followed by a left parenthesis (passing the array and not an array element)
         if ( !_isExtFunctionCmd ) {
             // Is this variable part of a function call argument, without further nesting of parenthesis, and has it been defined as an array ? 
-            bool isPartOfFuncCallArgument = (_parenthesisLevel > 0) ? _pCurrStackLvl->openPar.flags & calculator.extFunctionBit : false;
+            bool isPartOfFuncCallArgument = (_parenthesisLevel > 0) ? _pCurrStackLvl->openPar.flags & _pcalculator->extFunctionBit : false;
             if ( isPartOfFuncCallArgument && existingArray ) {
                 // if NOT followed by an array element enclosed in parenthesis, it references the complete array
                 // this is only allowed if not part of an expression: check
@@ -1868,18 +1877,18 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
         // if existing array: retrieve dimension count against existing definition, for testing against definition afterwards
         if ( existingArray ) {
             float* pArray = nullptr;
-            if ( isStaticVar ) { pArray = calculator.staticVarValues [valueIndex].pNumArray; }
-            else if ( isGlobalVar ) { pArray = calculator.globalVarValues [valueIndex].pNumArray; }
-            else if ( isLocalVar ) { pArray = (float*) calculator.localVarDims [valueIndex]; }   // dimensions and count are stored in a float
+            if ( isStaticVar ) { pArray = _pcalculator->staticVarValues [valueIndex].pNumArray; }
+            else if ( isGlobalVar ) { pArray = _pcalculator->globalVarValues [valueIndex].pNumArray; }
+            else if ( isLocalVar ) { pArray = (float*) _pcalculator->localVarDims [valueIndex]; }   // dimensions and count are stored in a float
             // retrieve dimension count from array element 0, character 3 (char 0 to 2 contain the dimensions) 
-            calculator._arrayDimCount = isParam ? calculator.MAX_ARRAY_DIMS : ((char*) pArray) [3];
+            _pcalculator->_arrayDimCount = isParam ? _pcalculator->MAX_ARRAY_DIMS : ((char*) pArray) [3];
         }
 
 
         // if FOR loop control variable, check it is not in use by a FOR outer loop of same function  
         if ( (_lastTokenType = tok_isReservedWord) && (_blockLevel > 1) ) {     // minimum 1 other (outer) open block
             TokPnt prgmCnt;
-            prgmCnt.pToken = calculator._programStorage + _lastTokenStep;  // address of reserved word
+            prgmCnt.pToken = _pcalculator->_programStorage + _lastTokenStep;  // address of reserved word
             int tokenIndex = prgmCnt.pResW->tokenIndex;
             CmdBlockDef cmdBlockDef = _resWords [tokenIndex].cmdBlockDef;
 
@@ -1898,8 +1907,8 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
                         tokenStep = tokenStep + sizeof( TokenIsResWord );  // now pointing to control variable of outer loop
 
                         // compare variable qualifier, name index and value index of outer and inner loop control variable
-                        prgmCnt.pToken = calculator._programStorage + tokenStep;  // address of outer loop control variable
-                        bool isSameControlVariable = ((varQualifier == uint8_t( prgmCnt.pVar->identInfo & calculator.var_qualifierMask ))
+                        prgmCnt.pToken = _pcalculator->_programStorage + tokenStep;  // address of outer loop control variable
+                        bool isSameControlVariable = ((varQualifier == uint8_t( prgmCnt.pVar->identInfo & _pcalculator->var_qualifierMask ))
                             && ((int) prgmCnt.pVar->identNameIndex == varNameIndex)
                             && ((int) prgmCnt.pVar->identValueIndex == valueIndex));
                         if ( isSameControlVariable ) { pNext = pch; result = result_varControlVarInUse; return false; }
@@ -1915,18 +1924,18 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
     // 6. Store token in program memory
     // --------------------------------
 
-    TokenIsVariable* pToken = (TokenIsVariable*) calculator._programCounter;
+    TokenIsVariable* pToken = (TokenIsVariable*) _pcalculator->_programCounter;
     pToken->tokenType = tok_isVariable | (sizeof( TokenIsVariable ) << 4);
-    pToken->identInfo = varQualifier | (isArray ? calculator.var_isArray : 0);              // qualifier, array flag ? (fixed -> store in token)
+    pToken->identInfo = varQualifier | (isArray ? _pcalculator->var_isArray : 0);              // qualifier, array flag ? (fixed -> store in token)
     pToken->identNameIndex = varNameIndex;
     pToken->identValueIndex = valueIndex;                      // points to storage area element for the variable  
 
-    _lastTokenStep = calculator._programCounter - calculator._programStorage;
+    _lastTokenStep = _pcalculator->_programCounter - _pcalculator->_programStorage;
     _lastVariableTokenStep = _lastTokenStep;
     _lastTokenType = tok_isVariable;
 
-    calculator._programCounter += sizeof( TokenIsVariable );
-    *calculator._programCounter = '\0';                                                 // indicates end of program
+    _pcalculator->_programCounter += sizeof( TokenIsVariable );
+    *_pcalculator->_programCounter = '\0';                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
 }
@@ -1957,16 +1966,16 @@ bool MyParser::parseAsIdentifierName( char*& pNext, parseTokenResult_type& resul
     strncpy( pProgramName, pch, pNext - pch );                            // store identifier name in newly created character array
     pProgramName [pNext - pch] = '\0';                                                 // string terminating '\0'
 
-    TokenIsAlphanumCst* pToken = (TokenIsAlphanumCst*) calculator._programCounter;
+    TokenIsAlphanumCst* pToken = (TokenIsAlphanumCst*) _pcalculator->_programCounter;
     pToken->tokenType = tok_isProgramName | (sizeof( TokenIsAlphanumCst ) << 4);
     memcpy( pToken->pAlphanumConst, &pProgramName, sizeof( pProgramName ) );            // pointer not necessarily aligned with word size: copy memory instead
     bool doNonLocalVarInit = ((_isGlobalVarCmd || _isStaticVarCmd) && (_lastTokenType == tok_isOperator));
 
-    _lastTokenStep = calculator._programCounter - calculator._programStorage;
+    _lastTokenStep = _pcalculator->_programCounter - _pcalculator->_programStorage;
     _lastTokenType = tok_isProgramName;
 
-    calculator._programCounter += sizeof( TokenIsAlphanumCst );
-    *calculator._programCounter = '\0';                                                 // indicates end of program
+    _pcalculator->_programCounter += sizeof( TokenIsAlphanumCst );
+    *_pcalculator->_programCounter = '\0';                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
 }
@@ -1997,14 +2006,14 @@ void MyParser::prettyPrintProgram() {
     bool hasTokenStep;
 
     TokPnt prgmCnt;
-    prgmCnt.pToken = calculator._programStart;
+    prgmCnt.pToken = _pcalculator->_programStart;
     int tokenType = *prgmCnt.pToken & 0x0F;
     char pTokenStepPointedTo [2];
     uint16_t toTokenStep;
     TokenIsResWord* pToken;
 
     while ( tokenType != '\0' ) {                                                                    // for all tokens in token list
-        uint16_t tokenStep = (uint16_t) (prgmCnt.pToken - calculator._programStorage);
+        uint16_t tokenStep = (uint16_t) (prgmCnt.pToken - _pcalculator->_programStorage);
         strcpy( prettyToken, "" );
 
         switch ( tokenType ) {
@@ -2024,9 +2033,9 @@ void MyParser::prettyPrintProgram() {
 
         case tok_isExternFunction:
             identNameIndex = (int) prgmCnt.pExtFnc->identNameIndex;   // external function list element
-            identifierName = calculator.extFunctionNames [identNameIndex];
-            funcStart = (uint32_t) calculator.extFunctionData [identNameIndex].pExtFunctionStartToken;
-            if ( funcStart != 0 ) { funcStart -= (uint32_t) calculator._programStorage; }
+            identifierName = _pcalculator->extFunctionNames [identNameIndex];
+            funcStart = (uint32_t) _pcalculator->extFunctionData [identNameIndex].pExtFunctionStartToken;
+            if ( funcStart != 0 ) { funcStart -= (uint32_t) _pcalculator->_programStorage; }
             sprintf( s, "(step %d) ext func nr %d: %s, start: %lu", tokenStep, identNameIndex, identifierName, funcStart );
             break;
 
@@ -2034,33 +2043,33 @@ void MyParser::prettyPrintProgram() {
             identNameIndex = (int) (prgmCnt.pVar->identNameIndex);
             valueIndex = (int) (prgmCnt.pVar->identValueIndex);
 
-            identifierName = calculator.varNames [identNameIndex];
+            identifierName = _pcalculator->varNames [identNameIndex];
             tokenInfo = prgmCnt.pVar->identInfo;
-            isArray = (tokenInfo & calculator.var_isArray);
-            varQualifier = (tokenInfo & calculator.var_qualifierMask);
+            isArray = (tokenInfo & _pcalculator->var_isArray);
+            varQualifier = (tokenInfo & _pcalculator->var_qualifierMask);
 
-            isStringValue = (varQualifier == calculator.var_isGlobal) ? (calculator.globalVarType [valueIndex] & calculator.var_typeMask) == calculator.var_isStringPointer :
-                (varQualifier == calculator.var_isStaticInFunc) ? (calculator.staticVarType [valueIndex] & calculator.var_typeMask) == calculator.var_isStringPointer :
-                (calculator.localVarType [valueIndex] & calculator.var_typeMask) == calculator.var_isStringPointer;
+            isStringValue = (varQualifier == _pcalculator->var_isGlobal) ? (_pcalculator->globalVarType [valueIndex] & _pcalculator->var_typeMask) == _pcalculator->var_isStringPointer :
+                (varQualifier == _pcalculator->var_isStaticInFunc) ? (_pcalculator->staticVarType [valueIndex] & _pcalculator->var_typeMask) == _pcalculator->var_isStringPointer :
+                (_pcalculator->localVarType [valueIndex] & _pcalculator->var_typeMask) == _pcalculator->var_isStringPointer;
 
 
-            strcpy( qual, varQualifier == calculator.var_isGlobal ? "global" : varQualifier == calculator.var_isParamInFunc ? "Param" :
-                varQualifier == calculator.var_isLocalInFunc ? "local" : varQualifier == calculator.var_isStaticInFunc ? "static" : "???" );
+            strcpy( qual, varQualifier == _pcalculator->var_isGlobal ? "global" : varQualifier == _pcalculator->var_isParamInFunc ? "Param" :
+                varQualifier == _pcalculator->var_isLocalInFunc ? "local" : varQualifier == _pcalculator->var_isStaticInFunc ? "static" : "???" );
 
             if ( isArray ) {
                 sprintf( s, "(step %d) %s array: %s", tokenStep, qual, identifierName );
             }
             else {
                 if ( isStringValue ) {
-                    if ( varQualifier == calculator.var_isGlobal ) { varStrValue = calculator.globalVarValues [identNameIndex].pAlphanumConst; } // also ok for array pointer
-                    else if ( varQualifier == calculator.var_isStaticInFunc ) { varStrValue = calculator.staticVarValues [valueIndex].pAlphanumConst; }
+                    if ( varQualifier == _pcalculator->var_isGlobal ) { varStrValue = _pcalculator->globalVarValues [identNameIndex].pAlphanumConst; } // also ok for array pointer
+                    else if ( varQualifier == _pcalculator->var_isStaticInFunc ) { varStrValue = _pcalculator->staticVarValues [valueIndex].pAlphanumConst; }
                     else { varStrValue = nullptr; }
                     sprintf( s, "(step %d) %s string: %s, AN cst: <%s>", tokenStep, qual, identifierName, (varStrValue == nullptr) ? "" : varStrValue );
                 }
 
                 else {
-                    if ( varQualifier == calculator.var_isGlobal ) { f = calculator.globalVarValues [identNameIndex].numConst; }
-                    else if ( varQualifier == calculator.var_isStaticInFunc ) { f = calculator.staticVarValues [valueIndex].numConst; }
+                    if ( varQualifier == _pcalculator->var_isGlobal ) { f = _pcalculator->globalVarValues [identNameIndex].numConst; }
+                    else if ( varQualifier == _pcalculator->var_isStaticInFunc ) { f = _pcalculator->staticVarValues [valueIndex].numConst; }
                     else { f = 0. + valueIndex; }      // no local variable storage yet (test value only)
                     sprintf( s, "(step %d) %s float: %s, Num: %.3G", tokenStep, qual, identifierName, f );
                 }
@@ -2112,7 +2121,7 @@ void MyParser::prettyPrintProgram() {
 
         // append pretty printed token to character string (if still place left)
         if ( strlen( s ) <= maxCharsPretty ) { strcat( prettyToken, s ); }
-        if ( strlen( prettyToken ) > 0 ) { pTerminal->println( prettyToken ); }
+        if ( strlen( prettyToken ) > 0 ) { Serial.println( prettyToken ); }
         int tokenLength = (tokenType >= tok_isOperator) ? 1 : (*prgmCnt.pToken >> 4) & 0x0F;
         prgmCnt.pToken += tokenLength;
         tokenType = *prgmCnt.pToken & 0x0F;
@@ -2125,13 +2134,13 @@ void MyParser::prettyPrintProgram() {
 // ----------------------------
 
 void MyParser::printParsingResult( parseTokenResult_type result, int funcNotDefIndex, char* const pInstruction, int lineCount, char* const pErrorPos ) {
-    char parsingInfo [calculator._maxInstructionChars];
+    char parsingInfo [_pcalculator->_maxInstructionChars];
     if ( result == result_tokenFound ) {                                                // prepare message with parsing result
-        strcpy( parsingInfo, calculator._programMode ? "Parsed without errors" : "" );
+        strcpy( parsingInfo, _pcalculator->_programMode ? "Parsed without errors" : "" );
     }
 
-    else  if ( (result == result_undefinedFunction) && calculator._programMode ) {     // in program mode only (because function can be defined after a call)
-        sprintf( parsingInfo, "\r\nError %d: function: %s", result, calculator.extFunctionNames [funcNotDefIndex] );
+    else  if ( (result == result_undefinedFunction) && _pcalculator->_programMode ) {     // in program mode only (because function can be defined after a call)
+        sprintf( parsingInfo, "\r\nError %d: function: %s", result, _pcalculator->extFunctionNames [funcNotDefIndex] );
     }
 
     else {                                                                              // error
@@ -2141,16 +2150,8 @@ void MyParser::printParsingResult( parseTokenResult_type result, int funcNotDefI
         point [pErrorPos - pInstruction + 1] = '\0';
         pTerminal->println( pInstruction );
         pTerminal->println( point );
-        if ( calculator._programMode ) { sprintf( parsingInfo, "Error %d: statement ending at line %d", result, lineCount ); }
+        if ( _pcalculator->_programMode ) { sprintf( parsingInfo, "Error %d: statement ending at line %d", result, lineCount ); }
         else { sprintf( parsingInfo, "Error %d", result ); }
     }
     if ( strlen( parsingInfo ) > 0 ) { pTerminal->println( parsingInfo ); }
 };
-
-// object
-
-MyParser myParser;
-
-
-// determine if variable is new (global, in function: parameter, local, static)
-

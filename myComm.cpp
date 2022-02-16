@@ -32,7 +32,7 @@
 // *** Class MyTCPconnection ***
 
 MyTCPconnection::MyTCPconnection( const char SSID [], const char PASS [], const IPAddress serverAddress, const IPAddress  gatewayAddress, const IPAddress subnetMask, const IPAddress  DNSaddress, const int serverPort ) : _server( serverPort ) {                // constructor
-    _SSID = SSID;                                           //// initializer list gebruiken
+    _SSID = SSID;                                           //// wanneer initializer list gebruiken ?
     _PASS = PASS;
     _serverAddress = serverAddress;
     _gatewayAddress = gatewayAddress;
@@ -139,6 +139,7 @@ void MyTCPconnection::requestAction( connectionAction_type action ) { // only on
         _TCPconnTimeoutEnabled = (TCPtimeout != 0);
     }
 
+    //// TCP time out: doet niets indien action_4_TCPdisable ???
     _TCPenabled = _TCPenabled || (action == action_2_TCPkeepAlive) || (action == action_3_TCPdoNotKeepAlive);
     _TCPenabled = _TCPenabled && (!(action == action_4_TCPdisable));
 }

@@ -1,31 +1,16 @@
 #include "myParser.h"
-#include "myComm.h"
 
 // objects defined in main program
-extern MyTCPconnection myTCPconnection;
-extern Stream* pTerminal;
+extern Stream* pTerminal;//// via constructor
 
 // -------------------
 // *   constructor   *
 // -------------------
 
 Calculator::Calculator() {
-    _callbackFcn = nullptr;                 // call back function for heartbeat
-};
-
-
-// ----------------------------
-// *   calculator main loop   *
-// ----------------------------
-
-void Calculator::setHeartbeatCallback( void (*func)() ) { _callbackFcn = func; }
-
-
-// ----------------------------
-// *   calculator main loop   *
-// ----------------------------
-
-bool Calculator::run() {
+    pTerminal->println( "[calc] Starting calculator..." );
+    _callbackFcn = nullptr;
+    _pmyParser = new MyParser(this);
 
     // init 'machine' (not a complete reset, because this clears heap objects for this calculator object, and there are none)
     _varNameCount = 0;
@@ -46,23 +31,49 @@ bool Calculator::run() {
     *_programStorage = '\0';                                    //  current end of program 
     *_programStart = '\0';                                      //  current end of program (immediate mode)
 
-    char c;
-    Serial.println( "+++++ starting calculator +++++" );
-    pTerminal->println( "Ready >" );                  // end of parsing
+    pTerminal->println( "[calc] Ready>" );                  // end of parsing
+};
 
+
+// ---------------------
+// *   deconstructor   *
+// ---------------------
+
+Calculator::~Calculator() {
+    pTerminal->println( "[calc] Quitting calculator... " );
+    delete _pmyParser;
+    _callbackFcn = nullptr;
+    pTerminal->println( "[calc] bye" );
+};
+
+
+// ----------------------------
+// *   calculator main loop   *
+// ----------------------------
+
+void Calculator::setCalcMainLoopCallback( void (*func)() ) {
+    // initialize callback function (e.g. to maintain a TCP connection, to implement a heartbeat, ...)
+    _callbackFcn = func;
+}
+
+
+// ----------------------------
+// *   calculator main loop   *
+// ----------------------------
+
+bool Calculator::run() {
+    char c;
     do {
-        myTCPconnection.maintainConnection();                           // important to execute regularly; place at beginning of loop()
         if ( _callbackFcn != nullptr ) { _callbackFcn(); }
 
         bool found = (pTerminal->available() > 0);
         if ( pTerminal->available() > 0 ) {     // if terminal character available for reading
             c = pTerminal->read();
-            bool quitNow = calculator.processCharacter( c );        // process one character
+            bool quitNow = processCharacter( c );        // process one character
             if ( quitNow ) { break; }               // exit processing characters
         }
     } while ( true );
 
-    Serial.println( "+++++ quitting calculator" );
     return true;
 }
 
@@ -120,12 +131,12 @@ bool Calculator::processCharacter( char c ) {
         withinString = false; withinStringEscSequence = false;
         withinComment = false;
 
-        pTerminal->println( _programMode ? "Waiting for program..." : "Ready >" );
+        pTerminal->println( _programMode ? "[calc] Waiting for program..." : "[calc] Ready>" );
         return false;
     }
     else if ( isParserReset ) {  // temporary
         _programMode = false;
-        myParser.resetMachine();
+        _pmyParser->resetMachine();
         instructionsParsed = false;
 
         _instructionCharCount = 0;
@@ -210,13 +221,13 @@ bool Calculator::processCharacter( char c ) {
         _instruction [_instructionCharCount] = '\0';                            // add string terminator
 
         if ( requestMachineReset ) {
-            myParser.resetMachine();                                // prepare for parsing next program( stay in current mode )
+            _pmyParser->resetMachine();                                // prepare for parsing next program( stay in current mode )
             requestMachineReset = false;
             Serial.println( "(machine reset bij start parsen)" );
         }
 
         char* pInstruction = _instruction;                                                 // because passed by reference 
-        result = myParser.parseInstruction( pInstruction );                                 // parse one instruction (ending with ';' character, if found)
+        result = _pmyParser->parseInstruction( pInstruction );                                 // parse one instruction (ending with ';' character, if found)
         pErrorPos = pInstruction;                                                      // in case of error
         if ( result != MyParser::result_tokenFound ) { _flushAllUntilEOF = true; }
         _instructionCharCount = 0;
@@ -233,12 +244,12 @@ bool Calculator::processCharacter( char c ) {
             int funcNotDefIndex;
             if ( result == MyParser::result_tokenFound ) {
                 // checks at the end of parsing: any undefined functions (program mode only) ?  any open blocks ?
-                if ( calculator._programMode && (!myParser.allExternalFunctionsDefined( funcNotDefIndex )) ) { result = MyParser::result_undefinedFunction; }
-                if ( myParser._blockLevel > 0 ) { ; result = MyParser::result_noBlockEnd; }
+                if ( _programMode && (!_pmyParser->allExternalFunctionsDefined( funcNotDefIndex )) ) { result = MyParser::result_undefinedFunction; }
+                if ( _pmyParser->_blockLevel > 0 ) { ; result = MyParser::result_noBlockEnd; }
             }
 
-            myParser.prettyPrintProgram();                    // append pretty printed instruction to string
-            myParser.printParsingResult( result, funcNotDefIndex, _instruction, _lineCount, pErrorPos );
+            _pmyParser->prettyPrintProgram();                    // append pretty printed instruction to string
+            _pmyParser->printParsingResult( result, funcNotDefIndex, _instruction, _lineCount, pErrorPos );
         }
 
         bool wasReset = false;      // init
@@ -249,11 +260,11 @@ bool Calculator::processCharacter( char c ) {
 
             // if program parsing error: reset machine, because variable storage is not consistent with program 
             if ( result != MyParser::result_tokenFound ) {
-                myParser.resetMachine();      // message not needed here
+                _pmyParser->resetMachine();      // message not needed here
                 Serial.println( "(Machine reset na parsing error)" );       // program mode parsing only !
                 wasReset = true;
             }
-            pTerminal->println( "Ready >" );                  // end of parsing
+            pTerminal->println( "[calc] Ready>" );                  // end of parsing
 
         }
         // was in immediate mode
@@ -263,17 +274,17 @@ bool Calculator::processCharacter( char c ) {
                 pTerminal->println( "------------------ (hier komt evaluatie) --------------------------" );
             }
             // delete alphanumeric constants because they are on the heap. Identifiers must stay avaialble
-            myParser.deleteAllAlphanumStrValues( calculator._programStorage + calculator.PROG_MEM_SIZE );  // always
+            _pmyParser->deleteAllAlphanumStrValues( _programStorage + PROG_MEM_SIZE );  // always
             *_programStorage = '\0';                                    //  current end of program 
             *_programStart = '\0';                                      //  current end of program (immediate mode)
-            pTerminal->println( "Ready >" );                  // end of parsing
+            pTerminal->println( "[calc] Ready>" );                  // end of parsing
         }
 
 
         if ( !wasReset ) {
-            myParser.myStack.deleteList();                      // safety
-            myParser._blockLevel = 0;
-            myParser._extFunctionBlockOpen = false;
+            _pmyParser->myStack.deleteList();                      // safety
+            _pmyParser->_blockLevel = 0;
+            _pmyParser->_extFunctionBlockOpen = false;
 
             _programStart = _programStorage + PROG_MEM_SIZE;        // already set immediate mode 
             _programSize = _programSize + IMM_MEM_SIZE;
@@ -293,5 +304,3 @@ bool Calculator::processCharacter( char c ) {
 
     return false;  // and wait for next character
 }
-
-Calculator calculator;

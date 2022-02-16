@@ -483,6 +483,7 @@ private:
     tokenType_type _lastTokenType_hold = tok_no_token;
     tokenType_type _previousTokenType = tok_no_token;
 
+    Calculator* _pcalculator;
 
 public:
     const char* _pCmdAllowedParTypes;
@@ -520,7 +521,8 @@ private:
 
 public:
 
-    MyParser();                                                 // constructor
+    MyParser( Calculator* const pcalculator );                                                 // constructor
+    ~MyParser();                                                 // constructor
     void resetMachine();
     void deleteAllAlphanumStrValues( char* pToken );
     parseTokenResult_type parseSource( char* const inputLine, char*& pErrorPos );
@@ -629,6 +631,9 @@ public:
     char* _programStart;
     int  _programSize;
 
+
+    MyParser* _pmyParser;
+
     // variable name storage                                         
     char* varNames [MAX_VARNAMES];                                  // store distinct variable names
     char varValueIndex [MAX_VARNAMES] { 0 };                        // temporarily maintains index to variable storage during function parsing
@@ -654,15 +659,13 @@ public:
     // ------------------------------------
 
     Calculator();               // constructor
+    ~Calculator();               // constructor
     bool run();
     bool processCharacter( char c );
     void (*_callbackFcn)();                                         // pointer to callback function for heartbeat
-    void setHeartbeatCallback( void (*func)() );                   // set callback function for connection state change
+    void setCalcMainLoopCallback( void (*func)() );                   // set callback function for connection state change
 
 };
-
-extern Calculator calculator;
-extern MyParser myParser;
 
 #endif
 
