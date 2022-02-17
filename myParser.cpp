@@ -1,8 +1,6 @@
 #include "myParser.h"
 
-#define printCreateDeleteHeapObjects 1
-
-extern Stream* pTerminal;//// via constructor
+#define printCreateDeleteHeapObjects 0
 
 
 /***********************************************************
@@ -206,7 +204,6 @@ MyParser::MyParser(Calculator* const pcalculator) : _pcalculator( pcalculator ) 
 
     _blockLevel = 0;
     _extFunctionBlockOpen = false;
-
 }
 
 
@@ -2121,7 +2118,7 @@ void MyParser::prettyPrintProgram() {
 
         // append pretty printed token to character string (if still place left)
         if ( strlen( s ) <= maxCharsPretty ) { strcat( prettyToken, s ); }
-        if ( strlen( prettyToken ) > 0 ) { Serial.println( prettyToken ); }
+        ////if ( strlen( prettyToken ) > 0 ) { Serial.println( prettyToken ); }
         int tokenLength = (tokenType >= tok_isOperator) ? 1 : (*prgmCnt.pToken >> 4) & 0x0F;
         prgmCnt.pToken += tokenLength;
         tokenType = *prgmCnt.pToken & 0x0F;
@@ -2148,10 +2145,10 @@ void MyParser::printParsingResult( parseTokenResult_type result, int funcNotDefI
         memset( point, ' ', pErrorPos - pInstruction );
         point [pErrorPos - pInstruction] = '^';
         point [pErrorPos - pInstruction + 1] = '\0';
-        pTerminal->println( pInstruction );
-        pTerminal->println( point );
+        _pcalculator->_pTerminal->println( pInstruction );
+        _pcalculator->_pTerminal->println( point );
         if ( _pcalculator->_programMode ) { sprintf( parsingInfo, "Error %d: statement ending at line %d", result, lineCount ); }
         else { sprintf( parsingInfo, "Error %d", result ); }
     }
-    if ( strlen( parsingInfo ) > 0 ) { pTerminal->println( parsingInfo ); }
+    if ( strlen( parsingInfo ) > 0 ) { _pcalculator->_pTerminal->println( parsingInfo ); }
 };

@@ -4,9 +4,11 @@
     Version:    v1.00 - 12/10/2021
     Author:     Herwig Taveirne
 
-    Purpose: test connection and message transmission via WiFi between an Arduino nano 33 IoT board and a TCP IP terminal
-    The nano 33 IoT board acts as TCP server, the terminal as TCP client
+    Purpose: demonstrate the Pigeon interpreter application
+             running on a nano 33 IoT board running as TCP server
 
+    Both the Pigeon interpreter and the TCP server software are available as libraries
+    See GitHub for more information and documentation ************
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -23,11 +25,14 @@
 ***************************************************************************************/
 
 
-#include "myParser.h"
-#include <avr/dtostrf.h>
-#include <stdlib.h>
-#include "myComm.h"
+// includes
+// --------
+
+#include <avr/dtostrf.h>        //// nodig ?
+#include <stdlib.h>             //// nodig ?
 #include "secrets.h"
+#include "myParser.h"
+#include "myComm.h"
 
 
 // global constants, variables and objects
@@ -35,11 +40,14 @@
 
 constexpr pin_size_t HEARTBEAT_PIN { 9 };                                               // indicator leds
 constexpr pin_size_t TCP_CONNECTED_PIN { 10 };
+constexpr char SSID [] = SERVER_SSID, PASS [] = SERVER_PASS;                            // WiFi SSID and password                           
+constexpr char menu [] = "Please select: 'r' for remote', 'l' for local, 'i' for interpreter\r\n               'v' for verbose TCP, 's' for silent TCP";
 
-bool isRemoteMode { false };                                                            // currently in local (Serial) or remote (TCP) mode ? 
+bool isRemoteMode { false };                                                            // init: currently in local mode (Serial) 
+bool withinApplication { false };
+
 Stream* pTerminal = (Stream*) &Serial;                                                  // init pointer to Serial or TCP terminal
 Calculator* pcalculator { nullptr };                                                    // pointer to Calculator object
-const char SSID [] = SERVER_SSID, PASS [] = SERVER_PASS;                                // WiFi SSID and password                           
 // connect as TCP server: create class object myTCPconnection
 MyTCPconnection myTCPconnection( SSID, PASS, serverAddress, gatewayAddress, subnetMask, DNSaddress, serverPort );
 
@@ -47,9 +55,8 @@ MyTCPconnection myTCPconnection( SSID, PASS, serverAddress, gatewayAddress, subn
 // forward declarations
 // --------------------
 
-bool readChar( Stream* pTerminal, char& c );
 void switchConsole();
-void maintainTCPconn_heartbeat();
+void housekeeping( bool& requestQuit );
 void onConnStateChange( connectionState_type  connectionState );
 void heartbeat();
 
@@ -76,13 +83,11 @@ void setup() {
 
     // set client connection timeout (long if in remote mode (using TCP connection), short if currently using Serial)
     myTCPconnection.requestAction( isRemoteMode ? action_2_TCPkeepAlive : action_4_TCPdisable );
-    myTCPconnection.setVerbose( true );                                                 // enable debug messages from within myTCPconnection
+    myTCPconnection.setVerbose( false );                                                // disable debug messages from within myTCPconnection
 
 
     // set callback function for WiFi and TCP connection state changes
     // a callback function allows to perform specific actions when specific events happen, without a need to modify code in calling (library) classes
-    // ----------------------------------------------------------------------------------------------------------------------------------------------
-
     myTCPconnection.setConnCallback( (&onConnStateChange) );
 
 
@@ -91,7 +96,7 @@ void setup() {
     dtostrf( 1.0, 4, 1, s );   // not used, but needed to circumvent a bug in sprintf function with %F, %E, %G specifiers
 
     // print sample / simple main menu for the user
-    Serial.println( "\r\nPlease select 'i' for interpreter, 'z' for a message" );
+    pTerminal->println( menu );
 }
 
 
@@ -99,66 +104,108 @@ void setup() {
 // *   Arduino loop() routine   *
 // ------------------------------
 
-
 void loop() {
-    myTCPconnection.maintainConnection();                           // important to execute regularly; place at beginning of loop()
-    heartbeat();                                                    // blink a led to show program is running 
+    myTCPconnection.maintainConnection();                                               // important to execute regularly; place at beginning of loop()
+    heartbeat();                                                                        // blink a led to show program is running 
 
-
+    // loop only once, to alow breaks
     do {
+
+        // 1. read character (if available) from Serial, and if none available, read a character (if available) from TCP client
+        //    this helps avoiding input buffer overruns AND it provides a mechanism to gain back local control if TCP connection is lost
+        //    while console is remote terminal (TCP client), setting console back to local terminal (Serial)
+        //    characters from inactive input channel are discarded, with one exception (mechanism to gain back local control)
+        // -----------------------------------------------------------------------------------------------------------------------------
+
         char c;
 
-        // read character from Serial, if a character is available (also if in remote mode)
-        if ( readChar( &Serial, c ) ) {
-            bool isTerminalCtrl = (c == 0x01);                      // local input only: control character 0x01 is used to toggle between local and remote mode      
-            if ( isTerminalCtrl ) { switchConsole();  break; }  // swith between local and remote mode ?
-            if ( isRemoteMode ) { break; }                         // in remote mode (TCP), local input (from Serial) is dicarded (exit do)
+        // read character from Serial, if a character is available (also if console is currently remote terminal (TCP client))
+        if ( Serial.available() > 0 ) {
+            c = Serial.read();
+
+            // mechanism to gain back local control, e.g. if remote connection (TCP) lost 
+            bool forceLocal = (c == 0x01);                                              // character from Serial read is 0x01 ?       
+            if ( forceLocal ) {
+                if ( isRemoteMode ) { switchConsole(); }                                // if console is currently remote terminal (TCP client), set console to local
+                break;                                                                  // discard this character
+            }
+            if ( isRemoteMode ) { break; }                                              // if console is currently remote terminal (TCP client), discard character from Serial 
         }
 
-        // read character from TCP client, if a character is available (even if server is in local mode, to avoid buffer overruns)
-        else if ( readChar( myTCPconnection.getClient(), c ) ) {
-            if ( !isRemoteMode ) { break; }                            // in local mode (Serial), remote input (from TCP client) is dicarded (exit do) 
+        // no character from Serial: read character from TCP client, if a character is available (also if console is currently local terminal (Serial))
+        else if ( myTCPconnection.getClient()->available() > 0 ) {
+            c = myTCPconnection.getClient()->read();
+            Serial.print("TCP char: "); Serial.println(c, HEX);
+            if ( !isRemoteMode ) { break; }                                             // if console is currently local terminal (Serial), discard character from TCP client
         }
 
-        // no character read: no character to process (exit do)
+        // no character read: no character to process
         else { break; }
 
-        if ( c < ' ' ) { break; }                                      // remove control characters
+        if ( c < ' ' ) { break; }                                                       // remove control characters
 
-        // sample menu options
+
+        // 2. Perform a action according to selected option (menu is displayed)
+        // --------------------------------------------------------------------
+
         switch ( tolower( c ) ) {
+
+        case 'v':
+            myTCPconnection.setVerbose( true );
+            pTerminal->println( "TCP server: verbose" );                                // set TCP server to verbose
+            break;
+
+        case 's':
+            myTCPconnection.setVerbose( false ); break;                                 // set TCP server to silent
+            pTerminal->println( "TCP server: silent" );
+
+        case 'r':
+            if ( !isRemoteMode ) { switchConsole(); }                                   // if console is currently local terminal, switch to remote
+            break;
+
+        case 'l':
+            if ( isRemoteMode ) { switchConsole(); }                                    // if console is currently remote terminal, switch to local
+            break;
+
         case 'i':
-            pcalculator = new  Calculator;
-            pcalculator->setCalcMainLoopCallback( (&maintainTCPconn_heartbeat) );
-            pcalculator->run();
-            delete pcalculator;
-            break;                                // start interpreter
-        case 'z': pTerminal->println( "This is the last letter of the English alphabet" ); break;
-        default: pTerminal->println( "This is not a valid choice" );
+            // start interpreter: control will not return to here until the user quits, because it has its own 'main loop'
+            withinApplication = true;                                                   // flag that control will be transferred to an 'application'
+            pcalculator = new  Calculator( pTerminal );                                 // create an interpreter object on the heap
+            // to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter,
+            // which can be installed as an independent library without any knowledge about which procedures to call, a callback function is used.
+            // This callback function will be called regularly, e.g. every time the interpreter reads a character (same as here)
+            pcalculator->setCalcMainLoopCallback( (&housekeeping) );                    // set callback function to housekeeping routine in this .ino file
+            pcalculator->run();                                                         // start interpreter
+            delete pcalculator;                                                         // cleanup and delete calculator object itself
+            withinApplication = false;
+            break;
+
+        default:
+            pTerminal->println( "This is not a valid choice" );
         }
-        pTerminal->println( "\r\nPlease select 'i' for interpreter, 'z' for a message" );
+        pTerminal->println( menu );                                                     // show menu again
     } while ( false );
-}
+}                                                                                       // loop()
 
 
-//
+
+// ---------------------------------------------------------------------------------
+// *   Switch console to remote terminal (TCP client) or local terminal (Serial)   *
+// ---------------------------------------------------------------------------------
+
 void switchConsole() {
-    isRemoteMode = !isRemoteMode;                       // 0x01 ? swith between local and remote mode 
+    isRemoteMode = !isRemoteMode;                        
     // set client connection timeout (long if in remote mode (using TCP connection), short if currently using Serial)
     myTCPconnection.requestAction( isRemoteMode ? action_2_TCPkeepAlive : action_4_TCPdisable );
 
     // set pointer to Serial or TCP client (both belong to Stream class)
     pTerminal = (isRemoteMode) ? myTCPconnection.getClient() : (Stream*) &Serial;
-    char s [70]; sprintf( s, "\nConsole is now %s ", isRemoteMode ? "remote terminal" : "local" );
+    char s [40]; sprintf( s, "\nConsole is now %s ", isRemoteMode ? "remote terminal" : "local" );
     Serial.println( s );
-}
+    if ( isRemoteMode ) {
+        Serial.println( "On the remote terminal, press ENTER (a couple of times) to connect" );
+    }
 
-
-// read a character from Stream (TCPclient or Serial)
-bool readChar( Stream* pTerminal, char& c ) {
-    bool found = (pTerminal->available() > 0);
-    if ( found ) { c = pTerminal->read(); }    // while terminal characters available for reading
-    return found;
 }
 
 
@@ -169,17 +216,42 @@ bool readChar( Stream* pTerminal, char& c ) {
 void onConnStateChange( connectionState_type  connectionState ) {
     static bool TCPconnected { false };
 
+    bool lastConn = TCPconnected;
+
     TCPconnected = (connectionState == conn_2_TCPconnected);
     digitalWrite( TCP_CONNECTED_PIN, TCPconnected );                 // flag 'client connected'
+    if ( TCPconnected ) {
+        pTerminal->println( "Connected" );
+        if ( !withinApplication ) { pTerminal->println( menu ); }
+        Serial.println( "Remote terminal is now connected" );
+    }
+    else if ( lastConn ) {          // connection changed to 'not connected'
+        if ( isRemoteMode ) {         // but still in remote mode: so probably a timeout (or a wifi issue, ...)
+            Serial.println( "Console connection lost or timed out" );
+            Serial.println( "On the remote terminal, press ENTER to reconnect" );
+        }
+    }
 }
 
 
 // *** callback function: for general use, called from within myCalculator main loop  
 //     every time an input character is processed or an instruction is executed
 
-void maintainTCPconn_heartbeat() {
+void housekeeping( bool& requestQuit ) {
+    // application is running
     myTCPconnection.maintainConnection();                           // important to execute regularly; place at beginning of loop()
     heartbeat();
+    requestQuit = false; // init  
+    // if in remote mode, keep reading characters from Serial while in an application, (1) to avoid overflow
+    // and (2) to be able to send 'request quit' command to running application and gain back local control
+    if ( isRemoteMode ) {
+        char c;
+        if ( Serial.available() > 0 ) {
+            c = Serial.read();
+            requestQuit = (c == 0x01);
+            if ( requestQuit ) { switchConsole(); }        // request quit
+        }
+    }
 }
 
 
@@ -196,5 +268,4 @@ void heartbeat() {
         digitalWrite( HEARTBEAT_PIN, toggleHeartbeat );
         lastHeartbeat = currentTime;
     }
-
 }

@@ -626,6 +626,8 @@ public:
     char* _programCounter { nullptr };                                // pointer to token memory address (not token step n°)
     uint16_t _paramIsArrayPattern { 0 };
 
+    Stream* _pTerminal{nullptr};
+
     // program storage
     char _programStorage [PROG_MEM_SIZE + IMM_MEM_SIZE];
     char* _programStart;
@@ -658,12 +660,12 @@ public:
     // *   methods (doc: see .cpp file)   *
     // ------------------------------------
 
-    Calculator();               // constructor
+    Calculator( Stream* const Pterminal );               // constructor
     ~Calculator();               // constructor
     bool run();
     bool processCharacter( char c );
-    void (*_callbackFcn)();                                         // pointer to callback function for heartbeat
-    void setCalcMainLoopCallback( void (*func)() );                   // set callback function for connection state change
+    void (*_callbackFcn)(bool &requestQuit);                                         // pointer to callback function for heartbeat
+    void setCalcMainLoopCallback( void (*func)(bool &requistQuit) );                   // set callback function for connection state change
 
 };
 

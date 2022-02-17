@@ -1,14 +1,11 @@
 #include "myParser.h"
 
-// objects defined in main program
-extern Stream* pTerminal;//// via constructor
-
 // -------------------
 // *   constructor   *
 // -------------------
 
-Calculator::Calculator() {
-    pTerminal->println( "[calc] Starting calculator..." );
+Calculator::Calculator(Stream* const pTerminal): _pTerminal(pTerminal) {
+    _pTerminal->println( "[calc] Starting calculator..." );
     _callbackFcn = nullptr;
     _pmyParser = new MyParser(this);
 
@@ -31,7 +28,7 @@ Calculator::Calculator() {
     *_programStorage = '\0';                                    //  current end of program 
     *_programStart = '\0';                                      //  current end of program (immediate mode)
 
-    pTerminal->println( "[calc] Ready>" );                  // end of parsing
+    _pTerminal->println( "[calc] Ready>" );                  // end of parsing
 };
 
 
@@ -40,10 +37,10 @@ Calculator::Calculator() {
 // ---------------------
 
 Calculator::~Calculator() {
-    pTerminal->println( "[calc] Quitting calculator... " );
+    _pTerminal->println( "[calc] Quitting calculator... " );
     delete _pmyParser;
     _callbackFcn = nullptr;
-    pTerminal->println( "[calc] bye" );
+    _pTerminal->println( "[calc] bye" );
 };
 
 
@@ -51,7 +48,7 @@ Calculator::~Calculator() {
 // *   calculator main loop   *
 // ----------------------------
 
-void Calculator::setCalcMainLoopCallback( void (*func)() ) {
+void Calculator::setCalcMainLoopCallback( void (*func)(bool &requestQuit) ) {
     // initialize callback function (e.g. to maintain a TCP connection, to implement a heartbeat, ...)
     _callbackFcn = func;
 }
@@ -62,14 +59,14 @@ void Calculator::setCalcMainLoopCallback( void (*func)() ) {
 // ----------------------------
 
 bool Calculator::run() {
+    bool quitNow{false};
     char c;
     do {
-        if ( _callbackFcn != nullptr ) { _callbackFcn(); }
-
-        bool found = (pTerminal->available() > 0);
-        if ( pTerminal->available() > 0 ) {     // if terminal character available for reading
-            c = pTerminal->read();
-            bool quitNow = processCharacter( c );        // process one character
+        if ( _callbackFcn != nullptr ) { _callbackFcn(quitNow); }
+        if(quitNow) {break; }
+        if ( _pTerminal->available() > 0 ) {     // if terminal character available for reading
+            c = _pTerminal->read();
+            quitNow = processCharacter( c );        // process one character
             if ( quitNow ) { break; }               // exit processing characters
         }
     } while ( true );
@@ -131,7 +128,7 @@ bool Calculator::processCharacter( char c ) {
         withinString = false; withinStringEscSequence = false;
         withinComment = false;
 
-        pTerminal->println( _programMode ? "[calc] Waiting for program..." : "[calc] Ready>" );
+        _pTerminal->println( _programMode ? "[calc] Waiting for program..." : "[calc] Ready>" );
         return false;
     }
     else if ( isParserReset ) {  // temporary
@@ -264,20 +261,20 @@ bool Calculator::processCharacter( char c ) {
                 Serial.println( "(Machine reset na parsing error)" );       // program mode parsing only !
                 wasReset = true;
             }
-            pTerminal->println( "[calc] Ready>" );                  // end of parsing
+            _pTerminal->println( "[calc] Ready>" );                  // end of parsing
 
         }
         // was in immediate mode
         else if ( instructionsParsed ) {
 
             if ( result == MyParser::result_tokenFound ) {
-                pTerminal->println( "------------------ (hier komt evaluatie) --------------------------" );
+                _pTerminal->println( "(hier komt resultaat)" );
             }
             // delete alphanumeric constants because they are on the heap. Identifiers must stay avaialble
             _pmyParser->deleteAllAlphanumStrValues( _programStorage + PROG_MEM_SIZE );  // always
             *_programStorage = '\0';                                    //  current end of program 
             *_programStart = '\0';                                      //  current end of program (immediate mode)
-            pTerminal->println( "[calc] Ready>" );                  // end of parsing
+            _pTerminal->println( "[calc] Ready>" );                  // end of parsing
         }
 
 

@@ -72,7 +72,7 @@ connectionState_type MyTCPconnection::getConnectionState() { return _connectionS
 void MyTCPconnection::changeConnectionState( connectionState_type newState ) {  // *** change connection state and report to serial monitor
     if ( _verbose ) { printConnectionStateInfo( newState ); }            // before _connectionState is changed
     _connectionState = newState;
-    if ( _callbackFcn != nullptr ) {    ; _callbackFcn(_connectionState); }
+    if ( _callbackFcn != nullptr ) { ; _callbackFcn( _connectionState ); }
 }
 
 
@@ -159,7 +159,7 @@ void MyTCPconnection::maintainWiFiConnection() {
     case conn_0_wifiNotConnected:
         // state: not yet connected to wifi (or connection was lost) OR user request to reset WiFi => (re-)connect to wifi ***
         if ( _lastWifiConnectAttempt + _wifiConnectDelay < millis() ) {     // time out before next WiFi connection attempt reached ?
-            printConnectionStateInfo( conn_0_wifiNotConnected );
+            if ( _verbose ) { printConnectionStateInfo( conn_0_wifiNotConnected ); }
             if ( !_isClient ) {                                             // if server side (remember: static server IP !)
                 WiFi.config( _serverAddress, _DNSaddress,
                     _gatewayAddress, _subnetMask );
@@ -170,7 +170,7 @@ void MyTCPconnection::maintainWiFiConnection() {
                 changeConnectionState( conn_1_wifiConnected );
             }
             else {                                                              // wifi connection timeout: no success
-                printConnectionStateInfo( conn_11_wifiNoSuccessConnecting ); // but real state does not change (only used for printing)
+                if ( _verbose ) { printConnectionStateInfo( conn_11_wifiNoSuccessConnecting ); } // but real state does not change (only used for printing)
             }
             _lastWifiConnectAttempt = millis();                             // remember time of last TCP connection attempt
             _resetWiFi;                                                    // could have been set while not connected to WiFi
