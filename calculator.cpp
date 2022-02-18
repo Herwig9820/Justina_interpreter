@@ -4,10 +4,10 @@
 // *   constructor   *
 // -------------------
 
-Calculator::Calculator(Stream* const pTerminal): _pTerminal(pTerminal) {
+Calculator::Calculator( Stream* const pTerminal ) : _pTerminal( pTerminal ) {
     _pTerminal->println( "[calc] Starting calculator..." );
     _callbackFcn = nullptr;
-    _pmyParser = new MyParser(this);
+    _pmyParser = new MyParser( this );
 
     // init 'machine' (not a complete reset, because this clears heap objects for this calculator object, and there are none)
     _varNameCount = 0;
@@ -48,7 +48,7 @@ Calculator::~Calculator() {
 // *   calculator main loop   *
 // ----------------------------
 
-void Calculator::setCalcMainLoopCallback( void (*func)(bool &requestQuit) ) {
+void Calculator::setCalcMainLoopCallback( void (*func)(bool& requestQuit) ) {
     // initialize callback function (e.g. to maintain a TCP connection, to implement a heartbeat, ...)
     _callbackFcn = func;
 }
@@ -59,11 +59,14 @@ void Calculator::setCalcMainLoopCallback( void (*func)(bool &requestQuit) ) {
 // ----------------------------
 
 bool Calculator::run() {
-    bool quitNow{false};
+    bool quitNow { false };
     char c;
     do {
-        if ( _callbackFcn != nullptr ) { _callbackFcn(quitNow); }
-        if(quitNow) {break; }
+        if ( _callbackFcn != nullptr ) { _callbackFcn( quitNow ); }
+        if ( quitNow ) {
+            _pTerminal->println( "[calc] Abort request received..." );
+            break;
+        }
         if ( _pTerminal->available() > 0 ) {     // if terminal character available for reading
             c = _pTerminal->read();
             quitNow = processCharacter( c );        // process one character
