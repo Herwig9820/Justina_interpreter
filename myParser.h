@@ -97,7 +97,7 @@ private:
         tok_isExternFunction,
         tok_isNumConst,
         tok_isVariable,
-        tok_isProgramName,
+        tok_isGenericName,
         // all terminal tokens: at the end of the list ! (occupy only one character in program, combining token type and index)
         tok_isOperator,
         tok_isLeftParenthesis,
@@ -530,6 +530,7 @@ public:
     void deleteParsedData();
     bool allExternalFunctionsDefined( int& index );
     void prettyPrintProgram();
+    void old_prettyPrintProgram();////
     void printParsingResult( parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* const pErrorPos );
 };
 

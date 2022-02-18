@@ -198,7 +198,7 @@ const char* const MyParser::singleCharTokens = "(),;:+-*/^<>=";                 
 // *   constructor   *
 // -------------------
 
-MyParser::MyParser(Calculator* const pcalculator) : _pcalculator( pcalculator ) {
+MyParser::MyParser( Calculator* const pcalculator ) : _pcalculator( pcalculator ) {
     _resWordNo = (sizeof( _resWords )) / sizeof( _resWords [0] );
     _functionNo = (sizeof( _functions )) / sizeof( _functions [0] );
 
@@ -247,7 +247,7 @@ void MyParser::deleteAllAlphanumStrValues( char* programStart ) {
     prgmCnt.pToken = programStart;
     uint8_t tokenType = *prgmCnt.pToken & 0x0F;
     while ( tokenType != '\0' ) {                                                                    // for all tokens in token list
-        if ( (tokenType == tok_isAlphaConst) || (tokenType == tok_isProgramName) ) {
+        if ( (tokenType == tok_isAlphaConst) || (tokenType == tok_isGenericName) ) {
 #if printCreateDeleteHeapObjects
             memcpy( &pAnum, prgmCnt.pAnumP->pAlphanumConst, sizeof( pAnum ) );                         // pointer not necessarily aligned with word size: copy memory instead
             Serial.print( "(HEAP) Deleting alphanum cst value, addr " );
@@ -424,14 +424,14 @@ MyParser::parseTokenResult_type MyParser::parseInstruction( char*& pInputStart )
 
         do {                                                                                                                // one loop only
             if ( (_pcalculator->_programCounter + sizeof( TokenIsAlphanumCst ) + 1) > (_pcalculator->_programStart + _pcalculator->_programSize) ) { result = result_progMemoryFull; break; };
-            if (  !parseAsResWord( pNext, result ) ) { break; } if ( result == result_tokenFound ) { continue; }             // check before checking for identifier  
-            if (  !parseAsNumber( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }             // check before checking for single char token
-            if (  !parseAsAlphanumConstant( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }
-            if (  !parseTerminalToken( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }
-            if (  !parseAsInternFunction( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }     // check before checking for identifier (ext. function / variable) 
-            if (  !parseAsExternFunction( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }     // check before checking for variable
-            if (  !parseAsVariable( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }
-            if (  !parseAsIdentifierName( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }     // at the end
+            if ( !parseAsResWord( pNext, result ) ) { break; } if ( result == result_tokenFound ) { continue; }             // check before checking for identifier  
+            if ( !parseAsNumber( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }             // check before checking for single char token
+            if ( !parseAsAlphanumConstant( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }
+            if ( !parseTerminalToken( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }
+            if ( !parseAsInternFunction( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }     // check before checking for identifier (ext. function / variable) 
+            if ( !parseAsExternFunction( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }     // check before checking for variable
+            if ( !parseAsVariable( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }
+            if ( !parseAsIdentifierName( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }     // at the end
             result = result_token_not_recognised;
         } while ( false );
 
@@ -617,7 +617,7 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
             expressionStartsWithVariable = true;
             expressionStartsWithArrayVar = true;
         }
-        else if ( _lastTokenType == tok_isProgramName ) { expressionStartsWithGenericName = true; }
+        else if ( _lastTokenType == tok_isGenericName ) { expressionStartsWithGenericName = true; }
     }
 
     if ( expressionStartsWithVariable && isLeftParenthesis && isSecondExpressionToken ) { expressionStartsWithArrayVar = true; }
@@ -1964,12 +1964,12 @@ bool MyParser::parseAsIdentifierName( char*& pNext, parseTokenResult_type& resul
     pProgramName [pNext - pch] = '\0';                                                 // string terminating '\0'
 
     TokenIsAlphanumCst* pToken = (TokenIsAlphanumCst*) _pcalculator->_programCounter;
-    pToken->tokenType = tok_isProgramName | (sizeof( TokenIsAlphanumCst ) << 4);
+    pToken->tokenType = tok_isGenericName | (sizeof( TokenIsAlphanumCst ) << 4);
     memcpy( pToken->pAlphanumConst, &pProgramName, sizeof( pProgramName ) );            // pointer not necessarily aligned with word size: copy memory instead
     bool doNonLocalVarInit = ((_isGlobalVarCmd || _isStaticVarCmd) && (_lastTokenType == tok_isOperator));
 
     _lastTokenStep = _pcalculator->_programCounter - _pcalculator->_programStorage;
-    _lastTokenType = tok_isProgramName;
+    _lastTokenType = tok_isGenericName;
 
     _pcalculator->_programCounter += sizeof( TokenIsAlphanumCst );
     *_pcalculator->_programCounter = '\0';                                                 // indicates end of program
@@ -1981,8 +1981,103 @@ bool MyParser::parseAsIdentifierName( char*& pNext, parseTokenResult_type& resul
 // -----------------------------------------
 // *   pretty print a parsed instruction   *
 // -----------------------------------------
-
 void MyParser::prettyPrintProgram() {
+    // define these variables outside switch statement, to prevent undefined behaviour
+    const int maxCharsPretty { 100 };       //// check lengte
+    char prettyToken [maxCharsPretty] = "";
+    int identNameIndex, valueIndex;
+    char s [100] = "";      //// check op overrun
+    char qual [20] = "";
+    char pch [3] = "";
+    int len;
+    int index;
+    char* identifierName, * varStrValue;
+    bool isStringValue;
+    float f;
+    char* pAnum;
+    uint32_t funcStart = 0;
+    char tokenInfo = 0;
+    uint8_t varQualifier = 0;
+    bool isArray;
+    bool hasTokenStep;
+
+    TokPnt prgmCnt;
+    prgmCnt.pToken = _pcalculator->_programStart;
+    int tokenType = *prgmCnt.pToken & 0x0F;
+    char pTokenStepPointedTo [2];
+    uint16_t toTokenStep;
+    TokenIsResWord* pToken;
+
+    while ( tokenType != tok_no_token ) {                                                                    // for all tokens in token list
+        uint16_t tokenStep = (uint16_t) (prgmCnt.pToken - _pcalculator->_programStorage);
+        strcpy( s, "" );
+        strcpy( prettyToken, "" );
+
+        switch ( tokenType ) {
+        case tok_isReservedWord:
+            pToken = (TokenIsResWord*) prgmCnt.pToken;
+            strcpy( s, _resWords [prgmCnt.pResW->tokenIndex]._resWordName );
+            break;
+
+        case tok_isInternFunction:
+            strcpy( s, _functions [prgmCnt.pIntFnc->tokenIndex].funcName );
+            break;
+
+        case tok_isExternFunction:
+            identNameIndex = (int) prgmCnt.pExtFnc->identNameIndex;   // external function list element
+            identifierName = _pcalculator->extFunctionNames [identNameIndex];
+            strcpy( s, identifierName );
+            break;
+
+        case tok_isVariable:
+            identNameIndex = (int) (prgmCnt.pVar->identNameIndex);
+            identifierName = _pcalculator->varNames [identNameIndex];
+            strcpy( s, identifierName );
+            break;
+
+        case tok_isNumConst:
+            memcpy( &f, prgmCnt.pFloat->numConst, sizeof( f ) );                         // pointer not necessarily aligned with word size: copy memory instead
+            sprintf( s, "%.3G", f );
+            break;
+
+        case tok_isAlphaConst:
+        case tok_isGenericName:
+            memcpy( &pAnum, prgmCnt.pAnumP->pAlphanumConst, sizeof( pAnum ) );                         // pointer not necessarily aligned with word size: copy memory instead
+            sprintf( s, "%s", pAnum );
+            break;
+
+        default:
+            len = strlen( singleCharTokens );
+            index = (prgmCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F;
+            if ( index < len ) { pch [0] = singleCharTokens [index]; pch [1] = '\0'; }
+            else {
+                strcat( pch, ((index == len) ? "<=" : (index == len + 1) ? ">=" : "<>") );
+            }
+            strcpy( s, pch );
+            if ( tokenType == tok_isSemiColonSeparator ) { strcat( s, " " ); }
+            break;
+
+        }
+
+        // append pretty printed token to character string (if still place left)
+        bool isSemiColon = (tokenType == tok_isSemiColonSeparator);                             // remember 
+        int tokenLength = (tokenType >= tok_isOperator) ? 1 : (*prgmCnt.pToken >> 4) & 0x0F;        // fetch next token 
+        prgmCnt.pToken += tokenLength;
+        tokenType = *prgmCnt.pToken & 0x0F;                                                     // next token type
+
+        int len = strlen( s );
+        if ( tokenType == tok_no_token ) { len -= 2; s [len] = '\0'; }                                               // remove final semicolon and space
+        if ( len <= maxCharsPretty ) { strcat( prettyToken, s ); }
+        if ( strlen( prettyToken ) > 0 ) { _pcalculator->_pTerminal->print( prettyToken ); }
+    }
+    _pcalculator->_pTerminal->print(" -> ");
+}
+
+// -----------------------------------------
+// *   pretty print a parsed instruction   *
+// -----------------------------------------
+
+void MyParser::old_prettyPrintProgram() {
     // define these variables outside switch statement, to prevent undefined behaviour
     const int maxCharsPretty { 100 };       //// check lengte
     char prettyToken [maxCharsPretty] = "";
@@ -2025,7 +2120,7 @@ void MyParser::prettyPrintProgram() {
             break;
 
         case tok_isInternFunction:
-            sprintf( s, "(step %d) int func: %s", tokenStep, _functions [prgmCnt.pIntFnc->tokenIndex] );
+            sprintf( s, "(step %d) int func: %s", tokenStep, _functions [prgmCnt.pIntFnc->tokenIndex].funcName );
             break;
 
         case tok_isExternFunction:
@@ -2083,7 +2178,7 @@ void MyParser::prettyPrintProgram() {
             sprintf( s, "(step %d) AN cst: <%s>", tokenStep, pAnum );
             break;
 
-        case tok_isProgramName:
+        case tok_isGenericName:
             memcpy( &pAnum, prgmCnt.pAnumP->pAlphanumConst, sizeof( pAnum ) );                         // pointer not necessarily aligned with word size: copy memory instead
             sprintf( s, "(step %d) Identifier name: %s", tokenStep, pAnum );
             break;
@@ -2132,6 +2227,7 @@ void MyParser::prettyPrintProgram() {
 
 void MyParser::printParsingResult( parseTokenResult_type result, int funcNotDefIndex, char* const pInstruction, int lineCount, char* const pErrorPos ) {
     char parsingInfo [_pcalculator->_maxInstructionChars];
+    
     if ( result == result_tokenFound ) {                                                // prepare message with parsing result
         strcpy( parsingInfo, _pcalculator->_programMode ? "Parsed without errors" : "" );
     }
@@ -2150,5 +2246,6 @@ void MyParser::printParsingResult( parseTokenResult_type result, int funcNotDefI
         if ( _pcalculator->_programMode ) { sprintf( parsingInfo, "Error %d: statement ending at line %d", result, lineCount ); }
         else { sprintf( parsingInfo, "Error %d", result ); }
     }
+    
     if ( strlen( parsingInfo ) > 0 ) { _pcalculator->_pTerminal->println( parsingInfo ); }
 };

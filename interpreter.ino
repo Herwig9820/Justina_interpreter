@@ -156,7 +156,10 @@ void loop() {
             break;
 
         case 'l':
-            if ( console_isRemoteTerm ) { switchConsole(); }                            // if console is currently remote terminal, switch to local
+            if ( console_isRemoteTerm ) {                                               // if console is currently remote terminal, switch to local
+                pTerminal->println( "Disconnecting remote terminal..." );               // inform the remote user
+                switchConsole();
+            }
             break;
 
         case 'i':
@@ -247,7 +250,7 @@ void housekeeping( bool& requestQuit ) {
     heartbeat();                                                                        // blink a led to show program is running
 
     // if console is remote terminal (TCP), keep reading characters from local terminal (Serial) while in an application, to (1) avoid buffer overruns
-    // and (2) continue to provide the mechanism to gain back local control if TCP connection is lost
+    // and (2) continue to provide the mechanism to gain back local control if TCP connection seems to be lost
     // in the latter case we also need to inform the running application that it should abort ('request quit' return value)
 
     forceLocal = false;                                                                 // init  
@@ -256,7 +259,10 @@ void housekeeping( bool& requestQuit ) {
         if ( Serial.available() > 0 ) {
             c = Serial.read();
             forceLocal = (c == 0x01);                                                   // character read from Serial is 0x01 ? force switch to local console
-            if ( forceLocal ) { switchConsole(); }                                      // set console to local
+            if ( forceLocal ) {
+                pTerminal->println( "Disconnecting remote terminal..." );               // inform remote user, in case he's still there
+                switchConsole();                                                        // set console to local
+            }
         }
     }
 }

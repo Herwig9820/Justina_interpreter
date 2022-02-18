@@ -70,7 +70,7 @@ bool Calculator::run() {
         if ( _pTerminal->available() > 0 ) {     // if terminal character available for reading
             c = _pTerminal->read();
             quitNow = processCharacter( c );        // process one character
-            if ( quitNow ) { break; }               // exit processing characters
+            if ( quitNow ) { break; }               // user gave quit command
         }
     } while ( true );
 
@@ -213,6 +213,9 @@ bool Calculator::processCharacter( char c ) {
         }
     }
 
+    
+    
+    
     bool isInstructionSeparator = (!withinString) && (!withinComment) && (c == ';') && !redundantSemiColon;   // only if before end of file character 
     isInstructionSeparator = isInstructionSeparator || (withinString && (c == '\n'));  // new line sent to parser as well
     bool instructionComplete = isInstructionSeparator || (isEndOfFile && (_instructionCharCount > 0));
@@ -246,10 +249,16 @@ bool Calculator::processCharacter( char c ) {
                 // checks at the end of parsing: any undefined functions (program mode only) ?  any open blocks ?
                 if ( _programMode && (!_pmyParser->allExternalFunctionsDefined( funcNotDefIndex )) ) { result = MyParser::result_undefinedFunction; }
                 if ( _pmyParser->_blockLevel > 0 ) { ; result = MyParser::result_noBlockEnd; }
+                if ( !_programMode ) {
+                    // evaluation comes here
+                    _pmyParser->prettyPrintProgram();                    // immediate mode and result OK: pretty print input line
+                    _pTerminal->println( "(hier komt resultaat)" );      // immediate mode: print evaluation result
+                } 
             }
 
-            _pmyParser->prettyPrintProgram();                    // append pretty printed instruction to string
+            // parsing OK message (program mode only) or error message 
             _pmyParser->printParsingResult( result, funcNotDefIndex, _instruction, _lineCount, pErrorPos );
+            _pTerminal->println( "[calc] Ready>" );                  // end of parsing
         }
 
         bool wasReset = false;      // init
@@ -264,20 +273,15 @@ bool Calculator::processCharacter( char c ) {
                 Serial.println( "(Machine reset na parsing error)" );       // program mode parsing only !
                 wasReset = true;
             }
-            _pTerminal->println( "[calc] Ready>" );                  // end of parsing
-
         }
+
         // was in immediate mode
         else if ( instructionsParsed ) {
 
-            if ( result == MyParser::result_tokenFound ) {
-                _pTerminal->println( "(hier komt resultaat)" );
-            }
             // delete alphanumeric constants because they are on the heap. Identifiers must stay avaialble
             _pmyParser->deleteAllAlphanumStrValues( _programStorage + PROG_MEM_SIZE );  // always
             *_programStorage = '\0';                                    //  current end of program 
             *_programStart = '\0';                                      //  current end of program (immediate mode)
-            _pTerminal->println( "[calc] Ready>" );                  // end of parsing
         }
 
 
