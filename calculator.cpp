@@ -7,7 +7,7 @@
 Calculator::Calculator( Stream* const pTerminal ) : _pTerminal( pTerminal ) {
     _pTerminal->println( "[calc] Starting calculator..." );
     _callbackFcn = nullptr;
-    _pmyParser = new MyParser( this );
+    _pmyParser = new MyParser( this );              // pass the address of this Calculator object to the MyParser constructor
 
     // init 'machine' (not a complete reset, because this clears heap objects for this calculator object, and there are none)
     _varNameCount = 0;
@@ -38,8 +38,11 @@ Calculator::Calculator( Stream* const pTerminal ) : _pTerminal( pTerminal ) {
 
 Calculator::~Calculator() {
     _pTerminal->println( "[calc] Quitting calculator... " );
-    delete _pmyParser;
-    _callbackFcn = nullptr;
+    _programMode = false;                                   //// te checken of er dan nog iets moet gereset worden
+    if ( !_keepInMemory ) {
+        delete _pmyParser;
+        _callbackFcn = nullptr;
+    }
     _pTerminal->println( "[calc] bye" );
 };
 
@@ -74,7 +77,7 @@ bool Calculator::run() {
         }
     } while ( true );
 
-    return true;
+    return _keepInMemory;
 }
 
 // ----------------------------------
@@ -213,9 +216,9 @@ bool Calculator::processCharacter( char c ) {
         }
     }
 
-    
-    
-    
+
+
+
     bool isInstructionSeparator = (!withinString) && (!withinComment) && (c == ';') && !redundantSemiColon;   // only if before end of file character 
     isInstructionSeparator = isInstructionSeparator || (withinString && (c == '\n'));  // new line sent to parser as well
     bool instructionComplete = isInstructionSeparator || (isEndOfFile && (_instructionCharCount > 0));
@@ -253,7 +256,7 @@ bool Calculator::processCharacter( char c ) {
                     // evaluation comes here
                     _pmyParser->prettyPrintProgram();                    // immediate mode and result OK: pretty print input line
                     _pTerminal->println( "(hier komt resultaat)" );      // immediate mode: print evaluation result
-                } 
+                }
             }
 
             // parsing OK message (program mode only) or error message 

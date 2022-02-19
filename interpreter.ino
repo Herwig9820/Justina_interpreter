@@ -42,8 +42,9 @@ constexpr pin_size_t TCP_CONNECTED_PIN { 10 };
 constexpr char SSID [] = SERVER_SSID, PASS [] = SERVER_PASS;                            // WiFi SSID and password                           
 constexpr char menu [] = "Please select: 'r' for remote', 'l' for local, 'i' for interpreter\r\n               'v' for verbose TCP, 's' for silent TCP";
 
-bool console_isRemoteTerm { false };                                                    // init: currently in local mode (Serial) 
-bool withinApplication { false };
+bool console_isRemoteTerm { false };                                                    // init: console is currently local terminal (Serial) 
+bool withinApplication { false };                                                       // init: currently not within an application
+bool interpreterInMemory { false };                                                     // init: interpreter is not in memory
 
 Stream* pTerminal = (Stream*) &Serial;                                                  // init pointer to Serial or TCP terminal
 Calculator* pcalculator { nullptr };                                                    // pointer to Calculator object
@@ -123,7 +124,7 @@ void loop() {
         if ( Serial.available() > 0 ) {
             char localChar = Serial.read();
             // mechanism to gain back local control, e.g. if remote connection (TCP) lost 
-            bool forceLocal = (c == 0x01);                                              // character read from Serial is 0x01 ? force switch to local console      
+            bool forceLocal = (localChar == 0x01);                                      // character read from Serial is 0x01 ? force switch to local console      
             if ( forceLocal && console_isRemoteTerm ) { switchConsole(); }              // if console is currently remote terminal (TCP client), set console to local
             if ( !console_isRemoteTerm ) { found = true; c = localChar; }               // if console is currently local terminal (Serial), accept character 
         }
@@ -165,13 +166,15 @@ void loop() {
         case 'i':
             // start interpreter: control will not return to here until the user quits, because it has its own 'main loop'
             withinApplication = true;                                                   // flag that control will be transferred to an 'application'
-            pcalculator = new  Calculator( pTerminal );                                 // create an interpreter object on the heap
+            if ( !interpreterInMemory ) { pcalculator = new  Calculator( pTerminal ); } // if interpreter not running: create an interpreter object on the heap
             // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
             // this callback function will be called regularly, e.g. every time the interpreter reads a character
             pcalculator->setCalcMainLoopCallback( (&housekeeping) );                    // set callback function to housekeeping routine in this .ino file
-            pcalculator->run();                                                         // start interpreter
-            delete pcalculator;                                                         // cleanup and delete calculator object itself
-            pcalculator = nullptr;                                                      // only to indicate memory is released
+            interpreterInMemory = pcalculator->run();                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
+            if ( !interpreterInMemory ) {                                               // interpreter not running anymore ?
+                delete pcalculator;                                                     // cleanup and delete calculator object itself
+                pcalculator = nullptr;                                                  // only to indicate memory is released
+            }
             withinApplication = false;                                                  // return from application
             break;
 

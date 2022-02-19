@@ -2016,7 +2016,7 @@ void MyParser::prettyPrintProgram() {
         switch ( tokenType ) {
         case tok_isReservedWord:
             pToken = (TokenIsResWord*) prgmCnt.pToken;
-            strcpy( s, _resWords [prgmCnt.pResW->tokenIndex]._resWordName );
+            sprintf( s, "%s ", _resWords [prgmCnt.pResW->tokenIndex]._resWordName);
             break;
 
         case tok_isInternFunction:

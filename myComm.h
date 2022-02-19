@@ -55,6 +55,7 @@ private:
     const char* _SSID, * _PASS;
     IPAddress _serverAddress, _gatewayAddress, _subnetMask, _DNSaddress; //// const
 
+    //// keep alive delay: default aanpassen via function call
     static const unsigned long _wifiConnectDelay { 500 };                   // minimum delay between two attempts to connect to wifi (milliseconds) //// static weg ???
     static const unsigned long _TCPconnectDelay { 500 };                  // minimum delay between stopping and connecting client
     static const unsigned long _isServer_stopDelay { 1000 };              // server: delay before stopping connection to client (and continue listening foe new client)
