@@ -40,7 +40,7 @@
 constexpr pin_size_t HEARTBEAT_PIN { 9 };                                               // indicator leds
 constexpr pin_size_t TCP_CONNECTED_PIN { 10 };
 constexpr char SSID [] = SERVER_SSID, PASS [] = SERVER_PASS;                            // WiFi SSID and password                           
-constexpr char menu [] = "Please select: 'r' for remote', 'l' for local, 'i' for interpreter\r\n               'v' for verbose TCP, 's' for silent TCP";
+constexpr char menu [] = "Please select:\r\n  'r' for remote terminal', 'l' for local\r\n  'v' for verbose TCP, 's' for silent TCP\r\n  'i' for interpreter";
 
 bool console_isRemoteTerm { false };                                                    // init: console is currently local terminal (Serial) 
 bool withinApplication { false };                                                       // init: currently not within an application
@@ -198,7 +198,7 @@ void switchConsole() {
 
     // set pointer to Serial or TCP client (both belong to Stream class)
     pTerminal = (console_isRemoteTerm) ? myTCPconnection.getClient() : (Stream*) &Serial;
-    char s [40]; sprintf( s, "\nConsole is now %s ", console_isRemoteTerm ? "remote terminal" : "local" );
+    char s [40]; sprintf( s, "\r\nConsole is now %s ", console_isRemoteTerm ? "remote terminal" : "local" );
     Serial.println( s );
     if ( console_isRemoteTerm ) {
         Serial.println( "On the remote terminal, press ENTER (a couple of times) to connect" );
@@ -221,7 +221,7 @@ void onConnStateChange( connectionState_type  connectionState ) {
     TCPconnected = (connectionState == conn_2_TCPconnected);
     digitalWrite( TCP_CONNECTED_PIN, TCPconnected );                                    // led indicates 'client connected' status 
     if ( TCPconnected ) {
-        pTerminal->println( "Connected" );                                              // remote client just got connected: show on main terminal
+        pTerminal->println( "\r\n========== Connected ==========" );                    // remote client just got connected: show on main terminal
         if ( !withinApplication ) { pTerminal->println( menu ); }                       // if not within an application, print main menu on remote terminal
         Serial.println( "Remote terminal is now connected" );                           // inform local terminal about it
     }

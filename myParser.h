@@ -453,7 +453,7 @@ private:
 private:
     bool _isProgramCmd = false;
     bool _isExtFunctionCmd = false;                             // FUNCTION command is being parsed (not the complete function)
-    bool _isGlobalVarCmd = false;                                // VAR command is being parsed
+    bool _isGlobalOrUserVarCmd = false;                                // VAR command is being parsed
     bool _isLocalVarCmd = false;                                // LOCAL command is being parsed
     bool _isStaticVarCmd = false;                               // STATIC command is being parsed
     bool _isAnyVarCmd = false;                                     // VAR, LOCAL or STATIC command is being parsed
@@ -523,7 +523,7 @@ public:
 
     MyParser( Calculator* const pcalculator );                                                 // constructor
     ~MyParser();                                                 // constructor
-    void resetMachine();
+    void resetMachine( bool clearAll );
     void deleteAllAlphanumStrValues( char* pToken );
     parseTokenResult_type parseSource( char* const inputLine, char*& pErrorPos );
     parseTokenResult_type  parseInstruction( char*& pInputLine );
@@ -553,7 +553,8 @@ public:
 
     static constexpr int PROG_MEM_SIZE { 2000 };
     static constexpr int IMM_MEM_SIZE { 200 };
-    static constexpr int MAX_VARNAMES { 64 };                       // max. vars (all types: global, static, local, parameter). Absolute limit: 255
+    static constexpr int MAX_USERVARNAMES { 32 };                       // max. vars (all types: global, static, local, parameter). Absolute limit: 255
+    static constexpr int MAX_PROGVARNAMES { 64 };                       // max. vars (all types: global, static, local, parameter). Absolute limit: 255
     static constexpr int MAX_STAT_VARS { 32 };                      // max. static vars (only). Absolute limit: 255
     static constexpr int MAX_LOC_VARS_IN_FUNC { 16 };               // max. local and parameter vars (only) in an INDIVIDUAL function. Absolute limit: 255 
     static constexpr int MAX_EXT_FUNCS { 16 };                      // max. external functions. Absolute limit: 255
@@ -565,7 +566,7 @@ public:
         float numConst;                                         // variable contains number: float
         char* pAlphanumConst;                                   // variable contains string: pointer to a character string
         float* pNumArray;                                       // variable is an array: pointer to array
-        
+
         // function parameters only: extra level of indirection
         // not used if default initialisation (if no argument provided)
         float* pnumConst;                                         // variable contains number: float
@@ -582,20 +583,20 @@ public:
 
     // variable type: 
 
-    // bit b7: variable name has a global variable associated with it. Only used during parsing, not stored in token
+    // bit b7: program variable name has a global program variable associated with it. Only used during parsing, not stored in token
     static constexpr uint8_t var_hasGlobalValue = 0x80;              // flag: global variable attached to this name
 
     // bits b654: variable qualifier. Use: (1) during parsing: temporarily store the variable type associated with a particular reference of a variable name 
     // (2) stored in 'variable' token to indicate the variable type associated with a particular reference of a variable name 
     static constexpr uint8_t var_qualifierMask = 0x70;               // mask
+    static constexpr uint8_t var_isUser = 5 << 4;                    // variable is a user variable, in or outside function
     static constexpr uint8_t var_isGlobal = 4 << 4;                  // variable is global, in or outside function
     static constexpr uint8_t var_isStaticInFunc = 3 << 4;            // variable is static in function
     static constexpr uint8_t var_isLocalInFunc = 2 << 4;             // variable is local in function
     static constexpr uint8_t var_isParamInFunc = 1 << 4;             // variable is function parameter
     static constexpr uint8_t var_qualToSpecify = 0 << 4;             // qualifier is not yet defined (temporary use during parsing; never stored in token)
 
-    // bit b3: global variable definition encountered in program during parsing ('VAR' cmd) 
-    static constexpr uint8_t var_globalDefInProg = 0x08;             // temporary use during parsing; never stored in token
+    // bit b3: spare 
 
     // bit b2: variable is an array (and not a scalar)
     static constexpr uint8_t var_isArray = 0x04;                     // stored with variable attributes and in 'variable' token. Can not be changed at runtime
@@ -615,11 +616,12 @@ public:
     int _instructionCharCount { 0 };
     bool _programMode { false };
     bool _flushAllUntilEOF { false };
-    bool _keepInMemory{false};
+    bool _keepInMemory { false };
     int _lineCount { 0 };                             // taking into account new line after 'load program' command ////
     int _StarCmdCharCount { 0 };
 
-    int _varNameCount { 0 };                                        // counts number of variable names (global variables: also stores values) 
+    int _userVarCount { 0 };                                        // counts number of user variables (names and values) 
+    int _programVarNameCount { 0 };                                        // counts number of variable names (global variables: also stores values) 
     int _localVarCountInFunction { 0 };                             // counts number of local variables in a specific function (names only, values not used)
     int _staticVarCount { 0 };                                      // static variable count (across all functions)
     int _extFunctionCount { 0 };                                    // external function count
@@ -627,24 +629,26 @@ public:
     char* _programCounter { nullptr };                                // pointer to token memory address (not token step n°)
     uint16_t _paramIsArrayPattern { 0 };
 
-    Stream* _pTerminal{nullptr};
+    Stream* _pTerminal { nullptr };
 
     // program storage
     char _programStorage [PROG_MEM_SIZE + IMM_MEM_SIZE];
     char* _programStart;
     int  _programSize;
 
-
     MyParser* _pmyParser;
 
-    // variable name storage                                         
-    char* varNames [MAX_VARNAMES];                                  // store distinct variable names
-    char varValueIndex [MAX_VARNAMES] { 0 };                        // temporarily maintains index to variable storage during function parsing
+    // user variable storage
+    char* userVarNames [MAX_USERVARNAMES];                              // store distinct user variable names: ONLY for user variables (same name as program variable is OK)
+    Val userVarValues [MAX_USERVARNAMES];
+    char userVarType [MAX_USERVARNAMES];
 
-    // global variable value storage
-    Val globalVarValues [MAX_VARNAMES];                              // if variable name in use for global variable: store global value (float, pointer to string, pointer to array of floats)
-    char globalVarType [MAX_VARNAMES] { 0 };                           // stores global variable usage flags and global variable type (float, pointer to string, pointer to array of floats); ...
-                                                                    // ... during parsing, temporary storage for variable qualifier flags  
+    // variable name storage                                         
+    char* programVarNames [MAX_PROGVARNAMES];                            // store distinct variable names: COMMON NAME for all program variables (global, static, local)
+    Val globalVarValues [MAX_PROGVARNAMES];                              // if variable name is in use for global variable: store global value (float, pointer to string, pointer to array of floats)
+    char globalVarType [MAX_PROGVARNAMES] { 0 };                           // stores global variable usage flags and global variable type (float, pointer to string, pointer to array of floats); ...
+    char varValueIndex [MAX_PROGVARNAMES] { 0 };                        // temporarily maintains index to variable storage during function parsing
+
     // static variable value storage
     Val staticVarValues [MAX_STAT_VARS];                            // store static variable values (float, pointer to string, pointer to array of floats) 
     char staticVarType [MAX_STAT_VARS] { 0 };                       // static variables: stores variable type (float, pointer to string, pointer to array of floats)
@@ -665,8 +669,8 @@ public:
     ~Calculator();               // constructor
     bool run();
     bool processCharacter( char c );
-    void (*_callbackFcn)(bool &requestQuit);                                         // pointer to callback function for heartbeat
-    void setCalcMainLoopCallback( void (*func)(bool &requistQuit) );                   // set callback function for connection state change
+    void (*_callbackFcn)(bool& requestQuit);                                         // pointer to callback function for heartbeat
+    void setCalcMainLoopCallback( void (*func)(bool& requistQuit) );                   // set callback function for connection state change
 
 };
 

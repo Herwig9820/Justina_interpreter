@@ -10,7 +10,7 @@ Calculator::Calculator( Stream* const pTerminal ) : _pTerminal( pTerminal ) {
     _pmyParser = new MyParser( this );              // pass the address of this Calculator object to the MyParser constructor
 
     // init 'machine' (not a complete reset, because this clears heap objects for this calculator object, and there are none)
-    _varNameCount = 0;
+    _programVarNameCount = 0;
     _staticVarCount = 0;
     _localVarCountInFunction = 0;
     _extFunctionCount = 0;
@@ -139,7 +139,8 @@ bool Calculator::processCharacter( char c ) {
     }
     else if ( isParserReset ) {  // temporary
         _programMode = false;
-        _pmyParser->resetMachine();
+        _pmyParser->resetMachine(true);
+
         instructionsParsed = false;
 
         _instructionCharCount = 0;
@@ -227,7 +228,7 @@ bool Calculator::processCharacter( char c ) {
         _instruction [_instructionCharCount] = '\0';                            // add string terminator
 
         if ( requestMachineReset ) {
-            _pmyParser->resetMachine();                                // prepare for parsing next program( stay in current mode )
+            _pmyParser->resetMachine(false);                                // prepare for parsing next program( stay in current mode )
             requestMachineReset = false;
             Serial.println( "(machine reset bij start parsen)" );
         }
@@ -252,9 +253,10 @@ bool Calculator::processCharacter( char c ) {
                 // checks at the end of parsing: any undefined functions (program mode only) ?  any open blocks ?
                 if ( _programMode && (!_pmyParser->allExternalFunctionsDefined( funcNotDefIndex )) ) { result = MyParser::result_undefinedFunction; }
                 if ( _pmyParser->_blockLevel > 0 ) { ; result = MyParser::result_noBlockEnd; }
+                _pmyParser->prettyPrintProgram();//// tijdelijk hier                    // immediate mode and result OK: pretty print input line
                 if ( !_programMode ) {
                     // evaluation comes here
-                    _pmyParser->prettyPrintProgram();                    // immediate mode and result OK: pretty print input line
+                    ////_pmyParser->prettyPrintProgram();                    // immediate mode and result OK: pretty print input line
                     _pTerminal->println( "(hier komt resultaat)" );      // immediate mode: print evaluation result
                 }
             }
@@ -272,7 +274,7 @@ bool Calculator::processCharacter( char c ) {
 
             // if program parsing error: reset machine, because variable storage is not consistent with program 
             if ( result != MyParser::result_tokenFound ) {
-                _pmyParser->resetMachine();      // message not needed here
+                _pmyParser->resetMachine(false);      // message not needed here
                 Serial.println( "(Machine reset na parsing error)" );       // program mode parsing only !
                 wasReset = true;
             }
