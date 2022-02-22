@@ -329,7 +329,8 @@ private:
         char arrayDimCount;                                     // previously defined array: dimension count. Zero if new array or if scalar variable.
 
         // functions and arrays
-        char identifierIndex;                                   // functions and variables: index
+        char identifierIndex;                                   // functions and variables: index to name pointer
+        char variableQualifier;                                 // variables: qualifier (user, global, static, local, parameter)
         char actualArgsOrDims;                                  // actual number of arguments found (function) or dimension count (prev. defined array) 
         char flags;                                             // if stack level is open parenthesis (not open block): other flags 
     };
@@ -467,6 +468,7 @@ private:
     char _maxFunctionArgs { 0 };
     int _extFunctionIndex { 0 };
     int _variableNameIndex { 0 };
+    int _variableQualifier { 0 };
     bool _arrayElemAssignmentAllowed { false };                    // value returned: assignment to array element is allowed next
 
     int _tokenIndex { 0 };
@@ -645,9 +647,9 @@ public:
 
     // variable name storage                                         
     char* programVarNames [MAX_PROGVARNAMES];                            // store distinct variable names: COMMON NAME for all program variables (global, static, local)
+    char programVarValueIndex [MAX_PROGVARNAMES] { 0 };                        // temporarily maintains index to variable storage during function parsing
     Val globalVarValues [MAX_PROGVARNAMES];                              // if variable name is in use for global variable: store global value (float, pointer to string, pointer to array of floats)
     char globalVarType [MAX_PROGVARNAMES] { 0 };                           // stores global variable usage flags and global variable type (float, pointer to string, pointer to array of floats); ...
-    char varValueIndex [MAX_PROGVARNAMES] { 0 };                        // temporarily maintains index to variable storage during function parsing
 
     // static variable value storage
     Val staticVarValues [MAX_STAT_VARS];                            // store static variable values (float, pointer to string, pointer to array of floats) 
