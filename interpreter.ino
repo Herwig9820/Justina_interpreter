@@ -46,10 +46,11 @@ bool console_isRemoteTerm { false };                                            
 bool withinApplication { false };                                                       // init: currently not within an application
 bool interpreterInMemory { false };                                                     // init: interpreter is not in memory
 
-Stream* pTerminal = (Stream*) &Serial;                                                  // init pointer to Serial or TCP terminal
 Calculator* pcalculator { nullptr };                                                    // pointer to Calculator object
 // connect as TCP server: create class object myTCPconnection
 MyTCPconnection myTCPconnection( SSID, PASS, serverAddress, gatewayAddress, subnetMask, DNSaddress, serverPort );
+Stream* pConsole = (Stream*) &Serial;                                                // init pointer to Serial or TCP terminal
+Stream* pTerminals[2] { (Stream*) &Serial, myTCPconnection.getClient()};////
 
 
 // Forward declarations
@@ -93,7 +94,7 @@ void setup() {
     dtostrf( 1.0, 4, 1, s );   // not used, but needed to circumvent a bug in sprintf function with %F, %E, %G specifiers
 
     // print sample / simple main menu for the user
-    pTerminal->println( menu );
+    pConsole->println( menu );
 }
 
 
@@ -145,12 +146,12 @@ void loop() {
 
         case 'v':
             myTCPconnection.setVerbose( true );
-            pTerminal->println( "TCP server: verbose" );                                // set TCP server to verbose
+            pConsole->println( "TCP server: verbose" );                                // set TCP server to verbose
             break;
 
         case 's':
             myTCPconnection.setVerbose( false ); break;                                 // set TCP server to silent
-            pTerminal->println( "TCP server: silent" );
+            pConsole->println( "TCP server: silent" );
 
         case 'r':
             if ( !console_isRemoteTerm ) { switchConsole(); }                           // if console is currently local terminal, switch to remote
@@ -158,7 +159,7 @@ void loop() {
 
         case 'l':
             if ( console_isRemoteTerm ) {                                               // if console is currently remote terminal, switch to local
-                pTerminal->println( "Disconnecting remote terminal..." );               // inform the remote user
+                pConsole->println( "Disconnecting remote terminal..." );               // inform the remote user
                 switchConsole();
             }
             break;
@@ -166,7 +167,7 @@ void loop() {
         case 'i':
             // start interpreter: control will not return to here until the user quits, because it has its own 'main loop'
             withinApplication = true;                                                   // flag that control will be transferred to an 'application'
-            if ( !interpreterInMemory ) { pcalculator = new  Calculator( pTerminal ); } // if interpreter not running: create an interpreter object on the heap
+            if ( !interpreterInMemory ) { pcalculator = new  Calculator( pConsole ); } // if interpreter not running: create an interpreter object on the heap
             // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
             // this callback function will be called regularly, e.g. every time the interpreter reads a character
             pcalculator->setCalcMainLoopCallback( (&housekeeping) );                    // set callback function to housekeeping routine in this .ino file
@@ -179,9 +180,9 @@ void loop() {
             break;
 
         default:
-            pTerminal->println( "This is not a valid choice" );
+            pConsole->println( "This is not a valid choice" );
         }
-        pTerminal->println( menu );                                                     // show menu again
+        pConsole->println( menu );                                                     // show menu again
     } while ( false );
 }                                                                                       // loop()
 
@@ -197,7 +198,7 @@ void switchConsole() {
     myTCPconnection.requestAction( console_isRemoteTerm ? action_2_TCPkeepAlive : action_4_TCPdisable );
 
     // set pointer to Serial or TCP client (both belong to Stream class)
-    pTerminal = (console_isRemoteTerm) ? myTCPconnection.getClient() : (Stream*) &Serial;
+    pConsole = (console_isRemoteTerm) ? myTCPconnection.getClient() : (Stream*) &Serial;
     char s [40]; sprintf( s, "\r\nConsole is now %s ", console_isRemoteTerm ? "remote terminal" : "local" );
     Serial.println( s );
     if ( console_isRemoteTerm ) {
@@ -221,8 +222,8 @@ void onConnStateChange( connectionState_type  connectionState ) {
     TCPconnected = (connectionState == conn_2_TCPconnected);
     digitalWrite( TCP_CONNECTED_PIN, TCPconnected );                                    // led indicates 'client connected' status 
     if ( TCPconnected ) {
-        pTerminal->println( "\r\n========== Connected ==========" );                    // remote client just got connected: show on main terminal
-        if ( !withinApplication ) { pTerminal->println( menu ); }                       // if not within an application, print main menu on remote terminal
+        pConsole->println( "\r\n========== Connected ==========" );                    // remote client just got connected: show on main terminal
+        if ( !withinApplication ) { pConsole->println( menu ); }                       // if not within an application, print main menu on remote terminal
         Serial.println( "Remote terminal is now connected" );                           // inform local terminal about it
     }
     else if ( lastConn ) {                                                              // previous status was (client connected'
@@ -263,7 +264,7 @@ void housekeeping( bool& requestQuit ) {
             c = Serial.read();
             forceLocal = (c == 0x01);                                                   // character read from Serial is 0x01 ? force switch to local console
             if ( forceLocal ) {
-                pTerminal->println( "Disconnecting remote terminal..." );               // inform remote user, in case he's still there
+                pConsole->println( "Disconnecting remote terminal..." );               // inform remote user, in case he's still there
                 switchConsole();                                                        // set console to local
             }
         }

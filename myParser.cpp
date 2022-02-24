@@ -161,7 +161,7 @@ const char MyParser::cmdPar_AA_mult [4] { cmdPar_varOptAssignment,cmdPar_varOptA
 const char MyParser::cmdPar_test [4] { cmdPar_programName | cmdPar_optionalFlag, cmdPar_programName, cmdPar_programName | cmdPar_multipleFlag, cmdPar_none };  // test: either 0 or 2 to n parameters ok
 
 // reserved words: names, allowed parameters (if used as command, starting an instruction) and type of block command
-//// PROGRAM...END, DEBUG (in programma), STEP (manueel), PRINTPROG, CLEARPROG, CLEARALL, CLEARUSERVARS, PEEK, POKE, CTRL-C (abort),... 
+//// PROGRAM...END, DEBUG (in programma), STEP (manueel), PRINTPROG, CLEARPROG, CLEARALL, CLEARUSERVARS, VARS, PEEK, POKE, CTRL-C (abort),... 
 const MyParser::ResWordDef MyParser::_resWords [] {
 {"TEST", cmdPar_test, cmdDeleteVar, cmd_noRestrictions},
 
@@ -221,14 +221,75 @@ MyParser::~MyParser() {
 // *   note: this excludes UNQUALIFIED identifier names stored as alphanumeric constants   *
 // -----------------------------------------------------------------------------------------
 
-void MyParser::deleteAllIdentifierNames( char** pIdentNameArray, int identifiersInUse ) {
+void MyParser::deleteIdentifierNameObjects( char** pIdentNameArray, int identifiersInUse ) {
     int index = 0;          // points to last variable in use
     while ( index < identifiersInUse ) {                       // points to variable in use
 #if printCreateDeleteHeapObjects
-        Serial.print( "(HEAP) Deleting identifier name, addr " );
+        Serial.print( "(HEAP) Delete heap object # " ); Serial.print( _heapObjectCount ); Serial.print( ": identifier name, addr " );
         Serial.println( (uint32_t) * (pIdentNameArray + index) - RAMSTART );
 #endif
         delete [] * (pIdentNameArray + index);
+        _heapObjectCount--;
+        index++;
+    }
+}
+
+
+// ----------------------------------------------------------------------------------------------
+// *   delete variable heap objects: scalar variable strings and array variable array storage   *
+// ----------------------------------------------------------------------------------------------
+
+void MyParser::deleteArrayElementStringObjects( Calculator::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue ) {
+    int index = 0;
+    while ( index < varNameCount ) {
+        if ( !checkIfGlobalValue || (varType [index] & (_pcalculator->var_hasGlobalValue)) ) { // global value ?
+            if ( (varType [index] & (_pcalculator->var_isArray | _pcalculator->var_isStringPointer)) ==
+                (_pcalculator->var_isArray | _pcalculator->var_isStringPointer) ) {              // array of strings
+
+                void* pArrayStorage = varValues [index].pArray;        // void pointer to an array of string pointers; element 0 contains dimensions and dimension count
+                int dimensions = (((char*) pArrayStorage) [3]);  // can range from 1 to MAX_ARRAY_DIMS
+                int arrayElements = 1;                                  // determine array size
+                for ( int dimCnt = 0; dimCnt < dimensions; dimCnt++ ) { arrayElements *= (int) ((((char*) pArrayStorage) [dimCnt])); }
+
+                // delete non-empty strings
+                for ( int arrayElem = 1; arrayElem <= arrayElements; arrayElem++ ) {  // array element 0 contains dimensions and count
+                    char* pString = ((char**) pArrayStorage) [arrayElem];
+                    uint32_t stringPointerAddress = (uint32_t) & (((char**) pArrayStorage) [arrayElem]);
+                    if ( pString != nullptr ) {
+#if printCreateDeleteHeapObjects
+                        Serial.print( "(HEAP) Delete heap object # " ); Serial.print( _heapObjectCount ); Serial.print( ": array element string value, addr " );
+                        Serial.println( (uint32_t) pString - RAMSTART );     // applicable to string and array (same pointer)
+#endif
+                        delete []  pString;                                  // applicable to string and array (same pointer)
+                        _heapObjectCount--;
+                    }
+                }
+            }
+        }
+        index++;
+    }
+}
+
+
+// ----------------------------------------------------------------------------------------------
+// *   delete variable heap objects: scalar variable strings and array variable array storage   *
+// ----------------------------------------------------------------------------------------------
+
+// note: make sure array variable element string objects have been deleted prior to calling this routine
+
+void MyParser::deleteVariableValueObjects( Calculator::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue ) {
+    int index = 0;
+    while ( index < varNameCount ) {
+        if ( !checkIfGlobalValue || (varType [index] & (_pcalculator->var_hasGlobalValue)) ) { // global value ?
+            if ( varType [index] & (_pcalculator->var_isArray | _pcalculator->var_isStringPointer) ) {              // scalar string or array (of strings or floats)
+#if printCreateDeleteHeapObjects
+                Serial.print( "(HEAP) Delete heap object # " ); Serial.print( _heapObjectCount ); Serial.print( ": variable string value or array storage, addr " );
+                Serial.println( (uint32_t) varValues [index].pAlphanumConst - RAMSTART );     // applicable to string and array (same pointer)
+#endif
+                delete []  varValues [index].pAlphanumConst;                                  // applicable to string and array (same pointer)
+                _heapObjectCount--;
+            }
+        }
         index++;
     }
 }
@@ -241,7 +302,7 @@ void MyParser::deleteAllIdentifierNames( char** pIdentNameArray, int identifiers
 
 // must be called before deleting tokens (list elements) 
 
-void MyParser::deleteAllAlphanumStrValues( char* programStart ) {
+void MyParser::deleteConstStringObjects( char* programStart ) {
     char* pAnum;
     TokPnt prgmCnt;
     prgmCnt.pToken = programStart;
@@ -250,15 +311,67 @@ void MyParser::deleteAllAlphanumStrValues( char* programStart ) {
         if ( (tokenType == tok_isAlphaConst) || (tokenType == tok_isGenericName) ) {
 #if printCreateDeleteHeapObjects
             memcpy( &pAnum, prgmCnt.pAnumP->pAlphanumConst, sizeof( pAnum ) );                         // pointer not necessarily aligned with word size: copy memory instead
-            Serial.print( "(HEAP) Deleting alphanum cst value, addr " );
+            Serial.print( "(HEAP) Delete heap object # " ); Serial.print( _heapObjectCount ); Serial.print( ": string const value, addr " );
             Serial.println( (uint32_t) pAnum - RAMSTART );
 #endif
             delete [] pAnum;
+            _heapObjectCount--;
         }
         uint8_t tokenLength = (tokenType >= tok_isOperator) ? 1 : (*prgmCnt.pToken >> 4) & 0x0F;
         prgmCnt.pToken += tokenLength;
         tokenType = *prgmCnt.pToken & 0x0F;
     }
+}
+
+
+// --------------------
+// *   reset parser   *
+// --------------------
+
+void MyParser::resetMachine( bool withUserVariables ) {
+    // delete identifier name objects on the heap (variable names, external function names) 
+    deleteIdentifierNameObjects( _pcalculator->programVarNames, _pcalculator->_programVarNameCount );
+    deleteIdentifierNameObjects( _pcalculator->extFunctionNames, _pcalculator->_extFunctionCount );
+    if ( withUserVariables ) { deleteIdentifierNameObjects( _pcalculator->userVarNames, _pcalculator->_userVarCount ); }
+
+    // delete variable heap objects: array variable element string objects
+    deleteArrayElementStringObjects( _pcalculator->globalVarValues, _pcalculator->globalVarType, _pcalculator->_programVarNameCount, true );
+    deleteArrayElementStringObjects( _pcalculator->staticVarValues, _pcalculator->staticVarType, _pcalculator->_staticVarCount, false );
+    if ( withUserVariables ) { deleteArrayElementStringObjects( _pcalculator->userVarValues, _pcalculator->userVarType, _pcalculator->_userVarCount, false ); }
+
+    // delete variable heap objects: scalar variable strings and array variable array storage 
+    deleteVariableValueObjects( _pcalculator->globalVarValues, _pcalculator->globalVarType, _pcalculator->_programVarNameCount, true );
+    deleteVariableValueObjects( _pcalculator->staticVarValues, _pcalculator->staticVarType, _pcalculator->_staticVarCount, false );
+    if ( withUserVariables ) { deleteVariableValueObjects( _pcalculator->userVarValues, _pcalculator->userVarType, _pcalculator->_userVarCount, false ); }
+
+    // delete alphanumeric constants: before clearing program memory
+    deleteConstStringObjects( _pcalculator->_programStorage );
+    deleteConstStringObjects( _pcalculator->_programStorage + _pcalculator->PROG_MEM_SIZE );
+
+    myStack.deleteList();                                                               // delete list to keep track of open parentheses and open command blocks
+    _blockLevel = 0;
+    _extFunctionBlockOpen = false;
+
+    // init calculator variables: AFTER deleting heap objects
+    _pcalculator->_programVarNameCount = 0;
+    _pcalculator->_staticVarCount = 0;
+    _pcalculator->_localVarCountInFunction = 0;
+    _pcalculator->_extFunctionCount = 0;
+    if ( withUserVariables ) { _pcalculator->_userVarCount = 0; }
+    else {
+        int index = 0;          // clear user variable flag 'variable is used by program'
+        while ( index++ < _pcalculator->_userVarCount ) { _pcalculator->userVarType [index] = _pcalculator->userVarType [index] & ~_pcalculator->var_userVarUsedByProgram; }
+    }
+
+    _pcalculator->_programStart = _pcalculator->_programStorage + (_pcalculator->_programMode ? 0 : _pcalculator->PROG_MEM_SIZE);
+    _pcalculator->_programSize = _pcalculator->_programSize + (_pcalculator->_programMode ? _pcalculator->PROG_MEM_SIZE : _pcalculator->IMM_MEM_SIZE);
+    _pcalculator->_programCounter = _pcalculator->_programStart;                          // start of 'immediate mode' program area
+
+    *_pcalculator->_programStorage = '\0';                                    //  current end of program 
+    *_pcalculator->_programStart = '\0';                                      //  current end of program (immediate mode)
+
+    //// test
+    if ( withUserVariables && (_heapObjectCount != 0) ) { Serial.print( "\r\n\r\n****************************\r\nmissing object deletes: " ); Serial.println( _heapObjectCount ); } ////
 }
 
 
@@ -290,8 +403,9 @@ int MyParser::getIdentifier( char** pIdentNameArray, int& identifiersInUse, int 
         if ( identifiersInUse == maxIdentifiers ) { return index; }                // create identifier name failed: return -1 with createNewName = true
 
         pIdentifierName = new char [_maxIdentifierNameLen + 1 + 1];                      // create standard length char array on the heap, including '\0' and an extra character 
+        _heapObjectCount++;
 #if printCreateDeleteHeapObjects
-        Serial.print( "(HEAP) Creating ident name, addr " );
+        Serial.print( "(HEAP) Create object # " ); Serial.print( _heapObjectCount ); Serial.print( ": identifier name, addr " );
         Serial.println( (uint32_t) pIdentifierName - RAMSTART );
 #endif
         strncpy( pIdentifierName, pIdentNameToCheck, identLength );                            // store identifier name in newly created character array
@@ -301,6 +415,70 @@ int MyParser::getIdentifier( char** pIdentNameArray, int& identifiersInUse, int 
         return identifiersInUse - 1;                                                   // identNameIndex to newly created identifier name
     }
 }
+
+// --------------------------------------------------------------
+// *   initialize a variable or an array with (a) constant(s)   *
+// --------------------------------------------------------------
+
+bool MyParser::initVariable( uint16_t varTokenStep, uint16_t constTokenStep ) {
+    float f;        // last token is a number constant: dimension spec
+    char* pString;
+
+    // parsing: initialize variables and arrays with a constant number or (arrays: empty) string
+
+    // fetch variable location and attributes
+    bool isArrayVar = ((TokenIsVariable*) (_pcalculator->_programStorage + varTokenStep))->identInfo & _pcalculator->var_isArray;
+    bool isGlobalVar = (((TokenIsVariable*) (_pcalculator->_programStorage + varTokenStep))->identInfo & _pcalculator->var_qualifierMask) == _pcalculator->var_isGlobal;
+    bool isUserVar = (((TokenIsVariable*) (_pcalculator->_programStorage + varTokenStep))->identInfo & _pcalculator->var_qualifierMask) == _pcalculator->var_isUser;
+    int varValueIndex = ((TokenIsVariable*) (_pcalculator->_programStorage + varTokenStep))->identValueIndex;
+    void* pVarStorage = isGlobalVar ? _pcalculator->globalVarValues : isUserVar ? _pcalculator->userVarValues : _pcalculator->staticVarValues;
+    char* pVarTypeStorage = isGlobalVar ? _pcalculator->globalVarType : isUserVar ? _pcalculator->userVarType : _pcalculator->staticVarType;
+    void* pArrayStorage;        // array storage (if array) 
+
+    // fetch constant (numeric or alphanumeric) 
+    bool isNumberCst = (tokenType_type) ((((TokenIsFloatCst*) (_pcalculator->_programStorage + constTokenStep))->tokenType) & 0x0F) == tok_isNumConst;
+    if ( isNumberCst ) { memcpy( &f, ((TokenIsFloatCst*) (_pcalculator->_programStorage + constTokenStep))->numConst, sizeof( f ) ); }
+
+    else { memcpy( &pString, ((TokenIsAlphanumCst*) (_pcalculator->_programStorage + constTokenStep))->pAlphanumConst, sizeof( pString ) ); }
+    int length = isNumberCst ? 0 : strlen( pString );
+
+    if ( isArrayVar ) {
+        pArrayStorage = ((void**) pVarStorage) [varValueIndex];        // void pointer to an array 
+        int dimensions = (((char*) pArrayStorage) [3]);  // can range from 1 to MAX_ARRAY_DIMS
+        int arrayElements = 1;                                  // determine array size
+        for ( int dimCnt = 0; dimCnt < dimensions; dimCnt++ ) { arrayElements *= (int) ((((char*) pArrayStorage) [dimCnt])); }
+        // fill up with numeric constants or (empty strings:) null pointers
+        if ( isNumberCst ) { for ( int arrayElem = 1; arrayElem <= arrayElements; arrayElem++ ) { ((float*) pArrayStorage) [arrayElem] = f; } }
+        else {                                                      // alphanumeric constant
+            if ( length != 0 ) { return false; };       // to limit memory usage, no mass initialisation with non-empty strings
+            for ( int arrayElem = 1; arrayElem <= arrayElements; arrayElem++ ) { ((char**) pArrayStorage) [arrayElem] = nullptr; }
+        }
+    }
+
+    else {                                  // scalar
+        if ( isNumberCst ) {
+            ((float*) pVarStorage) [varValueIndex] = f;
+        }      // store numeric constant
+        else {                                                  // alphanumeric constant
+            if ( length == 0 ) {
+                ((char**) pVarStorage) [varValueIndex] = nullptr;       // an empty string does not create a heap object
+            }
+            else { // create string object and store string
+                char* pVarAlphanumValue = new char [length + 1];                  // create char array on the heap to store alphanumeric constant, including terminating '\0'
+                _heapObjectCount++;
+#if printCreateDeleteHeapObjects
+                Serial.print( "(HEAP) Create object # " ); Serial.print( _heapObjectCount ); Serial.print( ": variable string value, addr " );
+                Serial.println( (uint32_t) pVarAlphanumValue - RAMSTART );
+#endif
+                // store alphanumeric constant in newly created character array
+                strcpy( pVarAlphanumValue, pString );              // including terminating \0
+                ((char**) pVarStorage) [varValueIndex] = pVarAlphanumValue;       // store pointer to string
+            }
+        }
+    }
+    pVarTypeStorage [varValueIndex] = (pVarTypeStorage [varValueIndex] & ~_pcalculator->var_typeMask) | (isNumberCst ? _pcalculator->var_isFloat : _pcalculator->var_isStringPointer);
+};
+
 
 // --------------------------------------------------------------
 // *   check if all external functions referenced are defined   *
@@ -313,69 +491,6 @@ bool MyParser::allExternalFunctionsDefined( int& index ) {
         index++;
     }
     return true;
-}
-
-
-// --------------------
-// *   reset parser   *
-// --------------------
-
-void MyParser::resetMachine( bool clearAll ) {
-    // delete identifier name objects on the heap (variable names, external function names) 
-    deleteAllIdentifierNames( _pcalculator->programVarNames, _pcalculator->_programVarNameCount );
-    deleteAllIdentifierNames( _pcalculator->extFunctionNames, _pcalculator->_extFunctionCount );
-    if ( clearAll ) { deleteAllIdentifierNames( _pcalculator->userVarNames, _pcalculator->_userVarCount ); }
-
-    // delete global array and string objects on the heap
-    int index = 0;
-    while ( index < _pcalculator->_programVarNameCount ) {
-        if ( _pcalculator->globalVarType [index] & (_pcalculator->var_hasGlobalValue) ) { // global value ?
-            if ( _pcalculator->globalVarType [index] & (_pcalculator->var_isArray | _pcalculator->var_isStringPointer) ) {              // float array or scalar string
-#if printCreateDeleteHeapObjects
-                Serial.print( "(HEAP) Deleting global var array or string, addr " );
-                Serial.println( (uint32_t) _pcalculator->globalVarValues [index].pAlphanumConst - RAMSTART );     // applicable to string and array (same pointer)
-#endif
-                delete []  _pcalculator->globalVarValues [index].pAlphanumConst;                                  // applicable to string and array (same pointer)
-            }
-        }
-        index++;
-    }
-
-    // delete static array and string objects on the heap
-    index = 0;
-    while ( index < _pcalculator->_staticVarCount ) {
-        if ( _pcalculator->staticVarType [index] & (_pcalculator->var_isArray | _pcalculator->var_isStringPointer) ) {               // float array or scalar string
-#if printCreateDeleteHeapObjects
-            Serial.print( "(HEAP) Deleting static var array or string, addr " );
-            Serial.println( (uint32_t) _pcalculator->staticVarValues [index].pAlphanumConst - RAMSTART );                      // applicable to string and array (same pointer)
-#endif
-            delete []  _pcalculator->staticVarValues [index].pAlphanumConst;                                                   // applicable to string and array (same pointer)
-        }
-        index++;
-    }
-
-    // delete alphanumeric constants: before clearing program memory
-    deleteAllAlphanumStrValues( _pcalculator->_programStorage );
-    deleteAllAlphanumStrValues( _pcalculator->_programStorage + _pcalculator->PROG_MEM_SIZE );
-
-    myStack.deleteList();                                                               // delete list to keep track of open parentheses and open command blocks
-    _blockLevel = 0;
-    _extFunctionBlockOpen = false;
-
-    // init calculator variables: AFTER deleting heap objects
-    _pcalculator->_programVarNameCount = 0;
-    _pcalculator->_staticVarCount = 0;
-    _pcalculator->_localVarCountInFunction = 0;
-    _pcalculator->_extFunctionCount = 0;
-    if ( clearAll ) { _pcalculator->_userVarCount = 0; }
-
-    _pcalculator->_programStart = _pcalculator->_programStorage + (_pcalculator->_programMode ? 0 : _pcalculator->PROG_MEM_SIZE);
-    _pcalculator->_programSize = _pcalculator->_programSize + (_pcalculator->_programMode ? _pcalculator->PROG_MEM_SIZE : _pcalculator->IMM_MEM_SIZE);
-    _pcalculator->_programCounter = _pcalculator->_programStart;                          // start of 'immediate mode' program area
-
-    *_pcalculator->_programStorage = '\0';                                    //  current end of program 
-    *_pcalculator->_programStart = '\0';                                      //  current end of program (immediate mode)
-
 }
 
 
@@ -722,69 +837,6 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
 }
 
 
-// --------------------------------------------------------------
-// *   initialize a variable or an array with (a) constant(s)   *
-// --------------------------------------------------------------
-
-bool MyParser::initVariable( uint16_t varTokenStep, uint16_t constTokenStep ) {
-    float f;        // last token is a number constant: dimension spec
-    char* pString;
-
-    // parsing: initialize variables and arrays with a constant number or (arrays: empty) string
-
-    // fetch variable location and attributes
-    bool isArrayVar = ((TokenIsVariable*) (_pcalculator->_programStorage + varTokenStep))->identInfo & _pcalculator->var_isArray;
-    bool isGlobalVar = (((TokenIsVariable*) (_pcalculator->_programStorage + varTokenStep))->identInfo & _pcalculator->var_qualifierMask) == _pcalculator->var_isGlobal;
-    bool isUserVar = (((TokenIsVariable*) (_pcalculator->_programStorage + varTokenStep))->identInfo & _pcalculator->var_qualifierMask) == _pcalculator->var_isUser;
-    int varValueIndex = ((TokenIsVariable*) (_pcalculator->_programStorage + varTokenStep))->identValueIndex;
-    void* pVarStorage = isGlobalVar ? _pcalculator->globalVarValues : isUserVar ? _pcalculator->userVarValues : _pcalculator->staticVarValues;
-    char* pVarTypeStorage = isGlobalVar ? _pcalculator->globalVarType : isUserVar ? _pcalculator->userVarType : _pcalculator->staticVarType;
-    void* pArrayStorage;        // array storage (if array) 
-
-    // fetch constant (numeric or alphanumeric) 
-    bool isNumberCst = (tokenType_type) ((((TokenIsFloatCst*) (_pcalculator->_programStorage + constTokenStep))->tokenType) & 0x0F) == tok_isNumConst;
-    if ( isNumberCst ) { memcpy( &f, ((TokenIsFloatCst*) (_pcalculator->_programStorage + constTokenStep))->numConst, sizeof( f ) ); }
-
-    else { memcpy( &pString, ((TokenIsAlphanumCst*) (_pcalculator->_programStorage + constTokenStep))->pAlphanumConst, sizeof( pString ) ); }
-    int length = isNumberCst ? 0 : strlen( pString );
-
-    if ( isArrayVar ) {
-        pArrayStorage = ((void**) pVarStorage) [varValueIndex];        // void pointer to an array 
-        int dimensions = (((char*) pArrayStorage) [3]);  // can range from 1 to MAX_ARRAY_DIMS
-        int arrayElements = 1;                                  // determine array size
-        for ( int dimCnt = 0; dimCnt < dimensions; dimCnt++ ) { arrayElements *= (int) ((((char*) pArrayStorage) [dimCnt])); }
-        // fill up with numeric constants or (empty strings:) null pointers
-        if ( isNumberCst ) { for ( int arrayElem = 1; arrayElem <= arrayElements; arrayElem++ ) { ((float*) pArrayStorage) [arrayElem] = f; } }
-        else {                                                      // alphanumeric constant
-            if ( length != 0 ) { return false; };       // to limit memory usage, no mass initialisation with non-empty strings
-            { for ( int arrayElem = 1; arrayElem <= arrayElements; arrayElem++ ) { ((char**) pArrayStorage) [arrayElem] = nullptr; } }
-        }
-    }
-
-    else {                                  // scalar
-        if ( isNumberCst ) {
-            ((float*) pVarStorage) [varValueIndex] = f;
-        }      // store numeric constant
-        else {                                                  // alphanumeric constant
-            if ( length == 0 ) {
-                ((char**) pVarStorage) [varValueIndex] = nullptr;       // an empty string does not create a heap object
-            }
-            else { // create string object and store string
-                char* pVarAlphanumValue = new char [length + 1];                  // create char array on the heap to store alphanumeric constant, including terminating '\0'
-#if printCreateDeleteHeapObjects
-                Serial.print( "(HEAP) Creating alphan var value, addr " );
-                Serial.println( (uint32_t) pVarAlphanumValue - RAMSTART );
-#endif
-                // store alphanumeric constant in newly created character array
-                strcpy( pVarAlphanumValue, pString );              // including terminating \0
-                ((char**) pVarStorage) [varValueIndex] = pVarAlphanumValue;       // store pointer to string
-            }
-        }
-    }
-    pVarTypeStorage [varValueIndex] = (pVarTypeStorage [varValueIndex] & ~_pcalculator->var_typeMask) | (isNumberCst ? _pcalculator->var_isFloat : _pcalculator->var_isStringPointer);
-};
-
-
 // -------------------------------------------------------
 // *   try to parse next characters as a reserved word   *
 // -------------------------------------------------------
@@ -877,7 +929,7 @@ bool MyParser::parseAsNumber( char*& pNext, parseTokenResult_type& result ) {
     memcpy( pToken->numConst, &f, sizeof( f ) );                                           // float not necessarily aligned with word size: copy memory instead
 
     ////  geen beperking nodig: initialisatie door runtime scannen van 'LOCAL' commands bij start procedure tot local var count bereikt is 
-    /*
+    /* dit mag dus weg:
     bool checkLocalVarInit = (_isLocalVarCmd && (_lastTokenType == tok_isOperator));
     if ( checkLocalVarInit && (f != 0) ) { pNext = pch; result = result_varLocalInit_zeroValueExpected; return false; }
     */
@@ -941,8 +993,9 @@ bool MyParser::parseAsAlphanumConstant( char*& pNext, parseTokenResult_type& res
 
     // token is an alphanumeric constant, and it's allowed here
     char* pAlphanumCst = new char [pNext - (pch + 1) - escChars + 1];                                // create char array on the heap to store alphanumeric constant, including terminating '\0'
+    _heapObjectCount++;
 #if printCreateDeleteHeapObjects
-    Serial.print( "(HEAP) Creating alphan const, addr " );
+    Serial.print( "(HEAP) Create object # " ); Serial.print( _heapObjectCount ); Serial.print( ": string const value, addr " );
     Serial.println( (uint32_t) pAlphanumCst - RAMSTART );
 #endif
     // store alphanumeric constant in newly created character array
@@ -959,7 +1012,7 @@ bool MyParser::parseAsAlphanumConstant( char*& pNext, parseTokenResult_type& res
     memcpy( pToken->pAlphanumConst, &pAlphanumCst, sizeof( pAlphanumCst ) );            // pointer not necessarily aligned with word size: copy memory instead
 
     ////  geen beperking nodig: initialisatie door runtime scannen van 'LOCAL' commands bij start procedure tot local var count bereikt is 
-    /*
+    /* dit mag dus weg:
     bool checkLocalVarInit = (_isLocalVarCmd && (_lastTokenType == tok_isOperator));
     if ( checkLocalVarInit && (strlen( pAlphanumCst ) > 0) ) { pNext = pch; result = result_varLocalInit_emptyStringExpected; return false; }
     */
@@ -1219,22 +1272,23 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
             if ( isUserVar || isGlobalVar || isStaticVar ) {
                 for ( int dimCnt = 0; dimCnt < array_dimCounter; dimCnt++ ) { arrayElements *= arrayDef_dims [dimCnt]; }
                 pArray = new float [arrayElements + 1];
+                _heapObjectCount++;
 
 #if printCreateDeleteHeapObjects
-                Serial.print( "(HEAP) Creating array storage, addr " );
+                Serial.print( "(HEAP) Create object # " ); Serial.print( _heapObjectCount ); Serial.print( ": array storage, addr " );
                 Serial.println( (uint32_t) pArray - RAMSTART );
 #endif
                 // only now, the array flag can be set, because only now the object exists
                 if ( isUserVar ) {
-                    _pcalculator->userVarValues [valueIndex].pNumArray = pArray;
+                    _pcalculator->userVarValues [valueIndex].pArray = pArray;
                     _pcalculator->userVarType [varNameIndex] |= _pcalculator->var_isArray;             // set array bit
-                }
+            }
                 else if ( isGlobalVar ) {
-                    _pcalculator->globalVarValues [valueIndex].pNumArray = pArray;
+                    _pcalculator->globalVarValues [valueIndex].pArray = pArray;
                     _pcalculator->globalVarType [varNameIndex] |= _pcalculator->var_isArray;             // set array bit
                 }
                 else if ( isStaticVar ) {
-                    _pcalculator->staticVarValues [valueIndex].pNumArray = pArray;
+                    _pcalculator->staticVarValues [valueIndex].pArray = pArray;
                     _pcalculator->staticVarType [_pcalculator->_staticVarCount - 1] |= _pcalculator->var_isArray;             // set array bit
                 }
 
@@ -1245,7 +1299,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
                 if ( !arrayHasInitializer ) {                    // no explicit initializer 
                     for ( int arrayElem = 1; arrayElem <= arrayElements; arrayElem++ ) { ((float*) pArray) [arrayElem] = 0.; }
                 }
-            }
+        }
 
             // local arrays (note: NOT for function parameter arrays): set pointer to dimension storage 
             // the array flag has been set when local variable was created (including function parameters, which are also local variables)
@@ -1261,7 +1315,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
             }
             ((char*) pArray) [3] = array_dimCounter;        // (note: for param arrays, set to max dimension count during parsing)
 
-        }
+    }
 
 
         // 2.3 Internal or external function call, or parenthesis pair, closing parenthesis ?
@@ -1495,7 +1549,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         tokenType = tok_isOperator;                                                     // remember: token is an operator
         _tokenIndex = singleCharIndex;                                                  // needed in case in a command and current command parameter needs a variable
     }
-    }
+}
 
     // create token
     TokenIsTerminal* pToken = (TokenIsTerminal*) _pcalculator->_programCounter;
@@ -1783,6 +1837,9 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
             isProgramVar = !_pcalculator->_programMode;                  // program parsing: is program variable; immediate mode: is user variable
             activeNameRange = secondaryNameRange;
         }
+
+        // user variable referenced in program: set flag
+        if ( _pcalculator->_programMode && !isProgramVar ) { varType [activeNameRange][varNameIndex] = varType [activeNameRange][varNameIndex] | _pcalculator->var_userVarUsedByProgram; }
     }
 
 
@@ -1843,7 +1900,7 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
                 }
                 // existing global or user variable
                 varType [activeNameRange][varNameIndex] = (varType [activeNameRange][varNameIndex] & ~_pcalculator->var_qualifierMask) | (isProgramVar ? _pcalculator->var_isGlobal : _pcalculator->var_isUser);
-            }                                                                                               // IS the use of an EXISTING global variable, within a function
+            }                                                                                               // IS the use of an EXISTING global or user variable, within a function
 
         }
 
@@ -1925,8 +1982,8 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
         // if existing array: retrieve dimension count against existing definition, for testing against definition afterwards
         if ( existingArray ) {
             float* pArray = nullptr;
-            if ( isStaticVar ) { pArray = _pcalculator->staticVarValues [valueIndex].pNumArray; }
-            else if ( isGlobalOrUserVar ) { pArray = varValues [activeNameRange][valueIndex].pNumArray; }
+            if ( isStaticVar ) { pArray = _pcalculator->staticVarValues [valueIndex].pArray; }
+            else if ( isGlobalOrUserVar ) { pArray = varValues [activeNameRange][valueIndex].pArray; }
             else if ( isLocalVar ) { pArray = (float*) _pcalculator->localVarDims [valueIndex]; }   // dimensions and count are stored in a float
             // retrieve dimension count from array element 0, character 3 (char 0 to 2 contain the dimensions) 
             _pcalculator->_arrayDimCount = isParam ? _pcalculator->MAX_ARRAY_DIMS : ((char*) pArray) [3];
@@ -2008,8 +2065,9 @@ bool MyParser::parseAsIdentifierName( char*& pNext, parseTokenResult_type& resul
 
     // token is an identifier name, and it's allowed here
     char* pProgramName = new char [pNext - pch + 1];                    // create char array on the heap to store identifier name, including terminating '\0'
+    _heapObjectCount++;
 #if printCreateDeleteHeapObjects
-    Serial.print( "(HEAP) Creating identifier name, addr " );
+    Serial.print( "(HEAP) Create object # " ); Serial.print( _heapObjectCount ); Serial.print( ": generic name, addr " );
     Serial.println( (uint32_t) pProgramName - RAMSTART );
 #endif
     strncpy( pProgramName, pch, pNext - pch );                            // store identifier name in newly created character array
@@ -2087,7 +2145,6 @@ void MyParser::prettyPrintProgram() {
             isUserVar = (prgmCnt.pVar->identInfo & _pcalculator->var_qualifierMask) == _pcalculator->var_isUser;
             identifierName = isUserVar ? _pcalculator->userVarNames [identNameIndex] : _pcalculator->programVarNames [identNameIndex];
             strcpy( s, identifierName );
-            strcat( s, (isUserVar ? "(U)" : "(P)") );
             break;
 
         case tok_isNumConst:
@@ -2123,9 +2180,9 @@ void MyParser::prettyPrintProgram() {
         int len = strlen( s );
         if ( tokenType == tok_no_token ) { len -= 2; s [len] = '\0'; }                                               // remove final semicolon and space
         if ( len <= maxCharsPretty ) { strcat( prettyToken, s ); }
-        if ( strlen( prettyToken ) > 0 ) { _pcalculator->_pTerminal->print( prettyToken ); }
+        if ( strlen( prettyToken ) > 0 ) { _pcalculator->_pConsole->print( prettyToken ); }
     }
-    _pcalculator->_pTerminal->print( " -> " );
+    _pcalculator->_pConsole->print( " -> " );
 }
 /*
 // -----------------------------------------
@@ -2300,11 +2357,11 @@ void MyParser::printParsingResult( parseTokenResult_type result, int funcNotDefI
         memset( point, ' ', pErrorPos - pInstruction );
         point [pErrorPos - pInstruction] = '^';
         point [pErrorPos - pInstruction + 1] = '\0';
-        _pcalculator->_pTerminal->println( pInstruction );
-        _pcalculator->_pTerminal->println( point );
+        _pcalculator->_pConsole->println( pInstruction );
+        _pcalculator->_pConsole->println( point );
         if ( _pcalculator->_programMode ) { sprintf( parsingInfo, "Error %d: statement ending at line %d", result, lineCount ); }
         else { sprintf( parsingInfo, "Error %d", result ); }
     }
 
-    if ( strlen( parsingInfo ) > 0 ) { _pcalculator->_pTerminal->println( parsingInfo ); }
+    if ( strlen( parsingInfo ) > 0 ) { _pcalculator->_pConsole->println( parsingInfo ); }
 };

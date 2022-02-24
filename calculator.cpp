@@ -4,8 +4,8 @@
 // *   constructor   *
 // -------------------
 
-Calculator::Calculator( Stream* const pTerminal ) : _pTerminal( pTerminal ) {
-    _pTerminal->println( "[calc] Starting calculator..." );
+Calculator::Calculator( Stream* const pConsole ) : _pConsole( pConsole ) {
+    _pConsole->println( "[calc] Starting calculator..." );
     _callbackFcn = nullptr;
     _pmyParser = new MyParser( this );              // pass the address of this Calculator object to the MyParser constructor
 
@@ -28,7 +28,7 @@ Calculator::Calculator( Stream* const pTerminal ) : _pTerminal( pTerminal ) {
     *_programStorage = '\0';                                    //  current end of program 
     *_programStart = '\0';                                      //  current end of program (immediate mode)
 
-    _pTerminal->println( "[calc] Ready>" );                  // end of parsing
+    _pConsole->println( "[calc] Ready>" );                  // end of parsing
 };
 
 
@@ -37,13 +37,13 @@ Calculator::Calculator( Stream* const pTerminal ) : _pTerminal( pTerminal ) {
 // ---------------------
 
 Calculator::~Calculator() {
-    _pTerminal->println( "[calc] Quitting calculator... " );
+    _pConsole->println( "[calc] Quitting calculator... " );
     _programMode = false;                                   //// te checken of er dan nog iets moet gereset worden
     if ( !_keepInMemory ) {
         delete _pmyParser;
         _callbackFcn = nullptr;
     }
-    _pTerminal->println( "[calc] bye" );
+    _pConsole->println( "[calc] bye" );
 };
 
 
@@ -67,11 +67,11 @@ bool Calculator::run() {
     do {
         if ( _callbackFcn != nullptr ) { _callbackFcn( quitNow ); }
         if ( quitNow ) {
-            _pTerminal->println( "[calc] Abort request received..." );
+            _pConsole->println( "[calc] Abort request received..." );
             break;
         }
-        if ( _pTerminal->available() > 0 ) {     // if terminal character available for reading
-            c = _pTerminal->read();
+        if ( _pConsole->available() > 0 ) {     // if terminal character available for reading
+            c = _pConsole->read();
             quitNow = processCharacter( c );        // process one character
             if ( quitNow ) { break; }               // user gave quit command
         }
@@ -134,12 +134,12 @@ bool Calculator::processCharacter( char c ) {
         withinString = false; withinStringEscSequence = false;
         withinComment = false;
 
-        _pTerminal->println( _programMode ? "[calc] Waiting for program..." : "[calc] Ready>" );
+        _pConsole->println( _programMode ? "[calc] Waiting for program..." : "[calc] Ready>" );
         return false;
     }
     else if ( isParserReset ) {  // temporary
         _programMode = false;
-        _pmyParser->resetMachine(true);
+        _pmyParser->resetMachine( true );
 
         instructionsParsed = false;
 
@@ -228,7 +228,7 @@ bool Calculator::processCharacter( char c ) {
         _instruction [_instructionCharCount] = '\0';                            // add string terminator
 
         if ( requestMachineReset ) {
-            _pmyParser->resetMachine(false);                                // prepare for parsing next program( stay in current mode )
+            _pmyParser->resetMachine( false );                                // prepare for parsing next program( stay in current mode )
             requestMachineReset = false;
             Serial.println( "(machine reset bij start parsen)" );
         }
@@ -253,17 +253,16 @@ bool Calculator::processCharacter( char c ) {
                 // checks at the end of parsing: any undefined functions (program mode only) ?  any open blocks ?
                 if ( _programMode && (!_pmyParser->allExternalFunctionsDefined( funcNotDefIndex )) ) { result = MyParser::result_undefinedFunction; }
                 if ( _pmyParser->_blockLevel > 0 ) { ; result = MyParser::result_noBlockEnd; }
-                _pmyParser->prettyPrintProgram();//// tijdelijk hier                    // immediate mode and result OK: pretty print input line
                 if ( !_programMode ) {
                     // evaluation comes here
-                    ////_pmyParser->prettyPrintProgram();                    // immediate mode and result OK: pretty print input line
-                    _pTerminal->println( "(hier komt resultaat)" );      // immediate mode: print evaluation result
+                    _pmyParser->prettyPrintProgram();                    // immediate mode and result OK: pretty print input line
+                    _pConsole->println( "(hier komt resultaat)" );      // immediate mode: print evaluation result
                 }
             }
 
             // parsing OK message (program mode only) or error message 
             _pmyParser->printParsingResult( result, funcNotDefIndex, _instruction, _lineCount, pErrorPos );
-            _pTerminal->println( "[calc] Ready>" );                  // end of parsing
+            _pConsole->println( "[calc] Ready>" );                  // end of parsing
         }
 
         bool wasReset = false;      // init
@@ -274,7 +273,7 @@ bool Calculator::processCharacter( char c ) {
 
             // if program parsing error: reset machine, because variable storage is not consistent with program 
             if ( result != MyParser::result_tokenFound ) {
-                _pmyParser->resetMachine(false);      // message not needed here
+                _pmyParser->resetMachine( false );      // message not needed here
                 Serial.println( "(Machine reset na parsing error)" );       // program mode parsing only !
                 wasReset = true;
             }
@@ -284,8 +283,7 @@ bool Calculator::processCharacter( char c ) {
         else if ( instructionsParsed ) {
 
             // delete alphanumeric constants because they are on the heap. Identifiers must stay avaialble
-            _pmyParser->deleteAllAlphanumStrValues( _programStorage + PROG_MEM_SIZE );  // always
-            *_programStorage = '\0';                                    //  current end of program 
+            _pmyParser->deleteConstStringObjects( _programStorage + PROG_MEM_SIZE );  // always
             *_programStart = '\0';                                      //  current end of program (immediate mode)
         }
 
