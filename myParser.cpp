@@ -2091,7 +2091,7 @@ bool MyParser::parseAsIdentifierName( char*& pNext, parseTokenResult_type& resul
 // -----------------------------------------
 // *   pretty print a parsed instruction   *
 // -----------------------------------------
-void MyParser::prettyPrintProgram() {
+void MyParser::prettyPrintInstructions() {
     // define these variables outside switch statement, to prevent undefined behaviour
     const int maxCharsPretty { 100 };       //// check lengte
     char prettyToken [maxCharsPretty] = "";
@@ -2182,7 +2182,7 @@ void MyParser::prettyPrintProgram() {
         if ( len <= maxCharsPretty ) { strcat( prettyToken, s ); }
         if ( strlen( prettyToken ) > 0 ) { _pcalculator->_pConsole->print( prettyToken ); }
     }
-    _pcalculator->_pConsole->print( " -> " );
+    _pcalculator->_pConsole->println(); _pcalculator->_isPrompt = false;
 }
 /*
 // -----------------------------------------
@@ -2345,7 +2345,7 @@ void MyParser::printParsingResult( parseTokenResult_type result, int funcNotDefI
     char parsingInfo [_pcalculator->_maxInstructionChars];
 
     if ( result == result_tokenFound ) {                                                // prepare message with parsing result
-        strcpy( parsingInfo, _pcalculator->_programMode ? "Parsed without errors" : "" );
+        strcpy( parsingInfo, _pcalculator->_programMode ? "Program parsed without errors" : "" );
     }
 
     else  if ( (result == result_undefinedFunction) && _pcalculator->_programMode ) {     // in program mode only (because function can be defined after a call)
@@ -2353,15 +2353,16 @@ void MyParser::printParsingResult( parseTokenResult_type result, int funcNotDefI
     }
 
     else {                                                                              // error
-        char point [pErrorPos - pInstruction + 2];
-        memset( point, ' ', pErrorPos - pInstruction );
-        point [pErrorPos - pInstruction] = '^';
-        point [pErrorPos - pInstruction + 1] = '\0';
+        int len = _pcalculator->_isPrompt ? _pcalculator->_promptLength : 0;
+        char point [pErrorPos - pInstruction + 2 +  len];                               // 2 extra positions for '^' and '\0' characters
+        memset( point, ' ', pErrorPos - pInstruction + len );
+        point [pErrorPos - pInstruction + len] = '^';
+        point [pErrorPos - pInstruction + len + 1] = '\0';
         _pcalculator->_pConsole->println( pInstruction );
         _pcalculator->_pConsole->println( point );
         if ( _pcalculator->_programMode ) { sprintf( parsingInfo, "Error %d: statement ending at line %d", result, lineCount ); }
-        else { sprintf( parsingInfo, "Error %d", result ); }
+        else { sprintf( parsingInfo, "Error %d\r\n", result ); }
     }
 
-    if ( strlen( parsingInfo ) > 0 ) { _pcalculator->_pConsole->println( parsingInfo ); }
+    if ( strlen( parsingInfo ) > 0 ) { _pcalculator->_pConsole->println( parsingInfo ); _pcalculator->_isPrompt = false; }
 };

@@ -83,7 +83,8 @@ public:
     static constexpr uint8_t var_isStringPointer = 1 << 0;
 
     static constexpr  int _maxInstructionChars { 300 };
-
+    static constexpr char promptText[10] = "Justina> ";
+    static constexpr int _promptLength = sizeof( promptText )-1;
 
     char _instruction [_maxInstructionChars + 1] = "";
     int _instructionCharCount { 0 };
@@ -91,6 +92,8 @@ public:
     bool _flushAllUntilEOF { false };
     bool _quitCalcAtEOF { false };
     bool _keepInMemory { true };                        //// maak afhankelijk van command parameter
+    bool _isPrompt{false};
+    
     int _lineCount { 0 };                             // taking into account new line after 'load program' command ////
     int _StarCmdCharCount { 0 };
 
@@ -673,7 +676,7 @@ public:
     parseTokenResult_type  parseInstruction( char*& pInputLine );
     void deleteParsedData();
     bool allExternalFunctionsDefined( int& index );
-    void prettyPrintProgram();
+    void prettyPrintInstructions();
     void old_prettyPrintProgram();////
     void printParsingResult( parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* const pErrorPos );
 };
