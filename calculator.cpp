@@ -5,9 +5,10 @@
 // -------------------
 
 Calculator::Calculator( Stream* const pConsole ) : _pConsole( pConsole ) {
-    _pConsole->println( "[calc] Starting calculator..." );
+    _pConsole->println( "Justina: starting..." );
     _callbackFcn = nullptr;
     _pmyParser = new MyParser( this );              // pass the address of this Calculator object to the MyParser constructor
+    _quitCalcAtEOF = false;
 
     // init 'machine' (not a complete reset, because this clears heap objects for this calculator object, and there are none)
     _programVarNameCount = 0;
@@ -27,8 +28,6 @@ Calculator::Calculator( Stream* const pConsole ) : _pConsole( pConsole ) {
 
     *_programStorage = '\0';                                    //  current end of program 
     *_programStart = '\0';                                      //  current end of program (immediate mode)
-
-    _pConsole->println( "[calc] Ready>" );                  // end of parsing
 };
 
 
@@ -37,13 +36,13 @@ Calculator::Calculator( Stream* const pConsole ) : _pConsole( pConsole ) {
 // ---------------------
 
 Calculator::~Calculator() {
-    _pConsole->println( "[calc] Quitting calculator... " );
+    _pConsole->println( "Justina: quitting..." );
     _programMode = false;                                   //// te checken of er dan nog iets moet gereset worden
     if ( !_keepInMemory ) {
         delete _pmyParser;
         _callbackFcn = nullptr;
     }
-    _pConsole->println( "[calc] bye" );
+    _pConsole->println( "Justina: bye" );
 };
 
 
@@ -61,22 +60,25 @@ void Calculator::setCalcMainLoopCallback( void (*func)(bool& requestQuit) ) {
 // *   calculator main loop   *
 // ----------------------------
 
-bool Calculator::run() {
+bool Calculator::run( Stream* const pConsole )  {
     bool quitNow { false };
     char c;
+
+    _pConsole = pConsole;
+    _pConsole->println( "Justina>" );                  // end of parsing
+
     do {
         if ( _callbackFcn != nullptr ) { _callbackFcn( quitNow ); }
-        if ( quitNow ) {
-            _pConsole->println( "[calc] Abort request received..." );
-            break;
-        }
+        if ( quitNow ) { _pConsole->println( "Justina: abort request received" ); break; }
         if ( _pConsole->available() > 0 ) {     // if terminal character available for reading
             c = _pConsole->read();
             quitNow = processCharacter( c );        // process one character
-            if ( quitNow ) { break; }               // user gave quit command
+            if ( quitNow ) { break; }                        // user gave quit command
         }
     } while ( true );
 
+    if ( _keepInMemory ) { _pConsole->println( "Justina: bye" ); }        // if remove from memory: message given in destructor
+    _quitCalcAtEOF = false;         // if calculator stays in memory: re-init
     return _keepInMemory;
 }
 
@@ -134,7 +136,7 @@ bool Calculator::processCharacter( char c ) {
         withinString = false; withinStringEscSequence = false;
         withinComment = false;
 
-        _pConsole->println( _programMode ? "[calc] Waiting for program..." : "[calc] Ready>" );
+        _pConsole->println( _programMode ? "Justina: waiting for program..." : "Justina>" );
         return false;
     }
     else if ( isParserReset ) {  // temporary
@@ -171,7 +173,7 @@ bool Calculator::processCharacter( char c ) {
         if ( !_programMode && !isLeadingSpace && !(c == '\n') && (_StarCmdCharCount >= 0) ) {
             if ( c == quitCalc [_StarCmdCharCount] ) {
                 _StarCmdCharCount++;
-                if ( quitCalc [_StarCmdCharCount] == '\0' ) { return true; }         // perfect match: exit calculator
+                if ( quitCalc [_StarCmdCharCount] == '\0' ) { _flushAllUntilEOF = true; _quitCalcAtEOF = true; return false; }         // perfect match: set flag to exit calculator
                 else  if ( _StarCmdCharCount == strlen( quitCalc ) ) { _StarCmdCharCount = -1; }  // -1: no match: no further checking for now
             }
             else { _StarCmdCharCount = -1; };     // -1: no match: no further checking for now
@@ -224,7 +226,7 @@ bool Calculator::processCharacter( char c ) {
     isInstructionSeparator = isInstructionSeparator || (withinString && (c == '\n'));  // new line sent to parser as well
     bool instructionComplete = isInstructionSeparator || (isEndOfFile && (_instructionCharCount > 0));
 
-    if ( instructionComplete ) {                                                // terminated by a semicolon if not end of input
+    if ( instructionComplete && !_quitCalcAtEOF ) {                                                // terminated by a semicolon if not end of input
         _instruction [_instructionCharCount] = '\0';                            // add string terminator
 
         if ( requestMachineReset ) {
@@ -262,7 +264,7 @@ bool Calculator::processCharacter( char c ) {
 
             // parsing OK message (program mode only) or error message 
             _pmyParser->printParsingResult( result, funcNotDefIndex, _instruction, _lineCount, pErrorPos );
-            _pConsole->println( "[calc] Ready>" );                  // end of parsing
+            _pConsole->println( "Justina>" );                  // end of parsing
         }
 
         bool wasReset = false;      // init
@@ -309,5 +311,5 @@ bool Calculator::processCharacter( char c ) {
 
     }
 
-    return false;  // and wait for next character
+    return _quitCalcAtEOF;  // and wait for next character
 }

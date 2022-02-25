@@ -59,7 +59,7 @@ private:
     static const unsigned long _wifiConnectDelay { 500 };                   // minimum delay between two attempts to connect to wifi (milliseconds) //// static weg ???
     static const unsigned long _TCPconnectDelay { 500 };                  // minimum delay between stopping and connecting client
     static const unsigned long _isServer_stopDelay { 1000 };              // server: delay before stopping connection to client (and continue listening foe new client)
-    static const unsigned long _isServer_keepAliveTimeout { 60 * 1000 };     // server: timeout after connection to client
+    static const unsigned long _isServer_keepAliveTimeout { 60 * 60 * 1000 };     // server: timeout after connection to client
     static const unsigned long _isClient_stopDelay { 1000 };              // client: delay before stopping connection
     static const unsigned long _isClient_keepAliveTimeOut { 10 * 1000 };     // client: NO timeout 
 

@@ -89,7 +89,8 @@ public:
     int _instructionCharCount { 0 };
     bool _programMode { false };
     bool _flushAllUntilEOF { false };
-    bool _keepInMemory { false };
+    bool _quitCalcAtEOF { false };
+    bool _keepInMemory { true };                        //// maak afhankelijk van command parameter
     int _lineCount { 0 };                             // taking into account new line after 'load program' command ////
     int _StarCmdCharCount { 0 };
 
@@ -140,7 +141,7 @@ public:
 
     Calculator( Stream* const pConsole );               // constructor
     ~Calculator();               // constructor
-    bool run();
+    bool run( Stream* const pConsole );
     bool processCharacter( char c );
     void (*_callbackFcn)(bool& requestQuit);                                         // pointer to callback function for heartbeat
     void setCalcMainLoopCallback( void (*func)(bool& requistQuit) );                   // set callback function for connection state change

@@ -50,7 +50,7 @@ Calculator* pcalculator { nullptr };                                            
 // connect as TCP server: create class object myTCPconnection
 MyTCPconnection myTCPconnection( SSID, PASS, serverAddress, gatewayAddress, subnetMask, DNSaddress, serverPort );
 Stream* pConsole = (Stream*) &Serial;                                                // init pointer to Serial or TCP terminal
-Stream* pTerminals[2] { (Stream*) &Serial, myTCPconnection.getClient()};////
+Stream* pTerminal[2] { (Stream*) &Serial, myTCPconnection.getClient()};////
 
 
 // Forward declarations
@@ -171,7 +171,8 @@ void loop() {
             // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
             // this callback function will be called regularly, e.g. every time the interpreter reads a character
             pcalculator->setCalcMainLoopCallback( (&housekeeping) );                    // set callback function to housekeeping routine in this .ino file
-            interpreterInMemory = pcalculator->run();                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
+            
+            interpreterInMemory = pcalculator->run(pConsole);                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
             if ( !interpreterInMemory ) {                                               // interpreter not running anymore ?
                 delete pcalculator;                                                     // cleanup and delete calculator object itself
                 pcalculator = nullptr;                                                  // only to indicate memory is released
