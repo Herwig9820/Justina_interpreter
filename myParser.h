@@ -327,7 +327,7 @@ public:
         result_functionDefsCannotBeNested,
         result_fcnScalarAndArrayArgOrderNotConsistent,
         result_redefiningIntFunctionNotAllowed,
-        result_undefinedFunction,
+        result_undefinedFunctionOrArray,
 
         // variable errors
         result_varNameInUseForFunction = 1600,

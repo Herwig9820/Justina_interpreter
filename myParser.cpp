@@ -1282,7 +1282,8 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
                 if ( isUserVar ) {
                     _pcalculator->userVarValues [valueIndex].pArray = pArray;
                     _pcalculator->userVarType [varNameIndex] |= _pcalculator->var_isArray;             // set array bit
-            }
+                    _pcalculator->_userVarCount++;                                                      // user array variable is now considered 'created'
+                }
                 else if ( isGlobalVar ) {
                     _pcalculator->globalVarValues [valueIndex].pArray = pArray;
                     _pcalculator->globalVarType [varNameIndex] |= _pcalculator->var_isArray;             // set array bit
@@ -1299,7 +1300,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
                 if ( !arrayHasInitializer ) {                    // no explicit initializer 
                     for ( int arrayElem = 1; arrayElem <= arrayElements; arrayElem++ ) { ((float*) pArray) [arrayElem] = 0.; }
                 }
-        }
+            }
 
             // local arrays (note: NOT for function parameter arrays): set pointer to dimension storage 
             // the array flag has been set when local variable was created (including function parameters, which are also local variables)
@@ -1315,7 +1316,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
             }
             ((char*) pArray) [3] = array_dimCounter;        // (note: for param arrays, set to max dimension count during parsing)
 
-    }
+        }
 
 
         // 2.3 Internal or external function call, or parenthesis pair, closing parenthesis ?
@@ -1549,7 +1550,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         tokenType = tok_isOperator;                                                     // remember: token is an operator
         _tokenIndex = singleCharIndex;                                                  // needed in case in a command and current command parameter needs a variable
     }
-}
+    }
 
     // create token
     TokenIsTerminal* pToken = (TokenIsTerminal*) _pcalculator->_programCounter;
@@ -1666,7 +1667,7 @@ bool MyParser::parseAsExternFunction( char*& pNext, parseTokenResult_type& resul
     if ( !_pcalculator->_programMode ) {
         createNewName = false;                                                              // only check if function is defined, do NOT YET create storage for it
         index = getIdentifier( _pcalculator->extFunctionNames, _pcalculator->_extFunctionCount, _pcalculator->MAX_EXT_FUNCS, pch, pNext - pch, createNewName );
-        if ( index == -1 ) { pNext = pch; result = result_undefinedFunction; return false; }
+        if ( index == -1 ) { pNext = pch; result = result_undefinedFunctionOrArray; return false; }
     }
 
     // token is an external function (definition or call), and it's allowed here
@@ -1825,8 +1826,12 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
         if ( varNameIndex == -1 ) { pNext = pch; result = result_maxVariableNamesReached; return false; }      // name still does not exist: error
         // name exists (newly created or pre-existing)
         // variable name is new: clear all variable type flags and indicate 'qualifier not determined yet'
-        // variable type (array, float or string) will be set later, if it will appear to be a global variable
-        if ( createNewName )varType [primaryNameRange][varNameIndex] = _pcalculator->var_qualToSpecify;
+        // variable type (array, float or string) will be set later
+        if ( createNewName ) { varType [primaryNameRange][varNameIndex] = _pcalculator->var_qualToSpecify; }      // new name was created now
+        // user variables only: if array definition, then decrease variable count by 1 for now, and increase by 1 again when array dim spec is validated
+        // this ensures that a scalar is not created when an error is encountered later within dim spec parsing
+        if ( !isProgramVar && isArray ) { (*varNameCount [primaryNameRange])--; }    // the variable is not considered 'created' yet
+
     }
     else { // not a variable definition, just a variable reference
         if ( varNameIndex == -1 ) {
@@ -1843,9 +1848,9 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
     }
 
 
-    // 4. The variable NAME exists now, but we still need to check whether storage space for the variable itself has been created
+    // 4. The variable NAME exists now, but we still need to check whether storage space for the variable itself has been created / allocated
     //    Note: local variable storage is created at runtime
-    // --------------------------------------------------------------------------------------------------------------------------
+    // --------------------------------------------------------------------------------------------------------------------------------------
 
     bool variableNotYetKnown = false;                                                                             // init
 
@@ -1930,10 +1935,10 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
             if ( !isArray ) { varValues [activeNameRange][varNameIndex].numConst = 0.; }                  // initialize variable (if initializer and/or array: will be overwritten)
             varType [activeNameRange][varNameIndex] = varType [activeNameRange][varNameIndex] | _pcalculator->var_isFloat;         // init (for scalar and array)
             varType [activeNameRange][varNameIndex] = varType [activeNameRange][varNameIndex] | (isProgramVar ? _pcalculator->var_hasGlobalValue : _pcalculator->var_isUser);   // set 'has global value' bit
-            varType [activeNameRange][varNameIndex] = (varType [activeNameRange][varNameIndex] & ~_pcalculator->var_isArray); // init (array flag will be added when storage is created) 
+            varType [activeNameRange][varNameIndex] = (varType [activeNameRange][varNameIndex] & ~_pcalculator->var_isArray); // init (array flag may only be added when storage is created) 
         }
 
-        else {  // the global variable exists already: check for double definition
+        else {  // the global or user variable exists already: check for double definition
             if ( _isGlobalOrUserVarCmd ) {
                 if ( !(_pcalculator->_programMode ^ isProgramVar) ) { pNext = pch; result = result_varRedeclared; return false; }
             }
@@ -2348,13 +2353,13 @@ void MyParser::printParsingResult( parseTokenResult_type result, int funcNotDefI
         strcpy( parsingInfo, _pcalculator->_programMode ? "Program parsed without errors" : "" );
     }
 
-    else  if ( (result == result_undefinedFunction) && _pcalculator->_programMode ) {     // in program mode only (because function can be defined after a call)
+    else  if ( (result == result_undefinedFunctionOrArray) && _pcalculator->_programMode ) {     // in program mode only (because function can be defined after a call)
         sprintf( parsingInfo, "\r\nError %d: function: %s", result, _pcalculator->extFunctionNames [funcNotDefIndex] );
     }
 
     else {                                                                              // error
         int len = _pcalculator->_isPrompt ? _pcalculator->_promptLength : 0;
-        char point [pErrorPos - pInstruction + 2 +  len];                               // 2 extra positions for '^' and '\0' characters
+        char point [pErrorPos - pInstruction + 2 + len];                               // 2 extra positions for '^' and '\0' characters
         memset( point, ' ', pErrorPos - pInstruction + len );
         point [pErrorPos - pInstruction + len] = '^';
         point [pErrorPos - pInstruction + len + 1] = '\0';

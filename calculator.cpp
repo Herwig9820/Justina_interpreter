@@ -253,7 +253,7 @@ bool Calculator::processCharacter( char c ) {
             int funcNotDefIndex;
             if ( result == MyParser::result_tokenFound ) {
                 // checks at the end of parsing: any undefined functions (program mode only) ?  any open blocks ?
-                if ( _programMode && (!_pmyParser->allExternalFunctionsDefined( funcNotDefIndex )) ) { result = MyParser::result_undefinedFunction; }
+                if ( _programMode && (!_pmyParser->allExternalFunctionsDefined( funcNotDefIndex )) ) { result = MyParser::result_undefinedFunctionOrArray; }
                 if ( _pmyParser->_blockLevel > 0 ) { ; result = MyParser::result_noBlockEnd; }
                 if ( !_programMode ) {
                     // evaluation comes here
