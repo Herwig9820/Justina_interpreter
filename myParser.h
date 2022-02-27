@@ -107,6 +107,8 @@ public:
     uint16_t _paramIsArrayPattern { 0 };
 
     Stream* _pConsole { nullptr };
+    Stream** _pTerminal{nullptr};
+    int _definedTerminals {0};
 
     // program storage
     char _programStorage [PROG_MEM_SIZE + IMM_MEM_SIZE];
@@ -144,7 +146,7 @@ public:
 
     Calculator( Stream* const pConsole );               // constructor
     ~Calculator();               // constructor
-    bool run( Stream* const pConsole );
+    bool run( Stream* const pConsole , Stream** const pTerminal, int definedTerms);
     bool processCharacter( char c );
     void (*_callbackFcn)(bool& requestQuit);                                         // pointer to callback function for heartbeat
     void setCalcMainLoopCallback( void (*func)(bool& requistQuit) );                   // set callback function for connection state change

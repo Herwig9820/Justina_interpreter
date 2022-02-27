@@ -40,10 +40,10 @@ enum connectionState_type {
 };
 
 enum connectionAction_type {
-    action_0_NOP,
-    action_1_resetWiFi,                                                  // and reconnect TCP
-    action_2_TCPkeepAlive,
-    action_3_TCPdoNotKeepAlive,
+    action_0_disableWiFi,
+    action_1_restartWiFi,                                                   // if not started: start WiFi; if started, then stop and restart
+    action_2_TCPkeepAlive,                                                  // assumes WiFi is connected
+    action_3_TCPdoNotKeepAlive,                                             // assumes WiFi is connected
     action_4_TCPdisable
 };
 
@@ -59,21 +59,23 @@ private:
     static const unsigned long _wifiConnectDelay { 500 };                   // minimum delay between two attempts to connect to wifi (milliseconds) //// static weg ???
     static const unsigned long _TCPconnectDelay { 500 };                  // minimum delay between stopping and connecting client
     static const unsigned long _isServer_stopDelay { 1000 };              // server: delay before stopping connection to client (and continue listening foe new client)
-    static const unsigned long _isServer_keepAliveTimeout { 60 * 60 * 1000 };     // server: timeout after connection to client
+    static const unsigned long _isServer_keepAliveTimeOut { 60 * 60 * 1000 };       // server: default connection timeout after connection to client
     static const unsigned long _isClient_stopDelay { 1000 };              // client: delay before stopping connection
-    static const unsigned long _isClient_keepAliveTimeOut { 10 * 1000 };     // client: NO timeout 
+    static const unsigned long _isClient_keepAliveTimeOut { 10 * 1000 };            // client: default connection timeout after connection to server  //// client: NO timeout ???? (lost probleem op met soms 10" hangen ?)
 
     bool _verbose;
     bool _resetWiFi;
     bool _isClient;
     int _serverPort;
 
+    bool _WiFiEnabled;
     bool _TCPenabled;
     bool _TCPconnTimeoutEnabled;
     connectionState_type _connectionState;                       // state machine: wifi and client connection state
     unsigned long _lastWifiConnectAttempt;                            // timestamps in milliseconds
     unsigned long _lastTCPconnectAttempt;
     unsigned long _keepAliveUntil;
+    unsigned long _keepAliveTimeOut;
 
     WiFiServer _server;                                                     // wifi server object
     WiFiClient _client;                                                     // wifi client object
@@ -88,12 +90,13 @@ private:
 public:
     // public methods 
     MyTCPconnection( const char SSID [], const char PASS [],          // constructor: pass IP addresses and server port
-        const IPAddress serverAddress, const IPAddress  gatewayAddress, const IPAddress subnetMask, const IPAddress  DNSaddress, const int serverPort );
-    MyTCPconnection( const char SSID [], const char PASS [], const IPAddress serverAddress, const int serverPort );
+        const IPAddress serverAddress, const IPAddress  gatewayAddress, const IPAddress subnetMask, const IPAddress  DNSaddress, const int serverPort, connectionState_type initialConnState );
+    MyTCPconnection( const char SSID [], const char PASS [], const IPAddress serverAddress, const int serverPort, connectionState_type initialConnState );
     void maintainConnection();                                              // attempt to (re-)connect to wifi and to a client, if available
 
     void setVerbose( bool verbose );
     void setConnCallback( void (*func)(connectionState_type connectionState) );                   // set callback function for connection state change
+    void setKeepAliveTimeout(unsigned long keepAliveTimeOut);
     void requestAction( connectionAction_type action );
     connectionState_type getConnectionState();
     WiFiServer* getServer();    // only if configured as server

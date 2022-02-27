@@ -60,13 +60,15 @@ void Calculator::setCalcMainLoopCallback( void (*func)(bool& requestQuit) ) {
 // *   calculator main loop   *
 // ----------------------------
 
-bool Calculator::run( Stream* const pConsole ) {
+bool Calculator::run( Stream* const pConsole, Stream** const pTerminal, int definedTerms ) {
     bool quitNow { false };
     char c;
 
     _programMode = false;                                   //// te checken of er dan nog iets moet gereset worden
     _pConsole = pConsole;
     _pConsole->print( "Justina> " ); _isPrompt = true;                 // end of parsing
+    _pTerminal = pTerminal;
+    _definedTerminals = definedTerms;
 
     do {
         if ( _callbackFcn != nullptr ) { _callbackFcn( quitNow ); }
@@ -259,6 +261,8 @@ bool Calculator::processCharacter( char c ) {
                     // evaluation comes here
                     _pmyParser->prettyPrintInstructions();                    // immediate mode and result OK: pretty print input line
                     _pConsole->println( "  ..." );      // immediate mode: print evaluation result
+                    _pTerminal [0]->println( "  <><><> 1" );      // immediate mode: print evaluation result//// test
+                    _pTerminal [1]->println( "  <><><> 2" );      // immediate mode: print evaluation result//// test
                 }
             }
 
