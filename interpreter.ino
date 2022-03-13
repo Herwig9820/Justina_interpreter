@@ -25,6 +25,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ***************************************************************************************/
 
+#define withTCP 0
 
 // includes
 // --------
@@ -32,19 +33,26 @@
 #include <avr/dtostrf.h>        
 #include "secrets.h"
 #include "myParser.h"
-#include "myComm.h"
-
+#if withTCP
+#include "TCPserverClient.h"
+#endif
 
 // Global constants, variables and objects
 // ---------------------------------------
 
 constexpr pin_size_t HEARTBEAT_PIN { 9 };                                               // indicator leds
+
+#if withTCP
 constexpr pin_size_t WiFi_CONNECTED_PIN { 10 };
 constexpr pin_size_t TCP_CONNECTED_PIN { 11 };
 constexpr int terminalCount { 2 };
-
 constexpr char SSID [] = SERVER_SSID, PASS [] = SERVER_PASS;                            // WiFi SSID and password                           
 constexpr char menu [] = "+++ Please select:\r\n  '0' (Re-)start WiFi\r\n  '1' Disable WiFi\r\n  '2' Enable TCP\r\n  '3' Disable TCP\r\n  '4' Verbose TCP\r\n  '5' Silent TCP\r\n  '6' Remote console\r\n  '7' Local console\r\n  '8' Start Justina interpreter\r\n";
+
+#else
+constexpr int terminalCount { 1 };
+constexpr char menu [] = "+++ Please select:\r\n  '8' Start Justina interpreter\r\n";
+#endif
 
 bool TCP_enabled { false };
 bool console_isRemoteTerm { false };                                                    // init: console is currently local terminal (Serial) 
@@ -52,18 +60,25 @@ bool withinApplication { false };                                               
 bool interpreterInMemory { false };                                                     // init: interpreter is not in memory
 
 Calculator* pcalculator { nullptr };                                                    // pointer to Calculator object
-// connect as TCP server: create class object myTCPconnection
-MyTCPconnection myTCPconnection( SSID, PASS, serverAddress, gatewayAddress, subnetMask, DNSaddress, serverPort, conn_2_TCPconnected );
+
 Stream* pConsole = (Stream*) &Serial;                                                   // init pointer to Serial or TCP terminal
+#if withTCP
+// connect as TCP server: create class object myTCPconnection
+TCPconnection myTCPconnection( SSID, PASS, serverAddress, gatewayAddress, subnetMask, DNSaddress, serverPort, conn_2_TCPconnected );
 Stream* pTerminal [terminalCount] { (Stream*) &Serial, myTCPconnection.getClient() };
+#else
+Stream* pTerminal [terminalCount] { (Stream*) &Serial };
+#endif
 
 
 // Forward declarations
 // --------------------
 
+#if withTCP
 void switchConsole();
-void housekeeping( bool& requestQuit );
 void onConnStateChange( connectionState_type  connectionState );
+#endif
+void housekeeping( bool& requestQuit );
 void heartbeat();
 
 
@@ -76,17 +91,16 @@ void setup() {
 
     // define output pins
     pinMode( HEARTBEAT_PIN, OUTPUT );                                                   // blinking led for heartbeat
+#if withTCP
     pinMode( WiFi_CONNECTED_PIN, OUTPUT );                                              // 'TCP connected' led
     pinMode( TCP_CONNECTED_PIN, OUTPUT );                                               // 'TCP connected' led
+#endif
 
-    digitalWrite( HEARTBEAT_PIN, HIGH );                                                // test leds while waiting for Serial to be ready
-    digitalWrite( WiFi_CONNECTED_PIN, HIGH );
-    digitalWrite( TCP_CONNECTED_PIN, HIGH );
+    digitalWrite( HEARTBEAT_PIN, HIGH );                                                // while waiting for Serial to be ready
     delay( 4000 );                                                                      // 'while(!Serial) {}' does not work
     digitalWrite( HEARTBEAT_PIN, LOW );
-    digitalWrite( WiFi_CONNECTED_PIN, LOW );
-    digitalWrite( TCP_CONNECTED_PIN, LOW );
 
+#if withTCP
     Serial.println( "Starting server" );
     Serial.print( "WiFi firmware version  " ); Serial.println( WiFi.firmwareVersion() ); Serial.println();
 
@@ -94,6 +108,7 @@ void setup() {
     myTCPconnection.setKeepAliveTimeout( 20000 );
     // set callback function that will be executed when WiFi or TCP connection state changes 
     myTCPconnection.setConnCallback( (&onConnStateChange) );                            // set callback function
+#endif
 
     // not functionaly used, but required to circumvent a bug in sprintf function with %F, %E, %G specifiers 
     char s [10];
@@ -109,7 +124,7 @@ void setup() {
 // ------------------------------
 
 void loop() {
-    myTCPconnection.maintainConnection();                                               // important to execute regularly; place at beginning of loop()
+    ////myTCPconnection.maintainConnection();                                               // important to execute regularly; place at beginning of loop()
     heartbeat();                                                                        // blink a led to show program is running 
 
     // loop only once, to alow breaks
@@ -130,17 +145,21 @@ void loop() {
         // read character from local terminal (Serial), if a character is available
         if ( Serial.available() > 0 ) {
             char localChar = Serial.read();
+#if withTCP
             // mechanism to gain back local control, e.g. if remote connection (TCP) lost 
             bool forceLocal = (localChar == 0x01);                                      // character read from Serial is 0x01 ? force switch to local console      
             if ( forceLocal && console_isRemoteTerm ) { switchConsole(); }              // if console is currently remote terminal (TCP client), set console to local
+#endif
             if ( !console_isRemoteTerm ) { found = true; c = localChar; }               // if console is currently local terminal (Serial), accept character 
         }
 
+#if withTCP
         // read character from remote terminal (TCP client), if a character is available
         if ( myTCPconnection.getClient()->available() > 0 ) {
             char remoteChar = myTCPconnection.getClient()->read();
             if ( console_isRemoteTerm ) { found = true; c = remoteChar; }               // if console is currently remote terminal (TCP client), accept character
         }
+#endif
 
         if ( !found || (c < ' ') ) { break; }                                           // no character to process (also discard control characters)
 
@@ -150,14 +169,15 @@ void loop() {
 
         switch ( tolower( c ) ) {
 
+#if withTCP
         case '0':
             myTCPconnection.requestAction( action_1_restartWiFi );
-            pConsole->println( "(Re-)starting WiFi..." );                               
+            pConsole->println( "(Re-)starting WiFi..." );
             break;
 
         case '1':
             myTCPconnection.requestAction( action_0_disableWiFi );
-            pConsole->println( "Disabling WiFi..." );                                         
+            pConsole->println( "Disabling WiFi..." );
             break;
 
         case '2':
@@ -185,21 +205,21 @@ void loop() {
 
         case '6':                                                                       // if console is currently local terminal, switch to remote
             if ( console_isRemoteTerm ) { pConsole->println( "Nothing to do" ); }
-            else { switchConsole(); }                           
+            else { switchConsole(); }
             break;
 
         case '7':                                                                       // if console is currently remote terminal, switch to local
             if ( !console_isRemoteTerm ) { pConsole->println( "Nothing to do" ); }
-            else { switchConsole(); }                    
+            else { switchConsole(); }
 
             break;
-
+#endif
         case '8':
             pConsole->println();
             // start interpreter: control will not return to here until the user quits, because it has its own 'main loop'
             withinApplication = true;                                                   // flag that control will be transferred to an 'application'
             if ( !interpreterInMemory ) { pcalculator = new  Calculator( pConsole ); }  // if interpreter not running: create an interpreter object on the heap
-            
+
             // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
             // this callback function will be called regularly, e.g. every time the interpreter reads a character
             pcalculator->setCalcMainLoopCallback( (&housekeeping) );                    // set callback function to housekeeping routine in this .ino file
@@ -220,6 +240,7 @@ void loop() {
 }                                                                                       // loop()
 
 
+#if withTCP
 
 // ---------------------------------------------------------------------------------
 // *   Switch console to remote terminal (TCP client) or local terminal (Serial)   *
@@ -265,7 +286,7 @@ void onConnStateChange( connectionState_type  connectionState ) {
         Serial.println( "TCP connection established\r\n" );
         if ( !withinApplication ) { pConsole->println( menu ); }                        // if not within an application, print main menu on remote terminal
     }                   // remote client just got connected: show on main terminal
-    
+
     else if ( holdTCPconnected ) {                                                      // previous status was 'client connected'
         if ( console_isRemoteTerm ) {                                                   // but still in remote mode: so probably a timeout (or a wifi issue, ...)
             Serial.println( "Console connection lost or timed out" );                   // inform local terminal about it 
@@ -273,6 +294,7 @@ void onConnStateChange( connectionState_type  connectionState ) {
         }
     }
 }
+#endif
 
 
 // -----------------------------------------------------------------------------------------------------------------------------
@@ -290,8 +312,10 @@ void onConnStateChange( connectionState_type  connectionState ) {
 void housekeeping( bool& requestQuit ) {
     bool& forceLocal = requestQuit;                                                     // reference variable
 
-    myTCPconnection.maintainConnection();                                               // maintain TCP connection
     heartbeat();                                                                        // blink a led to show program is running
+
+#if withTCP
+    myTCPconnection.maintainConnection();                                               // maintain TCP connection
 
     // if console is remote terminal (TCP), keep reading characters from local terminal (Serial) while in an application, to (1) avoid buffer overruns
     // and (2) continue to provide the mechanism to gain back local control if TCP connection seems to be lost
@@ -309,6 +333,7 @@ void housekeeping( bool& requestQuit ) {
             }
         }
     }
+#endif
 }
 
 

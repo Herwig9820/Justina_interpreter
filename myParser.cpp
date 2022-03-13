@@ -1282,7 +1282,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
                 if ( isUserVar ) {
                     _pcalculator->userVarValues [valueIndex].pArray = pArray;
                     _pcalculator->userVarType [varNameIndex] |= _pcalculator->var_isArray;             // set array bit
-                    _pcalculator->_userVarCount++;                                                      // user array variable is now considered 'created'
+                    _pcalculator->_userVarCount++;                                                     // user array variable is now considered 'created'//// ook voor global en static (consistentie)
                 }
                 else if ( isGlobalVar ) {
                     _pcalculator->globalVarValues [valueIndex].pArray = pArray;
@@ -1827,11 +1827,12 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
         // name exists (newly created or pre-existing)
         // variable name is new: clear all variable type flags and indicate 'qualifier not determined yet'
         // variable type (array, float or string) will be set later
-        if ( createNewName ) { varType [primaryNameRange][varNameIndex] = _pcalculator->var_qualToSpecify; }      // new name was created now
-        // user variables only: if array definition, then decrease variable count by 1 for now, and increase by 1 again when array dim spec is validated
-        // this ensures that a scalar is not created when an error is encountered later within dim spec parsing
-        if ( !isProgramVar && isArray ) { (*varNameCount [primaryNameRange])--; }    // the variable is not considered 'created' yet
-
+        if ( createNewName ) {
+            varType [primaryNameRange][varNameIndex] = _pcalculator->var_qualToSpecify;      // new name was created now
+            // NEW user variables only: if array definition, then decrease variable count by 1 for now, and increase by 1 again when array dim spec is validated
+            // this ensures that a scalar is not created when an error is encountered later within dim spec parsing
+            if ( !isProgramVar && isArray ) { (*varNameCount [primaryNameRange])--; }    // the variable is not considered 'created' yet
+        }
     }
     else { // not a variable definition, just a variable reference
         if ( varNameIndex == -1 ) {

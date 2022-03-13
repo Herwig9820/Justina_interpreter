@@ -261,8 +261,6 @@ bool Calculator::processCharacter( char c ) {
                     // evaluation comes here
                     _pmyParser->prettyPrintInstructions();                    // immediate mode and result OK: pretty print input line
                     _pConsole->println( "  ..." );      // immediate mode: print evaluation result
-                    _pTerminal [0]->println( "  <><><> 1" );      // immediate mode: print evaluation result//// test
-                    _pTerminal [1]->println( "  <><><> 2" );      // immediate mode: print evaluation result//// test
                 }
             }
 
