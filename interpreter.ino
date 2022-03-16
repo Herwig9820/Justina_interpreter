@@ -31,9 +31,9 @@
 // --------
 
 #include <avr/dtostrf.h>        
-#include "secrets.h"
-#include "myParser.h"
+#include "Justina.h"
 #if withTCP
+#include "secrets.h"
 #include "TCPserverClient.h"
 #endif
 
@@ -59,7 +59,7 @@ bool console_isRemoteTerm { false };                                            
 bool withinApplication { false };                                                       // init: currently not within an application
 bool interpreterInMemory { false };                                                     // init: interpreter is not in memory
 
-Calculator* pcalculator { nullptr };                                                    // pointer to Calculator object
+Interpreter* pcalculator { nullptr };                                                    // pointer to Interpreter object
 
 Stream* pConsole = (Stream*) &Serial;                                                   // init pointer to Serial or TCP terminal
 #if withTCP
@@ -218,7 +218,7 @@ void loop() {
             pConsole->println();
             // start interpreter: control will not return to here until the user quits, because it has its own 'main loop'
             withinApplication = true;                                                   // flag that control will be transferred to an 'application'
-            if ( !interpreterInMemory ) { pcalculator = new  Calculator( pConsole ); }  // if interpreter not running: create an interpreter object on the heap
+            if ( !interpreterInMemory ) { pcalculator = new  Interpreter( pConsole ); }  // if interpreter not running: create an interpreter object on the heap
 
             // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
             // this callback function will be called regularly, e.g. every time the interpreter reads a character
