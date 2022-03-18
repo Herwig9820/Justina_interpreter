@@ -158,6 +158,7 @@ Interpreter::Interpreter( Stream* const pConsole ) : _pConsole( pConsole ) {
     _programVarNameCount = 0;
     _staticVarCount = 0;
     _localVarCountInFunction = 0;
+    _paramOnlyCountInFunction = 0;
     _extFunctionCount = 0;
 
     _instructionCharCount = 0;

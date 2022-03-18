@@ -121,7 +121,7 @@ public:
     static constexpr int MAX_USERVARNAMES { 32 };                       // max. vars (all types: global, static, local, parameter). Absolute limit: 255
     static constexpr int MAX_PROGVARNAMES { 64 };                       // max. vars (all types: global, static, local, parameter). Absolute limit: 255
     static constexpr int MAX_STAT_VARS { 32 };                      // max. static vars (only). Absolute limit: 255
-    static constexpr int MAX_LOC_VARS_IN_FUNC { 16 };               // max. local and parameter vars (only) in an INDIVIDUAL function. Absolute limit: 255 
+    static constexpr int MAX_LOC_VARS_IN_FUNC { 32 };               // max. local and parameter vars (only) in an INDIVIDUAL function. Absolute limit: 255 
     static constexpr int MAX_EXT_FUNCS { 16 };                      // max. external functions. Absolute limit: 255
     static constexpr int MAX_ARRAY_DIMS { 3 };                        // 1, 2 or 3 is allwed: must fit in 3 bytes
     static constexpr int MAX_ARRAY_ELEM { 200 };                      // max. n° of floats in a single array
@@ -180,7 +180,7 @@ public:
 
 
     union Val {
-        void* pVarBaseAddress;
+        void* pVariable;
 
         // global, static, local variables; parameters with default initialisation (if no argument provided)
         float realConst;                                         // variable contains number: float
@@ -196,23 +196,47 @@ public:
 
     struct ExtFunctionData {
         char* pExtFunctionStartToken;                           // ext. function: pointer to start of function (token)
-        char localVarCountInFunction;                             // needed to reserve run time storage for local variables //// check name (enkel local use)
+        char paramOnlyCountInFunction;
+        char localVarCountInFunction;                             // needed to reserve run time storage for local variables 
         char paramIsArrayPattern [2];                         // parameter pattern: b15 flag set when parsing function definition or first function call; b14-b0 flags set when corresponding parameter or argument is array      
     };
 
 
-    struct valueLvl {
+    // execution
+
+    struct VarOrConstLvl {
+        char tokenType;
+        char valueType;
+        char isArray;                                           // 0b1 : is array
+        char isIntermediateResult;                                             // boundary alignment
         Val value;                                              // float or pointer (4 byte)
-        uint8_t varType;
-        bool isArray;
     };
 
-    union LE_execStack {
-        valueLvl varData;
+    struct FunctionLvl {
+        char tokenType;
+        char index;
     };
-    
-    
-    
+
+    struct TerminalTokenLvl {
+        char tokenType;
+        char index;
+        char priority;
+        char associativity;
+    };
+
+    union LE_calcStack {
+        VarOrConstLvl varOrConst;
+        FunctionLvl function;
+        TerminalTokenLvl terminal;
+    };
+
+    struct LE_flowControlStack {
+        char tokenType;
+        char index;
+        char spare[2];                                          // boundary alignment
+        char* pToNextToken;                                    // reserved words for block commands (IF, FOR, BREAK, END, ...): step n° of block start token or next block token (uint16_t)
+    };
+
     // variable type: 
 
     // bit b7: program variable name has a global program variable associated with it. Only used during parsing, not stored in token
@@ -258,6 +282,7 @@ public:
     int _userVarCount { 0 };                                        // counts number of user variables (names and values) 
     int _programVarNameCount { 0 };                                        // counts number of variable names (global variables: also stores values) 
     int _localVarCountInFunction { 0 };                             // counts number of local variables in a specific function (names only, values not used)
+    int _paramOnlyCountInFunction {0};
     int _staticVarCount { 0 };                                      // static variable count (across all functions)
     int _extFunctionCount { 0 };                                    // external function count
     char _arrayDimCount { 0 };
@@ -298,9 +323,15 @@ public:
     char* extFunctionNames [MAX_EXT_FUNCS];
     ExtFunctionData extFunctionData [MAX_EXT_FUNCS];
 
-    LE_execStack* _pExecStackLvl;
-    int _execStackLvl = 0;
-    LinkedList execStack;                                      // during parsing: linked list keeping track of open parentheses and open blocks
+    LE_calcStack* _pCalcStackTop{nullptr}, * _pCalcStackMinus1 { nullptr }, * _pCalcStackMinus2 { nullptr };
+    LE_flowControlStack* _pFlowCtrlStack;
+
+    int _calcStackLvl = 0;
+    int _flowCtrlStackLvl = 0;
+
+    LinkedList execStack;  
+    LinkedList flowCtrlStack;
+
 
     // ------------------------------------
     // *   methods (doc: see .cpp file)   *
@@ -312,18 +343,16 @@ public:
     bool processCharacter( char c );
     void (*_callbackFcn)(bool& requestQuit);                                         // pointer to callback function for heartbeat
     void setCalcMainLoopCallback( void (*func)(bool& requistQuit) );                   // set callback function for connection state change
-    void* varBaseAddress( TokenIsVariable* pVarToken, uint8_t& varType, bool& isArray );
+    void* varBaseAddress( TokenIsVariable* pVarToken, char& varType, char& isArray );
     void* arrayElemAddress( void* varBaseAddress, int* dims );
 
     execResult_type  exec();
-    bool execResWord(  );
-    bool execNumber() ;
-    bool execStringConstant();
-    bool execTerminalToken();
-    bool execInternFunction();
-    bool execExternFunction();
-    bool execVariable(  );
-    bool execIdentifierName();
+    bool PushTerminalToken( int& tokenType );
+    bool pushResWord( int& tokenType );
+    bool pushFunctionName( int& tokenType );
+    bool pushConstant( int& tokenType );
+    bool pushVariable( int& tokenType );
+    bool pushIdentifierName( int& tokenType );
 
 };
 
@@ -333,7 +362,7 @@ public:
 *             parse character string into tokens           *
 ***********************************************************/
 
-class MyParser {
+class MyParser {//// naming
 
     // --------------------
     // *   enumerations   *
@@ -537,8 +566,8 @@ private:
 
 public:
 
-    static constexpr char extFunctionFirstOccurFlag = 0x10;     // flag: min > max means not initialized
-    static constexpr char extFunctionMaxArgs = 0xF;             // must fit in 4 bits
+    static constexpr char c_extFunctionFirstOccurFlag = 0x10;     // flag: min > max means not initialized
+    static constexpr char c_extFunctionMaxArgs = 0xF;             // must fit in 4 bits
 
     // these constants are used to check to which token group (or group of token groups) a parsed token belongs
     static constexpr uint8_t lastTokenGroup_0 = 1 << 0;          // operator, comma
@@ -625,9 +654,12 @@ private:
     // used to close any type of currently open inner block
     static constexpr CmdBlockDef cmdBlockGenEnd { block_genericEnd,block_endPos,block_na,block_endPos };            // all block types: block end 
 
+public:
     static const ResWordDef _resWords [];                       // reserved word names
     static const FuncDef _functions [];                         // function names with min & max arguments allowed 
     static const char* const singleCharTokens;                  // all one-character tokens (and possibly first character of two-character tokens)
+    static const char* const operatorPriority;                  // higher number is higher priority; 0 for 'not an operator'
+    static const char* const operatorAssociativity;
     static const uint8_t _maxIdentifierNameLen { 14 };           // max length of identifier names, excluding terminating '\0'
     static const uint8_t _maxAlphaCstLen { 15 };                 // max length of alphanumeric constants, excluding terminating '\0' (also if stored in variables)
 
@@ -665,8 +697,8 @@ private:
 
     uint16_t _lastTokenStep, _lastVariableTokenStep;
     uint16_t _blockCmdTokenStep, _blockStartCmdTokenStep;   // pointers to reserved words used as block commands                           
-    LE_parsingStack* _pCurrStackLvl;
-    LE_parsingStack* _pFunctionDefStackLvl;
+    LE_parsingStack* _pParsingStack;
+    LE_parsingStack* _pFunctionDefStack;
 
     Interpreter::tokenType_type _lastTokenType = Interpreter::tok_no_token;               // type of last token parsed
     Interpreter::tokenType_type _lastTokenType_hold = Interpreter::tok_no_token;
