@@ -28,15 +28,15 @@ const char MyParser::cmdPar_test [4] { cmdPar_programName | cmdPar_optionalFlag,
 const MyParser::ResWordDef MyParser::_resWords [] {
 {"TEST", cmdPar_test, cmdDeleteVar, cmd_noRestrictions},
 
-{"PROGRAM", cmdPar_P, cmdProgram, cmd_onlyProgramTop},
+{"PROGRAM", cmdPar_P, cmdProgram, cmd_onlyProgramTop | cmd_skipDuringExec},
 {"DELETE",cmdPar_P_mult, cmdDeleteVar, cmd_onlyImmediate},                                                      // variable list
 {"CLEAR", cmdPar_N, cmdBlockOther, cmd_onlyImmediate},
 {"VARS",cmdPar_N, cmdBlockOther, cmd_onlyImmediate},
-{"FUNCTION",cmdPar_F, cmdBlockExtFunction,cmd_onlyInProgram},
+{"FUNCTION",cmdPar_F, cmdBlockExtFunction,cmd_onlyInProgram | cmd_skipDuringExec},
 
-{"STATIC", cmdPar_AA_mult, cmdStaticVar,cmd_onlyInFunctionBlock},                                         // minimum 1 variable (with optional cst assignment)
-{"LOCAL", cmdPar_AA_mult, cmdLocalVar,cmd_onlyInFunctionBlock},                                             // minimum 1 variable (with optional cst assignment)
-{"VAR", cmdPar_AA_mult, cmdGlobalVar,cmd_onlyOutsideFunctionBlock},                           // minimum 1 variable (with optional cst assignment)
+{"STATIC", cmdPar_AA_mult, cmdStaticVar,cmd_onlyInFunctionBlock | cmd_skipDuringExec},                                         // minimum 1 variable (with optional cst assignment)
+{"LOCAL", cmdPar_AA_mult, cmdLocalVar,cmd_onlyInFunctionBlock | cmd_skipDuringExec},                                             // minimum 1 variable (with optional cst assignment)
+{"VAR", cmdPar_AA_mult, cmdGlobalVar,cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec},                           // minimum 1 variable (with optional cst assignment)
 
 {"FOR",cmdPar_AEE,cmdBlockFor, cmd_onlyImmediateOrInsideFunctionBlock},
 {"WHILE",cmdPar_E,cmdBlockWhile, cmd_onlyImmediateOrInsideFunctionBlock},
@@ -55,8 +55,8 @@ const MyParser::ResWordDef MyParser::_resWords [] {
 const MyParser::FuncDef MyParser::_functions [] { {"varAddress",1,1}, {"varIndirect",1 ,1},{"varName",1 ,1},
 {"if", 3,3}, {"and",1,9}, {"or",1,9}, {"not",1,1}, {"sin",1,1}, {"cos",1,1}, {"tan",1,1} , {"time", 0,0} };
 
-const char* const MyParser::singleCharTokens = ",;:<>=+-*/^()";                         // all one-character tokens; two-character comparison tokens (<=, >=, <>) are not included
-const char* const MyParser::operatorPriority = "0012223344566222";              // 0 = comma semicolon, 1 = assignment, 2 comparison, 3 = addition subtraction, 4 = mult. division, 5 = power, 6 = parentheses
+const char* const      MyParser::singleCharTokens = ",;:<>=+-*/^()";                         // all one-character tokens; two-character comparison tokens (<=, >=, <>) are not included
+const char* const      MyParser::operatorPriority = "0012223344566222";              // 0 = comma semicolon, 1 = assignment, 2 comparison, 3 = addition subtraction, 4 = mult. division, 5 = power, 6 = parentheses
 const char* const MyParser::operatorAssociativity = "0010000000100000";         // 0 = left-to_right associativity, 1 = right-to-left 
 
 // -------------------
@@ -483,7 +483,7 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
             _isAnyVarCmd = _isGlobalOrUserVarCmd || _isLocalVarCmd || _isStaticVarCmd;      //  VAR, LOCAL, STATIC
 
             // is command allowed here ? Check restrictions
-            char cmdRestriction = _resWords [_tokenIndex].restrictions;
+            char cmdRestriction = _resWords [_tokenIndex].restrictions & cmd_usageRestrictionMask;
             if ( cmdRestriction == cmd_onlyProgramTop ) {
                 if ( _lastTokenStep != 0 ) { result = result_onlyProgramStart; return false; }
             }

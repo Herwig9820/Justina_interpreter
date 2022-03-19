@@ -88,10 +88,10 @@ public:
     enum tokenType_type {                                       // token type
         tok_no_token,                                           // no token to process
         tok_isReservedWord,
-        tok_isStringConst,
         tok_isInternFunction,
         tok_isExternFunction,
         tok_isRealConst,
+        tok_isStringConst,
         tok_isVariable,
         tok_isGenericName,
         // all terminal tokens: at the end of the list ! (occupy only one character in program, combining token type and index)
@@ -207,9 +207,10 @@ public:
     struct VarOrConstLvl {
         char tokenType;
         char valueType;
-        char isArray;                                           // 0b1 : is array
+        char arrayAttributes;                                           // 0b1 : is array
         char isIntermediateResult;                                             // boundary alignment
         Val value;                                              // float or pointer (4 byte)
+        char* varTypeAddress;                                        // variables only: pointer to variable value type
     };
 
     struct FunctionLvl {
@@ -253,7 +254,8 @@ public:
     static constexpr uint8_t var_isParamInFunc = 1 << 4;             // variable is function parameter
     static constexpr uint8_t var_qualToSpecify = 0 << 4;             // qualifier is not yet defined (temporary use during parsing; never stored in token)
 
-    // bit b3: spare 
+    // bit b3: variable is an array element and not a scalar 
+    static constexpr uint8_t var_isArrayElement = 0x08;             // execution only               
 
     // bit b2: variable is an array (and not a scalar)
     static constexpr uint8_t var_isArray = 0x04;                     // stored with variable attributes and in 'variable' token. Can not be changed at runtime
@@ -343,7 +345,7 @@ public:
     bool processCharacter( char c );
     void (*_callbackFcn)(bool& requestQuit);                                         // pointer to callback function for heartbeat
     void setCalcMainLoopCallback( void (*func)(bool& requistQuit) );                   // set callback function for connection state change
-    void* varBaseAddress( TokenIsVariable* pVarToken, char& varType, char& isArray );
+    void* varBaseAddress( TokenIsVariable* pVarToken, char*& pVarType, char& varType, char& variableAttrib );
     void* arrayElemAddress( void* varBaseAddress, int* dims );
 
     execResult_type  exec();
@@ -505,8 +507,6 @@ public:
     // *   unions, structures   *
     // --------------------------
 
-private:
-
     // Note: structures starting with 'LE_' are used to cast list elements for easy handling
 
     struct CmdBlockDef {                                        // block commands
@@ -604,9 +604,10 @@ public:
     static constexpr uint8_t cmdPar_multipleFlag = 0x08;             // allowed 0 to n times. Only for last command parameter
     static constexpr uint8_t cmdPar_optionalFlag = 0x10;             // allowed 0 to 1 times. If parameter is present, next parameters do not have to be optional 
 
-private:
 
-    // first parameter only: indicate command (not parameter) usage restrictions 
+    // bits b3210: indicate command (not parameter) usage restrictions 
+    static constexpr char cmd_usageRestrictionMask = 0x0F;               // mask
+
     static constexpr char cmd_noRestrictions = 0x00;                  // command has no usage restrictions 
     static constexpr char cmd_onlyInProgram = 0x01;                   // command is only allowed insde a program
     static constexpr char cmd_onlyInProgramOutsideFunctionBlock = 0x02;    // command is only allowed insde a program
@@ -615,6 +616,9 @@ private:
     static constexpr char cmd_onlyOutsideFunctionBlock = 0x05;             // command is only allowed inside a function block
     static constexpr char cmd_onlyImmediateOrInsideFunctionBlock = 0x06;   // command is only allowed inside a function block
     static constexpr char cmd_onlyProgramTop = 0x07;                        // only as first program statement
+
+    // bit b7: skip command during execution
+    static constexpr char cmd_skipDuringExec = 0x80;
 
 
     // commands (FUNCTION, FOR, ...): allowed command parameters (naming: cmdPar_<n[nnn]> with A'=variable with (optional) assignment, 'E'=expression, 'E'=expression, 'R'=reserved word
@@ -630,6 +634,7 @@ private:
     static const char cmdPar_test [4];                          //// test                      
 
 
+private:
     // block commands only (FOR, END, etc.): type of block, position in block, sequence check in block: allowed previous block commands 
     static constexpr CmdBlockDef cmdBlockExtFunction { block_extFunction,block_startPos,block_na,block_na };                // 'IF' block mid position 2, min & max previous position is block start & block position 1, resp.
     static constexpr CmdBlockDef cmdBlockWhile { block_while,block_startPos,block_na,block_na };                            // 'WHILE' block start
