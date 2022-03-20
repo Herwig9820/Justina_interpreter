@@ -1,7 +1,7 @@
 #include "Justina.h"
 
 #define printCreateDeleteHeapObjects 0
-
+#define debugPrint 0
 // -----------------------------------
 // *   fetch variable base address   *
 // -----------------------------------
@@ -75,12 +75,18 @@ void* Interpreter::arrayElemAddress( void* varBaseAddress, int* elemSpec ) {
 
 Interpreter::execResult_type  Interpreter::exec() {
 
-    _programCounter = _programStart;
-    _calcStackLvl = 0;
+    int tokenType = *_programStart & 0x0F;
     int tokenLength { 0 };
     char* pPendingStep { 0 };
 
-    int tokenType = *_programCounter & 0x0F;
+    // init
+    _programCounter = _programStart;
+    _calcStackLvl = 0;
+    _pCalcStackMinus2 = nullptr;
+    _pCalcStackMinus1 = nullptr;
+
+    _calcResultType = var_noValue;
+    _lastCalcResult.realConst = 0;
 
     while ( tokenType != tok_no_token ) {                                                                    // for all tokens in token list
         uint16_t tokenStep = (uint16_t) (_programCounter - _programStorage);
@@ -89,7 +95,7 @@ Interpreter::execResult_type  Interpreter::exec() {
         int pendingTokenType = *pPendingStep & 0x0F;          // there's always minimum one token pending (even if it is a semicolon);
 
         // defined outside case labels
-        bool currentOpHasPriority ;
+        bool currentOpHasPriority;
         int pendingTokenLength;
         int pendingTokenIndex;
         int pendingTokenPriority;
@@ -99,29 +105,35 @@ Interpreter::execResult_type  Interpreter::exec() {
         char* pOp1string, pOp2string;
         bool skipStatement;
 
+#if debugPrint 
+        Serial.print( ">> loop: stack level " ); Serial.println( _calcStackLvl );
+#endif
+
         switch ( tokenType ) {
         case tok_isReservedWord:
             // compile time statements VAR, LOCAL, STATIC: skip
-            
-            pendingTokenIndex =((TokenIsResWord*) _programCounter)->tokenIndex;     
+#if debugPrint 
+            Serial.println( "-- loop: is reserved word " );
+#endif
+
+            pendingTokenIndex = ((TokenIsResWord*) _programCounter)->tokenIndex;
             skipStatement = ((_pmyParser->_resWords [pendingTokenIndex].restrictions & MyParser::cmd_skipDuringExec) != 0);
             if ( skipStatement ) {
-                do {
+                while ( pendingTokenType != tok_isSemiColonSeparator ) {
                     // move to next token
                     pendingTokenLength = (pendingTokenType >= Interpreter::tok_isOperator) ? 1 : (*pPendingStep >> 4) & 0x0F;
                     pPendingStep = pPendingStep + pendingTokenLength;
                     pendingTokenType = *pPendingStep & 0x0F;          // there's always minimum one token pending (even if it is a semicolon)
-                } while ( pendingTokenType != tok_isSemiColonSeparator );
-                break;                      // switch (tokenType)
+                } ;
             }
-            
-            
-            ////if ( !pushResWord( tokenType ) );
+
+
+            ////pushResWord( tokenType );//// enkel indien block start command, ...
             break;
 
         case tok_isInternFunction:
         case tok_isExternFunction:
-            if ( !pushFunctionName( tokenType ) );
+            pushFunctionName( tokenType );
             break;
 
         case tok_isRealConst:
@@ -131,9 +143,19 @@ Interpreter::execResult_type  Interpreter::exec() {
             if ( tokenType == tok_isVariable ) { pushVariable( tokenType ); }
             else { pushConstant( tokenType ); }
 
+            // set last result to this value, in case the expression does not contain any operation or function to execute (this value only) 
+            _calcResultType = _pCalcStackTop->varOrConst.valueType;
+            if ( _calcResultType == var_isFloat ) { _lastCalcResult.realConst = (_pCalcStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.pRealConst) : _pCalcStackTop->varOrConst.value.realConst; }
+
             // check if an operation can be executed
             while ( _calcStackLvl >= 3 ) {                     // a previous operand and operator might exist
+#if debugPrint 
+                Serial.println( "-- loop: constant or variable" );
+#endif
                 if ( _pCalcStackMinus1->terminal.tokenType == tok_isOperator ) {
+#if debugPrint 
+                    Serial.print( "-- loop: will execute operator, index " ); Serial.println( (int) _pCalcStackMinus1->terminal.index );
+#endif
                     // check pending token (always present and always a terminal token after a variable or constant token)
                     // pending token can any terminal token: operator, left or right parenthesis, comma or semicolon 
                     pendingTokenType = *pPendingStep & 0x0F;          // there's always minimum one token pending (even if it is a semicolon)
@@ -146,23 +168,22 @@ Interpreter::execResult_type  Interpreter::exec() {
 
                     // execute operation if available and allowed (priority and associativity with next)
                     if ( !currentOpHasPriority ) { break; }   // exit while() loop
-                    
+
                     op1real = (_pCalcStackMinus2->varOrConst.valueType == var_isFloat);
                     op2real = (_pCalcStackTop->varOrConst.valueType == var_isFloat);
 
                     if ( op1real ) { operand1.realConst = (_pCalcStackMinus2->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackMinus2->varOrConst.value.pRealConst) : _pCalcStackMinus2->varOrConst.value.realConst; }
-                    else { operand1.pStringConst = (tokenType == tok_isVariable) ? (*_pCalcStackMinus2->varOrConst.value.ppStringConst) : _pCalcStackMinus2->varOrConst.value.pStringConst; }
-                    if ( op2real ) { operand2.realConst = (tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.pRealConst) : _pCalcStackTop->varOrConst.value.realConst; }
-                    else { operand2.pStringConst = (tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.ppStringConst) : _pCalcStackTop->varOrConst.value.pStringConst; }
+                    else { operand1.pStringConst = (_pCalcStackMinus2->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackMinus2->varOrConst.value.ppStringConst) : _pCalcStackMinus2->varOrConst.value.pStringConst; }
+                    if ( op2real ) { operand2.realConst = (_pCalcStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.pRealConst) : _pCalcStackTop->varOrConst.value.realConst; }
+                    else { operand2.pStringConst = (_pCalcStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.ppStringConst) : _pCalcStackTop->varOrConst.value.pStringConst; }
 
                     switch ( _pCalcStackMinus1->terminal.index ) {
-                    case 2:
-                        result.realConst = operand2.realConst;                          // assignment (only possible if first operand is a variable: checked during parsing)
+                    case 2:                                                                     // assignment (only possible if first operand is a variable: checked during parsing)
+                        result.realConst = operand2.realConst;
                         *_pCalcStackMinus2->varOrConst.value.pRealConst = result.realConst;  // store in variable (or array element)
                         *_pCalcStackMinus2->varOrConst.varTypeAddress = (*_pCalcStackMinus2->varOrConst.varTypeAddress & ~var_typeMask) | var_isFloat;   // adapt variable type 
                         break;
                     case 3:
-
                         result.realConst = operand1.realConst < operand2.realConst;
                         break;
                     case 4:
@@ -200,19 +221,6 @@ Interpreter::execResult_type  Interpreter::exec() {
                     default:
                         break;
                     }
-                    /*
-                    Serial.print( "++++++++++ nan   : " ); Serial.println( isnan( result.realConst ) );
-                    Serial.print( "++++++++++ oper 1: " ); Serial.println( operand1.realConst );
-                    Serial.print( "++++++++++ oper 2: " ); Serial.println( operand2.realConst );
-                    Serial.print( "++++++++++ result: " ); Serial.println( result.realConst );
-                    */
-
-                    // store result in stack (replaces operand 1)
-                    _pCalcStackMinus2->varOrConst.value.realConst = result.realConst;
-                    _pCalcStackMinus2->varOrConst.tokenType = true ? tok_isRealConst : tok_isStringConst;
-                    _pCalcStackMinus2->varOrConst.valueType = true ? var_isFloat : var_isStringPointer; //// replace 'true'
-                    _pCalcStackMinus2->varOrConst.arrayAttributes = 0;                  // is a constant
-                    _pCalcStackMinus2->varOrConst.isIntermediateResult = 1;             // is an intermediate result (intermediate constant strings must be deleted)
 
                     // drop highest 2 stack levels( operator and operand 2 ) 
                     execStack.deleteListElement( _pCalcStackTop );
@@ -222,29 +230,59 @@ Interpreter::execResult_type  Interpreter::exec() {
                     _pCalcStackMinus2 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackMinus1 );
                     _calcStackLvl -= 2;
 
-                    /*
-                    Serial.print( "calculate: top  is " ); Serial.println( (uint32_t) _pCalcStackTop - RAMSTART );
-                    Serial.print( "calculate: min1 is " ); Serial.println( (uint32_t) _pCalcStackMinus1 - RAMSTART );
-                    Serial.print( "calculate: min2 is " ); Serial.println( (uint32_t) _pCalcStackMinus2 - RAMSTART );
-                    */
+                    // store result in stack (replaces operand 1)
+                    _pCalcStackTop->varOrConst.value.realConst = result.realConst;
+                    _pCalcStackTop->varOrConst.tokenType = true ? tok_isRealConst : tok_isStringConst;
+                    _pCalcStackTop->varOrConst.valueType = true ? var_isFloat : var_isStringPointer; //// replace 'true'
+                    _pCalcStackTop->varOrConst.arrayAttributes = 0;                  // is a scalar constant
+                    _pCalcStackTop->varOrConst.isIntermediateResult = 1;             // is an intermediate result (intermediate constant strings must be deleted)
 
-                    //// handle assignment =OK=, string & temp. string delete **NOK**; store result in stack (replace operand 1) =OK=; remove 2 upper stack levels (operator and operand 2) =OK=
-                    //// pending operator is left parenthesis: var is array: HOLD operator execution. Right parenthesis, comma, semicolon: exec. operator  **NOK**
+                    //// handle assignment =OK=, store result in stack (replace operand 1) =OK=; remove 2 upper stack levels (operator and operand 2) =OK=
+                    //// string & temp. string delete **NOK**; pending operator is left parenthesis: var is array: HOLD operator execution. Right parenthesis, comma, semicolon: exec. operator  **NOK**
                 }
             }
             break;
 
-        case tok_isGenericName:
+        case tok_isOperator:
+            PushTerminalToken( tokenType );
+            break;
+
+        case tok_isSemiColonSeparator:
+            // store last result 
+#if debugPrint 
+            Serial.println( "-- loop: is semicolon " );
+#endif
+            _calcResultType = _pCalcStackTop->varOrConst.valueType;
+            if ( _calcResultType == var_isFloat ) { _lastCalcResult.realConst = (_pCalcStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.pRealConst) : _pCalcStackTop->varOrConst.value.realConst; }
+
+            // drop remaining stack levels( result ) 
+            execStack.deleteList();
+            _pCalcStackTop = nullptr;
+            _pCalcStackMinus1 = nullptr;
+            _pCalcStackMinus2 = nullptr;
+            _calcStackLvl =0;
+
+            break;
+
+        case tok_isLeftParenthesis:
+#if debugPrint 
+            Serial.println( "-- loop: is left parenthesis " );
+#endif
+            PushTerminalToken( tokenType );
+            break;
+
+        case tok_isCommaSeparator:
+#if debugPrint 
+            Serial.println( "-- loop: is comma " );
+#endif
+            PushTerminalToken( tokenType );
+            break;
+
+        case tok_isRightParenthesis:
 
             break;
 
         default:
-            pendingTokenIndex = (*_programCounter >> 4) & 0x0F;
-            if(pendingTokenIndex == 1 ) {
-                //// save result voor display op console (overwrite vorige)
-                break;}            // semicolon
-            
-            if ( !PushTerminalToken( tokenType ) );
             break;
 
 

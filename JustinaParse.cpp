@@ -55,9 +55,10 @@ const MyParser::ResWordDef MyParser::_resWords [] {
 const MyParser::FuncDef MyParser::_functions [] { {"varAddress",1,1}, {"varIndirect",1 ,1},{"varName",1 ,1},
 {"if", 3,3}, {"and",1,9}, {"or",1,9}, {"not",1,1}, {"sin",1,1}, {"cos",1,1}, {"tan",1,1} , {"time", 0,0} };
 
-const char* const      MyParser::singleCharTokens = ",;:<>=+-*/^()";                         // all one-character tokens; two-character comparison tokens (<=, >=, <>) are not included
-const char* const      MyParser::operatorPriority = "0012223344566222";              // 0 = comma semicolon, 1 = assignment, 2 comparison, 3 = addition subtraction, 4 = mult. division, 5 = power, 6 = parentheses
-const char* const MyParser::operatorAssociativity = "0010000000100000";         // 0 = left-to_right associativity, 1 = right-to-left 
+const char* const      MyParser::singleCharTokens = ",;:<>=+-*/^()";                    // all one-character tokens; two-character comparison tokens (<=, >=, <>) are not included
+// priority and associativity of OPERATOR preceding a value versus next OPERATOR or other TERMINAL TOKEN (low value is low priority)
+const char* const      MyParser::operatorPriority = "0012223344560222";                 // comma, semicolon, right parenthesis -> assignment -> comparison -> addition subtraction ->mult. division -> power -> left parenthesis
+const char* const MyParser::operatorAssociativity = "0010000000100000";                 // 0 = left-to_right associativity, 1 = right-to-left (assignment, power)
 
 // -------------------
 // *   constructor   *

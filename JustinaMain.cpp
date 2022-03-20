@@ -402,11 +402,12 @@ bool Interpreter::processCharacter( char c ) {
                 if ( _programMode && (!_pmyParser->allExternalFunctionsDefined( funcNotDefIndex )) ) { result = MyParser::result_undefinedFunctionOrArray; }
                 if ( _pmyParser->_blockLevel > 0 ) { ; result = MyParser::result_noBlockEnd; }
                 if ( !_programMode ) {
-                    
+
                     // evaluation comes here
                     _pmyParser->prettyPrintInstructions();                    // immediate mode and result OK: pretty print input line
-                    exec(  );                                 // execute parsed user statements
-                    _pConsole->println( "  ..." );      // immediate mode: print evaluation result
+                    exec();                                 // execute parsed user statements
+                    if ( _calcResultType == var_isFloat ) _pConsole->println( _lastCalcResult.realConst );
+                    else if ( _calcResultType == var_isStringPointer ) { _pConsole->println( _lastCalcResult.pStringConst ); }    // immediate mode: print evaluation result
                 }
             }
 

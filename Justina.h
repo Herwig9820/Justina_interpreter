@@ -265,6 +265,7 @@ public:
     static constexpr uint8_t var_typeMask = 0x03;                    // mask: float, char* 
     static constexpr uint8_t var_isFloat = 0 << 0;
     static constexpr uint8_t var_isStringPointer = 1 << 0;
+    static constexpr uint8_t var_noValue = 2 << 0;                  // execution only
 
     static constexpr  int _maxInstructionChars { 300 };
     static constexpr char promptText [10] = "Justina> ";
@@ -330,6 +331,9 @@ public:
 
     int _calcStackLvl = 0;
     int _flowCtrlStackLvl = 0;
+
+    Val _lastCalcResult;
+    char _calcResultType;
 
     LinkedList execStack;  
     LinkedList flowCtrlStack;
