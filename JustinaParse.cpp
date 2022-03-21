@@ -55,10 +55,10 @@ const MyParser::ResWordDef MyParser::_resWords [] {
 const MyParser::FuncDef MyParser::_functions [] { {"varAddress",1,1}, {"varIndirect",1 ,1},{"varName",1 ,1},
 {"if", 3,3}, {"and",1,9}, {"or",1,9}, {"not",1,1}, {"sin",1,1}, {"cos",1,1}, {"tan",1,1} , {"time", 0,0} };
 
-const char* const      MyParser::singleCharTokens = ",;:<>=+-*/^()";                    // all one-character tokens; two-character comparison tokens (<=, >=, <>) are not included
+const char* const      MyParser::singleCharTokens = ",;:<>=&+-*/^()";                    // all one-character tokens; two-character comparison tokens (<=, >=, <>) are not included
 // priority and associativity of OPERATOR preceding a value versus next OPERATOR or other TERMINAL TOKEN (low value is low priority)
-const char* const      MyParser::operatorPriority = "0012223344560222";                 // comma, semicolon, right parenthesis -> assignment -> comparison -> addition subtraction ->mult. division -> power -> left parenthesis
-const char* const MyParser::operatorAssociativity = "0010000000100000";                 // 0 = left-to_right associativity, 1 = right-to-left (assignment, power)
+const char* const      MyParser::operatorPriority = "00122234455670222";                 // comma, semicolon, right parenthesis -> assignment -> comparison -> addition subtraction ->mult. division -> power -> left parenthesis
+const char* const MyParser::operatorAssociativity = "00100000000100000";                 // 0 = left-to_right associativity, 1 = right-to-left (assignment, power)
 
 // -------------------
 // *   constructor   *
@@ -344,6 +344,7 @@ bool MyParser::initVariable( uint16_t varTokenStep, uint16_t constTokenStep ) {
         }
     }
     pVarTypeStorage [varValueIndex] = (pVarTypeStorage [varValueIndex] & ~_pcalculator->var_typeMask) | (isNumberCst ? _pcalculator->var_isFloat : _pcalculator->var_isStringPointer);
+    return true;
 };
 
 
@@ -883,6 +884,7 @@ bool MyParser::parseAsStringConstant( char*& pNext, parseTokenResult_type& resul
     bool checkLocalVarInit = (_isLocalVarCmd && (_lastTokenType ==Interpreter::tok_isOperator));
     if ( checkLocalVarInit && (strlen( pStringCst ) > 0) ) { pNext = pch; result = result_varLocalInit_emptyStringExpected; return false; }
     */
+    
     bool doNonLocalVarInit = ((_isGlobalOrUserVarCmd || _isStaticVarCmd) && (_lastTokenType == Interpreter::tok_isOperator));          // (operator: is always assignment)
 
     _lastTokenStep = _pcalculator->_programCounter - _pcalculator->_programStorage;

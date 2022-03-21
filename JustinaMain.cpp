@@ -406,8 +406,11 @@ bool Interpreter::processCharacter( char c ) {
                     // evaluation comes here
                     _pmyParser->prettyPrintInstructions();                    // immediate mode and result OK: pretty print input line
                     exec();                                 // execute parsed user statements
-                    if ( _calcResultType == var_isFloat ) _pConsole->println( _lastCalcResult.realConst );
-                    else if ( _calcResultType == var_isStringPointer ) { _pConsole->println( _lastCalcResult.pStringConst ); }    // immediate mode: print evaluation result
+                    if ( _calcResultType != var_noValue ) {
+                        Serial.print( "  " );
+                        if ( _calcResultType == var_isFloat ) _pConsole->println( _lastCalcResult.realConst );
+                        else if ( _calcResultType == var_isStringPointer ) { _pConsole->println( _lastCalcResult.pStringConst ); }    // immediate mode: print evaluation result
+                    }
                 }
             }
 

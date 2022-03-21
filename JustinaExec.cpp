@@ -78,10 +78,13 @@ Interpreter::execResult_type  Interpreter::exec() {
     int tokenType = *_programStart & 0x0F;
     int tokenLength { 0 };
     char* pPendingStep { 0 };
+    bool saveLastResult = false;
+    execResult_type execResult = result_execOK;             // init
 
     // init
     _programCounter = _programStart;
     _calcStackLvl = 0;
+    _pCalcStackTop = nullptr;
     _pCalcStackMinus2 = nullptr;
     _pCalcStackMinus1 = nullptr;
 
@@ -94,19 +97,23 @@ Interpreter::execResult_type  Interpreter::exec() {
         pPendingStep = _programCounter + tokenLength;
         int pendingTokenType = *pPendingStep & 0x0F;          // there's always minimum one token pending (even if it is a semicolon);
 
-        // defined outside case labels
+        // defined outside switch statement
         bool currentOpHasPriority;
         int pendingTokenLength;
         int pendingTokenIndex;
         int pendingTokenPriority;
-        bool op1real;
-        bool op2real;
-        Val operand1, operand2, result;
+        bool op1real, op2real, opResultReal;
+        Val operand1, operand2, opResult;
         char* pOp1string, pOp2string;
         bool skipStatement;
+        int stringlen;
+        char* pOpResultString;
+        int stackLvl;
+        LE_calcStack* pstackLvl;
 
 #if debugPrint 
         Serial.print( ">> loop: stack level " ); Serial.println( _calcStackLvl );
+
 #endif
 
         switch ( tokenType ) {
@@ -124,7 +131,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                     pendingTokenLength = (pendingTokenType >= Interpreter::tok_isOperator) ? 1 : (*pPendingStep >> 4) & 0x0F;
                     pPendingStep = pPendingStep + pendingTokenLength;
                     pendingTokenType = *pPendingStep & 0x0F;          // there's always minimum one token pending (even if it is a semicolon)
-                } ;
+                };
             }
 
 
@@ -133,19 +140,25 @@ Interpreter::execResult_type  Interpreter::exec() {
 
         case tok_isInternFunction:
         case tok_isExternFunction:
+            saveLastResult = true;
             pushFunctionName( tokenType );
             break;
+
+
+
+
+
 
         case tok_isRealConst:
         case tok_isStringConst:
         case tok_isVariable:
+
             // push to stack
             if ( tokenType == tok_isVariable ) { pushVariable( tokenType ); }
             else { pushConstant( tokenType ); }
 
             // set last result to this value, in case the expression does not contain any operation or function to execute (this value only) 
-            _calcResultType = _pCalcStackTop->varOrConst.valueType;
-            if ( _calcResultType == var_isFloat ) { _lastCalcResult.realConst = (_pCalcStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.pRealConst) : _pCalcStackTop->varOrConst.value.realConst; }
+            saveLastResult = true;
 
             // check if an operation can be executed
             while ( _calcStackLvl >= 3 ) {                     // a previous operand and operator might exist
@@ -172,6 +185,10 @@ Interpreter::execResult_type  Interpreter::exec() {
                     op1real = (_pCalcStackMinus2->varOrConst.valueType == var_isFloat);
                     op2real = (_pCalcStackTop->varOrConst.valueType == var_isFloat);
 
+                    if ( (_pCalcStackMinus1->terminal.index == 6) && (op1real || op2real) ) { execResult = result_stringExpected; return execResult; }
+                    else if ( (_pCalcStackMinus1->terminal.index != 6) && (!op1real || !op2real) ) { execResult = result_numberExpected; return execResult; }
+                    opResultReal = op1real;             // because mixed operands not allowed; 2 x real -> real; 2 x string -> string
+
                     if ( op1real ) { operand1.realConst = (_pCalcStackMinus2->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackMinus2->varOrConst.value.pRealConst) : _pCalcStackMinus2->varOrConst.value.realConst; }
                     else { operand1.pStringConst = (_pCalcStackMinus2->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackMinus2->varOrConst.value.ppStringConst) : _pCalcStackMinus2->varOrConst.value.pStringConst; }
                     if ( op2real ) { operand2.realConst = (_pCalcStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.pRealConst) : _pCalcStackTop->varOrConst.value.realConst; }
@@ -179,42 +196,49 @@ Interpreter::execResult_type  Interpreter::exec() {
 
                     switch ( _pCalcStackMinus1->terminal.index ) {
                     case 2:                                                                     // assignment (only possible if first operand is a variable: checked during parsing)
-                        result.realConst = operand2.realConst;
-                        *_pCalcStackMinus2->varOrConst.value.pRealConst = result.realConst;  // store in variable (or array element)
+                        opResult.realConst = operand2.realConst;
+                        *_pCalcStackMinus2->varOrConst.value.pRealConst = opResult.realConst;  // store in variable (or array element)
                         *_pCalcStackMinus2->varOrConst.varTypeAddress = (*_pCalcStackMinus2->varOrConst.varTypeAddress & ~var_typeMask) | var_isFloat;   // adapt variable type 
                         break;
                     case 3:
-                        result.realConst = operand1.realConst < operand2.realConst;
+                        opResult.realConst = operand1.realConst < operand2.realConst;
                         break;
                     case 4:
-                        result.realConst = operand1.realConst > operand2.realConst;
+                        opResult.realConst = operand1.realConst > operand2.realConst;
                         break;
                     case 5:
-                        result.realConst = operand1.realConst == operand2.realConst;     // equality
+                        opResult.realConst = operand1.realConst == operand2.realConst;
                         break;
                     case 6:
-                        result.realConst = operand1.realConst + operand2.realConst;
+                        stringlen = strlen( operand1.pStringConst ) + strlen( operand2.pStringConst );
+                        opResult.pStringConst = new char [stringlen + 1];
+                        strcpy( opResult.pStringConst, operand1.pStringConst );
+                        strcat( opResult.pStringConst, operand2.pStringConst );
+                        Serial.print( "Create string object: " ); Serial.println( opResult.pStringConst );
                         break;
                     case 7:
-                        result.realConst = operand1.realConst - operand2.realConst;
+                        opResult.realConst = operand1.realConst + operand2.realConst;
                         break;
                     case 8:
-                        result.realConst = operand1.realConst * operand2.realConst;
+                        opResult.realConst = operand1.realConst - operand2.realConst;
                         break;
                     case 9:
-                        result.realConst = operand1.realConst / operand2.realConst;
+                        opResult.realConst = operand1.realConst * operand2.realConst;
                         break;
                     case 10:
-                        result.realConst = pow( operand1.realConst, operand2.realConst );
+                        opResult.realConst = operand1.realConst / operand2.realConst;
                         break;
-                    case 13:
-                        result.realConst = operand1.realConst <= operand2.realConst;
+                    case 11:
+                        opResult.realConst = pow( operand1.realConst, operand2.realConst );
                         break;
                     case 14:
-                        result.realConst = operand1.realConst >= operand2.realConst;
+                        opResult.realConst = operand1.realConst <= operand2.realConst;
                         break;
                     case 15:
-                        result.realConst = operand1.realConst != operand2.realConst;
+                        opResult.realConst = operand1.realConst >= operand2.realConst;
+                        break;
+                    case 16:
+                        opResult.realConst = operand1.realConst != operand2.realConst;
                         break;
 
 
@@ -222,20 +246,34 @@ Interpreter::execResult_type  Interpreter::exec() {
                         break;
                     }
 
+                    // operand 2 is an intermediate constant AND it is a string ? delete char string object
+                    if ( (_pCalcStackTop->varOrConst.isIntermediateResult == 0x01) && (_pCalcStackTop->varOrConst.valueType == var_isStringPointer) )
+                    {
+                        Serial.print( "delete operand 2 interm.cst string: " ); Serial.println( _pCalcStackTop->varOrConst.value.pStringConst );
+                        delete [] _pCalcStackTop->varOrConst.value.pStringConst;
+                    }
+                    // operand 1 is an intermediate constant AND it is a string ? delete char string object
+                    if ( (_pCalcStackMinus2->varOrConst.isIntermediateResult == 0x01) && (_pCalcStackMinus2->varOrConst.valueType == var_isStringPointer) )
+                    {
+                        Serial.print( "delete operand 1 interm.cst string: " ); Serial.println( _pCalcStackMinus2->varOrConst.value.pStringConst );
+                        delete [] _pCalcStackMinus2->varOrConst.value.pStringConst;
+                    }
+
                     // drop highest 2 stack levels( operator and operand 2 ) 
-                    execStack.deleteListElement( _pCalcStackTop );
-                    execStack.deleteListElement( _pCalcStackMinus1 );
+                    execStack.deleteListElement( _pCalcStackTop );                          // operand 2 
+                    execStack.deleteListElement( _pCalcStackMinus1 );                       // operator
                     _pCalcStackTop = _pCalcStackMinus2;
                     _pCalcStackMinus1 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackTop );
                     _pCalcStackMinus2 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackMinus1 );
                     _calcStackLvl -= 2;
 
+
                     // store result in stack (replaces operand 1)
-                    _pCalcStackTop->varOrConst.value.realConst = result.realConst;
-                    _pCalcStackTop->varOrConst.tokenType = true ? tok_isRealConst : tok_isStringConst;
-                    _pCalcStackTop->varOrConst.valueType = true ? var_isFloat : var_isStringPointer; //// replace 'true'
-                    _pCalcStackTop->varOrConst.arrayAttributes = 0;                  // is a scalar constant
-                    _pCalcStackTop->varOrConst.isIntermediateResult = 1;             // is an intermediate result (intermediate constant strings must be deleted)
+                    _pCalcStackTop->varOrConst.value = opResult;                           // number or string
+                    _pCalcStackTop->varOrConst.tokenType = tok_isConstant;                      // use generic constant type
+                    _pCalcStackTop->varOrConst.valueType = opResultReal ? var_isFloat : var_isStringPointer; 
+                    _pCalcStackTop->varOrConst.arrayAttributes = 0x00;                  // is a scalar constant
+                    _pCalcStackTop->varOrConst.isIntermediateResult = 0x01;             // is an intermediate result (intermediate constant strings must be deleted)
 
                     //// handle assignment =OK=, store result in stack (replace operand 1) =OK=; remove 2 upper stack levels (operator and operand 2) =OK=
                     //// string & temp. string delete **NOK**; pending operator is left parenthesis: var is array: HOLD operator execution. Right parenthesis, comma, semicolon: exec. operator  **NOK**
@@ -245,6 +283,7 @@ Interpreter::execResult_type  Interpreter::exec() {
 
         case tok_isOperator:
             PushTerminalToken( tokenType );
+
             break;
 
         case tok_isSemiColonSeparator:
@@ -252,15 +291,38 @@ Interpreter::execResult_type  Interpreter::exec() {
 #if debugPrint 
             Serial.println( "-- loop: is semicolon " );
 #endif
-            _calcResultType = _pCalcStackTop->varOrConst.valueType;
-            if ( _calcResultType == var_isFloat ) { _lastCalcResult.realConst = (_pCalcStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.pRealConst) : _pCalcStackTop->varOrConst.value.realConst; }
+            if ( saveLastResult ) {
+                if   (_calcResultType == var_isStringPointer)   // a lsat result exists already, and it's a string: delete
+                {
+                    Serial.print( "delete previous last value: " ); Serial.println( _lastCalcResult.pStringConst );
+                    delete [] _lastCalcResult.pStringConst;
+                }
+
+                _calcResultType = _pCalcStackTop->varOrConst.valueType;
+                if ( _calcResultType == var_isFloat ) { _lastCalcResult.realConst = (_pCalcStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.pRealConst) : _pCalcStackTop->varOrConst.value.realConst; }
+                else { _lastCalcResult.pStringConst = (_pCalcStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.ppStringConst) : _pCalcStackTop->varOrConst.value.pStringConst; }
+            }
+
+
+            // delete intermediate constant strings
+            pstackLvl = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackTop); // if stack top level is string: keep (saved as last value)
+            while ( pstackLvl != nullptr ) {
+                if ( (pstackLvl->varOrConst.isIntermediateResult == 0x01) && (pstackLvl->varOrConst.valueType == var_isStringPointer) )
+                {
+                    Serial.print( "delete remaining interm.cst string: " ); Serial.println( pstackLvl->varOrConst.value.pStringConst );
+                    delete [] pstackLvl->varOrConst.value.pStringConst;
+                }
+
+
+                pstackLvl = (LE_calcStack*) execStack.getPrevListElement( pstackLvl );
+            }
 
             // drop remaining stack levels( result ) 
             execStack.deleteList();
             _pCalcStackTop = nullptr;
             _pCalcStackMinus1 = nullptr;
             _pCalcStackMinus2 = nullptr;
-            _calcStackLvl =0;
+            _calcStackLvl = 0;
 
             break;
 
@@ -290,8 +352,12 @@ Interpreter::execResult_type  Interpreter::exec() {
 
         _programCounter = pPendingStep;
         tokenType = *_programCounter & 0x0F;                                                     // next token type
-
     }
+
+    // normal end: store last value in last results FIFO
+    
+
+    return execResult;
 };
 
 
@@ -360,7 +426,7 @@ bool Interpreter::pushConstant( int& tokenType ) {
     _calcStackLvl++;
     _pCalcStackMinus2 = _pCalcStackMinus1; _pCalcStackMinus1 = _pCalcStackTop;
     _pCalcStackTop = (LE_calcStack*) execStack.appendListElement( sizeof( _pCalcStackTop->varOrConst ) );
-    _pCalcStackTop->varOrConst.tokenType = tokenType;
+    _pCalcStackTop->varOrConst.tokenType = tok_isConstant;          // use generic constant type
 
     if ( tokenType == tok_isRealConst ) {
         float f;
@@ -392,6 +458,7 @@ bool Interpreter::pushVariable( int& tokenType ) {
     _pCalcStackTop->varOrConst.tokenType = tokenType;
     void* varAddress = varBaseAddress( (TokenIsVariable*) _programCounter, _pCalcStackTop->varOrConst.varTypeAddress, _pCalcStackTop->varOrConst.valueType, _pCalcStackTop->varOrConst.arrayAttributes );
     _pCalcStackTop->varOrConst.value.pVariable = varAddress;
+    _pCalcStackTop->varOrConst.isIntermediateResult = 0;
 
     /*
     if ( _pCalcStackTop->varOrConst.arrayAttributes == var_isArray ) {   // address of scalar variable or base address of array ? (itself pointing to array start in memory) - not an array element

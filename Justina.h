@@ -94,6 +94,10 @@ public:
         tok_isStringConst,
         tok_isVariable,
         tok_isGenericName,
+        
+        // generic constant: use in execution stack only
+        tok_isConstant,
+
         // all terminal tokens: at the end of the list ! (occupy only one character in program, combining token type and index)
         tok_isOperator,
         tok_isLeftParenthesis,
@@ -105,7 +109,9 @@ public:
     enum execResult_type {
         result_execOK = 0,
 
-        result_array_outsideBounds = 3000
+        result_array_outsideBounds = 3000,
+        result_numberExpected,
+        result_stringExpected
     };
 
 
@@ -125,7 +131,7 @@ public:
     static constexpr int MAX_EXT_FUNCS { 16 };                      // max. external functions. Absolute limit: 255
     static constexpr int MAX_ARRAY_DIMS { 3 };                        // 1, 2 or 3 is allwed: must fit in 3 bytes
     static constexpr int MAX_ARRAY_ELEM { 200 };                      // max. n° of floats in a single array
-
+    static constexpr int MAX_RESULT_DEPTH{10};
 
     // storage for tokens
     // note: to avoid boundary alignment of structure members, character placeholders of correct size are used for all structure members
@@ -288,8 +294,11 @@ public:
     int _paramOnlyCountInFunction {0};
     int _staticVarCount { 0 };                                      // static variable count (across all functions)
     int _extFunctionCount { 0 };                                    // external function count
+    int _lastResultCount {0};
+
     char _arrayDimCount { 0 };
     char* _programCounter { nullptr };                                // pointer to token memory address (not token step n°)
+
     uint16_t _paramIsArrayPattern { 0 };
 
     Stream* _pConsole { nullptr };
@@ -331,6 +340,8 @@ public:
 
     int _calcStackLvl = 0;
     int _flowCtrlStackLvl = 0;
+
+    VarOrConstLvl lastResultFiFo[MAX_RESULT_DEPTH];
 
     Val _lastCalcResult;
     char _calcResultType;
