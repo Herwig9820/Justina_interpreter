@@ -213,7 +213,7 @@ public:
     struct VarOrConstLvl {
         char tokenType;
         char valueType;
-        char arrayAttributes;                                           // 0b1 : is array
+        char arrayAttributes;                                           // 0b1 : is array; 0b02: is array element
         char isIntermediateResult;                                             // boundary alignment
         Val value;                                              // float or pointer (4 byte)
         char* varTypeAddress;                                        // variables only: pointer to variable value type
@@ -343,8 +343,7 @@ public:
 
     VarOrConstLvl lastResultFiFo[MAX_RESULT_DEPTH];
 
-    Val _lastCalcResult;
-    char _calcResultType;
+    VarOrConstLvl _lastCalcResult;
 
     LinkedList execStack;  
     LinkedList flowCtrlStack;
@@ -370,6 +369,8 @@ public:
     bool pushConstant( int& tokenType );
     bool pushVariable( int& tokenType );
     bool pushIdentifierName( int& tokenType );
+
+    bool pushLastCalcResultToFIFO();
 
 };
 

@@ -69,6 +69,23 @@ void* Interpreter::arrayElemAddress( void* varBaseAddress, int* elemSpec ) {
 }
 
 
+// ----------------------------------------------------------
+// *   put last calculation result (if available) in FIFO   *
+// ----------------------------------------------------------
+
+bool Interpreter::pushLastCalcResultToFIFO() {
+
+    if ( _lastResultCount == MAX_RESULT_DEPTH );
+
+    if ( (_pCalcStackTop->varOrConst.isIntermediateResult == 0x01) && (_pCalcStackTop->varOrConst.valueType == var_isStringPointer) )
+    {
+        Serial.print( "delete operand 2 interm.cst string: " ); Serial.println( _pCalcStackTop->varOrConst.value.pStringConst );
+        delete [] _pCalcStackTop->varOrConst.value.pStringConst;
+    }
+
+}
+
+
 // ---------------------------------------
 // *   calculate array element address   *
 // ---------------------------------------
@@ -88,8 +105,6 @@ Interpreter::execResult_type  Interpreter::exec() {
     _pCalcStackMinus2 = nullptr;
     _pCalcStackMinus1 = nullptr;
 
-    _calcResultType = var_noValue;
-    _lastCalcResult.realConst = 0;
 
     while ( tokenType != tok_no_token ) {                                                                    // for all tokens in token list
         uint16_t tokenStep = (uint16_t) (_programCounter - _programStorage);
@@ -161,7 +176,7 @@ Interpreter::execResult_type  Interpreter::exec() {
             saveLastResult = true;
 
             // check if an operation can be executed
-            while ( _calcStackLvl >= 3 ) {                     // a previous operand and operator might exist
+            while (_calcStackLvl >= 3) {                     // a previous operand and operator might exist
 #if debugPrint 
                 Serial.println( "-- loop: constant or variable" );
 #endif
@@ -271,7 +286,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                     // store result in stack (replaces operand 1)
                     _pCalcStackTop->varOrConst.value = opResult;                           // number or string
                     _pCalcStackTop->varOrConst.tokenType = tok_isConstant;                      // use generic constant type
-                    _pCalcStackTop->varOrConst.valueType = opResultReal ? var_isFloat : var_isStringPointer; 
+                    _pCalcStackTop->varOrConst.valueType = opResultReal ? var_isFloat : var_isStringPointer;
                     _pCalcStackTop->varOrConst.arrayAttributes = 0x00;                  // is a scalar constant
                     _pCalcStackTop->varOrConst.isIntermediateResult = 0x01;             // is an intermediate result (intermediate constant strings must be deleted)
 
@@ -283,29 +298,39 @@ Interpreter::execResult_type  Interpreter::exec() {
 
         case tok_isOperator:
             PushTerminalToken( tokenType );
-
             break;
+
+
 
         case tok_isSemiColonSeparator:
             // store last result 
 #if debugPrint 
             Serial.println( "-- loop: is semicolon " );
 #endif
-            if ( saveLastResult ) {
-                if   (_calcResultType == var_isStringPointer)   // a lsat result exists already, and it's a string: delete
-                {
-                    Serial.print( "delete previous last value: " ); Serial.println( _lastCalcResult.pStringConst );
-                    delete [] _lastCalcResult.pStringConst;
+
+
+
+            if ( _calcStackLvl > 0 ) {
+                if ( saveLastResult ) {
+
+                    if ( (_lastCalcResult.isIntermediateResult) && (_lastCalcResult.valueType == var_isStringPointer) )   // a lsat result exists already, and it's a string: delete
+                    {
+                        delete [] _lastCalcResult.value.pStringConst;
+                    }
+
+                    _lastCalcResult.valueType = _pCalcStackTop->varOrConst.valueType;
+                    _lastCalcResult.tokenType = tok_isConstant;
+                    if ( _lastCalcResult.valueType == var_isFloat ) { _lastCalcResult.value.realConst = (_pCalcStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.pRealConst) : _pCalcStackTop->varOrConst.value.realConst; }
+                    else if ( _lastCalcResult.valueType == var_isStringPointer ) { _lastCalcResult.value.pStringConst = (_pCalcStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.ppStringConst) : _pCalcStackTop->varOrConst.value.pStringConst; }
+
+                    _lastCalcResult.isIntermediateResult = _pCalcStackTop->varOrConst.isIntermediateResult;
                 }
 
-                _calcResultType = _pCalcStackTop->varOrConst.valueType;
-                if ( _calcResultType == var_isFloat ) { _lastCalcResult.realConst = (_pCalcStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.pRealConst) : _pCalcStackTop->varOrConst.value.realConst; }
-                else { _lastCalcResult.pStringConst = (_pCalcStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.ppStringConst) : _pCalcStackTop->varOrConst.value.pStringConst; }
             }
 
 
             // delete intermediate constant strings
-            pstackLvl = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackTop); // if stack top level is string: keep (saved as last value)
+            pstackLvl = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackTop ); // if stack top level is string: keep (saved as last value)
             while ( pstackLvl != nullptr ) {
                 if ( (pstackLvl->varOrConst.isIntermediateResult == 0x01) && (pstackLvl->varOrConst.valueType == var_isStringPointer) )
                 {
@@ -355,7 +380,7 @@ Interpreter::execResult_type  Interpreter::exec() {
     }
 
     // normal end: store last value in last results FIFO
-    
+
 
     return execResult;
 };

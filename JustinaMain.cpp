@@ -171,6 +171,9 @@ Interpreter::Interpreter( Stream* const pConsole ) : _pConsole( pConsole ) {
     _programSize = IMM_MEM_SIZE;
     _programCounter = _programStart;                          // start of 'immediate mode' program area
 
+    _lastCalcResult.valueType = var_noValue;
+    _lastResultCount = 0;
+
     *_programStorage = '\0';                                    //  current end of program 
     *_programStart = '\0';                                      //  current end of program (immediate mode)
 };
@@ -405,11 +408,12 @@ bool Interpreter::processCharacter( char c ) {
 
                     // evaluation comes here
                     _pmyParser->prettyPrintInstructions();                    // immediate mode and result OK: pretty print input line
+                    
                     exec();                                 // execute parsed user statements
-                    if ( _calcResultType != var_noValue ) {
+                    if ( _lastCalcResult.valueType != var_noValue ) {
                         Serial.print( "  " );
-                        if ( _calcResultType == var_isFloat ) _pConsole->println( _lastCalcResult.realConst );
-                        else if ( _calcResultType == var_isStringPointer ) { _pConsole->println( _lastCalcResult.pStringConst ); }    // immediate mode: print evaluation result
+                        if ( _lastCalcResult.valueType == var_isFloat ) _pConsole->println( _lastCalcResult.value.realConst );
+                        else if ( _lastCalcResult.valueType == var_isStringPointer ) { _pConsole->println( _lastCalcResult.value.pStringConst); }    // immediate mode: print evaluation result
                     }
                 }
             }
