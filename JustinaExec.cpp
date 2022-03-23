@@ -79,7 +79,9 @@ bool Interpreter::pushLastCalcResultToFIFO() {
 
     if ( (_pCalcStackTop->varOrConst.isIntermediateResult == 0x01) && (_pCalcStackTop->varOrConst.valueType == var_isStringPointer) )
     {
+#if printCreateDeleteHeapObjects
         Serial.print( "delete operand 2 interm.cst string: " ); Serial.println( _pCalcStackTop->varOrConst.value.pStringConst );
+#endif
         delete [] _pCalcStackTop->varOrConst.value.pStringConst;
     }
 
@@ -176,7 +178,7 @@ Interpreter::execResult_type  Interpreter::exec() {
             saveLastResult = true;
 
             // check if an operation can be executed
-            while (_calcStackLvl >= 3) {                     // a previous operand and operator might exist
+            while ( _calcStackLvl >= 3 ) {                     // a previous operand and operator might exist
 #if debugPrint 
                 Serial.println( "-- loop: constant or variable" );
 #endif
@@ -200,10 +202,13 @@ Interpreter::execResult_type  Interpreter::exec() {
                     op1real = (_pCalcStackMinus2->varOrConst.valueType == var_isFloat);
                     op2real = (_pCalcStackTop->varOrConst.valueType == var_isFloat);
 
-                    if ( (_pCalcStackMinus1->terminal.index == 6) && (op1real || op2real) ) { execResult = result_stringExpected; return execResult; }
-                    else if ( (_pCalcStackMinus1->terminal.index != 6) && (!op1real || !op2real) ) { execResult = result_numberExpected; return execResult; }
-                    opResultReal = op1real;             // because mixed operands not allowed; 2 x real -> real; 2 x string -> string
+                    if ( (int) _pCalcStackMinus1->terminal.index != 2 ) {
+                        if ( ((int) _pCalcStackMinus1->terminal.index == 6) && (op1real || op2real) ) { execResult = result_stringExpected; return execResult; }
+                        else if ( ((int) _pCalcStackMinus1->terminal.index != 6) && (!op1real || !op2real) ) { execResult = result_numberExpected; return execResult; }
+                    }
+                    opResultReal = op2real;             // because mixed operands not allowed; 2 x real -> real; 2 x string -> string
 
+                    // operands: real constant or pointer to character string
                     if ( op1real ) { operand1.realConst = (_pCalcStackMinus2->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackMinus2->varOrConst.value.pRealConst) : _pCalcStackMinus2->varOrConst.value.realConst; }
                     else { operand1.pStringConst = (_pCalcStackMinus2->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackMinus2->varOrConst.value.ppStringConst) : _pCalcStackMinus2->varOrConst.value.pStringConst; }
                     if ( op2real ) { operand2.realConst = (_pCalcStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.pRealConst) : _pCalcStackTop->varOrConst.value.realConst; }
@@ -211,10 +216,35 @@ Interpreter::execResult_type  Interpreter::exec() {
 
                     switch ( _pCalcStackMinus1->terminal.index ) {
                     case 2:                                                                     // assignment (only possible if first operand is a variable: checked during parsing)
-                        opResult.realConst = operand2.realConst;
-                        *_pCalcStackMinus2->varOrConst.value.pRealConst = opResult.realConst;  // store in variable (or array element)
-                        *_pCalcStackMinus2->varOrConst.varTypeAddress = (*_pCalcStackMinus2->varOrConst.varTypeAddress & ~var_typeMask) | var_isFloat;   // adapt variable type 
+                        // if variable currently holds a string, delete string char string object
+                        if ( _pCalcStackMinus2->varOrConst.valueType == var_isStringPointer )
+                        {
+#if printCreateDeleteHeapObjects
+                            Serial.print( "delete previous variable string value: " ); Serial.println( *_pCalcStackMinus2->varOrConst.value.ppStringConst );
+                            Serial.print( "                           address is: " ); Serial.println( (uint32_t) _pCalcStackMinus2->varOrConst.value.pVariable - RAMSTART );
+#endif
+                            delete [] * _pCalcStackMinus2->varOrConst.value.ppStringConst;
+                        }
+
+                        // if operand 2 refers to a variable and it's a string value, make a copy of the character string
+                        if ( _pCalcStackTop->varOrConst.valueType == var_isStringPointer ) {
+                            stringlen = strlen( operand2.pStringConst );
+                            opResult.pStringConst = new char [stringlen + 1];
+                            strcpy( opResult.pStringConst, operand2.pStringConst );
+#if printCreateDeleteHeapObjects
+                            Serial.print( "created copy of string: " ); Serial.println( opResult.pStringConst );
+#endif
+                        }
+                        else {
+                            opResult = operand2;     // float or pointer to string
+                        }
+
+                        // store value and value type in variable
+                        if ( opResultReal ) { *_pCalcStackMinus2->varOrConst.value.pRealConst = opResult.realConst; }
+                        else { *_pCalcStackMinus2->varOrConst.value.ppStringConst = opResult.pStringConst; }
+                        *_pCalcStackMinus2->varOrConst.varTypeAddress = (*_pCalcStackMinus2->varOrConst.varTypeAddress & ~var_typeMask) | (opResultReal ? var_isFloat : var_isStringPointer);   // adapt variable type 
                         break;
+
                     case 3:
                         opResult.realConst = operand1.realConst < operand2.realConst;
                         break;
@@ -229,7 +259,9 @@ Interpreter::execResult_type  Interpreter::exec() {
                         opResult.pStringConst = new char [stringlen + 1];
                         strcpy( opResult.pStringConst, operand1.pStringConst );
                         strcat( opResult.pStringConst, operand2.pStringConst );
+#if printCreateDeleteHeapObjects
                         Serial.print( "Create string object: " ); Serial.println( opResult.pStringConst );
+#endif
                         break;
                     case 7:
                         opResult.realConst = operand1.realConst + operand2.realConst;
@@ -264,15 +296,21 @@ Interpreter::execResult_type  Interpreter::exec() {
                     // operand 2 is an intermediate constant AND it is a string ? delete char string object
                     if ( (_pCalcStackTop->varOrConst.isIntermediateResult == 0x01) && (_pCalcStackTop->varOrConst.valueType == var_isStringPointer) )
                     {
+#if printCreateDeleteHeapObjects
                         Serial.print( "delete operand 2 interm.cst string: " ); Serial.println( _pCalcStackTop->varOrConst.value.pStringConst );
+#endif
                         delete [] _pCalcStackTop->varOrConst.value.pStringConst;
                     }
                     // operand 1 is an intermediate constant AND it is a string ? delete char string object
                     if ( (_pCalcStackMinus2->varOrConst.isIntermediateResult == 0x01) && (_pCalcStackMinus2->varOrConst.valueType == var_isStringPointer) )
                     {
+#if printCreateDeleteHeapObjects
                         Serial.print( "delete operand 1 interm.cst string: " ); Serial.println( _pCalcStackMinus2->varOrConst.value.pStringConst );
+#endif
                         delete [] _pCalcStackMinus2->varOrConst.value.pStringConst;
                     }
+
+                    int ind = _pCalcStackMinus1->terminal.index;
 
                     // drop highest 2 stack levels( operator and operand 2 ) 
                     execStack.deleteListElement( _pCalcStackTop );                          // operand 2 
@@ -282,16 +320,18 @@ Interpreter::execResult_type  Interpreter::exec() {
                     _pCalcStackMinus2 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackMinus1 );
                     _calcStackLvl -= 2;
 
-
-                    // store result in stack (replaces operand 1)
-                    _pCalcStackTop->varOrConst.value = opResult;                           // number or string
-                    _pCalcStackTop->varOrConst.tokenType = tok_isConstant;                      // use generic constant type
                     _pCalcStackTop->varOrConst.valueType = opResultReal ? var_isFloat : var_isStringPointer;
-                    _pCalcStackTop->varOrConst.arrayAttributes = 0x00;                  // is a scalar constant
-                    _pCalcStackTop->varOrConst.isIntermediateResult = 0x01;             // is an intermediate result (intermediate constant strings must be deleted)
 
+                    // if assignment: the top of stack already contains the variable ADDRESS, token type 'variable', 'not an isIntermediate result' and array attributes (not an array, could be array element) 
+                    if ( ind != 2 ) {
+                        // store result in stack (replaces operand 1)
+                        _pCalcStackTop->varOrConst.value = opResult;                           // number or string
+                        _pCalcStackTop->varOrConst.tokenType = tok_isConstant;                      // use generic constant type
+                        _pCalcStackTop->varOrConst.isIntermediateResult = 0x01;          // is an intermediate result ? (intermediate constant strings must be deleted)
+                        _pCalcStackTop->varOrConst.arrayAttributes = 0x00;                 // do not change if assignment (is variable then) 
+                    }
                     //// handle assignment =OK=, store result in stack (replace operand 1) =OK=; remove 2 upper stack levels (operator and operand 2) =OK=
-                    //// string & temp. string delete **NOK**; pending operator is left parenthesis: var is array: HOLD operator execution. Right parenthesis, comma, semicolon: exec. operator  **NOK**
+                    //// string & temp. string delete =OK=; pending operator is left parenthesis -> var is array: HOLD operator execution. Right parenthesis, comma, semicolon: exec. operator  **NOK**
                 }
             }
             break;
@@ -315,6 +355,9 @@ Interpreter::execResult_type  Interpreter::exec() {
 
                     if ( (_lastCalcResult.isIntermediateResult) && (_lastCalcResult.valueType == var_isStringPointer) )   // a lsat result exists already, and it's a string: delete
                     {
+#if printCreateDeleteHeapObjects
+                        Serial.print( "delete 'previous' last result: " ); Serial.println( _lastCalcResult.value.pStringConst );
+#endif 
                         delete [] _lastCalcResult.value.pStringConst;
                     }
 
@@ -334,7 +377,9 @@ Interpreter::execResult_type  Interpreter::exec() {
             while ( pstackLvl != nullptr ) {
                 if ( (pstackLvl->varOrConst.isIntermediateResult == 0x01) && (pstackLvl->varOrConst.valueType == var_isStringPointer) )
                 {
+#if printCreateDeleteHeapObjects
                     Serial.print( "delete remaining interm.cst string: " ); Serial.println( pstackLvl->varOrConst.value.pStringConst );
+#endif 
                     delete [] pstackLvl->varOrConst.value.pStringConst;
                 }
 
@@ -465,8 +510,8 @@ bool Interpreter::pushConstant( int& tokenType ) {
     }
 
     _pCalcStackTop->varOrConst.valueType = (tokenType == tok_isRealConst) ? var_isFloat : var_isStringPointer;
-    _pCalcStackTop->varOrConst.arrayAttributes = 0;
-    _pCalcStackTop->varOrConst.isIntermediateResult = 0;
+    _pCalcStackTop->varOrConst.arrayAttributes = 0x00;
+    _pCalcStackTop->varOrConst.isIntermediateResult = 0x00;
     /*
     Serial.print( "push constant: top  is " ); Serial.println( (uint32_t) _pCalcStackTop - RAMSTART );
     Serial.print( "push constant: min1 is " ); Serial.println( (uint32_t) _pCalcStackMinus1 - RAMSTART );
@@ -482,8 +527,8 @@ bool Interpreter::pushVariable( int& tokenType ) {
     _pCalcStackTop = (LE_calcStack*) execStack.appendListElement( sizeof( _pCalcStackTop->varOrConst ) );
     _pCalcStackTop->varOrConst.tokenType = tokenType;
     void* varAddress = varBaseAddress( (TokenIsVariable*) _programCounter, _pCalcStackTop->varOrConst.varTypeAddress, _pCalcStackTop->varOrConst.valueType, _pCalcStackTop->varOrConst.arrayAttributes );
-    _pCalcStackTop->varOrConst.value.pVariable = varAddress;
-    _pCalcStackTop->varOrConst.isIntermediateResult = 0;
+    _pCalcStackTop->varOrConst.value.pVariable = varAddress;        // later on used as (union with) pointer to float or pointer to pointer to character string
+    _pCalcStackTop->varOrConst.isIntermediateResult = 0x00;
 
     /*
     if ( _pCalcStackTop->varOrConst.arrayAttributes == var_isArray ) {   // address of scalar variable or base address of array ? (itself pointing to array start in memory) - not an array element
