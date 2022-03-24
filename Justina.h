@@ -359,10 +359,13 @@ public:
     bool processCharacter( char c );
     void (*_callbackFcn)(bool& requestQuit);                                         // pointer to callback function for heartbeat
     void setCalcMainLoopCallback( void (*func)(bool& requistQuit) );                   // set callback function for connection state change
-    void* varBaseAddress( TokenIsVariable* pVarToken, char*& pVarType, char& varType, char& variableAttrib );
+    void* varBaseAddress( TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& variableAttributes );
     void* arrayElemAddress( void* varBaseAddress, int* dims );
 
     execResult_type  exec();
+    execResult_type  execInfixOperation() ;
+
+
     bool PushTerminalToken( int& tokenType );
     bool pushResWord( int& tokenType );
     bool pushFunctionName( int& tokenType );

@@ -1568,7 +1568,7 @@ bool MyParser::parseAsExternFunction( char*& pNext, parseTokenResult_type& resul
     // Is this an external function definition( not a function call ) ?
     if ( _isExtFunctionCmd ) {
         _pcalculator->extFunctionData [index].pExtFunctionStartToken = _pcalculator->_programCounter;            // store pointer to function start token 
-        // variable name usage array: reset in-procedure reference flags to be able to keep track of in-procedure variable types used
+        // variable name usage array: reset in-procedure reference flags to be able to keep track of in-procedure variable value types used
         // KEEP all other settings
         for ( int i = 0; i < _pcalculator->_programVarNameCount; i++ ) { _pcalculator->globalVarType [i] = (_pcalculator->globalVarType [i] & ~_pcalculator->var_qualifierMask) | _pcalculator->var_qualToSpecify; }
         _pcalculator->_localVarCountInFunction = 0;             // reset local and parameter variable count in function
@@ -1698,8 +1698,8 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
     if ( _isExtFunctionCmd || _isAnyVarCmd ) {               // variable or parameter DEFINITION: if name didn't exist, it should have been created now
         if ( varNameIndex == -1 ) { pNext = pch; result = result_maxVariableNamesReached; return false; }      // name still does not exist: error
         // name exists (newly created or pre-existing)
-        // variable name is new: clear all variable type flags and indicate 'qualifier not determined yet'
-        // variable type (array, float or string) will be set later
+        // variable name is new: clear all variable value type flags and indicate 'qualifier not determined yet'
+        // variable value type (array, float or string) will be set later
         if ( createNewName ) {
             varType [primaryNameRange][varNameIndex] = _pcalculator->var_qualToSpecify;      // new name was created now
             // NEW user variables only: if array definition, then decrease variable count by 1 for now, and increase by 1 again when array dim spec is validated
