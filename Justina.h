@@ -111,7 +111,8 @@ public:
 
         result_array_outsideBounds = 3000,
         result_numberExpected,
-        result_stringExpected
+        result_stringExpected,
+        result_arrayTypeIsFixed
     };
 
 
@@ -210,6 +211,10 @@ public:
 
     // execution
 
+    struct genericTokenLvl {                                    // to determine token type only
+        tokenType_type tokenType;
+    };
+
     struct VarOrConstLvl {
         char tokenType;
         char valueType;
@@ -218,7 +223,7 @@ public:
         Val value;                                              // float or pointer (4 byte)
         char* varTypeAddress;                                        // variables only: pointer to variable value type
     };
-
+    
     struct FunctionLvl {
         char tokenType;
         char index;
@@ -232,6 +237,7 @@ public:
     };
 
     union LE_calcStack {
+        genericTokenLvl genericToken;
         VarOrConstLvl varOrConst;
         FunctionLvl function;
         TerminalTokenLvl terminal;
@@ -260,8 +266,10 @@ public:
     static constexpr uint8_t var_isParamInFunc = 1 << 4;             // variable is function parameter
     static constexpr uint8_t var_qualToSpecify = 0 << 4;             // qualifier is not yet defined (temporary use during parsing; never stored in token)
 
-    // bit b3: variable is an array element and not a scalar 
-    static constexpr uint8_t var_isArrayElement = 0x08;             // execution only               
+    // bits b32: variable is an array element and not a scalar 
+    //// mask; shift left gebruiken 
+    static constexpr uint8_t var_isArrayElement = 0x0C;             // execution only               
+    static constexpr uint8_t var_isArrayNeedingElement = 0x08;             // execution only               
 
     // bit b2: variable is an array (and not a scalar)
     static constexpr uint8_t var_isArray = 0x04;                     // stored with variable attributes and in 'variable' token. Can not be changed at runtime
@@ -363,8 +371,9 @@ public:
     void* arrayElemAddress( void* varBaseAddress, int* dims );
 
     execResult_type  exec();
-    execResult_type  execInfixOperation() ;
-
+    execResult_type  execAllProcessedInfixOperations( char* pPendingStep );
+    execResult_type  execInfixOperation();
+    void makeIntermediateConstant(LE_calcStack* pcalcStackLvl) ;
 
     bool PushTerminalToken( int& tokenType );
     bool pushResWord( int& tokenType );
