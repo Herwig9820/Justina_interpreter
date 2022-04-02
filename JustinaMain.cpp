@@ -1,6 +1,6 @@
 #include "Justina.h"
 
-#define printCreateDeleteHeapObjects 0
+#define printCreateDeleteHeapObjects 1
 
 /***********************************************************
 *                    class LinkedList                   *
