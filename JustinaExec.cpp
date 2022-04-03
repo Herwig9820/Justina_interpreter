@@ -143,7 +143,7 @@ Interpreter::execResult_type  Interpreter::exec() {
             // -------------------------------------
 
 #if debugPrint
-            Serial.print( "comma or right parenthesis: stack level " ); Serial.println( _calcStackLvl );
+            Serial.print( "right parenthesis: stack level " ); Serial.println( _calcStackLvl );
 #endif
             // note: last expression may not have been evaluated at this point
 
@@ -157,7 +157,7 @@ Interpreter::execResult_type  Interpreter::exec() {
 
             // remove left parenthesis stack level
 
-            pstackLvl = (LE_calcStack*) execStack.deleteListElement( pstackLvl );                            // pstackLvl now pointing to first first argument                                                          
+            pstackLvl = (LE_calcStack*) execStack.deleteListElement( pstackLvl );                            // pstackLvl now pointing to first dim spec argument                                                          
 
             ////  reeds nodig hier ? wordt na delete stack levels nog eens goed gezet
             _pCalcStackMinus1 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackTop );                 // correct previous stack levels (now wrong, if only one or 2 arguments)
@@ -172,6 +172,11 @@ Interpreter::execResult_type  Interpreter::exec() {
                 // stack level preceding left parenthesis is an array name requiring an array element ?
                 // (if not, then it can only to be an array name used as previous argument in a function call)
                 if ( (pPrecedingStackLvl->varOrConst.arrayAttributes & var_isArrayElement) == var_isArrayElement ) {
+
+
+
+
+
                     void* pArray = *pPrecedingStackLvl->varOrConst.value.ppArray;
                     int elemSpec [4] = { 0 ,0,0,0 };
                     do {
@@ -196,10 +201,8 @@ Interpreter::execResult_type  Interpreter::exec() {
                     // Delete any intermediate result string objects used as operands 
                     // --------------------------------------------------------------
 
-                    pstackLvl = pPrecedingStackLvl;
-                    while ( pstackLvl != nullptr ) {
-                        pstackLvl = (LE_calcStack*) execStack.getNextListElement( pstackLvl );
-                        if ( pstackLvl == nullptr ) { break; }         // done
+                    pstackLvl = (LE_calcStack*) execStack.getNextListElement( pPrecedingStackLvl ); // first dim spec (always present) 
+                    do {
                         // stack levels contain variables and (interim) constants only
                         if ( (pstackLvl->varOrConst.isIntermediateResult == 0x01) && (pstackLvl->varOrConst.valueType == var_isStringPointer) ) {
 #if printCreateDeleteHeapObjects
@@ -207,16 +210,17 @@ Interpreter::execResult_type  Interpreter::exec() {
 #endif
                             if ( pstackLvl->varOrConst.value.pStringConst != nullptr ) { delete [] pstackLvl->varOrConst.value.pStringConst; }
                         }
-                    }
+                        pstackLvl = (LE_calcStack*) execStack.getNextListElement( pstackLvl );  // next dimspec or null pointer 
+
+                    } while ( pstackLvl != nullptr );
+
 
                     // cleanup stack
                     // -------------
 
-                    pstackLvl = pPrecedingStackLvl;
-                    while ( pstackLvl != nullptr ) {
-                        pstackLvl = (LE_calcStack*) execStack.getNextListElement( pstackLvl );
-                        if ( pstackLvl != nullptr ) { execStack.deleteListElement( pstackLvl ); }
-                    };
+                    pstackLvl = (LE_calcStack*) execStack.getNextListElement( pPrecedingStackLvl ); // first dim spec (always present)
+                    while ( pstackLvl != nullptr ) {pstackLvl = (LE_calcStack*) execStack.deleteListElement( pstackLvl ); }      // next dimspec or null pointer
+
                     _pCalcStackTop = pPrecedingStackLvl;
                     _pCalcStackMinus1 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackTop );
                     _pCalcStackMinus2 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackMinus1 );

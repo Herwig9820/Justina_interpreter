@@ -43,14 +43,11 @@ char* LinkedList::appendListElement( int size ) {
     p->pNext = nullptr;
     _listElementCount++;
 #if printCreateDeleteHeapObjects
-    Serial.println( "\r\n***** append list element" );
     Serial.print( "(LIST) Create elem # " ); Serial.print( _listElementCount );
-    Serial.print( " list ID " ); Serial.print( _listID );
-    if ( p == nullptr ) { Serial.println( " list elem adres: nullptr" ); }
-    else {
-        Serial.print( " list elem adres: " ); Serial.println( (uint32_t) p - RAMSTART );
-        Serial.print( "payload adres: " ); Serial.println( (uint32_t) (p + 1) - RAMSTART );
-    }Serial.println( "-----" );
+    Serial.print( "- list ID " ); Serial.print( _listID );
+    if ( p == nullptr ) { Serial.println( "- list elem adres: nullptr" ); }   
+    else { Serial.print( "- list elem adres: " ); Serial.println( (uint32_t) p - RAMSTART );
+    }
 #endif
     return (char*) (p + 1);                                          // pointer to payload of newly created element
 }
@@ -76,19 +73,9 @@ char* LinkedList::deleteListElement( void* pPayload ) {                         
     ((pElem->pNext == nullptr) ? _pLastElement : pElem->pNext->pPrev) = pElem->pPrev;
 
 #if printCreateDeleteHeapObjects
-    Serial.println( "\r\n***** delete list element" );
     Serial.print( "(LIST) Delete elem # " ); Serial.print( _listElementCount );
-    Serial.print( " list ID " ); Serial.print( _listID );
-    Serial.print( " list elem adres: " ); Serial.println( (uint32_t) pElem - RAMSTART );
-
-    if( pPayload == nullptr){ Serial.println( " payload adres: (last created)" ); }
-    else {
-        Serial.print( "payload adres: " ); Serial.println( (uint32_t) pPayload - RAMSTART );
-    }
-    if ( p == nullptr ) { Serial.println( " next payload adres: nullptr" ); }
-    else {
-        Serial.print( "next payload adres: " ); Serial.println( (uint32_t) (p + 1) - RAMSTART );
-    }Serial.println( "-----" );
+    Serial.print( "- list ID " ); Serial.print( _listID );
+    Serial.print( "- list elem adres: " ); Serial.println( (uint32_t) pElem - RAMSTART );
 #endif
     _listElementCount--;
     delete []pElem;
@@ -119,7 +106,7 @@ void LinkedList::deleteList() {
 // ----------------------------------------------------
 
 char* LinkedList::getFirstListElement() {
-    return (char*) (_pFirstElement + 1);
+    return (char*) (_pFirstElement + (_pFirstElement == nullptr, 0,  1));
 }
 
 
@@ -128,7 +115,7 @@ char* LinkedList::getFirstListElement() {
 //----------------------------------------------------
 
 char* LinkedList::getLastListElement() {
-    return (char*) (_pLastElement + 1);
+    return (char*) (_pLastElement + (_pFirstElement == nullptr, 0, 1));
 }
 
 
