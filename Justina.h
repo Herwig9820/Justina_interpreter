@@ -371,7 +371,11 @@ public:
     execResult_type  exec();
     execResult_type  execAllProcessedInfixOperations( char* pPendingStep );
     execResult_type  execInfixOperation();
-    void makeIntermediateConstant(LE_calcStack* pcalcStackLvl) ;
+    Interpreter::execResult_type arrayAndSubscriptsToarrayElement(LE_calcStack* &pPrecedingStackLvl , LE_calcStack*& pstackLvl, int argCount);
+    void makeIntermediateConstant(LE_calcStack* pcalcStackLvl ) ;
+
+    void saveLastValue();
+    void cleanupExecStack();
 
     bool PushTerminalToken( int& tokenType );
     bool pushResWord( int& tokenType );
