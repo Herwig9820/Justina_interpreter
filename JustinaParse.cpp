@@ -779,6 +779,9 @@ bool MyParser::parseAsNumber( char*& pNext, parseTokenResult_type& result ) {
 
     if ( _pcalculator->_programCounter == _pcalculator->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
+    // overflow ? (underflow is not detected) 
+    if ( !isfinite( f ) ) { pNext = pch; result = result_overflow; return false; }
+
     // token is a number, but is it allowed here ? 
     if ( !sequenceOK ) { result = result_numConstNotAllowedHere; }                   // is not a '+' or '-' operator either: indicate error 
 
@@ -884,7 +887,7 @@ bool MyParser::parseAsStringConstant( char*& pNext, parseTokenResult_type& resul
     bool checkLocalVarInit = (_isLocalVarCmd && (_lastTokenType ==Interpreter::tok_isOperator));
     if ( checkLocalVarInit && (strlen( pStringCst ) > 0) ) { pNext = pch; result = result_varLocalInit_emptyStringExpected; return false; }
     */
-    
+
     bool doNonLocalVarInit = ((_isGlobalOrUserVarCmd || _isStaticVarCmd) && (_lastTokenType == Interpreter::tok_isOperator));          // (operator: is always assignment)
 
     _lastTokenStep = _pcalculator->_programCounter - _pcalculator->_programStorage;
@@ -1154,7 +1157,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
                 if ( isUserVar ) {
                     _pcalculator->userVarValues [valueIndex].pArray = pArray;
                     _pcalculator->userVarType [varNameIndex] |= _pcalculator->var_isArray;             // set array bit
-                    _pcalculator->_userVarCount++;                                                     // user array variable is now considered 'created'//// ook voor global en static (consistentie)
+                    _pcalculator->_userVarCount++;                                                     // user array variable is now considered 'created'//// ook doen voor global en static ? (consistentie)
                 }
                 else if ( isGlobalVar ) {
                     _pcalculator->globalVarValues [valueIndex].pArray = pArray;
@@ -2233,16 +2236,17 @@ void MyParser::printParsingResult( parseTokenResult_type result, int funcNotDefI
         sprintf( parsingInfo, "\r\nError %d: function: %s", result, _pcalculator->extFunctionNames [funcNotDefIndex] );
     }
 
-    else {                                                                              // error
+    else {                                                                              // parsing error
+        // instruction not parsed yet (because of error): print source instruction where error is located (can not 'unparse' for printing instruction)
         int len = _pcalculator->_isPrompt ? _pcalculator->_promptLength : 0;
         char point [pErrorPos - pInstruction + 2 + len];                               // 2 extra positions for '^' and '\0' characters
-        memset( point, ' ', pErrorPos - pInstruction + len );
+        memset( point, ' ', pErrorPos - pInstruction + len );                           // original source
         point [pErrorPos - pInstruction + len] = '^';
         point [pErrorPos - pInstruction + len + 1] = '\0';
         _pcalculator->_pConsole->println( pInstruction );
         _pcalculator->_pConsole->println( point );
-        if ( _pcalculator->_programMode ) { sprintf( parsingInfo, "Error %d: statement ending at line %d", result, lineCount ); }
-        else { sprintf( parsingInfo, "Error %d\r\n", result ); }
+        if ( _pcalculator->_programMode ) { sprintf( parsingInfo, "Parsing error %d: statement ending at line %d", result, lineCount ); }
+        else { sprintf( parsingInfo, "Parsing error %d\r\n", result ); }
     }
 
     if ( strlen( parsingInfo ) > 0 ) { _pcalculator->_pConsole->println( parsingInfo ); _pcalculator->_isPrompt = false; }

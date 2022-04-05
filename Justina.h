@@ -94,7 +94,7 @@ public:
         tok_isStringConst,
         tok_isVariable,
         tok_isGenericName,
-        
+
         // generic constant: use in execution stack only
         tok_isConstant,
 
@@ -112,7 +112,10 @@ public:
         result_array_outsideBounds = 3000,
         result_numberExpected,
         result_stringExpected,
-        result_arrayTypeIsFixed
+        result_arrayTypeIsFixed,
+        result_undefined,               
+        result_overflow,
+        result_underflow
     };
 
 
@@ -132,7 +135,7 @@ public:
     static constexpr int MAX_EXT_FUNCS { 16 };                      // max. external functions. Absolute limit: 255
     static constexpr int MAX_ARRAY_DIMS { 3 };                        // 1, 2 or 3 is allwed: must fit in 3 bytes
     static constexpr int MAX_ARRAY_ELEM { 200 };                      // max. n° of floats in a single array
-    static constexpr int MAX_RESULT_DEPTH{10};
+    static constexpr int MAX_LAST_RESULT_DEPTH { 10 };
 
     // storage for tokens
     // note: to avoid boundary alignment of structure members, character placeholders of correct size are used for all structure members
@@ -223,7 +226,7 @@ public:
         Val value;                                              // float or pointer (4 byte)
         char* varTypeAddress;                                        // variables only: pointer to variable value type
     };
-    
+
     struct FunctionLvl {
         char tokenType;
         char index;
@@ -246,7 +249,7 @@ public:
     struct LE_flowControlStack {
         char tokenType;
         char index;
-        char spare[2];                                          // boundary alignment
+        char spare [2];                                          // boundary alignment
         char* pToNextToken;                                    // reserved words for block commands (IF, FOR, BREAK, END, ...): step n° of block start token or next block token (uint16_t)
     };
 
@@ -267,7 +270,7 @@ public:
     static constexpr uint8_t var_qualToSpecify = 0 << 4;             // qualifier is not yet defined (temporary use during parsing; never stored in token)
 
     // bit b3 (execution only): the address is the address of an array element. If this bit is zero, the adress is the scalar or array variable base address 
-    static constexpr uint8_t var_isArrayElement = 0x08;                            
+    static constexpr uint8_t var_isArrayElement = 0x08;
 
     // bit b2: variable is an array (and not a scalar)
     static constexpr uint8_t var_isArray = 0x04;                     // stored with variable attributes and in 'variable' token. Can not be changed at runtime
@@ -297,10 +300,10 @@ public:
     int _userVarCount { 0 };                                        // counts number of user variables (names and values) 
     int _programVarNameCount { 0 };                                        // counts number of variable names (global variables: also stores values) 
     int _localVarCountInFunction { 0 };                             // counts number of local variables in a specific function (names only, values not used)
-    int _paramOnlyCountInFunction {0};
+    int _paramOnlyCountInFunction { 0 };
     int _staticVarCount { 0 };                                      // static variable count (across all functions)
     int _extFunctionCount { 0 };                                    // external function count
-    int _lastResultCount {0};
+    int _lastResultCount { 0 };
 
     char _arrayDimCount { 0 };
     char* _programCounter { nullptr };                                // pointer to token memory address (not token step n°)
@@ -341,17 +344,16 @@ public:
     char* extFunctionNames [MAX_EXT_FUNCS];
     ExtFunctionData extFunctionData [MAX_EXT_FUNCS];
 
-    LE_calcStack* _pCalcStackTop{nullptr}, * _pCalcStackMinus1 { nullptr }, * _pCalcStackMinus2 { nullptr };
+    LE_calcStack* _pCalcStackTop { nullptr }, * _pCalcStackMinus1 { nullptr }, * _pCalcStackMinus2 { nullptr };
     LE_flowControlStack* _pFlowCtrlStack;
 
     int _calcStackLvl = 0;
     int _flowCtrlStackLvl = 0;
 
-    VarOrConstLvl lastResultFiFo[MAX_RESULT_DEPTH];
-
-    VarOrConstLvl _lastCalcResult;
-
-    LinkedList execStack;  
+    Val lastResultValueFiFo [MAX_LAST_RESULT_DEPTH];                // keep last calculation results
+    char lastResultTypeFiFo [MAX_LAST_RESULT_DEPTH]{var_noValue};
+    
+    LinkedList execStack;
     LinkedList flowCtrlStack;
 
 
@@ -371,8 +373,8 @@ public:
     execResult_type  exec();
     execResult_type  execAllProcessedInfixOperations( char* pPendingStep );
     execResult_type  execInfixOperation();
-    Interpreter::execResult_type arrayAndSubscriptsToarrayElement(LE_calcStack* &pPrecedingStackLvl , LE_calcStack*& pstackLvl, int argCount);
-    void makeIntermediateConstant(LE_calcStack* pcalcStackLvl ) ;
+    Interpreter::execResult_type arrayAndSubscriptsToarrayElement( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pstackLvl, int argCount );
+    void makeIntermediateConstant( LE_calcStack* pcalcStackLvl );
 
     void saveLastValue();
     void cleanupExecStack();
@@ -469,6 +471,7 @@ public:
         result_alphaConstInvalidEscSeq,
         result_alphaNoCtrlCharAllowed,
         result_alphaClosingQuoteMissing,
+        result_overflow,
 
         // function errors
         result_nameInUseForVariable = 1500,
@@ -696,7 +699,7 @@ public:
     static const char* const operatorPriority;                  // higher number is higher priority; 0 for 'not an operator'
     static const char* const operatorAssociativity;
     static const uint8_t _maxIdentifierNameLen { 14 };           // max length of identifier names, excluding terminating '\0'
-    static const uint8_t _maxAlphaCstLen { 15 };                 // max length of alphanumeric constants, excluding terminating '\0' (also if stored in variables)
+    static const uint8_t _maxAlphaCstLen { 20 };                 // max length of character strings, excluding terminating '\0' (also if stored in variables)
 
 
     // -----------------

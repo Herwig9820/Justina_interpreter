@@ -1,6 +1,6 @@
 #include "Justina.h"
 
-#define printCreateDeleteHeapObjects 1
+#define printCreateDeleteHeapObjects 0
 #define debugPrint 0
 
 // -----------------------------------
@@ -91,37 +91,28 @@ Interpreter::execResult_type  Interpreter::exec() {
             // when an operation is executed, check whether lower priority operations can now be executed as well (example: 3+5*7: first execute 5*7 yielding 35, then execute 3+35)
 
             execResult = execAllProcessedInfixOperations( pPendingStep );
-            if ( execResult != result_execOK ) {  break; }
-
-            break;
-
-
-        case tok_isOperator:
-            // -------------------------------------------------------------------------------------------------------------------------------------
-            // Case: process operator token (operator will NOT be executed yet, because operand following operator still missing (not yet processed)
-            // -------------------------------------------------------------------------------------------------------------------------------------
-#if debugPrint
-            Serial.print( "\r\n** operator: stack level " ); Serial.println( _calcStackLvl );
-#endif
-            PushTerminalToken( tokenType );
+            if ( execResult != result_execOK ) { break; }
 
             break;
 
 
         case tok_isLeftParenthesis:
-            // ------------------------------------
-            // Case: process left parenthesis token
-            // ------------------------------------
+        case tok_isOperator:
+            // -------------------------------------------------
+            // Case: process operator and left parenthesis token 
+            // -------------------------------------------------
 #if debugPrint
-            Serial.print( "left parenthesis: stack level " ); Serial.println( _calcStackLvl );
+            Serial.print( tok_isOperator ? "\r\n** operator: stack level " : "\r\n** left parenthesis: stack level " ); Serial.println( _calcStackLvl );
 #endif
             PushTerminalToken( tokenType );
+
             break;
 
 
         case tok_isCommaSeparator:
+        case tok_isSemiColonSeparator:
             // -----------------------------
-            // Case: process comma separator 
+            // Case: process separator 
             // -----------------------------
             break;                                              // nothing to do
 
@@ -134,11 +125,9 @@ Interpreter::execResult_type  Interpreter::exec() {
 #if debugPrint
             Serial.print( "right parenthesis: stack level " ); Serial.println( _calcStackLvl );
 #endif
-            // note: last expression may not have been evaluated at this point
-
             {   // start block (required for variable definitions inside)
-                int argCount = 0;                                                // init number of supplied arguments to 0 argument (empty parenthesis)
-                LE_calcStack* pstackLvl = _pCalcStackTop;     // stack level of last argument before right parenthesis, or left parenthesis (if function call and no arguments supplied)
+                int argCount = 0;                                                // init number of supplied arguments (or array subscripts) to 0
+                LE_calcStack* pstackLvl = _pCalcStackTop;     // stack level of last argument / array subscript before right parenthesis, or left parenthesis (if function call and no arguments supplied)
                 while ( pstackLvl->genericToken.tokenType != tok_isLeftParenthesis ) {
                     pstackLvl = (LE_calcStack*) execStack.getPrevListElement( pstackLvl );     // stack top level: right parenthesis
                     argCount++;
@@ -147,9 +136,11 @@ Interpreter::execResult_type  Interpreter::exec() {
 
                 // remove left parenthesis stack level
                 pstackLvl = (LE_calcStack*) execStack.deleteListElement( pstackLvl );                            // pstackLvl now pointing to first dim spec argument                                                          
-                _pCalcStackMinus1 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackTop );                 // correct previous stack levels (now wrong, if only one or 2 arguments)
-                _pCalcStackMinus2 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackMinus1 );
                 _calcStackLvl--;                                                                                    // left parenthesis level removed, argument(s) still there
+
+                // correct pointers (now wrong, if only one or 2 arguments)
+                _pCalcStackMinus1 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackTop );
+                _pCalcStackMinus2 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackMinus1 );
 
                 // perform internal or external function, calculate array element address or simply make an expression result within parentheses an intermediate constant
                 if ( pPrecedingStackLvl == nullptr ) { makeIntermediateConstant( _pCalcStackTop ); }                 // result of simple parenthesis pair is always an intermediate constant
@@ -173,17 +164,12 @@ Interpreter::execResult_type  Interpreter::exec() {
                 if ( execResult != result_execOK ) { break; }
             }
             break;
-
-
-        case tok_isSemiColonSeparator:
-            // -----------------------------
-            // Case: process semicolon token
-            // -----------------------------
-            break;
         }
 
         if ( execResult != result_execOK ) {
-            Serial.print( "exec error " ); Serial.println( execResult );//// Console, formatten
+            char s[30];
+            sprintf( s, "Exec error %d\r\n", execResult );
+            _pConsole->println( s);
             cleanupExecStack();
             return execResult;              // return result, in case it's needed by caller
         }
@@ -193,8 +179,15 @@ Interpreter::execResult_type  Interpreter::exec() {
         tokenType = *_programCounter & 0x0F;                                                     // next token type
     }
 
-    // store last result in FIFO (if available) and return
-    if(saveLastResult) {saveLastValue();}
+    // NO execution errors: print last result and store in FIFO (if available) and return
+    if ( saveLastResult ) {
+        saveLastValue();                // save in last results FiFo
+
+        char s [MyParser::_maxAlphaCstLen+10];  // note: with small '_maxAlphaCstLen' values, make sure string is also long enough to print real values
+        if ( lastResultTypeFiFo [0] == var_isFloat ) { sprintf( s, "  %.3G", lastResultValueFiFo [0].realConst ); }
+        else { sprintf(s, "  %s", lastResultValueFiFo [0].pStringConst); }    // immediate mode: print evaluation result
+        _pConsole->println( s );
+    }
     cleanupExecStack();
     return result_execOK;
 };
@@ -205,33 +198,50 @@ Interpreter::execResult_type  Interpreter::exec() {
 // ------------------------------------------------
 
 void Interpreter::saveLastValue() {
-    if ( _calcStackLvl > 0) {           // safety
-        // if a last result exists already, and it's a string: delete
-        if ( _lastCalcResult.valueType == var_isStringPointer )
-        {
+    if ( _calcStackLvl > 0 ) {           // safety
+
+        // is FIFO full ?
+        if ( _lastResultCount == MAX_LAST_RESULT_DEPTH ) {
+
+            // if the oldest result is a string: delete heap object
+            if ( lastResultTypeFiFo [MAX_LAST_RESULT_DEPTH - 1] == var_isStringPointer ) {
+
 #if printCreateDeleteHeapObjects
-            Serial.print( "\r\n===== delete 'previous' last result: " ); Serial.println( _lastCalcResult.value.pStringConst ); //// OK
+                Serial.print( "\r\n===== delete 'previous' last result: " ); Serial.println( lastResultValueFiFo [MAX_LAST_RESULT_DEPTH - 1].pStringConst ); //// OK
 #endif 
                     // note: this is always an intermediate string
-            if ( _lastCalcResult.value.pStringConst != nullptr ) { delete [] _lastCalcResult.value.pStringConst; }
+                if ( lastResultValueFiFo [MAX_LAST_RESULT_DEPTH - 1].pStringConst != nullptr ) { delete [] lastResultValueFiFo [MAX_LAST_RESULT_DEPTH - 1].pStringConst; }
+            }
+        }
+        else {
+            _lastResultCount++;
+        }
+
+        // move older last results one place up in FIFO
+        if ( _lastResultCount > 1 ) {       // if 'new' last result count is 1, no old results need to be moved  
+            for ( int i = _lastResultCount - 1; i > 0; i-- ) {
+                lastResultValueFiFo [i] = lastResultValueFiFo [i - 1];
+                lastResultTypeFiFo [i] = lastResultTypeFiFo [i - 1];
+            }
         }
 
         // store new last value type
-        _lastCalcResult.valueType = _pCalcStackTop->varOrConst.valueType;               // value type
+        lastResultTypeFiFo [0] = _pCalcStackTop->varOrConst.valueType;               // value type
 
         // store new last value
         VarOrConstLvl lastvalue;
         bool lastValueReal = (_pCalcStackTop->varOrConst.valueType == var_isFloat);
         if ( lastValueReal ) { lastvalue.value.realConst = (_pCalcStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.pRealConst) : _pCalcStackTop->varOrConst.value.realConst; }
-        else { lastvalue.value.pStringConst = (_pCalcStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.ppStringConst) : _pCalcStackTop->varOrConst.value.pStringConst;} 
-            
+        else { lastvalue.value.pStringConst = (_pCalcStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.ppStringConst) : _pCalcStackTop->varOrConst.value.pStringConst; }
+
         // new last value is a string: make a copy of the string and store a reference to this new string
         if ( !lastValueReal ) {
-            int stringlen = strlen( lastvalue.value.pStringConst );
-            _lastCalcResult.value.pStringConst = new char [stringlen + 1];
-            strcpy( _lastCalcResult.value.pStringConst, lastvalue.value.pStringConst );
+            int stringlen = min( strlen( lastvalue.value.pStringConst ), MyParser::_maxAlphaCstLen );        // excluding terminating \0
+            lastResultValueFiFo [0].pStringConst = new char [stringlen + 1];
+            memcpy( lastResultValueFiFo [0].pStringConst, lastvalue.value.pStringConst, stringlen );        // copy the actual string (not the pointer); do not use strcpy
+            lastResultValueFiFo [0].pStringConst [stringlen] = '\0';                                         // add terminating \0
         }
-        else { _lastCalcResult.value = lastvalue.value; }
+        else { lastResultValueFiFo [0] = lastvalue.value; }
     }
 }
 
@@ -280,10 +290,10 @@ Interpreter::execResult_type Interpreter::arrayAndSubscriptsToarrayElement( LE_c
     do {
         bool opReal = (pstackLvl->varOrConst.valueType == var_isFloat);
         if ( opReal ) {
-            note: // elemSpec [3] (last array element) only used here as a counter
+            //note: elemSpec [3] (last array element) only used here as a counter
             elemSpec [elemSpec [3]] = (pstackLvl->varOrConst.tokenType == tok_isVariable) ? (*pstackLvl->varOrConst.value.pRealConst) : pstackLvl->varOrConst.value.realConst;
-        }        
-        else {  return result_numberExpected; } 
+        }
+        else { return result_numberExpected; }
 
         pstackLvl = (LE_calcStack*) execStack.getNextListElement( pstackLvl );
     } while ( ++elemSpec [3] < argCount );
@@ -293,7 +303,7 @@ Interpreter::execResult_type Interpreter::arrayAndSubscriptsToarrayElement( LE_c
     // ---------------------
 
     void* pArrayElem = arrayElemAddress( pArray, elemSpec );
-    if ( pArrayElem == nullptr ) {  return result_array_outsideBounds; } 
+    if ( pArrayElem == nullptr ) { return result_array_outsideBounds; }
     pPrecedingStackLvl->varOrConst.value.pVariable = pArrayElem;
     // note: replacing array base address by element address; other data does not change (array attributes, value type, token type, intermediate constant, variable type address)
 
@@ -398,8 +408,8 @@ Interpreter::execResult_type  Interpreter::execAllProcessedInfixOperations( char
 
             // execute operator
             execResult_type execResult = execInfixOperation();
-            if ( execResult != result_execOK ) {return execResult; }
-    }
+            if ( execResult != result_execOK ) { return execResult; }
+        }
 
         // token preceding the operand is a left parenthesis ? exit while loop (nothing to do for now)
         else { break; }
@@ -428,12 +438,12 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 
     // check if operands or compatible with operator: real for all operators except string concatenation
     if ( (int) _pCalcStackMinus1->terminal.index != 2 ) {                                           // not an assignment ?
-        if ( ((int) _pCalcStackMinus1->terminal.index == 6) && (op1real || op2real) ) {   return result_stringExpected; }
-        else if ( ((int) _pCalcStackMinus1->terminal.index != 6) && (!op1real || !op2real) ) {   return result_numberExpected; }
+        if ( ((int) _pCalcStackMinus1->terminal.index == 6) && (op1real || op2real) ) { return result_stringExpected; }
+        else if ( ((int) _pCalcStackMinus1->terminal.index != 6) && (!op1real || !op2real) ) { return result_numberExpected; }
     }
     else {                                                                                  // assignment 
         if ( _pCalcStackMinus2->varOrConst.arrayAttributes & var_isArrayElement ) {                                                                        // asignment to array element: value needs to be of same type as array
-            if ( op1real != op2real ) {  return result_arrayTypeIsFixed; }
+            if ( op1real != op2real ) { return result_arrayTypeIsFixed; }
         }
     }
 
@@ -471,9 +481,11 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         // the value (constant, variable value or intermediate result) to be assigned to the receiving variable is a non-empty string value
         else {
             // make a copy of the character string and store a pointer to this copy as result
+            // because the value will be stored in a variable, limit to the maximum allowed string length
             stringlen = strlen( operand2.pStringConst );
             opResult.pStringConst = new char [stringlen + 1];
-            strcpy( opResult.pStringConst, operand2.pStringConst );
+            memcpy( opResult.pStringConst, operand2.pStringConst, stringlen );        // copy the actual string (not the pointer); do not use strcpy
+            opResult.pStringConst [stringlen] = '\0';                                         // add terminating \0
 
 #if printCreateDeleteHeapObjects
             Serial.print( "\r\n===== created copy of string for assignment to variable : " ); Serial.println( opResult.pStringConst ); //// OK
@@ -524,12 +536,19 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         break;
     case 9:
         opResult.realConst = operand1.realConst * operand2.realConst;
+        if( !isfinite( opResult.realConst ) ) { return result_overflow; }
+        else if((operand1.realConst != 0) && (operand2.realConst != 0) &&  ( !isnormal( opResult.realConst ) )) { return result_underflow; }
         break;
     case 10:
         opResult.realConst = operand1.realConst / operand2.realConst;
+        if ( !isfinite( opResult.realConst ) ) { return result_overflow; }
+        else if ( (operand1.realConst != 0) && (!isnormal( opResult.realConst )) ) { return result_underflow; }
         break;
     case 11:
         opResult.realConst = pow( operand1.realConst, operand2.realConst );
+        if ( isnan( opResult.realConst ) ) { return result_undefined; }
+        else if ( !isfinite( opResult.realConst ) ) { return result_overflow; }
+        else if ( (operand1.realConst != 0)  && (!isnormal( opResult.realConst )) ) { return result_underflow; }
         break;
     case 14:
         opResult.realConst = operand1.realConst <= operand2.realConst;
@@ -784,7 +803,7 @@ bool Interpreter::pushVariable( int& tokenType ) {                              
 
 bool Interpreter::pushLastCalcResultToFIFO() {
 
-    if ( _lastResultCount == MAX_RESULT_DEPTH );
+    if ( _lastResultCount == MAX_LAST_RESULT_DEPTH );
 
     if ( (_pCalcStackTop->varOrConst.isIntermediateResult == 0x01) && (_pCalcStackTop->varOrConst.valueType == var_isStringPointer) )
     {

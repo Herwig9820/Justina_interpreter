@@ -1,6 +1,6 @@
 #include "Justina.h"
 
-#define printCreateDeleteHeapObjects 1
+#define printCreateDeleteHeapObjects 0
 
 /***********************************************************
 *                    class LinkedList                   *
@@ -175,7 +175,6 @@ Interpreter::Interpreter( Stream* const pConsole ) : _pConsole( pConsole ) {
     _programSize = IMM_MEM_SIZE;
     _programCounter = _programStart;                          // start of 'immediate mode' program area
 
-    _lastCalcResult.valueType = var_noValue;
     _lastResultCount = 0;
 
     *_programStorage = '\0';                                    //  current end of program 
@@ -407,22 +406,17 @@ bool Interpreter::processCharacter( char c ) {
             if ( result == MyParser::result_tokenFound ) {
                 // checks at the end of parsing: any undefined functions (program mode only) ?  any open blocks ?
                 if ( _programMode && (!_pmyParser->allExternalFunctionsDefined( funcNotDefIndex )) ) { result = MyParser::result_undefinedFunctionOrArray; }
-                if ( _pmyParser->_blockLevel > 0 ) { ; result = MyParser::result_noBlockEnd; }
+                if ( _pmyParser->_blockLevel > 0 ) {  result = MyParser::result_noBlockEnd; }
                 if ( !_programMode ) {
 
                     // evaluation comes here
                     _pmyParser->prettyPrintInstructions();                    // immediate mode and result OK: pretty print input line
 
                     exec();                                 // execute parsed user statements
-                    if ( _lastCalcResult.valueType != var_noValue ) {
-                        Serial.print( "  " );
-                        if ( _lastCalcResult.valueType == var_isFloat ) _pConsole->println( _lastCalcResult.value.realConst );
-                        else if ( _lastCalcResult.valueType == var_isStringPointer ) { _pConsole->println( _lastCalcResult.value.pStringConst ); }    // immediate mode: print evaluation result
-                    }
                 }
             }
 
-            // parsing OK message (program mode only) or error message 
+            // parsing OK message (program mode only - no message in immediate mode) or error message 
             _pmyParser->printParsingResult( result, funcNotDefIndex, _instruction, _lineCount, pErrorPos );
             _pConsole->print( "Justina> " ); _isPrompt = true;                 // end of parsing
         }
