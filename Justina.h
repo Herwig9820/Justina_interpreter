@@ -177,7 +177,7 @@ public:
     };
 
 
-    union TokPnt {
+    union TokenPointer {
         char* pTokenChars;
         TokenIsResWord* pResW;
         TokenIsRealCst* pFloat;
@@ -214,8 +214,9 @@ public:
 
     // execution
 
-    struct genericTokenLvl {                                    // to determine token type only
+    struct genericTokenLvl {                                    // only to determine token type and for finding source error position during unparsing (for printing)
         tokenType_type tokenType;
+        char* tokenAddress;                                      
     };
 
     struct VarOrConstLvl {
@@ -223,6 +224,7 @@ public:
         char valueType;
         char arrayAttributes;                                           // 0b1 : is array; 0b02: is array element
         char isIntermediateResult;                                             // boundary alignment
+        char* tokenAddress;                                     // only for finding source error position during unparsing (for printing)
         Val value;                                              // float or pointer (4 byte)
         char* varTypeAddress;                                        // variables only: pointer to variable value type
     };
@@ -230,6 +232,8 @@ public:
     struct FunctionLvl {
         char tokenType;
         char index;
+        char spare[2];
+        char* tokenAddress;                                     // only for finding source error position during unparsing (for printing)
     };
 
     struct TerminalTokenLvl {
@@ -237,6 +241,7 @@ public:
         char index;
         char priority;
         char associativity;
+        char* tokenAddress;                                     // only for finding source error position during unparsing (for printing)
     };
 
     union LE_calcStack {
@@ -284,7 +289,7 @@ public:
 
     static constexpr  int _maxInstructionChars { 300 };
     static constexpr char promptText [10] = "Justina> ";
-    static constexpr int _promptLength = sizeof( promptText ) - 1;
+    static constexpr int _promptLength = sizeof( promptText ) - 1;////
 
     char _instruction [_maxInstructionChars + 1] = "";
     int _instructionCharCount { 0 };
@@ -307,6 +312,7 @@ public:
 
     char _arrayDimCount { 0 };
     char* _programCounter { nullptr };                                // pointer to token memory address (not token step n°)
+    char* _errorProgramCounter { nullptr };                                // pointer to token memory address (not token step n°)
 
     uint16_t _paramIsArrayPattern { 0 };
 
@@ -371,6 +377,7 @@ public:
     void* arrayElemAddress( void* varBaseAddress, int* dims );
 
     execResult_type  exec();
+    execResult_type  execParenthesisPair( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pstackLvl, int argCount );
     execResult_type  execAllProcessedInfixOperations( char* pPendingStep );
     execResult_type  execInfixOperation();
     Interpreter::execResult_type arrayAndSubscriptsToarrayElement( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pstackLvl, int argCount );
@@ -387,7 +394,7 @@ public:
     bool pushIdentifierName( int& tokenType );
 
     bool pushLastCalcResultToFIFO();
-
+    void unparseAndPrintInstruction(char* progCnt);
 };
 
 
@@ -788,7 +795,7 @@ public:
     parseTokenResult_type  parseInstruction( char*& pInputLine );
     void deleteParsedData();
     bool allExternalFunctionsDefined( int& index );
-    void prettyPrintInstructions();
+    void prettyPrintInstructions(bool oneInstruction, char* startToken = nullptr,  char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr );
     void old_prettyPrintProgram();////
     void printParsingResult( parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* const pErrorPos );
 
