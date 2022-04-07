@@ -129,7 +129,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                 int argCount = 0;                                                // init number of supplied arguments (or array subscripts) to 0
                 LE_calcStack* pstackLvl = _pCalcStackTop;     // stack level of last argument / array subscript before right parenthesis, or left parenthesis (if function call and no arguments supplied)
                 while ( pstackLvl->genericToken.tokenType != tok_isLeftParenthesis ) {
-                    pstackLvl = (LE_calcStack*) execStack.getPrevListElement( pstackLvl );     // stack top level: right parenthesis
+                    pstackLvl = (LE_calcStack*) execStack.getPrevListElement( pstackLvl );     
                     argCount++;
                 }
                 LE_calcStack* pPrecedingStackLvl = (LE_calcStack*) execStack.getPrevListElement( pstackLvl );     // stack level PRECEDING left parenthesis (or null pointer)
@@ -155,16 +155,17 @@ Interpreter::execResult_type  Interpreter::exec() {
         } // switch (tokenType)
 
 
-        // if execution error: stop. Otherwise, advance to next token an process
-        // ---------------------------------------------------------------------
+        // if execution error: print current instruction being executed, signal error and exit
+        // -----------------------------------------------------------------------------------
 
         if ( execResult != result_execOK ) {
             int sourceErrorPos;
+            _pConsole->print( "\r\n  " );
             _pmyParser->prettyPrintInstructions(true, lastInstructionStart, _errorProgramCounter,  &sourceErrorPos);
-            Serial.print("  source error position: "); Serial.println(sourceErrorPos);
-            char s [30];
-            sprintf( s, "  Exec error %d\r\n", execResult );
-            _pConsole->println( s );
+            _pConsole->print( "  " ); for (int i=1; i<=sourceErrorPos;i++ ) {_pConsole->print(" ");}
+            char parsingInfo [30];
+            sprintf( parsingInfo, "^ Exec error %d\r\n", execResult );   //// if within program: indicate function 
+            _pConsole->print( parsingInfo );
             cleanupExecStack();
             return execResult;              // return result, in case it's needed by caller
         }
@@ -337,6 +338,8 @@ Interpreter::execResult_type Interpreter::execParenthesisPair( LE_calcStack*& pP
 
 Interpreter::execResult_type Interpreter::arrayAndSubscriptsToarrayElement( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pstackLvl, int argCount ) {
     void* pArray = *pPrecedingStackLvl->varOrConst.value.ppArray;
+    _errorProgramCounter = pPrecedingStackLvl->varOrConst.tokenAddress;                // token adress of array name (in the event of an error)
+
     int elemSpec [4] = { 0 ,0,0,0 };
     do {
         bool opReal = (pstackLvl->varOrConst.valueType == var_isFloat);
@@ -350,13 +353,13 @@ Interpreter::execResult_type Interpreter::arrayAndSubscriptsToarrayElement( LE_c
     } while ( ++elemSpec [3] < argCount );
 
 
-    // store result in stack
-    // ---------------------
+    // calculate array element address and replace array base address with it in stack
+    // -------------------------------------------------------------------------------
 
     void* pArrayElem = arrayElemAddress( pArray, elemSpec );
     if ( pArrayElem == nullptr ) { return result_array_outsideBounds; }
     pPrecedingStackLvl->varOrConst.value.pVariable = pArrayElem;
-    // note: replacing array base address by element address; other data does not change (array attributes, value type, token type, intermediate constant, variable type address)
+    // note: other data does not change (array attributes, value type, token type, intermediate constant, variable type address)
 
 
     // Delete any intermediate result string objects used as operands 
@@ -534,7 +537,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         else {
             // make a copy of the character string and store a pointer to this copy as result
             // because the value will be stored in a variable, limit to the maximum allowed string length
-            stringlen = strlen( operand2.pStringConst );
+            stringlen = min( strlen( operand2.pStringConst ), MyParser::_maxAlphaCstLen )    ;
             opResult.pStringConst = new char [stringlen + 1];
             memcpy( opResult.pStringConst, operand2.pStringConst, stringlen );        // copy the actual string (not the pointer); do not use strcpy
             opResult.pStringConst [stringlen] = '\0';                                         // add terminating \0

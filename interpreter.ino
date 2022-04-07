@@ -215,7 +215,6 @@ void loop() {
             break;
 #endif
         case '8':
-            pConsole->println();
             // start interpreter: control will not return to here until the user quits, because it has its own 'main loop'
             withinApplication = true;                                                   // flag that control will be transferred to an 'application'
             if ( !interpreterInMemory ) { pcalculator = new  Interpreter( pConsole ); }  // if interpreter not running: create an interpreter object on the heap

@@ -1979,115 +1979,126 @@ bool MyParser::parseAsIdentifierName( char*& pNext, parseTokenResult_type& resul
 // *   pretty print a parsed instruction   *
 // -----------------------------------------
 void MyParser::prettyPrintInstructions( bool oneInstruction, char* startToken, char* errorProgCounter, int* sourceErrorPos ) {
-    // define these variables outside switch statement, to prevent undefined behaviour
-    const int maxCharsPretty { 100 };       //// check lengte
-    char prettyToken [maxCharsPretty] = "";
-    int identNameIndex, valueIndex;
-    char s [100] = "";      //// check op overrun
-    char qual [20] = "";
-    char pch [3] = "";
-    int len;
-    int index;
-    char* identifierName, * varStrValue;
-    bool isStringValue;
-    float f { 0 };
-    char* pAnum { nullptr };
-    uint32_t funcStart = 0;
-    char tokenInfo = 0;
-    uint8_t varQualifier = 0;
-    bool isArray;
-    bool hasTokenStep;
-    bool isUserVar;
-    Interpreter::TokenPointer progCnt;
-    *sourceErrorPos = 0;
-    int sourceLength = 1; // init: first position
 
+    // input: stored tokens
+    Interpreter::TokenPointer progCnt;
     progCnt.pTokenChars = (startToken == nullptr) ? _pcalculator->_programStart : startToken;
     int tokenType = *progCnt.pTokenChars & 0x0F;
-    char pTokenStepPointedTo [2];
-    uint16_t toTokenStep;
-    Interpreter::TokenIsResWord* pToken;
 
-    if ( oneInstruction ) { _pcalculator->_pConsole->print( "  " ); }
+    // output: printable token (text)
+    const int maxCharsPretty { 100 };           // must be long enough to hold one token in text (e.g. a variable name)
+    char prettyToken [maxCharsPretty] = "";
+    int outputLength = 0;                       // init: first position
 
     while ( tokenType != Interpreter::tok_no_token ) {                                                                    // for all tokens in token list
-        uint16_t tokenStep = (uint16_t) (progCnt.pTokenChars - _pcalculator->_programStorage);
-        strcpy( s, "" );
+        int tokenLength = (tokenType >= Interpreter::tok_isOperator) ? 1 : (*progCnt.pTokenChars >> 4) & 0x0F;
+        Interpreter::TokenPointer nextProgCnt;
+        nextProgCnt.pTokenChars = progCnt.pTokenChars + tokenLength;
+        int nextTokenType = *nextProgCnt.pTokenChars & 0x0F;                                                                // next token type (look ahead)
+        bool errorTokenHasLeadingSpace = false;
+
         strcpy( prettyToken, "" );
 
         switch ( tokenType ) {
         case Interpreter::tok_isReservedWord:
-            pToken = (Interpreter::TokenIsResWord*) progCnt.pTokenChars;
-            sprintf( s, "%s ", _resWords [progCnt.pResW->tokenIndex]._resWordName );
+        {
+            Interpreter::TokenIsResWord* pToken = (Interpreter::TokenIsResWord*) progCnt.pTokenChars;
+            sprintf( prettyToken, (nextTokenType == Interpreter::tok_isSemiColonSeparator) ? "%s" : "%s ", _resWords [progCnt.pResW->tokenIndex]._resWordName );
             break;
+        }
 
         case Interpreter::tok_isInternFunction:
-            strcpy( s, _functions [progCnt.pIntFnc->tokenIndex].funcName );
+            strcpy( prettyToken, _functions [progCnt.pIntFnc->tokenIndex].funcName );
             break;
 
         case Interpreter::tok_isExternFunction:
-            identNameIndex = (int) progCnt.pExtFnc->identNameIndex;   // external function list element
-            identifierName = _pcalculator->extFunctionNames [identNameIndex];
-            strcpy( s, identifierName );
+        {
+            int identNameIndex = (int) progCnt.pExtFnc->identNameIndex;   // external function list element
+            char* identifierName = _pcalculator->extFunctionNames [identNameIndex];
+            strcpy( prettyToken, identifierName );
             break;
+        }
 
         case Interpreter::tok_isVariable:
-            identNameIndex = (int) (progCnt.pVar->identNameIndex);
-            varQualifier = progCnt.pVar->identInfo;
-            isUserVar = (progCnt.pVar->identInfo & _pcalculator->var_qualifierMask) == _pcalculator->var_isUser;
-            identifierName = isUserVar ? _pcalculator->userVarNames [identNameIndex] : _pcalculator->programVarNames [identNameIndex];
-            strcpy( s, identifierName );
+        {
+            int identNameIndex = (int) (progCnt.pVar->identNameIndex);
+            uint8_t varQualifier = progCnt.pVar->identInfo;
+            bool isUserVar = (progCnt.pVar->identInfo & _pcalculator->var_qualifierMask) == _pcalculator->var_isUser;
+            char* identifierName = isUserVar ? _pcalculator->userVarNames [identNameIndex] : _pcalculator->programVarNames [identNameIndex];
+            strcpy( prettyToken, identifierName );
             break;
+        }
 
         case Interpreter::tok_isRealConst:
+        {
+            float f;
             memcpy( &f, progCnt.pFloat->realConst, sizeof( f ) );                         // pointer not necessarily aligned with word size: copy memory instead
-            sprintf( s, "%.3G", f );
+            sprintf( prettyToken, "%.3G", f );
             break;
+        }
 
         case Interpreter::tok_isStringConst:
         case Interpreter::tok_isGenericName:
+        {
+            char* pAnum { nullptr };
             memcpy( &pAnum, progCnt.pAnumP->pStringConst, sizeof( pAnum ) );                         // pointer not necessarily aligned with word size: copy memory instead
-            sprintf( s, "\"%s\"", pAnum );
+            sprintf( prettyToken, "\"%s\"", pAnum );
             break;
+        }
 
         default:
-            len = strlen( singleCharTokens );
-            index = (progCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F;
-            if ( index < len ) { pch [0] = singleCharTokens [index]; pch [1] = '\0'; }
-            else {
-                strcat( pch, ((index == len) ? "<=" : (index == len + 1) ? ">=" : "<>") );
-            }
-            strcpy( s, pch );
-            if ( (tokenType == Interpreter::tok_isSemiColonSeparator) && (!oneInstruction) ) { strcat( s, " " ); }
-            break;
+        {
+            int len = strlen( singleCharTokens );
+            int index = (progCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F;
 
+            if ( index < len ) {
+                if ( index == 1 ) { strcpy( prettyToken, "; " ); }
+                else if ( index == 2 ) { strcpy( prettyToken, ": " ); }
+                else if ( (index >= 3) && (index <= 11) ) {
+                    strcpy( prettyToken, "   " ); prettyToken [1] = singleCharTokens [index];
+                    errorTokenHasLeadingSpace = true;
+                }
+                else {
+                    prettyToken [0] = singleCharTokens [index]; prettyToken [1] = '\0';
+                    errorTokenHasLeadingSpace = true;
+                }
+            }
+            else {
+                strcat( prettyToken, ((index == len) ? " <= " : (index == len + 1) ? " >= " : " <> ") );
+            }
+            break; }
         }
 
 
-        // append pretty printed token to character string (if still place left)
-        int len = strlen( s );
-        if ( tokenType == Interpreter::tok_no_token ) { len -= 2; s [len] = '\0'; }                                               // remove final semicolon and space
-        if ( len <= maxCharsPretty ) { strcat( prettyToken, s ); }
-        int tokenSourceLength = strlen( prettyToken );
-        if ( tokenSourceLength > 0 ) { _pcalculator->_pConsole->print( prettyToken ); }
+        // print pretty token
+        // ------------------
 
+        int tokenSourceLength = strlen( prettyToken );
+        if ( tokenType == Interpreter::tok_isSemiColonSeparator ) {
+            if ( (nextTokenType != Interpreter::tok_no_token) && !oneInstruction ) { _pcalculator->_pConsole->print( prettyToken ); }
+        }
+        else { _pcalculator->_pConsole->print( prettyToken ); }
+
+        // if printing one instruction, return output error position based on token where execution error was produced
         if ( oneInstruction ) {
             if ( errorProgCounter == progCnt.pTokenChars ) {
-                *sourceErrorPos = sourceLength;
+                *sourceErrorPos = outputLength + (errorTokenHasLeadingSpace ? 1 : 0);
             }
             else if ( (tokenType == Interpreter::tok_isSemiColonSeparator) ) {
-                Serial.print( "\r\n  error token at " ); Serial.println( errorProgCounter - _pcalculator->_programStorage );
                 break;
             }
-            sourceLength += tokenSourceLength; 
+            outputLength += tokenSourceLength;
         }
 
 
         // advance to next token
-        int tokenLength = (tokenType >= Interpreter::tok_isOperator) ? 1 : (*progCnt.pTokenChars >> 4) & 0x0F;        // fetch next token 
-        progCnt.pTokenChars += tokenLength;
-        tokenType = *progCnt.pTokenChars & 0x0F;                                                     // next token type
+        // ---------------------
+
+        progCnt.pTokenChars = nextProgCnt.pTokenChars;
+        tokenType = nextTokenType;                                                     // next token type
     }
+
+    // exit
     _pcalculator->_pConsole->println(); _pcalculator->_isPrompt = false;
 }
 
@@ -2255,12 +2266,14 @@ void MyParser::printParsingResult( parseTokenResult_type result, int funcNotDefI
         strcpy( parsingInfo, _pcalculator->_programMode ? "Program parsed without errors" : "" );
     }
 
-    else  if ( (result == result_undefinedFunctionOrArray) && _pcalculator->_programMode ) {     // in program mode only (because function can be defined after a call)
+    else  if ( (result == result_undefinedFunctionOrArray) && _pcalculator->_programMode ) {     // in program mode only 
+        // during external function call parsing, it is not always known whether the function exists (because function can be defined after a call) 
+        // -> a linenumber can not be given, but the undefined function can
         sprintf( parsingInfo, "\r\n  Parsing error %d: function: %s", result, _pcalculator->extFunctionNames [funcNotDefIndex] );
     }
 
     else {                                                                              // parsing error
-        // instruction not parsed yet (because of error): print source instruction where error is located (can not 'unparse' for printing instruction)
+        // instruction not parsed (because of error): print source instruction where error is located (can not 'unparse' yet for printing instruction)
         char point [pErrorPos - pInstruction + 3];                               // 2 extra positions for 2 leading spaces, 2 for '^' and '\0' characters
         memset( point, ' ', pErrorPos - pInstruction + 2 );
         point [pErrorPos - pInstruction + 2] = '^';

@@ -45,8 +45,9 @@ char* LinkedList::appendListElement( int size ) {
 #if printCreateDeleteHeapObjects
     Serial.print( "(LIST) Create elem # " ); Serial.print( _listElementCount );
     Serial.print( "- list ID " ); Serial.print( _listID );
-    if ( p == nullptr ) { Serial.println( "- list elem adres: nullptr" ); }   
-    else { Serial.print( "- list elem adres: " ); Serial.println( (uint32_t) p - RAMSTART );
+    if ( p == nullptr ) { Serial.println( "- list elem adres: nullptr" ); }
+    else {
+        Serial.print( "- list elem adres: " ); Serial.println( (uint32_t) p - RAMSTART );
     }
 #endif
     return (char*) (p + 1);                                          // pointer to payload of newly created element
@@ -106,7 +107,7 @@ void LinkedList::deleteList() {
 // ----------------------------------------------------
 
 char* LinkedList::getFirstListElement() {
-    return (char*) (_pFirstElement + (_pFirstElement == nullptr, 0,  1));
+    return (char*) (_pFirstElement + (_pFirstElement == nullptr, 0, 1));
 }
 
 
@@ -216,7 +217,7 @@ bool Interpreter::run( Stream* const pConsole, Stream** const pTerminal, int def
 
     _programMode = false;                                   //// te checken of er dan nog iets moet gereset worden
     _pConsole = pConsole;
-    _pConsole->print( "Justina> " ); _isPrompt = true;                 // end of parsing
+    _isPrompt = false;                 // end of parsing
     _pTerminal = pTerminal;
     _definedTerminals = definedTerms;
 
@@ -320,9 +321,9 @@ bool Interpreter::processCharacter( char c ) {
         if ( _flushAllUntilEOF ) { return false; }                       // discard characters (after parsing error)
 
         bool isLeadingSpace = ((_StarCmdCharCount == 0) && (c == ' '));
-        if ( c == '\n' ) { _lineCount++; _StarCmdCharCount = 0; }                           // while reading program in input file
+        if ( c == '\n' ) { _lineCount++; _StarCmdCharCount = 0; }                           // line number used when while reading program in input file
 
-        // check for exit command if not in program mode, a printable character (not a leading space) and checking still underway 
+        // check for exit command if not in program mode
         if ( !_programMode && !isLeadingSpace && !(c == '\n') && (_StarCmdCharCount >= 0) ) {
             if ( c == quitCalc [_StarCmdCharCount] ) {
                 _StarCmdCharCount++;
@@ -406,7 +407,7 @@ bool Interpreter::processCharacter( char c ) {
             if ( result == MyParser::result_tokenFound ) {
                 // checks at the end of parsing: any undefined functions (program mode only) ?  any open blocks ?
                 if ( _programMode && (!_pmyParser->allExternalFunctionsDefined( funcNotDefIndex )) ) { result = MyParser::result_undefinedFunctionOrArray; }
-                if ( _pmyParser->_blockLevel > 0 ) {  result = MyParser::result_noBlockEnd; }
+                if ( _pmyParser->_blockLevel > 0 ) { result = MyParser::result_noBlockEnd; }
                 if ( !_programMode ) {
 
                     // evaluation comes here
@@ -415,11 +416,13 @@ bool Interpreter::processCharacter( char c ) {
                     exec();                                 // execute parsed user statements
                 }
             }
-
             // parsing OK message (program mode only - no message in immediate mode) or error message 
             _pmyParser->printParsingResult( result, funcNotDefIndex, _instruction, _lineCount, pErrorPos );
-            _pConsole->print( "Justina> " ); _isPrompt = true;                 // end of parsing
         }
+        else {_pConsole->println(); }                                       // empty line: advance to next line only
+        _pConsole->print( "Justina> " ); _isPrompt = true;                 // print new prompt
+
+
 
         bool wasReset = false;      // init
         if ( _programMode ) {               //// waarschijnlijk aan te passen als LOADPROG cmd implemented (-> steeds vanuit immediate mode)
