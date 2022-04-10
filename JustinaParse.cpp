@@ -12,53 +12,79 @@
 // *   // initialisation of static class members   *
 // -------------------------------------------------
 
-// commands (FUNCTION, FOR, ...): allowed command parameters (naming: cmdPar_<n[nnn]> with A'=variable with (optional) assignment, 'E'=expression, 'E'=expression, 'R'=reserved word
-const char MyParser::cmdPar_N [4] { cmdPar_none, cmdPar_none, cmdPar_none, cmdPar_none };
-const char MyParser::cmdPar_P [4] { cmdPar_programName, cmdPar_none, cmdPar_none, cmdPar_none };
-const char MyParser::cmdPar_E [4] { cmdPar_expression, cmdPar_none, cmdPar_none, cmdPar_none };
-const char MyParser::cmdPar_F [4] { cmdPar_extFunction, cmdPar_none, cmdPar_none, cmdPar_none };
-const char MyParser::cmdPar_AEE [4] { cmdPar_varOptAssignment, cmdPar_expression, cmdPar_expression | cmdPar_optionalFlag , cmdPar_none };
-const char MyParser::cmdPar_P_mult [4] { cmdPar_programName, cmdPar_programName | cmdPar_multipleFlag, cmdPar_none, cmdPar_none };
-const char MyParser::cmdPar_AA_mult [4] { cmdPar_varOptAssignment,cmdPar_varOptAssignment | cmdPar_multipleFlag, cmdPar_none, cmdPar_none };
+// commands (FUNCTION, FOR, ...): allowed command parameters
 
-const char MyParser::cmdPar_test [4] { cmdPar_programName | cmdPar_optionalFlag, cmdPar_programName, cmdPar_programName | cmdPar_multipleFlag, cmdPar_none };  // test: either 0 or 2 to n parameters ok
+const char MyParser::cmdPar_N [4] { cmdPar_none,              cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
+const char MyParser::cmdPar_P [4] { cmdPar_programName,       cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
+const char MyParser::cmdPar_E [4] { cmdPar_expression,        cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
+const char MyParser::cmdPar_F [4] { cmdPar_extFunction,       cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
+const char MyParser::cmdPar_AEE [4] { cmdPar_varOptAssignment,  cmdPar_expression,                              cmdPar_expression | cmdPar_optionalFlag ,   cmdPar_none };
+const char MyParser::cmdPar_P_mult [4] { cmdPar_programName,       cmdPar_programName | cmdPar_multipleFlag,       cmdPar_none,                                cmdPar_none };
+const char MyParser::cmdPar_AA_mult [4] { cmdPar_varOptAssignment,  cmdPar_varOptAssignment | cmdPar_multipleFlag,  cmdPar_none,                                cmdPar_none };
 
-// reserved words: names, allowed parameters (if used as command, starting an instruction) and type of block command
-//// PROGRAM...END, DEBUG (in programma), STEP (manueel), PRINTPROG, CLEARPROG, CLEARALL, CLEARUSERVARS, VARS, PEEK, POKE, CTRL-C (abort),... 
+const char MyParser::cmdPar_test [4] { cmdPar_programName
+                                            | cmdPar_optionalFlag,  cmdPar_programName,                             cmdPar_programName | cmdPar_multipleFlag,   cmdPar_none };  // test: either 0 or 2 to n parameters ok
+
+// commands: reserved words
+
 const MyParser::ResWordDef MyParser::_resWords [] {
-{"TEST", cmdPar_test, cmdDeleteVar, cmd_noRestrictions},
+    //  name        id code         where allowed           padding (boundary alignment)    param spec      control info
+    //  ----        -------         -------------           ----------------------------    ----------      ------------   
+    {"TEST",    cmdcod_test,    cmd_noRestrictions,                                 0,0,    cmdPar_test,    cmdDeleteVar},
 
-{"PROGRAM", cmdPar_P, cmdProgram, cmd_onlyProgramTop | cmd_skipDuringExec},
-{"DELETE",cmdPar_P_mult, cmdDeleteVar, cmd_onlyImmediate},                                                      // variable list
-{"CLEAR", cmdPar_N, cmdBlockOther, cmd_onlyImmediate},
-{"VARS",cmdPar_N, cmdBlockOther, cmd_onlyImmediate},
-{"FUNCTION",cmdPar_F, cmdBlockExtFunction,cmd_onlyInProgram | cmd_skipDuringExec},
+    {"PROGRAM", cmdcod_program, cmd_onlyProgramTop | cmd_skipDuringExec,            0,0,    cmdPar_P,       cmdProgram},
+    {"DELETE",  cmdcod_delete,  cmd_onlyImmediate,                                  0,0,    cmdPar_P_mult,  cmdDeleteVar},
+    {"CLEAR",   cmdcod_clear,   cmd_onlyImmediate,0,0, cmdPar_N, cmdBlockOther},
+    {"VARS",    cmdcod_vars,    cmd_onlyImmediate,                                  0,0,    cmdPar_N,       cmdBlockOther},
+    {"FUNCTION",cmdcod_function,cmd_onlyInProgram | cmd_skipDuringExec,             0,0,    cmdPar_F,       cmdBlockExtFunction},
 
-{"STATIC", cmdPar_AA_mult, cmdStaticVar,cmd_onlyInFunctionBlock | cmd_skipDuringExec},                                         // minimum 1 variable (with optional cst assignment)
-{"LOCAL", cmdPar_AA_mult, cmdLocalVar,cmd_onlyInFunctionBlock | cmd_skipDuringExec},                                             // minimum 1 variable (with optional cst assignment)
-{"VAR", cmdPar_AA_mult, cmdGlobalVar,cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec},                           // minimum 1 variable (with optional cst assignment)
+    {"STATIC",  cmdcod_static,  cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_AA_mult, cmdStaticVar},
+    {"LOCAL",   cmdcod_local,   cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_AA_mult, cmdLocalVar},
+    {"VAR",     cmdcod_var,     cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_AA_mult, cmdGlobalVar},
 
-{"FOR",cmdPar_AEE,cmdBlockFor, cmd_onlyImmediateOrInsideFunctionBlock},
-{"WHILE",cmdPar_E,cmdBlockWhile, cmd_onlyImmediateOrInsideFunctionBlock},
-{"IF", cmdPar_E, cmdBlockIf, cmd_onlyImmediateOrInsideFunctionBlock},
-{"ELSEIF", cmdPar_E, cmdBlockIf_elseIf, cmd_onlyImmediateOrInsideFunctionBlock},
-{"ELSE", cmdPar_N, cmdBlockIf_else, cmd_onlyImmediateOrInsideFunctionBlock},
+    {"FOR",     cmdcod_for,     cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_AEE,     cmdBlockFor},
+    {"WHILE",   cmdcod_while,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E,       cmdBlockWhile},
+    {"IF",      cmdcod_if,      cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E,       cmdBlockIf},
+    {"ELSEIF",  cmdcod_elseif,  cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E,       cmdBlockIf_elseIf},
+    {"ELSE",    cmdcod_else,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_N,       cmdBlockIf_else},
 
-{"BREAK", cmdPar_N,cmdBlockOpenBlock_loop,cmd_onlyImmediateOrInsideFunctionBlock},                                         // allowed if at least one open loop block (any level) 
-{"CONTINUE", cmdPar_N,cmdBlockOpenBlock_loop,cmd_onlyImmediateOrInsideFunctionBlock },                                      // allowed if at least one open loop block (any level) 
-{"RETURN", cmdPar_E, cmdBlockOpenBlock_function, cmd_onlyImmediateOrInsideFunctionBlock},                                   // allowed if currently an open function definition block 
+    {"BREAK",   cmdcod_break,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_N,       cmdBlockOpenBlock_loop},        // allowed if at least one open loop block (any level) 
+    {"CONTINUE",cmdcod_continue,cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_N,       cmdBlockOpenBlock_loop },       // allowed if at least one open loop block (any level) 
+    {"RETURN",  cmdcod_return,  cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E,       cmdBlockOpenBlock_function},    // allowed if currently an open function definition block 
 
-{"END",cmdPar_N,cmdBlockGenEnd, cmd_noRestrictions},                                                    // closes one open command block
+    {"END",     cmdcod_end,     cmd_noRestrictions,                                 0,0,    cmdPar_N,       cmdBlockGenEnd},                // closes inner open command block
 };
 
-// internal (intrinsic) functions: name and min & max number of arguments taken
-const MyParser::FuncDef MyParser::_functions [] { {"varAddress",1,1}, {"varIndirect",1 ,1},{"varName",1 ,1},
-{"if", 3,3}, {"and",1,9}, {"or",1,9}, {"not",1,1}, {"sin",1,1}, {"cos",1,1}, {"tan",1,1} , {"time", 0,0} };
+// internal (intrinsic) functions
+// the 8 array pattern bits indicate the order of arrays and scalars; bit b0 to bit b7 refer to parameter 1 to 8, if a bit is set, an array is expected as argument
+// only the first 8 parameters can be defined as an array parameter
+
+const MyParser::FuncDef MyParser::_functions [] {
+    //  name        id code             #par    array pattern
+    //  ----        -------             ----    ------------_   
+    {"varAddress",  fnccod_varAddress,  1,1,    0b0},
+    {"varIndirect", fnccod_varIndirect, 1,1,    0b0},
+    {"varName",     fnccod_varName,     1,1,    0b0},
+    {"ifte",        fnccod_ifte,        3,3,    0b0},
+    {"and",         fnccod_and,         1,8,    0b0},
+    {"or",          fnccod_or,          1,8,    0b0},
+    {"not",         fnccod_not,         1,1,    0b0},
+    {"sin",         fnccod_sin,         1,1,    0b0},
+    {"cos",         fnccod_cos,         1,1,    0b0},
+    {"tan",         fnccod_tan,         1,1,    0b0},
+    {"time",        fnccod_time,        0,0,    0b0},
+    {"sqrt",        fnccod_sqrt,        1,1,    0b0},
+    {"ubound",      fnccod_ubound,      2,2,    0b1},
+    {"L",           fnccod_l,           0,1,    0b0}
+};
+
 
 const char* const      MyParser::singleCharTokens = ",;:<>=&+-*/^()";                    // all one-character tokens; two-character comparison tokens (<=, >=, <>) are not included
 // priority and associativity of OPERATOR preceding a value versus next OPERATOR or other TERMINAL TOKEN (low value is low priority)
-const char* const      MyParser::operatorPriority = "00122234455670222";                 // comma, semicolon, right parenthesis -> assignment -> comparison -> addition subtraction ->mult. division -> power -> left parenthesis
+// skip prio 6: is for prefix (+ and -) operators
+const char* const      MyParser::operatorPriority = "00122234455780222";                 // comma, semicolon, right parenthesis -> assignment -> comparison -> addition subtraction ->mult. division -> power -> left parenthesis
 const char* const MyParser::operatorAssociativity = "00100000000100000";                 // 0 = left-to_right associativity, 1 = right-to-left (assignment, power)
+
 
 // -------------------
 // *   constructor   *
@@ -387,11 +413,11 @@ MyParser::parseTokenResult_type MyParser::parseInstruction( char*& pInputStart )
     do {                                                                                // parse ONE token in an instruction
 
         // determine token group of last token parsed (bits b4 to b0): this defines which tokens are allowed as next token
-        _lastTokenGroup_sequenceCheck = ((t == Interpreter::tok_isOperator) || (t == Interpreter::tok_isCommaSeparator)) ? lastTokenGroup_0 :
+        _lastTokenGroup_sequenceCheck_bit = ((t == Interpreter::tok_isOperator) || (t == Interpreter::tok_isCommaSeparator)) ? lastTokenGroup_0 :
             ((t == Interpreter::tok_no_token) || (t == Interpreter::tok_isSemiColonSeparator) || (t == Interpreter::tok_isReservedWord)) ? lastTokenGroup_1 :
             ((t == Interpreter::tok_isRealConst) || (t == Interpreter::tok_isStringConst) || (t == Interpreter::tok_isRightParenthesis)) ? lastTokenGroup_2 :
             ((t == Interpreter::tok_isInternFunction) || (t == Interpreter::tok_isExternFunction)) ? lastTokenGroup_3 :
-            (t == Interpreter::tok_isLeftParenthesis) ? lastTokenGroup_4 : lastTokenGroup_5;     // token group 5: scalar or array variable
+            (t == Interpreter::tok_isLeftParenthesis) ? lastTokenGroup_4 : lastTokenGroup_5;     // token group 5: scalar or array variable name
 
         // a space may be required between last token and next token (not yet known), if one of them is a reserved word
         // and the other token is either a reserved word, an alphanumeric constant or a parenthesis
@@ -413,9 +439,9 @@ MyParser::parseTokenResult_type MyParser::parseInstruction( char*& pInputStart )
         do {                                                                                                                // one loop only
             if ( (_pcalculator->_programCounter + sizeof( Interpreter::TokenIsStringCst ) + 1) > (_pcalculator->_programStart + _pcalculator->_programSize) ) { result = result_progMemoryFull; break; };
             if ( !parseAsResWord( pNext, result ) ) { break; } if ( result == result_tokenFound ) { continue; }             // check before checking for identifier  
-            if ( !parseAsNumber( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }             // check before checking for single char token
+            if ( !parseTerminalToken( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }       // check before checking for number
+            if ( !parseAsNumber( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }
             if ( !parseAsStringConstant( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }
-            if ( !parseTerminalToken( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }
             if ( !parseAsInternFunction( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }     // check before checking for identifier (ext. function / variable) 
             if ( !parseAsExternFunction( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }     // check before checking for variable
             if ( !parseAsVariable( pNext, result ) ) { break; }  if ( result == result_tokenFound ) { continue; }
@@ -475,12 +501,13 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
 
             // determine command and where allowed
             CmdBlockDef cmdBlockDef = _resWords [_tokenIndex].cmdBlockDef;
-            _isExtFunctionCmd = (cmdBlockDef.blockType == block_extFunction);
-            _isProgramCmd = ((cmdBlockDef.blockType == block_none) && (cmdBlockDef.blockPosOrAction == cmd_program));
-            _isGlobalOrUserVarCmd = ((cmdBlockDef.blockType == block_none) && (cmdBlockDef.blockPosOrAction == cmd_globalVar));
-            _isLocalVarCmd = ((cmdBlockDef.blockType == block_none) && (cmdBlockDef.blockPosOrAction == cmd_localVar));
-            _isStaticVarCmd = ((cmdBlockDef.blockType == block_none) && (cmdBlockDef.blockPosOrAction == cmd_staticVar));
-            _isDeleteVarCmd = ((cmdBlockDef.blockType == block_none) && (cmdBlockDef.blockPosOrAction == cmd_deleteVar));
+
+            _isExtFunctionCmd = _resWords [_tokenIndex].resWordCode == cmdcod_function;
+            _isProgramCmd = _resWords [_tokenIndex].resWordCode == cmdcod_program;
+            _isGlobalOrUserVarCmd = _resWords [_tokenIndex].resWordCode == cmdcod_var;
+            _isLocalVarCmd = _resWords [_tokenIndex].resWordCode == cmdcod_local;
+            _isStaticVarCmd = _resWords [_tokenIndex].resWordCode == cmdcod_static;
+            _isDeleteVarCmd = _resWords [_tokenIndex].resWordCode == cmdcod_delete;
 
             _isAnyVarCmd = _isGlobalOrUserVarCmd || _isLocalVarCmd || _isStaticVarCmd;      //  VAR, LOCAL, STATIC
 
@@ -497,7 +524,7 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
             if ( !_extFunctionBlockOpen && (cmdRestriction == cmd_onlyInFunctionBlock) ) { result = result_onlyInsideFunction; return false; }
             if ( _extFunctionBlockOpen && (cmdRestriction == cmd_onlyOutsideFunctionBlock) ) { result = result_onlyOutsideFunction; return false; }
             if ( ((!_pcalculator->_programMode) || _extFunctionBlockOpen) && (cmdRestriction == cmd_onlyInProgramOutsideFunctionBlock) ) { result = result_onlyInProgOutsideFunction; return false; };
-            if ( (_pcalculator->_programMode && !_extFunctionBlockOpen) && (cmdRestriction == cmd_onlyImmediateOrInsideFunctionBlock) ) { result = result_onlyImmediateOrInFunction; return false; };
+            if ( (_pcalculator->_programMode && !_extFunctionBlockOpen) && (cmdRestriction == cmd_onlyImmOrInsideFuncBlock) ) { result = result_onlyImmediateOrInFunction; return false; };
 
             if ( _extFunctionBlockOpen && _isExtFunctionCmd ) { result = result_functionDefsCannotBeNested; return false; } // separate message to indicate 'no nesting'
 
@@ -723,7 +750,7 @@ bool MyParser::parseAsResWord( char*& pNext, parseTokenResult_type& result ) {
 
         // token is reserved word, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
         if ( _parenthesisLevel > 0 ) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
-        if ( !(_lastTokenGroup_sequenceCheck & lastTokenGroups_5_2_1) ) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
+        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2_1) ) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
         if ( !_isCommand ) {                                                             // within commands: do not test here
             if ( (_lastTokenType != Interpreter::tok_isSemiColonSeparator) && (_lastTokenType != Interpreter::tok_no_token) ) {
                 pNext = pch; result = result_resWordNotAllowedHere; return false;
@@ -765,25 +792,18 @@ bool MyParser::parseAsNumber( char*& pNext, parseTokenResult_type& result ) {
     result = result_tokenNotFound;                                                      // init: flag 'no token found'
     char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
 
+    // all numbers will be positive, because leading '-' or '+' characters are parsed separately as prefix operators
+    // this is important if next infix operator (power) has higher priority then this prefix operator: -2^4 <==> -(2^4) <==> -16, AND NOT (-2)^4 <==> 16 
     float f = strtof( pch, &pNext );                                                    // token can be parsed as float ?
     if ( pch == pNext ) { return true; }                                                // token is not a number if pointer pNext was not moved
 
-    // number found: if it is allowed here in the token sequence, proceed 
-    // if NOT allowed here, then check if it's a '+' or '-' operator (FOLLOWED by a number)
-    bool sequenceOK = true;
-    if ( !(_lastTokenGroup_sequenceCheck & lastTokenGroups_4_1_0) ) {                   // number found but not allowed here
-        pNext = pch;                                                                    // reset pointer to first character to parse
-        sequenceOK = (pch [0] == '+') || (pch [0] == '-');                              // token can still be a '+' or '-' operator, FOLLOWED by a number: check first character
-        if ( sequenceOK ) { return true; }
-    }
-
     if ( _pcalculator->_programCounter == _pcalculator->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
-    // overflow ? (underflow is not detected) 
-    if ( !isfinite( f ) ) { pNext = pch; result = result_overflow; return false; }
+    // token is a number constant, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
+    if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_numConstNotAllowedHere; return false; }
 
-    // token is a number, but is it allowed here ? 
-    if ( !sequenceOK ) { result = result_numConstNotAllowedHere; }                   // is not a '+' or '-' operator either: indicate error 
+    // overflow ? (underflow is not detected with strtof() ) 
+    if ( !isfinite( f ) ) { pNext = pch; result = result_overflow; return false; }
 
     // within commands: skip this test (if '_isCommand' is true, then test expression is false)
     // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
@@ -832,7 +852,7 @@ bool MyParser::parseAsStringConstant( char*& pNext, parseTokenResult_type& resul
     if ( _pcalculator->_programCounter == _pcalculator->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
     // token is an alphanumeric constant, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-    if ( !(_lastTokenGroup_sequenceCheck & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
+    if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
 
     // within commands: skip this test (if '_isCommand' is true, then test expression is false)
     // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
@@ -907,21 +927,6 @@ bool MyParser::parseAsStringConstant( char*& pNext, parseTokenResult_type& resul
 // *   try to parse next characters as a terminal token (one- or two-characters)   *
 // ---------------------------------------------------------------------------------
 
-// External function definition statement parsing: check order of mandatory and optional arguments, check if max. n° not exceeded
-// -------------------------------------------------------------------------------------------------------------------------------
-
-bool MyParser::checkExtFunctionArguments( parseTokenResult_type& result, int& minArgCnt, int& maxArgCnt ) {
-    bool argWasMandatory = (_lastTokenType == Interpreter::tok_isVariable) || (_lastTokenType == Interpreter::tok_isRightParenthesis);         // variable without assignment to a constant or param array def. parenthesis
-    bool alreadyOptArgs = (minArgCnt != maxArgCnt);
-    if ( argWasMandatory && alreadyOptArgs ) { result = result_mandatoryArgFoundAfterOptionalArgs; return false; }
-    if ( argWasMandatory ) { minArgCnt++; }
-    maxArgCnt++;
-    // check that max argument count is not exceeded (number must fit in 4 bits)
-    if ( maxArgCnt > c_extFunctionMaxArgs ) { result = result_functionDefMaxArgsExceeded; return false; }
-    return true;
-}
-
-
 // Array parsing: check that max dimension count and maximum array size is not exceeded
 // ------------------------------------------------------------------------------------
 
@@ -941,10 +946,46 @@ bool MyParser::checkArrayDimCountAndSize( parseTokenResult_type& result, int* ar
     return true;
 }
 
-// Array parsing: check that order of arrays and scalar variables is consistent with previous calls and function definition 
-// ------------------------------------------------------------------------------------------------------------------------
 
-bool MyParser::checkFuncArgArrayPattern( parseTokenResult_type& result, bool isFunctionClosingParenthesis ) {
+// External function definition statement parsing: check order of mandatory and optional arguments, check if max. n° not exceeded
+// -------------------------------------------------------------------------------------------------------------------------------
+
+bool MyParser::checkExtFunctionArguments( parseTokenResult_type& result, int& minArgCnt, int& maxArgCnt ) {
+    bool argWasMandatory = (_lastTokenType == Interpreter::tok_isVariable) || (_lastTokenType == Interpreter::tok_isRightParenthesis);         // variable without assignment to a constant or param array def. parenthesis
+    bool alreadyOptArgs = (minArgCnt != maxArgCnt);
+    if ( argWasMandatory && alreadyOptArgs ) { result = result_mandatoryArgFoundAfterOptionalArgs; return false; }
+    if ( argWasMandatory ) { minArgCnt++; }
+    maxArgCnt++;
+    // check that max argument count is not exceeded (number must fit in 4 bits)
+    if ( maxArgCnt > c_extFunctionMaxArgs ) { result = result_functionDefMaxArgsExceeded; return false; }
+    return true;
+}
+
+
+// Internal function: check that order of arrays and scalar variables is consistent with function definition 
+// ---------------------------------------------------------------------------------------------------------
+
+bool MyParser::checkInternFuncArgArrayPattern( parseTokenResult_type& result ) {
+    int funcIndex = _pParsingStack->openPar.identifierIndex;            // note: also stored in stack for FUNCTION definition block level; here we can pick one of both
+    char paramIsArrayPattern = _functions [funcIndex].arrayPattern;
+    int argNumber = _pParsingStack->openPar.actualArgsOrDims;
+
+    if ( argNumber > 0 ) {
+        bool isArray = false;
+        if ( _lastTokenType == Interpreter::tok_isVariable ) {                                      // function call and last token is variable name ? Could be an array name                                                                                      // function call
+            // check if variable is defined as array (then it will NOT be part of an expression )
+            isArray = (((Interpreter::TokenIsVariable*) (_pcalculator->_programStorage + _lastTokenStep))->identInfo) & _pcalculator->var_isArray;
+        }
+
+        if ( ((paramIsArrayPattern >> (argNumber - 1)) & 0b1) != isArray ) { result = isArray ? result_scalarArgExpected : result_arrayArgExpected; return false; }
+    }
+}
+
+
+// External function: check that order of arrays and scalar variables is consistent with previous calls and function definition 
+// ----------------------------------------------------------------------------------------------------------------------------
+
+bool MyParser::checkExternFuncArgArrayPattern( parseTokenResult_type& result, bool isFunctionClosingParenthesis ) {
 
     int funcIndex = _pParsingStack->openPar.identifierIndex;            // note: also stored in stack for FUNCTION definition block level; here we can pick one of both
     int argNumber = _pParsingStack->openPar.actualArgsOrDims;
@@ -963,7 +1004,7 @@ bool MyParser::checkFuncArgArrayPattern( parseTokenResult_type& result, bool isF
         if ( paramIsArrayPattern & 0x8000 ) {                   // function not used yet (before it was defined now: no need to check, just set array bit)
             paramIsArrayPattern = paramIsArrayPattern | (isArray ? paramArrayMask : 0);
         }
-        else {
+        else {  // error message can not be more specific (scalar expected, array expected) because maybe function has not been defined yet
             if ( (paramIsArrayPattern & paramArrayMask) != (isArray ? paramArrayMask : 0) ) { result = result_fcnScalarAndArrayArgOrderNotConsistent; return false; }
         }
     }
@@ -1009,7 +1050,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         if ( _pcalculator->_programCounter == _pcalculator->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
         // token is left parenthesis, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-        if ( !(_lastTokenGroup_sequenceCheck & lastTokenGroups_5_4_3_1_0) ) { pNext = pch;  result = result_parenthesisNotAllowedHere; return false; }
+        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_4_3_1_0) ) { pNext = pch;  result = result_parenthesisNotAllowedHere; return false; }
 
         // within commands: skip this test (if '_isCommand' is true, then test expression is false)
         // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
@@ -1030,7 +1071,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
             (_lastTokenType == Interpreter::tok_isVariable) ? _pcalculator->arrayBit : _pcalculator->openParenthesisBit;     // is it following a(n internal or external) function name ?
         // external function (call or definition) opening parenthesis
         if ( _lastTokenType == Interpreter::tok_isExternFunction ) {
-            if ( _pcalculator->extFunctionData [_extFunctionIndex].pExtFunctionStartToken != nullptr ) { flags = flags | _pcalculator->extFunctionPrevDefinedBit; }
+            if ( _pcalculator->extFunctionData [_functionIndex].pExtFunctionStartToken != nullptr ) { flags = flags | _pcalculator->extFunctionPrevDefinedBit; }
         }
         bool isSecondSubExpressionToken = ((_previousTokenType == Interpreter::tok_no_token) || (_previousTokenType == Interpreter::tok_isSemiColonSeparator) ||
             (_previousTokenType == Interpreter::tok_isLeftParenthesis) || (_previousTokenType == Interpreter::tok_isCommaSeparator) || (_previousTokenType == Interpreter::tok_isReservedWord));
@@ -1051,7 +1092,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         }
 
         // left parenthesis only ? (not a function or array opening parenthesis): min & max allowed argument count not yet initialised
-        if ( _lastTokenGroup_sequenceCheck & lastTokenGroup_4 ) {
+        if ( _lastTokenGroup_sequenceCheck_bit & lastTokenGroup_4 ) {
             _minFunctionArgs = 1;                                    // initialize min & max allowed argument count to 1
             _maxFunctionArgs = 1;
         }
@@ -1064,7 +1105,8 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         _pParsingStack->openPar.actualArgsOrDims = 0;
         _pParsingStack->openPar.arrayDimCount = _pcalculator->_arrayDimCount;         // dimensions of previously defined array. If zero, then this array did not yet exist, or it's a sclarar variable
         _pParsingStack->openPar.flags = flags;
-        _pParsingStack->openPar.identifierIndex = (_lastTokenType == Interpreter::tok_isExternFunction) ? _extFunctionIndex :
+        _pParsingStack->openPar.identifierIndex = (_lastTokenType == Interpreter::tok_isInternFunction) ? _functionIndex :
+            (_lastTokenType == Interpreter::tok_isExternFunction) ? _functionIndex :
             (_lastTokenType == Interpreter::tok_isVariable) ? _variableNameIndex : 0;
         _pParsingStack->openPar.variableQualifier = _variableQualifier;
 
@@ -1080,7 +1122,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         if ( _pcalculator->_programCounter == _pcalculator->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
         // token is right parenthesis, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-        if ( !(_lastTokenGroup_sequenceCheck & lastTokenGroups_5_4_2) ) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
+        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_4_2) ) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
 
         // within commands: skip this test (if '_isCommand' is true, then test expression is false)
         // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
@@ -1120,7 +1162,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
                 _pcalculator->extFunctionNames [funcIndex][_maxIdentifierNameLen + 1] = (extFunctionDef_minArgCounter << 4) | (extFunctionDef_maxArgCounter);
 
                 // check that order of arrays and scalar variables is consistent with previous callsand function definition
-                if ( !checkFuncArgArrayPattern( result, true ) ) { pNext = pch; return false; };       // verify that the order of scalar and array parameters is consistent with arguments
+                if ( !checkExternFuncArgArrayPattern( result, true ) ) { pNext = pch; return false; };       // verify that the order of scalar and array parameters is consistent with arguments
             }
         }
 
@@ -1234,12 +1276,9 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
                 if ( argCountWrong ) { pNext = pch; result = result_wrong_arg_count; return false; }
             }
 
-            // external functions only: check that order of arrays and scalar variables is consistent with previous calls and function definition
-            // note: internal functions only accept scalars
-            bool extFunction = flags & _pcalculator->extFunctionBit;
-            if ( extFunction ) {
-                if ( !checkFuncArgArrayPattern( result, true ) ) { pNext = pch; return false; };       // verify that the order of scalar and array parameters is consistent with arguments
-            }
+            // check that order of arrays and scalar variables is consistent with function definition and (external functions only: with previous calls) 
+            if ( flags & _pcalculator->intFunctionBit ) { if ( !checkInternFuncArgArrayPattern( result ) ) { pNext = pch; return false; }; }
+            else if ( flags & _pcalculator->extFunctionBit ) { if ( !checkExternFuncArgArrayPattern( result, true ) ) { pNext = pch; return false; }; }
         }
 
 
@@ -1248,12 +1287,13 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 
         else if ( flags & _pcalculator->arrayBit ) {
             // check if array dimension count corresponds (individual dimension adherence can only be checked at runtime)
+            // for function parameters, array dimension count can only be checked at runtime as well
             // if previous token is left parenthesis (' () '), then do not increment argument count
             if ( _lastTokenType != Interpreter::tok_isLeftParenthesis ) { _pParsingStack->openPar.actualArgsOrDims++; }
 
             int varNameIndex = _pParsingStack->openPar.identifierIndex;
             uint8_t varQualifier = _pParsingStack->openPar.variableQualifier;
-            bool isParam = (varQualifier == _pcalculator->var_isParamInFunc);            // but not function parameter definitions
+            bool isParam = (varQualifier == _pcalculator->var_isParamInFunc);
             int actualDimCount = _pParsingStack->openPar.actualArgsOrDims;
             if ( actualDimCount == 0 ) { pNext = pch; result = result_arrayUseNoDims; return false; } // dim count too high: already handled when preceding comma was parsed
             if ( !isParam ) {
@@ -1285,7 +1325,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         if ( _pcalculator->_programCounter == _pcalculator->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
         // token is comma separator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-        if ( !(_lastTokenGroup_sequenceCheck & lastTokenGroups_5_2) ) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
+        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2) ) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
 
         // within commands: skip this test (if '_isCommand' is true, then test expression is false)
         // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
@@ -1307,7 +1347,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
                 if ( !checkExtFunctionArguments( result, extFunctionDef_minArgCounter, extFunctionDef_maxArgCounter ) ) { pNext = pch; return false; };
 
                 // Check order of mandatory and optional arguments (function: parenthesis levels > 0)
-                if ( !checkFuncArgArrayPattern( result, false ) ) { pNext = pch; return false; };       // verify that the order of scalar and array parameters is consistent with arguments
+                if ( !checkExternFuncArgArrayPattern( result, false ) ) { pNext = pch; return false; };       // verify that the order of scalar and array parameters is consistent with arguments
             }
         }
 
@@ -1346,12 +1386,9 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
                 if ( argCountWrong ) { pNext = pch; result = isOpenParenthesis ? result_missingRightParenthesis : result_wrong_arg_count; return false; }
             }
 
-            // external functions only: check that order of arrays and scalar variables is consistent with previous calls and function definition
-            // note: internal functions only accept scalars
-            bool extFunction = flags & _pcalculator->extFunctionBit;
-            if ( extFunction ) {
-                if ( !checkFuncArgArrayPattern( result, false ) ) { pNext = pch; return false; };       // verify that the order of scalar and array parameters is consistent with arguments
-            }
+            // check that order of arrays and scalar variables is consistent with function definition and (external functions only: with previous calls) 
+            if ( flags & _pcalculator->intFunctionBit ) { if ( !checkInternFuncArgArrayPattern( result ) ) { pNext = pch; return false; }; }
+            else if ( flags & _pcalculator->extFunctionBit ) { if ( !checkExternFuncArgArrayPattern( result, false ) ) { pNext = pch; return false; }; }
         }
 
 
@@ -1359,7 +1396,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         // ----------------------------------
 
         else if ( flags & _pcalculator->arrayBit ) {
-            // check if array dimension count corresponds (individual dimension adherence can only be checked at runtime)
+            // check if array dimension count corresponds (individual boundary adherence can only be checked at runtime)
             _pParsingStack->openPar.actualArgsOrDims++;
             if ( (int) _pParsingStack->openPar.actualArgsOrDims == (int) _pParsingStack->openPar.arrayDimCount ) { pNext = pch; result = result_arrayUseWrongDimCount; return false; }
         }
@@ -1381,7 +1418,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 
         // token is semicolon separator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
         if ( _parenthesisLevel > 0 ) { pNext = pch; result = result_missingRightParenthesis; return false; }
-        if ( !(_lastTokenGroup_sequenceCheck & lastTokenGroups_5_2_1) ) { pNext = pch; result = result_expressionNotComplete; return false; }
+        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2_1) ) { pNext = pch; result = result_expressionNotComplete; return false; }
 
         // token is a semicolon separator, and it's allowed here
         tokenType = Interpreter::tok_isSemiColonSeparator;                                           // remember: token is a semicolon separator
@@ -1396,7 +1433,11 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         if ( _pcalculator->_programCounter == _pcalculator->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
         // token is an operator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-        if ( !(_lastTokenGroup_sequenceCheck & lastTokenGroups_5_2) ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_4_2_1_0) ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+        else if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2) && (pch [0] != '-') && (pch [0] != '+') ) {
+            pNext = pch; result = result_invalidPrefixOperator; return false;
+        }
+
 
         // within commands: skip this test (if '_isCommand' is true, then test expression is false)
         // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
@@ -1462,7 +1503,7 @@ bool MyParser::parseAsInternFunction( char*& pNext, parseTokenResult_type& resul
         if ( _pcalculator->_programCounter == _pcalculator->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
         // token is a function, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-        if ( !(_lastTokenGroup_sequenceCheck & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_functionNotAllowedHere; return false; }
+        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_functionNotAllowedHere; return false; }
 
         // within commands: skip this test (if '_isCommand' is true, then test expression is false)
         // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
@@ -1474,6 +1515,8 @@ bool MyParser::parseAsInternFunction( char*& pNext, parseTokenResult_type& resul
         // token is function, and it's allowed here
         _minFunctionArgs = _functions [funcIndex].minArgs;                       // set min & max for allowed argument count (note: minimum is 0)
         _maxFunctionArgs = _functions [funcIndex].maxArgs;
+        _functionIndex = funcIndex;
+
 
         Interpreter::TokenIsIntFunction* pToken = (Interpreter::TokenIsIntFunction*) _pcalculator->_programCounter;
         pToken->tokenType = Interpreter::tok_isInternFunction | (sizeof( Interpreter::TokenIsIntFunction ) << 4);
@@ -1531,7 +1574,7 @@ bool MyParser::parseAsExternFunction( char*& pNext, parseTokenResult_type& resul
     if ( _pcalculator->_programCounter == _pcalculator->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
     // token is an external function, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-    if ( !(_lastTokenGroup_sequenceCheck & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_functionNotAllowedHere; return false; }
+    if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_functionNotAllowedHere; return false; }
 
     // within commands: skip this test (if '_isCommand' is true, then test expression is false)
     // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
@@ -1592,7 +1635,7 @@ bool MyParser::parseAsExternFunction( char*& pNext, parseTokenResult_type& resul
     // if no previous occurences at all: data is not yet initialized (which is ok)
     _minFunctionArgs = ((funcName [_maxIdentifierNameLen + 1]) >> 4) & 0x0F;         // use only for passing to parsing stack
     _maxFunctionArgs = (funcName [_maxIdentifierNameLen + 1]) & 0x0F;
-    _extFunctionIndex = index;
+    _functionIndex = index;
 
 
     // 4. Store token in program memory
@@ -1636,13 +1679,13 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
     if ( _pcalculator->_programCounter == _pcalculator->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
     // token is a variable, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-    if ( !(_lastTokenGroup_sequenceCheck & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_variableNotAllowedHere; return false; }
+    if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_variableNotAllowedHere; return false; }
 
     // within commands: skip this test (if '_isCommand' is true, then test expression is false)
     // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
     if ( !(_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_variableNotAllowedHere; return false; ; }
 
-    // scalar or matrix variable ? (could still be function 'array' argument; this will be detected further below)
+    // scalar or array variable ? (could still be function 'array' argument; this will be detected further below)
     char* peek1 = pNext; while ( peek1 [0] == ' ' ) { peek1++; }                                                // peek next character: is it a left parenthesis ?
     char* peek2; if ( peek1 [0] == '(' ) { peek2 = peek1 + 1; while ( peek2 [0] == ' ' ) { peek2++; } }         // also find the subsequent character
     bool isArray = (peek1 [0] == '(');
@@ -1854,7 +1897,7 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
         // if not a function definition: array name does not have to be followed by a left parenthesis (passing the array and not an array element)
         if ( !_isExtFunctionCmd ) {
             // Is this variable part of a function call argument, without further nesting of parenthesis, and has it been defined as an array ? 
-            bool isPartOfFuncCallArgument = (_parenthesisLevel > 0) ? _pParsingStack->openPar.flags & _pcalculator->extFunctionBit : false;
+            bool isPartOfFuncCallArgument = (_parenthesisLevel > 0) ? (_pParsingStack->openPar.flags & (_pcalculator->intFunctionBit | _pcalculator->extFunctionBit)) : false;
             if ( isPartOfFuncCallArgument && existingArray ) {
                 // if NOT followed by an array element enclosed in parenthesis, it references the complete array
                 // this is only allowed if not part of an expression: check
@@ -1919,7 +1962,7 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
 
     Interpreter::TokenIsVariable* pToken = (Interpreter::TokenIsVariable*) _pcalculator->_programCounter;
     pToken->tokenType = Interpreter::tok_isVariable | (sizeof( Interpreter::TokenIsVariable ) << 4);
-    pToken->identInfo = varQualifier | (isArray ? _pcalculator->var_isArray : 0);              // qualifier, array flag ? (fixed -> store in token)  //// Interpreter::var_isArray ???(is const)
+    pToken->identInfo = varQualifier | (isArray ? _pcalculator->var_isArray : 0);              // qualifier, array flag ? (fixed -> store in token)  
     pToken->identNameIndex = varNameIndex;
     pToken->identValueIndex = valueIndex;                      // points to storage area element for the variable  
 

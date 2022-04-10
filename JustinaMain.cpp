@@ -458,6 +458,7 @@ bool Interpreter::processCharacter( char c ) {
         }
 
         instructionsParsed = false;
+        lastCharWasSemiColon = false;
 
         _instructionCharCount = 0;
         _lineCount = 0;
