@@ -797,8 +797,8 @@ bool Interpreter::PushTerminalToken( int& tokenType ) {                         
     _pCalcStackTop = (LE_calcStack*) execStack.appendListElement( sizeof( _pCalcStackTop->terminal ) );
     _pCalcStackTop->terminal.tokenType = tokenType;
     _pCalcStackTop->terminal.index = (*_programCounter >> 4) & 0x0F;                                            // terminal token only: index stored in high 4 bits of token type 
-    _pCalcStackTop->terminal.priority = isPrefixOperator ? '6' : MyParser::operatorPriority [_pCalcStackTop->terminal.index];
-    _pCalcStackTop->terminal.associativity = isPrefixOperator ? '1' : MyParser::operatorAssociativity [_pCalcStackTop->terminal.index];  // operator priority and associativity 
+    _pCalcStackTop->terminal.priority =  isPrefixOperator ? '6' :  MyParser::operatorPriority [_pCalcStackTop->terminal.index];////
+    _pCalcStackTop->terminal.associativity =  isPrefixOperator ? '1' :  MyParser::operatorAssociativity [_pCalcStackTop->terminal.index];  // operator priority and associativity 
     _pCalcStackTop->terminal.tokenAddress = _programCounter;                                                    // only for finding source error position during unparsing (for printing)
 };
 

@@ -14,16 +14,16 @@
 
 // commands (FUNCTION, FOR, ...): allowed command parameters
 
-const char MyParser::cmdPar_N [4] { cmdPar_none,              cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
-const char MyParser::cmdPar_P [4] { cmdPar_programName,       cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
-const char MyParser::cmdPar_E [4] { cmdPar_expression,        cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
-const char MyParser::cmdPar_F [4] { cmdPar_extFunction,       cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
-const char MyParser::cmdPar_AEE [4] { cmdPar_varOptAssignment,  cmdPar_expression,                              cmdPar_expression | cmdPar_optionalFlag ,   cmdPar_none };
-const char MyParser::cmdPar_P_mult [4] { cmdPar_programName,       cmdPar_programName | cmdPar_multipleFlag,       cmdPar_none,                                cmdPar_none };
+const char MyParser::cmdPar_N [4] { cmdPar_none,                    cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
+const char MyParser::cmdPar_P [4] { cmdPar_programName,             cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
+const char MyParser::cmdPar_E [4] { cmdPar_expression,              cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
+const char MyParser::cmdPar_F [4] { cmdPar_extFunction,             cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
+const char MyParser::cmdPar_AEE [4] { cmdPar_varOptAssignment,      cmdPar_expression,                              cmdPar_expression | cmdPar_optionalFlag ,   cmdPar_none };
+const char MyParser::cmdPar_P_mult [4] { cmdPar_programName,        cmdPar_programName | cmdPar_multipleFlag,       cmdPar_none,                                cmdPar_none };
 const char MyParser::cmdPar_AA_mult [4] { cmdPar_varOptAssignment,  cmdPar_varOptAssignment | cmdPar_multipleFlag,  cmdPar_none,                                cmdPar_none };
 
 const char MyParser::cmdPar_test [4] { cmdPar_programName
-                                            | cmdPar_optionalFlag,  cmdPar_programName,                             cmdPar_programName | cmdPar_multipleFlag,   cmdPar_none };  // test: either 0 or 2 to n parameters ok
+                                        | cmdPar_optionalFlag,      cmdPar_programName,                             cmdPar_programName | cmdPar_multipleFlag,   cmdPar_none };  // test: either 0 or 2 to n parameters ok
 
 // commands: reserved words
 
@@ -61,7 +61,7 @@ const MyParser::ResWordDef MyParser::_resWords [] {
 
 const MyParser::FuncDef MyParser::_functions [] {
     //  name        id code             #par    array pattern
-    //  ----        -------             ----    ------------_   
+    //  ----        -------             ----    -------------   
     {"varAddress",  fnccod_varAddress,  1,1,    0b0},
     {"varIndirect", fnccod_varIndirect, 1,1,    0b0},
     {"varName",     fnccod_varName,     1,1,    0b0},
@@ -74,10 +74,37 @@ const MyParser::FuncDef MyParser::_functions [] {
     {"tan",         fnccod_tan,         1,1,    0b0},
     {"time",        fnccod_time,        0,0,    0b0},
     {"sqrt",        fnccod_sqrt,        1,1,    0b0},
-    {"ubound",      fnccod_ubound,      2,2,    0b1},
+    {"ubound",      fnccod_ubound,      2,2,    0b00000001},
     {"L",           fnccod_l,           0,1,    0b0}
 };
 
+
+// terminal tokens
+// priority: bits b7654: priority if prefix operator, b3210: if infix operator or other terminal (0 = lowest, 15 = highest) 
+// use and associativity: defines whether terminal can be used as prefix and /or as infix operator; associativity for prefix / infix operators (only)   
+// table is sorted by priority bits 3210 (infix operator or other terminal)  - for readability only
+
+const MyParser::TerminalDef MyParser::_terminals [] {       
+    //  name        id code             prio        associativity & use
+    //  ----        -------             ----        -------------------   
+    {")",           termcod_rightPar,   0x00,        0x00},
+    {",",           termcod_comma,      0x00,        0x00},
+    {";",           termcod_semicolon,  0x00,        0x00},
+    {"=",           termcod_assign,     0x01,        trm_infixOp |trm_assocRtoL},
+    {"<",           termcod_lt,         0x02,        trm_infixOp},
+    {">",           termcod_gt,         0x02,        trm_infixOp},
+    {"<=",          termcod_ltoe,       0x02,        trm_infixOp},
+    {">=",          termcod_gtoe,       0x02,        trm_infixOp},
+    {"<>",          termcod_ne,         0x02,        trm_infixOp},
+    {"==",          termcod_eq,         0x02,        trm_infixOp},
+    {"&",           termcod_concat,     0x03,        trm_infixOp},
+    {"+",           termcod_add,        0x64,        trm_prefixOp | trm_infixOp | trm_assocRtoLasPrefix},
+    {"-",           termcod_subtr,      0x64,        trm_prefixOp | trm_infixOp | trm_assocRtoLasPrefix},
+    {"*",           termcod_mult,       0x05,        trm_infixOp},
+    {"/",           termcod_div,        0x05,        trm_infixOp},
+    {"^",           termcod_pow,        0x07,        trm_infixOp & trm_assocRtoL},
+    {"(",           termcod_leftPar,    0x08,        0x00},
+};
 
 const char* const      MyParser::singleCharTokens = ",;:<>=&+-*/^()";                    // all one-character tokens; two-character comparison tokens (<=, >=, <>) are not included
 // priority and associativity of OPERATOR preceding a value versus next OPERATOR or other TERMINAL TOKEN (low value is low priority)
@@ -1463,6 +1490,12 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         // token is an operator, and it's allowed here
         // check if it is a two-character operator ('<>' or '<=' or '>=')
         tokenType = Interpreter::tok_isOperator;                                                     // remember: token is an operator
+
+        // infix operation ?
+        bool isPrefixOperator = !((_lastTokenStep == _pcalculator->tok_isConstant) || (_lastTokenStep == _pcalculator->tok_isVariable)
+            || (_lastTokenStep == _pcalculator->tok_isRightParenthesis));//// hier of exec ?
+
+
         _tokenIndex = singleCharIndex;                                                  // needed in case in a command and current command parameter needs a variable
     }
     }

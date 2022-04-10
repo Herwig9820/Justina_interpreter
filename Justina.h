@@ -477,6 +477,26 @@ private:
         fnccod_l
     };
 
+    enum termin_code {
+        termcod_comma,
+        termcod_semicolon,
+        termcod_assign,
+        termcod_lt,
+        termcod_gt,
+        termcod_ltoe,
+        termcod_gtoe,
+        termcod_ne,
+        termcod_eq,
+        termcod_concat,
+        termcod_add,
+        termcod_subtr,
+        termcod_mult,
+        termcod_div,
+        termcod_pow,
+        termcod_leftPar,
+        termcod_rightPar,
+    };
+
 public:
     enum parseTokenResult_type {                                // token parsing result
         result_tokenFound = 0,
@@ -615,6 +635,13 @@ public:
         char arrayPattern;                                      // order of arraysand scalars; bit b0 to bit b7 refer to parameter 1 to 8, if a bit is set, an array is expected as argument
     };
 
+    struct TerminalDef {                                        // function names with min & max number of arguments allowed 
+        const char* terminalName;
+        char terminalCode;
+        char priority;                                           
+        char use_associativity;                                    
+    };
+
 
 private:
     // stack for open blocks and open parenthesis (shared)
@@ -672,8 +699,15 @@ public:
     static constexpr uint8_t lastTokenGroups_5_4_2_1_0 = lastTokenGroup_5 | lastTokenGroup_4 | lastTokenGroup_2 | lastTokenGroup_1 | lastTokenGroup_0;
 
 
+    // terminal tokens
+    static constexpr uint8_t trm_prefixOp = 0x40;             // terminal can be used as prefix operator (and not a parenthesis, ...)
+    static constexpr uint8_t trm_prioAsPrefix = 0x20;          // prefix operator priority (only)
+    static constexpr uint8_t trm_assocRtoLasPrefix = 0x10;         // prefix operator associativity right-to-left (only)
 
-
+    static constexpr uint8_t trm_infixOp = 0x04;              // terminal can be used as infix operator 
+    static constexpr uint8_t trm_prio = 0x02;                  // infix operator or other terminal priority (not for prefix operators)
+    static constexpr uint8_t trm_assocRtoL = 0x01;                 // infix operator associativity right-to-left (not relevant for other terminals) 
+    
 
 
     // commands parameters: types allowed
@@ -748,10 +782,11 @@ private:
 
 public:
     static const ResWordDef _resWords [];                       // reserved word names
-    static const FuncDef _functions [];                         // function names with min & max arguments allowed 
-    static const char* const singleCharTokens;                  // all one-character tokens (and possibly first character of two-character tokens)
-    static const char* const operatorPriority;                  // higher number is higher priority; 0 for 'not an operator'
-    static const char* const operatorAssociativity;
+    static const FuncDef _functions [];                         // function names with min & max arguments allowed
+    static const TerminalDef _terminals [];
+    static const char* const singleCharTokens;  ////                // all one-character tokens (and possibly first character of two-character tokens)
+    static const char* const operatorPriority;  ////                // higher number is higher priority; 0 for 'not an operator'
+    static const char* const operatorAssociativity;  //// WEG
     static const uint8_t _maxIdentifierNameLen { 14 };           // max length of identifier names, excluding terminating '\0'
     static const uint8_t _maxAlphaCstLen { 20 };                 // max length of character strings, excluding terminating '\0' (also if stored in variables)
 
