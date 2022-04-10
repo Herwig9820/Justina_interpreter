@@ -113,11 +113,10 @@ public:
         result_numberExpected,
         result_stringExpected,
         result_arrayTypeIsFixed,
-        result_undefined,               
+        result_undefined,
         result_overflow,
         result_underflow
     };
-
 
     static constexpr uint8_t extFunctionBit { B00000001 };
     static constexpr uint8_t extFunctionPrevDefinedBit { B00000010 };
@@ -145,6 +144,7 @@ public:
         char tokenIndex;                                        // index into list of tokens of a specific type
         char toTokenStep [2];                                     // tokens for block commands (IF, FOR, BREAK, END, ...): step n° of block start token or next block token (uint16_t)
     };
+
     struct TokenIsRealCst {                                    // token storage for a numeric constant token: length 5
         char tokenType;                                         // will be set to specific token type
         char realConst [4];                                       // placeholder for float - avoiding boundary alignment
@@ -216,7 +216,7 @@ public:
 
     struct genericTokenLvl {                                    // only to determine token type and for finding source error position during unparsing (for printing)
         tokenType_type tokenType;
-        char* tokenAddress;                                      
+        char* tokenAddress;
     };
 
     struct VarOrConstLvl {
@@ -232,14 +232,14 @@ public:
     struct FunctionLvl {
         char tokenType;
         char index;
-        char spare[2];
+        char spare [2];
         char* tokenAddress;                                     // only for finding source error position during unparsing (for printing)
     };
 
     struct TerminalTokenLvl {
         char tokenType;
         char index;
-        char priority;
+        char priority;                                          // priority 6: prefic operators + and -
         char associativity;
         char* tokenAddress;                                     // only for finding source error position during unparsing (for printing)
     };
@@ -357,8 +357,8 @@ public:
     int _flowCtrlStackLvl = 0;
 
     Val lastResultValueFiFo [MAX_LAST_RESULT_DEPTH];                // keep last calculation results
-    char lastResultTypeFiFo [MAX_LAST_RESULT_DEPTH]{var_noValue};
-    
+    char lastResultTypeFiFo [MAX_LAST_RESULT_DEPTH] { var_noValue };
+
     LinkedList execStack;
     LinkedList flowCtrlStack;
 
@@ -378,7 +378,8 @@ public:
 
     execResult_type  exec();
     execResult_type  execParenthesisPair( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pstackLvl, int argCount );
-    execResult_type  execAllProcessedInfixOperations( char* pPendingStep );
+    execResult_type  execAllProcessedOperators( char* pPendingStep );
+    execResult_type  execPrefixOperation();
     execResult_type  execInfixOperation();
     Interpreter::execResult_type arrayAndSubscriptsToarrayElement( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pstackLvl, int argCount );
     void makeIntermediateConstant( LE_calcStack* pcalcStackLvl );
@@ -392,9 +393,6 @@ public:
     bool pushConstant( int& tokenType );
     bool pushVariable( int& tokenType );
     bool pushIdentifierName( int& tokenType );
-
-    bool pushLastCalcResultToFIFO();
-    void unparseAndPrintInstruction(char* progCnt);
 };
 
 
@@ -411,6 +409,30 @@ class MyParser {//// naming
 
 private:
 
+    // unique identification code of a command
+    enum cmd_code {
+        cmdcod_program,
+        cmdcod_delete,
+        cmdcod_clear,
+        cmdcod_vars,
+        cmdcod_function,
+        cmdcod_static,
+        cmdcod_local,
+        cmdcod_var,
+        cmdcod_for,
+        cmdcod_while,
+        cmdcod_if,
+        cmdcod_elseif,
+        cmdcod_else,
+        cmdcod_break,
+        cmdcod_continue,
+        cmdcod_return,
+        cmdcod_end,
+
+        cmdcod_test
+    };
+
+    // these values are grouped in a CmdBlockDef structure and are shared between multiple commands
     enum blockType_type {
         // value 1: block type
         block_none,                                             // command is not a block command
@@ -438,6 +460,23 @@ private:
         cmd_deleteVar
     };
 
+    enum func_code {
+        fnccod_varAddress,
+        fnccod_varIndirect,
+        fnccod_varName,
+        fnccod_ifte,
+        fnccod_and,
+        fnccod_or,
+        fnccod_not,
+        fnccod_sin,
+        fnccod_cos,
+        fnccod_tan,
+        fnccod_time,
+        fnccod_sqrt,
+        fnccod_ubound,
+        fnccod_l
+    };
+
 public:
     enum parseTokenResult_type {                                // token parsing result
         result_tokenFound = 0,
@@ -451,6 +490,7 @@ public:
         // token not allowed errors
         result_separatorNotAllowedHere = 1100,
         result_operatorNotAllowedHere,
+        result_invalidPrefixOperator,
         result_parenthesisNotAllowedHere,
         result_resWordNotAllowedHere,
         result_functionNotAllowedHere,
@@ -478,7 +518,7 @@ public:
         result_alphaConstInvalidEscSeq,
         result_alphaNoCtrlCharAllowed,
         result_alphaClosingQuoteMissing,
-        result_overflow,
+        result_overflow,                // underflow nit detected during parsing
 
         // function errors
         result_nameInUseForVariable = 1500,
@@ -488,7 +528,9 @@ public:
         result_functionDefMaxArgsExceeded,
         result_prevCallsWrongArgCount,
         result_functionDefsCannotBeNested,
-        result_fcnScalarAndArrayArgOrderNotConsistent,
+        result_fcnScalarAndArrayArgOrderNotConsistent,////
+        result_scalarArgExpected,
+        result_arrayArgExpected,
         result_redefiningIntFunctionNotAllowed,
         result_undefinedFunctionOrArray,
 
@@ -558,15 +600,19 @@ public:
 
     struct ResWordDef {                                         // reserved words with pattern for parameters (if reserved word is used as command, starting an instruction)
         const char* _resWordName;
+        const char resWordCode;
+        const char restrictions;                                // specifies where he use of a keyword is allowed (in a program, in a function, ...)
+        const char spare1, spare2;                                    // boundary alignment
         const char* pCmdAllowedParTypes;
         const CmdBlockDef cmdBlockDef;                          // block commands: position in command block and min, max required position of previous block command 
-        const char restrictions;                                // specifies where he use of a keyword is allowed (in a program, in a function, ...)
     };
 
     struct FuncDef {                                            // function names with min & max number of arguments allowed 
         const char* funcName;
+        char functionCode;
         char minArgs;                                           // internal (intrinsic) functions: min & max n° of allowed arguments
         char maxArgs;
+        char arrayPattern;                                      // order of arraysand scalars; bit b0 to bit b7 refer to parameter 1 to 8, if a bit is set, an array is expected as argument
     };
 
 
@@ -623,6 +669,7 @@ public:
     static constexpr uint8_t lastTokenGroups_5_4_2 = lastTokenGroup_5 | lastTokenGroup_4 | lastTokenGroup_2;
     static constexpr uint8_t lastTokenGroups_5_4_3_1_0 = lastTokenGroup_5 | lastTokenGroup_4 | lastTokenGroup_3 | lastTokenGroup_1 | lastTokenGroup_0;
     static constexpr uint8_t lastTokenGroups_5_2 = lastTokenGroup_5 | lastTokenGroup_2;
+    static constexpr uint8_t lastTokenGroups_5_4_2_1_0 = lastTokenGroup_5 | lastTokenGroup_4 | lastTokenGroup_2 | lastTokenGroup_1 | lastTokenGroup_0;
 
 
 
@@ -654,7 +701,7 @@ public:
     static constexpr char cmd_onlyInFunctionBlock = 0x03;               // command is only allowed inside a function block
     static constexpr char cmd_onlyImmediate = 0x04;                   // command is only allowed in immediate mode
     static constexpr char cmd_onlyOutsideFunctionBlock = 0x05;             // command is only allowed inside a function block
-    static constexpr char cmd_onlyImmediateOrInsideFunctionBlock = 0x06;   // command is only allowed inside a function block
+    static constexpr char cmd_onlyImmOrInsideFuncBlock = 0x06;   // command is only allowed inside a function block
     static constexpr char cmd_onlyProgramTop = 0x07;                        // only as first program statement
 
     // bit b7: skip command during execution
@@ -728,7 +775,7 @@ private:
     // parsing stack: value supplied when pushing data to stack OR value returned when stack drops 
     char _minFunctionArgs { 0 };                                // if external function defined prior to call: min & max allowed arguments. Otherwise, counters to keep track of min & max actual arguments in previous calls 
     char _maxFunctionArgs { 0 };
-    int _extFunctionIndex { 0 };
+    int _functionIndex { 0 };
     int _variableNameIndex { 0 };
     int _variableQualifier { 0 };
     bool _arrayElemAssignmentAllowed { false };                    // value returned: assignment to array element is allowed next
@@ -756,7 +803,7 @@ public:
     int _commandParNo { 0 };
     bool _isCommand = false;                                    // a command is being parsed (instruction starting with a reserved word)
     int _parenthesisLevel = 0;                               // current number of open parentheses
-    uint8_t _lastTokenGroup_sequenceCheck = 0;                   // bits indicate which token group the last token parsed belongs to          
+    uint8_t _lastTokenGroup_sequenceCheck_bit = 0;                   // bits indicate which token group the last token parsed belongs to          
     bool _extFunctionBlockOpen = false;                         // commands within FUNCTION...END block are being parsed (excluding END command)
     int _blockLevel = 0;                                     // current number of open blocks
     LinkedList parsingStack;                                      // during parsing: linked list keeping track of open parentheses and open blocks
@@ -783,7 +830,8 @@ public:
     bool checkExtFunctionArguments( parseTokenResult_type& result, int& minArgCnt, int& maxArgCnt );
     bool checkArrayDimCountAndSize( parseTokenResult_type& result, int* arrayDef_dims, int& dimCnt );
     int getIdentifier( char** pIdentArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNew );
-    bool checkFuncArgArrayPattern( parseTokenResult_type& result, bool isFunctionClosingParenthesis );
+    bool checkInternFuncArgArrayPattern( parseTokenResult_type& result );
+    bool checkExternFuncArgArrayPattern( parseTokenResult_type& result, bool isFunctionClosingParenthesis );
     bool initVariable( uint16_t varTokenStep, uint16_t constTokenStep );
 
 
@@ -795,7 +843,7 @@ public:
     parseTokenResult_type  parseInstruction( char*& pInputLine );
     void deleteParsedData();
     bool allExternalFunctionsDefined( int& index );
-    void prettyPrintInstructions(bool oneInstruction, char* startToken = nullptr,  char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr );
+    void prettyPrintInstructions( bool oneInstruction, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr );
     void old_prettyPrintProgram();////
     void printParsingResult( parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* const pErrorPos );
 

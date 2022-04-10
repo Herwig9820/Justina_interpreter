@@ -12,7 +12,7 @@ Interpreter::execResult_type  Interpreter::exec() {
     // init
     int tokenType = *_programStart & 0x0F;
     bool saveLastResult = false;
-    execResult_type execResult = result_execOK;             
+    execResult_type execResult = result_execOK;
     char* lastInstructionStart = _programStart;
 
     _programCounter = _programStart;
@@ -27,7 +27,7 @@ Interpreter::execResult_type  Interpreter::exec() {
         int tokenLength = (tokenType >= Interpreter::tok_isOperator) ? 1 : (*_programCounter >> 4) & 0x0F;        // fetch next token 
         char* pPendingStep = _programCounter + tokenLength;
         int pendingTokenType = *pPendingStep & 0x0F;          // there's always minimum one token pending (even if it is a semicolon);
-        if(lastInstructionStart == nullptr ) {lastInstructionStart = _programCounter;}
+        if ( lastInstructionStart == nullptr ) { lastInstructionStart = _programCounter; }
         switch ( tokenType ) {
 
         case tok_isReservedWord:
@@ -89,7 +89,7 @@ Interpreter::execResult_type  Interpreter::exec() {
             // check if (an) operation(s) can be executed. 
             // when an operation is executed, check whether lower priority operations can now be executed as well (example: 3+5*7: first execute 5*7 yielding 35, then execute 3+35)
 
-            execResult = execAllProcessedInfixOperations( pPendingStep );
+            execResult = execAllProcessedOperators( pPendingStep );
             if ( execResult != result_execOK ) { break; }
 
             break;
@@ -113,7 +113,7 @@ Interpreter::execResult_type  Interpreter::exec() {
             // -----------------------------
             // Case: process separator 
             // -----------------------------
-            if (tokenType == tok_isSemiColonSeparator ) { lastInstructionStart = nullptr;}
+            if ( tokenType == tok_isSemiColonSeparator ) { lastInstructionStart = nullptr; }
             break;                                              // nothing to do
 
 
@@ -129,7 +129,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                 int argCount = 0;                                                // init number of supplied arguments (or array subscripts) to 0
                 LE_calcStack* pstackLvl = _pCalcStackTop;     // stack level of last argument / array subscript before right parenthesis, or left parenthesis (if function call and no arguments supplied)
                 while ( pstackLvl->genericToken.tokenType != tok_isLeftParenthesis ) {
-                    pstackLvl = (LE_calcStack*) execStack.getPrevListElement( pstackLvl );     
+                    pstackLvl = (LE_calcStack*) execStack.getPrevListElement( pstackLvl );
                     argCount++;
                 }
                 LE_calcStack* pPrecedingStackLvl = (LE_calcStack*) execStack.getPrevListElement( pstackLvl );     // stack level PRECEDING left parenthesis (or null pointer)
@@ -146,9 +146,10 @@ Interpreter::execResult_type  Interpreter::exec() {
                 execResult = execParenthesisPair( pPrecedingStackLvl, pstackLvl, argCount );
                 if ( execResult != result_execOK ) { break; }
 
-                // with the left argument removed, check if additional operators preceding the left parenthesis can now be executed. 
+                // the left parenthesis and the argument(s) are now removed and replaced by a single scalar (function result, array element, single argument)
+                // check if additional operators preceding the left parenthesis can now be executed. 
                 // when an operation is executed, check whether lower priority operations can now be executed as well (example: 3+5*7: first execute 5*7 yielding 35, then execute 3+35)
-                execResult = execAllProcessedInfixOperations( pPendingStep );
+                execResult = execAllProcessedOperators( pPendingStep );
                 if ( execResult != result_execOK ) { break; }
             }
             break;
@@ -161,8 +162,8 @@ Interpreter::execResult_type  Interpreter::exec() {
         if ( execResult != result_execOK ) {
             int sourceErrorPos;
             _pConsole->print( "\r\n  " );
-            _pmyParser->prettyPrintInstructions(true, lastInstructionStart, _errorProgramCounter,  &sourceErrorPos);
-            _pConsole->print( "  " ); for (int i=1; i<=sourceErrorPos;i++ ) {_pConsole->print(" ");}
+            _pmyParser->prettyPrintInstructions( true, lastInstructionStart, _errorProgramCounter, &sourceErrorPos );
+            _pConsole->print( "  " ); for ( int i = 1; i <= sourceErrorPos; i++ ) { _pConsole->print( " " ); }
             char parsingInfo [30];
             sprintf( parsingInfo, "^ Exec error %d\r\n", execResult );   //// if within program: indicate function 
             _pConsole->print( parsingInfo );
@@ -195,31 +196,6 @@ Interpreter::execResult_type  Interpreter::exec() {
     return result_execOK;
 };
 
-
-// ---------------------------------------
-// UNparse and pretty print an instruction  ////
-// ---------------------------------------
-
-void Interpreter::unparseAndPrintInstruction( char* progCnt ) {
-
-    int tokenType = *progCnt & 0x0F;
-    int tokenLength { 0 };
-    char* pPendingStep { 0 };
-
-    while (( tokenType != tok_no_token ) && (tokenType != tok_isSemiColonSeparator)) {                   
-        uint16_t tokenStep = (uint16_t) (_programCounter - _programStorage);
-        tokenLength = (tokenType >= Interpreter::tok_isOperator) ? 1 : (*_programCounter >> 4) & 0x0F;        // fetch next token 
-        pPendingStep = _programCounter + tokenLength;
-        int pendingTokenType = *pPendingStep & 0x0F;          
-
-        switch ( tokenType ) {
-
-
-
-        }
-    }
-
-}
 
 // ------------------------------------------------
 // Save last value for future reuse by calculations 
@@ -432,9 +408,9 @@ void Interpreter::makeIntermediateConstant( LE_calcStack* pCalcStackLvl ) {
 // *   execute all processed infix operations   *
 // ----------------------------------------------
 
-Interpreter::execResult_type  Interpreter::execAllProcessedInfixOperations( char* pPendingStep ) {
+Interpreter::execResult_type  Interpreter::execAllProcessedOperators( char* pPendingStep ) {            // prefix and infix
 
-    // _pCalcStackTop should point to an operand on entry
+    // _pCalcStackTop should point to an operand on entry (parsed constant, variable, expression result)
 
     int pendingTokenType, pendingTokenIndex;
     int pendingTokenPriorityLvl;
@@ -445,11 +421,12 @@ Interpreter::execResult_type  Interpreter::execAllProcessedInfixOperations( char
 #endif
     // check if (an) operation(s) can be executed 
     // when an operation is executed, check whether lower priority operations can now be executed as well (example: 3+5*7: first execute 5*7 yielding 35, then execute 3+35)
-    while ( _calcStackLvl >= 3 ) {                                                      // a previous operand and operator might exist
+    while ( _calcStackLvl >= 2 ) {                                                      // a previous operator might exist
 
         if ( _pCalcStackMinus1->genericToken.tokenType == tok_isOperator ) {
             // check pending (not yet processed) token (always present and always a terminal token after a variable or constant token)
-            // pending token can be any terminal token: operator, left or right parenthesis, comma or semicolon 
+            // pending token can be any terminal token: infix operator, left or right parenthesis, comma or semicolon 
+            // it can not be a prefix operator because it follows an operand (on top of stack)
             pendingTokenType = *pPendingStep & 0x0F;                                    // there's always minimum one token pending (even if it is a semicolon)
             pendingTokenIndex = (*pPendingStep >> 4) & 0x0F;                            // terminal token only: index stored in high 4 bits of token type 
 
@@ -460,8 +437,8 @@ Interpreter::execResult_type  Interpreter::execAllProcessedInfixOperations( char
             if ( (_pCalcStackMinus1->terminal.associativity == '1') && (_pCalcStackMinus1->terminal.priority == pendingTokenPriorityLvl) ) { currentOpHasPriority = false; }
             if ( !currentOpHasPriority ) { break; }   // exit while() loop
 
-            // execute operator
-            execResult_type execResult = execInfixOperation();
+        // execute operator
+            execResult_type execResult = (_pCalcStackMinus1->terminal.priority == '6') ? execPrefixOperation() : execInfixOperation();
             if ( execResult != result_execOK ) { return execResult; }
         }
 
@@ -470,7 +447,44 @@ Interpreter::execResult_type  Interpreter::execAllProcessedInfixOperations( char
     }
 
     return result_execOK;
+}
 
+
+// -------------------------------
+// *   execute prefix operation   *
+// -------------------------------
+
+Interpreter::execResult_type  Interpreter::execPrefixOperation() {
+
+    // check that operand is real, fetch operand and execute prefix operator
+    // ---------------------------------------------------------------------
+
+    Val operand;                                                               // operand and result
+    _errorProgramCounter = _pCalcStackMinus1->terminal.tokenAddress;                // in the event of an error
+    bool opreal = (_pCalcStackTop->varOrConst.valueType == var_isFloat);
+    if ( _pCalcStackTop->varOrConst.valueType != var_isFloat ) { return result_numberExpected; }
+    operand.realConst = (_pCalcStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.pRealConst) : _pCalcStackTop->varOrConst.value.realConst;
+    if ( _pCalcStackMinus1->terminal.index == 8 ) { operand.realConst = -operand.realConst; } // prefix '-' ('+': no change in value)
+
+    // negation of a floating point value can not produce an error: no checks needed
+    
+    //  store result in stack (if not yet, becomes an intermediate constant now)
+    _pCalcStackTop->varOrConst.value = operand;
+    _pCalcStackTop->varOrConst.tokenType = tok_isConstant;              // use generic constant type
+    _pCalcStackTop->varOrConst.isIntermediateResult = 0x01;
+    _pCalcStackTop->varOrConst.arrayAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
+
+
+    //  clean up stack (drop prefix operator)
+    // --------------------------------------
+
+    execStack.deleteListElement( _pCalcStackMinus1 );
+    _pCalcStackMinus1 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackTop );
+    _pCalcStackMinus2 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackMinus1 );
+    _calcStackLvl -= 1;
+
+
+    return result_execOK;
 }
 
 
@@ -483,17 +497,17 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     // Fetch operands and operands value type
     // --------------------------------------
 
-    // variabbles for intermediate storage of operands (constants, variable values or intermediate results from previous calculations) and result
+    // variables for intermediate storage of operands (constants, variable values or intermediate results from previous calculations) and result
     Val operand1, operand2, opResult;                                                               // operands and result
 
     // value type of operands
     bool op1real = (_pCalcStackMinus2->varOrConst.valueType == var_isFloat);
     bool op2real = (_pCalcStackTop->varOrConst.valueType == var_isFloat);
 
-    // check if operands or compatible with operator: real for all operators except string concatenation
+    // check if operands are compatible with operator: real for all operators except string concatenation
     _errorProgramCounter = _pCalcStackMinus1->terminal.tokenAddress;                // in the event of an error
     if ( (int) _pCalcStackMinus1->terminal.index != 2 ) {                                           // not an assignment ?
-        if ( ((int) _pCalcStackMinus1->terminal.index == 6) && (op1real || op2real) ) {  return result_stringExpected; }
+        if ( ((int) _pCalcStackMinus1->terminal.index == 6) && (op1real || op2real) ) { return result_stringExpected; }
         else if ( ((int) _pCalcStackMinus1->terminal.index != 6) && (!op1real || !op2real) ) { return result_numberExpected; }
     }
     else {                                                                                  // assignment 
@@ -537,7 +551,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         else {
             // make a copy of the character string and store a pointer to this copy as result
             // because the value will be stored in a variable, limit to the maximum allowed string length
-            stringlen = min( strlen( operand2.pStringConst ), MyParser::_maxAlphaCstLen )    ;
+            stringlen = min( strlen( operand2.pStringConst ), MyParser::_maxAlphaCstLen );
             opResult.pStringConst = new char [stringlen + 1];
             memcpy( opResult.pStringConst, operand2.pStringConst, stringlen );        // copy the actual string (not the pointer); do not use strcpy
             opResult.pStringConst [stringlen] = '\0';                                         // add terminating \0
@@ -591,19 +605,15 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         break;
     case 9:
         opResult.realConst = operand1.realConst * operand2.realConst;
-        if ( !isfinite( opResult.realConst ) ) { return result_overflow; }
-        else if ( (operand1.realConst != 0) && (operand2.realConst != 0) && (!isnormal( opResult.realConst )) ) { return result_underflow; }
+        if ( (operand1.realConst != 0) && (operand2.realConst != 0) && (!isnormal( opResult.realConst )) ) { return result_underflow; }
         break;
     case 10:
         opResult.realConst = operand1.realConst / operand2.realConst;
-        if ( !isfinite( opResult.realConst ) ) { return result_overflow; }
-        else if ( (operand1.realConst != 0) && (!isnormal( opResult.realConst )) ) { return result_underflow; }
+        if ( (operand1.realConst != 0)  && (!isnormal( opResult.realConst )) ) { return result_underflow; }
         break;
     case 11:
+        if ( (operand1.realConst == 0) && (operand2.realConst == 0)){return result_undefined;} // C++ pow() provides 1 as result
         opResult.realConst = pow( operand1.realConst, operand2.realConst );
-        if ( isnan( opResult.realConst ) ) { return result_undefined; }
-        else if ( !isfinite( opResult.realConst ) ) { return result_overflow; }
-        else if ( (operand1.realConst != 0) && (!isnormal( opResult.realConst )) ) { return result_underflow; }
         break;
     case 14:
         opResult.realConst = operand1.realConst <= operand2.realConst;
@@ -616,6 +626,10 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         break;
     }
 
+    if (( opResultReal ) && (_pCalcStackMinus1->terminal.index != 2)) {     // check error (not for assignment)
+        if ( isnan( opResult.realConst ) ) { return result_undefined; }
+        else if ( !isfinite( opResult.realConst ) ) { return result_overflow; }
+    }
 
     // Delete any intermediate result string objects used as operands 
     // --------------------------------------------------------------
@@ -661,12 +675,12 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 
     // if assignment: the top of stack contains the variable ADDRESS, token type 'variable', 'not an isIntermediate result' and array attributes (not an array, could be array element) 
     if ( ind != 2 ) {                                                       // not an assignment
-        // store result in stack (replaces operand 1)
         _pCalcStackTop->varOrConst.value = opResult;                        // float or pointer to string
         _pCalcStackTop->varOrConst.tokenType = tok_isConstant;              // use generic constant type
         _pCalcStackTop->varOrConst.isIntermediateResult = 0x01;             // is an intermediate result (intermediate constant strings must be deleted when not needed any more)
         _pCalcStackTop->varOrConst.arrayAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
     }
+
 
     return result_execOK;
 }
@@ -772,11 +786,19 @@ bool Interpreter::PushTerminalToken( int& tokenType ) {                         
     _calcStackLvl++;
 
     _pCalcStackMinus2 = _pCalcStackMinus1; _pCalcStackMinus1 = _pCalcStackTop;
+
+    // infix operation ?
+    bool isPrefixOperator = true;             // init as prefix operation
+    if ( _calcStackLvl >= 1 ) {         // already a token on the stack ?
+        isPrefixOperator = !((_pCalcStackMinus1->genericToken.tokenType == tok_isConstant) || (_pCalcStackMinus1->genericToken.tokenType == tok_isVariable)
+            || (_pCalcStackMinus1->genericToken.tokenType == tok_isRightParenthesis));
+    };
+
     _pCalcStackTop = (LE_calcStack*) execStack.appendListElement( sizeof( _pCalcStackTop->terminal ) );
     _pCalcStackTop->terminal.tokenType = tokenType;
     _pCalcStackTop->terminal.index = (*_programCounter >> 4) & 0x0F;                                            // terminal token only: index stored in high 4 bits of token type 
-    _pCalcStackTop->terminal.priority = MyParser::operatorPriority [_pCalcStackTop->terminal.index];
-    _pCalcStackTop->terminal.associativity = MyParser::operatorAssociativity [_pCalcStackTop->terminal.index];  // operator priority and associativity 
+    _pCalcStackTop->terminal.priority = isPrefixOperator ? '6' : MyParser::operatorPriority [_pCalcStackTop->terminal.index];
+    _pCalcStackTop->terminal.associativity = isPrefixOperator ? '1' : MyParser::operatorAssociativity [_pCalcStackTop->terminal.index];  // operator priority and associativity 
     _pCalcStackTop->terminal.tokenAddress = _programCounter;                                                    // only for finding source error position during unparsing (for printing)
 };
 
@@ -850,28 +872,5 @@ bool Interpreter::pushVariable( int& tokenType ) {                              
     void* varAddress = varBaseAddress( (TokenIsVariable*) _programCounter, _pCalcStackTop->varOrConst.varTypeAddress, _pCalcStackTop->varOrConst.valueType, _pCalcStackTop->varOrConst.arrayAttributes );
     _pCalcStackTop->varOrConst.value.pVariable = varAddress;                                    // base address of variable
     _pCalcStackTop->varOrConst.isIntermediateResult = 0x00;
-    _pCalcStackTop ->varOrConst.tokenAddress = _programCounter;
+    _pCalcStackTop->varOrConst.tokenAddress = _programCounter;
 }
-
-
-// ----------------------------------------------------------
-// *   put last calculation result (if available) in FIFO   *
-// ----------------------------------------------------------
-
- //// in dev
-
-bool Interpreter::pushLastCalcResultToFIFO() {
-
-    if ( _lastResultCount == MAX_LAST_RESULT_DEPTH );
-
-    if ( (_pCalcStackTop->varOrConst.isIntermediateResult == 0x01) && (_pCalcStackTop->varOrConst.valueType == var_isStringPointer) )
-    {
-#if printCreateDeleteHeapObjects
-        Serial.print( "\r\n===== delete last stack interm.cst string: " ); Serial.println( _pCalcStackTop->varOrConst.value.pStringConst );
-#endif
-        if ( _pCalcStackTop->varOrConst.value.pStringConst != nullptr ) { delete [] _pCalcStackTop->varOrConst.value.pStringConst; }
-    }
-
-}
-
-
