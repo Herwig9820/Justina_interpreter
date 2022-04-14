@@ -99,11 +99,9 @@ public:
         tok_isConstant,
 
         // all terminal tokens: at the end of the list ! (occupy only one character in program, combining token type and index)
-        tok_isOperator,
-        tok_isLeftParenthesis,
-        tok_isRightParenthesis,
-        tok_isCommaSeparator,
-        tok_isSemiColonSeparator
+        tok_isTerminalGroup1,       // if index < 15 -    because too many operators to fit in 4 bits
+        tok_isTerminalGroup2,       // if index between 16 and 31
+        tok_isTerminalGroup3        // if index between 32 and 47
     };
 
     enum execResult_type {
@@ -216,15 +214,16 @@ public:
 
     struct genericTokenLvl {                                    // only to determine token type and for finding source error position during unparsing (for printing)
         tokenType_type tokenType;
-        char* tokenAddress;
+        char spare [3];                                          // boundary alignment
+        char* tokenAddress;                                     // must be second 4-byte word
     };
 
     struct VarOrConstLvl {
         char tokenType;
         char valueType;
-        char arrayAttributes;                                           // 0b1 : is array; 0b02: is array element
-        char isIntermediateResult;                                             // boundary alignment
-        char* tokenAddress;                                     // only for finding source error position during unparsing (for printing)
+        char arrayAttributes;                                    // is array; is array element
+        char isIntermediateResult;
+        char* tokenAddress;                                     // must be second 4-byte word, only for finding source error position during unparsing (for printing)
         Val value;                                              // float or pointer (4 byte)
         char* varTypeAddress;                                        // variables only: pointer to variable value type
     };
@@ -233,15 +232,14 @@ public:
         char tokenType;
         char index;
         char spare [2];
-        char* tokenAddress;                                     // only for finding source error position during unparsing (for printing)
+        char* tokenAddress;                                     // must be second 4-byte word, only for finding source error position during unparsing (for printing)
     };
 
     struct TerminalTokenLvl {
         char tokenType;
         char index;
-        char priority;                                          // priority 6: prefic operators + and -
-        char associativity;
-        char* tokenAddress;                                     // only for finding source error position during unparsing (for printing)
+        char spare [2];                                          // boundary alignment
+        char* tokenAddress;                                     // must be second 4-byte word, only for finding source error position during unparsing (for printing)
     };
 
     union LE_calcStack {
@@ -377,12 +375,15 @@ public:
     void* arrayElemAddress( void* varBaseAddress, int* dims );
 
     execResult_type  exec();
-    execResult_type  execParenthesisPair( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pstackLvl, int argCount );
+    execResult_type  execParenthesisPair( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount );
     execResult_type  execAllProcessedOperators( char* pPendingStep );
+    
     execResult_type  execPrefixOperation();
     execResult_type  execInfixOperation();
-    Interpreter::execResult_type arrayAndSubscriptsToarrayElement( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pstackLvl, int argCount );
+    execResult_type  execInternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount );
     void makeIntermediateConstant( LE_calcStack* pcalcStackLvl );
+
+    Interpreter::execResult_type arrayAndSubscriptsToarrayElement( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount );
 
     void saveLastValue();
     void cleanupExecStack();
@@ -432,6 +433,7 @@ private:
         cmdcod_test
     };
 
+public:
     // these values are grouped in a CmdBlockDef structure and are shared between multiple commands
     enum blockType_type {
         // value 1: block type
@@ -478,9 +480,8 @@ private:
     };
 
     enum termin_code {
-        termcod_comma,
-        termcod_semicolon,
-        termcod_assign,
+        // operators
+        termcod_assign = 0,        
         termcod_lt,
         termcod_gt,
         termcod_ltoe,
@@ -488,16 +489,21 @@ private:
         termcod_ne,
         termcod_eq,
         termcod_concat,
-        termcod_add,
-        termcod_subtr,
+        termcod_plus,
+        termcod_minus,
         termcod_mult,
         termcod_div,
         termcod_pow,
+
+        termcod_opRangeEnd = termcod_pow,
+
+        // other terminals: terminal code bit 7 set
+        termcod_comma = termcod_opRangeEnd + 1,
+        termcod_semicolon,
         termcod_leftPar,
         termcod_rightPar,
     };
 
-public:
     enum parseTokenResult_type {                                // token parsing result
         result_tokenFound = 0,
 
@@ -638,8 +644,8 @@ public:
     struct TerminalDef {                                        // function names with min & max number of arguments allowed 
         const char* terminalName;
         char terminalCode;
-        char priority;                                           
-        char use_associativity;                                    
+        char priority;
+        char associativity;
     };
 
 
@@ -699,15 +705,9 @@ public:
     static constexpr uint8_t lastTokenGroups_5_4_2_1_0 = lastTokenGroup_5 | lastTokenGroup_4 | lastTokenGroup_2 | lastTokenGroup_1 | lastTokenGroup_0;
 
 
-    // terminal tokens
-    static constexpr uint8_t trm_prefixOp = 0x40;             // terminal can be used as prefix operator (and not a parenthesis, ...)
-    static constexpr uint8_t trm_prioAsPrefix = 0x20;          // prefix operator priority (only)
-    static constexpr uint8_t trm_assocRtoLasPrefix = 0x10;         // prefix operator associativity right-to-left (only)
-
-    static constexpr uint8_t trm_infixOp = 0x04;              // terminal can be used as infix operator 
-    static constexpr uint8_t trm_prio = 0x02;                  // infix operator or other terminal priority (not for prefix operators)
+    // terminal tokens 
     static constexpr uint8_t trm_assocRtoL = 0x01;                 // infix operator associativity right-to-left (not relevant for other terminals) 
-    
+    static constexpr uint8_t trm_assocRtoLasPrefix = 0x10;         // prefix operator associativity right-to-left (only)
 
 
     // commands parameters: types allowed
@@ -780,13 +780,34 @@ private:
     // used to close any type of currently open inner block
     static constexpr CmdBlockDef cmdBlockGenEnd { block_genericEnd,block_endPos,block_na,block_endPos };            // all block types: block end 
 
+
+    // terminals - should NOT start and end with an alphanumeric character or with an underscore
+    // note: if a termnal is designated as 'single character', then other terminals should not contain this character
+    static constexpr char* term_semicolon = ";";        // must be single character
+    static constexpr char* term_comma = ",";            // must be single character
+    static constexpr char* term_leftPar = "(";          // must be single character
+    static constexpr char* term_rightPar = ")";         // must be single character
+
 public:
+
+    // operators
+    static constexpr char* term_assign = "=";
+    static constexpr char* term_lt = "<";
+    static constexpr char* term_gt = ">";
+    static constexpr char* term_ltoe = "<=";
+    static constexpr char* term_gtoe = ">=";
+    static constexpr char* term_neq = "<>";
+    static constexpr char* term_eq = "==";
+    static constexpr char* term_concat = "&";
+    static constexpr char* term_plus = "+";
+    static constexpr char* term_minus = "-";
+    static constexpr char* term_mult = "*";
+    static constexpr char* term_div = "/";
+    static constexpr char* term_pow = "^";
+
     static const ResWordDef _resWords [];                       // reserved word names
     static const FuncDef _functions [];                         // function names with min & max arguments allowed
     static const TerminalDef _terminals [];
-    static const char* const singleCharTokens;  ////                // all one-character tokens (and possibly first character of two-character tokens)
-    static const char* const operatorPriority;  ////                // higher number is higher priority; 0 for 'not an operator'
-    static const char* const operatorAssociativity;  //// WEG
     static const uint8_t _maxIdentifierNameLen { 14 };           // max length of identifier names, excluding terminating '\0'
     static const uint8_t _maxAlphaCstLen { 20 };                 // max length of character strings, excluding terminating '\0' (also if stored in variables)
 
@@ -816,8 +837,10 @@ private:
     bool _arrayElemAssignmentAllowed { false };                    // value returned: assignment to array element is allowed next
 
     int _tokenIndex { 0 };
-    int _resWordNo;                                          // index into list of reserved words
-    int _functionNo;                                         // index into list of internal (intrinsic) functions
+    int _resWordCount;                                          // index into list of reserved words
+    int _functionCount;                                         // index into list of internal (intrinsic) functions
+    int _terminalCount;
+
     int _heapObjectCount { 0 };                 // note: not counting linked list objects
 
 
@@ -830,6 +853,14 @@ private:
     Interpreter::tokenType_type _lastTokenType = Interpreter::tok_no_token;               // type of last token parsed
     Interpreter::tokenType_type _lastTokenType_hold = Interpreter::tok_no_token;
     Interpreter::tokenType_type _previousTokenType = Interpreter::tok_no_token;
+
+    termin_code _lastTermCode;               // type of last token parsed
+    termin_code _lastTermCode_hold;
+    termin_code _previousTermCode;
+
+    int _lastTokenIsTerminal;
+    int _lastTokenIsTerminal_hold ;
+    int _previousTokenIsTerminal ;
 
     Interpreter* _pcalculator;
 

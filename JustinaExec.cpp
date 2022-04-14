@@ -11,6 +11,8 @@ Interpreter::execResult_type  Interpreter::exec() {
 
     // init
     int tokenType = *_programStart & 0x0F;
+    int tokenIndex;
+
     bool saveLastResult = false;
     execResult_type execResult = result_execOK;
     char* lastInstructionStart = _programStart;
@@ -23,11 +25,35 @@ Interpreter::execResult_type  Interpreter::exec() {
 
 
     while ( tokenType != tok_no_token ) {                                                                    // for all tokens in token list
-        uint16_t tokenStep = (uint16_t) (_programCounter - _programStorage);
-        int tokenLength = (tokenType >= Interpreter::tok_isOperator) ? 1 : (*_programCounter >> 4) & 0x0F;        // fetch next token 
+        int tokenLength = (tokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*_programCounter >> 4) & 0x0F;        // fetch next token 
+
+        // if terminal token, determine which terminal type
+        bool isTerminal = ((tokenType == Interpreter::tok_isTerminalGroup1) || (tokenType == Interpreter::tok_isTerminalGroup2) || (tokenType == Interpreter::tok_isTerminalGroup3));
+        if ( isTerminal ) {
+            tokenIndex = ((((TokenIsTerminal*) _programCounter)->tokenTypeAndIndex >> 4) & 0x0F);
+            tokenIndex += ((tokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (tokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
+        }
+
+        bool isOperator = (isTerminal ? (MyParser::_terminals [tokenIndex].terminalCode <= MyParser::termcod_opRangeEnd) : false);
+        bool isSemicolon = (isTerminal ? (MyParser::_terminals [tokenIndex].terminalCode == MyParser::termcod_semicolon) : false);
+        bool isComma = (isTerminal ? (MyParser::_terminals [tokenIndex].terminalCode == MyParser::termcod_comma) : false);
+        bool isLeftPar = (isTerminal ? (MyParser::_terminals [tokenIndex].terminalCode == MyParser::termcod_leftPar) : false);
+        bool isRightPar = (isTerminal ? (MyParser::_terminals [tokenIndex].terminalCode == MyParser::termcod_rightPar) : false);
+
+        // pending token
         char* pPendingStep = _programCounter + tokenLength;
         int pendingTokenType = *pPendingStep & 0x0F;          // there's always minimum one token pending (even if it is a semicolon);
+
+        // if pending terminal token; specific terminal type will be determined later 
+        int pendingTokenIndex;
+        bool isPendingTerminal = ((pendingTokenType == Interpreter::tok_isTerminalGroup1) || (pendingTokenType == Interpreter::tok_isTerminalGroup2) || (pendingTokenType == Interpreter::tok_isTerminalGroup3));
+        if ( isPendingTerminal ) {
+            pendingTokenIndex = ((((TokenIsTerminal*) pPendingStep)->tokenTypeAndIndex >> 4) & 0x0F);
+            pendingTokenIndex += ((pendingTokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (pendingTokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
+        }
+
         if ( lastInstructionStart == nullptr ) { lastInstructionStart = _programCounter; }
+
         switch ( tokenType ) {
 
         case tok_isReservedWord:
@@ -38,14 +64,23 @@ Interpreter::execResult_type  Interpreter::exec() {
             // compile time statements (VAR, LOCAL, STATIC): skip for execution
 
         {   // start block (required for variable definitions inside)
-            int pendingTokenIndex = ((TokenIsResWord*) _programCounter)->tokenIndex;
-            bool skipStatement = ((_pmyParser->_resWords [pendingTokenIndex].restrictions & MyParser::cmd_skipDuringExec) != 0);
+            tokenIndex = ((TokenIsResWord*) _programCounter)->tokenIndex;
+            bool skipStatement = ((_pmyParser->_resWords [tokenIndex].restrictions & MyParser::cmd_skipDuringExec) != 0);
             if ( skipStatement ) {
-                while ( pendingTokenType != tok_isSemiColonSeparator ) {
+                bool isPendingSemicolon = (isPendingTerminal ? (MyParser::_terminals [pendingTokenIndex].terminalCode == MyParser::termcod_semicolon) : false);
+
+                while ( !isPendingSemicolon ) {     // find semicolon (always there)
                     // move to next token
-                    int pendingTokenLength = (pendingTokenType >= Interpreter::tok_isOperator) ? 1 : (*pPendingStep >> 4) & 0x0F;
-                    pPendingStep = pPendingStep + pendingTokenLength;
+                    int nextTokenLength = (pendingTokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*pPendingStep >> 4) & 0x0F;
+                    pPendingStep = pPendingStep + nextTokenLength;
                     pendingTokenType = *pPendingStep & 0x0F;          // there's always minimum one token pending (even if it is a semicolon)
+
+                    isPendingTerminal = ((pendingTokenType == Interpreter::tok_isTerminalGroup1) || (pendingTokenType == Interpreter::tok_isTerminalGroup2) || (pendingTokenType == Interpreter::tok_isTerminalGroup3));
+                    if ( isPendingTerminal ) {
+                        pendingTokenIndex = ((((TokenIsTerminal*) pPendingStep)->tokenTypeAndIndex >> 4) & 0x0F);
+                        pendingTokenIndex += ((pendingTokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (pendingTokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
+                    }
+                    isPendingSemicolon = (isPendingTerminal ? (MyParser::_terminals [pendingTokenIndex].terminalCode == MyParser::termcod_semicolon) : false);
                 };
             }
         }
@@ -78,7 +113,9 @@ Interpreter::execResult_type  Interpreter::exec() {
             // push constant value token or variable name token to stack
             if ( tokenType == tok_isVariable ) {
                 pushVariable( tokenType );
-                if ( pendingTokenType == tok_isLeftParenthesis ) {   // array name followed by element spec (to be processed)
+
+                bool isPendingLeftPar = (isPendingTerminal ? (MyParser::_terminals [pendingTokenIndex].terminalCode == MyParser::termcod_leftPar) : false);
+                if ( isPendingLeftPar ) {   // array name followed by element spec (to be processed)
                     _pCalcStackTop->varOrConst.arrayAttributes |= var_isArrayElement; // not a plain array name (array function argument) - array element still to be processed
                 }
             }
@@ -95,65 +132,76 @@ Interpreter::execResult_type  Interpreter::exec() {
             break;
 
 
-        case tok_isLeftParenthesis:
-        case tok_isOperator:
-            // -------------------------------------------------
-            // Case: process operator and left parenthesis token 
-            // -------------------------------------------------
+            // ----------------------------
+            // Case: process terminal token 
+            // ----------------------------
+        case tok_isTerminalGroup1:
+        case tok_isTerminalGroup2:
+        case tok_isTerminalGroup3:
+
+            if ( isOperator || isLeftPar ) {
+                // --------------------------------------------
+                // Process operators and left parenthesis token
+                // --------------------------------------------
 #if debugPrint
-            Serial.print( tok_isOperator ? "\r\n** operator: stack level " : "\r\n** left parenthesis: stack level " ); Serial.println( _calcStackLvl );
+                Serial.print( tok_isOperator ? "\r\n** operator: stack level " : "\r\n** left parenthesis: stack level " ); Serial.println( _calcStackLvl );
 #endif
-            PushTerminalToken( tokenType );
 
-            break;
+                // terminal tokens: only operators and left parentheses are pushed on the stack
+                PushTerminalToken( tokenType );
 
-
-        case tok_isCommaSeparator:
-        case tok_isSemiColonSeparator:
-            // -----------------------------
-            // Case: process separator 
-            // -----------------------------
-            if ( tokenType == tok_isSemiColonSeparator ) { lastInstructionStart = nullptr; }
-            break;                                              // nothing to do
-
-
-        case tok_isRightParenthesis:
-            // -------------------------------------
-            // Case: process right parenthesis token
-            // -------------------------------------
-
-#if debugPrint
-            Serial.print( "right parenthesis: stack level " ); Serial.println( _calcStackLvl );
-#endif
-            {   // start block (required for variable definitions inside)
-                int argCount = 0;                                                // init number of supplied arguments (or array subscripts) to 0
-                LE_calcStack* pstackLvl = _pCalcStackTop;     // stack level of last argument / array subscript before right parenthesis, or left parenthesis (if function call and no arguments supplied)
-                while ( pstackLvl->genericToken.tokenType != tok_isLeftParenthesis ) {
-                    pstackLvl = (LE_calcStack*) execStack.getPrevListElement( pstackLvl );
-                    argCount++;
-                }
-                LE_calcStack* pPrecedingStackLvl = (LE_calcStack*) execStack.getPrevListElement( pstackLvl );     // stack level PRECEDING left parenthesis (or null pointer)
-
-                // remove left parenthesis stack level
-                pstackLvl = (LE_calcStack*) execStack.deleteListElement( pstackLvl );                            // pstackLvl now pointing to first dim spec argument                                                          
-                _calcStackLvl--;                                                                                    // left parenthesis level removed, argument(s) still there
-
-                // correct pointers (now wrong, if only one or 2 arguments)
-                _pCalcStackMinus1 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackTop );
-                _pCalcStackMinus2 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackMinus1 );
-
-                // execute internal or external function, calculate array element address or remove parenthesis around single argument (if no function or array)
-                execResult = execParenthesisPair( pPrecedingStackLvl, pstackLvl, argCount );
-                if ( execResult != result_execOK ) { break; }
-
-                // the left parenthesis and the argument(s) are now removed and replaced by a single scalar (function result, array element, single argument)
-                // check if additional operators preceding the left parenthesis can now be executed. 
-                // when an operation is executed, check whether lower priority operations can now be executed as well (example: 3+5*7: first execute 5*7 yielding 35, then execute 3+35)
-                execResult = execAllProcessedOperators( pPendingStep );
-                if ( execResult != result_execOK ) { break; }
             }
+
+            else if ( isComma || isSemicolon ) {
+                // -----------------------
+                // Case: process separator
+                // -----------------------
+                if ( isSemicolon ) { lastInstructionStart = nullptr; }
+            }
+
+            else if ( isRightPar ) {
+                // -------------------------------------
+                // Case: process right parenthesis token
+                // -------------------------------------
+
+#if debugPrint
+                Serial.print( "right parenthesis: stack level " ); Serial.println( _calcStackLvl );
+#endif
+                {   // start block (required for variable definitions inside)
+                    int argCount = 0;                                                // init number of supplied arguments (or array subscripts) to 0
+                    LE_calcStack* pstackLvl = _pCalcStackTop;     // stack level of last argument / array subscript before right parenthesis, or left parenthesis (if function call and no arguments supplied)
+
+                    while ( (pstackLvl->genericToken.tokenType != tok_isTerminalGroup1) && (pstackLvl->genericToken.tokenType != tok_isTerminalGroup2) && (pstackLvl->genericToken.tokenType != tok_isTerminalGroup3) ) {
+                        // terminal found: continue until left parenthesis
+                        if ( MyParser::_terminals [pstackLvl->terminal.index].terminalCode == MyParser::termcod_leftPar ) { break; }   // continue until left parenthesis found
+                        pstackLvl = (LE_calcStack*) execStack.getPrevListElement( pstackLvl );
+                        argCount++;
+                    }
+                    LE_calcStack* pPrecedingStackLvl = (LE_calcStack*) execStack.getPrevListElement( pstackLvl );     // stack level PRECEDING left parenthesis (or null pointer)
+
+                    // remove left parenthesis stack level
+                    pstackLvl = (LE_calcStack*) execStack.deleteListElement( pstackLvl );                            // pstackLvl now pointing to first dim spec argument
+                    _calcStackLvl--;                                                                                    // left parenthesis level removed, argument(s) still there
+
+                    // correct pointers (now wrong, if only one or 2 arguments)
+                    _pCalcStackMinus1 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackTop );
+                    _pCalcStackMinus2 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackMinus1 );
+
+                    // execute internal or external function, calculate array element address or remove parenthesis around single argument (if no function or array)
+                    execResult = execParenthesisPair( pPrecedingStackLvl, pstackLvl, argCount );
+                    if ( execResult != result_execOK ) { break; }
+
+                    // the left parenthesis and the argument(s) are now removed and replaced by a single scalar (function result, array element, single argument)
+                    // check if additional operators preceding the left parenthesis can now be executed.
+                    // when an operation is executed, check whether lower priority operations can now be executed as well (example: 3+5*7: first execute 5*7 yielding 35, then execute 3+35)
+                    execResult = execAllProcessedOperators( pPendingStep );
+                    if ( execResult != result_execOK ) { break; }
+                }
+            }
+
             break;
-        } // switch (tokenType)
+
+        } // end 'switch (tokenType)'
 
 
         // if execution error: print current instruction being executed, signal error and exit
@@ -165,7 +213,7 @@ Interpreter::execResult_type  Interpreter::exec() {
             _pmyParser->prettyPrintInstructions( true, lastInstructionStart, _errorProgramCounter, &sourceErrorPos );
             _pConsole->print( "  " ); for ( int i = 1; i <= sourceErrorPos; i++ ) { _pConsole->print( " " ); }
             char parsingInfo [30];
-            sprintf( parsingInfo, "^ Exec error %d\r\n", execResult );   //// if within program: indicate function 
+            sprintf( parsingInfo, "^ Exec error %d\r\n", execResult );   //// if within program: indicate function where error occured
             _pConsole->print( parsingInfo );
             cleanupExecStack();
             return execResult;              // return result, in case it's needed by caller
@@ -173,8 +221,8 @@ Interpreter::execResult_type  Interpreter::exec() {
 
         // advance to next token
         _programCounter = pPendingStep;
-        tokenType = *_programCounter & 0x0F;                                                     // next token type
-    }  // while ( tokenType != tok_no_token )
+        tokenType = pendingTokenType;                                                     // next token type
+    }                                                                                            // end 'while ( tokenType != tok_no_token )'
 
 
     // All tokens processed: finalize
@@ -289,16 +337,19 @@ void Interpreter::cleanupExecStack() {
 // *   execute internal or external function, calculate array element address or remove parenthesis around single argument  *
 // --------------------------------------------------------------------------------------------------------------------------
 
-Interpreter::execResult_type Interpreter::execParenthesisPair( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pstackLvl, int argCount ) {
+Interpreter::execResult_type Interpreter::execParenthesisPair( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount ) {
     // perform internal or external function, calculate array element address or simply make an expression result within parentheses an intermediate constant
     if ( pPrecedingStackLvl == nullptr ) { makeIntermediateConstant( _pCalcStackTop ); }                 // result of simple parenthesis pair is always an intermediate constant
-    else if ( pPrecedingStackLvl->genericToken.tokenType == tok_isInternFunction ) {}
+    else if ( pPrecedingStackLvl->genericToken.tokenType == tok_isInternFunction ) {
+        execResult_type execResult = arrayAndSubscriptsToarrayElement( pPrecedingStackLvl, pLeftParStackLvl, argCount );
+        if ( execResult != result_execOK ) { return execResult; }
+    }
     else if ( pPrecedingStackLvl->genericToken.tokenType == tok_isExternFunction ) {}
     else if ( pPrecedingStackLvl->genericToken.tokenType == tok_isVariable ) {
         // stack level preceding left parenthesis is an array name requiring an array element ?
         // (if not, then it can only to be an array name used as previous argument in a function call)
         if ( (pPrecedingStackLvl->varOrConst.arrayAttributes & var_isArrayElement) == var_isArrayElement ) {
-            execResult_type execResult = arrayAndSubscriptsToarrayElement( pPrecedingStackLvl, pstackLvl, argCount );
+            execResult_type execResult = arrayAndSubscriptsToarrayElement( pPrecedingStackLvl, pLeftParStackLvl, argCount );
             if ( execResult != result_execOK ) { return execResult; }
         }
         // stack level preceding left parenthesis is NOT an internal or external function name, or an array name requiring an array element:
@@ -312,20 +363,20 @@ Interpreter::execResult_type Interpreter::execParenthesisPair( LE_calcStack*& pP
 // *   replace array variable base address and subscripts with the array element address on the calculation stack   *
 // ------------------------------------------------------------------------------------------------------------------
 
-Interpreter::execResult_type Interpreter::arrayAndSubscriptsToarrayElement( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pstackLvl, int argCount ) {
+Interpreter::execResult_type Interpreter::arrayAndSubscriptsToarrayElement( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount ) {
     void* pArray = *pPrecedingStackLvl->varOrConst.value.ppArray;
     _errorProgramCounter = pPrecedingStackLvl->varOrConst.tokenAddress;                // token adress of array name (in the event of an error)
 
     int elemSpec [4] = { 0 ,0,0,0 };
     do {
-        bool opReal = (pstackLvl->varOrConst.valueType == var_isFloat);
+        bool opReal = (pLeftParStackLvl->varOrConst.valueType == var_isFloat);
         if ( opReal ) {
             //note: elemSpec [3] (last array element) only used here as a counter
-            elemSpec [elemSpec [3]] = (pstackLvl->varOrConst.tokenType == tok_isVariable) ? (*pstackLvl->varOrConst.value.pRealConst) : pstackLvl->varOrConst.value.realConst;
+            elemSpec [elemSpec [3]] = (pLeftParStackLvl->varOrConst.tokenType == tok_isVariable) ? (*pLeftParStackLvl->varOrConst.value.pRealConst) : pLeftParStackLvl->varOrConst.value.realConst;
         }
         else { return result_numberExpected; }
 
-        pstackLvl = (LE_calcStack*) execStack.getNextListElement( pstackLvl );
+        pLeftParStackLvl = (LE_calcStack*) execStack.getNextListElement( pLeftParStackLvl );
     } while ( ++elemSpec [3] < argCount );
 
 
@@ -341,25 +392,25 @@ Interpreter::execResult_type Interpreter::arrayAndSubscriptsToarrayElement( LE_c
     // Delete any intermediate result string objects used as operands 
     // --------------------------------------------------------------
 
-    pstackLvl = (LE_calcStack*) execStack.getNextListElement( pPrecedingStackLvl ); // first dim spec (always present) 
+    pLeftParStackLvl = (LE_calcStack*) execStack.getNextListElement( pPrecedingStackLvl ); // first dim spec (always present) 
     do {
         // stack levels contain variables and (interim) constants only
-        if ( (pstackLvl->varOrConst.isIntermediateResult == 0x01) && (pstackLvl->varOrConst.valueType == var_isStringPointer) ) {
+        if ( (pLeftParStackLvl->varOrConst.isIntermediateResult == 0x01) && (pLeftParStackLvl->varOrConst.valueType == var_isStringPointer) ) {
 #if printCreateDeleteHeapObjects
             Serial.print( "\r\n===== delete interim cst string between parenthesis: " ); Serial.println( pstackLvl->varOrConst.value.pStringConst ); // to be checked
 #endif
-            if ( pstackLvl->varOrConst.value.pStringConst != nullptr ) { delete [] pstackLvl->varOrConst.value.pStringConst; }
+            if ( pLeftParStackLvl->varOrConst.value.pStringConst != nullptr ) { delete [] pLeftParStackLvl->varOrConst.value.pStringConst; }
         }
-        pstackLvl = (LE_calcStack*) execStack.getNextListElement( pstackLvl );  // next dimspec or null pointer 
+        pLeftParStackLvl = (LE_calcStack*) execStack.getNextListElement( pLeftParStackLvl );  // next dimspec or null pointer 
 
-    } while ( pstackLvl != nullptr );
+    } while ( pLeftParStackLvl != nullptr );
 
 
     // cleanup stack
     // -------------
 
-    pstackLvl = (LE_calcStack*) execStack.getNextListElement( pPrecedingStackLvl ); // first dim spec (always present)
-    while ( pstackLvl != nullptr ) { pstackLvl = (LE_calcStack*) execStack.deleteListElement( pstackLvl ); }      // next dimspec or null pointer
+    pLeftParStackLvl = (LE_calcStack*) execStack.getNextListElement( pPrecedingStackLvl ); // first dim spec (always present)
+    while ( pLeftParStackLvl != nullptr ) { pLeftParStackLvl = (LE_calcStack*) execStack.deleteListElement( pLeftParStackLvl ); }      // next dimspec or null pointer
 
     _pCalcStackTop = pPrecedingStackLvl;
     _pCalcStackMinus1 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackTop );
@@ -423,22 +474,50 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators( char* pPen
     // when an operation is executed, check whether lower priority operations can now be executed as well (example: 3+5*7: first execute 5*7 yielding 35, then execute 3+35)
     while ( _calcStackLvl >= 2 ) {                                                      // a previous operator might exist
 
-        if ( _pCalcStackMinus1->genericToken.tokenType == tok_isOperator ) {
+        bool minus1IsTerminal = (_pCalcStackMinus1->genericToken.tokenType == tok_isTerminalGroup1) || (_pCalcStackMinus1->genericToken.tokenType == tok_isTerminalGroup2)
+            || (_pCalcStackMinus1->genericToken.tokenType == tok_isTerminalGroup2);
+        bool minus1IsOperator = (MyParser::_terminals [_pCalcStackMinus1->terminal.index].terminalCode <= MyParser::termcod_opRangeEnd);
+
+        if ( minus1IsOperator ) {
             // check pending (not yet processed) token (always present and always a terminal token after a variable or constant token)
             // pending token can be any terminal token: infix operator, left or right parenthesis, comma or semicolon 
             // it can not be a prefix operator because it follows an operand (on top of stack)
             pendingTokenType = *pPendingStep & 0x0F;                                    // there's always minimum one token pending (even if it is a semicolon)
             pendingTokenIndex = (*pPendingStep >> 4) & 0x0F;                            // terminal token only: index stored in high 4 bits of token type 
+            pendingTokenIndex += ((pendingTokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (pendingTokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
+
+            // infix operation ?
+            bool isPrefixOperator = true;             // init as prefix operation
+            if ( _calcStackLvl >= 2 ) {         // already a token on the stack ?
+                bool minus2IsTerminal = ((_pCalcStackMinus2->genericToken.tokenType == tok_isTerminalGroup1) ||
+                    (_pCalcStackMinus2->genericToken.tokenType == tok_isTerminalGroup2) || (_pCalcStackMinus2->genericToken.tokenType == tok_isTerminalGroup3));
+                bool minus2IsRightPar = (MyParser::_terminals [_pCalcStackMinus2->terminal.index].terminalCode == MyParser::termcod_rightPar);
+                isPrefixOperator = !((_pCalcStackMinus2->genericToken.tokenType == tok_isConstant) || (_pCalcStackMinus2->genericToken.tokenType == tok_isVariable)
+                    || minus2IsRightPar);
+            };
+
+            int priority = _pmyParser->_terminals [_pCalcStackMinus1->terminal.index].priority;
+            if ( isPrefixOperator ) { priority = priority >> 4; }
+            priority &= 0x0F;
+
+            int associativity = _pmyParser->_terminals [_pCalcStackMinus1->terminal.index].associativity;
+            if ( isPrefixOperator ) { associativity = associativity >> 4; }
+            associativity &= _pmyParser->trm_assocRtoL;
+
+            Serial.print( "*** read terminal index: " ); Serial.print( (int) _pCalcStackMinus1->terminal.index );
+            Serial.print( ", priority " ); Serial.print( (int) priority );
+            Serial.print( ", associativity " ); Serial.print( (int) associativity );
+            Serial.println( isPrefixOperator ? " - exec prefix" : " - exec infix" );
 
             // if a pending operator has higher priority, or, it has equal priority and operator is right-to-left associative, do not execute operator yet 
             // note that a PENDING LEFT PARENTHESIS also has priority over the preceding operator
-            pendingTokenPriorityLvl = MyParser::operatorPriority [pendingTokenIndex];
-            currentOpHasPriority = (_pCalcStackMinus1->terminal.priority >= pendingTokenPriorityLvl);
-            if ( (_pCalcStackMinus1->terminal.associativity == '1') && (_pCalcStackMinus1->terminal.priority == pendingTokenPriorityLvl) ) { currentOpHasPriority = false; }
+            pendingTokenPriorityLvl = _pmyParser->_terminals [pendingTokenIndex].priority & 0x0F;      // pending terminal is never a prefix operator 
+            currentOpHasPriority = (priority >= pendingTokenPriorityLvl);
+            if ( (associativity == MyParser::trm_assocRtoL) && (priority == pendingTokenPriorityLvl) ) { currentOpHasPriority = false; }
             if ( !currentOpHasPriority ) { break; }   // exit while() loop
 
-        // execute operator
-            execResult_type execResult = (_pCalcStackMinus1->terminal.priority == '6') ? execPrefixOperation() : execInfixOperation();
+            // execute operator
+            execResult_type execResult = (isPrefixOperator) ? execPrefixOperation() : execInfixOperation();
             if ( execResult != result_execOK ) { return execResult; }
         }
 
@@ -464,10 +543,10 @@ Interpreter::execResult_type  Interpreter::execPrefixOperation() {
     bool opreal = (_pCalcStackTop->varOrConst.valueType == var_isFloat);
     if ( _pCalcStackTop->varOrConst.valueType != var_isFloat ) { return result_numberExpected; }
     operand.realConst = (_pCalcStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.pRealConst) : _pCalcStackTop->varOrConst.value.realConst;
-    if ( _pCalcStackMinus1->terminal.index == 8 ) { operand.realConst = -operand.realConst; } // prefix '-' ('+': no change in value)
+    if ( _pmyParser->_terminals [_pCalcStackMinus1->terminal.index].terminalCode == _pmyParser->termcod_minus ) { operand.realConst = -operand.realConst; } // prefix '-' ('+': no change in value)
 
     // negation of a floating point value can not produce an error: no checks needed
-    
+
     //  store result in stack (if not yet, becomes an intermediate constant now)
     _pCalcStackTop->varOrConst.value = operand;
     _pCalcStackTop->varOrConst.tokenType = tok_isConstant;              // use generic constant type
@@ -504,14 +583,16 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     bool op1real = (_pCalcStackMinus2->varOrConst.valueType == var_isFloat);
     bool op2real = (_pCalcStackTop->varOrConst.valueType == var_isFloat);
 
+    int operatorCode = _pmyParser->_terminals [_pCalcStackMinus1->terminal.index].terminalCode;
+
     // check if operands are compatible with operator: real for all operators except string concatenation
     _errorProgramCounter = _pCalcStackMinus1->terminal.tokenAddress;                // in the event of an error
-    if ( (int) _pCalcStackMinus1->terminal.index != 2 ) {                                           // not an assignment ?
-        if ( ((int) _pCalcStackMinus1->terminal.index == 6) && (op1real || op2real) ) { return result_stringExpected; }
-        else if ( ((int) _pCalcStackMinus1->terminal.index != 6) && (!op1real || !op2real) ) { return result_numberExpected; }
+    if ( operatorCode != _pmyParser->termcod_assign ) {                                           // not an assignment ?
+        if ( (operatorCode == _pmyParser->termcod_concat) && (op1real || op2real) ) { return result_stringExpected; }
+        else if ( (operatorCode != _pmyParser->termcod_concat) && (!op1real || !op2real) ) { return result_numberExpected; }
     }
     else {                                                                                  // assignment 
-        if ( _pCalcStackMinus2->varOrConst.arrayAttributes & var_isArrayElement ) {                                                                        // asignment to array element: value needs to be of same type as array
+        if ( _pCalcStackMinus2->varOrConst.arrayAttributes & var_isArrayElement ) {        // asignment to array element: value needs to be of same type as array
             if ( op1real != op2real ) { return result_arrayTypeIsFixed; }
         }
     }
@@ -527,10 +608,10 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 
     int stringlen;                                                                                  // define outside switch statement
 
-    switch ( _pCalcStackMinus1->terminal.index ) {                                                  // operation to execute
+    switch ( operatorCode ) {                                                  // operation to execute
 
 
-    case 2:
+    case MyParser::termcod_assign:
         // Case: execute assignment (only possible if first operand is a variable: checked during parsing)
         // -----------------------------------------------------------------------------------------------
 
@@ -572,16 +653,16 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         // Next cases: execute infix operators taking 2 operands 
         // -----------------------------------------------------
 
-    case 3:
+    case MyParser::termcod_lt:
         opResult.realConst = operand1.realConst < operand2.realConst;
         break;
-    case 4:
+    case MyParser::termcod_gt:
         opResult.realConst = operand1.realConst > operand2.realConst;
         break;
-    case 5:
+    case MyParser::termcod_eq:
         opResult.realConst = operand1.realConst == operand2.realConst;
         break;
-    case 6:
+    case MyParser::termcod_concat:
         // concatenate two operand strings objects and store pointer to it in result
         stringlen = 0;                                  // is both operands are empty strings
         if ( operand1.pStringConst != nullptr ) { stringlen = strlen( operand1.pStringConst ); }
@@ -597,36 +678,36 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
         }
         break;
-    case 7:
+    case MyParser::termcod_plus:
         opResult.realConst = operand1.realConst + operand2.realConst;
         break;
-    case 8:
+    case MyParser::termcod_minus:
         opResult.realConst = operand1.realConst - operand2.realConst;
         break;
-    case 9:
+    case MyParser::termcod_mult:
         opResult.realConst = operand1.realConst * operand2.realConst;
         if ( (operand1.realConst != 0) && (operand2.realConst != 0) && (!isnormal( opResult.realConst )) ) { return result_underflow; }
         break;
-    case 10:
+    case MyParser::termcod_div:
         opResult.realConst = operand1.realConst / operand2.realConst;
-        if ( (operand1.realConst != 0)  && (!isnormal( opResult.realConst )) ) { return result_underflow; }
+        if ( (operand1.realConst != 0) && (!isnormal( opResult.realConst )) ) { return result_underflow; }
         break;
-    case 11:
-        if ( (operand1.realConst == 0) && (operand2.realConst == 0)){return result_undefined;} // C++ pow() provides 1 as result
+    case MyParser::termcod_pow:
+        if ( (operand1.realConst == 0) && (operand2.realConst == 0) ) { return result_undefined; } // C++ pow() provides 1 as result
         opResult.realConst = pow( operand1.realConst, operand2.realConst );
         break;
-    case 14:
+    case MyParser::termcod_ltoe:
         opResult.realConst = operand1.realConst <= operand2.realConst;
         break;
-    case 15:
+    case MyParser::termcod_gtoe:
         opResult.realConst = operand1.realConst >= operand2.realConst;
         break;
-    case 16:
+    case MyParser::termcod_ne:
         opResult.realConst = operand1.realConst != operand2.realConst;
         break;
     }
 
-    if (( opResultReal ) && (_pCalcStackMinus1->terminal.index != 2)) {     // check error (not for assignment)
+    if ( (opResultReal) && (operatorCode != _pmyParser->termcod_assign) ) {     // check error (not for assignment)
         if ( isnan( opResult.realConst ) ) { return result_undefined; }
         else if ( !isfinite( opResult.realConst ) ) { return result_overflow; }
     }
@@ -656,8 +737,6 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     //  clean up stack
     // ---------------
 
-    int ind = _pCalcStackMinus1->terminal.index;                            // remember index, before dropping stack
-
     // drop highest 2 stack levels( operator and operand 2 ) 
     execStack.deleteListElement( _pCalcStackTop );                          // operand 2 
     execStack.deleteListElement( _pCalcStackMinus1 );                       // operator
@@ -674,7 +753,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     _pCalcStackTop->varOrConst.valueType = opResultReal ? var_isFloat : var_isStringPointer;
 
     // if assignment: the top of stack contains the variable ADDRESS, token type 'variable', 'not an isIntermediate result' and array attributes (not an array, could be array element) 
-    if ( ind != 2 ) {                                                       // not an assignment
+    if ( operatorCode != _pmyParser->termcod_assign ) {                                                       // not an assignment
         _pCalcStackTop->varOrConst.value = opResult;                        // float or pointer to string
         _pCalcStackTop->varOrConst.tokenType = tok_isConstant;              // use generic constant type
         _pCalcStackTop->varOrConst.isIntermediateResult = 0x01;             // is an intermediate result (intermediate constant strings must be deleted when not needed any more)
@@ -683,6 +762,58 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 
 
     return result_execOK;
+}
+
+
+// ---------------------------------
+// *   execute internal function   *
+// ---------------------------------
+
+Interpreter::execResult_type  Interpreter::execInternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount ) {
+
+    int functionIndex = ((((TokenIsIntFunction*) _programCounter)->tokenIndex >> 4) & 0x0F);
+    char functionCode = MyParser::_functions [functionIndex].functionCode;
+
+    switch ( functionIndex ) {
+
+    case MyParser::fnccod_and:
+
+        // Fetch operands and operands value type
+        // --------------------------------------
+
+        // variables for intermediate storage of operands (constants, variable values or intermediate results from previous calculations) and result
+        Val operand1, operand2, opResult;                                                               // operands and result
+
+        // value type of operands
+        bool op1real = (_pCalcStackMinus2->varOrConst.valueType == var_isFloat);
+        bool op2real = (_pCalcStackTop->varOrConst.valueType == var_isFloat);
+
+        int operatorCode = _pmyParser->_terminals [_pCalcStackMinus1->terminal.index].terminalCode;
+
+        // check if operands are compatible with operator: real for all operators except string concatenation
+        _errorProgramCounter = _pCalcStackMinus1->terminal.tokenAddress;                // in the event of an error
+        if ( operatorCode != _pmyParser->termcod_assign ) {                                           // not an assignment ?
+            if ( (operatorCode == _pmyParser->termcod_concat) && (op1real || op2real) ) { return result_stringExpected; }
+            else if ( (operatorCode != _pmyParser->termcod_concat) && (!op1real || !op2real) ) { return result_numberExpected; }
+        }
+        else {                                                                                  // assignment 
+            if ( _pCalcStackMinus2->varOrConst.arrayAttributes & var_isArrayElement ) {        // asignment to array element: value needs to be of same type as array
+                if ( op1real != op2real ) { return result_arrayTypeIsFixed; }
+            }
+        }
+
+        // mixed operands not allowed; 2 x real -> real; 2 x string -> string: set result value type to operand 2 value type (assignment: current operand 1 value type is not relevant)
+        bool opResultReal = op2real;                                                                    // do NOT set to operand 1 value type (would not work in case of assignment)
+
+        // fetch operands: real constants or pointers to character strings
+        if ( op1real ) { operand1.realConst = (_pCalcStackMinus2->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackMinus2->varOrConst.value.pRealConst) : _pCalcStackMinus2->varOrConst.value.realConst; }
+        else { operand1.pStringConst = (_pCalcStackMinus2->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackMinus2->varOrConst.value.ppStringConst) : _pCalcStackMinus2->varOrConst.value.pStringConst; }
+        if ( op2real ) { operand2.realConst = (_pCalcStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.pRealConst) : _pCalcStackTop->varOrConst.value.realConst; }
+        else { operand2.pStringConst = (_pCalcStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pCalcStackTop->varOrConst.value.ppStringConst) : _pCalcStackTop->varOrConst.value.pStringConst; }
+
+
+
+    }
 }
 
 
@@ -787,18 +918,12 @@ bool Interpreter::PushTerminalToken( int& tokenType ) {                         
 
     _pCalcStackMinus2 = _pCalcStackMinus1; _pCalcStackMinus1 = _pCalcStackTop;
 
-    // infix operation ?
-    bool isPrefixOperator = true;             // init as prefix operation
-    if ( _calcStackLvl >= 1 ) {         // already a token on the stack ?
-        isPrefixOperator = !((_pCalcStackMinus1->genericToken.tokenType == tok_isConstant) || (_pCalcStackMinus1->genericToken.tokenType == tok_isVariable)
-            || (_pCalcStackMinus1->genericToken.tokenType == tok_isRightParenthesis));
-    };
-
     _pCalcStackTop = (LE_calcStack*) execStack.appendListElement( sizeof( _pCalcStackTop->terminal ) );
     _pCalcStackTop->terminal.tokenType = tokenType;
-    _pCalcStackTop->terminal.index = (*_programCounter >> 4) & 0x0F;                                            // terminal token only: index stored in high 4 bits of token type 
-    _pCalcStackTop->terminal.priority =  isPrefixOperator ? '6' :  MyParser::operatorPriority [_pCalcStackTop->terminal.index];////
-    _pCalcStackTop->terminal.associativity =  isPrefixOperator ? '1' :  MyParser::operatorAssociativity [_pCalcStackTop->terminal.index];  // operator priority and associativity 
+    _pCalcStackTop->terminal.index = (*_programCounter >> 4) & 0x0F;                                            // terminal token only: calculate from partial index stored in high 4 bits of token type 
+    _pCalcStackTop->terminal.index += ((tokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (tokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
+
+
     _pCalcStackTop->terminal.tokenAddress = _programCounter;                                                    // only for finding source error position during unparsing (for printing)
 };
 
@@ -816,7 +941,7 @@ bool Interpreter::pushFunctionName( int& tokenType ) {                          
     _pCalcStackTop->function.tokenType = tokenType;
     _pCalcStackTop->function.index = ((TokenIsIntFunction*) _programCounter)->tokenIndex;
     _pCalcStackTop->function.tokenAddress = _programCounter;                                    // only for finding source error position during unparsing (for printing)
-
+    /*
     if ( tokenType == tok_isInternFunction ) {
         int fIndex = (int) _pCalcStackTop->function.index;
         Serial.println( _pmyParser->_functions [fIndex].funcName );
@@ -824,6 +949,7 @@ bool Interpreter::pushFunctionName( int& tokenType ) {                          
     else {
         Serial.println( extFunctionNames [_pCalcStackTop->function.index] );
     }
+    */
 };
 
 
