@@ -283,7 +283,8 @@ public:
     static constexpr uint8_t var_typeMask = 0x03;                    // mask: float, char* 
     static constexpr uint8_t var_isFloat = 0 << 0;
     static constexpr uint8_t var_isStringPointer = 1 << 0;
-    static constexpr uint8_t var_noValue = 2 << 0;                  // execution only
+    static constexpr uint8_t var_isVarRef = 2 << 0;
+    static constexpr uint8_t var_noValue = 3 << 0;                  // execution only
 
     static constexpr  int _maxInstructionChars { 300 };
     static constexpr char promptText [10] = "Justina> ";
@@ -381,12 +382,15 @@ public:
     execResult_type  execPrefixOperation();
     execResult_type  execInfixOperation();
     execResult_type  execInternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount );
+    execResult_type  execExternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount );
     void makeIntermediateConstant( LE_calcStack* pcalcStackLvl );
 
     Interpreter::execResult_type arrayAndSubscriptsToarrayElement( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount );
 
     void saveLastValue();
-    void cleanupExecStack();
+    void clearExecStack();
+
+    void deleteStackArguments( LE_calcStack* pPrecedingStackLvl, int argCount, bool includePreceding );
 
     bool PushTerminalToken( int& tokenType );
     bool pushResWord( int& tokenType );
