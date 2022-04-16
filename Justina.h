@@ -153,12 +153,12 @@ public:
         char pStringConst [4];                                 // pointer to string object
     };
 
-    struct TokenIsIntFunction {                                 // operators, separators, parenthesis: length 2
+    struct TokenIsIntFunction {                                 // token storage for internal function: length 2
         char tokenType;                                         // will be set to specific token type
         char tokenIndex;                                        // index into list of tokens
     };
 
-    struct TokenIsExtFunction {                                 // token storage for variable: length 2
+    struct TokenIsExtFunction {                                 // token storage for external function: length 2
         char tokenType;                                         // will be set to specific token type
         char identNameIndex;                                    // index into external function name and additional data storage 
     };
@@ -350,7 +350,7 @@ public:
     ExtFunctionData extFunctionData [MAX_EXT_FUNCS];
 
     LE_calcStack* _pCalcStackTop { nullptr }, * _pCalcStackMinus1 { nullptr }, * _pCalcStackMinus2 { nullptr };
-    LE_flowControlStack* _pFlowCtrlStack;
+    LE_flowControlStack* _pFlowCtrlStackTop { nullptr }, * _pFlowCtrlStackMinus1 { nullptr }, * _pFlowCtrlStackMinus2 { nullptr };
 
     int _calcStackLvl = 0;
     int _flowCtrlStackLvl = 0;
@@ -376,13 +376,13 @@ public:
     void* arrayElemAddress( void* varBaseAddress, int* dims );
 
     execResult_type  exec();
-    execResult_type  execParenthesisPair( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount );
+    execResult_type  execParenthesisPair( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount, char * & pPendingStep );
     execResult_type  execAllProcessedOperators( char* pPendingStep );
     
     execResult_type  execPrefixOperation();
     execResult_type  execInfixOperation();
     execResult_type  execInternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount );
-    execResult_type  execExternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount );
+    execResult_type  execExternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount, char*& pPendingStep );
     void makeIntermediateConstant( LE_calcStack* pcalcStackLvl );
 
     Interpreter::execResult_type arrayAndSubscriptsToarrayElement( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount );

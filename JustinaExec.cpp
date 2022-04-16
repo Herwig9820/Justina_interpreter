@@ -44,7 +44,6 @@ Interpreter::execResult_type  Interpreter::exec() {
         char* pPendingStep = _programCounter + tokenLength;
         int pendingTokenType = *pPendingStep & 0x0F;          // there's always minimum one token pending (even if it is a semicolon);
 
-        // if pending terminal token; specific terminal type will be determined later 
         int pendingTokenIndex;
         bool isPendingTerminal = ((pendingTokenType == Interpreter::tok_isTerminalGroup1) || (pendingTokenType == Interpreter::tok_isTerminalGroup2) || (pendingTokenType == Interpreter::tok_isTerminalGroup3));
         if ( isPendingTerminal ) {
@@ -188,7 +187,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                     _pCalcStackMinus2 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackMinus1 );
 
                     // execute internal or external function, calculate array element address or remove parenthesis around single argument (if no function or array)
-                    execResult = execParenthesisPair( pPrecedingStackLvl, pstackLvl, argCount );
+                    execResult = execParenthesisPair( pPrecedingStackLvl, pstackLvl, argCount , pPendingStep );
                     if ( execResult != result_execOK ) { break; }
 
                     // the left parenthesis and the argument(s) are now removed and replaced by a single scalar (function result, array element, single argument)
@@ -363,11 +362,14 @@ void Interpreter::deleteStackArguments( LE_calcStack* pPrecedingStackLvl, int ar
     // cleanup stack
     // -------------
 
-    pStackLvl = includePreceding ? pPrecedingStackLvl : (LE_calcStack*) execStack.getNextListElement( pPrecedingStackLvl ); // first dim spec (always present)
+    // set pointer to either first token (value) after opening parenthesis (includePreceding = false -> used if array subscripts), or
+    // last token (function name) before opening parenthesis (includePreceding = true -> used if calling function)
+    // note that the left parenthesis is already removed from stack at this stage
+    pStackLvl = includePreceding ? pPrecedingStackLvl : (LE_calcStack*) execStack.getNextListElement( pPrecedingStackLvl ); 
     _pCalcStackTop = pPrecedingStackLvl;                                                        // note down before deleting list levels
     _pCalcStackMinus1 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackTop );
     _pCalcStackMinus2 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackMinus1 );
-    while ( pStackLvl != nullptr ) { pStackLvl = (LE_calcStack*) execStack.deleteListElement( pStackLvl ); }      // next dimspec or null pointer
+    while ( pStackLvl != nullptr ) { pStackLvl = (LE_calcStack*) execStack.deleteListElement( pStackLvl ); }      
 
     _calcStackLvl -= (argCount + (includePreceding ? 1 : 0));
 
@@ -379,7 +381,7 @@ void Interpreter::deleteStackArguments( LE_calcStack* pPrecedingStackLvl, int ar
 // *   execute internal or external function, calculate array element address or remove parenthesis around single argument  *
 // --------------------------------------------------------------------------------------------------------------------------
 
-Interpreter::execResult_type Interpreter::execParenthesisPair( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& firstArgStackLvl, int argCount ) {
+Interpreter::execResult_type Interpreter::execParenthesisPair( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& firstArgStackLvl, int argCount, char* & pPendingStep ) {
     // perform internal or external function, calculate array element address or simply make an expression result within parentheses an intermediate constant
     if ( pPrecedingStackLvl == nullptr ) { makeIntermediateConstant( _pCalcStackTop ); }                 // result of simple parenthesis pair is always an intermediate constant
     else if ( pPrecedingStackLvl->genericToken.tokenType == tok_isInternFunction ) {
@@ -387,7 +389,7 @@ Interpreter::execResult_type Interpreter::execParenthesisPair( LE_calcStack*& pP
         if ( execResult != result_execOK ) { return execResult; }
     }
     else if ( pPrecedingStackLvl->genericToken.tokenType == tok_isExternFunction ) {
-        execResult_type execResult = execExternalFunction( pPrecedingStackLvl, firstArgStackLvl,  argCount );
+        execResult_type execResult = execExternalFunction( pPrecedingStackLvl, firstArgStackLvl,  argCount , pPendingStep);
         if ( execResult != result_execOK ) { return execResult; }
     }
     else if ( pPrecedingStackLvl->genericToken.tokenType == tok_isVariable ) {
@@ -841,12 +843,12 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_calcStack*& 
 // *   execute external function   *
 // ---------------------------------
 
-Interpreter::execResult_type  Interpreter::execExternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pArgStackLvl, int argCount ) {
+Interpreter::execResult_type  Interpreter::execExternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pArgStackLvl, int argCount, char*& pPendingStep ) {
 
     int functionIndex = pPrecedingStackLvl->function.index;
     
     // create local variable storage
-    int localVarCount = extFunctionData [functionIndex].localVarCountInFunction;
+    int localVarCount = extFunctionData [functionIndex].localVarCountInFunction; 
     Val* pLocalVarValues = new Val [localVarCount];
     char** pSourceVarTypes = new char* [localVarCount];      // variables or array elements passed by reference, only: references to variable types 
     char* pLocalVarTypes = new char [localVarCount];        // local float, local string, reference
@@ -891,20 +893,28 @@ Interpreter::execResult_type  Interpreter::execExternalFunction( LE_calcStack*& 
         }
     }
 
-    // delete function arguments from calculation stack
-    deleteStackArguments( pPrecedingStackLvl, argCount , true);
-
-
-    //// put return address on stack
-    
-
-    //// call external function
-
-
-    // check if operands are compatible with operator: real for all operators except string concatenation
     _errorProgramCounter = pPrecedingStackLvl->terminal.tokenAddress;                // in the event of an error
 
+    // delete function arguments AND function name token from calculation stack
+    deleteStackArguments( pPrecedingStackLvl, argCount , true);
+
     /*
+    // put return address on flow control stack 
+    _pFlowCtrlStackTop = (LE_flowControlStack *) flowCtrlStack.appendListElement(sizeof( LE_flowControlStack ));
+    _pFlowCtrlStackTop->pToNextToken =  pPendingStep;                                               // function return address
+    _pFlowCtrlStackMinus1 = (LE_flowControlStack*) flowCtrlStack.getPrevListElement( _pFlowCtrlStackTop );
+    _pFlowCtrlStackMinus2 = (LE_flowControlStack*) flowCtrlStack.getPrevListElement( _pFlowCtrlStackMinus1 );
+
+    // put  pointers to local storage on calculation stack
+    _pCalcStackMinus2 = (LE_calcStack*) execStack.appendListElement( sizeof( void* ) );
+    _pCalcStackMinus1 = (LE_calcStack*) execStack.appendListElement( sizeof( void* ) );
+    _pCalcStackTop = (LE_calcStack*) execStack.appendListElement( sizeof( void* ) );
+
+    _pCalcStackMinus2->varOrConst.value.pVariable = pLocalVarValues;
+    _pCalcStackMinus1->varOrConst.value.pVariable = pSourceVarTypes;
+    _pCalcStackTop->varOrConst.value.pVariable = pLocalVarTypes;
+    */
+   
     Serial.print( "local func index:" ); Serial.println( functionIndex );
     localVarCount = extFunctionData [functionIndex].localVarCountInFunction;
     int paramCount = extFunctionData [functionIndex].paramOnlyCountInFunction;
@@ -912,12 +922,21 @@ Interpreter::execResult_type  Interpreter::execExternalFunction( LE_calcStack*& 
     Serial.print( "local var count: " ); Serial.println( localVarCount );
     Serial.print( "param count:     " ); Serial.println( paramCount );
     Serial.print( "arg count:       " ); Serial.println( argCount );
-    */
+    Serial.print( "func starts at   " ); Serial.println( extFunctionData [functionIndex].pExtFunctionStartToken - _programStorage ); 
+    Serial.print( "return at:       " ); Serial.println( pPendingStep - _programStorage );
+
+    // set next step to start of called function
+    ////pPendingStep = extFunctionData [functionIndex].pExtFunctionStartToken;    // address of function name token
 
 
 
 
-     //  store result in stack (if not yet, becomes an intermediate constant now)   //// example : float 999
+
+    // *** execute function (na 'return' nu)
+
+    // ...
+     
+    //  store result in stack (if not yet, becomes an intermediate constant now)   //// example : float 999
     _pCalcStackMinus2 = _pCalcStackMinus1; _pCalcStackMinus1 = _pCalcStackTop;
     _pCalcStackTop = (LE_calcStack*) execStack.appendListElement( sizeof( _pCalcStackTop->varOrConst ) );
     _calcStackLvl++;
@@ -928,15 +947,22 @@ Interpreter::execResult_type  Interpreter::execExternalFunction( LE_calcStack*& 
     _pCalcStackTop->varOrConst.isIntermediateResult = 0x01;
     _pCalcStackTop->varOrConst.arrayAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
 
+    
+    
+    // *** NA called function (separate routine):
 
 
-    // delete local variable arrays and strngs
+
+    // delete local variable arrays and strings
 
     // release local variable storage
     delete [] pLocalVarValues;
     delete [] pSourceVarTypes;
     delete [] pLocalVarTypes;
 
+    
+//// delete flow control stack level and 3 calc stack levels for 3 pointers to local storage
+    
     return result_execOK;
 }
 
@@ -1022,13 +1048,13 @@ bool Interpreter::pushResWord( int& tokenType ) {                               
     // push reserved word to stack
     _flowCtrlStackLvl++;
     _pCalcStackMinus2 = _pCalcStackMinus1; _pCalcStackMinus1 = _pCalcStackTop;//// fout: flow control stack
-    _pFlowCtrlStack = (LE_flowControlStack*) flowCtrlStack.appendListElement( sizeof( *_pFlowCtrlStack ) );
-    _pFlowCtrlStack->tokenType = tok_isReservedWord;
-    _pFlowCtrlStack->index = ((TokenIsResWord*) _programCounter)->tokenIndex;
+    _pFlowCtrlStackTop = (LE_flowControlStack*) flowCtrlStack.appendListElement( sizeof( *_pFlowCtrlStackTop ) );
+    _pFlowCtrlStackTop->tokenType = tok_isReservedWord;
+    _pFlowCtrlStackTop->index = ((TokenIsResWord*) _programCounter)->tokenIndex;
 
     int toTokenStep { 0 };                                                                              // must be initialised to set high bytes to zero (internally, a 16 bit int reserves a 32 bit word !)
     memcpy( &toTokenStep, ((TokenIsResWord*) (_programCounter))->toTokenStep, sizeof( char [2] ) );     // token step token not necessarily aligned with word size: copy memory instead
-    _pFlowCtrlStack->pToNextToken = _programStorage + toTokenStep;
+    _pFlowCtrlStackTop->pToNextToken = _programStorage + toTokenStep;
 };
 
 
