@@ -42,7 +42,7 @@ Interpreter::execResult_type  Interpreter::exec() {
 
         // pending token
         char* pPendingStep = _programCounter + tokenLength;
-        int pendingTokenType = *pPendingStep & 0x0F;          // there's always minimum one token pending (even if it is a semicolon);
+        int pendingTokenType = *pPendingStep & 0x0F;          
 
         int pendingTokenIndex;
         bool isPendingTerminal = ((pendingTokenType == Interpreter::tok_isTerminalGroup1) || (pendingTokenType == Interpreter::tok_isTerminalGroup2) || (pendingTokenType == Interpreter::tok_isTerminalGroup3));
@@ -187,7 +187,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                     _pCalcStackMinus2 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackMinus1 );
 
                     // execute internal or external function, calculate array element address or remove parenthesis around single argument (if no function or array)
-                    execResult = execParenthesisPair( pPrecedingStackLvl, pstackLvl, argCount , pPendingStep );
+                    execResult = execParenthesisPair( pPrecedingStackLvl, pstackLvl, argCount, pPendingStep );
                     if ( execResult != result_execOK ) { break; }
 
                     // the left parenthesis and the argument(s) are now removed and replaced by a single scalar (function result, array element, single argument)
@@ -219,8 +219,8 @@ Interpreter::execResult_type  Interpreter::exec() {
         }
 
         // advance to next token
-        _programCounter = pPendingStep;
-        tokenType = pendingTokenType;                                                     // next token type
+        _programCounter = pPendingStep;         // note: will be altered when calling an external function and upon return of a called function
+        tokenType = *pPendingStep & 0x0F;                                                               // next token type
     }                                                                                            // end 'while ( tokenType != tok_no_token )'
 
 
@@ -344,7 +344,7 @@ void Interpreter::deleteStackArguments( LE_calcStack* pPrecedingStackLvl, int ar
 
     // Delete any intermediate result string objects used as operands 
     // --------------------------------------------------------------
-    
+
     LE_calcStack* pStackLvl = (LE_calcStack*) execStack.getNextListElement( pPrecedingStackLvl );   // array subscripts or function arguments (NOT the preceding list element) 
     do {
         // stack levels contain variables and (interim) constants only
@@ -365,11 +365,11 @@ void Interpreter::deleteStackArguments( LE_calcStack* pPrecedingStackLvl, int ar
     // set pointer to either first token (value) after opening parenthesis (includePreceding = false -> used if array subscripts), or
     // last token (function name) before opening parenthesis (includePreceding = true -> used if calling function)
     // note that the left parenthesis is already removed from stack at this stage
-    pStackLvl = includePreceding ? pPrecedingStackLvl : (LE_calcStack*) execStack.getNextListElement( pPrecedingStackLvl ); 
+    pStackLvl = includePreceding ? pPrecedingStackLvl : (LE_calcStack*) execStack.getNextListElement( pPrecedingStackLvl );
     _pCalcStackTop = pPrecedingStackLvl;                                                        // note down before deleting list levels
     _pCalcStackMinus1 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackTop );
     _pCalcStackMinus2 = (LE_calcStack*) execStack.getPrevListElement( _pCalcStackMinus1 );
-    while ( pStackLvl != nullptr ) { pStackLvl = (LE_calcStack*) execStack.deleteListElement( pStackLvl ); }      
+    while ( pStackLvl != nullptr ) { pStackLvl = (LE_calcStack*) execStack.deleteListElement( pStackLvl ); }
 
     _calcStackLvl -= (argCount + (includePreceding ? 1 : 0));
 
@@ -381,7 +381,7 @@ void Interpreter::deleteStackArguments( LE_calcStack* pPrecedingStackLvl, int ar
 // *   execute internal or external function, calculate array element address or remove parenthesis around single argument  *
 // --------------------------------------------------------------------------------------------------------------------------
 
-Interpreter::execResult_type Interpreter::execParenthesisPair( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& firstArgStackLvl, int argCount, char* & pPendingStep ) {
+Interpreter::execResult_type Interpreter::execParenthesisPair( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& firstArgStackLvl, int argCount, char*& pPendingStep ) {
     // perform internal or external function, calculate array element address or simply make an expression result within parentheses an intermediate constant
     if ( pPrecedingStackLvl == nullptr ) { makeIntermediateConstant( _pCalcStackTop ); }                 // result of simple parenthesis pair is always an intermediate constant
     else if ( pPrecedingStackLvl->genericToken.tokenType == tok_isInternFunction ) {
@@ -389,7 +389,7 @@ Interpreter::execResult_type Interpreter::execParenthesisPair( LE_calcStack*& pP
         if ( execResult != result_execOK ) { return execResult; }
     }
     else if ( pPrecedingStackLvl->genericToken.tokenType == tok_isExternFunction ) {
-        execResult_type execResult = execExternalFunction( pPrecedingStackLvl, firstArgStackLvl,  argCount , pPendingStep);
+        execResult_type execResult = execExternalFunction( pPrecedingStackLvl, firstArgStackLvl, argCount, pPendingStep );
         if ( execResult != result_execOK ) { return execResult; }
     }
     else if ( pPrecedingStackLvl->genericToken.tokenType == tok_isVariable ) {
@@ -438,8 +438,8 @@ Interpreter::execResult_type Interpreter::arrayAndSubscriptsToarrayElement( LE_c
 
     // Remove array subscripts from calculation stack
     // ----------------------------------------------
-    
-    deleteStackArguments(pPrecedingStackLvl, argCount,false);
+
+    deleteStackArguments( pPrecedingStackLvl, argCount, false );
 
     return result_execOK;
 }
@@ -846,12 +846,16 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_calcStack*& 
 Interpreter::execResult_type  Interpreter::execExternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pArgStackLvl, int argCount, char*& pPendingStep ) {
 
     int functionIndex = pPrecedingStackLvl->function.index;
-    
-    // create local variable storage
-    int localVarCount = extFunctionData [functionIndex].localVarCountInFunction; 
-    Val* pLocalVarValues = new Val [localVarCount];
-    char** pSourceVarTypes = new char* [localVarCount];      // variables or array elements passed by reference, only: references to variable types 
-    char* pLocalVarTypes = new char [localVarCount];        // local float, local string, reference
+
+    // temporarily hold current local storage pointer values (for caller) until stack is ready to receive these values
+    LocalStoragePointers holdCallersStoragePointers = localStoragePointers;
+
+    // create local variable storage for external function to be called
+    int localVarCount = extFunctionData [functionIndex].localVarCountInFunction;
+    localStoragePointers._pLocalVarValues = new Val [localVarCount];
+    localStoragePointers._pSourceVarTypes = new char* [localVarCount];      // variables or array elements passed by reference, only: references to variable types 
+    localStoragePointers._pLocalVarTypes = new char [localVarCount];        // local float, local string, reference
+
 
     // save function caller's arguments to local storage
 
@@ -863,30 +867,30 @@ Interpreter::execResult_type  Interpreter::execExternalFunction( LE_calcStack*& 
             bool operandIsReal = (pStackLvl->varOrConst.valueType == var_isFloat);
             bool operandIsVariable = (pStackLvl->varOrConst.tokenType == tok_isVariable);
 
-            pLocalVarValues [i] = pStackLvl->varOrConst.value;
-            pLocalVarTypes [i] = pStackLvl->varOrConst.valueType;
+            localStoragePointers._pLocalVarValues [i] = pStackLvl->varOrConst.value;
+            localStoragePointers._pLocalVarTypes [i] = pStackLvl->varOrConst.valueType;
 
             if ( operandIsRef ) {
-                pLocalVarValues [i].pVariable = pStackLvl->varOrConst.value.pVariable;  // local variable is reference to original variable
-                pSourceVarTypes [i] = pStackLvl->varOrConst.varTypeAddress;             // reference to original variable's value type
-                pLocalVarTypes [i] = pStackLvl->varOrConst.valueType;                   // reference
+                localStoragePointers._pLocalVarValues [i].pVariable = pStackLvl->varOrConst.value.pVariable;  // local variable is reference to original variable
+                localStoragePointers._pSourceVarTypes [i] = pStackLvl->varOrConst.varTypeAddress;             // reference to original variable's value type
+                localStoragePointers._pLocalVarTypes [i] = pStackLvl->varOrConst.valueType;                   // reference
             }
             else {      // float or string, variable or constant, but NOT a variable reference itself
                 if ( pStackLvl->varOrConst.tokenType == tok_isVariable ) {      // operand is variable: store a reference
-                    pLocalVarValues [i].pVariable = pStackLvl->varOrConst.value.pVariable;  // local variable is reference to original variable
-                    pSourceVarTypes [i] = pStackLvl->varOrConst.varTypeAddress;             // reference to original variable's value type
-                    pLocalVarTypes [i] = var_isVarRef;                                      // local variable stores REFERENCE to original variable
+                    localStoragePointers._pLocalVarValues [i].pVariable = pStackLvl->varOrConst.value.pVariable;  // local variable is reference to original variable
+                    localStoragePointers._pSourceVarTypes [i] = pStackLvl->varOrConst.varTypeAddress;             // reference to original variable's value type
+                    localStoragePointers._pLocalVarTypes [i] = var_isVarRef;                                      // local variable stores REFERENCE to original variable
                 }
                 else {      // parsed or intermediate constant passed as value
                     if ( operandIsReal ) {                                                      // operand is float constant
-                        pLocalVarValues [i].realConst = pStackLvl->varOrConst.value.realConst;   // store a local copy
-                        pLocalVarTypes [i] = var_isFloat;
+                        localStoragePointers._pLocalVarValues [i].realConst = pStackLvl->varOrConst.value.realConst;   // store a local copy
+                        localStoragePointers._pLocalVarTypes [i] = var_isFloat;
                     }
                     else {                      // operand is string constant: create a local copy
                         int stringlen = strlen( pStackLvl->varOrConst.value.pStringConst );
-                        pLocalVarValues [i].pStringConst = new char [stringlen + 1];
-                        strcpy( pLocalVarValues [i].pStringConst, pStackLvl->varOrConst.value.pStringConst );
-                        pLocalVarTypes [i] = var_isFloat;
+                        localStoragePointers._pLocalVarValues [i].pStringConst = new char [stringlen + 1];
+                        strcpy( localStoragePointers._pLocalVarValues [i].pStringConst, pStackLvl->varOrConst.value.pStringConst );
+                        localStoragePointers._pLocalVarTypes [i] = var_isFloat;
                     }
                 }
             }
@@ -895,26 +899,18 @@ Interpreter::execResult_type  Interpreter::execExternalFunction( LE_calcStack*& 
 
     _errorProgramCounter = pPrecedingStackLvl->terminal.tokenAddress;                // in the event of an error
 
-    // delete function arguments AND function name token from calculation stack
-    deleteStackArguments( pPrecedingStackLvl, argCount , true);
+    // delete caller function's arguments AND function name token from calculation stack
+    deleteStackArguments( pPrecedingStackLvl, argCount, true );
 
-    /*
-    // put return address on flow control stack 
-    _pFlowCtrlStackTop = (LE_flowControlStack *) flowCtrlStack.appendListElement(sizeof( LE_flowControlStack ));
-    _pFlowCtrlStackTop->pToNextToken =  pPendingStep;                                               // function return address
-    _pFlowCtrlStackMinus1 = (LE_flowControlStack*) flowCtrlStack.getPrevListElement( _pFlowCtrlStackTop );
-    _pFlowCtrlStackMinus2 = (LE_flowControlStack*) flowCtrlStack.getPrevListElement( _pFlowCtrlStackMinus1 );
 
-    // put  pointers to local storage on calculation stack
-    _pCalcStackMinus2 = (LE_calcStack*) execStack.appendListElement( sizeof( void* ) );
-    _pCalcStackMinus1 = (LE_calcStack*) execStack.appendListElement( sizeof( void* ) );
-    _pCalcStackTop = (LE_calcStack*) execStack.appendListElement( sizeof( void* ) );
+    // push current local variable storage pointers (for CALLER) and return address (for CALLER) on FLOW CONTROL stack //// mag hoger (separate stack); hold vars niet meer nodig
+    _pFlowCtrlStackMinus2 = _pFlowCtrlStackMinus1; _pFlowCtrlStackMinus1 = _pFlowCtrlStackTop;
+    _pFlowCtrlStackTop = (LocalStoragePointers*) flowCtrlStack.appendListElement( sizeof( LocalStoragePointers ) );
+    *((LocalStoragePointers*) _pFlowCtrlStackTop) = holdCallersStoragePointers;
+    ((LocalStoragePointers*) _pFlowCtrlStackTop)->_returnAddress = pPendingStep;        // add return address
+    _flowCtrlStackLvl++;
 
-    _pCalcStackMinus2->varOrConst.value.pVariable = pLocalVarValues;
-    _pCalcStackMinus1->varOrConst.value.pVariable = pSourceVarTypes;
-    _pCalcStackTop->varOrConst.value.pVariable = pLocalVarTypes;
-    */
-   
+
     Serial.print( "local func index:" ); Serial.println( functionIndex );
     localVarCount = extFunctionData [functionIndex].localVarCountInFunction;
     int paramCount = extFunctionData [functionIndex].paramOnlyCountInFunction;
@@ -922,7 +918,7 @@ Interpreter::execResult_type  Interpreter::execExternalFunction( LE_calcStack*& 
     Serial.print( "local var count: " ); Serial.println( localVarCount );
     Serial.print( "param count:     " ); Serial.println( paramCount );
     Serial.print( "arg count:       " ); Serial.println( argCount );
-    Serial.print( "func starts at   " ); Serial.println( extFunctionData [functionIndex].pExtFunctionStartToken - _programStorage ); 
+    Serial.print( "func starts at   " ); Serial.println( extFunctionData [functionIndex].pExtFunctionStartToken - _programStorage );
     Serial.print( "return at:       " ); Serial.println( pPendingStep - _programStorage );
 
     // set next step to start of called function
@@ -931,39 +927,47 @@ Interpreter::execResult_type  Interpreter::execExternalFunction( LE_calcStack*& 
 
 
 
-
     // *** execute function (na 'return' nu)
 
     // ...
-     
+
     //  store result in stack (if not yet, becomes an intermediate constant now)   //// example : float 999
     _pCalcStackMinus2 = _pCalcStackMinus1; _pCalcStackMinus1 = _pCalcStackTop;
     _pCalcStackTop = (LE_calcStack*) execStack.appendListElement( sizeof( _pCalcStackTop->varOrConst ) );
     _calcStackLvl++;
- 
+
     _pCalcStackTop->varOrConst.value.realConst = 999;
     _pCalcStackTop->varOrConst.valueType = var_isFloat;
     _pCalcStackTop->varOrConst.tokenType = tok_isConstant;              // use generic constant type
     _pCalcStackTop->varOrConst.isIntermediateResult = 0x01;
     _pCalcStackTop->varOrConst.arrayAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
 
-    
-    
-    // *** NA called function (separate routine):
 
+
+    // *** NA called function (separate routine):
 
 
     // delete local variable arrays and strings
 
-    // release local variable storage
-    delete [] pLocalVarValues;
-    delete [] pSourceVarTypes;
-    delete [] pLocalVarTypes;
+    // release local variable storage for function that has been called
+    delete [] localStoragePointers._pLocalVarValues;
+    delete [] localStoragePointers._pLocalVarTypes;
+    delete [] localStoragePointers._pSourceVarTypes;
 
-    
-//// delete flow control stack level and 3 calc stack levels for 3 pointers to local storage
-    
-    return result_execOK;
+
+    // load local storage pointers again for caller function and restore pending step for caller function
+    localStoragePointers = *(LocalStoragePointers*) _pFlowCtrlStackTop;          // top level contains called function result
+
+    pPendingStep = ((LocalStoragePointers*) _pFlowCtrlStackTop)->_returnAddress;
+
+    //// delete FLOW CONTROL stack level that contained caller function storage pointers and return address (all just retrieved)
+    (LocalStoragePointers*) flowCtrlStack.deleteListElement( _pFlowCtrlStackTop );
+    _pFlowCtrlStackTop = _pFlowCtrlStackMinus1;
+    _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement( _pFlowCtrlStackTop );
+    _pFlowCtrlStackMinus2 = flowCtrlStack.getPrevListElement( _pFlowCtrlStackMinus1 );
+    _flowCtrlStackLvl--;
+
+    return  result_execOK;
 }
 
 
@@ -1006,8 +1010,18 @@ void* Interpreter::varBaseAddress( TokenIsVariable* pVarToken, char*& varTypeAdd
         valueType = staticVarType [valueIndex] & var_typeMask;
         return &staticVarValues [valueIndex];
     }
+    else {      // local values (incl.) parameters    
+        varTypeAddress = localStoragePointers._pLocalVarTypes + valueIndex;
+        valueType = localStoragePointers._pLocalVarTypes [valueIndex] & var_typeMask;
 
-    //// local variables and parameters: to do
+        if ( valueType == var_isVarRef ) {
+            varTypeAddress = (char*) *varTypeAddress;
+            return   ((Val**)localStoragePointers._pLocalVarValues) [valueIndex];
+        }
+        else {              // local float or string
+            return (Val*) & localStoragePointers._pLocalVarValues [valueIndex];
+        }
+    }
 }
 
 
@@ -1042,7 +1056,7 @@ void* Interpreter::arrayElemAddress( void* varBaseAddress, int* elemSpec ) {
 // ---------------------------------------------------
 // *   push reserved word token to calculation stack   *
 // ---------------------------------------------------
-
+/*
 bool Interpreter::pushResWord( int& tokenType ) {                                       // reserved word token is assumed
 
     // push reserved word to stack
@@ -1056,7 +1070,7 @@ bool Interpreter::pushResWord( int& tokenType ) {                               
     memcpy( &toTokenStep, ((TokenIsResWord*) (_programCounter))->toTokenStep, sizeof( char [2] ) );     // token step token not necessarily aligned with word size: copy memory instead
     _pFlowCtrlStackTop->pToNextToken = _programStorage + toTokenStep;
 };
-
+*/
 
 // -----------------------------------------------
 // *   push terminal token to calculation stack   *

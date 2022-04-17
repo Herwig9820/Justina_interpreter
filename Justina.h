@@ -249,12 +249,14 @@ public:
         TerminalTokenLvl terminal;
     };
 
-    struct LE_flowControlStack {
-        char tokenType;
-        char index;
-        char spare [2];                                          // boundary alignment
-        char* pToNextToken;                                    // reserved words for block commands (IF, FOR, BREAK, END, ...): step n° of block start token or next block token (uint16_t)
+    
+    struct LocalStoragePointers {
+        Val* _pLocalVarValues ;
+        char** _pSourceVarTypes ;      // variables or array elements passed by reference, only: references to variable types 
+        char* _pLocalVarTypes ;        // local float, local string, reference
+        char* _returnAddress;               // return here when called routine exits
     };
+    
 
     // variable type: 
 
@@ -341,7 +343,10 @@ public:
     Val staticVarValues [MAX_STAT_VARS];                            // store static variable values (float, pointer to string, pointer to array of floats) 
     char staticVarType [MAX_STAT_VARS] { 0 };                       // static variables: stores variable type (float, pointer to string, pointer to array of floats)
 
-    // temporary local variable stoarage during functin parsing (without values)
+    // local variable value storage
+    LocalStoragePointers localStoragePointers;
+
+    // temporary local variable stoarage during function parsing (without values)
     char localVarType [MAX_LOC_VARS_IN_FUNC] { 0 };                 // parameter, local variables: temporarily maintains array flag during function parsing (storage reused by functions during parsing)
     char localVarDims [MAX_LOC_VARS_IN_FUNC][4] { 0 };              // LOCAL variables: temporarily maintains dimensions during function parsing (storage reused by functions during parsing)
 
@@ -350,7 +355,7 @@ public:
     ExtFunctionData extFunctionData [MAX_EXT_FUNCS];
 
     LE_calcStack* _pCalcStackTop { nullptr }, * _pCalcStackMinus1 { nullptr }, * _pCalcStackMinus2 { nullptr };
-    LE_flowControlStack* _pFlowCtrlStackTop { nullptr }, * _pFlowCtrlStackMinus1 { nullptr }, * _pFlowCtrlStackMinus2 { nullptr };
+    void* _pFlowCtrlStackTop { nullptr }, * _pFlowCtrlStackMinus1 { nullptr }, * _pFlowCtrlStackMinus2 { nullptr };
 
     int _calcStackLvl = 0;
     int _flowCtrlStackLvl = 0;
