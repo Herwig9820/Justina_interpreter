@@ -42,7 +42,7 @@ Interpreter::execResult_type  Interpreter::exec() {
 
         // pending token
         char* pPendingStep = _programCounter + tokenLength;
-        int pendingTokenType = *pPendingStep & 0x0F;          
+        int pendingTokenType = *pPendingStep & 0x0F;
 
         int pendingTokenIndex;
         bool isPendingTerminal = ((pendingTokenType == Interpreter::tok_isTerminalGroup1) || (pendingTokenType == Interpreter::tok_isTerminalGroup2) || (pendingTokenType == Interpreter::tok_isTerminalGroup3));
@@ -843,7 +843,7 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_calcStack*& 
 // *   execute external function   *
 // ---------------------------------
 
-Interpreter::execResult_type  Interpreter::execExternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pArgStackLvl, int argCount, char*& pPendingStep ) {
+Interpreter::execResult_type  Interpreter::execExternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pArgStackLvl, int suppliedArgCount, char*& pPendingStep ) {
 
     int functionIndex = pPrecedingStackLvl->function.index;
 
@@ -860,29 +860,34 @@ Interpreter::execResult_type  Interpreter::execExternalFunction( LE_calcStack*& 
     // save function caller's arguments to local storage
 
     // value type of operands
-    if ( argCount > 0 ) {
+    if ( suppliedArgCount > 0 ) {
         LE_calcStack* pStackLvl = pArgStackLvl;         // pointing to first argument on stack
-        for ( int i = 0; i < argCount; i++ ) {
-            bool operandIsRef = (pStackLvl->varOrConst.valueType == var_isVarRef);
+        for ( int i = 0; i < suppliedArgCount; i++ ) {
+            bool operandIsRef = (pStackLvl->varOrConst.valueType == var_isVarRef);      // at the CALLER level
             bool operandIsReal = (pStackLvl->varOrConst.valueType == var_isFloat);
             bool operandIsVariable = (pStackLvl->varOrConst.tokenType == tok_isVariable);
+
+            Serial.print( "** supplied argument - value type (hex) : " ); Serial.println( pStackLvl->varOrConst.valueType, HEX );
 
             localStoragePointers._pLocalVarValues [i] = pStackLvl->varOrConst.value;
             localStoragePointers._pLocalVarTypes [i] = pStackLvl->varOrConst.valueType;
 
-            if ( operandIsRef ) {
+            if ( operandIsRef ) {           // was already a reference at the CALLER level: simply pas the reference (no extra level of indirection)
                 localStoragePointers._pLocalVarValues [i].pVariable = pStackLvl->varOrConst.value.pVariable;  // local variable is reference to original variable
                 localStoragePointers._pSourceVarTypes [i] = pStackLvl->varOrConst.varTypeAddress;             // reference to original variable's value type
                 localStoragePointers._pLocalVarTypes [i] = pStackLvl->varOrConst.valueType;                   // reference
+                Serial.println ( "  was a reference at caller level"  );
             }
-            else {      // float or string, variable or constant, but NOT a variable reference itself
-                if ( pStackLvl->varOrConst.tokenType == tok_isVariable ) {      // operand is variable: store a reference
+            else {      // float or string, variable (could be an array) or constant, but NOT a variable reference itself at the CALLER level
+                if ( pStackLvl->varOrConst.tokenType == tok_isVariable ) {      // operand is variable containing a constant and not a reference: store a reference to it now
                     localStoragePointers._pLocalVarValues [i].pVariable = pStackLvl->varOrConst.value.pVariable;  // local variable is reference to original variable
                     localStoragePointers._pSourceVarTypes [i] = pStackLvl->varOrConst.varTypeAddress;             // reference to original variable's value type
                     localStoragePointers._pLocalVarTypes [i] = var_isVarRef;                                      // local variable stores REFERENCE to original variable
+                    Serial.println( "  was a variable at caller level" );
                 }
-                else {      // parsed or intermediate constant passed as value
+                else {      // parsed, or intermediate, constant passed as value
                     if ( operandIsReal ) {                                                      // operand is float constant
+                        Serial.println( "  was a constant at caller level" );
                         localStoragePointers._pLocalVarValues [i].realConst = pStackLvl->varOrConst.value.realConst;   // store a local copy
                         localStoragePointers._pLocalVarTypes [i] = var_isFloat;
                     }
@@ -890,17 +895,18 @@ Interpreter::execResult_type  Interpreter::execExternalFunction( LE_calcStack*& 
                         int stringlen = strlen( pStackLvl->varOrConst.value.pStringConst );
                         localStoragePointers._pLocalVarValues [i].pStringConst = new char [stringlen + 1];
                         strcpy( localStoragePointers._pLocalVarValues [i].pStringConst, pStackLvl->varOrConst.value.pStringConst );
-                        localStoragePointers._pLocalVarTypes [i] = var_isFloat;
+                        localStoragePointers._pLocalVarTypes [i] = var_isStringPointer;
                     }
                 }
             }
+            pStackLvl = (LE_calcStack*)execStack.deleteListElement(pStackLvl);
         }
     }
 
     _errorProgramCounter = pPrecedingStackLvl->terminal.tokenAddress;                // in the event of an error
 
     // delete caller function's arguments AND function name token from calculation stack
-    deleteStackArguments( pPrecedingStackLvl, argCount, true );
+    deleteStackArguments( pPrecedingStackLvl, suppliedArgCount, true );
 
 
     // push current local variable storage pointers (for CALLER) and return address (for CALLER) on FLOW CONTROL stack //// mag hoger (separate stack); hold vars niet meer nodig
@@ -914,12 +920,91 @@ Interpreter::execResult_type  Interpreter::execExternalFunction( LE_calcStack*& 
     Serial.print( "local func index:" ); Serial.println( functionIndex );
     localVarCount = extFunctionData [functionIndex].localVarCountInFunction;
     int paramCount = extFunctionData [functionIndex].paramOnlyCountInFunction;
+    char* calledFunctionTokenStep = extFunctionData [functionIndex].pExtFunctionStartToken;
     Serial.print( "function name:   " ); Serial.println( extFunctionNames [functionIndex] );
     Serial.print( "local var count: " ); Serial.println( localVarCount );
     Serial.print( "param count:     " ); Serial.println( paramCount );
-    Serial.print( "arg count:       " ); Serial.println( argCount );
-    Serial.print( "func starts at   " ); Serial.println( extFunctionData [functionIndex].pExtFunctionStartToken - _programStorage );
+    Serial.print( "arg count:       " ); Serial.println( suppliedArgCount );
+    Serial.print( "func starts at   " ); Serial.println( calledFunctionTokenStep - _programStorage );
     Serial.print( "return at:       " ); Serial.println( pPendingStep - _programStorage );
+
+
+    // init local variables for non_supplied arguments (scalar parameters with default values)
+
+    if ( suppliedArgCount < paramCount ) {      // missing arguments: use parameter default values to init local variables
+        int count = 0;
+        // now positioned at function name token in called function (after FUNCTION token)
+        // first position at opening parenthesis
+        int calledFunctionTokenType = *calledFunctionTokenStep & 0x0F;                                                          // function name token of called function
+        int tokenLength = (calledFunctionTokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*calledFunctionTokenStep >> 4) & 0x0F;
+        calledFunctionTokenStep = calledFunctionTokenStep + tokenLength;        // positioned at (scalar) variable for parameter
+        calledFunctionTokenType = *calledFunctionTokenStep & 0x0F;                                                               // opening parenthesis
+
+        // find n-th argument separator (comma), with n is number of supplied arguments (stay at left parenthesis if none provided)
+        while ( count < suppliedArgCount ) {     // if not yet skipped all supplied arguments: find next argument separator
+            int tokenLength = (calledFunctionTokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*calledFunctionTokenStep >> 4) & 0x0F;
+            calledFunctionTokenStep = calledFunctionTokenStep + tokenLength;
+            calledFunctionTokenType = *calledFunctionTokenStep & 0x0F;
+            bool isTerminal = ((calledFunctionTokenType == Interpreter::tok_isTerminalGroup1) || (calledFunctionTokenType == Interpreter::tok_isTerminalGroup2) || (calledFunctionTokenType == Interpreter::tok_isTerminalGroup3));
+            int tokenIndex;
+            if ( isTerminal ) {
+                tokenIndex = ((((TokenIsTerminal*) calledFunctionTokenStep)->tokenTypeAndIndex >> 4) & 0x0F);
+                tokenIndex += ((calledFunctionTokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (calledFunctionTokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
+            }
+            bool isParamSeparator = (isTerminal ? (MyParser::_terminals [tokenIndex].terminalCode == MyParser::termcod_comma) : false);
+            count++;            // a comma separator has been found
+        };      // all supplied arguments now skipped ?
+
+        // now positioned before first parameter for non-supplied scalar argument. It always has an initializer
+        // we only need the constant value, because we know the variable value index already (count): skip variable and assignment 
+
+        while ( count < paramCount ) {
+            for ( int i = 0; i < ((count == suppliedArgCount) ? 3 : 4); i++ ) {     // first default value: advance only 3 tokens (already at comma in front of variable)
+                int tokenLength = (calledFunctionTokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*calledFunctionTokenStep >> 4) & 0x0F;
+                calledFunctionTokenStep = calledFunctionTokenStep + tokenLength;        // positioned at (scalar) variable for parameter
+                calledFunctionTokenType = *calledFunctionTokenStep & 0x0F;                                                               // opening parenthesis
+            }
+
+            // store default value in scalar variable
+
+            bool operandIsReal = (calledFunctionTokenType == tok_isRealConst);
+            Serial.print( "saving default: token type: " ); Serial.println( calledFunctionTokenType );
+            Serial.print( "saving default: is float: " ); Serial.println( operandIsReal );
+            if ( operandIsReal ) {                                                      // operand is float constant
+                float f;
+                memcpy( &f, ((TokenIsRealCst*) calledFunctionTokenStep)->realConst, sizeof( float ) );
+                localStoragePointers._pLocalVarValues [count].realConst = f;  // store a local copy
+                localStoragePointers._pLocalVarTypes [count] = var_isFloat;
+            }
+            else {                      // operand is string constant: create a local copy and store in variable
+                int stringlen = strlen( ((TokenIsStringCst*) calledFunctionTokenStep)->pStringConst );////
+                localStoragePointers._pLocalVarValues [count].pStringConst = new char [stringlen + 1];
+                strcpy( localStoragePointers._pLocalVarValues [count].pStringConst, ((TokenIsStringCst*) calledFunctionTokenStep)->pStringConst );
+                localStoragePointers._pLocalVarTypes [count] = var_isStringPointer;
+            }
+            count++;
+
+        }
+    }
+
+    Serial.print( "local variables: " ); Serial.println( localVarCount );
+    //// test
+    for ( int i = 0; i < localVarCount; i++ ) {
+        Serial.print( "all LOCAL values - value type (hex) : " ); Serial.println( localStoragePointers._pLocalVarTypes [i], HEX );
+
+        if ( localStoragePointers._pLocalVarTypes [i] == var_isVarRef ) {
+            Serial.println("*** is reference to var (could be array)");
+        }
+        else {
+            if ( localStoragePointers._pLocalVarTypes [i] == var_isFloat ) {
+                Serial.print( "float: " ); Serial.println( localStoragePointers._pLocalVarValues[i].realConst);
+            }
+            else {
+                Serial.print( "string: " ); Serial.println( localStoragePointers._pLocalVarValues[i].pStringConst);
+            }
+        }
+    }
+
 
     // set next step to start of called function
     ////pPendingStep = extFunctionData [functionIndex].pExtFunctionStartToken;    // address of function name token
@@ -927,7 +1012,7 @@ Interpreter::execResult_type  Interpreter::execExternalFunction( LE_calcStack*& 
 
 
 
-    // *** execute function (na 'return' nu)
+    // ************************** execute function (na 'return' nu)
 
     // ...
 
@@ -944,11 +1029,12 @@ Interpreter::execResult_type  Interpreter::execExternalFunction( LE_calcStack*& 
 
 
 
-    // *** NA called function (separate routine):
+    // ************************** NA called function (separate routine):
 
 
     // delete local variable arrays and strings
-
+    //// to do *****
+    // 
     // release local variable storage for function that has been called
     delete [] localStoragePointers._pLocalVarValues;
     delete [] localStoragePointers._pLocalVarTypes;
@@ -1016,10 +1102,10 @@ void* Interpreter::varBaseAddress( TokenIsVariable* pVarToken, char*& varTypeAdd
 
         if ( valueType == var_isVarRef ) {
             varTypeAddress = (char*) *varTypeAddress;
-            return   ((Val**)localStoragePointers._pLocalVarValues) [valueIndex];
+            return   ((Val**) localStoragePointers._pLocalVarValues) [valueIndex];
         }
         else {              // local float or string
-            return (Val*) & localStoragePointers._pLocalVarValues [valueIndex];
+            return (Val*) &localStoragePointers._pLocalVarValues [valueIndex];
         }
     }
 }
