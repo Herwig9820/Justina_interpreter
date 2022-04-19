@@ -468,7 +468,7 @@ MyParser::parseTokenResult_type MyParser::parseInstruction( char*& pInputStart )
         _previousTokenType = _lastTokenType_hold;                                   // remember the second last parsed token during parsing of a next token
         _previousTermCode = _lastTermCode_hold;                                     // only relevant for certain tokens
         _previousTokenIsTerminal = _lastTokenIsTerminal_hold;
-        
+
         _lastTokenType_hold = _lastTokenType;                                       // remember the last parsed token during parsing of a next token
         _lastTermCode_hold = _lastTermCode;                                         // only relevant for certain tokens
         _lastTokenIsTerminal_hold = _lastTokenIsTerminal;
@@ -665,7 +665,7 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
     bool isLvl0CommaSep = _lastTokenIsTerminal ? ((_terminals [_tokenIndex].terminalCode == termcod_comma) && (_parenthesisLevel == 0)) : false;
     bool isAssignmentOp = _lastTokenIsTerminal ? (_terminals [_tokenIndex].terminalCode == termcod_assign) : false;
     bool isNonAssignmentOp = _lastTokenIsTerminal ? (((_terminals [_tokenIndex].terminalCode <= termcod_opRangeEnd)) && (_terminals [_tokenIndex].terminalCode != termcod_assign)) : false;
-    
+
     bool isExpressionFirstToken = (!isResWord) && ((cmdSecondLastTokenType == Interpreter::tok_isReservedWord) || (cmdSecondLastIsLvl0CommaSep));
 
     if ( isResWord || (isLvl0CommaSep) ) {
@@ -850,37 +850,32 @@ bool MyParser::parseAsNumber( char*& pNext, parseTokenResult_type& result ) {
     if ( _pcalculator->_programCounter == _pcalculator->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
     // token is a number constant, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
     if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_numConstNotAllowedHere; return false; }
-    
+
     // overflow ? (underflow is not detected with strtof() ) 
     if ( !isfinite( f ) ) { pNext = pch; result = result_overflow; return false; }
 
     // within commands: skip this test (if '_isCommand' is true, then test expression is false)
     // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
     if ( !(_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_numConstNotAllowedHere; return false; ; }
-    
+
     // Note: in a declaration statement, operators other than assignment are not allowed, which is detected in terminal token parsing
     // -> if previous token was operator: it's an assignment
     bool isParamDecl = (_isExtFunctionCmd);                                          // parameter declarations :  constant can ONLY FOLLOW an assignment operator
-    bool isOperator = _lastTokenIsTerminal ? (_lastTermCode <= termcod_opRangeEnd) : false;
+    bool isAssignmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
 
-    if ( isParamDecl && !isOperator ) { pNext = pch; result = result_numConstNotAllowedHere; return false; }
+    if ( isParamDecl && !isAssignmentOp ) { pNext = pch; result = result_numConstNotAllowedHere; return false; }
 
     // token is a number, and it's allowed here
     Interpreter::TokenIsRealCst* pToken = (Interpreter::TokenIsRealCst*) _pcalculator->_programCounter;
     pToken->tokenType = Interpreter::tok_isRealConst | (sizeof( Interpreter::TokenIsRealCst ) << 4);
     memcpy( pToken->realConst, &f, sizeof( f ) );                                           // float not necessarily aligned with word size: copy memory instead
 
-    ////  geen beperking nodig: initialisatie door runtime scannen van 'LOCAL' commands bij start procedure tot local var count bereikt is 
-    /* dit mag dus weg:
-    bool checkLocalVarInit = (_isLocalVarCmd && isOperator);
-    if ( checkLocalVarInit && (f != 0) ) { pNext = pch; result = result_varLocalInit_zeroValueExpected; return false; }
-    */
-    bool doNonLocalVarInit = ((_isGlobalOrUserVarCmd || _isStaticVarCmd) && isOperator);
+    bool doNonLocalVarInit = ((_isGlobalOrUserVarCmd || _isStaticVarCmd) && isAssignmentOp);
 
     _lastTokenStep = _pcalculator->_programCounter - _pcalculator->_programStorage;
     _lastTokenType = Interpreter::tok_isRealConst;
     _lastTokenIsTerminal = false;
-    
+
     if ( doNonLocalVarInit ) { initVariable( _lastVariableTokenStep, _lastTokenStep ); }     // initialisation of global / static variable ? (operator: is always assignment)
 
     _pcalculator->_programCounter += sizeof( Interpreter::TokenIsRealCst );
@@ -914,8 +909,8 @@ bool MyParser::parseAsStringConstant( char*& pNext, parseTokenResult_type& resul
     // Note: in a declaration statement, operators other than assignment are not allowed, which is detected in terminal token parsing
     // -> if previous token was operator: it's an assignment
     bool isParamDecl = (_isExtFunctionCmd);                                             // parameter declarations :  constant can ONLY FOLLOW an assignment operator
-    bool isOperator = _lastTokenIsTerminal ? (_lastTermCode <= termcod_opRangeEnd) : false;
-    if ( isParamDecl && isOperator ) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
+    bool isAssignmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
+    if ( isParamDecl && !isAssignmentOp ) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
 
     bool isArrayDimSpec = (_isAnyVarCmd) && (_parenthesisLevel > 0);                    // array declaration: dimensions must be number constants (global, static, local arrays)
     if ( isArrayDimSpec ) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
@@ -956,18 +951,18 @@ bool MyParser::parseAsStringConstant( char*& pNext, parseTokenResult_type& resul
     pToken->tokenType = Interpreter::tok_isStringConst | (sizeof( Interpreter::TokenIsStringCst ) << 4);
     memcpy( pToken->pStringConst, &pStringCst, sizeof( pStringCst ) );            // pointer not necessarily aligned with word size: copy memory instead
 
-    ////  geen beperking nodig: initialisatie door runtime scannen van 'LOCAL' commands bij start procedure tot local var count bereikt is 
-    /* dit mag dus weg:
-    bool checkLocalVarInit = (_isLocalVarCmd && isOperator);
-    if ( checkLocalVarInit && (strlen( pStringCst ) > 0) ) { pNext = pch; result = result_varLocalInit_emptyStringExpected; return false; }
-    */
+    bool isLocalVarInitCheck = (_isLocalVarCmd && isAssignmentOp);
+    bool isArrayVar = ((Interpreter::TokenIsVariable*) (_pcalculator->_programStorage + _lastVariableTokenStep))->identInfo & _pcalculator->var_isArray;
+    if ( isLocalVarInitCheck && isArrayVar && (strlen( pStringCst ) > 0) ) {
+        pNext = pch; result = result_arrayInit_emptyStringExpected; return false;        // only check (init when function is called)
+    }
 
-    bool doNonLocalVarInit = ((_isGlobalOrUserVarCmd || _isStaticVarCmd) && isOperator);          // (operator: is always assignment)
+    bool doNonLocalVarInit = ((_isGlobalOrUserVarCmd || _isStaticVarCmd) && isAssignmentOp);          // (operator: is always assignment)
 
     _lastTokenStep = _pcalculator->_programCounter - _pcalculator->_programStorage;
     _lastTokenType = Interpreter::tok_isStringConst;
     _lastTokenIsTerminal = false;
-    
+
     if ( doNonLocalVarInit ) {                                     // initialisation of global / static variable ? 
         if ( !initVariable( _lastVariableTokenStep, _lastTokenStep ) ) { pNext = pch; result = result_arrayInit_emptyStringExpected; return false; };
     }
@@ -1786,8 +1781,8 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
     // Note: in a declaration statement, operators other than assignment are not allowed, which is detected in terminal token parsing
     // -> if previous token was operator: it's an assignment
     bool isParamDecl = (_isExtFunctionCmd);                                          // parameter declarations: initialising ONLY with a constant, not with a variable
-    bool isOperator = _lastTokenIsTerminal ? (_lastTermCode <= termcod_opRangeEnd) : false;
-    if ( isParamDecl && isOperator )                                                    // if operator: it is an assignment
+    bool isAssgnmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
+    if ( isParamDecl && isAssgnmentOp )                                                    // if operator: it is an assignment
     {
         pNext = pch; result = result_variableNotAllowedHere; return false;
     }

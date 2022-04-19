@@ -275,7 +275,7 @@ public:
     static constexpr uint8_t var_qualToSpecify = 0 << 4;             // qualifier is not yet defined (temporary use during parsing; never stored in token)
 
     // bit b3 (execution only): the address is the address of an array element. If this bit is zero, the adress is the scalar or array variable base address 
-    static constexpr uint8_t var_isArrayElement = 0x08;
+    static constexpr uint8_t var_isArrayElement = 0x08;             //// check naming (var_isArrayNeedingElement ?)
 
     // bit b2: variable is an array (and not a scalar)
     static constexpr uint8_t var_isArray = 0x04;                     // stored with variable attributes and in 'variable' token. Can not be changed at runtime
@@ -381,7 +381,7 @@ public:
     void* arrayElemAddress( void* varBaseAddress, int* dims );
 
     execResult_type  exec();
-    execResult_type  execParenthesisPair( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount, char * & pPendingStep );
+    execResult_type  execParenthesesPair( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount, char * & pPendingStep );
     execResult_type  execAllProcessedOperators( char* pPendingStep );
     
     execResult_type  execPrefixOperation();
@@ -417,7 +417,7 @@ class MyParser {//// naming
     // *   enumerations   *
     // --------------------
 
-private:
+public:
 
     // unique identification code of a command
     enum cmd_code {
@@ -442,7 +442,6 @@ private:
         cmdcod_test
     };
 
-public:
     // these values are grouped in a CmdBlockDef structure and are shared between multiple commands
     enum blockType_type {
         // value 1: block type
@@ -575,8 +574,6 @@ public:
         result_varRedeclared,
         result_varDefinedAsArray,
         result_varDefinedAsScalar,
-        result_varLocalInit_zeroValueExpected,
-        result_varLocalInit_emptyStringExpected,
         result_varControlVarInUse,
 
         // array errors
