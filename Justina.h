@@ -251,10 +251,11 @@ public:
 
     
     struct LocalStoragePointers {
-        Val* _pLocalVarValues ;
-        char** _pSourceVarTypes ;      // variables or array elements passed by reference, only: references to variable types 
-        char* _pLocalVarTypes ;        // local float, local string, reference
-        char* _returnAddress;               // return here when called routine exits
+        Val* pLocalVarValues ;
+        char** pSourceVarTypes ;      // variables or array elements passed by reference, only: references to variable types 
+        char* pLocalVarTypes ;        // local float, local string, reference
+        char* callerReturnAddress;    // return here when called routine exits
+        int callerCalcStackLevels;     // calculation stack levels in use by caller
     };
     
 
@@ -275,7 +276,7 @@ public:
     static constexpr uint8_t var_qualToSpecify = 0 << 4;             // qualifier is not yet defined (temporary use during parsing; never stored in token)
 
     // bit b3 (execution only): the address is the address of an array element. If this bit is zero, the adress is the scalar or array variable base address 
-    static constexpr uint8_t var_isArrayElement = 0x08;             //// check naming (var_isArrayNeedingElement ?)
+    static constexpr uint8_t var_isArray_pendingSubscripts = 0x08;             //// check naming (var_isArrayNeedingElement ?)
 
     // bit b2: variable is an array (and not a scalar)
     static constexpr uint8_t var_isArray = 0x04;                     // stored with variable attributes and in 'variable' token. Can not be changed at runtime
@@ -387,7 +388,7 @@ public:
     execResult_type  execPrefixOperation();
     execResult_type  execInfixOperation();
     execResult_type  execInternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount );
-    execResult_type  execExternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount, char*& pPendingStep );
+    execResult_type  launchExternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount, char*& pPendingStep );
     void makeIntermediateConstant( LE_calcStack* pcalcStackLvl );
 
     Interpreter::execResult_type arrayAndSubscriptsToarrayElement( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount );

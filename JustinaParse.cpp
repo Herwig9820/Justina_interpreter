@@ -854,9 +854,9 @@ bool MyParser::parseAsNumber( char*& pNext, parseTokenResult_type& result ) {
     // overflow ? (underflow is not detected with strtof() ) 
     if ( !isfinite( f ) ) { pNext = pch; result = result_overflow; return false; }
 
-    // within commands: skip this test (if '_isCommand' is true, then test expression is false)
-    // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
-    if ( !(_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_numConstNotAllowedHere; return false; ; }
+    // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
+    bool tokenAllowed = (_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen);
+    if ( !tokenAllowed ) { pNext = pch; result = result_numConstNotAllowedHere; return false; ; }
 
     // Note: in a declaration statement, operators other than assignment are not allowed, which is detected in terminal token parsing
     // -> if previous token was operator: it's an assignment
@@ -902,9 +902,9 @@ bool MyParser::parseAsStringConstant( char*& pNext, parseTokenResult_type& resul
     // token is an alphanumeric constant, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
     if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
 
-    // within commands: skip this test (if '_isCommand' is true, then test expression is false)
-    // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
-    if ( !(_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; ; }
+    // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
+    bool tokenAllowed = (_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen);
+    if ( !tokenAllowed ) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; ; }
 
     // Note: in a declaration statement, operators other than assignment are not allowed, which is detected in terminal token parsing
     // -> if previous token was operator: it's an assignment
@@ -1123,9 +1123,9 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         // token is left parenthesis, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
         if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_4_3_1_0) ) { pNext = pch;  result = result_parenthesisNotAllowedHere; return false; }
 
-        // within commands: skip this test (if '_isCommand' is true, then test expression is false)
-        // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
-        if ( !(_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; ; }
+        // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
+        bool tokenAllowed = (_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen);
+        if ( !tokenAllowed ) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; ; }
 
         if ( _isAnyVarCmd && (_parenthesisLevel > 0) ) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }     // no parenthesis nesting in array declarations
         // parenthesis nesting in function definitions, only to declare an array parameter AND only if followed by a closing parenthesis 
@@ -1197,9 +1197,9 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         // token is right parenthesis, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
         if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_4_2) ) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
 
-        // within commands: skip this test (if '_isCommand' is true, then test expression is false)
-        // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
-        if ( !(_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; ; }
+        // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
+        bool tokenAllowed = (_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen);
+        if ( !tokenAllowed ) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; ; }
         if ( _parenthesisLevel == 0 ) { pNext = pch; result = result_missingLeftParenthesis; return false; }
 
         flags = _pParsingStack->openPar.flags;
@@ -1401,9 +1401,9 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         // token is comma separator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
         if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2) ) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
 
-        // within commands: skip this test (if '_isCommand' is true, then test expression is false)
-        // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
-        if ( !(_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_separatorNotAllowedHere; return false; ; }
+        // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
+        bool tokenAllowed = (_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen);
+        if ( !tokenAllowed ) { pNext = pch; result = result_separatorNotAllowedHere; return false; ; }
 
         // if no open parenthesis, a comma can only occur to separate command parameters
         if ( (_parenthesisLevel == 0) && !_isCommand ) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
@@ -1512,9 +1512,9 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         }
 
 
-        // within commands: skip this test (if '_isCommand' is true, then test expression is false)
-        // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
-        if ( !(_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_operatorNotAllowedHere; return false; ; }
+        // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
+        bool tokenAllowed = (_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen);
+        if ( !tokenAllowed ) { pNext = pch; result = result_operatorNotAllowedHere; return false; ; }
 
         if ( _isProgramCmd || _isDeleteVarCmd ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
 
@@ -1583,9 +1583,9 @@ bool MyParser::parseAsInternFunction( char*& pNext, parseTokenResult_type& resul
 
         if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_functionNotAllowedHere; return false; }
 
-        // within commands: skip this test (if '_isCommand' is true, then test expression is false)
-        // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
-        if ( !(_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_functionNotAllowedHere; return false; ; }
+        // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
+        bool tokenAllowed = (_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen);
+        if ( !tokenAllowed ) { pNext = pch; result = result_functionNotAllowedHere; return false; ; }
 
         if ( _isExtFunctionCmd ) { pNext = pch; result = result_redefiningIntFunctionNotAllowed; return false; }
         if ( _isAnyVarCmd ) { pNext = pch; result = result_variableNameExpected; return false; }        // is a variable declaration: internal function name not allowed
@@ -1655,9 +1655,9 @@ bool MyParser::parseAsExternFunction( char*& pNext, parseTokenResult_type& resul
     // token is an external function, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
     if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_functionNotAllowedHere; return false; }
 
-    // within commands: skip this test (if '_isCommand' is true, then test expression is false)
-    // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
-    if ( !(_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_functionNotAllowedHere; return false; ; }
+    // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
+    bool tokenAllowed = (_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen);
+    if ( !tokenAllowed ) { pNext = pch; result = result_functionNotAllowedHere; return false; ; }
 
     // if function name is too long, reset pointer to first character to parse, indicate error and return
     if ( pNext - pch > _maxIdentifierNameLen ) { pNext = pch; result = result_identifierTooLong;  return false; }
@@ -1761,9 +1761,9 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
     // token is a variable, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
     if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_variableNotAllowedHere; return false; }
 
-    // within commands: skip this test (if '_isCommand' is true, then test expression is false)
-    // allow if in immediate mode or inside a function ( '(!_pcalculator->_programMode) || _extFunctionBlockOpen' is true, so test expression is false)  
-    if ( !(_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen) ) { pNext = pch; result = result_variableNotAllowedHere; return false; ; }
+    // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
+    bool tokenAllowed = (_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen);
+    if ( !tokenAllowed ) { pNext = pch; result = result_variableNotAllowedHere; return false; ; }
 
     // scalar or array variable ? (could still be function 'array' argument; this will be detected further below)
     char* peek1 = pNext; while ( peek1 [0] == ' ' ) { peek1++; }                                                // peek next character: is it a left parenthesis ?
