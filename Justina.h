@@ -188,18 +188,20 @@ public:
 
 
     union Val {
-        void* pVariable;
+        void* pVariable;                                        // address of a variable value (which can be a float, a string pointer or a variable address itself)
 
         // global, static, local variables; parameters with default initialisation (if no argument provided)
-        float realConst;                                         // variable contains number: float
-        char* pStringConst;                                   // variable contains string: pointer to a character string
-        float* pArray;                                          // variable is an array: pointer to array
+        float realConst;                                        // float
+        char* pStringConst;                                     // pointer to a character string
+        float* pArray;                                          // pointer to memory block reserved for array
 
-        // function parameters only: extra level of indirection
-        // not used if default initialisation (if no argument provided)
-        float* pRealConst;                                         // variable contains number: float
-        char** ppStringConst;                                   // variable contains string: pointer to a character string
-        float** ppArray;                                       // variable is an array: pointer to array
+        float* pRealConst;
+        char** ppStringConst;
+        float** ppArray;
+
+        float** ppRealConst;
+        char*** pppStringConst;
+        float*** pppArray;
     };
 
     struct ExtFunctionData {
@@ -378,7 +380,7 @@ public:
     bool processCharacter( char c );
     void (*_callbackFcn)(bool& requestQuit);                                         // pointer to callback function for heartbeat
     void setCalcMainLoopCallback( void (*func)(bool& requistQuit) );                   // set callback function for connection state change
-    void* varBaseAddress( TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& variableAttributes );
+    void* fetchVarBaseAddress( TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& variableAttributes );
     void* arrayElemAddress( void* varBaseAddress, int* dims );
 
     execResult_type  exec();
