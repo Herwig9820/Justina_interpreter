@@ -108,12 +108,15 @@ public:
         result_execOK = 0,
 
         result_array_outsideBounds = 3000,
+        result_array_paramUseWrongDimCount,
+        result_array_valueTypeIsFixed,
         result_numberExpected,
         result_stringExpected,
-        result_arrayTypeIsFixed,
         result_undefined,
         result_overflow,
-        result_underflow
+        result_underflow,
+
+        result_calcStackError
     };
 
     static constexpr uint8_t extFunctionBit { B00000001 };

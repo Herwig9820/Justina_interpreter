@@ -1507,10 +1507,10 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         // token is an operator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
 
         if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_4_2_1_0) ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
-        else if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2) && (_terminals [termIndex].terminalCode != termcod_plus) && (_terminals [termIndex].terminalCode != termcod_minus) ) {
+
+        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2) && (_terminals [termIndex].terminalCode != termcod_plus) && (_terminals [termIndex].terminalCode != termcod_minus) ) {
             pNext = pch; result = result_invalidPrefixOperator; return false;
         }
-
 
         // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
         bool tokenAllowed = (_isCommand || (!_pcalculator->_programMode) || _extFunctionBlockOpen);
@@ -1532,9 +1532,17 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
             if ( !(assignmentToScalarVarOK || assignmentToArrayElemOK) ) { pNext = pch; result = result_assignmNotAllowedHere; return false; }
         }
 
-        else {      // not an assignment
-            if ( _isExtFunctionCmd || _isAnyVarCmd ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+        else  if ( _isExtFunctionCmd || _isAnyVarCmd ) {
+            if ( (_terminals [termIndex].terminalCode == termcod_plus) || (_terminals [termIndex].terminalCode == termcod_minus) ) {
+                // normally, a prefix operator needs its own token (example: expression -2^2 evaluates as -(2^2) yielding -4, whereas a number -2 (stored as one token) ^2 would yield 4, which is incorrect
+                // but initializers are pure constants: no prefix operators are allowed here, because this would create a constant expression
+                // however negative numbers are legal as initialiser: discard the prefix operator, to make it part of the number token
+                if ( nextTermIndex >= 0 ) { pNext = pch; result = result_operatorNotAllowedHere; return false; } // next token is terminal as well. It risks to be another prefix operator
+                else { pNext = pch; return true; }         // do not move input pointer
+            }
+            else { pNext = pch; result = result_operatorNotAllowedHere; return false; }
         }
+
         // token is an operator, and it's allowed here
     }
     }
