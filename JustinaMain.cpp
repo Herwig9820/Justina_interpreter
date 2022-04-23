@@ -20,7 +20,16 @@ int LinkedList::_listIDcounter = 0;
 
 LinkedList::LinkedList() {
     _listID = _listIDcounter;
-    _listIDcounter++;
+    _listIDcounter++;       // static variable
+}
+
+
+// ---------------------
+// *   deconstructor   *
+// ---------------------
+
+LinkedList::~LinkedList() {
+    _listIDcounter--;       // static variable
 }
 
 
@@ -142,6 +151,25 @@ char* LinkedList::getNextListElement( void* pPayload ) {
     if ( pElem->pNext == nullptr ) { return nullptr; }
     return (char*) (pElem->pNext + 1);                                                      // points to payload of previous element
 }
+
+
+//-------------------------------------------------------------
+// *   get the list ID (depends on the order of creation !)   *
+//-------------------------------------------------------------
+
+int LinkedList::getListID(LinkedList linkedList) {
+    return linkedList._listID;
+}
+
+
+//-------------------------------
+// *   get list element count   *
+//-------------------------------
+
+int LinkedList::getListElementCount(LinkedList linkedList) {
+    return linkedList._listElementCount;
+}
+
 
 
 /***********************************************************

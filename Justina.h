@@ -64,6 +64,7 @@ public:
 public:
 
     LinkedList();                   // constructor
+    ~LinkedList();                   // constructor
     char* appendListElement( int size );
     char* deleteListElement( void* pPayload );                  // pointer to payload of list element to be removed
     void deleteList();
@@ -71,6 +72,8 @@ public:
     char* getLastListElement();
     char* getPrevListElement( void* pPayload );
     char* getNextListElement( void* pPayload );
+    int getListElementCount( LinkedList linkedList );
+    int getListID( LinkedList linkedList );
 };
 
 
@@ -255,12 +258,14 @@ public:
     };
 
     
-    struct LocalStoragePointers {
+    struct FunctionData {
         Val* pLocalVarValues ;
         char** pSourceVarTypes ;      // variables or array elements passed by reference, only: references to variable types 
         char* pLocalVarTypes ;        // local float, local string, reference
         char* callerReturnAddress;    // return here when called routine exits
-        int callerCalcStackLevels;     // calculation stack levels in use by caller
+        char* callerErrorProgramCounter; // for error reporting
+        char callerCalcStackLevels;     // calculation stack levels in use by caller
+        char callerFunctionIndex;       // for error messages only
     };
     
 
@@ -350,7 +355,7 @@ public:
     char staticVarType [MAX_STAT_VARS] { 0 };                       // static variables: stores variable type (float, pointer to string, pointer to array of floats)
 
     // local variable value storage
-    LocalStoragePointers localStoragePointers;
+    FunctionData _activeFunctionData;
 
     // temporary local variable stoarage during function parsing (without values)
     char localVarType [MAX_LOC_VARS_IN_FUNC] { 0 };                 // parameter, local variables: temporarily maintains array flag during function parsing (storage reused by functions during parsing)
@@ -387,13 +392,13 @@ public:
     void* arrayElemAddress( void* varBaseAddress, int* dims );
 
     execResult_type  exec();
-    execResult_type  execParenthesesPair( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount, char * & pPendingStep );
+    execResult_type  execParenthesesPair( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount, char * & pPendingStep, int& activeFunctionIndex );
     execResult_type  execAllProcessedOperators( char* pPendingStep );
     
     execResult_type  execPrefixOperation();
     execResult_type  execInfixOperation();
     execResult_type  execInternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount );
-    execResult_type  launchExternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount, char*& pPendingStep );
+    execResult_type  launchExternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount, char*& pPendingStep , int& activeFunctionIndex);
     void makeIntermediateConstant( LE_calcStack* pcalcStackLvl );
 
     Interpreter::execResult_type arrayAndSubscriptsToarrayElement( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount );
