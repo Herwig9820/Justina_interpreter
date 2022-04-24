@@ -72,8 +72,8 @@ public:
     char* getLastListElement();
     char* getPrevListElement( void* pPayload );
     char* getNextListElement( void* pPayload );
-    int getListElementCount( LinkedList linkedList );
-    int getListID( LinkedList linkedList );
+    int getElementCount(  );
+    int getListID(  );
 };
 
 
@@ -119,7 +119,8 @@ public:
         result_overflow,
         result_underflow,
 
-        result_calcStackError
+        result_calcStackError,
+        result_flowCtrlStackError
     };
 
     static constexpr uint8_t extFunctionBit { B00000001 };
@@ -369,9 +370,6 @@ public:
 
     LE_calcStack* _pCalcStackTop { nullptr }, * _pCalcStackMinus1 { nullptr }, * _pCalcStackMinus2 { nullptr };
     void* _pFlowCtrlStackTop { nullptr }, * _pFlowCtrlStackMinus1 { nullptr }, * _pFlowCtrlStackMinus2 { nullptr };
-
-    int _calcStackLvl = 0;
-    int _flowCtrlStackLvl = 0;
 
     Val lastResultValueFiFo [MAX_LAST_RESULT_DEPTH];                // keep last calculation results
     char lastResultTypeFiFo [MAX_LAST_RESULT_DEPTH] { var_noValue };

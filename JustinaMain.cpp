@@ -157,8 +157,8 @@ char* LinkedList::getNextListElement( void* pPayload ) {
 // *   get the list ID (depends on the order of creation !)   *
 //-------------------------------------------------------------
 
-int LinkedList::getListID(LinkedList linkedList) {
-    return linkedList._listID;
+int LinkedList::getListID() {
+    return _listID;
 }
 
 
@@ -166,8 +166,8 @@ int LinkedList::getListID(LinkedList linkedList) {
 // *   get list element count   *
 //-------------------------------
 
-int LinkedList::getListElementCount(LinkedList linkedList) {
-    return linkedList._listElementCount;
+int LinkedList::getElementCount() {
+    return _listElementCount;
 }
 
 
