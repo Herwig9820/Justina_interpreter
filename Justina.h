@@ -260,12 +260,15 @@ public:
     
     struct FunctionData {
         Val* pLocalVarValues ;
-        char** pSourceVarTypes ;      // variables or array elements passed by reference, only: references to variable types 
-        char* pLocalVarTypes ;        // local float, local string, reference
-        char* callerReturnAddress;    // return here when called routine exits
-        char* callerErrorProgramCounter; // for error reporting
-        char callerCalcStackLevels;     // calculation stack levels in use by caller
-        char callerFunctionIndex;       // for error messages only
+        char** pSourceVarTypes ;        // variables or array elements passed by reference, only: references to variable types 
+        char* pLocalVarTypes ;          // local float, local string, reference
+        
+        char* pPendingStep;             // next step to execute (look ahead)
+        char* errorStatementStartStep;  // first token in statement where execution error occurs (error reporting)
+        char* errorProgramCounter;      // token to point to in statement (^) if execution error occurs (error reporting)
+        
+        char functionIndex;             // for error messages only
+        char callerCalcStackLevels;     // calculation stack levels in use by caller(s) and main (call stack)
     };
     
 
@@ -324,7 +327,6 @@ public:
 
     char _arrayDimCount { 0 };
     char* _programCounter { nullptr };                                // pointer to token memory address (not token step n°)
-    char* _errorProgramCounter { nullptr };                                // pointer to token memory address (not token step n°)
 
     uint16_t _paramIsArrayPattern { 0 };
 
@@ -392,13 +394,13 @@ public:
     void* arrayElemAddress( void* varBaseAddress, int* dims );
 
     execResult_type  exec();
-    execResult_type  execParenthesesPair( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount, char * & pPendingStep, int& activeFunctionIndex );
-    execResult_type  execAllProcessedOperators( char* pPendingStep );
+    execResult_type  execParenthesesPair( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount);
+    execResult_type  execAllProcessedOperators( );
     
     execResult_type  execPrefixOperation();
     execResult_type  execInfixOperation();
     execResult_type  execInternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount );
-    execResult_type  launchExternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount, char*& pPendingStep , int& activeFunctionIndex);
+    execResult_type  launchExternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount);
     void makeIntermediateConstant( LE_calcStack* pcalcStackLvl );
 
     Interpreter::execResult_type arrayAndSubscriptsToarrayElement( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount );
