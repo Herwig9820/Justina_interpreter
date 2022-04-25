@@ -117,10 +117,7 @@ public:
         result_stringExpected,
         result_undefined,
         result_overflow,
-        result_underflow,
-
-        result_calcStackError,
-        result_flowCtrlStackError
+        result_underflow
     };
 
     static constexpr uint8_t extFunctionBit { B00000001 };
@@ -251,7 +248,7 @@ public:
         char* tokenAddress;                                     // must be second 4-byte word, only for finding source error position during unparsing (for printing)
     };
 
-    union LE_calcStack {
+    union LE_evalStack {
         genericTokenLvl genericToken;
         VarOrConstLvl varOrConst;
         FunctionLvl function;
@@ -269,7 +266,7 @@ public:
         char* errorProgramCounter;      // token to point to in statement (^) if execution error occurs (error reporting)
         
         char functionIndex;             // for error messages only
-        char callerCalcStackLevels;     // calculation stack levels in use by caller(s) and main (call stack)
+        char callerEvalStackLevels;     // evaluation stack levels in use by caller(s) and main (call stack)
     };
     
 
@@ -307,6 +304,9 @@ public:
     static constexpr char promptText [10] = "Justina> ";
     static constexpr int _promptLength = sizeof( promptText ) - 1;////
 
+    int intermediateStringObjectCount=0, variableStringObjectCount=0, lastValuesStringObjectCount=0;
+
+    
     char _instruction [_maxInstructionChars + 1] = "";
     int _instructionCharCount { 0 };
     bool _programMode { false };
@@ -368,13 +368,13 @@ public:
     char* extFunctionNames [MAX_EXT_FUNCS];
     ExtFunctionData extFunctionData [MAX_EXT_FUNCS];
 
-    LE_calcStack* _pCalcStackTop { nullptr }, * _pCalcStackMinus1 { nullptr }, * _pCalcStackMinus2 { nullptr };
+    LE_evalStack* _pEvalStackTop { nullptr }, * _pEvalStackMinus1 { nullptr }, * _pEvalStackMinus2 { nullptr };
     void* _pFlowCtrlStackTop { nullptr }, * _pFlowCtrlStackMinus1 { nullptr }, * _pFlowCtrlStackMinus2 { nullptr };
 
-    Val lastResultValueFiFo [MAX_LAST_RESULT_DEPTH];                // keep last calculation results
+    Val lastResultValueFiFo [MAX_LAST_RESULT_DEPTH];                // keep last evaluation results
     char lastResultTypeFiFo [MAX_LAST_RESULT_DEPTH] { var_noValue };
 
-    LinkedList execStack;
+    LinkedList evalStack;
     LinkedList flowCtrlStack;
 
 
@@ -387,26 +387,26 @@ public:
     bool run( Stream* const pConsole, Stream** const pTerminal, int definedTerms );
     bool processCharacter( char c );
     void (*_callbackFcn)(bool& requestQuit);                                         // pointer to callback function for heartbeat
-    void setCalcMainLoopCallback( void (*func)(bool& requistQuit) );                   // set callback function for connection state change
+    void setMainLoopCallback( void (*func)(bool& requistQuit) );                   // set callback function for connection state change
     void* fetchVarBaseAddress( TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& variableAttributes );
     void* arrayElemAddress( void* varBaseAddress, int* dims );
 
     execResult_type  exec();
-    execResult_type  execParenthesesPair( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount);
+    execResult_type  execParenthesesPair( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount);
     execResult_type  execAllProcessedOperators( );
     
     execResult_type  execPrefixOperation();
     execResult_type  execInfixOperation();
-    execResult_type  execInternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount );
-    execResult_type  launchExternalFunction( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount);
-    void makeIntermediateConstant( LE_calcStack* pcalcStackLvl );
+    execResult_type  execInternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
+    execResult_type  launchExternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount);
+    void makeIntermediateConstant( LE_evalStack* pEvalStackLvl );
 
-    Interpreter::execResult_type arrayAndSubscriptsToarrayElement( LE_calcStack*& pPrecedingStackLvl, LE_calcStack*& pLeftParStackLvl, int argCount );
+    Interpreter::execResult_type arrayAndSubscriptsToarrayElement( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
 
     void saveLastValue();
-    void clearExecStack();
+    void clearEvalStack();
 
-    void deleteStackArguments( LE_calcStack* pPrecedingStackLvl, int argCount, bool includePreceding );
+    void deleteStackArguments( LE_evalStack* pPrecedingStackLvl, int argCount, bool includePreceding );
 
     bool PushTerminalToken( int& tokenType );
     bool pushResWord( int& tokenType );
@@ -879,7 +879,7 @@ private:
     int _lastTokenIsTerminal_hold ;
     int _previousTokenIsTerminal ;
 
-    Interpreter* _pcalculator;
+    Interpreter* _pInterpreter;
 
 public:
     const char* _pCmdAllowedParTypes;
@@ -918,7 +918,7 @@ public:
     bool initVariable( uint16_t varTokenStep, uint16_t constTokenStep );
 
 
-    MyParser( Interpreter* const pcalculator );                                                 // constructor
+    MyParser( Interpreter* const pInterpreter );                                                 // constructor
     ~MyParser();                                                 // constructor
     void resetMachine( bool withUserVariables );
     void deleteConstStringObjects( char* pToken );
