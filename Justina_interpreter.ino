@@ -221,7 +221,7 @@ void loop() {
 
             // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
             // this callback function will be called regularly, e.g. every time the interpreter reads a character
-            pcalculator->setCalcMainLoopCallback( (&housekeeping) );                    // set callback function to housekeeping routine in this .ino file
+            pcalculator->setMainLoopCallback( (&housekeeping) );                    // set callback function to housekeeping routine in this .ino file
 
             interpreterInMemory = pcalculator->run( pConsole, pTerminal, terminalCount );                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
             if ( !interpreterInMemory ) {                                               // interpreter not running anymore ?

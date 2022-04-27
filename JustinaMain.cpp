@@ -20,7 +20,16 @@ int LinkedList::_listIDcounter = 0;
 
 LinkedList::LinkedList() {
     _listID = _listIDcounter;
-    _listIDcounter++;
+    _listIDcounter++;       // static variable
+}
+
+
+// ---------------------
+// *   deconstructor   *
+// ---------------------
+
+LinkedList::~LinkedList() {
+    _listIDcounter--;       // static variable
 }
 
 
@@ -144,6 +153,25 @@ char* LinkedList::getNextListElement( void* pPayload ) {
 }
 
 
+//-------------------------------------------------------------
+// *   get the list ID (depends on the order of creation !)   *
+//-------------------------------------------------------------
+
+int LinkedList::getListID() {
+    return _listID;
+}
+
+
+//-------------------------------
+// *   get list element count   *
+//-------------------------------
+
+int LinkedList::getElementCount() {
+    return _listElementCount;
+}
+
+
+
 /***********************************************************
 *                      class Interpreter                    *
 ***********************************************************/
@@ -159,7 +187,7 @@ Interpreter::Interpreter( Stream* const pConsole ) : _pConsole( pConsole ) {
     _quitCalcAtEOF = false;
     _isPrompt = false;
 
-    // init 'machine' (not a complete reset, because this clears heap objects for this calculator object, and there are none)
+    // init 'machine' (not a complete reset, because this clears heap objects for this Interpreter object, and there are none)
     _programVarNameCount = 0;
     _staticVarCount = 0;
     _localVarCountInFunction = 0;
@@ -198,17 +226,17 @@ Interpreter::~Interpreter() {
 
 
 // ----------------------------
-// *   calculator main loop   *
+// *   interpreter main loop   call back   *
 // ----------------------------
 
-void Interpreter::setCalcMainLoopCallback( void (*func)(bool& requestQuit) ) {
+void Interpreter::setMainLoopCallback( void (*func)(bool& requestQuit) ) {
     // initialize callback function (e.g. to maintain a TCP connection, to implement a heartbeat, ...)
     _callbackFcn = func;
 }
 
 
 // ----------------------------
-// *   calculator main loop   *
+// *   interpreter main loop   *
 // ----------------------------
 
 bool Interpreter::run( Stream* const pConsole, Stream** const pTerminal, int definedTerms ) {
@@ -232,7 +260,7 @@ bool Interpreter::run( Stream* const pConsole, Stream** const pTerminal, int def
     } while ( true );
 
     if ( _keepInMemory ) { _pConsole->println( "Justina: bye\r\n" ); }        // if remove from memory: message given in destructor
-    _quitCalcAtEOF = false;         // if calculator stays in memory: re-init
+    _quitCalcAtEOF = false;         // if interpreter stays in memory: re-init
     return _keepInMemory;
 }
 
@@ -327,7 +355,7 @@ bool Interpreter::processCharacter( char c ) {
         if ( !_programMode && !isLeadingSpace && !(c == '\n') && (_StarCmdCharCount >= 0) ) {
             if ( c == quitCalc [_StarCmdCharCount] ) {
                 _StarCmdCharCount++;
-                if ( quitCalc [_StarCmdCharCount] == '\0' ) { _flushAllUntilEOF = true; _quitCalcAtEOF = true; return false; }         // perfect match: set flag to exit calculator
+                if ( quitCalc [_StarCmdCharCount] == '\0' ) { _flushAllUntilEOF = true; _quitCalcAtEOF = true; return false; }         // perfect match: set flag to exit interpreter
                 else  if ( _StarCmdCharCount == strlen( quitCalc ) ) { _StarCmdCharCount = -1; }  // -1: no match: no further checking for now
             }
             else { _StarCmdCharCount = -1; };     // -1: no match: no further checking for now
