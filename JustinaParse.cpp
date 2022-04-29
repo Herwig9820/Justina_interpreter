@@ -1,6 +1,6 @@
 #include "Justina.h"
 
-#define printCreateDeleteHeapObjects 0
+#define printCreateDeleteHeapObjects 1
 
 
 /***********************************************************
@@ -142,11 +142,10 @@ void MyParser::deleteIdentifierNameObjects( char** pIdentNameArray, int identifi
     int index = 0;          // points to last variable in use
     while ( index < identifiersInUse ) {                       // points to variable in use
 #if printCreateDeleteHeapObjects
-        Serial.print( "(HEAP) Delete heap object # " ); Serial.print( _heapObjectCount ); Serial.print( ": identifier name, addr " );
-        Serial.println( (uint32_t) * (pIdentNameArray + index) - RAMSTART );
+        Serial.print( "----- (Ident name ) " ); Serial.println( (uint32_t) * (pIdentNameArray + index) - RAMSTART );
 #endif
         delete [] * (pIdentNameArray + index);
-        _heapObjectCount--;
+        _pInterpreter->identifierNameStringObjectCount--;
         index++;
     }
 }
@@ -174,11 +173,10 @@ void MyParser::deleteArrayElementStringObjects( Interpreter::Val* varValues, cha
                     uint32_t stringPointerAddress = (uint32_t) & (((char**) pArrayStorage) [arrayElem]);
                     if ( pString != nullptr ) {
 #if printCreateDeleteHeapObjects
-                        Serial.print( "(HEAP) Delete heap object # " ); Serial.print( _heapObjectCount ); Serial.print( ": array element string value, addr " );
-                        Serial.println( (uint32_t) pString - RAMSTART );     // applicable to string and array (same pointer)
+                        Serial.print( "----- (arr string ) " ); Serial.println( (uint32_t) pString - RAMSTART );     // applicable to string and array (same pointer)
 #endif
                         delete []  pString;                                  // applicable to string and array (same pointer)
-                        _heapObjectCount--;
+                        _pInterpreter->variableStringObjectCount--;
                     }
                 }
             }
@@ -198,14 +196,21 @@ void MyParser::deleteVariableValueObjects( Interpreter::Val* varValues, char* va
     int index = 0;
     while ( index < varNameCount ) {
         if ( !checkIfGlobalValue || (varType [index] & (_pInterpreter->var_hasGlobalValue)) ) { // global value ?
-            if ( varType [index] & (_pInterpreter->var_isArray | _pInterpreter->value_isStringPointer) ) {              // scalar string or array (of strings or floats)
+            // check before checking for strings (if both 'var_isArray' and 'value_isStringPointer' bits are set: array of strings, with strings already deleted)
+            if ( varType [index] & _pInterpreter->var_isArray ) {       // variable is an array: delete array storage          
+#if printCreateDeleteHeapObjects
+                Serial.print( "----- (array stor ) " ); Serial.println( (uint32_t) varValues [index].pStringConst - RAMSTART );
+#endif
+                delete []  varValues [index].pArray;
+                _pInterpreter->arrayObjectCount--;
+            }
+            else if ( varType [index] & _pInterpreter->value_isStringPointer ) {       // variable is a scalar containing a string
                 if ( varValues [index].pStringConst != nullptr ) {
 #if printCreateDeleteHeapObjects
-                    Serial.print( "(HEAP) Delete heap object # " ); Serial.print( _heapObjectCount ); Serial.print( ": variable string value or array storage, addr " );
-                    Serial.println( (uint32_t) varValues [index].pStringConst - RAMSTART );     // applicable to string and array (same pointer)
+                    Serial.print( "----- (var string ) " ); Serial.println( (uint32_t) varValues [index].pStringConst - RAMSTART );
 #endif
-                    delete []  varValues [index].pStringConst;                                  // applicable to string and array (same pointer)
-                    _heapObjectCount--;
+                    delete []  varValues [index].pStringConst;
+                    _pInterpreter->variableStringObjectCount--;
                 }
             }
         }
@@ -214,8 +219,30 @@ void MyParser::deleteVariableValueObjects( Interpreter::Val* varValues, char* va
 }
 
 
+// ----------------------------------------------------------------------------------------------
+// *   delete variable heap objects: scalar variable strings and array variable array storage   *
+// ----------------------------------------------------------------------------------------------
+
+void MyParser::deleteLastValueFiFoStringObjects() {
+
+    if ( _pInterpreter->_lastResultCount == 0 ) return;
+
+    for ( int i = 0; i < _pInterpreter->_lastResultCount; i++ ) {
+        bool isNonEmptyString = (_pInterpreter->lastResultTypeFiFo [i] == _pInterpreter->value_isStringPointer) ? (_pInterpreter->lastResultValueFiFo [i].pStringConst != nullptr) : false;
+        if ( isNonEmptyString ) {
+#if printCreateDeleteHeapObjects
+            Serial.print( "----- (FiFo string) " ); Serial.println( (uint32_t) _pInterpreter->lastResultValueFiFo [i].pStringConst - RAMSTART );
+#endif
+            delete [] _pInterpreter->lastResultValueFiFo [i].pStringConst;
+            _pInterpreter->lastValuesStringObjectCount--;
+        }
+    }
+}
+
+
+
 // -----------------------------------------------------------------------------------------
-// *   delete all alphanumeric constant value heap objects                                 *
+// *   delete all parsed alphanumeric constant value heap objects                          *
 // *   note: this includes UNQUALIFIED identifier names stored as alphanumeric constants   *
 // -----------------------------------------------------------------------------------------
 
@@ -228,14 +255,13 @@ void MyParser::deleteConstStringObjects( char* programStart ) {
     uint8_t tokenType = *prgmCnt.pTokenChars & 0x0F;
     while ( tokenType != '\0' ) {                                                                    // for all tokens in token list
         if ( (tokenType == Interpreter::tok_isStringConst) || (tokenType == Interpreter::tok_isGenericName) ) {
+            memcpy( &pAnum, prgmCnt.pAnumP->pStringConst, sizeof( pAnum ) );                         // pointer not necessarily aligned with word size: copy memory instead
             if ( pAnum != nullptr ) {
 #if printCreateDeleteHeapObjects
-                memcpy( &pAnum, prgmCnt.pAnumP->pStringConst, sizeof( pAnum ) );                         // pointer not necessarily aligned with word size: copy memory instead
-                Serial.print( "(HEAP) Delete heap object # " ); Serial.print( _heapObjectCount ); Serial.print( ": string const value, addr " );
-                Serial.println( (uint32_t) pAnum - RAMSTART );
+                Serial.print( "----- (parsed str ) " );   Serial.println( (uint32_t) pAnum - RAMSTART );
 #endif
                 delete [] pAnum;
-                _heapObjectCount--;
+                _pInterpreter->parsedStringConstObjectCount--;
             }
         }
         uint8_t tokenLength = (tokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*prgmCnt.pTokenChars >> 4) & 0x0F;
@@ -258,7 +284,10 @@ void MyParser::resetMachine( bool withUserVariables ) {
     // delete variable heap objects: array variable element string objects
     deleteArrayElementStringObjects( _pInterpreter->globalVarValues, _pInterpreter->globalVarType, _pInterpreter->_programVarNameCount, true );
     deleteArrayElementStringObjects( _pInterpreter->staticVarValues, _pInterpreter->staticVarType, _pInterpreter->_staticVarCount, false );
-    if ( withUserVariables ) { deleteArrayElementStringObjects( _pInterpreter->userVarValues, _pInterpreter->userVarType, _pInterpreter->_userVarCount, false ); }
+    if ( withUserVariables ) {
+        deleteArrayElementStringObjects( _pInterpreter->userVarValues, _pInterpreter->userVarType, _pInterpreter->_userVarCount, false );
+        deleteLastValueFiFoStringObjects();
+    }
 
     // delete variable heap objects: scalar variable strings and array variable array storage 
     deleteVariableValueObjects( _pInterpreter->globalVarValues, _pInterpreter->globalVarType, _pInterpreter->_programVarNameCount, true );
@@ -285,6 +314,10 @@ void MyParser::resetMachine( bool withUserVariables ) {
         while ( index++ < _pInterpreter->_userVarCount ) { _pInterpreter->userVarType [index] = _pInterpreter->userVarType [index] & ~_pInterpreter->var_userVarUsedByProgram; }
     }
 
+
+    // perform consistency checks: verify that all objects created are destroyed again
+    // note: intermediate string objects exist solely during execution. The count is checked each time executin terminates 
+
     _pInterpreter->_programStart = _pInterpreter->_programStorage + (_pInterpreter->_programMode ? 0 : _pInterpreter->PROG_MEM_SIZE);
     _pInterpreter->_programSize = _pInterpreter->_programSize + (_pInterpreter->_programMode ? _pInterpreter->PROG_MEM_SIZE : _pInterpreter->IMM_MEM_SIZE);
     _pInterpreter->_programCounter = _pInterpreter->_programStart;                          // start of 'immediate mode' program area
@@ -292,8 +325,37 @@ void MyParser::resetMachine( bool withUserVariables ) {
     *_pInterpreter->_programStorage = '\0';                                    //  current end of program 
     *_pInterpreter->_programStart = '\0';                                      //  current end of program (immediate mode)
 
-    //// test
-    if ( withUserVariables && (_heapObjectCount != 0) ) { Serial.print( "\r\n\r\n****************************\r\nmissing object deletes: " ); Serial.println( _heapObjectCount ); } ////
+    // string and array heap objects: any objects left ?
+    if ( _pInterpreter->identifierNameStringObjectCount != 0 ) {
+        Serial.print( "*** Identifier name objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->identifierNameStringObjectCount );
+    }
+    if ( _pInterpreter->parsedStringConstObjectCount != 0 ) {
+        Serial.print( "*** Parsed constant string objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->parsedStringConstObjectCount );
+    }
+    if ( _pInterpreter->variableStringObjectCount != 0 ) {
+        Serial.print( "*** Variable string objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->variableStringObjectCount );
+    }
+    if ( _pInterpreter->lastValuesStringObjectCount != 0 ) {
+        Serial.print( "*** Last value FiFo string objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->lastValuesStringObjectCount );
+    }
+    if ( _pInterpreter->arrayObjectCount != 0 ) {
+        Serial.print( "*** Array objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->arrayObjectCount );
+    }
+
+    // parsing stack: any list elements left ?
+    if ( parsingStack.getElementCount() != 0 ) {
+        Serial.print( "*** Parsing stack error. Remaining stack levels: " ); Serial.println( parsingStack.getElementCount() );
+    }
+
+    _pInterpreter->identifierNameStringObjectCount = 0;
+    _pInterpreter->parsedStringConstObjectCount = 0;
+    _pInterpreter->variableStringObjectCount = 0;
+    _pInterpreter->lastValuesStringObjectCount = 0;
+    _pInterpreter->arrayObjectCount = 0;
+    // note: intermediateStringObjectCount is not tested, neither is it reset, here. It is a purely execution related object
+
+    _pInterpreter->_lastResultCount = 0;                                       // current last result FiFo depth (values currently stored)
+
 }
 
 
@@ -323,12 +385,10 @@ int MyParser::getIdentifier( char** pIdentNameArray, int& identifiersInUse, int 
 
     if ( createNewName ) {
         if ( identifiersInUse == maxIdentifiers ) { return index; }                // create identifier name failed: return -1 with createNewName = true
-
         pIdentifierName = new char [_maxIdentifierNameLen + 1 + 1];                      // create standard length char array on the heap, including '\0' and an extra character 
-        _heapObjectCount++;
+        _pInterpreter->identifierNameStringObjectCount++;
 #if printCreateDeleteHeapObjects
-        Serial.print( "(HEAP) Create object # " ); Serial.print( _heapObjectCount ); Serial.print( ": identifier name, addr " );
-        Serial.println( (uint32_t) pIdentifierName - RAMSTART );
+        Serial.print( "+++++ (ident name ) " ); Serial.println( (uint32_t) pIdentifierName - RAMSTART );
 #endif
         strncpy( pIdentifierName, pIdentNameToCheck, identLength );                            // store identifier name in newly created character array
         pIdentifierName [identLength] = '\0';                                                 // string terminating '\0'
@@ -373,7 +433,9 @@ bool MyParser::initVariable( uint16_t varTokenStep, uint16_t constTokenStep ) {
         if ( isNumberCst ) { for ( int arrayElem = 1; arrayElem <= arrayElements; arrayElem++ ) { ((float*) pArrayStorage) [arrayElem] = f; } }
         else {                                                      // alphanumeric constant
             if ( length != 0 ) { return false; };       // to limit memory usage, no mass initialisation with non-empty strings
-            for ( int arrayElem = 1; arrayElem <= arrayElements; arrayElem++ ) { ((char**) pArrayStorage) [arrayElem] = nullptr; }
+            for ( int arrayElem = 1; arrayElem <= arrayElements; arrayElem++ ) {
+                ((char**) pArrayStorage) [arrayElem] = nullptr;
+            }
         }
     }
 
@@ -382,25 +444,19 @@ bool MyParser::initVariable( uint16_t varTokenStep, uint16_t constTokenStep ) {
             ((float*) pVarStorage) [varValueIndex] = f;
         }      // store numeric constant
         else {                                                  // alphanumeric constant
-            Serial.print("length: "); Serial.println(length);
             if ( length == 0 ) {
                 ((char**) pVarStorage) [varValueIndex] = nullptr;       // an empty string does not create a heap object
             }
             else { // create string object and store string
-                char* pVarAlphanumValue = new char [length + 1]; _pInterpreter->variableStringObjectCount++;         // create char array on the heap to store alphanumeric constant, including terminating '\0'
-                _heapObjectCount++;
+                char* pVarAlphanumValue = new char [length + 1];          // create char array on the heap to store alphanumeric constant, including terminating '\0'
+                _pInterpreter->variableStringObjectCount++;
 #if printCreateDeleteHeapObjects
-                Serial.print( "(HEAP) Create object # " ); Serial.print( _heapObjectCount ); Serial.print( ": variable string value, addr " );
-                Serial.println( (uint32_t) pVarAlphanumValue - RAMSTART );
+                Serial.print( "+++++ (var string ) " ); Serial.println( (uint32_t) pVarAlphanumValue - RAMSTART );
 #endif
                 // store alphanumeric constant in newly created character array
                 strcpy( pVarAlphanumValue, pString );              // including terminating \0
                 ((char**) pVarStorage) [varValueIndex] = pVarAlphanumValue;       // store pointer to string
             }
-
-            Serial.print( "-- variable init: string pointer address: " ); Serial.println( (uint32_t) & ((char**) pVarStorage) [varValueIndex] - RAMSTART );
-            Serial.print( "--                is empty string: " ); Serial.println( ((char**) pVarStorage) [varValueIndex] == nullptr );
-            Serial.print( "--                string char 0 (hex): " ); Serial.println( ((char**) pVarStorage) [varValueIndex][0], HEX );
         }
     }
     pVarTypeStorage [varValueIndex] = (pVarTypeStorage [varValueIndex] & ~_pInterpreter->value_typeMask) | (isNumberCst ? _pInterpreter->value_isFloat : _pInterpreter->value_isStringPointer);
@@ -945,10 +1001,9 @@ bool MyParser::parseAsStringConstant( char*& pNext, parseTokenResult_type& resul
 
     // token is an alphanumeric constant, and it's allowed here
         pStringCst = new char [pNext - (pch + 1) - escChars + 1];                                // create char array on the heap to store alphanumeric constant, including terminating '\0'
-        _heapObjectCount++;
+        _pInterpreter->parsedStringConstObjectCount++;
 #if printCreateDeleteHeapObjects
-        Serial.print( "(HEAP) Create object # " ); Serial.print( _heapObjectCount ); Serial.print( ": string const value, addr " );
-        Serial.println( (uint32_t) pStringCst - RAMSTART );
+        Serial.print( "+++++ (parsed str ) " ); Serial.println( (uint32_t) pStringCst - RAMSTART );
 #endif
         // store alphanumeric constant in newly created character array
         pStringCst [pNext - (pch + 1) - escChars] = '\0';                                 // store string terminating '\0' (pch + 1 points to character after opening quote, pNext points to closing quote)
@@ -1276,17 +1331,16 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
             if ( isUserVar || isGlobalVar || isStaticVar ) {
                 for ( int dimCnt = 0; dimCnt < array_dimCounter; dimCnt++ ) { arrayElements *= arrayDef_dims [dimCnt]; }
                 pArray = new float [arrayElements + 1];
-                _heapObjectCount++;
-
+                _pInterpreter->arrayObjectCount++;
 #if printCreateDeleteHeapObjects
-                Serial.print( "(HEAP) Create object # " ); Serial.print( _heapObjectCount ); Serial.print( ": array storage, addr " );
-                Serial.println( (uint32_t) pArray - RAMSTART );
+                Serial.print( "+++++ (array stor ) " ); Serial.println( (uint32_t) pArray - RAMSTART );
 #endif
                 // only now, the array flag can be set, because only now the object exists
                 if ( isUserVar ) {
                     _pInterpreter->userVarValues [valueIndex].pArray = pArray;
                     _pInterpreter->userVarType [varNameIndex] |= _pInterpreter->var_isArray;             // set array bit
-                    _pInterpreter->_userVarCount++;                                                     // user array variable is now considered 'created'//// ook doen voor global en static ? (consistentie)
+                    // USER variables can only be created now to prevent inconsistency if an issue with array dimensions: sufficient to perform increment of _userVarCount here
+                    _pInterpreter->_userVarCount++;                                                     // user array variable is now considered 'created'
                 }
                 else if ( isGlobalVar ) {
                     _pInterpreter->globalVarValues [valueIndex].pArray = pArray;
@@ -2103,11 +2157,11 @@ bool MyParser::parseAsIdentifierName( char*& pNext, parseTokenResult_type& resul
 
     // token is an identifier name, and it's allowed here
     char* pProgramName = new char [pNext - pch + 1];                    // create char array on the heap to store identifier name, including terminating '\0'
-    _heapObjectCount++;
+    _pInterpreter->parsedStringConstObjectCount++;
 #if printCreateDeleteHeapObjects
-    Serial.print( "(HEAP) Create object # " ); Serial.print( _heapObjectCount ); Serial.print( ": generic name, addr " );
-    Serial.println( (uint32_t) pProgramName - RAMSTART );
+    Serial.print( "+++++ (parsed str ) " ); Serial.println( (uint32_t) pProgramName - RAMSTART );
 #endif
+
     strncpy( pProgramName, pch, pNext - pch );                            // store identifier name in newly created character array
     pProgramName [pNext - pch] = '\0';                                                 // string terminating '\0'
 
@@ -2256,159 +2310,6 @@ void MyParser::prettyPrintInstructions( bool printOneInstruction, char* startTok
     _pInterpreter->_pConsole->println(); _pInterpreter->_isPrompt = false;
 }
 
-
-/*
-// -----------------------------------------
-// *   pretty print a parsed instruction   *
-// -----------------------------------------
-
-void MyParser::old_prettyPrintProgram() {
-    // define these variables outside switch statement, to prevent undefined behaviour
-    const int maxCharsPretty { 100 };       //// check lengte
-    char prettyToken [maxCharsPretty] = "";
-    int identNameIndex, valueIndex;
-    char s [100] = "";      //// check op overrun
-    char qual [20] = "";
-    char pch [3] = "";
-    int len;
-    int index;
-    char* identifierName, * varStrValue;
-    bool isStringValue;
-    float f;
-    char* pAnum;
-    uint32_t funcStart = 0;
-    char tokenInfo = 0;
-    uint8_t varScope = 0;
-    bool isArray;
-    bool hasTokenStep;
-
-    TokenPointer progCnt;
-    progCnt.pTokenChars = _pInterpreter->_programStart;
-    int tokenType = *progCnt.pTokenChars & 0x0F;
-    char pTokenStepPointedTo [2];
-    uint16_t toTokenStep;
-    TokenIsResWord* pTokenChars;
-
-    while ( tokenType != '\0' ) {                                                                    // for all tokens in token list
-        uint16_t tokenStep = (uint16_t) (progCnt.pTokenChars - _pInterpreter->_programStorage);
-        strcpy( prettyToken, "" );
-
-        switch ( tokenType ) {
-        case Interpreter::tok_isReservedWord:
-            pTokenChars = (TokenIsResWord*) progCnt.pTokenChars;
-            hasTokenStep = (_resWords [progCnt.pResW->tokenIndex].cmdBlockDef.blockType != block_none);
-            if ( hasTokenStep ) {
-                memcpy( &toTokenStep, pTokenChars->toTokenStep, sizeof( char [2] ) );
-                sprintf( s, "(step %d) resW: %s, points to step %d", tokenStep, _resWords [progCnt.pResW->tokenIndex]._resWordName, toTokenStep );
-            }
-            else { sprintf( s, "(step %d) resW: %s", tokenStep, _resWords [progCnt.pResW->tokenIndex]._resWordName ); }
-            break;
-
-        case Interpreter::tok_isInternFunction:
-            sprintf( s, "(step %d) int func: %s", tokenStep, _functions [progCnt.pIntFnc->tokenIndex].funcName );
-            break;
-
-        case Interpreter::tok_isExternFunction:
-            identNameIndex = (int) progCnt.pExtFnc->identNameIndex;   // external function list element
-            identifierName = _pInterpreter->extFunctionNames [identNameIndex];
-            funcStart = (uint32_t) _pInterpreter->extFunctionData [identNameIndex].pExtFunctionStartToken;
-            if ( funcStart != 0 ) { funcStart -= (uint32_t) _pInterpreter->_programStorage; }
-            sprintf( s, "(step %d) ext func nr %d: %s, start: %lu", tokenStep, identNameIndex, identifierName, funcStart );
-            break;
-
-        case Interpreter::tok_isVariable:
-            identNameIndex = (int) (progCnt.pVar->identNameIndex);
-            valueIndex = (int) (progCnt.pVar->identValueIndex);
-
-            identifierName = _pInterpreter->programVarNames [identNameIndex];
-            tokenInfo = progCnt.pVar->identInfo;
-            isArray = (tokenInfo & _pInterpreter->var_isArray);
-            varScope = (tokenInfo & _pInterpreter->var_scopeMask);
-
-            //// aanpassen:
-            ////isUserVar = (progCnt.pVar->identInfo & _pInterpreter->var_scopeMask) == _pInterpreter->var_isUser;
-            ////identifierName = isUserVar ? _pInterpreter->userVarNames [identNameIndex] : _pInterpreter->programVarNames [identNameIndex];
-
-            isStringValue = (varScope == _pInterpreter->var_isGlobal) ? (_pInterpreter->globalVarType [valueIndex] & _pInterpreter->value_typeMask) == _pInterpreter->value_isStringPointer :
-                (varScope == _pInterpreter->var_isStaticInFunc) ? (_pInterpreter->staticVarType [valueIndex] & _pInterpreter->value_typeMask) == _pInterpreter->value_isStringPointer :
-                (_pInterpreter->localVarType [valueIndex] & _pInterpreter->value_typeMask) == _pInterpreter->value_isStringPointer;
-
-
-            strcpy( qual, varScope == _pInterpreter->var_isGlobal ? "global" : varScope == _pInterpreter->var_isParamInFunc ? "Param" :
-                varScope == _pInterpreter->var_isLocalInFunc ? "local" : varScope == _pInterpreter->var_isStaticInFunc ? "static" : "???" );
-
-            if ( isArray ) {
-                sprintf( s, "(step %d) %s array: %s", tokenStep, qual, identifierName );
-            }
-            else {
-                if ( isStringValue ) {
-                    if ( varScope == _pInterpreter->var_isGlobal ) { varStrValue = _pInterpreter->globalVarValues [identNameIndex].pStringConst; } // also ok for array pointer
-                    else if ( varScope == _pInterpreter->var_isStaticInFunc ) { varStrValue = _pInterpreter->staticVarValues [valueIndex].pStringConst; }
-                    else { varStrValue = nullptr; }
-                    sprintf( s, "(step %d) %s string: %s, AN cst: <%s>", tokenStep, qual, identifierName, (varStrValue == nullptr) ? "" : varStrValue );
-                }
-
-                else {
-                    if ( varScope == _pInterpreter->var_isGlobal ) { f = _pInterpreter->globalVarValues [identNameIndex].realConst; }
-                    else if ( varScope == _pInterpreter->var_isStaticInFunc ) { f = _pInterpreter->staticVarValues [valueIndex].realConst; }
-                    else { f = 0. + valueIndex; }      // no local variable storage yet (test value only)
-                    sprintf( s, "(step %d) %s float: %s, Num: %.3G", tokenStep, qual, identifierName, f );
-                }
-            }
-            break;
-
-        case Interpreter::tok_isRealConst:
-            memcpy( &f, progCnt.pFloat->realConst, sizeof( f ) );                         // pointer not necessarily aligned with word size: copy memory instead
-            sprintf( s, "(step %d) Num: %.3G", tokenStep, f );
-            break;
-
-        case Interpreter::tok_isStringConst:
-            memcpy( &pAnum, progCnt.pAnumP->pStringConst, sizeof( pAnum ) );                         // pointer not necessarily aligned with word size: copy memory instead
-            sprintf( s, "(step %d) AN cst: <%s>", tokenStep, pAnum );
-            break;
-
-        case Interpreter::tok_isGenericName:
-            memcpy( &pAnum, progCnt.pAnumP->pStringConst, sizeof( pAnum ) );                         // pointer not necessarily aligned with word size: copy memory instead
-            sprintf( s, "(step %d) Identifier name: %s", tokenStep, pAnum );
-            break;
-
-        case Interpreter::tok_isTerminalGroup1:
-            len = strlen( singleCharTokens );
-            index = (progCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F;
-            if ( index < len ) { pch [0] = singleCharTokens [index]; pch [1] = '\0'; }
-            else {
-                strcat( pch, ((index == len) ? "<=" : (index == len + 1) ? ">=" : "<>") );
-            }
-            sprintf( s, "(step %d) Op: %s", tokenStep, pch );
-            break;
-
-        case Interpreter::tok_isCommaSeparator:
-            sprintf( s, "(step %d) Sep: %c", tokenStep, singleCharTokens [(progCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F] );
-            break;
-
-        case Interpreter::tok_isSemiColonSeparator:
-            sprintf( s, "(step %d) Sep: %c", tokenStep, singleCharTokens [(progCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F] );
-            break;
-
-        case Interpreter::tok_isLeftParenthesis:
-            sprintf( s, "(step %d) Par: %c", tokenStep, singleCharTokens [(progCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F] );
-            break;
-
-        case Interpreter::tok_isRightParenthesis:
-            sprintf( s, "(step %d) Par.: %c", tokenStep, singleCharTokens [(progCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F] );
-            break;
-
-        }
-
-        // append pretty printed token to character string (if still place left)
-        if ( strlen( s ) <= maxCharsPretty ) { strcat( prettyToken, s ); }
-        ////if ( strlen( prettyToken ) > 0 ) { Serial.println( prettyToken ); }
-        int tokenLength = (tokenType >=Interpreter::tok_isTerminalGroup1) ? 1 : (*progCnt.pTokenChars >> 4) & 0x0F;
-        progCnt.pTokenChars += tokenLength;
-        tokenType = *progCnt.pTokenChars & 0x0F;
-    }
-}
-*/
 
 // ----------------------------
 // *   print parsing result   *

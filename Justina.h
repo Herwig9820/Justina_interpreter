@@ -72,8 +72,8 @@ public:
     char* getLastListElement();
     char* getPrevListElement( void* pPayload );
     char* getNextListElement( void* pPayload );
-    int getElementCount(  );
-    int getListID(  );
+    int getElementCount();
+    int getListID();
 };
 
 
@@ -255,20 +255,20 @@ public:
         TerminalTokenLvl terminal;
     };
 
-    
+
     struct FunctionData {
-        Val* pLocalVarValues ;
-        char** pSourceVarTypes ;        // variables or array elements passed by reference, only: references to variable types 
-        char* pLocalVarTypes ;          // local float, local string, reference
-        
+        Val* pLocalVarValues;
+        char** pSourceVarTypes;        // variables or array elements passed by reference, only: references to variable types 
+        char* pLocalVarTypes;          // local float, local string, reference
+
         char* pPendingStep;             // next step to execute (look ahead)
         char* errorStatementStartStep;  // first token in statement where execution error occurs (error reporting)
         char* errorProgramCounter;      // token to point to in statement (^) if execution error occurs (error reporting)
-        
+
         char functionIndex;             // for error messages only
         char callerEvalStackLevels;     // evaluation stack levels in use by caller(s) and main (call stack)
     };
-    
+
 
     // variable scope and value type bits: 
 
@@ -288,7 +288,7 @@ public:
 
     // bit b3 (execution only): the address is the address of an array element. If this bit is zero, the adress is the scalar or array variable base address 
     // maintained in the parsed 'variable' token
-    static constexpr uint8_t var_isArray_pendingSubscripts = 0x08;             
+    static constexpr uint8_t var_isArray_pendingSubscripts = 0x08;
 
     // bit b2: variable is an array (and not a scalar)
     static constexpr uint8_t var_isArray = 0x04;                     // stored with variable attributes and in 'variable' token. Can not be changed at runtime
@@ -297,7 +297,7 @@ public:
     // - PARSED constants (string or real): these constants have a different 'constant' token type, so value type bits are NOT maintained
     // - INTERMEDIATE constants (execution only) and variables: value type is maintained together with variable / intermediate constant data (per variable, array or constant) 
     // Note: because the value type is not fixed for scalar variables (type can dynamically change at runtime), this info is not maintained in the parsed 'variable' token 
-    
+
     static constexpr uint8_t value_typeMask = 0x03;                    // mask: float, char* 
     static constexpr uint8_t value_isFloat = 0 << 0;
     static constexpr uint8_t value_isStringPointer = 1 << 0;
@@ -308,9 +308,13 @@ public:
     static constexpr char promptText [10] = "Justina> ";
     static constexpr int _promptLength = sizeof( promptText ) - 1;////
 
-    int intermediateStringObjectCount=0, variableStringObjectCount=0, lastValuesStringObjectCount=0;
+    // continuous count of string objects created and deleted (note: linked list element count is maintained within the linked list objects)
+    int identifierNameStringObjectCount = 0, parsedStringConstObjectCount = 0;               // created during parsing only
+    int  intermediateStringObjectCount = 0, lastValuesStringObjectCount = 0;            // created during execution only
+    int variableStringObjectCount = 0;                                                  // created during parsing and execution 
+    // continuous count of array objects created and deleted (note: linked list element count is maintained within the linked list objects)
+    int arrayObjectCount = 0;                                                           // created during parsing and execution
 
-    
     char _instruction [_maxInstructionChars + 1] = "";
     int _instructionCharCount { 0 };
     bool _programMode { false };
@@ -395,13 +399,13 @@ public:
     void* arrayElemAddress( void* varBaseAddress, int* dims );
 
     execResult_type  exec();
-    execResult_type  execParenthesesPair( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount);
-    execResult_type  execAllProcessedOperators( );
-    
+    execResult_type  execParenthesesPair( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
+    execResult_type  execAllProcessedOperators();
+
     execResult_type  execPrefixOperation();
     execResult_type  execInfixOperation();
     execResult_type  execInternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
-    execResult_type  launchExternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount);
+    execResult_type  launchExternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
     void makeIntermediateConstant( LE_evalStack* pEvalStackLvl );
 
     Interpreter::execResult_type arrayAndSubscriptsToarrayElement( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
@@ -411,12 +415,12 @@ public:
 
     void deleteStackArguments( LE_evalStack* pPrecedingStackLvl, int argCount, bool includePreceding );
 
-    bool PushTerminalToken( int& tokenType );
-    bool pushResWord( int& tokenType );
-    bool pushFunctionName( int& tokenType );
-    bool pushConstant( int& tokenType );
-    bool pushVariable( int& tokenType );
-    bool pushIdentifierName( int& tokenType );
+    void PushTerminalToken( int& tokenType );
+    void pushResWord( int& tokenType );
+    void pushFunctionName( int& tokenType );
+    void pushConstant( int& tokenType );
+    void pushVariable( int& tokenType );
+    void pushIdentifierName( int& tokenType );
 };
 
 
@@ -503,7 +507,7 @@ public:
 
     enum termin_code {
         // operators
-        termcod_assign = 0,        
+        termcod_assign = 0,
         termcod_lt,
         termcod_gt,
         termcod_ltoe,
@@ -861,9 +865,6 @@ private:
     int _functionCount;                                         // index into list of internal (intrinsic) functions
     int _terminalCount;
 
-    int _heapObjectCount { 0 };                 // note: not counting linked list objects
-
-
 
     uint16_t _lastTokenStep, _lastVariableTokenStep;
     uint16_t _blockCmdTokenStep, _blockStartCmdTokenStep;   // pointers to reserved words used as block commands                           
@@ -879,8 +880,8 @@ private:
     termin_code _previousTermCode;
 
     int _lastTokenIsTerminal;
-    int _lastTokenIsTerminal_hold ;
-    int _previousTokenIsTerminal ;
+    int _lastTokenIsTerminal_hold;
+    int _previousTokenIsTerminal;
 
     Interpreter* _pInterpreter;
 
@@ -910,9 +911,6 @@ public:
     bool parseAsIdentifierName( char*& pNext, parseTokenResult_type& result );
 
     bool checkCommandSyntax( parseTokenResult_type& result );
-    void deleteIdentifierNameObjects( char** pIdentArray, int identifiersInUse );
-    void deleteVariableValueObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue );
-    void deleteArrayElementStringObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue );
     bool checkExtFunctionArguments( parseTokenResult_type& result, int& minArgCnt, int& maxArgCnt );
     bool checkArrayDimCountAndSize( parseTokenResult_type& result, int* arrayDef_dims, int& dimCnt );
     int getIdentifier( char** pIdentArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNew );
@@ -924,13 +922,16 @@ public:
     MyParser( Interpreter* const pInterpreter );                                                 // constructor
     ~MyParser();                                                 // constructor
     void resetMachine( bool withUserVariables );
+    void deleteIdentifierNameObjects( char** pIdentArray, int identifiersInUse );
+    void deleteArrayElementStringObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue );
+    void deleteVariableValueObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue );
+    void deleteLastValueFiFoStringObjects();
     void deleteConstStringObjects( char* pToken );
     parseTokenResult_type parseSource( char* const inputLine, char*& pErrorPos );
     parseTokenResult_type  parseInstruction( char*& pInputLine );
     void deleteParsedData();
     bool allExternalFunctionsDefined( int& index );
     void prettyPrintInstructions( bool oneInstruction, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr );
-    void old_prettyPrintProgram();////
     void printParsingResult( parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* const pErrorPos );
 
 

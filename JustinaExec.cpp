@@ -1,6 +1,6 @@
 #include "Justina.h"
 
-#define printCreateDeleteHeapObjects 0
+#define printCreateDeleteHeapObjects 1
 #define debugPrint 0
 
 // -----------------------------------
@@ -89,7 +89,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
                     _pEvalStackTop = (LE_evalStack*) evalStack.appendListElement( sizeof( VarOrConstLvl ) );
                     _pEvalStackTop->varOrConst.tokenType = tok_isConstant;          // use generic constant type
-                    char* s = new char [10]; strcpy( s, "result" ); intermediateStringObjectCount++; Serial.println( "+++++ add ext function result" );
+                    char* s = nullptr;
                     _pEvalStackTop->varOrConst.value.pStringConst = s;            // default return value
                     _pEvalStackTop->varOrConst.valueType = value_isStringPointer;
                     _pEvalStackTop->varOrConst.arrayAttributes = 0x00;
@@ -126,7 +126,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                 Serial.print( "     flow control stack levels: " ); Serial.println( (int) flowCtrlStack.getElementCount() );
                 */
 
-                //// delete FLOW CONTROL stack level that contained caller function storage pointers and return address (all just retrieved)
+                // delete FLOW CONTROL stack level that contained caller function storage pointers and return address (all just retrieved)
                 (FunctionData*) flowCtrlStack.deleteListElement( _pFlowCtrlStackTop );
                 _pFlowCtrlStackTop = _pFlowCtrlStackMinus1;
                 _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement( _pFlowCtrlStackTop );
@@ -217,7 +217,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                 // -----------------
 
                 if ( evalStack.getElementCount() > _activeFunctionData.callerEvalStackLevels + 1 ) {
-                    Serial.print( "*** Evaluation stack error. Remaining stack levels for function: " ); Serial.println( evalStack.getElementCount() );
+                    Serial.print( "*** Evaluation stack error. Remaining stack levels for current program level: " ); Serial.println( evalStack.getElementCount() - (_activeFunctionData.callerEvalStackLevels + 1));
                 }
 
                 if ( evalStack.getElementCount() == _activeFunctionData.callerEvalStackLevels + 1 ) {             // did the execution produce a result ?
@@ -229,7 +229,11 @@ Interpreter::execResult_type  Interpreter::exec() {
                     else {
                         if ( (_pEvalStackTop->varOrConst.isIntermediateResult == 0x01) && (_pEvalStackTop->varOrConst.valueType == value_isStringPointer) ) {
                             if ( _pEvalStackTop->varOrConst.value.pStringConst != nullptr ) {
-                                delete [] _pEvalStackTop->varOrConst.value.pStringConst;  intermediateStringObjectCount--; Serial.println( "----- delete operand 2" );
+#if printCreateDeleteHeapObjects
+                                Serial.print( "----- (Intermd str) " );   Serial.println( (uint32_t) _pEvalStackTop->varOrConst.value.pStringConst - RAMSTART );
+#endif
+                                delete [] _pEvalStackTop->varOrConst.value.pStringConst;
+                                intermediateStringObjectCount--;
                             }
                         }
                     }
@@ -312,7 +316,6 @@ Interpreter::execResult_type  Interpreter::exec() {
 
         // advance to next token
         _programCounter = _activeFunctionData.pPendingStep;         // note: will be altered when calling an external function and upon return of a called function
-////        Serial.print( "  + program counter: " ); Serial.println( _programCounter - _programStorage );
         tokenType = *_activeFunctionData.pPendingStep & 0x0F;                                                               // next token type (could be token within caller, if returning now)
 
     }   // end 'while ( tokenType != tok_no_token )'                                                                                       // end 'while ( tokenType != tok_no_token )'
@@ -324,7 +327,7 @@ Interpreter::execResult_type  Interpreter::exec() {
         // print last result
         char s [MyParser::_maxAlphaCstLen + 10];  // note: with small '_maxAlphaCstLen' values, make sure string is also long enough to print real values
         if ( lastResultTypeFiFo [0] == value_isFloat ) { sprintf( s, "  %.3G", lastResultValueFiFo [0].realConst ); }
-        else { sprintf( s, "  %s", lastResultValueFiFo [0].pStringConst ); }    // immediate mode: print evaluation result
+        else { sprintf( s, "  %s", (lastResultValueFiFo [0].pStringConst == nullptr) ? "" : lastResultValueFiFo [0].pStringConst ); }    // immediate mode: print evaluation result
         _pConsole->println( s );
     }
 
@@ -355,12 +358,13 @@ void Interpreter::saveLastValue() {
             // if the oldest result is a string: delete heap object
             if ( lastResultTypeFiFo [MAX_LAST_RESULT_DEPTH - 1] == value_isStringPointer ) {
 
-#if printCreateDeleteHeapObjects
-                Serial.print( "\r\n===== delete 'previous' last result: " ); Serial.println( lastResultValueFiFo [MAX_LAST_RESULT_DEPTH - 1].pStringConst ); //// OK
-#endif 
-                // note: this is always an intermediate string
                 if ( lastResultValueFiFo [MAX_LAST_RESULT_DEPTH - 1].pStringConst != nullptr ) {
-                    delete [] lastResultValueFiFo [MAX_LAST_RESULT_DEPTH - 1].pStringConst; lastValuesStringObjectCount--;
+#if printCreateDeleteHeapObjects
+                    Serial.print( "----- (FiFo string) " );   Serial.println( (uint32_t) lastResultValueFiFo [MAX_LAST_RESULT_DEPTH - 1].pStringConst - RAMSTART );
+#endif 
+                    // note: this is always an intermediate string
+                    delete [] lastResultValueFiFo [MAX_LAST_RESULT_DEPTH - 1].pStringConst;
+                    lastValuesStringObjectCount--;
                 }
             }
         }
@@ -390,12 +394,20 @@ void Interpreter::saveLastValue() {
         // new last value is a non-empty string: make a copy of the string and store a reference to this new string
         else {
             int stringlen = min( strlen( lastvalue.value.pStringConst ), MyParser::_maxAlphaCstLen );        // excluding terminating \0
-            lastResultValueFiFo [0].pStringConst = new char [stringlen + 1]; lastValuesStringObjectCount++;
+            lastResultValueFiFo [0].pStringConst = new char [stringlen + 1];
+            lastValuesStringObjectCount++;
             memcpy( lastResultValueFiFo [0].pStringConst, lastvalue.value.pStringConst, stringlen );        // copy the actual string (not the pointer); do not use strcpy
             lastResultValueFiFo [0].pStringConst [stringlen] = '\0';
+#if printCreateDeleteHeapObjects
+            Serial.print( "+++++ (FiFo string) " );   Serial.println((uint32_t) lastResultValueFiFo [0].pStringConst - RAMSTART );
+#endif            
 
             if ( lastValueIntermediate ) {
-                delete [] lastvalue.value.pStringConst; intermediateStringObjectCount--; Serial.println( "----- delete last result" );
+#if printCreateDeleteHeapObjects
+                Serial.print( "----- (intermd str) " );   Serial.println( (uint32_t) lastvalue.value.pStringConst - RAMSTART );
+#endif
+                delete [] lastvalue.value.pStringConst;
+                intermediateStringObjectCount--;
             }
         }
 
@@ -417,14 +429,15 @@ void Interpreter::clearEvalStack() {
     // delete any intermediate result string objects used as arguments
     LE_evalStack* pstackLvl = _pEvalStackTop;
     while ( pstackLvl != nullptr ) {
-        if ( pstackLvl->genericToken.tokenType == tok_isConstant ) {
+        if ( pstackLvl->genericToken.tokenType == tok_isConstant ) {            // needed to exclude non-value tokens (terminals, reserved words, functions, ...)
             if ( (pstackLvl->varOrConst.isIntermediateResult == 0x01) && (pstackLvl->varOrConst.valueType == value_isStringPointer) )
             {
-#if printCreateDeleteHeapObjects
-                Serial.print( "\r\n===== delete remaining interm.cst string: " ); Serial.println( pstackLvl->varOrConst.value.pStringConst );
-#endif 
                 if ( pstackLvl->varOrConst.value.pStringConst != nullptr ) {
-                    delete [] pstackLvl->varOrConst.value.pStringConst; intermediateStringObjectCount--; Serial.println( "----- delete remaining" );
+#if printCreateDeleteHeapObjects
+                    Serial.print( "----- (Intermd str) " );   Serial.println( (uint32_t) pstackLvl->varOrConst.value.pStringConst - RAMSTART );
+#endif 
+                    delete [] pstackLvl->varOrConst.value.pStringConst;
+                    intermediateStringObjectCount--;
                 }
             }
         }
@@ -433,12 +446,11 @@ void Interpreter::clearEvalStack() {
 
     // error if not all intermediate string objects deleted (points to an internal Justina issue)
     if ( intermediateStringObjectCount != 0 ) {
-        Serial.print( "*** String cleanup error. Remaining intermediate strings: " ); Serial.println( intermediateStringObjectCount );
+        Serial.print( "*** Intermediate string cleanup error. Remaining: " ); Serial.println( intermediateStringObjectCount );
     }
 
     // delete all remaining stack level objects 
 #if printCreateDeleteHeapObjects
-    Serial.println( "\r\n>>>>> delete remaining list levels" );
 #endif
     evalStack.deleteList();
     _pEvalStackTop = nullptr;  _pEvalStackMinus1 = nullptr; _pEvalStackMinus2 = nullptr;
@@ -460,11 +472,12 @@ void Interpreter::deleteStackArguments( LE_evalStack* pPrecedingStackLvl, int ar
     do {
         // stack levels contain variables and (interim) constants only
         if ( (pStackLvl->varOrConst.isIntermediateResult == 0x01) && (pStackLvl->varOrConst.valueType == value_isStringPointer) ) {
-#if printCreateDeleteHeapObjects
-            Serial.print( "\r\n===== delete interim cst string between parenthesis: " ); Serial.println( pStackLvl->varOrConst.value.pStringConst ); // to be checked
-#endif
             if ( pStackLvl->varOrConst.value.pStringConst != nullptr ) {
-                delete [] pStackLvl->varOrConst.value.pStringConst;  intermediateStringObjectCount--; Serial.println( "----- delete stack args" );
+#if printCreateDeleteHeapObjects
+                Serial.print( "----- (Intermd str) " );   Serial.println( (uint32_t) pStackLvl->varOrConst.value.pStringConst -RAMSTART );
+#endif
+                delete [] pStackLvl->varOrConst.value.pStringConst;
+                intermediateStringObjectCount--;
             }
         }
         pStackLvl = (LE_evalStack*) evalStack.getNextListElement( pStackLvl );  // next dimspec or null pointer 
@@ -560,6 +573,7 @@ Interpreter::execResult_type Interpreter::arrayAndSubscriptsToarrayElement( LE_e
 
     void* pArrayElem = arrayElemAddress( pArray, elemSpec );
     if ( pArrayElem == nullptr ) { return result_array_outsideBounds; }
+
     pPrecedingStackLvl->varOrConst.value.pVariable = pArrayElem;
     pPrecedingStackLvl->varOrConst.arrayAttributes &= ~var_isArray_pendingSubscripts;           // remove 'pending subscripts' flag 
     // note: other data does not change (array attributes, value type, token type, intermediate constant, variable type address)
@@ -595,10 +609,12 @@ void Interpreter::makeIntermediateConstant( LE_evalStack* pEvalStackLvl ) {
         }
         else {
             int stringlen = strlen( operand.pStringConst );
-            result.pStringConst = new char [stringlen + 1]; intermediateStringObjectCount++; Serial.println( "+++++ add intermediate cst" );
+            result.pStringConst = new char [stringlen + 1];
+            intermediateStringObjectCount++;
             strcpy( result.pStringConst, operand.pStringConst );        // copy the actual strings 
 #if printCreateDeleteHeapObjects
-            Serial.print( "\r\n===== created copy of string for interim constant: " ); Serial.println( result.pStringConst ); //// OK
+            Serial.print( "+++++ (Intermd str) " );   Serial.println( (uint32_t) result.pStringConst - RAMSTART );
+
 #endif
         }
         pEvalStackLvl->varOrConst.value = result;                        // float or pointer to string (type: no change)
@@ -642,7 +658,7 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
 
             // infix operation ?
             bool isPrefixOperator = true;             // init as prefix operation
-            if ( evalStack.getElementCount() >= _activeFunctionData.callerEvalStackLevels + 2 ) {         // already a token on the stack ?               //// dit doet toch niets ?
+            if ( evalStack.getElementCount() >= _activeFunctionData.callerEvalStackLevels + 2 ) {         // already a token on the stack ?               
                 bool minus2IsTerminal = ((_pEvalStackMinus2->genericToken.tokenType == tok_isTerminalGroup1) ||
                     (_pEvalStackMinus2->genericToken.tokenType == tok_isTerminalGroup2) || (_pEvalStackMinus2->genericToken.tokenType == tok_isTerminalGroup3));
                 bool minus2IsRightPar = (MyParser::_terminals [_pEvalStackMinus2->terminal.index].terminalCode == MyParser::termcod_rightPar);
@@ -742,12 +758,11 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     // value type of operands
     bool operandIsVarRef = (_pEvalStackMinus2->varOrConst.valueType == value_isVarRef);
     char operandValueType = operandIsVarRef ? (*_pEvalStackMinus2->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackMinus2->varOrConst.valueType;
-    bool op1real = (operandValueType == value_isFloat);
+    bool op1real = ((uint8_t) operandValueType == value_isFloat);
 
     operandIsVarRef = (_pEvalStackTop->varOrConst.valueType == value_isVarRef);
     operandValueType = operandIsVarRef ? (*_pEvalStackTop->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackTop->varOrConst.valueType;
-    bool op2real = (operandValueType == value_isFloat);
-
+    bool op2real = ((uint8_t) operandValueType == value_isFloat);
 
     int operatorCode = _pmyParser->_terminals [_pEvalStackMinus1->terminal.index].terminalCode;
 
@@ -772,12 +787,8 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     if ( op2real ) { operand2.realConst = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pEvalStackTop->varOrConst.value.pRealConst) : _pEvalStackTop->varOrConst.value.realConst; }
     else { operand2.pStringConst = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pEvalStackTop->varOrConst.value.ppStringConst) : _pEvalStackTop->varOrConst.value.pStringConst; }
 
-
-    Serial.println( "-- assignment of value" );
-    Serial.print( "   cst value type is string: " ); Serial.println( !op2real );
-    Serial.print( "   pointer value in RAM: " ); Serial.println( (uint32_t) operand2.pStringConst - RAMSTART );
-    Serial.print( "   > is empty string: " ); Serial.println( operand2.pStringConst == nullptr );
-    Serial.print( "   string char 0 (hex) : " ); Serial.println( operand2.pStringConst [0], HEX );
+    bool op1emptyString = op1real ? false : (operand1.pStringConst == nullptr);
+    bool op2emptyString = op2real ? false : (operand2.pStringConst == nullptr);
 
     int stringlen;                                                                                  // define outside switch statement
 
@@ -787,44 +798,37 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     case MyParser::termcod_assign:
         // Case: execute assignment (only possible if first operand is a variable: checked during parsing)
         // -----------------------------------------------------------------------------------------------
-    {
         if ( !op1real )                                                                             // if receiving variable currently holds a string, delete current char string object
         {
-#if printCreateDeleteHeapObjects
-            Serial.print( "\r\n===== delete previous variable string value: " ); Serial.println( *_pEvalStackMinus2->varOrConst.value.ppStringConst );               //// OK
-            Serial.print( "                                 address is: " ); Serial.println( (uint32_t) _pEvalStackMinus2->varOrConst.value.pVariable - RAMSTART );
-#endif
             // delete variable string object
             if ( *_pEvalStackMinus2->varOrConst.value.ppStringConst != nullptr ) {
-                delete [] * _pEvalStackMinus2->varOrConst.value.ppStringConst; variableStringObjectCount--;
+#if printCreateDeleteHeapObjects
+                Serial.print( "----- (Var string ) " );   Serial.println( (uint32_t) *_pEvalStackMinus2->varOrConst.value.ppStringConst -RAMSTART );
+#endif
+                delete [] * _pEvalStackMinus2->varOrConst.value.ppStringConst;
+                variableStringObjectCount--;
             }
         }
 
         // if the value to be assigned is real (float) OR an empty string: simply assign the value (not a heap object)
 
-        ////Serial.print( "   >> is empty string: " ); Serial.println( opIsNullptr);
-
         if ( op2real ) {
-            Serial.println( "!!!! assignment: is real" );
             opResult.realConst = operand2.realConst;
         }
-        else if (volatile bool aaa = (operand2.pStringConst == nullptr) ) {
-            Serial.println( "!!!! assignment: is nullptr" );
+        else if ( op2emptyString ) {  
             opResult.pStringConst = operand2.pStringConst;
         }
         // the value (parsed constant, variable value or intermediate result) to be assigned to the receiving variable is a non-empty string value
         else {
-            Serial.print( ">>> is empty string: " ); Serial.println( operand2.pStringConst == nullptr );
-            Serial.println( "!!!! assignment: NON-empty string" );
             // make a copy of the character string and store a pointer to this copy as result (even if operand string is already an intermediate constant)
             // because the value will be stored in a variable, limit to the maximum allowed string length
             stringlen = min( strlen( operand2.pStringConst ), MyParser::_maxAlphaCstLen );
-            opResult.pStringConst = new char [stringlen + 1]; variableStringObjectCount++;
+            opResult.pStringConst = new char [stringlen + 1];
+            variableStringObjectCount++;
             memcpy( opResult.pStringConst, operand2.pStringConst, stringlen );        // copy the actual string (not the pointer); do not use strcpy
             opResult.pStringConst [stringlen] = '\0';                                         // add terminating \0
-
 #if printCreateDeleteHeapObjects
-            Serial.print( "\r\n===== created copy of string for assignment to variable : " ); Serial.println( opResult.pStringConst ); //// OK
+            Serial.print( "+++++ (Var string ) " );   Serial.println( (uint32_t) opResult.pStringConst - RAMSTART );
 #endif
         }
 
@@ -834,23 +838,12 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         // save resulting var type (in case it changed)
         *_pEvalStackMinus2->varOrConst.varTypeAddress = (*_pEvalStackMinus2->varOrConst.varTypeAddress & ~value_typeMask) | (opResultReal ? value_isFloat : value_isStringPointer);
 
-
-        Serial.println( "-- assigned value" );
-        Serial.print( "   result value type is string: " ); Serial.println( !opResultReal );
-        Serial.print( "   pointer value in RAM: " ); Serial.println( (uint32_t) opResult.pStringConst - RAMSTART );
-        Serial.print( "   > is empty string: " ); Serial.println( opResult.pStringConst == nullptr );
-        Serial.print( "   string char 0 (hex) : " ); Serial.println( opResult.pStringConst [0], HEX );
-
-
-
-
         break;
 
-    }
 
 
-    // Next cases: execute infix operators taking 2 operands 
-    // -----------------------------------------------------
+        // Next cases: execute infix operators taking 2 operands 
+        // -----------------------------------------------------
 
     case MyParser::termcod_lt:
         opResult.realConst = operand1.realConst < operand2.realConst;
@@ -862,21 +855,24 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         opResult.realConst = operand1.realConst == operand2.realConst;
         break;
     case MyParser::termcod_concat:
+    {
         // concatenate two operand strings objects and store pointer to it in result
         stringlen = 0;                                  // is both operands are empty strings
-        if ( operand1.pStringConst != nullptr ) { stringlen = strlen( operand1.pStringConst ); }
-        if ( operand2.pStringConst != nullptr ) { stringlen += strlen( operand2.pStringConst ); }
+        if ( !op1emptyString ) { stringlen = strlen( operand1.pStringConst ); }
+        if ( !op2emptyString ) { stringlen += strlen( operand2.pStringConst ); }
         if ( stringlen == 0 ) { opResult.pStringConst = nullptr; }                                // empty strings are represented by a nullptr (conserve heap space)
         else {
-            opResult.pStringConst = new char [stringlen + 1]; intermediateStringObjectCount++; Serial.println( "+++++ add result" );
+            opResult.pStringConst = new char [stringlen + 1];
+            intermediateStringObjectCount++;
             opResult.pStringConst [0] = '\0';                                // in case first operand is nullptr
-            if ( operand1.pStringConst != nullptr ) { strcpy( opResult.pStringConst, operand1.pStringConst ); }
-            if ( operand2.pStringConst != nullptr ) { strcat( opResult.pStringConst, operand2.pStringConst ); }
+            if ( !op1emptyString ) { strcpy( opResult.pStringConst, operand1.pStringConst ); }
+            if ( !op2emptyString ) { strcat( opResult.pStringConst, operand2.pStringConst ); }
 #if printCreateDeleteHeapObjects
-            Serial.print( "\r\n===== created string object for string operator: " ); Serial.println( opResult.pStringConst ); //// OK
+            Serial.print( "+++++ (Intermd str) " );   Serial.println( (uint32_t) opResult.pStringConst - RAMSTART );
 #endif
         }
-        break;
+    }
+    break;
     case MyParser::termcod_plus:
         opResult.realConst = operand1.realConst + operand2.realConst;
         break;
@@ -917,21 +913,23 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     // operand 2 is an intermediate constant AND it is a string ? delete char string object
     if ( (_pEvalStackTop->varOrConst.isIntermediateResult == 0x01) && !op2real )
     {
-#if printCreateDeleteHeapObjects
-        Serial.print( "\r\n===== delete operand 2 interm.cst string: " ); Serial.println( _pEvalStackTop->varOrConst.value.pStringConst ); //// OK
-#endif
         if ( _pEvalStackTop->varOrConst.value.pStringConst != nullptr ) {
-            delete [] _pEvalStackTop->varOrConst.value.pStringConst;  intermediateStringObjectCount--; Serial.println( "----- delete operand 2" );
+#if printCreateDeleteHeapObjects
+            Serial.print( "----- (Intermd str) " );   Serial.println( (uint32_t) _pEvalStackTop->varOrConst.value.pStringConst -RAMSTART );
+#endif
+            delete [] _pEvalStackTop->varOrConst.value.pStringConst;
+            intermediateStringObjectCount--;
         }
     }
     // operand 1 is an intermediate constant AND it is a string ? delete char string object
     if ( (_pEvalStackMinus2->varOrConst.isIntermediateResult == 0x01) && !op1real )
     {
-#if printCreateDeleteHeapObjects
-        Serial.print( "\r\n===== delete operand 1 interm.cst string: " ); Serial.println( _pEvalStackMinus2->varOrConst.value.pStringConst ); //// OK
-#endif
         if ( _pEvalStackMinus2->varOrConst.value.pStringConst != nullptr ) {
-            delete [] _pEvalStackMinus2->varOrConst.value.pStringConst; intermediateStringObjectCount--; Serial.println( "----- delete operand 1" );
+#if printCreateDeleteHeapObjects
+            Serial.print( "----- (Intermd str) " );   Serial.println( (uint32_t) _pEvalStackMinus2->varOrConst.value.pStringConst -RAMSTART );
+#endif
+            delete [] _pEvalStackMinus2->varOrConst.value.pStringConst;
+            intermediateStringObjectCount--;
         }
     }
 
@@ -956,14 +954,6 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     _pEvalStackTop->varOrConst.tokenType = tok_isConstant;              // use generic constant type
     _pEvalStackTop->varOrConst.isIntermediateResult = (operatorCode == MyParser::termcod_assign) ? 0x00 : 0x01;             // is an intermediate result (intermediate constant strings must be deleted when not needed any more)
     _pEvalStackTop->varOrConst.arrayAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
-
-
-    Serial.println( "--- assignment result" );
-    Serial.print( "value type (hex): " ); Serial.println( _pEvalStackTop->varOrConst.valueType, HEX );
-    Serial.print( "pointer value in RAM: " ); Serial.println( (uint32_t) _pEvalStackTop->varOrConst.value.pStringConst - RAMSTART );
-    Serial.print( "> is empty string: " ); Serial.println( _pEvalStackTop->varOrConst.value.pStringConst == nullptr );
-    Serial.print( "string char 0 (hex): " ); Serial.println( _pEvalStackTop->varOrConst.value.pStringConst [0], HEX );
-
 
     return result_execOK;
 }
@@ -1078,15 +1068,23 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
                     _activeFunctionData.pLocalVarTypes [i] = value_isStringPointer;
                     if ( pStackLvl->varOrConst.value.pStringConst != nullptr ) {
                         int stringlen = strlen( pStackLvl->varOrConst.value.pStringConst );
-                        _activeFunctionData.pLocalVarValues [i].pStringConst = new char [stringlen + 1]; variableStringObjectCount++;
+                        _activeFunctionData.pLocalVarValues [i].pStringConst = new char [stringlen + 1];
+                        variableStringObjectCount++;
                         strcpy( _activeFunctionData.pLocalVarValues [i].pStringConst, pStackLvl->varOrConst.value.pStringConst );
+#if printCreateDeleteHeapObjects
+                        Serial.print( "+++++ (Var string ) " );   Serial.println( (uint32_t) _activeFunctionData.pLocalVarValues [i].pStringConst - RAMSTART );
+#endif
                     }
                 };
             }
 
             if ( (pStackLvl->varOrConst.isIntermediateResult == 0x01) && !operandIsReal ) {
                 if ( pStackLvl->varOrConst.value.pStringConst != nullptr ) {
-                    delete [] pStackLvl->varOrConst.value.pStringConst; intermediateStringObjectCount--; Serial.println( "----- delete ext function stack argument" );
+#if printCreateDeleteHeapObjects
+                    Serial.print( "----- (Intermd str) " );   Serial.println( (uint32_t) pStackLvl->varOrConst.value.pStringConst -RAMSTART );
+#endif
+                    delete [] pStackLvl->varOrConst.value.pStringConst;
+                    intermediateStringObjectCount--;
                 }
             }
 
@@ -1161,8 +1159,12 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
                 _activeFunctionData.pLocalVarTypes [count] = value_isStringPointer;
                 if ( s != nullptr ) {
                     int stringlen = strlen( s );
-                    _activeFunctionData.pLocalVarValues [count].pStringConst = new char [stringlen + 1]; variableStringObjectCount++;
+                    _activeFunctionData.pLocalVarValues [count].pStringConst = new char [stringlen + 1];
+                    variableStringObjectCount++;
                     strcpy( _activeFunctionData.pLocalVarValues [count].pStringConst, s );
+#if printCreateDeleteHeapObjects
+                    Serial.print( "+++++ (Var string ) " );   Serial.println( (uint32_t) _activeFunctionData.pLocalVarValues [count].pStringConst - RAMSTART );
+#endif
                 }
             }
             count++;
@@ -1236,14 +1238,6 @@ void* Interpreter::fetchVarBaseAddress( TokenIsVariable* pVarToken, char*& sourc
         localValueType = userVarType [valueIndex] & value_typeMask;                                     // value type (indicating float or string)
         sourceVarTypeAddress = userVarType + valueIndex;                                                // pointer to value type and the 'is array' flag          
 
-
-        Serial.print( "** variable pushed: string pointer address: " ); Serial.println( (uint32_t) &userVarValues [valueIndex].pStringConst - RAMSTART );
-        Serial.print( "** variable pushed is empty string: " ); Serial.println( userVarValues [valueIndex].pStringConst == nullptr );
-        Serial.print( "** string char 0 (hex): " ); Serial.println( userVarValues [valueIndex].pStringConst [0], HEX );
-
-
-
-
         return &userVarValues [valueIndex];                                                             // pointer to value (float, char* or (array variables only) pointer to array start in memory)
     }
     else if ( isGlobalVar ) {
@@ -1310,7 +1304,7 @@ void* Interpreter::arrayElemAddress( void* varBaseAddress, int* elemSpec ) {
 // *   push reserved word token to evaluation stack   *
 // ---------------------------------------------------
 /*
-bool Interpreter::pushResWord( int& tokenType ) {                                       // reserved word token is assumed
+void Interpreter::pushResWord( int& tokenType ) {                                       // reserved word token is assumed
 
     // push reserved word to stack
     _flowCtrlStackLvl++;
@@ -1329,7 +1323,7 @@ bool Interpreter::pushResWord( int& tokenType ) {                               
 // *   push terminal token to evaluation stack   *
 // -----------------------------------------------
 
-bool Interpreter::PushTerminalToken( int& tokenType ) {                                 // terminal token is assumed
+void Interpreter::PushTerminalToken( int& tokenType ) {                                 // terminal token is assumed
 
     // push internal or external function index to stack
 
@@ -1349,7 +1343,7 @@ bool Interpreter::PushTerminalToken( int& tokenType ) {                         
 // *   push internal or external function name token to evaluation stack   *
 // ------------------------------------------------------------------------
 
-bool Interpreter::pushFunctionName( int& tokenType ) {                                  // function name is assumed (internal or external)
+void Interpreter::pushFunctionName( int& tokenType ) {                                  // function name is assumed (internal or external)
 
     // push internal or external function index to stack
     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
@@ -1373,7 +1367,7 @@ bool Interpreter::pushFunctionName( int& tokenType ) {                          
 // *   push real or string constant token to evaluation stack   *
 // -------------------------------------------------------------
 
-bool Interpreter::pushConstant( int& tokenType ) {                                              // float or string constant token is assumed
+void Interpreter::pushConstant( int& tokenType ) {                                              // float or string constant token is assumed
 
     // push real or string parsed constant, value type and array flag (false) to stack
     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
@@ -1393,9 +1387,6 @@ bool Interpreter::pushConstant( int& tokenType ) {                              
         char* pAnum;
         memcpy( &pAnum, ((TokenIsStringCst*) _programCounter)->pStringConst, sizeof( pAnum ) ); // char pointer not necessarily aligned with word size: copy memory instead
         _pEvalStackTop->varOrConst.value.pStringConst = pAnum;                                  // store char* in stack, NOT the pointer to float 
-
-        Serial.print( "++ parsed cst pushed is empty string: " ); Serial.println( _pEvalStackTop->varOrConst.value.pStringConst == nullptr );
-        Serial.print( "++ string char 0 (hex): " ); Serial.println( _pEvalStackTop->varOrConst.value.pStringConst [0], HEX );
     }
 
 };
@@ -1405,7 +1396,7 @@ bool Interpreter::pushConstant( int& tokenType ) {                              
 // *   push variable token to evaluation stack   *
 // ----------------------------------------------
 
-bool Interpreter::pushVariable( int& tokenType ) {                                              // variable name token is assumed
+void Interpreter::pushVariable( int& tokenType ) {                                              // variable name token is assumed
 
     // push variable base address, variable value type (real, string) and array flag to stack
     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
@@ -1422,9 +1413,4 @@ bool Interpreter::pushVariable( int& tokenType ) {                              
     _pEvalStackTop->varOrConst.value.pVariable = varAddress;                                    // base address of variable
     _pEvalStackTop->varOrConst.isIntermediateResult = 0x00;
     _pEvalStackTop->varOrConst.tokenAddress = _programCounter;
-
-    Serial.print( "** variable pushed: string pointer address: " ); Serial.println( (uint32_t) _pEvalStackTop->varOrConst.value.ppStringConst - RAMSTART );
-    Serial.print( "** variable pushed is empty string: " ); Serial.println( *_pEvalStackTop->varOrConst.value.ppStringConst == nullptr );
-    Serial.print( "** string char 0 (hex): " ); Serial.println( *_pEvalStackTop->varOrConst.value.ppStringConst [0], HEX );
-
 }

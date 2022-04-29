@@ -89,7 +89,7 @@ char* LinkedList::deleteListElement( void* pPayload ) {                         
 #endif
     _listElementCount--;
     delete []pElem;
-    //// 
+     
     if ( p == nullptr ) { return nullptr; }
     else { return (char*) (p + 1); }                                           // pointer to payload of next element in list, or nullptr if last element deleted
 }
@@ -204,7 +204,15 @@ Interpreter::Interpreter( Stream* const pConsole ) : _pConsole( pConsole ) {
     _programSize = IMM_MEM_SIZE;
     _programCounter = _programStart;                          // start of 'immediate mode' program area
 
-    _lastResultCount = 0;
+    identifierNameStringObjectCount = 0;
+    parsedStringConstObjectCount = 0;
+    variableStringObjectCount = 0;
+    lastValuesStringObjectCount = 0;
+    arrayObjectCount = 0;
+    intermediateStringObjectCount=0;
+    intermediateStringObjectCount=0;
+
+    _lastResultCount = 0;                                       // current last result FiFo depth (values currently stored)
 
     *_programStorage = '\0';                                    //  current end of program 
     *_programStart = '\0';                                      //  current end of program (immediate mode)
