@@ -93,7 +93,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                     _pEvalStackTop->varOrConst.value.pStringConst = s;            // default return value
                     _pEvalStackTop->varOrConst.valueType = value_isStringPointer;
                     _pEvalStackTop->varOrConst.arrayAttributes = 0x00;
-                    _pEvalStackTop->varOrConst.isIntermediateResult = 0x01;
+                    _pEvalStackTop->varOrConst.attributes = constIsIntermediate;
                 }
 
 
@@ -227,7 +227,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                     }
                     // currently executing a function ? check if result is an intermediate string object and delete it
                     else {
-                        if ( (_pEvalStackTop->varOrConst.isIntermediateResult == 0x01) && (_pEvalStackTop->varOrConst.valueType == value_isStringPointer) ) {
+                        if ( (_pEvalStackTop->varOrConst.attributes == constIsIntermediate) && (_pEvalStackTop->varOrConst.valueType == value_isStringPointer) ) {
                             if ( _pEvalStackTop->varOrConst.value.pStringConst != nullptr ) {
 #if printCreateDeleteHeapObjects
                                 Serial.print( "----- (Intermd str) " );   Serial.println( (uint32_t) _pEvalStackTop->varOrConst.value.pStringConst - RAMSTART );
@@ -383,7 +383,7 @@ void Interpreter::saveLastValue() {
         // store new last value
         VarOrConstLvl lastvalue;
         bool lastValueReal = (_pEvalStackTop->varOrConst.valueType == value_isFloat);
-        bool lastValueIntermediate = (_pEvalStackTop->varOrConst.isIntermediateResult == 0x01);
+        bool lastValueIntermediate = (_pEvalStackTop->varOrConst.attributes == constIsIntermediate);
 
         if ( lastValueReal ) { lastvalue.value.realConst = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pEvalStackTop->varOrConst.value.pRealConst) : _pEvalStackTop->varOrConst.value.realConst; }
         else { lastvalue.value.pStringConst = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pEvalStackTop->varOrConst.value.ppStringConst) : _pEvalStackTop->varOrConst.value.pStringConst; }
@@ -430,7 +430,7 @@ void Interpreter::clearEvalStack() {
     LE_evalStack* pstackLvl = _pEvalStackTop;
     while ( pstackLvl != nullptr ) {
         if ( pstackLvl->genericToken.tokenType == tok_isConstant ) {            // needed to exclude non-value tokens (terminals, reserved words, functions, ...)
-            if ( (pstackLvl->varOrConst.isIntermediateResult == 0x01) && (pstackLvl->varOrConst.valueType == value_isStringPointer) )
+            if ( (pstackLvl->varOrConst.attributes == constIsIntermediate) && (pstackLvl->varOrConst.valueType == value_isStringPointer) )
             {
                 if ( pstackLvl->varOrConst.value.pStringConst != nullptr ) {
 #if printCreateDeleteHeapObjects
@@ -471,7 +471,7 @@ void Interpreter::deleteStackArguments( LE_evalStack* pPrecedingStackLvl, int ar
     LE_evalStack* pStackLvl = (LE_evalStack*) evalStack.getNextListElement( pPrecedingStackLvl );   // array subscripts or function arguments (NOT the preceding list element) 
     do {
         // stack levels contain variables and (interim) constants only
-        if ( (pStackLvl->varOrConst.isIntermediateResult == 0x01) && (pStackLvl->varOrConst.valueType == value_isStringPointer) ) {
+        if ( (pStackLvl->varOrConst.attributes == constIsIntermediate) && (pStackLvl->varOrConst.valueType == value_isStringPointer) ) {
             if ( pStackLvl->varOrConst.value.pStringConst != nullptr ) {
 #if printCreateDeleteHeapObjects
                 Serial.print( "----- (Intermd str) " );   Serial.println( (uint32_t) pStackLvl->varOrConst.value.pStringConst -RAMSTART );
@@ -595,7 +595,7 @@ void Interpreter::makeIntermediateConstant( LE_evalStack* pEvalStackLvl ) {
     // if a (scalar) variable: replace by a constant
 
     // if already an intermediate constant, leave it as such. If not, make it an intermediate constant
-    if ( pEvalStackLvl->varOrConst.isIntermediateResult != 0x01 ) {                    // not an intermediate constant
+    if ( pEvalStackLvl->varOrConst.attributes != constIsIntermediate ) {                    // not an intermediate constant
         bool opReal = (pEvalStackLvl->varOrConst.valueType == value_isFloat);
 
         Val operand, result;                                                               // operands and result
@@ -619,7 +619,7 @@ void Interpreter::makeIntermediateConstant( LE_evalStack* pEvalStackLvl ) {
         }
         pEvalStackLvl->varOrConst.value = result;                        // float or pointer to string (type: no change)
         pEvalStackLvl->varOrConst.tokenType = tok_isConstant;              // use generic constant type
-        pEvalStackLvl->varOrConst.isIntermediateResult = 0x01;             // is an intermediate result (intermediate constant strings must be deleted when not needed any more)
+        pEvalStackLvl->varOrConst.attributes = constIsIntermediate;             // is an intermediate result (intermediate constant strings must be deleted when not needed any more)
         pEvalStackLvl->varOrConst.arrayAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
     }
 }
@@ -727,7 +727,7 @@ Interpreter::execResult_type  Interpreter::execPrefixOperation() {
     _pEvalStackTop->varOrConst.value = operand;
     _pEvalStackTop->varOrConst.valueType = valueType;                   // real or string
     _pEvalStackTop->varOrConst.tokenType = tok_isConstant;              // use generic constant type
-    _pEvalStackTop->varOrConst.isIntermediateResult = 0x01;
+    _pEvalStackTop->varOrConst.attributes = constIsIntermediate;
     _pEvalStackTop->varOrConst.arrayAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
 
 
@@ -806,7 +806,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
                 Serial.print( "----- (Var string ) " );   Serial.println( (uint32_t) *_pEvalStackMinus2->varOrConst.value.ppStringConst -RAMSTART );
 #endif
                 delete [] * _pEvalStackMinus2->varOrConst.value.ppStringConst;
-                variableStringObjectCount--;
+                globalStaticVarStringObjectCount--;
             }
         }
 
@@ -824,7 +824,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
             // because the value will be stored in a variable, limit to the maximum allowed string length
             stringlen = min( strlen( operand2.pStringConst ), MyParser::_maxAlphaCstLen );
             opResult.pStringConst = new char [stringlen + 1];
-            variableStringObjectCount++;
+            globalStaticVarStringObjectCount++;
             memcpy( opResult.pStringConst, operand2.pStringConst, stringlen );        // copy the actual string (not the pointer); do not use strcpy
             opResult.pStringConst [stringlen] = '\0';                                         // add terminating \0
 #if printCreateDeleteHeapObjects
@@ -911,7 +911,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     // --------------------------------------------------------------
 
     // operand 2 is an intermediate constant AND it is a string ? delete char string object
-    if ( (_pEvalStackTop->varOrConst.isIntermediateResult == 0x01) && !op2real )
+    if ( (_pEvalStackTop->varOrConst.attributes == constIsIntermediate) && !op2real )
     {
         if ( _pEvalStackTop->varOrConst.value.pStringConst != nullptr ) {
 #if printCreateDeleteHeapObjects
@@ -922,7 +922,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         }
     }
     // operand 1 is an intermediate constant AND it is a string ? delete char string object
-    if ( (_pEvalStackMinus2->varOrConst.isIntermediateResult == 0x01) && !op1real )
+    if ( (_pEvalStackMinus2->varOrConst.attributes == constIsIntermediate) && !op1real )
     {
         if ( _pEvalStackMinus2->varOrConst.value.pStringConst != nullptr ) {
 #if printCreateDeleteHeapObjects
@@ -952,7 +952,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     _pEvalStackTop->varOrConst.value = opResult;                        // float or pointer to string
     _pEvalStackTop->varOrConst.valueType = opResultReal ? value_isFloat : value_isStringPointer;     // value type of second operand  
     _pEvalStackTop->varOrConst.tokenType = tok_isConstant;              // use generic constant type
-    _pEvalStackTop->varOrConst.isIntermediateResult = (operatorCode == MyParser::termcod_assign) ? 0x00 : 0x01;             // is an intermediate result (intermediate constant strings must be deleted when not needed any more)
+    _pEvalStackTop->varOrConst.attributes = (operatorCode == MyParser::termcod_assign) ? 0x00 : constIsIntermediate;             // is an intermediate result (intermediate constant strings must be deleted when not needed any more)
     _pEvalStackTop->varOrConst.arrayAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
 
     return result_execOK;
@@ -1069,7 +1069,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
                     if ( pStackLvl->varOrConst.value.pStringConst != nullptr ) {
                         int stringlen = strlen( pStackLvl->varOrConst.value.pStringConst );
                         _activeFunctionData.pLocalVarValues [i].pStringConst = new char [stringlen + 1];
-                        variableStringObjectCount++;
+                        globalStaticVarStringObjectCount++;
                         strcpy( _activeFunctionData.pLocalVarValues [i].pStringConst, pStackLvl->varOrConst.value.pStringConst );
 #if printCreateDeleteHeapObjects
                         Serial.print( "+++++ (Var string ) " );   Serial.println( (uint32_t) _activeFunctionData.pLocalVarValues [i].pStringConst - RAMSTART );
@@ -1078,7 +1078,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
                 };
             }
 
-            if ( (pStackLvl->varOrConst.isIntermediateResult == 0x01) && !operandIsReal ) {
+            if ( (pStackLvl->varOrConst.attributes == constIsIntermediate) && !operandIsReal ) {
                 if ( pStackLvl->varOrConst.value.pStringConst != nullptr ) {
 #if printCreateDeleteHeapObjects
                     Serial.print( "----- (Intermd str) " );   Serial.println( (uint32_t) pStackLvl->varOrConst.value.pStringConst -RAMSTART );
@@ -1160,7 +1160,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
                 if ( s != nullptr ) {
                     int stringlen = strlen( s );
                     _activeFunctionData.pLocalVarValues [count].pStringConst = new char [stringlen + 1];
-                    variableStringObjectCount++;
+                    globalStaticVarStringObjectCount++;
                     strcpy( _activeFunctionData.pLocalVarValues [count].pStringConst, s );
 #if printCreateDeleteHeapObjects
                     Serial.print( "+++++ (Var string ) " );   Serial.println( (uint32_t) _activeFunctionData.pLocalVarValues [count].pStringConst - RAMSTART );
@@ -1375,7 +1375,7 @@ void Interpreter::pushConstant( int& tokenType ) {                              
     _pEvalStackTop->varOrConst.tokenType = tok_isConstant;          // use generic constant type
     _pEvalStackTop->varOrConst.valueType = (tokenType == tok_isRealConst) ? value_isFloat : value_isStringPointer;
     _pEvalStackTop->varOrConst.arrayAttributes = 0x00;
-    _pEvalStackTop->varOrConst.isIntermediateResult = 0x00;
+    _pEvalStackTop->varOrConst.attributes = 0x00;
     _pEvalStackTop->varOrConst.tokenAddress = _programCounter;                                  // only for finding source error position during unparsing (for printing)
 
     if ( tokenType == tok_isRealConst ) {
@@ -1411,6 +1411,6 @@ void Interpreter::pushVariable( int& tokenType ) {                              
     void* varAddress = fetchVarBaseAddress( (TokenIsVariable*) _programCounter, _pEvalStackTop->varOrConst.varTypeAddress, _pEvalStackTop->varOrConst.valueType, _pEvalStackTop->varOrConst.arrayAttributes );
 
     _pEvalStackTop->varOrConst.value.pVariable = varAddress;                                    // base address of variable
-    _pEvalStackTop->varOrConst.isIntermediateResult = 0x00;
+    _pEvalStackTop->varOrConst.attributes = 0x00;
     _pEvalStackTop->varOrConst.tokenAddress = _programCounter;
 }

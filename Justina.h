@@ -228,7 +228,7 @@ public:
         char tokenType;
         char valueType;
         char arrayAttributes;                                    // is array; is array element
-        char isIntermediateResult;
+        char attributes;
         char* tokenAddress;                                     // must be second 4-byte word, only for finding source error position during unparsing (for printing)
         Val value;                                              // float or pointer (4 byte)
         char* varTypeAddress;                                        // variables only: pointer to variable value type
@@ -304,16 +304,37 @@ public:
     static constexpr uint8_t value_isVarRef = 2 << 0;
     static constexpr uint8_t value_noValue = 3 << 0;                  // execution only
 
+    // execution
+    static constexpr uint8_t constIsIntermediate = 0x01;
+    
+
+
     static constexpr  int _maxInstructionChars { 300 };
     static constexpr char promptText [10] = "Justina> ";
     static constexpr int _promptLength = sizeof( promptText ) - 1;////
 
-    // continuous count of string objects created and deleted (note: linked list element count is maintained within the linked list objects)
-    int identifierNameStringObjectCount = 0, parsedStringConstObjectCount = 0;               // created during parsing only
-    int  intermediateStringObjectCount = 0, lastValuesStringObjectCount = 0;            // created during execution only
-    int variableStringObjectCount = 0;                                                  // created during parsing and execution 
-    // continuous count of array objects created and deleted (note: linked list element count is maintained within the linked list objects)
-    int arrayObjectCount = 0;                                                           // created during parsing and execution
+    
+    // counting of heap objects (note: linked list element count is maintained within the linked list objects)
+    
+    // name strings for variables and functions
+    int identifierNameStringObjectCount = 0;
+    int userVarNameStringObjectCount=0;                                                 
+
+    // constant strings
+    int parsedStringConstObjectCount = 0;
+    int intermediateStringObjectCount = 0;
+    int lastValuesStringObjectCount = 0;            
+    
+    // strings as value of variables
+    int globalStaticVarStringObjectCount = 0;
+    int userVarStringObjectCount = 0;
+    int localVarStringObjectCount = 0;                                                  
+
+    // array storage 
+    int globalStaticArrayObjectCount = 0;
+    int userArrayObjectCount = 0;                     
+    int localArrayObjectCount = 0;                                                      
+
 
     char _instruction [_maxInstructionChars + 1] = "";
     int _instructionCharCount { 0 };
@@ -913,7 +934,7 @@ public:
     bool checkCommandSyntax( parseTokenResult_type& result );
     bool checkExtFunctionArguments( parseTokenResult_type& result, int& minArgCnt, int& maxArgCnt );
     bool checkArrayDimCountAndSize( parseTokenResult_type& result, int* arrayDef_dims, int& dimCnt );
-    int getIdentifier( char** pIdentArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNew );
+    int getIdentifier( char** pIdentArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNew, bool isUserVar=false );
     bool checkInternFuncArgArrayPattern( parseTokenResult_type& result );
     bool checkExternFuncArgArrayPattern( parseTokenResult_type& result, bool isFunctionClosingParenthesis );
     bool initVariable( uint16_t varTokenStep, uint16_t constTokenStep );
@@ -922,9 +943,9 @@ public:
     MyParser( Interpreter* const pInterpreter );                                                 // constructor
     ~MyParser();                                                 // constructor
     void resetMachine( bool withUserVariables );
-    void deleteIdentifierNameObjects( char** pIdentArray, int identifiersInUse );
-    void deleteArrayElementStringObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue );
-    void deleteVariableValueObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue );
+    void deleteIdentifierNameObjects( char** pIdentArray, int identifiersInUse, bool isUserVar = false );
+    void deleteArrayElementStringObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar = false );
+    void deleteVariableValueObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar = false );
     void deleteLastValueFiFoStringObjects();
     void deleteConstStringObjects( char* pToken );
     parseTokenResult_type parseSource( char* const inputLine, char*& pErrorPos );

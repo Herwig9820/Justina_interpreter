@@ -204,13 +204,24 @@ Interpreter::Interpreter( Stream* const pConsole ) : _pConsole( pConsole ) {
     _programSize = IMM_MEM_SIZE;
     _programCounter = _programStart;                          // start of 'immediate mode' program area
 
+    // name strings for variables and functions
     identifierNameStringObjectCount = 0;
+    userVarNameStringObjectCount = 0;
+
+    // constant strings
     parsedStringConstObjectCount = 0;
-    variableStringObjectCount = 0;
+    intermediateStringObjectCount = 0;
     lastValuesStringObjectCount = 0;
-    arrayObjectCount = 0;
-    intermediateStringObjectCount=0;
-    intermediateStringObjectCount=0;
+
+    // strings as value of variables
+    globalStaticVarStringObjectCount = 0;
+    userVarStringObjectCount = 0;
+    localVarStringObjectCount = 0;
+
+    // array storage 
+    globalStaticArrayObjectCount = 0;
+    userArrayObjectCount = 0;
+    localArrayObjectCount = 0;
 
     _lastResultCount = 0;                                       // current last result FiFo depth (values currently stored)
 

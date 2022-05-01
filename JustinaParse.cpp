@@ -138,14 +138,14 @@ MyParser::~MyParser() {
 // *   note: this excludes UNQUALIFIED identifier names stored as alphanumeric constants   *
 // -----------------------------------------------------------------------------------------
 
-void MyParser::deleteIdentifierNameObjects( char** pIdentNameArray, int identifiersInUse ) {
+void MyParser::deleteIdentifierNameObjects( char** pIdentNameArray, int identifiersInUse, bool isUserVar ) {
     int index = 0;          // points to last variable in use
     while ( index < identifiersInUse ) {                       // points to variable in use
 #if printCreateDeleteHeapObjects
-        Serial.print( "----- (Ident name ) " ); Serial.println( (uint32_t) * (pIdentNameArray + index) - RAMSTART );
+        Serial.print( isUserVar ? "----- (usrvar name) " : "----- (ident name ) " ); Serial.println( (uint32_t) * (pIdentNameArray + index) - RAMSTART );
 #endif
         delete [] * (pIdentNameArray + index);
-        _pInterpreter->identifierNameStringObjectCount--;
+        isUserVar ? _pInterpreter->userVarNameStringObjectCount-- : _pInterpreter->identifierNameStringObjectCount--;
         index++;
     }
 }
@@ -155,7 +155,7 @@ void MyParser::deleteIdentifierNameObjects( char** pIdentNameArray, int identifi
 // *   delete variable heap objects: scalar variable strings and array variable array storage   *
 // ----------------------------------------------------------------------------------------------
 
-void MyParser::deleteArrayElementStringObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue ) {
+void MyParser::deleteArrayElementStringObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar ) {
     int index = 0;
     while ( index < varNameCount ) {
         if ( !checkIfGlobalValue || (varType [index] & (_pInterpreter->var_hasGlobalValue)) ) { // global value ?
@@ -173,10 +173,10 @@ void MyParser::deleteArrayElementStringObjects( Interpreter::Val* varValues, cha
                     uint32_t stringPointerAddress = (uint32_t) & (((char**) pArrayStorage) [arrayElem]);
                     if ( pString != nullptr ) {
 #if printCreateDeleteHeapObjects
-                        Serial.print( "----- (arr string ) " ); Serial.println( (uint32_t) pString - RAMSTART );     // applicable to string and array (same pointer)
+                        Serial.print( isUserVar ? "----- (usr ar str ) " : "----- (arr string ) " ); Serial.println( (uint32_t) pString - RAMSTART );     // applicable to string and array (same pointer)
 #endif
                         delete []  pString;                                  // applicable to string and array (same pointer)
-                        _pInterpreter->variableStringObjectCount--;
+                        isUserVar ? _pInterpreter->userVarStringObjectCount-- : _pInterpreter->globalStaticVarStringObjectCount--;
                     }
                 }
             }
@@ -192,25 +192,25 @@ void MyParser::deleteArrayElementStringObjects( Interpreter::Val* varValues, cha
 
 // note: make sure array variable element string objects have been deleted prior to calling this routine
 
-void MyParser::deleteVariableValueObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue ) {
+void MyParser::deleteVariableValueObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar ) {
     int index = 0;
     while ( index < varNameCount ) {
         if ( !checkIfGlobalValue || (varType [index] & (_pInterpreter->var_hasGlobalValue)) ) { // global value ?
-            // check before checking for strings (if both 'var_isArray' and 'value_isStringPointer' bits are set: array of strings, with strings already deleted)
+            // check for arrays before checking for strings (if both 'var_isArray' and 'value_isStringPointer' bits are set: array of strings, with strings already deleted)
             if ( varType [index] & _pInterpreter->var_isArray ) {       // variable is an array: delete array storage          
 #if printCreateDeleteHeapObjects
-                Serial.print( "----- (array stor ) " ); Serial.println( (uint32_t) varValues [index].pStringConst - RAMSTART );
+                Serial.print( isUserVar ? "----- (usr ar stor) " : "----- (array stor ) " ); Serial.println( (uint32_t) varValues [index].pStringConst - RAMSTART );
 #endif
                 delete []  varValues [index].pArray;
-                _pInterpreter->arrayObjectCount--;
+                isUserVar ? _pInterpreter->userArrayObjectCount : _pInterpreter->globalStaticArrayObjectCount--;
             }
             else if ( varType [index] & _pInterpreter->value_isStringPointer ) {       // variable is a scalar containing a string
                 if ( varValues [index].pStringConst != nullptr ) {
 #if printCreateDeleteHeapObjects
-                    Serial.print( "----- (var string ) " ); Serial.println( (uint32_t) varValues [index].pStringConst - RAMSTART );
+                    Serial.print( isUserVar ? "----- (usr var str) " : "----- (var string ) " ); Serial.println( (uint32_t) varValues [index].pStringConst - RAMSTART );
 #endif
                     delete []  varValues [index].pStringConst;
-                    _pInterpreter->variableStringObjectCount--;
+                    isUserVar ? _pInterpreter->userVarStringObjectCount : _pInterpreter->globalStaticVarStringObjectCount--;
                 }
             }
         }
@@ -279,22 +279,22 @@ void MyParser::resetMachine( bool withUserVariables ) {
     // delete identifier name objects on the heap (variable names, external function names) 
     deleteIdentifierNameObjects( _pInterpreter->programVarNames, _pInterpreter->_programVarNameCount );
     deleteIdentifierNameObjects( _pInterpreter->extFunctionNames, _pInterpreter->_extFunctionCount );
-    if ( withUserVariables ) { deleteIdentifierNameObjects( _pInterpreter->userVarNames, _pInterpreter->_userVarCount ); }
+    if ( withUserVariables ) { deleteIdentifierNameObjects( _pInterpreter->userVarNames, _pInterpreter->_userVarCount, true ); }
 
     // delete variable heap objects: array variable element string objects
     deleteArrayElementStringObjects( _pInterpreter->globalVarValues, _pInterpreter->globalVarType, _pInterpreter->_programVarNameCount, true );
     deleteArrayElementStringObjects( _pInterpreter->staticVarValues, _pInterpreter->staticVarType, _pInterpreter->_staticVarCount, false );
     if ( withUserVariables ) {
-        deleteArrayElementStringObjects( _pInterpreter->userVarValues, _pInterpreter->userVarType, _pInterpreter->_userVarCount, false );
+        deleteArrayElementStringObjects( _pInterpreter->userVarValues, _pInterpreter->userVarType, _pInterpreter->_userVarCount, false, true );
         deleteLastValueFiFoStringObjects();
     }
 
     // delete variable heap objects: scalar variable strings and array variable array storage 
     deleteVariableValueObjects( _pInterpreter->globalVarValues, _pInterpreter->globalVarType, _pInterpreter->_programVarNameCount, true );
     deleteVariableValueObjects( _pInterpreter->staticVarValues, _pInterpreter->staticVarType, _pInterpreter->_staticVarCount, false );
-    if ( withUserVariables ) { deleteVariableValueObjects( _pInterpreter->userVarValues, _pInterpreter->userVarType, _pInterpreter->_userVarCount, false ); }
+    if ( withUserVariables ) { deleteVariableValueObjects( _pInterpreter->userVarValues, _pInterpreter->userVarType, _pInterpreter->_userVarCount, false, true ); }
 
-    // delete alphanumeric constants: before clearing program memory
+    // delete alphanumeric constants: before clearing program memory and immediate mode user instructon memory
     deleteConstStringObjects( _pInterpreter->_programStorage );
     deleteConstStringObjects( _pInterpreter->_programStorage + _pInterpreter->PROG_MEM_SIZE );
 
@@ -314,9 +314,8 @@ void MyParser::resetMachine( bool withUserVariables ) {
         while ( index++ < _pInterpreter->_userVarCount ) { _pInterpreter->userVarType [index] = _pInterpreter->userVarType [index] & ~_pInterpreter->var_userVarUsedByProgram; }
     }
 
+    _pInterpreter->_lastResultCount = 0;                                       // current last result FiFo depth (values currently stored)
 
-    // perform consistency checks: verify that all objects created are destroyed again
-    // note: intermediate string objects exist solely during execution. The count is checked each time executin terminates 
 
     _pInterpreter->_programStart = _pInterpreter->_programStorage + (_pInterpreter->_programMode ? 0 : _pInterpreter->PROG_MEM_SIZE);
     _pInterpreter->_programSize = _pInterpreter->_programSize + (_pInterpreter->_programMode ? _pInterpreter->PROG_MEM_SIZE : _pInterpreter->IMM_MEM_SIZE);
@@ -325,36 +324,60 @@ void MyParser::resetMachine( bool withUserVariables ) {
     *_pInterpreter->_programStorage = '\0';                                    //  current end of program 
     *_pInterpreter->_programStart = '\0';                                      //  current end of program (immediate mode)
 
-    // string and array heap objects: any objects left ?
-    if ( _pInterpreter->identifierNameStringObjectCount != 0 ) {
-        Serial.print( "*** Identifier name objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->identifierNameStringObjectCount );
-    }
-    if ( _pInterpreter->parsedStringConstObjectCount != 0 ) {
-        Serial.print( "*** Parsed constant string objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->parsedStringConstObjectCount );
-    }
-    if ( _pInterpreter->variableStringObjectCount != 0 ) {
-        Serial.print( "*** Variable string objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->variableStringObjectCount );
-    }
-    if ( _pInterpreter->lastValuesStringObjectCount != 0 ) {
-        Serial.print( "*** Last value FiFo string objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->lastValuesStringObjectCount );
-    }
-    if ( _pInterpreter->arrayObjectCount != 0 ) {
-        Serial.print( "*** Array objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->arrayObjectCount );
-    }
+
+    // perform consistency checks: verify that all objects created are destroyed again
+    // note: intermediate string objects exist solely during execution. The count is checked each time executin terminates 
 
     // parsing stack: any list elements left ?
     if ( parsingStack.getElementCount() != 0 ) {
         Serial.print( "*** Parsing stack error. Remaining stack levels: " ); Serial.println( parsingStack.getElementCount() );
     }
 
-    _pInterpreter->identifierNameStringObjectCount = 0;
-    _pInterpreter->parsedStringConstObjectCount = 0;
-    _pInterpreter->variableStringObjectCount = 0;
-    _pInterpreter->lastValuesStringObjectCount = 0;
-    _pInterpreter->arrayObjectCount = 0;
-    // note: intermediateStringObjectCount is not tested, neither is it reset, here. It is a purely execution related object
+    // string and array heap objects: any objects left ?
+    if ( _pInterpreter->identifierNameStringObjectCount != 0 ) {
+        Serial.print( "*** Variable / function name objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->identifierNameStringObjectCount );
+        _pInterpreter->identifierNameStringObjectCount = 0;
+    }
 
-    _pInterpreter->_lastResultCount = 0;                                       // current last result FiFo depth (values currently stored)
+    if ( _pInterpreter->parsedStringConstObjectCount != 0 ) {
+        Serial.print( "*** Parsed constant string objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->parsedStringConstObjectCount );
+        _pInterpreter->parsedStringConstObjectCount = 0;
+    }
+
+    if ( _pInterpreter->lastValuesStringObjectCount != 0 ) {
+        Serial.print( "*** Last value FiFo string objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->lastValuesStringObjectCount );
+        _pInterpreter->lastValuesStringObjectCount = 0;
+    }
+
+    if ( _pInterpreter->globalStaticVarStringObjectCount != 0 ) {
+        Serial.print( "*** Variable string objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->globalStaticVarStringObjectCount );
+        _pInterpreter->globalStaticVarStringObjectCount = 0;
+    }
+
+    if ( _pInterpreter->globalStaticArrayObjectCount != 0 ) {
+        Serial.print( "*** Array objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->globalStaticArrayObjectCount );
+        _pInterpreter->globalStaticArrayObjectCount=0;
+    }
+
+    if ( withUserVariables ) {
+        if ( _pInterpreter->userVarNameStringObjectCount != 0 ) {
+            Serial.print( "*** User variable name objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->userVarNameStringObjectCount );
+            _pInterpreter->userVarNameStringObjectCount=0;
+        }
+
+        if ( _pInterpreter->userVarStringObjectCount != 0 ) {
+            Serial.print( "*** User variable string objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->userVarStringObjectCount );
+            _pInterpreter->userVarStringObjectCount=0;
+        }
+
+        if ( _pInterpreter->userArrayObjectCount != 0 ) {
+            Serial.print( "*** User array objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->userArrayObjectCount );
+            _pInterpreter->userArrayObjectCount=0;
+        }
+    }
+
+    // intermediateStringObjectCount, localVarStringObjectCount, localArrayObjectCount ...
+    // ... is not tested, neither is it reset, here. It is a purely execution related object
 
 }
 
@@ -363,7 +386,7 @@ void MyParser::resetMachine( bool withUserVariables ) {
 // *   check if identifier storage exists already, optionally create new   *
 // -------------------------------------------------------------------------
 
-int MyParser::getIdentifier( char** pIdentNameArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNewName ) {
+int MyParser::getIdentifier( char** pIdentNameArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNewName, bool isUserVar ) {
 
     char* pIdentifierName;
     int index = 0;          // points to last variable in use
@@ -386,9 +409,9 @@ int MyParser::getIdentifier( char** pIdentNameArray, int& identifiersInUse, int 
     if ( createNewName ) {
         if ( identifiersInUse == maxIdentifiers ) { return index; }                // create identifier name failed: return -1 with createNewName = true
         pIdentifierName = new char [_maxIdentifierNameLen + 1 + 1];                      // create standard length char array on the heap, including '\0' and an extra character 
-        _pInterpreter->identifierNameStringObjectCount++;
+        isUserVar ? _pInterpreter->userVarNameStringObjectCount++ : _pInterpreter->identifierNameStringObjectCount++;
 #if printCreateDeleteHeapObjects
-        Serial.print( "+++++ (ident name ) " ); Serial.println( (uint32_t) pIdentifierName - RAMSTART );
+        Serial.print( isUserVar ? "+++++ (usrvar name) " : "+++++ (ident name ) " ); Serial.println( (uint32_t) pIdentifierName - RAMSTART );
 #endif
         strncpy( pIdentifierName, pIdentNameToCheck, identLength );                            // store identifier name in newly created character array
         pIdentifierName [identLength] = '\0';                                                 // string terminating '\0'
@@ -449,9 +472,9 @@ bool MyParser::initVariable( uint16_t varTokenStep, uint16_t constTokenStep ) {
             }
             else { // create string object and store string
                 char* pVarAlphanumValue = new char [length + 1];          // create char array on the heap to store alphanumeric constant, including terminating '\0'
-                _pInterpreter->variableStringObjectCount++;
+                isUserVar ? _pInterpreter->userVarStringObjectCount++ : _pInterpreter->globalStaticVarStringObjectCount++;
 #if printCreateDeleteHeapObjects
-                Serial.print( "+++++ (var string ) " ); Serial.println( (uint32_t) pVarAlphanumValue - RAMSTART );
+                Serial.print( isUserVar ? "+++++ (usr var str) " : "+++++ (var string ) " ); Serial.println( (uint32_t) pVarAlphanumValue - RAMSTART );
 #endif
                 // store alphanumeric constant in newly created character array
                 strcpy( pVarAlphanumValue, pString );              // including terminating \0
@@ -1331,9 +1354,9 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
             if ( isUserVar || isGlobalVar || isStaticVar ) {
                 for ( int dimCnt = 0; dimCnt < array_dimCounter; dimCnt++ ) { arrayElements *= arrayDef_dims [dimCnt]; }
                 pArray = new float [arrayElements + 1];
-                _pInterpreter->arrayObjectCount++;
+                isUserVar ? _pInterpreter->userArrayObjectCount++ : _pInterpreter->globalStaticArrayObjectCount++;
 #if printCreateDeleteHeapObjects
-                Serial.print( "+++++ (array stor ) " ); Serial.println( (uint32_t) pArray - RAMSTART );
+                Serial.print( isUserVar ? "+++++ (usr ar stor) " : "+++++ (array stor ) " ); Serial.println( (uint32_t) pArray - RAMSTART );
 #endif
                 // only now, the array flag can be set, because only now the object exists
                 if ( isUserVar ) {
@@ -1901,7 +1924,8 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
     // if a variable DEFINITION, then create variable name if it does not exist yet
     // note: this only concerns the NAME, not yet the actual variable (program variables: local, static, param and global variables can all share the same name)
     createNewName = _isExtFunctionCmd || _isAnyVarCmd;
-    varNameIndex = getIdentifier( pvarNames [primaryNameRange], *varNameCount [primaryNameRange], maxVarNames [primaryNameRange], pch, pNext - pch, createNewName );
+    bool isUserVar = !_pInterpreter->_programMode;
+    varNameIndex = getIdentifier( pvarNames [primaryNameRange], *varNameCount [primaryNameRange], maxVarNames [primaryNameRange], pch, pNext - pch, createNewName, isUserVar );
 
     if ( _isExtFunctionCmd || _isAnyVarCmd ) {               // variable or parameter DEFINITION: if name didn't exist, it should have been created now
         if ( varNameIndex == -1 ) { pNext = pch; result = result_maxVariableNamesReached; return false; }      // name still does not exist: error
