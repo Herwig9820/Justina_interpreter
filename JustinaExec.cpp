@@ -92,8 +92,8 @@ Interpreter::execResult_type  Interpreter::exec() {
                     char* s = nullptr;
                     _pEvalStackTop->varOrConst.value.pStringConst = s;            // default return value
                     _pEvalStackTop->varOrConst.valueType = value_isStringPointer;
-                    _pEvalStackTop->varOrConst.arrayAttributes = 0x00;
-                    _pEvalStackTop->varOrConst.attributes = constIsIntermediate;
+                    _pEvalStackTop->varOrConst.variableAttributes = 0x00;
+                    _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
                 }
 
 
@@ -104,7 +104,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                 // release local variable storage for function that has been called
                 delete [] _activeFunctionData.pLocalVarValues;
                 delete [] _activeFunctionData.pLocalVarTypes;
-                delete [] _activeFunctionData.pSourceVarTypes;
+                delete [] _activeFunctionData.ppSourceVarTypes;
 
                 // load local storage pointers again for caller function and restore pending step & active function index for caller function
                 _activeFunctionData = *(FunctionData*) _pFlowCtrlStackTop;          // top level contains called function result
@@ -169,7 +169,7 @@ Interpreter::execResult_type  Interpreter::exec() {
 
                 bool isPendingLeftPar = (isPendingTerminal ? (MyParser::_terminals [pendingTokenIndex].terminalCode == MyParser::termcod_leftPar) : false);
                 if ( isPendingLeftPar ) {                                                           // array variable name (this token) is followed by subscripts (to be processed)
-                    _pEvalStackTop->varOrConst.arrayAttributes |= var_isArray_pendingSubscripts;    // flag that array element still needs to be processed
+                    _pEvalStackTop->varOrConst.variableAttributes |= var_isArray_pendingSubscripts;    // flag that array element still needs to be processed
                 }
             }
             else { pushConstant( tokenType ); }
@@ -217,7 +217,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                 // -----------------
 
                 if ( evalStack.getElementCount() > _activeFunctionData.callerEvalStackLevels + 1 ) {
-                    Serial.print( "*** Evaluation stack error. Remaining stack levels for current program level: " ); Serial.println( evalStack.getElementCount() - (_activeFunctionData.callerEvalStackLevels + 1));
+                    Serial.print( "*** Evaluation stack error. Remaining stack levels for current program level: " ); Serial.println( evalStack.getElementCount() - (_activeFunctionData.callerEvalStackLevels + 1) );
                 }
 
                 if ( evalStack.getElementCount() == _activeFunctionData.callerEvalStackLevels + 1 ) {             // did the execution produce a result ?
@@ -227,7 +227,8 @@ Interpreter::execResult_type  Interpreter::exec() {
                     }
                     // currently executing a function ? check if result is an intermediate string object and delete it
                     else {
-                        if ( (_pEvalStackTop->varOrConst.attributes == constIsIntermediate) && (_pEvalStackTop->varOrConst.valueType == value_isStringPointer) ) {
+                        if ( ((_pEvalStackTop->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) &&
+                            (_pEvalStackTop->varOrConst.valueType == value_isStringPointer) ) {
                             if ( _pEvalStackTop->varOrConst.value.pStringConst != nullptr ) {
 #if printCreateDeleteHeapObjects
                                 Serial.print( "----- (Intermd str) " );   Serial.println( (uint32_t) _pEvalStackTop->varOrConst.value.pStringConst - RAMSTART );
@@ -383,7 +384,7 @@ void Interpreter::saveLastValue() {
         // store new last value
         VarOrConstLvl lastvalue;
         bool lastValueReal = (_pEvalStackTop->varOrConst.valueType == value_isFloat);
-        bool lastValueIntermediate = (_pEvalStackTop->varOrConst.attributes == constIsIntermediate);
+        bool lastValueIntermediate = ((_pEvalStackTop->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate);
 
         if ( lastValueReal ) { lastvalue.value.realConst = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pEvalStackTop->varOrConst.value.pRealConst) : _pEvalStackTop->varOrConst.value.realConst; }
         else { lastvalue.value.pStringConst = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pEvalStackTop->varOrConst.value.ppStringConst) : _pEvalStackTop->varOrConst.value.pStringConst; }
@@ -399,7 +400,7 @@ void Interpreter::saveLastValue() {
             memcpy( lastResultValueFiFo [0].pStringConst, lastvalue.value.pStringConst, stringlen );        // copy the actual string (not the pointer); do not use strcpy
             lastResultValueFiFo [0].pStringConst [stringlen] = '\0';
 #if printCreateDeleteHeapObjects
-            Serial.print( "+++++ (FiFo string) " );   Serial.println((uint32_t) lastResultValueFiFo [0].pStringConst - RAMSTART );
+            Serial.print( "+++++ (FiFo string) " );   Serial.println( (uint32_t) lastResultValueFiFo [0].pStringConst - RAMSTART );
 #endif            
 
             if ( lastValueIntermediate ) {
@@ -430,7 +431,7 @@ void Interpreter::clearEvalStack() {
     LE_evalStack* pstackLvl = _pEvalStackTop;
     while ( pstackLvl != nullptr ) {
         if ( pstackLvl->genericToken.tokenType == tok_isConstant ) {            // needed to exclude non-value tokens (terminals, reserved words, functions, ...)
-            if ( (pstackLvl->varOrConst.attributes == constIsIntermediate) && (pstackLvl->varOrConst.valueType == value_isStringPointer) )
+            if ( ((pstackLvl->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && (pstackLvl->varOrConst.valueType == value_isStringPointer) )
             {
                 if ( pstackLvl->varOrConst.value.pStringConst != nullptr ) {
 #if printCreateDeleteHeapObjects
@@ -471,10 +472,10 @@ void Interpreter::deleteStackArguments( LE_evalStack* pPrecedingStackLvl, int ar
     LE_evalStack* pStackLvl = (LE_evalStack*) evalStack.getNextListElement( pPrecedingStackLvl );   // array subscripts or function arguments (NOT the preceding list element) 
     do {
         // stack levels contain variables and (interim) constants only
-        if ( (pStackLvl->varOrConst.attributes == constIsIntermediate) && (pStackLvl->varOrConst.valueType == value_isStringPointer) ) {
+        if ( ((pStackLvl->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && (pStackLvl->varOrConst.valueType == value_isStringPointer) ) {
             if ( pStackLvl->varOrConst.value.pStringConst != nullptr ) {
 #if printCreateDeleteHeapObjects
-                Serial.print( "----- (Intermd str) " );   Serial.println( (uint32_t) pStackLvl->varOrConst.value.pStringConst -RAMSTART );
+                Serial.print( "----- (Intermd str) " );   Serial.println( (uint32_t) pStackLvl->varOrConst.value.pStringConst - RAMSTART );
 #endif
                 delete [] pStackLvl->varOrConst.value.pStringConst;
                 intermediateStringObjectCount--;
@@ -527,7 +528,7 @@ Interpreter::execResult_type Interpreter::execParenthesesPair( LE_evalStack*& pP
     // stack level preceding left parenthesis is an array variable name AND it requires an array element ?
     // (if it is a variable name, it can still be an array name used as previous argument in a function call)
     else if ( pPrecedingStackLvl->genericToken.tokenType == tok_isVariable ) {
-        if ( (pPrecedingStackLvl->varOrConst.arrayAttributes & var_isArray_pendingSubscripts) == var_isArray_pendingSubscripts ) {
+        if ( (pPrecedingStackLvl->varOrConst.variableAttributes & var_isArray_pendingSubscripts) == var_isArray_pendingSubscripts ) {
             execResult_type execResult = arrayAndSubscriptsToarrayElement( pPrecedingStackLvl, firstArgStackLvl, argCount );
             return execResult;
         }
@@ -575,7 +576,7 @@ Interpreter::execResult_type Interpreter::arrayAndSubscriptsToarrayElement( LE_e
     if ( pArrayElem == nullptr ) { return result_array_outsideBounds; }
 
     pPrecedingStackLvl->varOrConst.value.pVariable = pArrayElem;
-    pPrecedingStackLvl->varOrConst.arrayAttributes &= ~var_isArray_pendingSubscripts;           // remove 'pending subscripts' flag 
+    pPrecedingStackLvl->varOrConst.variableAttributes &= ~var_isArray_pendingSubscripts;           // remove 'pending subscripts' flag 
     // note: other data does not change (array attributes, value type, token type, intermediate constant, variable type address)
 
 
@@ -595,7 +596,7 @@ void Interpreter::makeIntermediateConstant( LE_evalStack* pEvalStackLvl ) {
     // if a (scalar) variable: replace by a constant
 
     // if already an intermediate constant, leave it as such. If not, make it an intermediate constant
-    if ( pEvalStackLvl->varOrConst.attributes != constIsIntermediate ) {                    // not an intermediate constant
+    if ( (pEvalStackLvl->varOrConst.valueAttributes & constIsIntermediate) == 0 ) {                    // not an intermediate constant
         bool opReal = (pEvalStackLvl->varOrConst.valueType == value_isFloat);
 
         Val operand, result;                                                               // operands and result
@@ -619,8 +620,8 @@ void Interpreter::makeIntermediateConstant( LE_evalStack* pEvalStackLvl ) {
         }
         pEvalStackLvl->varOrConst.value = result;                        // float or pointer to string (type: no change)
         pEvalStackLvl->varOrConst.tokenType = tok_isConstant;              // use generic constant type
-        pEvalStackLvl->varOrConst.attributes = constIsIntermediate;             // is an intermediate result (intermediate constant strings must be deleted when not needed any more)
-        pEvalStackLvl->varOrConst.arrayAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
+        pEvalStackLvl->varOrConst.valueAttributes = constIsIntermediate;             // is an intermediate result (intermediate constant strings must be deleted when not needed any more)
+        pEvalStackLvl->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
     }
 }
 
@@ -727,8 +728,8 @@ Interpreter::execResult_type  Interpreter::execPrefixOperation() {
     _pEvalStackTop->varOrConst.value = operand;
     _pEvalStackTop->varOrConst.valueType = valueType;                   // real or string
     _pEvalStackTop->varOrConst.tokenType = tok_isConstant;              // use generic constant type
-    _pEvalStackTop->varOrConst.attributes = constIsIntermediate;
-    _pEvalStackTop->varOrConst.arrayAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
+    _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
+    _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
 
 
     //  clean up stack (drop prefix operator)
@@ -773,7 +774,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         else if ( (operatorCode != _pmyParser->termcod_concat) && (!op1real || !op2real) ) { return result_numberExpected; }
     }
     else {                                                                                  // assignment 
-        if ( _pEvalStackMinus2->varOrConst.arrayAttributes & var_isArray ) {        // asignment to array element: value type cannot change
+        if ( _pEvalStackMinus2->varOrConst.variableAttributes & var_isArray ) {        // asignment to array element: value type cannot change
             if ( op1real != op2real ) { return result_array_valueTypeIsFixed; }
         }
     }
@@ -803,7 +804,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
             // delete variable string object
             if ( *_pEvalStackMinus2->varOrConst.value.ppStringConst != nullptr ) {
 #if printCreateDeleteHeapObjects
-                Serial.print( "----- (Var string ) " );   Serial.println( (uint32_t) *_pEvalStackMinus2->varOrConst.value.ppStringConst -RAMSTART );
+                Serial.print( "----- (Var string ) " );   Serial.println( (uint32_t) *_pEvalStackMinus2->varOrConst.value.ppStringConst - RAMSTART );
 #endif
                 delete [] * _pEvalStackMinus2->varOrConst.value.ppStringConst;
                 globalStaticVarStringObjectCount--;
@@ -815,7 +816,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         if ( op2real ) {
             opResult.realConst = operand2.realConst;
         }
-        else if ( op2emptyString ) {  
+        else if ( op2emptyString ) {
             opResult.pStringConst = operand2.pStringConst;
         }
         // the value (parsed constant, variable value or intermediate result) to be assigned to the receiving variable is a non-empty string value
@@ -911,22 +912,22 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     // --------------------------------------------------------------
 
     // operand 2 is an intermediate constant AND it is a string ? delete char string object
-    if ( (_pEvalStackTop->varOrConst.attributes == constIsIntermediate) && !op2real )
+    if ( ((_pEvalStackTop->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && !op2real )
     {
         if ( _pEvalStackTop->varOrConst.value.pStringConst != nullptr ) {
 #if printCreateDeleteHeapObjects
-            Serial.print( "----- (Intermd str) " );   Serial.println( (uint32_t) _pEvalStackTop->varOrConst.value.pStringConst -RAMSTART );
+            Serial.print( "----- (Intermd str) " );   Serial.println( (uint32_t) _pEvalStackTop->varOrConst.value.pStringConst - RAMSTART );
 #endif
             delete [] _pEvalStackTop->varOrConst.value.pStringConst;
             intermediateStringObjectCount--;
         }
     }
     // operand 1 is an intermediate constant AND it is a string ? delete char string object
-    if ( (_pEvalStackMinus2->varOrConst.attributes == constIsIntermediate) && !op1real )
+    if ( ((_pEvalStackMinus2->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && !op1real )
     {
         if ( _pEvalStackMinus2->varOrConst.value.pStringConst != nullptr ) {
 #if printCreateDeleteHeapObjects
-            Serial.print( "----- (Intermd str) " );   Serial.println( (uint32_t) _pEvalStackMinus2->varOrConst.value.pStringConst -RAMSTART );
+            Serial.print( "----- (Intermd str) " );   Serial.println( (uint32_t) _pEvalStackMinus2->varOrConst.value.pStringConst - RAMSTART );
 #endif
             delete [] _pEvalStackMinus2->varOrConst.value.pStringConst;
             intermediateStringObjectCount--;
@@ -952,8 +953,8 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     _pEvalStackTop->varOrConst.value = opResult;                        // float or pointer to string
     _pEvalStackTop->varOrConst.valueType = opResultReal ? value_isFloat : value_isStringPointer;     // value type of second operand  
     _pEvalStackTop->varOrConst.tokenType = tok_isConstant;              // use generic constant type
-    _pEvalStackTop->varOrConst.attributes = (operatorCode == MyParser::termcod_assign) ? 0x00 : constIsIntermediate;             // is an intermediate result (intermediate constant strings must be deleted when not needed any more)
-    _pEvalStackTop->varOrConst.arrayAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
+    _pEvalStackTop->varOrConst.valueAttributes = (operatorCode == MyParser::termcod_assign) ? 0x00 : constIsIntermediate;             // is an intermediate result (intermediate constant strings must be deleted when not needed any more)
+    _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
 
     return result_execOK;
 }
@@ -1038,7 +1039,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
     int paramCount = extFunctionData [_activeFunctionData.functionIndex].paramOnlyCountInFunction;
 
     _activeFunctionData.pLocalVarValues = new Val [localVarCount];
-    _activeFunctionData.pSourceVarTypes = new char* [localVarCount];      // variables or array elements passed by reference only: references to variable types 
+    _activeFunctionData.ppSourceVarTypes = new char* [localVarCount];      // variables or array elements passed by reference only: references to variable types 
     _activeFunctionData.pLocalVarTypes = new char [localVarCount];        // local float, local string, reference
 
     // save function caller's arguments to local storage and remove hem from evaluation stack
@@ -1052,11 +1053,14 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 
             _activeFunctionData.pLocalVarValues [i] = pStackLvl->varOrConst.value;
 
-            // float or string, variable (could be an array) or constant
+            // variable (could be an array) passed ?
             if ( pStackLvl->varOrConst.tokenType == tok_isVariable ) {                                      // operand is variable
                 _activeFunctionData.pLocalVarValues [i].pVariable = pStackLvl->varOrConst.value.pVariable; // local variable is reference to original variable
-                _activeFunctionData.pSourceVarTypes [i] = pStackLvl->varOrConst.varTypeAddress;            // reference to original variable's value type
-                _activeFunctionData.pLocalVarTypes [i] = value_isVarRef;                                     // local variable stores REFERENCE to original variable
+                _activeFunctionData.ppSourceVarTypes [i] = pStackLvl->varOrConst.varTypeAddress;            // reference to original variable's value type
+                _activeFunctionData.pLocalVarTypes [i] = value_isVarRef |                                    // local variable stores REFERENCE to original ('SOURCE') variable ...
+                    (pStackLvl->varOrConst.variableAttributes & var_scopeMask);                             // ... and scope of SOURCE variable
+
+                Serial.print( "launch function - " ); Serial.print( flowCtrlStack.getElementCount() ); Serial.print( " levels, source var type: " ); Serial.println( pStackLvl->varOrConst.variableAttributes & var_scopeMask, HEX );
             }
             else {      // parsed, or intermediate, constant passed as value
                 if ( operandIsReal ) {                                                      // operand is float constant
@@ -1078,10 +1082,10 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
                 };
             }
 
-            if ( (pStackLvl->varOrConst.attributes == constIsIntermediate) && !operandIsReal ) {
+            if ( ((pStackLvl->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && !operandIsReal ) {
                 if ( pStackLvl->varOrConst.value.pStringConst != nullptr ) {
 #if printCreateDeleteHeapObjects
-                    Serial.print( "----- (Intermd str) " );   Serial.println( (uint32_t) pStackLvl->varOrConst.value.pStringConst -RAMSTART );
+                    Serial.print( "----- (Intermd str) " );   Serial.println( (uint32_t) pStackLvl->varOrConst.value.pStringConst - RAMSTART );
 #endif
                     delete [] pStackLvl->varOrConst.value.pStringConst;
                     intermediateStringObjectCount--;
@@ -1215,7 +1219,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 // *   fetch variable base address   *
 // -----------------------------------
 
-void* Interpreter::fetchVarBaseAddress( TokenIsVariable* pVarToken, char*& sourceVarTypeAddress, char& localValueType, char& variableAttributes ) {
+void* Interpreter::fetchVarBaseAddress( TokenIsVariable* pVarToken, char*& sourceVarTypeAddress, char& localValueType, char& variableAttributes, char& valueAttributes ) {
 
     // pVarToken argument must point to a variable token in Justina PROGRAM memory (containing variable type, index and attributes - NOT the actual variable's address)
     // upon return:
@@ -1225,29 +1229,35 @@ void* Interpreter::fetchVarBaseAddress( TokenIsVariable* pVarToken, char*& sourc
 
     int varNameIndex = pVarToken->identNameIndex;
     // identInfo may only contains variable scope (parameter, local, static, global) and 'is array' flag 
-    uint8_t varScope = pVarToken->identInfo & var_scopeMask;                                // only keep variable scope info (global, user, local, static or parameter)
-
-    variableAttributes = pVarToken->identInfo & var_isArray;                                            // is this variable an array or a scalar ?                            
+    uint8_t varScope = pVarToken->identInfo & var_scopeMask;                                // global, user, local, static or parameter
     bool isUserVar = (varScope == var_isUser);
     bool isGlobalVar = (varScope == var_isGlobal);
     bool isStaticVar = (varScope == var_isStaticInFunc);
+
+    // init source variable scope (if the current variable is a reference variable, this will be changed to the source variable scope later)
+    valueAttributes = 0;                                                                                // not an intermediate constant                                         
 
     int valueIndex = (isUserVar || isGlobalVar) ? varNameIndex : programVarValueIndex [varNameIndex];   // value index in allocated Justina data memory for this variable
 
     if ( isUserVar ) {
         localValueType = userVarType [valueIndex] & value_typeMask;                                     // value type (indicating float or string)
         sourceVarTypeAddress = userVarType + valueIndex;                                                // pointer to value type and the 'is array' flag          
+        variableAttributes = pVarToken->identInfo & (var_scopeMask | var_isArray);
 
         return &userVarValues [valueIndex];                                                             // pointer to value (float, char* or (array variables only) pointer to array start in memory)
     }
     else if ( isGlobalVar ) {
         localValueType = globalVarType [valueIndex] & value_typeMask;                                     // value type (indicating float or string)
         sourceVarTypeAddress = globalVarType + valueIndex;                                              // pointer to value type and the 'is array' flag
+        variableAttributes = pVarToken->identInfo & (var_scopeMask | var_isArray);
+
         return &globalVarValues [valueIndex];                                                           // pointer to value (float, char* or (array variables only) pointer to array start in memory)
     }
     else if ( isStaticVar ) {
         localValueType = staticVarType [valueIndex] & value_typeMask;                                     // value type (indicating float or string)
         sourceVarTypeAddress = staticVarType + valueIndex;                                              // pointer to value type and the 'is array' flag
+        variableAttributes = pVarToken->identInfo & (var_scopeMask | var_isArray);
+
         return &staticVarValues [valueIndex];                                                           // pointer to value (float, char* or (array variables only) pointer to array start in memory)
     }
 
@@ -1261,16 +1271,23 @@ void* Interpreter::fetchVarBaseAddress( TokenIsVariable* pVarToken, char*& sourc
             // a variable passed as argument is always passed by reference, and its address and a pointer to its (original) value type ...
             // ... have been stored when the function was called (in Justina memory for local variables of the called function)
             // this mechanism works also if the variable passed was itself already containing a reference (in nested function calls)
-            sourceVarTypeAddress = _activeFunctionData.pSourceVarTypes [valueIndex];                   // REFERENCED variable: pointer to value type and the 'is array' flag
+            sourceVarTypeAddress = _activeFunctionData.ppSourceVarTypes [valueIndex];                   // REFERENCED variable: pointer to value type and the 'is array' flag
+            variableAttributes = _activeFunctionData.pLocalVarTypes [valueIndex] | (pVarToken->identInfo & var_isArray);
+
             return   ((Val**) _activeFunctionData.pLocalVarValues) [valueIndex];                       // REFERENCED variable: pointer to value (float, char* or (array variables only) pointer to array start in memory)
         }
 
         // local variable OR parameter variable that received the result of an expression (or constant) as argument (passed by value) OR optional parameter variable that received no value (default initialization) 
         else {
             sourceVarTypeAddress = _activeFunctionData.pLocalVarTypes + valueIndex;                    // pointer to value type and the 'is array' flag
+            variableAttributes = pVarToken->identInfo & (var_scopeMask | var_isArray);
+
             return (Val*) &_activeFunctionData.pLocalVarValues [valueIndex];                           // pointer to value (float, char* or (array variables only) pointer to array start in memory)
         }
     }
+
+
+
 }
 
 
@@ -1331,11 +1348,10 @@ void Interpreter::PushTerminalToken( int& tokenType ) {                         
 
     _pEvalStackTop = (LE_evalStack*) evalStack.appendListElement( sizeof( TerminalTokenLvl ) );
     _pEvalStackTop->terminal.tokenType = tokenType;
+    _pEvalStackTop->terminal.tokenAddress = _programCounter;                                                    // only for finding source error position during unparsing (for printing)
+
     _pEvalStackTop->terminal.index = (*_programCounter >> 4) & 0x0F;                                            // terminal token only: calculate from partial index stored in high 4 bits of token type 
     _pEvalStackTop->terminal.index += ((tokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (tokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
-
-
-    _pEvalStackTop->terminal.tokenAddress = _programCounter;                                                    // only for finding source error position during unparsing (for printing)
 };
 
 
@@ -1347,10 +1363,12 @@ void Interpreter::pushFunctionName( int& tokenType ) {                          
 
     // push internal or external function index to stack
     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
+
     _pEvalStackTop = (LE_evalStack*) evalStack.appendListElement( sizeof( FunctionLvl ) );
     _pEvalStackTop->function.tokenType = tokenType;
-    _pEvalStackTop->function.index = ((TokenIsIntFunction*) _programCounter)->tokenIndex;
     _pEvalStackTop->function.tokenAddress = _programCounter;                                    // only for finding source error position during unparsing (for printing)
+
+    _pEvalStackTop->function.index = ((TokenIsIntFunction*) _programCounter)->tokenIndex;
     /*
     if ( tokenType == tok_isInternFunction ) {
         int fIndex = (int) _pEvalStackTop->function.index;
@@ -1371,12 +1389,14 @@ void Interpreter::pushConstant( int& tokenType ) {                              
 
     // push real or string parsed constant, value type and array flag (false) to stack
     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
+
     _pEvalStackTop = (LE_evalStack*) evalStack.appendListElement( sizeof( VarOrConstLvl ) );
     _pEvalStackTop->varOrConst.tokenType = tok_isConstant;          // use generic constant type
-    _pEvalStackTop->varOrConst.valueType = (tokenType == tok_isRealConst) ? value_isFloat : value_isStringPointer;
-    _pEvalStackTop->varOrConst.arrayAttributes = 0x00;
-    _pEvalStackTop->varOrConst.attributes = 0x00;
     _pEvalStackTop->varOrConst.tokenAddress = _programCounter;                                  // only for finding source error position during unparsing (for printing)
+
+    _pEvalStackTop->varOrConst.valueType = (tokenType == tok_isRealConst) ? value_isFloat : value_isStringPointer;
+    _pEvalStackTop->varOrConst.variableAttributes = 0x00;
+    _pEvalStackTop->varOrConst.valueAttributes = 0x00;
 
     if ( tokenType == tok_isRealConst ) {
         float f;
@@ -1403,14 +1423,15 @@ void Interpreter::pushVariable( int& tokenType ) {                              
 
     _pEvalStackTop = (LE_evalStack*) evalStack.appendListElement( sizeof( VarOrConstLvl ) );
     _pEvalStackTop->varOrConst.tokenType = tokenType;
+    _pEvalStackTop->varOrConst.tokenAddress = _programCounter;
 
     // note: _pEvalStackTop->varOrConst.valueType is a value ONLY containing the value type of the variable pushed on the stack (float, string, reference)
     //       _pEvalStackTop->varOrConst.varTypeAddress is a pointer to the SOURCE variable's variable info (either a referenced variable or the variable itself), with ...
     //       the source variable info containing the value type of the variable AND the 'is array' flag 
 
-    void* varAddress = fetchVarBaseAddress( (TokenIsVariable*) _programCounter, _pEvalStackTop->varOrConst.varTypeAddress, _pEvalStackTop->varOrConst.valueType, _pEvalStackTop->varOrConst.arrayAttributes );
-
+    void* varAddress = fetchVarBaseAddress( (TokenIsVariable*) _programCounter, _pEvalStackTop->varOrConst.varTypeAddress, _pEvalStackTop->varOrConst.valueType,
+        _pEvalStackTop->varOrConst.variableAttributes, _pEvalStackTop->varOrConst.valueAttributes );
     _pEvalStackTop->varOrConst.value.pVariable = varAddress;                                    // base address of variable
-    _pEvalStackTop->varOrConst.attributes = 0x00;
-    _pEvalStackTop->varOrConst.tokenAddress = _programCounter;
+
+    Serial.print("push variable, scope is ");Serial.println( _pEvalStackTop->varOrConst.variableAttributes  & var_scopeMask, HEX);
 }

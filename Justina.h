@@ -227,8 +227,8 @@ public:
     struct VarOrConstLvl {
         char tokenType;
         char valueType;
-        char arrayAttributes;                                    // is array; is array element
-        char attributes;
+        char variableAttributes;                                    // is array; is array element; SOURCE variable scope
+        char valueAttributes;
         char* tokenAddress;                                     // must be second 4-byte word, only for finding source error position during unparsing (for printing)
         Val value;                                              // float or pointer (4 byte)
         char* varTypeAddress;                                        // variables only: pointer to variable value type
@@ -258,7 +258,7 @@ public:
 
     struct FunctionData {
         Val* pLocalVarValues;
-        char** pSourceVarTypes;        // variables or array elements passed by reference, only: references to variable types 
+        char** ppSourceVarTypes;        // variables or array elements passed by reference, only: references to variable types 
         char* pLocalVarTypes;          // local float, local string, reference
 
         char* pPendingStep;             // next step to execute (look ahead)
@@ -416,7 +416,7 @@ public:
     bool processCharacter( char c );
     void (*_callbackFcn)(bool& requestQuit);                                         // pointer to callback function for heartbeat
     void setMainLoopCallback( void (*func)(bool& requistQuit) );                   // set callback function for connection state change
-    void* fetchVarBaseAddress( TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& variableAttributes );
+    void* fetchVarBaseAddress( TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& variableAttributes, char& sourceVarAttributes );
     void* arrayElemAddress( void* varBaseAddress, int* dims );
 
     execResult_type  exec();

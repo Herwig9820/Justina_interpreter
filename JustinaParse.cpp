@@ -344,11 +344,6 @@ void MyParser::resetMachine( bool withUserVariables ) {
         _pInterpreter->parsedStringConstObjectCount = 0;
     }
 
-    if ( _pInterpreter->lastValuesStringObjectCount != 0 ) {
-        Serial.print( "*** Last value FiFo string objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->lastValuesStringObjectCount );
-        _pInterpreter->lastValuesStringObjectCount = 0;
-    }
-
     if ( _pInterpreter->globalStaticVarStringObjectCount != 0 ) {
         Serial.print( "*** Variable string objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->globalStaticVarStringObjectCount );
         _pInterpreter->globalStaticVarStringObjectCount = 0;
@@ -356,23 +351,28 @@ void MyParser::resetMachine( bool withUserVariables ) {
 
     if ( _pInterpreter->globalStaticArrayObjectCount != 0 ) {
         Serial.print( "*** Array objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->globalStaticArrayObjectCount );
-        _pInterpreter->globalStaticArrayObjectCount=0;
+        _pInterpreter->globalStaticArrayObjectCount = 0;
     }
 
     if ( withUserVariables ) {
         if ( _pInterpreter->userVarNameStringObjectCount != 0 ) {
             Serial.print( "*** User variable name objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->userVarNameStringObjectCount );
-            _pInterpreter->userVarNameStringObjectCount=0;
+            _pInterpreter->userVarNameStringObjectCount = 0;
         }
 
         if ( _pInterpreter->userVarStringObjectCount != 0 ) {
             Serial.print( "*** User variable string objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->userVarStringObjectCount );
-            _pInterpreter->userVarStringObjectCount=0;
+            _pInterpreter->userVarStringObjectCount = 0;
         }
 
         if ( _pInterpreter->userArrayObjectCount != 0 ) {
             Serial.print( "*** User array objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->userArrayObjectCount );
-            _pInterpreter->userArrayObjectCount=0;
+            _pInterpreter->userArrayObjectCount = 0;
+        }
+
+        if ( _pInterpreter->lastValuesStringObjectCount != 0 ) {
+            Serial.print( "*** Last value FiFo string objects cleanup error. Remaining: " ); Serial.println( _pInterpreter->lastValuesStringObjectCount );
+            _pInterpreter->lastValuesStringObjectCount = 0;
         }
     }
 
