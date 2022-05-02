@@ -257,9 +257,9 @@ public:
 
 
     struct FunctionData {
-        Val* pLocalVarValues;
-        char** ppSourceVarTypes;        // variables or array elements passed by reference, only: references to variable types 
-        char* pLocalVarTypes;          // local float, local string, reference
+        Val* pLocalVarValues;           // local variable value: real, pointer to string or array, or (if reference): pointer to 'source' (referenced) variable
+        char** ppSourceVarTypes;        // only if local variable is reference to variable or array element: pointer to 'source' variable value type  
+        char* pVariableAttributes;      // local variable: value type (float, local string or reference); 'source' (if reference) or local variable scope (user, global, static; local, param) 
 
         char* pPendingStep;             // next step to execute (look ahead)
         char* errorStatementStartStep;  // first token in statement where execution error occurs (error reporting)
@@ -302,7 +302,7 @@ public:
     static constexpr uint8_t value_isFloat = 0 << 0;
     static constexpr uint8_t value_isStringPointer = 1 << 0;
     static constexpr uint8_t value_isVarRef = 2 << 0;
-    static constexpr uint8_t value_noValue = 3 << 0;                  // execution only
+    static constexpr uint8_t value_noValue = 3 << 0;
 
     // execution
     static constexpr uint8_t constIsIntermediate = 0x01;
@@ -433,6 +433,7 @@ public:
 
     void saveLastValue();
     void clearEvalStack();
+    void clearFlowCtrlStack();
 
     void deleteStackArguments( LE_evalStack* pPrecedingStackLvl, int argCount, bool includePreceding );
 
@@ -591,7 +592,7 @@ public:
         result_alphaConstInvalidEscSeq,
         result_alphaNoCtrlCharAllowed,
         result_alphaClosingQuoteMissing,
-        result_overflow,                // underflow nit detected during parsing
+        result_overflow,                // underflow not detected during parsing
 
         // function errors
         result_nameInUseForVariable = 1500,
@@ -944,8 +945,8 @@ public:
     ~MyParser();                                                 // constructor
     void resetMachine( bool withUserVariables );
     void deleteIdentifierNameObjects( char** pIdentArray, int identifiersInUse, bool isUserVar = false );
-    void deleteArrayElementStringObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar = false );
-    void deleteVariableValueObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar = false );
+    void deleteArrayElementStringObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false );
+    void deleteVariableValueObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar = false , bool isLocalVar = false);
     void deleteLastValueFiFoStringObjects();
     void deleteConstStringObjects( char* pToken );
     parseTokenResult_type parseSource( char* const inputLine, char*& pErrorPos );

@@ -155,11 +155,11 @@ void MyParser::deleteIdentifierNameObjects( char** pIdentNameArray, int identifi
 // *   delete variable heap objects: scalar variable strings and array variable array storage   *
 // ----------------------------------------------------------------------------------------------
 
-void MyParser::deleteArrayElementStringObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar ) {
+void MyParser::deleteArrayElementStringObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar, bool isLocalVar ) {
     int index = 0;
     while ( index < varNameCount ) {
-        if ( !checkIfGlobalValue || (varType [index] & (_pInterpreter->var_hasGlobalValue)) ) { // global value ?
-            if ( (varType [index] & (_pInterpreter->var_isArray | _pInterpreter->value_isStringPointer)) ==
+        if ( !checkIfGlobalValue || (varType [index] & (_pInterpreter->var_hasGlobalValue)) ) { // if only for global values: is it a global value ?
+            if ( (varType [index] & (_pInterpreter->var_isArray | _pInterpreter->value_typeMask)) ==
                 (_pInterpreter->var_isArray | _pInterpreter->value_isStringPointer) ) {              // array of strings
 
                 void* pArrayStorage = varValues [index].pArray;        // void pointer to an array of string pointers; element 0 contains dimensions and dimension count
@@ -173,10 +173,10 @@ void MyParser::deleteArrayElementStringObjects( Interpreter::Val* varValues, cha
                     uint32_t stringPointerAddress = (uint32_t) & (((char**) pArrayStorage) [arrayElem]);
                     if ( pString != nullptr ) {
 #if printCreateDeleteHeapObjects
-                        Serial.print( isUserVar ? "----- (usr ar str ) " : "----- (arr string ) " ); Serial.println( (uint32_t) pString - RAMSTART );     // applicable to string and array (same pointer)
+                        Serial.print( isUserVar ? "----- (usr arr str) " : isLocalVar ? "-----(loc arr str)" : "----- (arr string ) "); Serial.println((uint32_t) pString - RAMSTART);     // applicable to string and array (same pointer)
 #endif
                         delete []  pString;                                  // applicable to string and array (same pointer)
-                        isUserVar ? _pInterpreter->userVarStringObjectCount-- : _pInterpreter->globalStaticVarStringObjectCount--;
+                        isUserVar ? _pInterpreter->userVarStringObjectCount-- : isLocalVar ? _pInterpreter->localVarStringObjectCount--  :  _pInterpreter->globalStaticVarStringObjectCount--; 
                     }
                 }
             }
@@ -192,25 +192,25 @@ void MyParser::deleteArrayElementStringObjects( Interpreter::Val* varValues, cha
 
 // note: make sure array variable element string objects have been deleted prior to calling this routine
 
-void MyParser::deleteVariableValueObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar ) {
+void MyParser::deleteVariableValueObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar, bool isLocalVar ) {
     int index = 0;
     while ( index < varNameCount ) {
         if ( !checkIfGlobalValue || (varType [index] & (_pInterpreter->var_hasGlobalValue)) ) { // global value ?
             // check for arrays before checking for strings (if both 'var_isArray' and 'value_isStringPointer' bits are set: array of strings, with strings already deleted)
             if ( varType [index] & _pInterpreter->var_isArray ) {       // variable is an array: delete array storage          
 #if printCreateDeleteHeapObjects
-                Serial.print( isUserVar ? "----- (usr ar stor) " : "----- (array stor ) " ); Serial.println( (uint32_t) varValues [index].pStringConst - RAMSTART );
+                Serial.print( isUserVar ? "----- (usr ar stor) " :  isLocalVar ? "----- (loc ar stor) ": "----- (array stor ) " ); Serial.println( (uint32_t) varValues [index].pStringConst - RAMSTART );
 #endif
                 delete []  varValues [index].pArray;
-                isUserVar ? _pInterpreter->userArrayObjectCount : _pInterpreter->globalStaticArrayObjectCount--;
+                isUserVar ? _pInterpreter->userArrayObjectCount-- :  isLocalVar ? _pInterpreter->localArrayObjectCount-- :  _pInterpreter->globalStaticArrayObjectCount--;
             }
-            else if ( varType [index] & _pInterpreter->value_isStringPointer ) {       // variable is a scalar containing a string
+            else if ( (varType [index] & _pInterpreter->value_typeMask) == _pInterpreter->value_isStringPointer ) {       // variable is a scalar containing a string
                 if ( varValues [index].pStringConst != nullptr ) {
 #if printCreateDeleteHeapObjects
-                    Serial.print( isUserVar ? "----- (usr var str) " : "----- (var string ) " ); Serial.println( (uint32_t) varValues [index].pStringConst - RAMSTART );
+                    Serial.print( isUserVar ? "----- (usr var str) " : isLocalVar ? "----- (loc var str)" : "----- (var string ) "); Serial.println((uint32_t) varValues [index].pStringConst - RAMSTART);
 #endif
                     delete []  varValues [index].pStringConst;
-                    isUserVar ? _pInterpreter->userVarStringObjectCount : _pInterpreter->globalStaticVarStringObjectCount--;
+                    isUserVar ? _pInterpreter->userVarStringObjectCount-- : isLocalVar ?  _pInterpreter->localVarStringObjectCount--  :  _pInterpreter->globalStaticVarStringObjectCount--;
                 }
             }
         }
@@ -329,6 +329,7 @@ void MyParser::resetMachine( bool withUserVariables ) {
     // note: intermediate string objects exist solely during execution. The count is checked each time executin terminates 
 
     // parsing stack: any list elements left ?
+    // note: this stack does not contain any pointers to heap objects
     if ( parsingStack.getElementCount() != 0 ) {
         Serial.print( "*** Parsing stack error. Remaining stack levels: " ); Serial.println( parsingStack.getElementCount() );
     }
@@ -377,7 +378,7 @@ void MyParser::resetMachine( bool withUserVariables ) {
     }
 
     // intermediateStringObjectCount, localVarStringObjectCount, localArrayObjectCount ...
-    // ... is not tested, neither is it reset, here. It is a purely execution related object
+    // ... is not tested, neither is it reset, here. It is a purely execution related object, tested at the end of execution
 
 }
 
