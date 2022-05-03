@@ -1,6 +1,6 @@
 #include "Justina.h"
 
-#define printCreateDeleteHeapObjects 1
+#define printCreateDeleteHeapObjects 0
 #define debugPrint 0
 
 // -----------------------------------
@@ -106,13 +106,15 @@ Interpreter::execResult_type  Interpreter::exec() {
 
                 int localVarCount = extFunctionData [_activeFunctionData.functionIndex].localVarCountInFunction;
 
-                _pmyParser->deleteArrayElementStringObjects( _activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, false, false, true );
-                _pmyParser->deleteVariableValueObjects( _activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, false, false, true );
+                if ( localVarCount > 0 ) {
+                    _pmyParser->deleteArrayElementStringObjects( _activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, false, false, true );
+                    _pmyParser->deleteVariableValueObjects( _activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, false, false, true );
 
-                // release local variable storage for function that has been called
-                delete [] _activeFunctionData.pLocalVarValues;
-                delete [] _activeFunctionData.pVariableAttributes;
-                delete [] _activeFunctionData.ppSourceVarTypes;
+                    // release local variable storage for function that has been called
+                    delete [] _activeFunctionData.pLocalVarValues;
+                    delete [] _activeFunctionData.pVariableAttributes;
+                    delete [] _activeFunctionData.ppSourceVarTypes;
+                }
 
                 // load local storage pointers again for caller function and restore pending step & active function information for caller function
                 _activeFunctionData = *(FunctionData*) _pFlowCtrlStackTop;          // top level contains called function result
@@ -326,10 +328,8 @@ Interpreter::execResult_type  Interpreter::exec() {
             else { sprintf( execInfo, "^ Exec error %d in user function %s\r\n", execResult, extFunctionNames [_activeFunctionData.functionIndex] ); }
             _pConsole->print( execInfo );
 
-            clearEvalStack();               // and intermediate strings
-            clearFlowCtrlStack();           // and remaining local storage + local variable string and array values
-
-            return execResult;              // return result, in case it's needed by caller
+            lastValueIsStored = false;              // prevent printing last result (if any)
+            break;
         }
 
         // advance to next token
@@ -436,7 +436,7 @@ void Interpreter::saveLastValue() {
 
 void Interpreter::clearEvalStack() {                // and intermediate strings
 
-    // clear all: this includes stack levels in use by callers and associated temporary objects
+    // clear evaluation stack and all associated temporary objects
 
     // delete any intermediate result string objects used as arguments
     LE_evalStack* pstackLvl = _pEvalStackTop;
@@ -464,7 +464,7 @@ void Interpreter::clearEvalStack() {                // and intermediate strings
     // delete all remaining stack level objects 
 #if printCreateDeleteHeapObjects
 #endif
-    evalStack.deleteList();
+
     _pEvalStackTop = nullptr;  _pEvalStackMinus1 = nullptr; _pEvalStackMinus2 = nullptr;
 
     return;
@@ -477,7 +477,7 @@ void Interpreter::clearEvalStack() {                // and intermediate strings
 
 void Interpreter::clearFlowCtrlStack() {                // and remaining local storage + local variable string and array values
 
-    //// delete local storage, strings and arrays
+    //// delete local storage, strings and arrays for all unterminated functions; clear flow control stack
 
     if ( flowCtrlStack.getElementCount() == 0 ) { return; }
 
@@ -486,31 +486,29 @@ void Interpreter::clearFlowCtrlStack() {                // and remaining local s
 
         int localVarCount = extFunctionData [_activeFunctionData.functionIndex].localVarCountInFunction;
 
-        _pmyParser->deleteArrayElementStringObjects( _activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, false, false, true );
-        _pmyParser->deleteVariableValueObjects( _activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, false, false, true );
+        if ( localVarCount > 0 ) {
+            _pmyParser->deleteArrayElementStringObjects( _activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, false, false, true );
+            _pmyParser->deleteVariableValueObjects( _activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, false, false, true );
 
-        // release local variable storage for function that has been called
-        delete [] _activeFunctionData.pLocalVarValues;
-        delete [] _activeFunctionData.pVariableAttributes;
-        delete [] _activeFunctionData.ppSourceVarTypes;
+            // release local variable storage for function that has been called
+            delete [] _activeFunctionData.pLocalVarValues;
+            delete [] _activeFunctionData.pVariableAttributes;
+            delete [] _activeFunctionData.ppSourceVarTypes;
+        }
 
         pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement( pFlowCtrlStackLvl );
-        if (pFlowCtrlStackLvl == nullptr) {return;}         // all done
+        if ( pFlowCtrlStackLvl == nullptr ) { return; }         // all done
 
         // load local storage pointers again for deepest caller function and restore pending step & active function information for caller function
         _activeFunctionData = *(FunctionData*) _pFlowCtrlStackTop;          // top level contains called function result
 
-    }while(true);
+    } while ( true );
 
+    // flow control stack: no need to check if any elements were left (all elements of the list have just been deleted)
 
-    // delete flow control stack elements
-    if ( flowCtrlStack.getElementCount() != 0 ) {
-        Serial.print( "*** Flow control stack error. Remaining stack levels: " ); Serial.println( flowCtrlStack.getElementCount() );
-    }
-
-    flowCtrlStack.deleteList();
     _pFlowCtrlStackTop = nullptr;   _pFlowCtrlStackMinus2 = nullptr; _pFlowCtrlStackMinus1 = nullptr;
 }
+
 
 // ------------------------------------------------------------------------------
 // Remove operands / function arguments / array subscripts from evaluation stack
@@ -1106,59 +1104,61 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
     int localVarCount = extFunctionData [_activeFunctionData.functionIndex].localVarCountInFunction;
     int paramCount = extFunctionData [_activeFunctionData.functionIndex].paramOnlyCountInFunction;
 
-    _activeFunctionData.pLocalVarValues = new Val [localVarCount];              // local variable value: real, pointer to string or array, or (if reference): pointer to 'source' (referenced) variable
-    _activeFunctionData.ppSourceVarTypes = new char* [localVarCount];           // only if local variable is reference to variable or array element: pointer to 'source' variable value type  
-    _activeFunctionData.pVariableAttributes = new char [localVarCount];         // local variable: value type (float, local string or reference); 'source' (if reference) or local variable scope (user, global, static; local, param) 
+    if ( localVarCount > 0 ) {
+        _activeFunctionData.pLocalVarValues = new Val [localVarCount];              // local variable value: real, pointer to string or array, or (if reference): pointer to 'source' (referenced) variable
+        _activeFunctionData.ppSourceVarTypes = new char* [localVarCount];           // only if local variable is reference to variable or array element: pointer to 'source' variable value type  
+        _activeFunctionData.pVariableAttributes = new char [localVarCount];         // local variable: value type (float, local string or reference); 'source' (if reference) or local variable scope (user, global, static; local, param) 
 
-    // save function caller's arguments to local storage and remove hem from evaluation stack
-    if ( suppliedArgCount > 0 ) {
-        LE_evalStack* pStackLvl = pArgStackLvl;         // pointing to first argument on stack
-        for ( int i = 0; i < suppliedArgCount; i++ ) {
-            int valueType = pStackLvl->varOrConst.valueType;
-            bool operandIsRef = (valueType == value_isVarRef);
-            bool operandIsReal = (valueType == value_isFloat);
-            bool operandIsVariable = (pStackLvl->varOrConst.tokenType == tok_isVariable);
+    // save function caller's arguments to function's local storage and remove them from evaluation stack
+        if ( suppliedArgCount > 0 ) {
+            LE_evalStack* pStackLvl = pArgStackLvl;         // pointing to first argument on stack
+            for ( int i = 0; i < suppliedArgCount; i++ ) {
+                int valueType = pStackLvl->varOrConst.valueType;
+                bool operandIsRef = (valueType == value_isVarRef);
+                bool operandIsReal = (valueType == value_isFloat);
+                bool operandIsVariable = (pStackLvl->varOrConst.tokenType == tok_isVariable);
 
-            // variable (could be an array) passed ?
-            if ( pStackLvl->varOrConst.tokenType == tok_isVariable ) {                                      // argument is a variable => local value is a reference to 'source' variable
-                _activeFunctionData.pLocalVarValues [i].pVariable = pStackLvl->varOrConst.value.pVariable;  // pointer to 'source' variable
-                _activeFunctionData.ppSourceVarTypes [i] = pStackLvl->varOrConst.varTypeAddress;            // pointer to 'source' variable value type
-                _activeFunctionData.pVariableAttributes [i] = value_isVarRef |                              // local variable value type (reference) ...
-                    (pStackLvl->varOrConst.variableAttributes & var_scopeMask);                             // ... and SOURCE variable scope (user, global, static; local, param)
+                // variable (could be an array) passed ?
+                if ( pStackLvl->varOrConst.tokenType == tok_isVariable ) {                                      // argument is a variable => local value is a reference to 'source' variable
+                    _activeFunctionData.pLocalVarValues [i].pVariable = pStackLvl->varOrConst.value.pVariable;  // pointer to 'source' variable
+                    _activeFunctionData.ppSourceVarTypes [i] = pStackLvl->varOrConst.varTypeAddress;            // pointer to 'source' variable value type
+                    _activeFunctionData.pVariableAttributes [i] = value_isVarRef |                              // local variable value type (reference) ...
+                        (pStackLvl->varOrConst.variableAttributes & var_scopeMask);                             // ... and SOURCE variable scope (user, global, static; local, param)
 
-                Serial.print( "launch function - " ); Serial.print( flowCtrlStack.getElementCount() ); Serial.print( " levels, source var type: " ); Serial.println( pStackLvl->varOrConst.variableAttributes & var_scopeMask, HEX );
-            }
-            else {      // parsed, or intermediate, constant passed as value
-                if ( operandIsReal ) {                                                      // operand is float constant
-                    _activeFunctionData.pLocalVarValues [i].realConst = pStackLvl->varOrConst.value.realConst;   // store a local copy
-                    _activeFunctionData.pVariableAttributes [i] = value_isFloat;
+                    Serial.print( "launch function - " ); Serial.print( flowCtrlStack.getElementCount() ); Serial.print( " levels, source var type: " ); Serial.println( pStackLvl->varOrConst.variableAttributes & var_scopeMask, HEX );
                 }
-                else {                      // operand is string constant: create a local copy
-                    _activeFunctionData.pLocalVarValues [i].pStringConst = nullptr;             // init (if empty string)
-                    _activeFunctionData.pVariableAttributes [i] = value_isStringPointer;
-                    if ( pStackLvl->varOrConst.value.pStringConst != nullptr ) {
-                        int stringlen = strlen( pStackLvl->varOrConst.value.pStringConst );
-                        _activeFunctionData.pLocalVarValues [i].pStringConst = new char [stringlen + 1];
-                        localVarStringObjectCount++;
-                        strcpy( _activeFunctionData.pLocalVarValues [i].pStringConst, pStackLvl->varOrConst.value.pStringConst );
-#if printCreateDeleteHeapObjects
-                        Serial.print( "+++++ (loc var str) " );   Serial.println( (uint32_t) _activeFunctionData.pLocalVarValues [i].pStringConst - RAMSTART );
-#endif
+                else {      // parsed, or intermediate, constant passed as value
+                    if ( operandIsReal ) {                                                      // operand is float constant
+                        _activeFunctionData.pLocalVarValues [i].realConst = pStackLvl->varOrConst.value.realConst;   // store a local copy
+                        _activeFunctionData.pVariableAttributes [i] = value_isFloat;
                     }
-                };
-            }
-
-            if ( ((pStackLvl->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && !operandIsReal ) {
-                if ( pStackLvl->varOrConst.value.pStringConst != nullptr ) {
+                    else {                      // operand is string constant: create a local copy
+                        _activeFunctionData.pLocalVarValues [i].pStringConst = nullptr;             // init (if empty string)
+                        _activeFunctionData.pVariableAttributes [i] = value_isStringPointer;
+                        if ( pStackLvl->varOrConst.value.pStringConst != nullptr ) {
+                            int stringlen = strlen( pStackLvl->varOrConst.value.pStringConst );
+                            _activeFunctionData.pLocalVarValues [i].pStringConst = new char [stringlen + 1];
+                            localVarStringObjectCount++;
+                            strcpy( _activeFunctionData.pLocalVarValues [i].pStringConst, pStackLvl->varOrConst.value.pStringConst );
 #if printCreateDeleteHeapObjects
-                    Serial.print( "----- (intermd str) " );   Serial.println( (uint32_t) pStackLvl->varOrConst.value.pStringConst - RAMSTART );
+                            Serial.print( "+++++ (loc var str) " );   Serial.println( (uint32_t) _activeFunctionData.pLocalVarValues [i].pStringConst - RAMSTART );
 #endif
-                    delete [] pStackLvl->varOrConst.value.pStringConst;
-                    intermediateStringObjectCount--;
+                        }
+                    };
                 }
-            }
 
-            pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl );       // argument saved: remove argument from stack and point to next argument
+                if ( ((pStackLvl->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && !operandIsReal ) {
+                    if ( pStackLvl->varOrConst.value.pStringConst != nullptr ) {
+#if printCreateDeleteHeapObjects
+                        Serial.print( "----- (intermd str) " );   Serial.println( (uint32_t) pStackLvl->varOrConst.value.pStringConst - RAMSTART );
+#endif
+                        delete [] pStackLvl->varOrConst.value.pStringConst;
+                        intermediateStringObjectCount--;
+                    }
+                }
+
+                pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl );       // argument saved: remove argument from stack and point to next argument
+            }
         }
     }
 

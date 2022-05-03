@@ -1,6 +1,6 @@
 #include "Justina.h"
 
-#define printCreateDeleteHeapObjects 1
+#define printCreateDeleteHeapObjects 0
 
 
 /***********************************************************
@@ -326,13 +326,11 @@ void MyParser::resetMachine( bool withUserVariables ) {
 
 
     // perform consistency checks: verify that all objects created are destroyed again
-    // note: intermediate string objects exist solely during execution. The count is checked each time executin terminates 
-
-    // parsing stack: any list elements left ?
+    // note: intermediate string objects, function local storage, and function local variable strings and arrays exist solely during execution
+    //       count of function local variable strings and arrays is checked each time execution terminates 
+           
+    // parsing stack: no need to check if any elements were left (the list has just been deleted)
     // note: this stack does not contain any pointers to heap objects
-    if ( parsingStack.getElementCount() != 0 ) {
-        Serial.print( "*** Parsing stack error. Remaining stack levels: " ); Serial.println( parsingStack.getElementCount() );
-    }
 
     // string and array heap objects: any objects left ?
     if ( _pInterpreter->identifierNameStringObjectCount != 0 ) {
