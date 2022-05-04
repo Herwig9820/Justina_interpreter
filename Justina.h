@@ -261,7 +261,7 @@ public:
         char** ppSourceVarTypes;        // only if local variable is reference to variable or array element: pointer to 'source' variable value type  
         char* pVariableAttributes;      // local variable: value type (float, local string or reference); 'source' (if reference) or local variable scope (user, global, static; local, param) 
 
-        char* pPendingStep;             // next step to execute (look ahead)
+        char* pNextStep;             // next step to execute (look ahead)
         char* errorStatementStartStep;  // first token in statement where execution error occurs (error reporting)
         char* errorProgramCounter;      // token to point to in statement (^) if execution error occurs (error reporting)
 
@@ -434,6 +434,7 @@ public:
     void saveLastValue();
     void clearEvalStack();
     void clearFlowCtrlStack();
+    void findTokenStep( int tokenTypeToFind, char tokenCode, char* & pStep );
 
     void deleteStackArguments( LE_evalStack* pPrecedingStackLvl, int argCount, bool includePreceding );
 

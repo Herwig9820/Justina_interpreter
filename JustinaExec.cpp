@@ -29,8 +29,6 @@ Interpreter::execResult_type  Interpreter::exec() {
     localArrayObjectCount = 0;
 
     while ( tokenType != tok_no_token ) {                                                                    // for all tokens in token list
-        int tokenLength = (tokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*_programCounter >> 4) & 0x0F;        // fetch next token 
-
         // if terminal token, determine which terminal type
         bool isTerminal = ((tokenType == Interpreter::tok_isTerminalGroup1) || (tokenType == Interpreter::tok_isTerminalGroup2) || (tokenType == Interpreter::tok_isTerminalGroup3));
         if ( isTerminal ) {
@@ -44,16 +42,8 @@ Interpreter::execResult_type  Interpreter::exec() {
         bool isLeftPar = (isTerminal ? (MyParser::_terminals [tokenIndex].terminalCode == MyParser::termcod_leftPar) : false);
         bool isRightPar = (isTerminal ? (MyParser::_terminals [tokenIndex].terminalCode == MyParser::termcod_rightPar) : false);
 
-        // pending token
-        _activeFunctionData.pPendingStep = _programCounter + tokenLength;
-        int pendingTokenType = *_activeFunctionData.pPendingStep & 0x0F;
-
-        int pendingTokenIndex;
-        bool isPendingTerminal = ((pendingTokenType == Interpreter::tok_isTerminalGroup1) || (pendingTokenType == Interpreter::tok_isTerminalGroup2) || (pendingTokenType == Interpreter::tok_isTerminalGroup3));
-        if ( isPendingTerminal ) {
-            pendingTokenIndex = ((((TokenIsTerminal*) _activeFunctionData.pPendingStep)->tokenTypeAndIndex >> 4) & 0x0F);
-            pendingTokenIndex += ((pendingTokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (pendingTokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
-        }
+        int tokenLength = (tokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*_programCounter >> 4) & 0x0F;        // fetch next token 
+        _activeFunctionData.pNextStep = _programCounter + tokenLength;
 
         if ( _activeFunctionData.errorStatementStartStep == nullptr ) { _activeFunctionData.errorStatementStartStep = _programCounter; }  // for pretty print only    
 
@@ -70,21 +60,7 @@ Interpreter::execResult_type  Interpreter::exec() {
             tokenIndex = ((TokenIsResWord*) _programCounter)->tokenIndex;
             bool skipStatement = ((_pmyParser->_resWords [tokenIndex].restrictions & MyParser::cmd_skipDuringExec) != 0);
             if ( skipStatement ) {
-                bool isPendingSemicolon = (isPendingTerminal ? (MyParser::_terminals [pendingTokenIndex].terminalCode == MyParser::termcod_semicolon) : false);
-
-                while ( !isPendingSemicolon ) {     // find semicolon (always there)
-                    // move to next token
-                    int nextTokenLength = (pendingTokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*_activeFunctionData.pPendingStep >> 4) & 0x0F;
-                    _activeFunctionData.pPendingStep = _activeFunctionData.pPendingStep + nextTokenLength;
-                    pendingTokenType = *_activeFunctionData.pPendingStep & 0x0F;          // there's always minimum one token pending (even if it is a semicolon)
-
-                    isPendingTerminal = ((pendingTokenType == Interpreter::tok_isTerminalGroup1) || (pendingTokenType == Interpreter::tok_isTerminalGroup2) || (pendingTokenType == Interpreter::tok_isTerminalGroup3));
-                    if ( isPendingTerminal ) {
-                        pendingTokenIndex = ((((TokenIsTerminal*) _activeFunctionData.pPendingStep)->tokenTypeAndIndex >> 4) & 0x0F);
-                        pendingTokenIndex += ((pendingTokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (pendingTokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
-                    }
-                    isPendingSemicolon = (isPendingTerminal ? (MyParser::_terminals [pendingTokenIndex].terminalCode == MyParser::termcod_semicolon) : false);
-                };
+                findTokenStep( tok_isTerminalGroup1, MyParser::termcod_semicolon, _activeFunctionData.pNextStep );  // find semicolon (always match)
             }
 
             if ( _pmyParser->_resWords [tokenIndex].resWordCode == MyParser::cmdcod_end ) { //// enkel end FUNCTION of RETURN 'n'; inner loops (FOR... ook van de stack halen)
@@ -99,7 +75,6 @@ Interpreter::execResult_type  Interpreter::exec() {
                     _pEvalStackTop->varOrConst.variableAttributes = 0x00;
                     _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
                 }
-
 
 
                 // delete local variable arrays and strings (only if local variable is not a reference)
@@ -128,7 +103,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                     Serial.print( ", function index: " ); Serial.println( (int) _activeFunctionData.functionIndex );
                 }
 
-                Serial.print( "     caller token step: " ); Serial.println( _activeFunctionData.pPendingStep - _programStorage );
+                Serial.print( "     caller token step: " ); Serial.println( _activeFunctionData.pNextStep - _programStorage );
                 Serial.print( "     error statement start token step: " ); Serial.println( _activeFunctionData.errorStatementStartStep - _programStorage );
                 Serial.print( "     error token step: " ); Serial.println( _activeFunctionData.errorProgramCounter - _programStorage );
                 Serial.print( "     higher level caller eval stack levels: " ); Serial.println( (int) _activeFunctionData.callerEvalStackLevels );
@@ -183,25 +158,36 @@ Interpreter::execResult_type  Interpreter::exec() {
 #if debugPrint
             Serial.print( "operand: stack level " ); Serial.println( evalStack.getElementCount() );
 #endif
-            // push constant value token or variable name token to stack
-            if ( tokenType == tok_isVariable ) {
-                pushVariable( tokenType );
+            {   // start block (required for variable definitions inside)
 
-                bool isPendingLeftPar = (isPendingTerminal ? (MyParser::_terminals [pendingTokenIndex].terminalCode == MyParser::termcod_leftPar) : false);
-                if ( isPendingLeftPar ) {                                                           // array variable name (this token) is followed by subscripts (to be processed)
-                    _pEvalStackTop->varOrConst.variableAttributes |= var_isArray_pendingSubscripts;    // flag that array element still needs to be processed
+                // push constant value token or variable name token to stack
+                if ( tokenType == tok_isVariable ) {
+                    pushVariable( tokenType );
+
+                    // next token
+                    int nextTokenType = *_activeFunctionData.pNextStep & 0x0F;
+                    int nextTokenIndex;
+                    bool nextIsTerminal = ((nextTokenType == Interpreter::tok_isTerminalGroup1) || (nextTokenType == Interpreter::tok_isTerminalGroup2) || (nextTokenType == Interpreter::tok_isTerminalGroup3));
+                    if ( nextIsTerminal ) {
+                        nextTokenIndex = ((((TokenIsTerminal*) _activeFunctionData.pNextStep)->tokenTypeAndIndex >> 4) & 0x0F);
+                        nextTokenIndex += ((nextTokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (nextTokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
+                    }
+
+                    bool nextIsLeftPar = (nextIsTerminal ? (MyParser::_terminals [nextTokenIndex].terminalCode == MyParser::termcod_leftPar) : false);
+                    if ( nextIsLeftPar ) {                                                           // array variable name (this token) is followed by subscripts (to be processed)
+                        _pEvalStackTop->varOrConst.variableAttributes |= var_isArray_pendingSubscripts;    // flag that array element still needs to be processed
+                    }
                 }
+                else { pushConstant( tokenType ); }
+
+                // set flag to save the current value as 'last value', in case the expression does not contain any operation or function to execute (this value only) 
+
+                // check if (an) operation(s) can be executed. 
+                // when an operation is executed, check whether lower priority operations can now be executed as well (example: 3+5*7: first execute 5*7 yielding 35, then execute 3+35)
+
+                execResult = execAllProcessedOperators();
+                if ( execResult != result_execOK ) { break; }
             }
-            else { pushConstant( tokenType ); }
-
-            // set flag to save the current value as 'last value', in case the expression does not contain any operation or function to execute (this value only) 
-
-            // check if (an) operation(s) can be executed. 
-            // when an operation is executed, check whether lower priority operations can now be executed as well (example: 3+5*7: first execute 5*7 yielding 35, then execute 3+35)
-
-            execResult = execAllProcessedOperators();
-            if ( execResult != result_execOK ) { break; }
-
             break;
 
 
@@ -333,8 +319,8 @@ Interpreter::execResult_type  Interpreter::exec() {
         }
 
         // advance to next token
-        _programCounter = _activeFunctionData.pPendingStep;         // note: will be altered when calling an external function and upon return of a called function
-        tokenType = *_activeFunctionData.pPendingStep & 0x0F;                                                               // next token type (could be token within caller, if returning now)
+        _programCounter = _activeFunctionData.pNextStep;         // note: will be altered when calling an external function and upon return of a called function
+        tokenType = *_activeFunctionData.pNextStep & 0x0F;                                                               // next token type (could be token within caller, if returning now)
 
     }   // end 'while ( tokenType != tok_no_token )'                                                                                       // end 'while ( tokenType != tok_no_token )'
 
@@ -355,6 +341,48 @@ Interpreter::execResult_type  Interpreter::exec() {
 
     return execResult;   // return result, in case it's needed by caller
 };
+
+
+// ------------------------------------
+// *   advance until specific token   *
+// ------------------------------------
+
+void Interpreter::findTokenStep( int tokenTypeToFind, char tokenCodeToFind, char*& pStep ) {
+
+    // pStep: pointer to first token to test versus token group and (if applicable) token code
+    // tokenType: if 'tok_isTerminalGroup1', test for the three terminal groups !
+    // the routine assumes the token to be found is present 
+
+    do {
+        int tokenType = *pStep & 0x0F;
+        bool tokenTypeMatch = (tokenTypeToFind == tokenType);
+        if ( tokenTypeToFind == tok_isTerminalGroup1 ) { tokenTypeMatch = tokenTypeMatch || (tokenType == tok_isTerminalGroup2) || (tokenType == tok_isTerminalGroup3); }
+        if ( tokenTypeMatch ) {
+            bool tokenCodeMatch { false };
+            int tokenIndex;
+
+            switch ( tokenTypeToFind ) {
+            case tok_isReservedWord:
+                tokenIndex = ((((TokenIsTerminal*) pStep)->tokenTypeAndIndex >> 4) & 0x0F);
+                tokenCodeMatch = MyParser::_resWords [tokenIndex].resWordCode == tokenCodeToFind;
+                break;
+
+            case tok_isTerminalGroup1:       // actual token can be part of any of the three terminal groups
+                tokenIndex = ((((TokenIsTerminal*) pStep)->tokenTypeAndIndex >> 4) & 0x0F);
+                tokenIndex += ((tokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (tokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
+                tokenCodeMatch = MyParser::_terminals [tokenIndex].terminalCode == tokenCodeToFind;
+                break;
+
+            default:
+                break;
+            }
+            if ( tokenCodeMatch ) { return; }      // and return step of token found (pStep ,parameter) 
+        }
+
+        int tokenLength = (tokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*pStep >> 4) & 0x0F;        // fetch next token 
+        pStep = pStep + tokenLength;
+    } while ( true );
+}
 
 
 // ------------------------------------------------
@@ -502,11 +530,11 @@ void Interpreter::clearFlowCtrlStack() {                // and remaining local s
         // load local storage pointers again for deepest caller function and restore pending step & active function information for caller function
         _activeFunctionData = *(FunctionData*) _pFlowCtrlStackTop;          // top level contains called function result
 
-    } while ( true );
+} while ( true );
 
-    // flow control stack: no need to check if any elements were left (all elements of the list have just been deleted)
+// flow control stack: no need to check if any elements were left (all elements of the list have just been deleted)
 
-    _pFlowCtrlStackTop = nullptr;   _pFlowCtrlStackMinus2 = nullptr; _pFlowCtrlStackMinus1 = nullptr;
+_pFlowCtrlStackTop = nullptr;   _pFlowCtrlStackMinus2 = nullptr; _pFlowCtrlStackMinus1 = nullptr;
 }
 
 
@@ -703,8 +731,8 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
             // check pending (not yet processed) token (always present and always a terminal token after a variable or constant token)
             // pending token can be any terminal token: infix operator, left or right parenthesis, comma or semicolon 
             // it can not be a prefix operator because it follows an operand (on top of stack)
-            pendingTokenType = *_activeFunctionData.pPendingStep & 0x0F;                                    // there's always minimum one token pending (even if it is a semicolon)
-            pendingTokenIndex = (*_activeFunctionData.pPendingStep >> 4) & 0x0F;                            // terminal token only: index stored in high 4 bits of token type 
+            pendingTokenType = *_activeFunctionData.pNextStep & 0x0F;                                    // there's always minimum one token pending (even if it is a semicolon)
+            pendingTokenIndex = (*_activeFunctionData.pNextStep >> 4) & 0x0F;                            // terminal token only: index stored in high 4 bits of token type 
             pendingTokenIndex += ((pendingTokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (pendingTokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
 
             // infix operation ?
@@ -715,7 +743,7 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
                 bool minus2IsRightPar = (MyParser::_terminals [_pEvalStackMinus2->terminal.index].terminalCode == MyParser::termcod_rightPar);
                 isPrefixOperator = !((_pEvalStackMinus2->genericToken.tokenType == tok_isConstant) || (_pEvalStackMinus2->genericToken.tokenType == tok_isVariable)
                     || minus2IsRightPar);
-            }
+        }
 
             int priority = _pmyParser->_terminals [_pEvalStackMinus1->terminal.index].priority;
             if ( isPrefixOperator ) { priority = priority >> 4; }
@@ -741,11 +769,11 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
             // execute operator
             execResult_type execResult = (isPrefixOperator) ? execPrefixOperation() : execInfixOperation();
             if ( execResult != result_execOK ) { return execResult; }
-        }
+    }
 
         // token preceding the operand is a left parenthesis ? exit while loop (nothing to do for now)
         else { break; }
-    }
+}
 
     return result_execOK;
 }
@@ -1205,6 +1233,9 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
         // now positioned before first parameter for non-supplied scalar argument. It always has an initializer
         // we only need the constant value, because we know the variable value index already (count): skip variable and assignment 
 
+
+
+
         while ( count < paramCount ) {
             for ( int i = 0; i < ((count == suppliedArgCount) ? 3 : 4); i++ ) {     // first default value: advance only 3 tokens (already at comma in front of variable)
                 int tokenLength = (calledFunctionTokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*calledFunctionTokenStep >> 4) & 0x0F;
@@ -1254,31 +1285,30 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
             tokenIndex += ((calledFunctionTokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (calledFunctionTokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
         }
         isStatementSeparator = (isTerminal ? (MyParser::_terminals [tokenIndex].terminalCode == MyParser::termcod_semicolon) : false);
-    } while ( !isStatementSeparator );
+        } while ( !isStatementSeparator );
 
 
-    // set next step to start of called function
-    // -----------------------------------------
+        // set next step to start of called function
+        // -----------------------------------------
 
 
-    _activeFunctionData.pPendingStep = calledFunctionTokenStep;                     // first step in first statement in called function
-    _activeFunctionData.errorStatementStartStep = calledFunctionTokenStep;
-    _activeFunctionData.errorProgramCounter = calledFunctionTokenStep;
+        _activeFunctionData.pNextStep = calledFunctionTokenStep;                     // first step in first statement in called function
+        _activeFunctionData.errorStatementStartStep = calledFunctionTokenStep;
+        _activeFunctionData.errorProgramCounter = calledFunctionTokenStep;
 
-    /*
-    Serial.print( "==== launching function " ); Serial.print( extFunctionNames [_activeFunctionData.functionIndex] );
-    Serial.print( ", function index: " ); Serial.println( (int) _activeFunctionData.functionIndex );
-    Serial.print( "     first token step: " ); Serial.println( _activeFunctionData.pPendingStep - _programStorage );
-    Serial.print( "     error statement start token step: " ); Serial.println( _activeFunctionData.errorStatementStartStep - _programStorage );
-    Serial.print( "     error token step: " ); Serial.println( _activeFunctionData.errorProgramCounter - _programStorage );
-    Serial.print( "     caller stack eval levels: " ); Serial.println( (int) _activeFunctionData.callerEvalStackLevels );
+        /*
+        Serial.print( "==== launching function " ); Serial.print( extFunctionNames [_activeFunctionData.functionIndex] );
+        Serial.print( ", function index: " ); Serial.println( (int) _activeFunctionData.functionIndex );
+        Serial.print( "     first token step: " ); Serial.println( _activeFunctionData.pNextStep - _programStorage );
+        Serial.print( "     error statement start token step: " ); Serial.println( _activeFunctionData.errorStatementStartStep - _programStorage );
+        Serial.print( "     error token step: " ); Serial.println( _activeFunctionData.errorProgramCounter - _programStorage );
+        Serial.print( "     caller stack eval levels: " ); Serial.println( (int) _activeFunctionData.callerEvalStackLevels );
 
-    Serial.print( "     flow control stack levels: " ); Serial.println( (int) flowCtrlStack.getElementCount() );
-    */
+        Serial.print( "     flow control stack levels: " ); Serial.println( (int) flowCtrlStack.getElementCount() );
+        */
 
-    return  result_execOK;
-}
-
+        return  result_execOK;
+    }
 
 
 // -----------------------------------
