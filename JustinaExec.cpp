@@ -61,6 +61,7 @@ Interpreter::execResult_type  Interpreter::exec() {
             bool skipStatement = ((_pmyParser->_resWords [tokenIndex].restrictions & MyParser::cmd_skipDuringExec) != 0);
             if ( skipStatement ) {
                 findTokenStep( tok_isTerminalGroup1, MyParser::termcod_semicolon, _activeFunctionData.pNextStep );  // find semicolon (always match)
+                int tokIndx = ((((TokenIsTerminal*) _activeFunctionData.pNextStep)->tokenTypeAndIndex >> 4) & 0x0F);
             }
 
             if ( _pmyParser->_resWords [tokenIndex].resWordCode == MyParser::cmdcod_end ) { //// enkel end FUNCTION of RETURN 'n'; inner loops (FOR... ook van de stack halen)
@@ -130,9 +131,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                     }
                 }
 
-
                 execResult = execAllProcessedOperators();     // in caller !!!
-
                 if ( execResult != result_execOK ) { break; }
             }
         }
@@ -343,6 +342,48 @@ Interpreter::execResult_type  Interpreter::exec() {
 };
 
 
+// -----------------------------------------------------------------------------------------------
+// *   jump n token steps, return token type and (for terminals and reserved words) token code   *
+// -----------------------------------------------------------------------------------------------
+
+bool Interpreter::jumpTokens( int n, char*& pStep, int &tokenType, int &tokenCode) {
+
+    // pStep: pointer to first token to test versus token group and (if applicable) token code
+    // n: number opf tokens to jump
+    // return false if not enough tokens are present 
+
+    for ( int i = 1; i <= n; i++ ) {
+        tokenType = *pStep & 0x0F;
+        if ( tokenType == tok_no_token ) { return false; }               // end of program reached
+        int tokenLength = (tokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*pStep >> 4) & 0x0F;        // fetch next token 
+        pStep = pStep + tokenLength;
+    }
+
+    tokenType = *pStep & 0x0F;
+    int tokenIndex;
+
+    switch ( tokenType ) {
+    case tok_isReservedWord:
+        tokenIndex = (((TokenIsResWord*) pStep)->tokenIndex);
+        tokenCode = MyParser::_resWords [tokenIndex].resWordCode ;
+        break;
+
+    case tok_isTerminalGroup1:
+    case tok_isTerminalGroup2:
+    case tok_isTerminalGroup3:
+        tokenIndex = ((((TokenIsTerminal*) pStep)->tokenTypeAndIndex >> 4) & 0x0F);
+        tokenIndex += ((tokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (tokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
+        tokenCode = MyParser::_terminals [tokenIndex].terminalCode;
+        break;
+
+    default:
+        break;
+
+    }
+
+    return true;
+}
+
 // ------------------------------------
 // *   advance until specific token   *
 // ------------------------------------
@@ -363,7 +404,7 @@ void Interpreter::findTokenStep( int tokenTypeToFind, char tokenCodeToFind, char
 
             switch ( tokenTypeToFind ) {
             case tok_isReservedWord:
-                tokenIndex = ((((TokenIsTerminal*) pStep)->tokenTypeAndIndex >> 4) & 0x0F);
+                tokenIndex = (((TokenIsResWord*) pStep)->tokenIndex);
                 tokenCodeMatch = MyParser::_resWords [tokenIndex].resWordCode == tokenCodeToFind;
                 break;
 
@@ -530,11 +571,11 @@ void Interpreter::clearFlowCtrlStack() {                // and remaining local s
         // load local storage pointers again for deepest caller function and restore pending step & active function information for caller function
         _activeFunctionData = *(FunctionData*) _pFlowCtrlStackTop;          // top level contains called function result
 
-} while ( true );
+    } while ( true );
 
-// flow control stack: no need to check if any elements were left (all elements of the list have just been deleted)
+    // flow control stack: no need to check if any elements were left (all elements of the list have just been deleted)
 
-_pFlowCtrlStackTop = nullptr;   _pFlowCtrlStackMinus2 = nullptr; _pFlowCtrlStackMinus1 = nullptr;
+    _pFlowCtrlStackTop = nullptr;   _pFlowCtrlStackMinus2 = nullptr; _pFlowCtrlStackMinus1 = nullptr;
 }
 
 
@@ -743,7 +784,7 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
                 bool minus2IsRightPar = (MyParser::_terminals [_pEvalStackMinus2->terminal.index].terminalCode == MyParser::termcod_rightPar);
                 isPrefixOperator = !((_pEvalStackMinus2->genericToken.tokenType == tok_isConstant) || (_pEvalStackMinus2->genericToken.tokenType == tok_isVariable)
                     || minus2IsRightPar);
-        }
+            }
 
             int priority = _pmyParser->_terminals [_pEvalStackMinus1->terminal.index].priority;
             if ( isPrefixOperator ) { priority = priority >> 4; }
@@ -769,11 +810,11 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
             // execute operator
             execResult_type execResult = (isPrefixOperator) ? execPrefixOperation() : execInfixOperation();
             if ( execResult != result_execOK ) { return execResult; }
-    }
+        }
 
         // token preceding the operand is a left parenthesis ? exit while loop (nothing to do for now)
         else { break; }
-}
+    }
 
     return result_execOK;
 }
@@ -1123,8 +1164,8 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
     *((FunctionData*) _pFlowCtrlStackTop) = _activeFunctionData;
 
 
-    // function to be called: provide data (populate _activeFunctionData)
-    // ------------------------------------------------------------------
+    // function to be called: create storage and init local variables with supplied arguments (populate _activeFunctionData)
+    // --------------------------------------------------------------------------------------------------------------------
 
     _activeFunctionData.functionIndex = pFunctionStackLvl->function.index;     // index of external function to call
 
@@ -1137,7 +1178,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
         _activeFunctionData.ppSourceVarTypes = new char* [localVarCount];           // only if local variable is reference to variable or array element: pointer to 'source' variable value type  
         _activeFunctionData.pVariableAttributes = new char [localVarCount];         // local variable: value type (float, local string or reference); 'source' (if reference) or local variable scope (user, global, static; local, param) 
 
-    // save function caller's arguments to function's local storage and remove them from evaluation stack
+        // save function caller's arguments to function's local storage and remove them from evaluation stack
         if ( suppliedArgCount > 0 ) {
             LE_evalStack* pStackLvl = pArgStackLvl;         // pointing to first argument on stack
             for ( int i = 0; i < suppliedArgCount; i++ ) {
@@ -1200,10 +1241,41 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 
 
 
-    // init local variables for non_supplied arguments (scalar parameters with default values)
-    // ---------------------------------------------------------------------------------------
+    // init local variables for non_supplied arguments (scalar parameters with default values) and local (non-parameter) variables
+    // ---------------------------------------------------------------------------------------------------------------------------
 
     char* calledFunctionTokenStep = extFunctionData [_activeFunctionData.functionIndex].pExtFunctionStartToken;
+    initFunctionParamVariables( calledFunctionTokenStep, suppliedArgCount, paramCount );      // return with first token after function definition
+    initFunctionLocalNonParamVariables( calledFunctionTokenStep, paramCount, localVarCount );       // and create storage for local array variables
+
+
+    // set next step to start of called function
+    // -----------------------------------------
+
+    _activeFunctionData.pNextStep = calledFunctionTokenStep;                     // first step in first statement in called function
+    _activeFunctionData.errorStatementStartStep = calledFunctionTokenStep;
+    _activeFunctionData.errorProgramCounter = calledFunctionTokenStep;
+
+    /*
+    Serial.print( "==== launching function " ); Serial.print( extFunctionNames [_activeFunctionData.functionIndex] );
+    Serial.print( ", function index: " ); Serial.println( (int) _activeFunctionData.functionIndex );
+    Serial.print( "     first token step: " ); Serial.println( _activeFunctionData.pNextStep - _programStorage );
+    Serial.print( "     error statement start token step: " ); Serial.println( _activeFunctionData.errorStatementStartStep - _programStorage );
+    Serial.print( "     error token step: " ); Serial.println( _activeFunctionData.errorProgramCounter - _programStorage );
+    Serial.print( "     caller stack eval levels: " ); Serial.println( (int) _activeFunctionData.callerEvalStackLevels );
+
+    Serial.print( "     flow control stack levels: " ); Serial.println( (int) flowCtrlStack.getElementCount() );
+    */
+
+    return  result_execOK;
+}
+
+
+// -----------------------------------------------------------------------------------------------
+// *   init local variables for non_supplied arguments (scalar parameters with default values)   *
+// -----------------------------------------------------------------------------------------------
+
+void Interpreter::initFunctionParamVariables( char*& calledFunctionTokenStep, int suppliedArgCount, int paramCount ) {
     int calledFunctionTokenType = *calledFunctionTokenStep & 0x0F;                                                          // function name token of called function
 
     if ( suppliedArgCount < paramCount ) {      // missing arguments: use parameter default values to init local variables
@@ -1232,9 +1304,6 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 
         // now positioned before first parameter for non-supplied scalar argument. It always has an initializer
         // we only need the constant value, because we know the variable value index already (count): skip variable and assignment 
-
-
-
 
         while ( count < paramCount ) {
             for ( int i = 0; i < ((count == suppliedArgCount) ? 3 : 4); i++ ) {     // first default value: advance only 3 tokens (already at comma in front of variable)
@@ -1285,30 +1354,59 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
             tokenIndex += ((calledFunctionTokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (calledFunctionTokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
         }
         isStatementSeparator = (isTerminal ? (MyParser::_terminals [tokenIndex].terminalCode == MyParser::termcod_semicolon) : false);
-        } while ( !isStatementSeparator );
+    } while ( !isStatementSeparator );
+};
 
 
-        // set next step to start of called function
-        // -----------------------------------------
 
+// --------------------------------------------
+// *   init local variables (non-parameter)   *
+// --------------------------------------------
 
-        _activeFunctionData.pNextStep = calledFunctionTokenStep;                     // first step in first statement in called function
-        _activeFunctionData.errorStatementStartStep = calledFunctionTokenStep;
-        _activeFunctionData.errorProgramCounter = calledFunctionTokenStep;
+void Interpreter::initFunctionLocalNonParamVariables( char* pStep, int paramCount, int localVarCount ) {
+    // upon entry, positioned at first token after FUNCTION statement
 
-        /*
-        Serial.print( "==== launching function " ); Serial.print( extFunctionNames [_activeFunctionData.functionIndex] );
-        Serial.print( ", function index: " ); Serial.println( (int) _activeFunctionData.functionIndex );
-        Serial.print( "     first token step: " ); Serial.println( _activeFunctionData.pNextStep - _programStorage );
-        Serial.print( "     error statement start token step: " ); Serial.println( _activeFunctionData.errorStatementStartStep - _programStorage );
-        Serial.print( "     error token step: " ); Serial.println( _activeFunctionData.errorProgramCounter - _programStorage );
-        Serial.print( "     caller stack eval levels: " ); Serial.println( (int) _activeFunctionData.callerEvalStackLevels );
+    int tokenType, terminalCode;
 
-        Serial.print( "     flow control stack levels: " ); Serial.println( (int) flowCtrlStack.getElementCount() );
-        */
+    int count = paramCount;         // sum of mandatory and optional parameters
 
-        return  result_execOK;
-    }
+    while ( count != localVarCount ) {
+        findTokenStep( tok_isReservedWord, MyParser::cmdcod_local, pStep );     // find 'LOCAL' keyword (always there)
+
+        int terminalCode;
+        do {
+            // in case variable is not an array: init as zero
+            _activeFunctionData.pLocalVarValues [count].realConst = 0;
+            _activeFunctionData.pVariableAttributes [count] = value_isFloat;
+
+            jumpTokens( 2, pStep , tokenType, terminalCode);            // either left parenthesis, assignment, comma or semicolon separator (always a terminal)
+
+            if ( terminalCode == MyParser::termcod_leftPar ) {
+                do {
+                    jumpTokens( 1, pStep, tokenType, terminalCode );         // dimension
+                    //// ...assemble dimensions
+                    jumpTokens( 1, pStep, tokenType, terminalCode );         // comma (dimension separator) or right parenthesis
+                } while ( terminalCode != MyParser::termcod_rightPar );
+
+                // create array (init later)
+                //// create
+                jumpTokens( 1, pStep, tokenType, terminalCode );       // assignment, comma or semicolon
+            }
+
+            if ( terminalCode == MyParser::termcod_assign ) {
+                jumpTokens( 1, pStep, tokenType, terminalCode );       // constant
+                // scalar or array variable: init with constant
+                //// init
+                jumpTokens( 1, pStep, tokenType, terminalCode );       // comma or semicolon
+            }
+
+            count++;
+
+        } while ( terminalCode == MyParser::termcod_comma );
+
+    }   // semicolon: look for next LOCAL statement (if not all local variables handled)
+};
+
 
 
 // -----------------------------------

@@ -282,7 +282,7 @@ public:
     static constexpr uint8_t var_isUser = 5 << 4;                    // variable is a user variable, in or outside function
     static constexpr uint8_t var_isGlobal = 4 << 4;                  // variable is global, in or outside function
     static constexpr uint8_t var_isStaticInFunc = 3 << 4;            // variable is static in function
-    static constexpr uint8_t var_isLocalInFunc = 2 << 4;             // variable is local in function
+    static constexpr uint8_t var_isLocalInFunc = 2 << 4;             // variable is local in function (non-parameter)
     static constexpr uint8_t var_isParamInFunc = 1 << 4;             // variable is function parameter
     static constexpr uint8_t var_scopeToSpecify = 0 << 4;             // scope is not yet defined (temporary use during parsing; never stored in token)
 
@@ -427,6 +427,9 @@ public:
     execResult_type  execInfixOperation();
     execResult_type  execInternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
     execResult_type  launchExternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
+    void initFunctionParamVariables(char* & calledFunctionTokenStep, int suppliedArgCount , int paramCount );
+    void initFunctionLocalNonParamVariables( char* calledFunctionTokenStep, int paramCount, int localVarCount );
+
     void makeIntermediateConstant( LE_evalStack* pEvalStackLvl );
 
     Interpreter::execResult_type arrayAndSubscriptsToarrayElement( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
@@ -435,6 +438,7 @@ public:
     void clearEvalStack();
     void clearFlowCtrlStack();
     void findTokenStep( int tokenTypeToFind, char tokenCode, char* & pStep );
+    bool jumpTokens( int n, char*& pStep, int& tokenType, int& tokenCode );
 
     void deleteStackArguments( LE_evalStack* pPrecedingStackLvl, int argCount, bool includePreceding );
 
