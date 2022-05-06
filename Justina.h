@@ -427,7 +427,7 @@ public:
     execResult_type  execInfixOperation();
     execResult_type  execInternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
     execResult_type  launchExternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
-    void initFunctionParamVariables(char* & calledFunctionTokenStep, int suppliedArgCount , int paramCount );
+    void initFunctionDefaultParamVariables(char* & calledFunctionTokenStep, int suppliedArgCount , int paramCount );
     void initFunctionLocalNonParamVariables( char* calledFunctionTokenStep, int paramCount, int localVarCount );
 
     void makeIntermediateConstant( LE_evalStack* pEvalStackLvl );
@@ -944,6 +944,7 @@ public:
     bool checkInternFuncArgArrayPattern( parseTokenResult_type& result );
     bool checkExternFuncArgArrayPattern( parseTokenResult_type& result, bool isFunctionClosingParenthesis );
     bool initVariable( uint16_t varTokenStep, uint16_t constTokenStep );
+    bool initVariable(  );
 
 
     MyParser( Interpreter* const pInterpreter );                                                 // constructor

@@ -346,7 +346,7 @@ Interpreter::execResult_type  Interpreter::exec() {
 // *   jump n token steps, return token type and (for terminals and reserved words) token code   *
 // -----------------------------------------------------------------------------------------------
 
-bool Interpreter::jumpTokens( int n, char*& pStep, int &tokenType, int &tokenCode) {
+bool Interpreter::jumpTokens( int n, char*& pStep, int& tokenType, int& tokenCode ) {
 
     // pStep: pointer to first token to test versus token group and (if applicable) token code
     // n: number opf tokens to jump
@@ -365,7 +365,7 @@ bool Interpreter::jumpTokens( int n, char*& pStep, int &tokenType, int &tokenCod
     switch ( tokenType ) {
     case tok_isReservedWord:
         tokenIndex = (((TokenIsResWord*) pStep)->tokenIndex);
-        tokenCode = MyParser::_resWords [tokenIndex].resWordCode ;
+        tokenCode = MyParser::_resWords [tokenIndex].resWordCode;
         break;
 
     case tok_isTerminalGroup1:
@@ -1245,7 +1245,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
     // ---------------------------------------------------------------------------------------------------------------------------
 
     char* calledFunctionTokenStep = extFunctionData [_activeFunctionData.functionIndex].pExtFunctionStartToken;
-    initFunctionParamVariables( calledFunctionTokenStep, suppliedArgCount, paramCount );      // return with first token after function definition
+    initFunctionDefaultParamVariables( calledFunctionTokenStep, suppliedArgCount, paramCount );      // return with first token after function definition
     initFunctionLocalNonParamVariables( calledFunctionTokenStep, paramCount, localVarCount );       // and create storage for local array variables
 
 
@@ -1275,7 +1275,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 // *   init local variables for non_supplied arguments (scalar parameters with default values)   *
 // -----------------------------------------------------------------------------------------------
 
-void Interpreter::initFunctionParamVariables( char*& calledFunctionTokenStep, int suppliedArgCount, int paramCount ) {
+void Interpreter::initFunctionDefaultParamVariables( char*& calledFunctionTokenStep, int suppliedArgCount, int paramCount ) {
     int calledFunctionTokenType = *calledFunctionTokenStep & 0x0F;                                                          // function name token of called function
 
     if ( suppliedArgCount < paramCount ) {      // missing arguments: use parameter default values to init local variables
@@ -1319,14 +1319,14 @@ void Interpreter::initFunctionParamVariables( char*& calledFunctionTokenStep, in
                 float f;
                 memcpy( &f, ((TokenIsRealCst*) calledFunctionTokenStep)->realConst, sizeof( float ) );
                 _activeFunctionData.pLocalVarValues [count].realConst = f;  // store a local copy
-                _activeFunctionData.pVariableAttributes [count] = value_isFloat;
+                _activeFunctionData.pVariableAttributes [count] = value_isFloat;                // default value: always scalar
             }
             else {                      // operand is parsed string constant: create a local copy and store in variable
                 char* s;
                 memcpy( &s, ((TokenIsStringCst*) calledFunctionTokenStep)->pStringConst, sizeof( char* ) );  // copy the pointer, NOT the string  
 
                 _activeFunctionData.pLocalVarValues [count].pStringConst = nullptr;   // init (if empty string)
-                _activeFunctionData.pVariableAttributes [count] = value_isStringPointer;
+                _activeFunctionData.pVariableAttributes [count] = value_isStringPointer;                // default value: always scalar
                 if ( s != nullptr ) {
                     int stringlen = strlen( s );
                     _activeFunctionData.pLocalVarValues [count].pStringConst = new char [stringlen + 1];
@@ -1377,26 +1377,92 @@ void Interpreter::initFunctionLocalNonParamVariables( char* pStep, int paramCoun
         do {
             // in case variable is not an array: init as zero
             _activeFunctionData.pLocalVarValues [count].realConst = 0;
-            _activeFunctionData.pVariableAttributes [count] = value_isFloat;
+            _activeFunctionData.pVariableAttributes [count] = value_isFloat;        // for now, assume scalar
 
-            jumpTokens( 2, pStep , tokenType, terminalCode);            // either left parenthesis, assignment, comma or semicolon separator (always a terminal)
+            jumpTokens( 2, pStep, tokenType, terminalCode );            // either left parenthesis, assignment, comma or semicolon separator (always a terminal)
+
+
+            // handle array definition dimensions 
+            // ----------------------------------
+
+            int dimCount = 0, arrayElements = 1;
+            int arrayDims [MAX_ARRAY_DIMS] { 0 };
 
             if ( terminalCode == MyParser::termcod_leftPar ) {
                 do {
                     jumpTokens( 1, pStep, tokenType, terminalCode );         // dimension
-                    //// ...assemble dimensions
+                    // increase dimension count and calculate elements (checks done during parsing)
+                    float f;
+                    memcpy( &f, ((TokenIsRealCst*) pStep)->realConst, sizeof( float ) );
+                    arrayElements *= f;
+                    arrayDims [dimCount] = f;
+                    dimCount++;
+
                     jumpTokens( 1, pStep, tokenType, terminalCode );         // comma (dimension separator) or right parenthesis
                 } while ( terminalCode != MyParser::termcod_rightPar );
 
                 // create array (init later)
-                //// create
+                float* pArray = new float [arrayElements + 1];
+                localArrayObjectCount++;
+#if printCreateDeleteHeapObjects
+                Serial.print( isUserVar ? "+++++ (loc ar stor) " : "+++++ (array stor ) " ); Serial.println( (uint32_t) pArray - RAMSTART );
+#endif
+                _activeFunctionData.pLocalVarValues [count].pArray = pArray;
+                _activeFunctionData.pVariableAttributes [count] |= var_isArray;             // set array bit
+
+                // store dimensions in element 0: char 0 to 2 is dimensions; char 3 = dimension count 
+                for ( int i = 0; i < MAX_ARRAY_DIMS; i++ ) {
+                    ((char*) pArray) [i] = arrayDims [i];
+                }
+                ((char*) pArray) [3] = dimCount;        // (note: for param arrays, set to max dimension count during parsing)
                 jumpTokens( 1, pStep, tokenType, terminalCode );       // assignment, comma or semicolon
             }
 
+
+            // handle initialisation (if initializer provided)
+            // -----------------------------------------------
+
             if ( terminalCode == MyParser::termcod_assign ) {
                 jumpTokens( 1, pStep, tokenType, terminalCode );       // constant
-                // scalar or array variable: init with constant
-                //// init
+
+                // fetch constant
+                tokenType = *pStep & 0x0F;
+
+                float f { 0. };        // last token is a number constant: dimension spec
+                char* pString { nullptr };
+                bool isNumberCst = (tokenType == tok_isRealConst);
+
+                if ( isNumberCst ) { memcpy( &f, ((TokenIsRealCst*) pStep)->realConst, sizeof( float ) ); }
+                else { memcpy( &pString, ((TokenIsStringCst*) pStep)->pStringConst, sizeof( pString ) ); }     // copy pointer to string (not the string itself)
+                int length = isNumberCst ? 0 : (pString == nullptr) ? 0 : strlen( pString );       // only relevant for strings
+                if(!isNumberCst ){ _activeFunctionData.pVariableAttributes [count] = 
+                    (_activeFunctionData.pVariableAttributes [count] & ~value_typeMask) | value_isStringPointer;}    // was initialised to float
+
+                // array: initialize (note: test for non-empty string done during parsing
+                if ( (_activeFunctionData.pVariableAttributes [count] & var_isArray) == var_isArray ) {
+                    void* pArray = ((void**) _activeFunctionData.pLocalVarValues) [count];        // void pointer to an array 
+                    // fill up with numeric constants or (empty strings:) null pointers
+                    if ( isNumberCst ) { for ( int elem = 1; elem <= arrayElements; elem++ ) { ((float*) pArray) [elem] = f; } }
+                    else { for ( int elem = 1; elem <= arrayElements; elem++ ) { ((char**) pArray) [elem] = nullptr; } }
+                }
+                // scalar: initialize
+                else {
+                    if ( isNumberCst ) { _activeFunctionData.pLocalVarValues [count].realConst = f; }      // store numeric constant
+                    else {
+                        if ( length == 0 ) { _activeFunctionData.pLocalVarValues [count].pStringConst = nullptr; }       // an empty string does not create a heap object
+                        else { // create string object and store string
+                            char* pVarString = new char [length + 1];          // create char array on the heap to store alphanumeric constant, including terminating '\0'
+                            // store alphanumeric constant in newly created character array
+                            strcpy( pVarString, pString );              // including terminating \0
+                            _activeFunctionData.pLocalVarValues [count].pStringConst = pVarString;       // store pointer to string
+                            localVarStringObjectCount++;
+#if printCreateDeleteHeapObjects
+                            Serial.print( "+++++ (loc var str) " ); Serial.println( (uint32_t) pVarString - RAMSTART );
+#endif
+                        }
+                    }
+                }
+
                 jumpTokens( 1, pStep, tokenType, terminalCode );       // comma or semicolon
             }
 

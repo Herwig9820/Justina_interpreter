@@ -443,9 +443,10 @@ bool MyParser::initVariable( uint16_t varTokenStep, uint16_t constTokenStep ) {
     bool isNumberCst = (Interpreter::tokenType_type) ((((Interpreter::TokenIsRealCst*) (_pInterpreter->_programStorage + constTokenStep))->tokenType) & 0x0F) == Interpreter::tok_isRealConst;
     if ( isNumberCst ) { memcpy( &f, ((Interpreter::TokenIsRealCst*) (_pInterpreter->_programStorage + constTokenStep))->realConst, sizeof( f ) ); }        // copy float
 
-    else { memcpy( &pString, ((Interpreter::TokenIsStringCst*) (_pInterpreter->_programStorage + constTokenStep))->pStringConst, sizeof( pString ) ); }     // copy pointer to string
+    else { memcpy( &pString, ((Interpreter::TokenIsStringCst*) (_pInterpreter->_programStorage + constTokenStep))->pStringConst, sizeof( pString ) ); }     // copy pointer to string (not the string itself)
     int length = isNumberCst ? 0 : (pString == nullptr) ? 0 : strlen( pString );       // only relevant for strings
 
+    
     if ( isArrayVar ) {
         pArrayStorage = ((void**) pVarStorage) [varValueIndex];        // void pointer to an array 
         int dimensions = (((char*) pArrayStorage) [3]);  // can range from 1 to MAX_ARRAY_DIMS
@@ -481,10 +482,56 @@ bool MyParser::initVariable( uint16_t varTokenStep, uint16_t constTokenStep ) {
             }
         }
     }
+
+
     pVarTypeStorage [varValueIndex] = (pVarTypeStorage [varValueIndex] & ~_pInterpreter->value_typeMask) | (isNumberCst ? _pInterpreter->value_isFloat : _pInterpreter->value_isStringPointer);
     return true;
 };
 
+
+// --------------------------------------------------------------
+// *   initialize a variable or an array with (a) constant(s)   *
+// --------------------------------------------------------------
+
+bool MyParser::initVariable() {
+    /*
+    if ( isArrayVar ) {
+        pArrayStorage = ((void**) pVarStorage) [varValueIndex];        // void pointer to an array 
+        int dimensions = (((char*) pArrayStorage) [3]);  // can range from 1 to MAX_ARRAY_DIMS
+        int arrayElements = 1;                                  // determine array size
+        for ( int dimCnt = 0; dimCnt < dimensions; dimCnt++ ) { arrayElements *= (int) ((((char*) pArrayStorage) [dimCnt])); }
+        // fill up with numeric constants or (empty strings:) null pointers
+        if ( isNumberCst ) { for ( int arrayElem = 1; arrayElem <= arrayElements; arrayElem++ ) { ((float*) pArrayStorage) [arrayElem] = f; } }
+        else {                                                      // alphanumeric constant
+            if ( length != 0 ) { return false; };       // to limit memory usage, no mass initialisation with non-empty strings
+            for ( int arrayElem = 1; arrayElem <= arrayElements; arrayElem++ ) {
+                ((char**) pArrayStorage) [arrayElem] = nullptr;
+            }
+        }
+    }
+
+    else {                                  // scalar
+        if ( isNumberCst ) {
+            ((float*) pVarStorage) [varValueIndex] = f;
+        }      // store numeric constant
+        else {                                                  // alphanumeric constant
+            if ( length == 0 ) {
+                ((char**) pVarStorage) [varValueIndex] = nullptr;       // an empty string does not create a heap object
+            }
+            else { // create string object and store string
+                char* pVarAlphanumValue = new char [length + 1];          // create char array on the heap to store alphanumeric constant, including terminating '\0'
+                isUserVar ? _pInterpreter->userVarStringObjectCount++ : _pInterpreter->globalStaticVarStringObjectCount++;
+#if printCreateDeleteHeapObjects
+                Serial.print( isUserVar ? "+++++ (usr var str) " : "+++++ (var string ) " ); Serial.println( (uint32_t) pVarAlphanumValue - RAMSTART );
+#endif
+                // store alphanumeric constant in newly created character array
+                strcpy( pVarAlphanumValue, pString );              // including terminating \0
+                ((char**) pVarStorage) [varValueIndex] = pVarAlphanumValue;       // store pointer to string
+            }
+        }
+    }
+    */
+}
 
 // --------------------------------------------------------------
 // *   check if all external functions referenced are defined   *
