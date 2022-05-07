@@ -437,7 +437,7 @@ public:
     void saveLastValue();
     void clearEvalStack();
     void clearFlowCtrlStack();
-    void findTokenStep( int tokenTypeToFind, char tokenCode, char* & pStep );
+    int findTokenStep( int tokenTypeToFind, char tokenCode, char* & pStep );
     bool jumpTokens( int n, char*& pStep, int& tokenType, int& tokenCode );
 
     void deleteStackArguments( LE_evalStack* pPrecedingStackLvl, int argCount, bool includePreceding );

@@ -388,14 +388,18 @@ bool Interpreter::jumpTokens( int n, char*& pStep, int& tokenType, int& tokenCod
 // *   advance until specific token   *
 // ------------------------------------
 
-void Interpreter::findTokenStep( int tokenTypeToFind, char tokenCodeToFind, char*& pStep ) {
+int Interpreter::findTokenStep( int tokenTypeToFind, char tokenCodeToFind, char*& pStep ) {
 
     // pStep: pointer to first token to test versus token group and (if applicable) token code
     // tokenType: if 'tok_isTerminalGroup1', test for the three terminal groups !
-    // the routine assumes the token to be found is present 
+
+    // exclude current token step
+    int tokenType = *pStep & 0x0F;
+    int tokenLength = (tokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*pStep >> 4) & 0x0F;        // fetch next token 
+    pStep = pStep + tokenLength;
 
     do {
-        int tokenType = *pStep & 0x0F;
+        tokenType = *pStep & 0x0F;
         bool tokenTypeMatch = (tokenTypeToFind == tokenType);
         if ( tokenTypeToFind == tok_isTerminalGroup1 ) { tokenTypeMatch = tokenTypeMatch || (tokenType == tok_isTerminalGroup2) || (tokenType == tok_isTerminalGroup3); }
         if ( tokenTypeMatch ) {
@@ -414,10 +418,14 @@ void Interpreter::findTokenStep( int tokenTypeToFind, char tokenCodeToFind, char
                 tokenCodeMatch = MyParser::_terminals [tokenIndex].terminalCode == tokenCodeToFind;
                 break;
 
+            case tok_no_token:
+                return tokenType;       // token not found
+                break;
+
             default:
                 break;
             }
-            if ( tokenCodeMatch ) { return; }      // and return step of token found (pStep ,parameter) 
+            if ( tokenCodeMatch ) { return tokenType; }      // if terminal, then return exact group (entry: use terminalGroup1) 
         }
 
         int tokenLength = (tokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*pStep >> 4) & 0x0F;        // fetch next token 
@@ -1275,55 +1283,32 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 // *   init local variables for non_supplied arguments (scalar parameters with default values)   *
 // -----------------------------------------------------------------------------------------------
 
-void Interpreter::initFunctionDefaultParamVariables( char*& calledFunctionTokenStep, int suppliedArgCount, int paramCount ) {
-    int calledFunctionTokenType = *calledFunctionTokenStep & 0x0F;                                                          // function name token of called function
+void Interpreter::initFunctionDefaultParamVariables( char*& pStep, int suppliedArgCount, int paramCount ) {
+    int tokenType = *pStep & 0x0F, tokenCode;                                                          // function name token of called function
 
     if ( suppliedArgCount < paramCount ) {      // missing arguments: use parameter default values to init local variables
-        int count = 0;
-        // now positioned at function name token in called function (after FUNCTION token)
-        // first, position at opening parenthesis
-        calledFunctionTokenType = *calledFunctionTokenStep & 0x0F;                                                          // function name token of called function
-        int tokenLength = (calledFunctionTokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*calledFunctionTokenStep >> 4) & 0x0F;
-        calledFunctionTokenStep = calledFunctionTokenStep + tokenLength;        // positioned at (scalar) variable for parameter
-        calledFunctionTokenType = *calledFunctionTokenStep & 0x0F;                                                               // opening parenthesis
-
+        int count = 0, terminalCode = 0;
+        jumpTokens(1, pStep, tokenType,tokenCode);
+        // now positioned at opening parenthesis in called function (after FUNCTION token)
         // find n-th argument separator (comma), with n is number of supplied arguments (stay at left parenthesis if none provided)
-        while ( count < suppliedArgCount ) {     // if not yet skipped all supplied arguments: find next argument separator
-            int tokenLength = (calledFunctionTokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*calledFunctionTokenStep >> 4) & 0x0F;
-            calledFunctionTokenStep = calledFunctionTokenStep + tokenLength;
-            calledFunctionTokenType = *calledFunctionTokenStep & 0x0F;
-            bool isTerminal = ((calledFunctionTokenType == Interpreter::tok_isTerminalGroup1) || (calledFunctionTokenType == Interpreter::tok_isTerminalGroup2) || (calledFunctionTokenType == Interpreter::tok_isTerminalGroup3));
-            int tokenIndex;
-            if ( isTerminal ) {
-                tokenIndex = ((((TokenIsTerminal*) calledFunctionTokenStep)->tokenTypeAndIndex >> 4) & 0x0F);
-                tokenIndex += ((calledFunctionTokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (calledFunctionTokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
-            }
-            bool isParamSeparator = (isTerminal ? (MyParser::_terminals [tokenIndex].terminalCode == MyParser::termcod_comma) : false);
-            if ( isParamSeparator ) { count++; }            // a comma separator has been found
-        };      // all supplied arguments now skipped ?
+        while ( count < suppliedArgCount ) { tokenType = findTokenStep( tok_isTerminalGroup1, MyParser::termcod_comma, pStep ); count++; Serial.println("+++"); }
 
         // now positioned before first parameter for non-supplied scalar argument. It always has an initializer
         // we only need the constant value, because we know the variable value index already (count): skip variable and assignment 
-
         while ( count < paramCount ) {
-            for ( int i = 0; i < ((count == suppliedArgCount) ? 3 : 4); i++ ) {     // first default value: advance only 3 tokens (already at comma in front of variable)
-                int tokenLength = (calledFunctionTokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*calledFunctionTokenStep >> 4) & 0x0F;
-                calledFunctionTokenStep = calledFunctionTokenStep + tokenLength;
-                calledFunctionTokenType = *calledFunctionTokenStep & 0x0F;
-            }
+            jumpTokens( ((count == suppliedArgCount) ? 3 : 4), pStep, tokenType, tokenCode );
 
             // now positioned at constant initializer
-
-            bool operandIsReal = (calledFunctionTokenType == tok_isRealConst);
+            bool operandIsReal = (tokenType == tok_isRealConst);
             if ( operandIsReal ) {                                                      // operand is float constant
                 float f;
-                memcpy( &f, ((TokenIsRealCst*) calledFunctionTokenStep)->realConst, sizeof( float ) );
+                memcpy( &f, ((TokenIsRealCst*) pStep)->realConst, sizeof( float ) );
                 _activeFunctionData.pLocalVarValues [count].realConst = f;  // store a local copy
                 _activeFunctionData.pVariableAttributes [count] = value_isFloat;                // default value: always scalar
             }
             else {                      // operand is parsed string constant: create a local copy and store in variable
                 char* s;
-                memcpy( &s, ((TokenIsStringCst*) calledFunctionTokenStep)->pStringConst, sizeof( char* ) );  // copy the pointer, NOT the string  
+                memcpy( &s, ((TokenIsStringCst*) pStep)->pStringConst, sizeof( char* ) );  // copy the pointer, NOT the string  
 
                 _activeFunctionData.pLocalVarValues [count].pStringConst = nullptr;   // init (if empty string)
                 _activeFunctionData.pVariableAttributes [count] = value_isStringPointer;                // default value: always scalar
@@ -1342,19 +1327,7 @@ void Interpreter::initFunctionDefaultParamVariables( char*& calledFunctionTokenS
     }
 
     // skip (remainder of) function definition
-    bool isStatementSeparator = false;
-    do {     // advance to semicolon
-        int tokenLength = (calledFunctionTokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*calledFunctionTokenStep >> 4) & 0x0F;
-        calledFunctionTokenStep = calledFunctionTokenStep + tokenLength;
-        calledFunctionTokenType = *calledFunctionTokenStep & 0x0F;
-        bool isTerminal = ((calledFunctionTokenType == Interpreter::tok_isTerminalGroup1) || (calledFunctionTokenType == Interpreter::tok_isTerminalGroup2) || (calledFunctionTokenType == Interpreter::tok_isTerminalGroup3));
-        int tokenIndex;
-        if ( isTerminal ) {
-            tokenIndex = ((((TokenIsTerminal*) calledFunctionTokenStep)->tokenTypeAndIndex >> 4) & 0x0F);
-            tokenIndex += ((calledFunctionTokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (calledFunctionTokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
-        }
-        isStatementSeparator = (isTerminal ? (MyParser::_terminals [tokenIndex].terminalCode == MyParser::termcod_semicolon) : false);
-    } while ( !isStatementSeparator );
+    findTokenStep( tok_isTerminalGroup1, MyParser::termcod_semicolon, pStep );
 };
 
 
@@ -1375,7 +1348,7 @@ void Interpreter::initFunctionLocalNonParamVariables( char* pStep, int paramCoun
 
         int terminalCode;
         do {
-            // in case variable is not an array: init as zero
+            // in case variable is not an array and it does not have an initializer: init as zero (float)
             _activeFunctionData.pLocalVarValues [count].realConst = 0;
             _activeFunctionData.pVariableAttributes [count] = value_isFloat;        // for now, assume scalar
 
@@ -1391,6 +1364,7 @@ void Interpreter::initFunctionLocalNonParamVariables( char* pStep, int paramCoun
             if ( terminalCode == MyParser::termcod_leftPar ) {
                 do {
                     jumpTokens( 1, pStep, tokenType, terminalCode );         // dimension
+
                     // increase dimension count and calculate elements (checks done during parsing)
                     float f;
                     memcpy( &f, ((TokenIsRealCst*) pStep)->realConst, sizeof( float ) );
@@ -1415,6 +1389,7 @@ void Interpreter::initFunctionLocalNonParamVariables( char* pStep, int paramCoun
                     ((char*) pArray) [i] = arrayDims [i];
                 }
                 ((char*) pArray) [3] = dimCount;        // (note: for param arrays, set to max dimension count during parsing)
+
                 jumpTokens( 1, pStep, tokenType, terminalCode );       // assignment, comma or semicolon
             }
 
@@ -1435,10 +1410,12 @@ void Interpreter::initFunctionLocalNonParamVariables( char* pStep, int paramCoun
                 if ( isNumberCst ) { memcpy( &f, ((TokenIsRealCst*) pStep)->realConst, sizeof( float ) ); }
                 else { memcpy( &pString, ((TokenIsStringCst*) pStep)->pStringConst, sizeof( pString ) ); }     // copy pointer to string (not the string itself)
                 int length = isNumberCst ? 0 : (pString == nullptr) ? 0 : strlen( pString );       // only relevant for strings
-                if(!isNumberCst ){ _activeFunctionData.pVariableAttributes [count] = 
-                    (_activeFunctionData.pVariableAttributes [count] & ~value_typeMask) | value_isStringPointer;}    // was initialised to float
+                if ( !isNumberCst ) {
+                    _activeFunctionData.pVariableAttributes [count] =
+                        (_activeFunctionData.pVariableAttributes [count] & ~value_typeMask) | value_isStringPointer;
+                }    // was initialised to float
 
-                // array: initialize (note: test for non-empty string done during parsing
+// array: initialize (note: test for non-empty string done during parsing
                 if ( (_activeFunctionData.pVariableAttributes [count] & var_isArray) == var_isArray ) {
                     void* pArray = ((void**) _activeFunctionData.pLocalVarValues) [count];        // void pointer to an array 
                     // fill up with numeric constants or (empty strings:) null pointers
