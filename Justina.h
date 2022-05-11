@@ -257,6 +257,11 @@ public:
 
 
     struct FunctionData {
+        char blockType;                 // will identify stack level as a function block
+        char functionIndex;             // for error messages only
+        char callerEvalStackLevels;     // evaluation stack levels in use by caller(s) and main (call stack)
+        char spare;                     // boundary alignment
+
         Val* pLocalVarValues;           // local variable value: real, pointer to string or array, or (if reference): pointer to 'source' (referenced) variable
         char** ppSourceVarTypes;        // only if local variable is reference to variable or array element: pointer to 'source' variable value type  
         char* pVariableAttributes;      // local variable: value type (float, local string or reference); 'source' (if reference) or local variable scope (user, global, static; local, param) 
@@ -264,9 +269,6 @@ public:
         char* pNextStep;             // next step to execute (look ahead)
         char* errorStatementStartStep;  // first token in statement where execution error occurs (error reporting)
         char* errorProgramCounter;      // token to point to in statement (^) if execution error occurs (error reporting)
-
-        char functionIndex;             // for error messages only
-        char callerEvalStackLevels;     // evaluation stack levels in use by caller(s) and main (call stack)
     };
 
 
@@ -306,34 +308,34 @@ public:
 
     // execution
     static constexpr uint8_t constIsIntermediate = 0x01;
-    
+
 
 
     static constexpr  int _maxInstructionChars { 300 };
     static constexpr char promptText [10] = "Justina> ";
     static constexpr int _promptLength = sizeof( promptText ) - 1;////
 
-    
+
     // counting of heap objects (note: linked list element count is maintained within the linked list objects)
-    
+
     // name strings for variables and functions
     int identifierNameStringObjectCount = 0;
-    int userVarNameStringObjectCount=0;                                                 
+    int userVarNameStringObjectCount = 0;
 
     // constant strings
     int parsedStringConstObjectCount = 0;
     int intermediateStringObjectCount = 0;
-    int lastValuesStringObjectCount = 0;            
-    
+    int lastValuesStringObjectCount = 0;
+
     // strings as value of variables
     int globalStaticVarStringObjectCount = 0;
     int userVarStringObjectCount = 0;
-    int localVarStringObjectCount = 0;                                                  
+    int localVarStringObjectCount = 0;
 
     // array storage 
     int globalStaticArrayObjectCount = 0;
-    int userArrayObjectCount = 0;                     
-    int localArrayObjectCount = 0;                                                      
+    int userArrayObjectCount = 0;
+    int localArrayObjectCount = 0;
 
 
     char _instruction [_maxInstructionChars + 1] = "";
@@ -427,7 +429,9 @@ public:
     execResult_type  execInfixOperation();
     execResult_type  execInternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
     execResult_type  launchExternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
-    void initFunctionDefaultParamVariables(char* & calledFunctionTokenStep, int suppliedArgCount , int paramCount );
+    execResult_type  terminateExternalFunction(bool addZeroReturnValue = false);
+
+    void initFunctionDefaultParamVariables( char*& calledFunctionTokenStep, int suppliedArgCount, int paramCount );
     void initFunctionLocalNonParamVariables( char* calledFunctionTokenStep, int paramCount, int localVarCount );
 
     void makeIntermediateConstant( LE_evalStack* pEvalStackLvl );
@@ -437,8 +441,10 @@ public:
     void saveLastValue();
     void clearEvalStack();
     void clearFlowCtrlStack();
-    int findTokenStep( int tokenTypeToFind, char tokenCode, char* & pStep );
-    bool jumpTokens( int n, char*& pStep, int& tokenType, int& tokenCode );
+    int findTokenStep( int tokenTypeToFind, char tokenCodeToFind, char*& pStep );
+    int jumpTokens( int n, char*& pStep,  int& tokenCode );
+    int jumpTokens( int n, char*& pStep );
+    int jumpTokens( int n );
 
     void deleteStackArguments( LE_evalStack* pPrecedingStackLvl, int argCount, bool includePreceding );
 
@@ -466,6 +472,8 @@ public:
 
     // unique identification code of a command
     enum cmd_code {
+        cmdcod_none,        // no command being executed
+
         cmdcod_program,
         cmdcod_delete,
         cmdcod_clear,
@@ -797,6 +805,7 @@ public:
     static const char cmdPar_N [4];                             // command takes no parameters
     static const char cmdPar_P [4];                             // allow: 'P'=identifier name  
     static const char cmdPar_E [4];                             // allow: 'E'=expression  
+    static const char cmdPar_E_opt [4];                         // allow: 'E'=expression  
     static const char cmdPar_V [4];                             // allow: 'V'=variable (only)
     static const char cmdPar_F [4];                             // allow: 'F'=function definition 
     static const char cmdPar_AEE [4];                           // allow: 'A'=variable with (optional) assignment, 'E'=expression, 'E'=expression
@@ -940,11 +949,10 @@ public:
     bool checkCommandSyntax( parseTokenResult_type& result );
     bool checkExtFunctionArguments( parseTokenResult_type& result, int& minArgCnt, int& maxArgCnt );
     bool checkArrayDimCountAndSize( parseTokenResult_type& result, int* arrayDef_dims, int& dimCnt );
-    int getIdentifier( char** pIdentArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNew, bool isUserVar=false );
+    int getIdentifier( char** pIdentArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNew, bool isUserVar = false );
     bool checkInternFuncArgArrayPattern( parseTokenResult_type& result );
     bool checkExternFuncArgArrayPattern( parseTokenResult_type& result, bool isFunctionClosingParenthesis );
     bool initVariable( uint16_t varTokenStep, uint16_t constTokenStep );
-    bool initVariable(  );
 
 
     MyParser( Interpreter* const pInterpreter );                                                 // constructor
@@ -952,7 +960,7 @@ public:
     void resetMachine( bool withUserVariables );
     void deleteIdentifierNameObjects( char** pIdentArray, int identifiersInUse, bool isUserVar = false );
     void deleteArrayElementStringObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false );
-    void deleteVariableValueObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar = false , bool isLocalVar = false);
+    void deleteVariableValueObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false );
     void deleteLastValueFiFoStringObjects();
     void deleteConstStringObjects( char* pToken );
     parseTokenResult_type parseSource( char* const inputLine, char*& pErrorPos );

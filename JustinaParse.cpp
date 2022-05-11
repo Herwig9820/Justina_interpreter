@@ -17,6 +17,8 @@
 const char MyParser::cmdPar_N [4] { cmdPar_none,                    cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
 const char MyParser::cmdPar_P [4] { cmdPar_programName,             cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
 const char MyParser::cmdPar_E [4] { cmdPar_expression,              cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
+const char MyParser::cmdPar_E_opt [4] { cmdPar_expression
+                                        | cmdPar_optionalFlag,      cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
 const char MyParser::cmdPar_F [4] { cmdPar_extFunction,             cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
 const char MyParser::cmdPar_AEE [4] { cmdPar_varOptAssignment,      cmdPar_expression,                              cmdPar_expression | cmdPar_optionalFlag ,   cmdPar_none };
 const char MyParser::cmdPar_P_mult [4] { cmdPar_programName,        cmdPar_programName | cmdPar_multipleFlag,       cmdPar_none,                                cmdPar_none };
@@ -50,7 +52,7 @@ const MyParser::ResWordDef MyParser::_resWords [] {
 
     {"BREAK",   cmdcod_break,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_N,       cmdBlockOpenBlock_loop},        // allowed if at least one open loop block (any level) 
     {"CONTINUE",cmdcod_continue,cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_N,       cmdBlockOpenBlock_loop },       // allowed if at least one open loop block (any level) 
-    {"RETURN",  cmdcod_return,  cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E,       cmdBlockOpenBlock_function},    // allowed if currently an open function definition block 
+    {"RETURN",  cmdcod_return,  cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E_opt,   cmdBlockOpenBlock_function},    // allowed if currently an open function definition block 
 
     {"END",     cmdcod_end,     cmd_noRestrictions,                                 0,0,    cmdPar_N,       cmdBlockGenEnd},                // closes inner open command block
 };
@@ -173,10 +175,10 @@ void MyParser::deleteArrayElementStringObjects( Interpreter::Val* varValues, cha
                     uint32_t stringPointerAddress = (uint32_t) & (((char**) pArrayStorage) [arrayElem]);
                     if ( pString != nullptr ) {
 #if printCreateDeleteHeapObjects
-                        Serial.print( isUserVar ? "----- (usr arr str) " : isLocalVar ? "-----(loc arr str)" : "----- (arr string ) "); Serial.println((uint32_t) pString - RAMSTART);     // applicable to string and array (same pointer)
+                        Serial.print( isUserVar ? "----- (usr arr str) " : isLocalVar ? "-----(loc arr str)" : "----- (arr string ) " ); Serial.println( (uint32_t) pString - RAMSTART );     // applicable to string and array (same pointer)
 #endif
                         delete []  pString;                                  // applicable to string and array (same pointer)
-                        isUserVar ? _pInterpreter->userVarStringObjectCount-- : isLocalVar ? _pInterpreter->localVarStringObjectCount--  :  _pInterpreter->globalStaticVarStringObjectCount--; 
+                        isUserVar ? _pInterpreter->userVarStringObjectCount-- : isLocalVar ? _pInterpreter->localVarStringObjectCount-- : _pInterpreter->globalStaticVarStringObjectCount--;
                     }
                 }
             }
@@ -199,18 +201,18 @@ void MyParser::deleteVariableValueObjects( Interpreter::Val* varValues, char* va
             // check for arrays before checking for strings (if both 'var_isArray' and 'value_isStringPointer' bits are set: array of strings, with strings already deleted)
             if ( varType [index] & _pInterpreter->var_isArray ) {       // variable is an array: delete array storage          
 #if printCreateDeleteHeapObjects
-                Serial.print( isUserVar ? "----- (usr ar stor) " :  isLocalVar ? "----- (loc ar stor) ": "----- (array stor ) " ); Serial.println( (uint32_t) varValues [index].pStringConst - RAMSTART );
+                Serial.print( isUserVar ? "----- (usr ar stor) " : isLocalVar ? "----- (loc ar stor) " : "----- (array stor ) " ); Serial.println( (uint32_t) varValues [index].pStringConst - RAMSTART );
 #endif
                 delete []  varValues [index].pArray;
-                isUserVar ? _pInterpreter->userArrayObjectCount-- :  isLocalVar ? _pInterpreter->localArrayObjectCount-- :  _pInterpreter->globalStaticArrayObjectCount--;
+                isUserVar ? _pInterpreter->userArrayObjectCount-- : isLocalVar ? _pInterpreter->localArrayObjectCount-- : _pInterpreter->globalStaticArrayObjectCount--;
             }
             else if ( (varType [index] & _pInterpreter->value_typeMask) == _pInterpreter->value_isStringPointer ) {       // variable is a scalar containing a string
                 if ( varValues [index].pStringConst != nullptr ) {
 #if printCreateDeleteHeapObjects
-                    Serial.print( isUserVar ? "----- (usr var str) " : isLocalVar ? "----- (loc var str)" : "----- (var string ) "); Serial.println((uint32_t) varValues [index].pStringConst - RAMSTART);
+                    Serial.print( isUserVar ? "----- (usr var str) " : isLocalVar ? "----- (loc var str)" : "----- (var string ) " ); Serial.println( (uint32_t) varValues [index].pStringConst - RAMSTART );
 #endif
                     delete []  varValues [index].pStringConst;
-                    isUserVar ? _pInterpreter->userVarStringObjectCount-- : isLocalVar ?  _pInterpreter->localVarStringObjectCount--  :  _pInterpreter->globalStaticVarStringObjectCount--;
+                    isUserVar ? _pInterpreter->userVarStringObjectCount-- : isLocalVar ? _pInterpreter->localVarStringObjectCount-- : _pInterpreter->globalStaticVarStringObjectCount--;
                 }
             }
         }
@@ -326,9 +328,9 @@ void MyParser::resetMachine( bool withUserVariables ) {
 
 
     // perform consistency checks: verify that all objects created are destroyed again
-    // note: intermediate string objects, function local storage, and function local variable strings and arrays exist solely during execution
+    // note: intermediate string objects, function local storage, and function local variable strings and arrays exist solely during execution.
     //       count of function local variable strings and arrays is checked each time execution terminates 
-           
+
     // parsing stack: no need to check if any elements were left (the list has just been deleted)
     // note: this stack does not contain any pointers to heap objects
 
@@ -446,7 +448,7 @@ bool MyParser::initVariable( uint16_t varTokenStep, uint16_t constTokenStep ) {
     else { memcpy( &pString, ((Interpreter::TokenIsStringCst*) (_pInterpreter->_programStorage + constTokenStep))->pStringConst, sizeof( pString ) ); }     // copy pointer to string (not the string itself)
     int length = isNumberCst ? 0 : (pString == nullptr) ? 0 : strlen( pString );       // only relevant for strings
 
-    
+
     if ( isArrayVar ) {
         pArrayStorage = ((void**) pVarStorage) [varValueIndex];        // void pointer to an array 
         int dimensions = (((char*) pArrayStorage) [3]);  // can range from 1 to MAX_ARRAY_DIMS
@@ -488,50 +490,6 @@ bool MyParser::initVariable( uint16_t varTokenStep, uint16_t constTokenStep ) {
     return true;
 };
 
-
-// --------------------------------------------------------------
-// *   initialize a variable or an array with (a) constant(s)   *
-// --------------------------------------------------------------
-
-bool MyParser::initVariable() {
-    /*
-    if ( isArrayVar ) {
-        pArrayStorage = ((void**) pVarStorage) [varValueIndex];        // void pointer to an array 
-        int dimensions = (((char*) pArrayStorage) [3]);  // can range from 1 to MAX_ARRAY_DIMS
-        int arrayElements = 1;                                  // determine array size
-        for ( int dimCnt = 0; dimCnt < dimensions; dimCnt++ ) { arrayElements *= (int) ((((char*) pArrayStorage) [dimCnt])); }
-        // fill up with numeric constants or (empty strings:) null pointers
-        if ( isNumberCst ) { for ( int arrayElem = 1; arrayElem <= arrayElements; arrayElem++ ) { ((float*) pArrayStorage) [arrayElem] = f; } }
-        else {                                                      // alphanumeric constant
-            if ( length != 0 ) { return false; };       // to limit memory usage, no mass initialisation with non-empty strings
-            for ( int arrayElem = 1; arrayElem <= arrayElements; arrayElem++ ) {
-                ((char**) pArrayStorage) [arrayElem] = nullptr;
-            }
-        }
-    }
-
-    else {                                  // scalar
-        if ( isNumberCst ) {
-            ((float*) pVarStorage) [varValueIndex] = f;
-        }      // store numeric constant
-        else {                                                  // alphanumeric constant
-            if ( length == 0 ) {
-                ((char**) pVarStorage) [varValueIndex] = nullptr;       // an empty string does not create a heap object
-            }
-            else { // create string object and store string
-                char* pVarAlphanumValue = new char [length + 1];          // create char array on the heap to store alphanumeric constant, including terminating '\0'
-                isUserVar ? _pInterpreter->userVarStringObjectCount++ : _pInterpreter->globalStaticVarStringObjectCount++;
-#if printCreateDeleteHeapObjects
-                Serial.print( isUserVar ? "+++++ (usr var str) " : "+++++ (var string ) " ); Serial.println( (uint32_t) pVarAlphanumValue - RAMSTART );
-#endif
-                // store alphanumeric constant in newly created character array
-                strcpy( pVarAlphanumValue, pString );              // including terminating \0
-                ((char**) pVarStorage) [varValueIndex] = pVarAlphanumValue;       // store pointer to string
-            }
-        }
-    }
-    */
-}
 
 // --------------------------------------------------------------
 // *   check if all external functions referenced are defined   *
