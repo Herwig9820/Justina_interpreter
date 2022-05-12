@@ -710,9 +710,15 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
                 (_pParsingStack->openBlock.cmdBlockDef.blockPosOrAction <= cmdBlockDef.blockMaxPredecessor);
             if ( !withinRange ) { result = result_wrongBlockSequence; return false; }   // sequence of block commands (for current stack level) is not OK: error
 
+
+            Serial.print( "\r\nparsing: token step " ); Serial.print( _blockCmdTokenStep );
+            Serial.print( " 'to token step' " ); Serial.println( _lastTokenStep );
+
+
             // pointer from previous open block token to this open block token (e.g. pointer from IF token to ELSEIF or ELSE token)
             memcpy( ((Interpreter::TokenIsResWord*) (_pInterpreter->_programStorage + _blockCmdTokenStep))->toTokenStep, &_lastTokenStep, sizeof( char [2] ) );
             _blockCmdTokenStep = _lastTokenStep;                                              // remember pointer to last block command token of open block
+
 
             if ( cmdBlockDef.blockPosOrAction == block_endPos ) {                          // is this a block END command token ? 
                 if ( _pParsingStack->openBlock.cmdBlockDef.blockType == block_extFunction ) { _extFunctionBlockOpen = false; }       // FUNCTON definition blocks cannot be nested

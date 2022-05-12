@@ -218,7 +218,7 @@ public:
 
     // execution
 
-    struct genericTokenLvl {                                    // only to determine token type and for finding source error position during unparsing (for printing)
+    struct GenericTokenLvl {                                    // only to determine token type and for finding source error position during unparsing (for printing)
         tokenType_type tokenType;
         char spare [3];                                          // boundary alignment
         char* tokenAddress;                                     // must be second 4-byte word
@@ -249,12 +249,20 @@ public:
     };
 
     union LE_evalStack {
-        genericTokenLvl genericToken;
+        GenericTokenLvl genericToken;
         VarOrConstLvl varOrConst;
         FunctionLvl function;
         TerminalTokenLvl terminal;
     };
 
+
+
+    struct IfBlockData {
+        char blockType;
+        char testResult;                // 0x0 or 0x1
+        char spare[2];                  // boundary alignment
+        char* tokenAddress;
+    };
 
     struct FunctionData {
         char blockType;                 // will identify stack level as a function block
@@ -430,6 +438,7 @@ public:
     execResult_type  execInternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
     execResult_type  launchExternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
     execResult_type  terminateExternalFunction(bool addZeroReturnValue = false);
+    execResult_type execprocessedCommand(char activeCmd_ResWordCode, char* activeCmd_resWordTokenAddress );
 
     void initFunctionDefaultParamVariables( char*& calledFunctionTokenStep, int suppliedArgCount, int paramCount );
     void initFunctionLocalNonParamVariables( char* calledFunctionTokenStep, int paramCount, int localVarCount );
@@ -438,8 +447,9 @@ public:
 
     Interpreter::execResult_type arrayAndSubscriptsToarrayElement( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
 
-    void saveLastValue();
+    void saveLastValue( bool &overWritePrevious );
     void clearEvalStack();
+    void clearEvalStackLevels(int n);
     void clearFlowCtrlStack();
     int findTokenStep( int tokenTypeToFind, char tokenCodeToFind, char*& pStep );
     int jumpTokens( int n, char*& pStep,  int& tokenCode );

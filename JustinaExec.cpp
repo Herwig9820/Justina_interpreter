@@ -14,6 +14,7 @@ Interpreter::execResult_type  Interpreter::exec() {
     int tokenIndex;
     bool lastValueIsStored = false;
     char activeCmd_ResWordCode = MyParser::cmdcod_none;        // no command is being executed
+    char* activeCmd_resWordTokenAddress = nullptr;
     execResult_type execResult = result_execOK;
 
     _pEvalStackTop = nullptr;   _pEvalStackMinus2 = nullptr; _pEvalStackMinus1 = nullptr;
@@ -63,10 +64,13 @@ Interpreter::execResult_type  Interpreter::exec() {
             if ( skipStatement ) {
                 findTokenStep( tok_isTerminalGroup1, MyParser::termcod_semicolon, _activeFunctionData.pNextStep );  // find semicolon (always match)
                 int tokIndx = ((((TokenIsTerminal*) _activeFunctionData.pNextStep)->tokenTypeAndIndex >> 4) & 0x0F);
+                break;
             }
 
-            // commands will be executed when processing final semicolon statement (note: activeCmd_ResWordCode identifies individual commands; not command blocks)
+            // commands are executed when processing final semicolon statement (note: activeCmd_ResWordCode identifies individual commands; not command blocks)
             activeCmd_ResWordCode = _pmyParser->_resWords [tokenIndex].resWordCode;       // store command for now
+            activeCmd_resWordTokenAddress = _programCounter;                       // only for finding source error position during unparsing (for printing)
+
         }
         break;
 
@@ -156,60 +160,26 @@ Interpreter::execResult_type  Interpreter::exec() {
 
                 _activeFunctionData.errorStatementStartStep = nullptr;         // for pretty print only   
 
-                if ( activeCmd_ResWordCode == MyParser::cmdcod_none ) {       // currently not executing a command
+                if ( activeCmd_ResWordCode == MyParser::cmdcod_none ) {       // currently not executing a command, but a simple expression
                     if ( evalStack.getElementCount() > _activeFunctionData.callerEvalStackLevels + 1 ) {
                         Serial.print( "*** Evaluation stack error. Remaining stack levels for current program level: " ); Serial.println( evalStack.getElementCount() - (_activeFunctionData.callerEvalStackLevels + 1) );
                     }
 
                     // did the last expression produce a result ?  
-                    if ( evalStack.getElementCount() == _activeFunctionData.callerEvalStackLevels + 1 ) {
+                    else if ( evalStack.getElementCount() == _activeFunctionData.callerEvalStackLevels + 1 ) {
 
                         // in main program level ? store as last value (for now, we don't know if it will be followed by other 'last' values)
-                        if ( _programCounter >= _programStart ) {
-                            saveLastValue();                 // save last result in FIFO
-                            lastValueIsStored = true;
-                        }
-                        else {  // NOT main program level: we don't need to keep the statement result
-                            // if result is a string, then delete the intermediate string object here
-                            if ( ((_pEvalStackTop->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) &&
-                                (_pEvalStackTop->varOrConst.valueType == value_isStringPointer) ) {
-                                if ( _pEvalStackTop->varOrConst.value.pStringConst != nullptr ) {
-#if printCreateDeleteHeapObjects
-                                    Serial.print( "----- (intermd str) " );   Serial.println( (uint32_t) _pEvalStackTop->varOrConst.value.pStringConst - RAMSTART );
-#endif
-                                    delete [] _pEvalStackTop->varOrConst.value.pStringConst;
-                                    intermediateStringObjectCount--;
-                                }
-                            }
-                        }
-
-                        // delete the stack level containing the result
-                        evalStack.deleteListElement( _pEvalStackTop );
-                        _pEvalStackTop = _pEvalStackMinus1;
-                        _pEvalStackMinus1 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackTop );
-                        _pEvalStackMinus2 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackMinus1 );
+                        if ( _programCounter >= _programStart ) { saveLastValue( lastValueIsStored ); }                // save last result in FIFO and delete stack level
+                        else { clearEvalStackLevels( 1 ); } // NOT main program level: we don't need to keep the statement result
                     }
                 }
-
-
 
                 // command with optional expression(s) processed ? Execute command
                 else {
-                    int cmdParamCount = evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels;
-                    switch ( activeCmd_ResWordCode ) {
-                    case MyParser::cmdcod_end:              //// actie afhankelijk van inner open block
-                    case MyParser::cmdcod_return:           //// remove alle inner open blocks t.e.m. functie
-                    {
-                        bool returnWithZero = (cmdParamCount == 0);                    // RETURN statement without expression, or END statement: return a zero
-                        execResult = terminateExternalFunction( returnWithZero );
-                        if ( execResult != result_execOK ) { break; }
-                    }
-                    break;
-
-                    }
+                    execResult = execprocessedCommand( activeCmd_ResWordCode, activeCmd_resWordTokenAddress );
+                    if ( execResult != result_execOK ) { break; }
+                    activeCmd_ResWordCode = MyParser::cmdcod_none;        // no command is being executed
                 }
-
-                activeCmd_ResWordCode = MyParser::cmdcod_none;        // no command is being executed
             }
 
             else if ( isRightPar ) {
@@ -299,6 +269,93 @@ Interpreter::execResult_type  Interpreter::exec() {
     return execResult;   // return result, in case it's needed by caller
 };
 
+
+// -----------------------------------
+// *   execute a processed command   *
+// -----------------------------------
+
+Interpreter::execResult_type Interpreter::execprocessedCommand( char activeCmd_ResWordCode, char* activeCmd_resWordTokenAddress ) {
+
+    int cmdParamCount = evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels;
+    switch ( activeCmd_ResWordCode ) {
+
+    case MyParser::cmdcod_if:                                                                       // 'if' command
+        _pFlowCtrlStackMinus2 = _pFlowCtrlStackMinus1; _pFlowCtrlStackMinus1 = _pFlowCtrlStackTop;
+        _pFlowCtrlStackTop = (IfBlockData*) flowCtrlStack.appendListElement( sizeof( IfBlockData ) );
+        ((IfBlockData*) _pFlowCtrlStackTop)->blockType = MyParser::block_if;                         // start of 'if...end' block
+        ((IfBlockData*) _pFlowCtrlStackTop)->tokenAddress = activeCmd_resWordTokenAddress;       // token contains step to go to if expression is false  //// nodig ???
+
+        // no break here: from here on, execution is the same for 'if' and for 'elseif'
+
+    case MyParser::cmdcod_elseif:
+    {
+        Interpreter::TokenIsResWord* pToken;
+        int toTokenStep { 0 };
+        bool testFails;
+
+        //// retrieve value (can be variable, ...) and check if real
+        //// if true: skip else, elseif command and go to end immediately
+        //// error program counter: nodig ???
+
+        testFails = (_pEvalStackTop->varOrConst.value.realConst == 0);
+        Serial.print( "if: fail " ); Serial.println( testFails );
+        ((IfBlockData*) _pFlowCtrlStackTop)->testResult = (char) testFails;               // remember test result (true -> 0x1)
+        if ( testFails ) {
+            pToken = (Interpreter::TokenIsResWord*) activeCmd_resWordTokenAddress;
+            memcpy( &toTokenStep, pToken->toTokenStep, sizeof( char [2] ) );
+            _activeFunctionData.pNextStep = _programStorage + toTokenStep;              // prepare jump to else, elseif or end command
+
+            Serial.print( "if: goto " ); Serial.println( toTokenStep );
+        }
+
+        clearEvalStackLevels( cmdParamCount );      // not needed any more
+    }
+    break;
+
+    case MyParser::cmdcod_else:
+    {
+        Interpreter::TokenIsResWord* pToken;
+        int toTokenStep { 0 };
+        bool testFails = (bool) (((IfBlockData*) _pFlowCtrlStackTop)->testResult);
+        Serial.print( "else: fail " ); Serial.println( testFails );
+
+        if ( !testFails ) {
+            pToken = (Interpreter::TokenIsResWord*) activeCmd_resWordTokenAddress;
+            memcpy( &toTokenStep, pToken->toTokenStep, sizeof( char [2] ) );
+            _activeFunctionData.pNextStep = _programStorage + toTokenStep;                  // prepare jump to end command
+
+            Serial.print( "else: goto " ); Serial.println( toTokenStep );
+        }
+    }
+    break;
+
+    case MyParser::cmdcod_end:              // determine currently open block
+    {
+        char blockType = *(char*) _pFlowCtrlStackTop;            // always at least one open function (because returning to caller from it)
+        if ( (blockType == MyParser::block_if) || (blockType == MyParser::block_while) || (blockType == MyParser::block_for) ) {
+            flowCtrlStack.deleteListElement( _pFlowCtrlStackTop );
+            _pFlowCtrlStackTop = _pFlowCtrlStackMinus1;
+            _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement( _pFlowCtrlStackTop );
+            _pFlowCtrlStackMinus2 = flowCtrlStack.getPrevListElement( _pFlowCtrlStackMinus1 );
+            break;
+        }
+
+    }
+
+    // no break here: from here on, execution is the same for 'end' and for 'return'
+    
+    case MyParser::cmdcod_return:
+    {
+        bool returnWithZero = (cmdParamCount == 0);                    // RETURN statement without expression, or END statement: return a zero
+        execResult_type execResult = terminateExternalFunction( returnWithZero );
+        if ( execResult != result_execOK ) { return execResult; }
+    }
+    break;
+
+    }
+
+    return result_execOK;
+}
 
 // -----------------------------------------------------------------------------------------------
 // *   jump n token steps, return token type and (for terminals and reserved words) token code   *
@@ -410,73 +467,121 @@ int Interpreter::findTokenStep( int tokenTypeToFind, char tokenCodeToFind, char*
 // Save last value for future reuse by calculations 
 // ------------------------------------------------
 
-void Interpreter::saveLastValue() {
-    if ( evalStack.getElementCount() > _activeFunctionData.callerEvalStackLevels ) {           // safety
+void Interpreter::saveLastValue( bool& overWritePrevious ) {
+    if ( !(evalStack.getElementCount() > _activeFunctionData.callerEvalStackLevels) ) { return; }           // safety: data available ?
 
-        // is FIFO full ?
-        if ( _lastResultCount == MAX_LAST_RESULT_DEPTH ) {
+    // if overwrite 'previous' last result, then replace first item if there is one, otherwise replace last item if FiFo full (-1 if nothing to replace)
+    int itemToRemove = overWritePrevious ? ((_lastResultCount >= 1) ? 0 : -1) :
+        ((_lastResultCount == MAX_LAST_RESULT_DEPTH) ? MAX_LAST_RESULT_DEPTH - 1 : -1);
 
-            // if the oldest result is a string: delete heap object
-            if ( lastResultTypeFiFo [MAX_LAST_RESULT_DEPTH - 1] == value_isStringPointer ) {
+    // remove a previous item ?
+    if ( itemToRemove != -1 ) {
+        // if item to remove is a string: delete heap object
+        if ( lastResultTypeFiFo [itemToRemove] == value_isStringPointer ) {
 
-                if ( lastResultValueFiFo [MAX_LAST_RESULT_DEPTH - 1].pStringConst != nullptr ) {
+            if ( lastResultValueFiFo [itemToRemove].pStringConst != nullptr ) {
 #if printCreateDeleteHeapObjects
-                    Serial.print( "----- (FiFo string) " );   Serial.println( (uint32_t) lastResultValueFiFo [MAX_LAST_RESULT_DEPTH - 1].pStringConst - RAMSTART );
+                Serial.print( "----- (FiFo string) " );   Serial.println( (uint32_t) lastResultValueFiFo [itemToRemove].pStringConst - RAMSTART );
 #endif 
-                    // note: this is always an intermediate string
-                    delete [] lastResultValueFiFo [MAX_LAST_RESULT_DEPTH - 1].pStringConst;
-                    lastValuesStringObjectCount--;
-                }
+                // note: this is always an intermediate string
+                delete [] lastResultValueFiFo [itemToRemove].pStringConst;
+                lastValuesStringObjectCount--;
             }
-        }
-        else {
-            _lastResultCount++;
-        }
+    }
+}
+    else {
+        _lastResultCount++;     // only adding an item, without removing previous one
+    }
 
-        // move older last results one place up in FIFO
-        if ( _lastResultCount > 1 ) {       // if 'new' last result count is 1, no old results need to be moved  
-            for ( int i = _lastResultCount - 1; i > 0; i-- ) {
-                lastResultValueFiFo [i] = lastResultValueFiFo [i - 1];
-                lastResultTypeFiFo [i] = lastResultTypeFiFo [i - 1];
-            }
+
+    // move older last results one place up in FIFO, except when just overwriting 'previous' last result
+    if ( !overWritePrevious && (_lastResultCount > 1) ) {       // if 'new' last result count is 1, no old results need to be moved  
+        for ( int i = _lastResultCount - 1; i > 0; i-- ) {
+            lastResultValueFiFo [i] = lastResultValueFiFo [i - 1];
+            lastResultTypeFiFo [i] = lastResultTypeFiFo [i - 1];
         }
+    }
 
-        // store new last value
-        VarOrConstLvl lastvalue;
-        bool lastValueReal = (_pEvalStackTop->varOrConst.valueType == value_isFloat);
-        bool lastValueIntermediate = ((_pEvalStackTop->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate);
 
-        if ( lastValueReal ) { lastvalue.value.realConst = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pEvalStackTop->varOrConst.value.pRealConst) : _pEvalStackTop->varOrConst.value.realConst; }
-        else { lastvalue.value.pStringConst = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pEvalStackTop->varOrConst.value.ppStringConst) : _pEvalStackTop->varOrConst.value.pStringConst; }
 
-        if ( (lastValueReal) || (!lastValueReal && (lastvalue.value.pStringConst == nullptr)) ) {
-            lastResultValueFiFo [0] = lastvalue.value;
-            Serial.print( "last value saved:= " ); Serial.println( lastvalue.value.realConst );
-        }
-        // new last value is a non-empty string: make a copy of the string and store a reference to this new string
-        else {
-            int stringlen = min( strlen( lastvalue.value.pStringConst ), MyParser::_maxAlphaCstLen );        // excluding terminating \0
-            lastResultValueFiFo [0].pStringConst = new char [stringlen + 1];
-            lastValuesStringObjectCount++;
-            memcpy( lastResultValueFiFo [0].pStringConst, lastvalue.value.pStringConst, stringlen );        // copy the actual string (not the pointer); do not use strcpy
-            lastResultValueFiFo [0].pStringConst [stringlen] = '\0';
+    // store new last value
+    VarOrConstLvl lastvalue;
+    bool lastValueReal = (_pEvalStackTop->varOrConst.valueType == value_isFloat);
+    bool lastValueIntermediate = ((_pEvalStackTop->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate);
+
+    if ( lastValueReal ) { lastvalue.value.realConst = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pEvalStackTop->varOrConst.value.pRealConst) : _pEvalStackTop->varOrConst.value.realConst; }
+    else { lastvalue.value.pStringConst = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pEvalStackTop->varOrConst.value.ppStringConst) : _pEvalStackTop->varOrConst.value.pStringConst; }
+
+    if ( (lastValueReal) || (!lastValueReal && (lastvalue.value.pStringConst == nullptr)) ) {
+        lastResultValueFiFo [0] = lastvalue.value;
+    }
+    // new last value is a non-empty string: make a copy of the string and store a reference to this new string
+    else {
+        int stringlen = min( strlen( lastvalue.value.pStringConst ), MyParser::_maxAlphaCstLen );        // excluding terminating \0
+        lastResultValueFiFo [0].pStringConst = new char [stringlen + 1];
+        lastValuesStringObjectCount++;
+        memcpy( lastResultValueFiFo [0].pStringConst, lastvalue.value.pStringConst, stringlen );        // copy the actual string (not the pointer); do not use strcpy
+        lastResultValueFiFo [0].pStringConst [stringlen] = '\0';
 #if printCreateDeleteHeapObjects
-            Serial.print( "+++++ (FiFo string) " );   Serial.println( (uint32_t) lastResultValueFiFo [0].pStringConst - RAMSTART );
+        Serial.print( "+++++ (FiFo string) " );   Serial.println( (uint32_t) lastResultValueFiFo [0].pStringConst - RAMSTART );
 #endif            
 
-            if ( lastValueIntermediate ) {
+        if ( lastValueIntermediate ) {
 #if printCreateDeleteHeapObjects
-                Serial.print( "----- (intermd str) " );   Serial.println( (uint32_t) lastvalue.value.pStringConst - RAMSTART );
+            Serial.print( "----- (intermd str) " );   Serial.println( (uint32_t) lastvalue.value.pStringConst - RAMSTART );
 #endif
-                delete [] lastvalue.value.pStringConst;
+            delete [] lastvalue.value.pStringConst;
+            intermediateStringObjectCount--;
+        }
+    }
+
+    // store new last value type
+    lastResultTypeFiFo [0] = _pEvalStackTop->varOrConst.valueType;               // value type
+
+    // delete the stack level containing the result
+    evalStack.deleteListElement( _pEvalStackTop );
+    _pEvalStackTop = _pEvalStackMinus1;
+    _pEvalStackMinus1 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackTop );
+    _pEvalStackMinus2 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackMinus1 );
+
+    overWritePrevious = true;
+
+    return;
+}
+
+// --------------------------------------------------------------------------
+// Clear n evaluation stack levels and associated intermediate string objects  
+// --------------------------------------------------------------------------
+
+void Interpreter::clearEvalStackLevels( int n ) {
+
+    LE_evalStack* pstackLvl;
+    for ( int i = 1; i <= n; i++ ) {
+        pstackLvl = _pEvalStackTop;
+        if ( ((pstackLvl->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) &&
+            (pstackLvl->varOrConst.valueType == value_isStringPointer) ) {
+            if ( pstackLvl->varOrConst.value.pStringConst != nullptr ) {
+#if printCreateDeleteHeapObjects
+                Serial.print( "----- (intermd str) " );   Serial.println( (uint32_t) _pEvalStackTop->varOrConst.value.pStringConst - RAMSTART );
+#endif
+                delete [] pstackLvl->varOrConst.value.pStringConst;
                 intermediateStringObjectCount--;
             }
-        }
-
-        // store new last value type
-        lastResultTypeFiFo [0] = _pEvalStackTop->varOrConst.valueType;               // value type
-
     }
+
+        evalStack.deleteListElement( pstackLvl );
+        _pEvalStackTop = _pEvalStackMinus1;
+        _pEvalStackMinus1 = _pEvalStackMinus2;
+}
+
+    _pEvalStackMinus2 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackMinus1 );
+    return;
+
+    // delete the stack level containing the result
+    ////evalStack.deleteListElement( _pEvalStackTop );
+    _pEvalStackTop = _pEvalStackMinus1;
+    _pEvalStackMinus1 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackTop );
+    _pEvalStackMinus2 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackMinus1 );
     return;
 }
 
@@ -501,10 +606,10 @@ void Interpreter::clearEvalStack() {                // and intermediate strings
                     delete [] pstackLvl->varOrConst.value.pStringConst;
                     intermediateStringObjectCount--;
                 }
-            }
         }
+    }
         pstackLvl = (LE_evalStack*) evalStack.getPrevListElement( pstackLvl );
-    };
+};
 
     // error if not all intermediate string objects deleted (points to an internal Justina issue)
     if ( intermediateStringObjectCount != 0 ) {
@@ -529,7 +634,7 @@ void Interpreter::clearFlowCtrlStack() {                // and remaining local s
     void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;
 
     while ( pFlowCtrlStackLvl != nullptr ) {
-        char blockType = *(char*) _pFlowCtrlStackTop;            
+        char blockType = *(char*) _pFlowCtrlStackTop;
 
         if ( blockType == MyParser::block_extFunction ) {               // open function
             int localVarCount = extFunctionData [_activeFunctionData.functionIndex].localVarCountInFunction;
@@ -551,7 +656,7 @@ void Interpreter::clearFlowCtrlStack() {                // and remaining local s
             _activeFunctionData = *(FunctionData*) _pFlowCtrlStackTop;
         }
         else { pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement( pFlowCtrlStackLvl ); }
-    } 
+    }
 
     flowCtrlStack.deleteList();
     _pFlowCtrlStackTop = nullptr;   _pFlowCtrlStackMinus2 = nullptr; _pFlowCtrlStackMinus1 = nullptr;
@@ -577,7 +682,7 @@ void Interpreter::deleteStackArguments( LE_evalStack* pPrecedingStackLvl, int ar
 #endif
                 delete [] pStackLvl->varOrConst.value.pStringConst;
                 intermediateStringObjectCount--;
-        }
+            }
     }
         pStackLvl = (LE_evalStack*) evalStack.getNextListElement( pStackLvl );  // next dimspec or null pointer 
 
@@ -919,8 +1024,8 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
                 delete [] * _pEvalStackMinus2->varOrConst.value.ppStringConst;
                 isUserVar ? userVarStringObjectCount-- : (isGlobalVar || isStaticVar) ? globalStaticVarStringObjectCount-- : localVarStringObjectCount--;
-        }
     }
+}
 
         // if the value to be assigned is real (float) OR an empty string: simply assign the value (not a heap object)
 
@@ -1029,7 +1134,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
             delete [] _pEvalStackTop->varOrConst.value.pStringConst;
             intermediateStringObjectCount--;
-    }
+        }
     }
     // operand 1 is an intermediate constant AND it is a string ? delete char string object
     if ( ((_pEvalStackMinus2->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && !op1real )
@@ -1040,7 +1145,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
             delete [] _pEvalStackMinus2->varOrConst.value.pStringConst;
             intermediateStringObjectCount--;
-    }
+        }
     }
 
 
@@ -1066,7 +1171,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
 
     return result_execOK;
-}
+        }
 
 
 // ---------------------------------
@@ -1196,7 +1301,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 #endif
                         delete [] pStackLvl->varOrConst.value.pStringConst;
                         intermediateStringObjectCount--;
-                }
+                    }
             }
 
                 pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl );       // argument saved: remove argument from stack and point to next argument
@@ -1241,7 +1346,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
     */
 
     return  result_execOK;
-}
+    }
 
 
 // -----------------------------------------------------------------------------------------------
@@ -1480,7 +1585,7 @@ Interpreter::execResult_type Interpreter::terminateExternalFunction( bool addZer
     } while ( blockType != MyParser::block_extFunction );
 
 
-    Serial.print("--- Terminate: next step is "); Serial.println( _activeFunctionData.pNextStep - _programStorage);
+    Serial.print( "--- Terminate: next step is " ); Serial.println( _activeFunctionData.pNextStep - _programStorage );
 
     if ( _activeFunctionData.pNextStep >= _programStart ) {   // not within a function        
         if ( localVarStringObjectCount != 0 ) {
