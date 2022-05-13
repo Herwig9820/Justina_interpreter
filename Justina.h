@@ -128,7 +128,7 @@ public:
     static constexpr uint8_t arrayElemAssignmentAllowedBit { B00100000 };
 
     static constexpr int PROG_MEM_SIZE { 2000 };
-    static constexpr int IMM_MEM_SIZE { 200 };
+    static constexpr int IMM_MEM_SIZE { 300 };
     static constexpr int MAX_USERVARNAMES { 32 };                       // max. vars (all types: global, static, local, parameter). Absolute limit: 255
     static constexpr int MAX_PROGVARNAMES { 64 };                       // max. vars (all types: global, static, local, parameter). Absolute limit: 255
     static constexpr int MAX_STAT_VARS { 32 };                      // max. static vars (only). Absolute limit: 255
@@ -261,7 +261,6 @@ public:
         char blockType;
         char testResult;                // 0x0 or 0x1
         char spare[2];                  // boundary alignment
-        char* tokenAddress;
     };
 
     struct FunctionData {
