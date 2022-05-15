@@ -710,10 +710,10 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
                 (_pParsingStack->openBlock.cmdBlockDef.blockPosOrAction <= cmdBlockDef.blockMaxPredecessor);
             if ( !withinRange ) { result = result_wrongBlockSequence; return false; }   // sequence of block commands (for current stack level) is not OK: error
 
-
+            /* ////
             Serial.print( "\r\nparsing: token step " ); Serial.print( _blockCmdTokenStep );
             Serial.print( " 'to token step' " ); Serial.println( _lastTokenStep );
-
+            */
 
             // pointer from previous open block token to this open block token (e.g. pointer from IF token to ELSEIF or ELSE token)
             memcpy( ((Interpreter::TokenIsResWord*) (_pInterpreter->_programStorage + _blockCmdTokenStep))->toTokenStep, &_lastTokenStep, sizeof( char [2] ) );
@@ -2342,6 +2342,7 @@ void MyParser::prettyPrintInstructions( bool printOneInstruction, char* startTok
 
     // exit
     _pInterpreter->_pConsole->println(); _pInterpreter->_isPrompt = false;
+
 }
 
 

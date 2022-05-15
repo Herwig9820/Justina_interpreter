@@ -117,7 +117,8 @@ public:
         result_stringExpected,
         result_undefined,
         result_overflow,
-        result_underflow
+        result_underflow,
+        result_testexpr_numberExpected
     };
 
     static constexpr uint8_t extFunctionBit { B00000001 };
