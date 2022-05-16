@@ -13,6 +13,7 @@ Interpreter::execResult_type  Interpreter::exec() {
     int tokenType = *_programStart & 0x0F;
     int tokenIndex { 0 };
     bool lastValueIsStored = false;
+    bool isFunctionReturn = false;
     bool nextIsNewInstructionStart = false;                     // false, because this is already the start of a new instruction
     execResult_type execResult = result_execOK;
 
@@ -94,6 +95,7 @@ Interpreter::execResult_type  Interpreter::exec() {
             Serial.print( "operand: stack level " ); Serial.println( evalStack.getElementCount() );
 #endif
             {   // start block (required for variable definitions inside)
+                _activeFunctionData.errorProgramCounter = _programCounter;
 
                 // push constant value token or variable name token to stack
                 if ( tokenType == tok_isVariable ) {
@@ -214,7 +216,7 @@ Interpreter::execResult_type  Interpreter::exec() {
 
                 // command with optional expression(s) processed ? Execute command
                 else {
-                    execResult = execProcessedCommand();
+                    execResult = execProcessedCommand(isFunctionReturn);
                     if ( execResult != result_execOK ) { break; }
                 }
             }
@@ -234,10 +236,7 @@ Interpreter::execResult_type  Interpreter::exec() {
         if ( execResult != result_execOK ) {
             int sourceErrorPos { 0 };
             _pConsole->print( "\r\n  " );
-            
-            Serial.print("error - steps: "); Serial.print(_activeFunctionData.errorStatementStartStep - _programStorage); 
-            Serial.print(", "); Serial.println(_activeFunctionData.errorProgramCounter - _programStorage);Serial.print("  ");
-            
+
             _pmyParser->prettyPrintInstructions( true, _activeFunctionData.errorStatementStartStep, _activeFunctionData.errorProgramCounter, &sourceErrorPos );
             _pConsole->print( "  " ); for ( int i = 1; i <= sourceErrorPos; i++ ) { _pConsole->print( " " ); }
             char execInfo [100];
@@ -249,8 +248,12 @@ Interpreter::execResult_type  Interpreter::exec() {
         }
 
         if ( nextIsNewInstructionStart ) {
-            ////_activeFunctionData.errorStatementStartStep = _programCounter;
-            ////_activeFunctionData.errorProgramCounter = _programCounter;
+            if ( !isFunctionReturn) {   // if returning from function, error statement pointers already set while terminating function 
+            _activeFunctionData.errorStatementStartStep = _programCounter;
+            _activeFunctionData.errorProgramCounter = _programCounter;
+            }
+            isFunctionReturn = false;
+            
             nextIsNewInstructionStart = false;
         }  // statement start (for pretty print only)    
 
@@ -279,8 +282,9 @@ Interpreter::execResult_type  Interpreter::exec() {
 // *   execute a processed command   *
 // -----------------------------------
 
-Interpreter::execResult_type Interpreter::execProcessedCommand() {
+Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunctionReturn ) {
 
+    isFunctionReturn = false;  // init
     execResult_type execResult = result_execOK;
     int cmdParamCount = evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels;
     switch ( _activeFunctionData.activeCmd_ResWordCode ) {
@@ -352,6 +356,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand() {
 
     case MyParser::cmdcod_return:
     {
+        isFunctionReturn = true;
         bool returnWithZero = (cmdParamCount == 0);                    // RETURN statement without expression, or END statement: return a zero
         execResult = terminateExternalFunction( returnWithZero );
         if ( execResult != result_execOK ) { return execResult; }
@@ -492,9 +497,9 @@ void Interpreter::saveLastValue( bool& overWritePrevious ) {
                 // note: this is always an intermediate string
                 delete [] lastResultValueFiFo [itemToRemove].pStringConst;
                 lastValuesStringObjectCount--;
-            }
         }
     }
+}
     else {
         _lastResultCount++;     // only adding an item, without removing previous one
     }
@@ -538,7 +543,7 @@ void Interpreter::saveLastValue( bool& overWritePrevious ) {
 #endif
             delete [] lastvalue.value.pStringConst;
             intermediateStringObjectCount--;
-        }
+    }
     }
 
     // store new last value type
@@ -573,11 +578,11 @@ void Interpreter::clearEvalStackLevels( int n ) {
 #if printCreateDeleteHeapObjects
                     Serial.print( "----- (intermd str) " );   Serial.println( (uint32_t) _pEvalStackTop->varOrConst.value.pStringConst - RAMSTART );
 #endif
-                    delete [] pstackLvl->varOrConst.value.pStringConst;
-                    intermediateStringObjectCount--;
-                }
-            }
+                        delete [] pstackLvl->varOrConst.value.pStringConst;
+                        intermediateStringObjectCount--;
         }
+    }
+}
 
         evalStack.deleteListElement( pstackLvl );
         _pEvalStackTop = _pEvalStackMinus1;
@@ -608,9 +613,9 @@ void Interpreter::clearEvalStack() {                // and intermediate strings
 #endif 
                     delete [] pstackLvl->varOrConst.value.pStringConst;
                     intermediateStringObjectCount--;
-                }
-            }
         }
+    }
+}
         pstackLvl = (LE_evalStack*) evalStack.getPrevListElement( pstackLvl );
     };
 
@@ -685,8 +690,8 @@ void Interpreter::deleteStackArguments( LE_evalStack* pPrecedingStackLvl, int ar
 #endif
                 delete [] pStackLvl->varOrConst.value.pStringConst;
                 intermediateStringObjectCount--;
-            }
-        }
+    }
+}
         pStackLvl = (LE_evalStack*) evalStack.getNextListElement( pStackLvl );  // next dimspec or null pointer 
 
     } while ( pStackLvl != nullptr );
@@ -1027,8 +1032,8 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
                 delete [] * _pEvalStackMinus2->varOrConst.value.ppStringConst;
                 isUserVar ? userVarStringObjectCount-- : (isGlobalVar || isStaticVar) ? globalStaticVarStringObjectCount-- : localVarStringObjectCount--;
-            }
         }
+    }
 
         // if the value to be assigned is real (float) OR an empty string: simply assign the value (not a heap object)
 
@@ -1118,7 +1123,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     case MyParser::termcod_ne:
         opResult.realConst = operand1.realConst != operand2.realConst;
         break;
-    }
+}
 
     if ( (opResultReal) && (operatorCode != _pmyParser->termcod_assign) ) {     // check error (not for assignment)
         if ( isnan( opResult.realConst ) ) { return result_undefined; }
@@ -1306,12 +1311,12 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 #endif
                         delete [] pStackLvl->varOrConst.value.pStringConst;
                         intermediateStringObjectCount--;
-                    }
-                }
-
-                pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl );       // argument saved: remove argument from stack and point to next argument
             }
         }
+
+                pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl );       // argument saved: remove argument from stack and point to next argument
+    }
+}
     }
 
     // also delete function name token from evaluation stack
