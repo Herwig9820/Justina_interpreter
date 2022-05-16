@@ -259,17 +259,20 @@ public:
 
 
     struct IfBlockData {
-        char blockType;
+        char blockType;                 // command block: will identify stack level as an IF...END block
         char testResult;                // 0x0 or 0x1
         char spare[2];                  // boundary alignment
     };
 
     struct FunctionData {
-        char blockType;                 // will identify stack level as a function block
+        char blockType;                 // command block: will identify stack level as a function block
         char functionIndex;             // for error messages only
         char callerEvalStackLevels;     // evaluation stack levels in use by caller(s) and main (call stack)
-        char spare;                     // boundary alignment
-
+        // within a function, only one (block) command can be active at a time (ended by semicolon), in contract to command blocks, which can be nested, so next data can be stored here:
+        // data is stored when a reserved word is processed and it is cleared when the ending semicolon (ending the command) is processed
+        char activeCmd_ResWordCode;     // reserved word code (set to 'cmdcod_none' again when semicolon is processed)
+        char* activeCmd_pToToken;       // 'to token' address stored in parsed reserved word token (if present)                               
+        
         Val* pLocalVarValues;           // local variable value: real, pointer to string or array, or (if reference): pointer to 'source' (referenced) variable
         char** ppSourceVarTypes;        // only if local variable is reference to variable or array element: pointer to 'source' variable value type  
         char* pVariableAttributes;      // local variable: value type (float, local string or reference); 'source' (if reference) or local variable scope (user, global, static; local, param) 
@@ -438,7 +441,7 @@ public:
     execResult_type  execInternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
     execResult_type  launchExternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
     execResult_type  terminateExternalFunction(bool addZeroReturnValue = false);
-    execResult_type execprocessedCommand(char activeCmd_ResWordCode, char* activeCmd_resWordTokenAddress );
+    execResult_type execProcessedCommand( );
 
     void initFunctionDefaultParamVariables( char*& calledFunctionTokenStep, int suppliedArgCount, int paramCount );
     void initFunctionLocalNonParamVariables( char* calledFunctionTokenStep, int paramCount, int localVarCount );

@@ -1,6 +1,6 @@
 #include "Justina.h"
 
-#define printCreateDeleteHeapObjects 1
+#define printCreateDeleteHeapObjects 0
 #define debugPrint 0
 
 // -----------------------------------
@@ -11,11 +11,9 @@ Interpreter::execResult_type  Interpreter::exec() {
 
     // init
     int tokenType = *_programStart & 0x0F;
-    int tokenIndex;
+    int tokenIndex { 0 };
     bool lastValueIsStored = false;
     bool nextIsNewInstructionStart = false;                     // false, because this is already the start of a new instruction
-    char activeCmd_ResWordCode = MyParser::cmdcod_none;        // no command is being executed
-    char* activeCmd_resWordTokenAddress = nullptr;
     execResult_type execResult = result_execOK;
 
     _pEvalStackTop = nullptr;   _pEvalStackMinus2 = nullptr; _pEvalStackMinus1 = nullptr;
@@ -24,6 +22,8 @@ Interpreter::execResult_type  Interpreter::exec() {
     _programCounter = _programStart;
     _activeFunctionData.functionIndex = 0;                  // main program level
     _activeFunctionData.callerEvalStackLevels = 0;          // this is the highest program level
+    _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // no command is being executed
+    _activeFunctionData.activeCmd_pToToken = nullptr;
     _activeFunctionData.errorStatementStartStep = _programCounter;
     _activeFunctionData.errorProgramCounter = _programCounter;
 
@@ -67,8 +67,8 @@ Interpreter::execResult_type  Interpreter::exec() {
             }
 
             // commands are executed when processing final semicolon statement (note: activeCmd_ResWordCode identifies individual commands; not command blocks)
-            activeCmd_ResWordCode = _pmyParser->_resWords [tokenIndex].resWordCode;       // store command for now
-            activeCmd_resWordTokenAddress = _programCounter;                       // only for finding source error position during unparsing (for printing)
+            _activeFunctionData.activeCmd_ResWordCode = _pmyParser->_resWords [tokenIndex].resWordCode;       // store command for now
+            _activeFunctionData.activeCmd_pToToken = _programCounter;                       // only for finding source error position during unparsing (for printing)
 
         }
         break;
@@ -101,7 +101,7 @@ Interpreter::execResult_type  Interpreter::exec() {
 
                     // next token
                     int nextTokenType = *_activeFunctionData.pNextStep & 0x0F;
-                    int nextTokenIndex;
+                    int nextTokenIndex { 0 };
                     bool nextIsTerminal = ((nextTokenType == Interpreter::tok_isTerminalGroup1) || (nextTokenType == Interpreter::tok_isTerminalGroup2) || (nextTokenType == Interpreter::tok_isTerminalGroup3));
                     if ( nextIsTerminal ) {
                         nextTokenIndex = ((((TokenIsTerminal*) _activeFunctionData.pNextStep)->tokenTypeAndIndex >> 4) & 0x0F);
@@ -152,35 +152,6 @@ Interpreter::execResult_type  Interpreter::exec() {
                 // -----------------------
             }
 
-            else if ( isSemicolon ) {
-                // -----------------
-                // Process separator
-                // -----------------
-
-                nextIsNewInstructionStart = true;         // for pretty print only   
-
-                if ( activeCmd_ResWordCode == MyParser::cmdcod_none ) {       // currently not executing a command, but a simple expression
-                    if ( evalStack.getElementCount() > _activeFunctionData.callerEvalStackLevels + 1 ) {
-                        Serial.print( "*** Evaluation stack error. Remaining stack levels for current program level: " ); Serial.println( evalStack.getElementCount() - (_activeFunctionData.callerEvalStackLevels + 1) );
-                    }
-
-                    // did the last expression produce a result ?  
-                    else if ( evalStack.getElementCount() == _activeFunctionData.callerEvalStackLevels + 1 ) {
-
-                        // in main program level ? store as last value (for now, we don't know if it will be followed by other 'last' values)
-                        if ( _programCounter >= _programStart ) { saveLastValue( lastValueIsStored ); }                // save last result in FIFO and delete stack level
-                        else { clearEvalStackLevels( 1 ); } // NOT main program level: we don't need to keep the statement result
-                    }
-                }
-
-                // command with optional expression(s) processed ? Execute command
-                else {
-                    execResult = execprocessedCommand( activeCmd_ResWordCode, activeCmd_resWordTokenAddress );
-                    if ( execResult != result_execOK ) { break; }
-                    activeCmd_ResWordCode = MyParser::cmdcod_none;        // no command is being executed
-                }
-            }
-
             else if ( isRightPar ) {
                 // -------------------------------------
                 // Process right parenthesis token
@@ -221,6 +192,33 @@ Interpreter::execResult_type  Interpreter::exec() {
                 }
             }
 
+            else if ( isSemicolon ) {
+                // -----------------
+                // Process separator
+                // -----------------
+
+                nextIsNewInstructionStart = true;         // for pretty print only   
+                if ( _activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_none ) {       // currently not executing a command, but a simple expression
+                    if ( evalStack.getElementCount() > _activeFunctionData.callerEvalStackLevels + 1 ) {
+                        Serial.print( "*** Evaluation stack error. Remaining stack levels for current program level: " ); Serial.println( evalStack.getElementCount() - (_activeFunctionData.callerEvalStackLevels + 1) );
+                    }
+
+                    // did the last expression produce a result ?  
+                    else if ( evalStack.getElementCount() == _activeFunctionData.callerEvalStackLevels + 1 ) {
+
+                        // in main program level ? store as last value (for now, we don't know if it will be followed by other 'last' values)
+                        if ( _programCounter >= _programStart ) { saveLastValue( lastValueIsStored ); }                // save last result in FIFO and delete stack level
+                        else { clearEvalStackLevels( 1 ); } // NOT main program level: we don't need to keep the statement result
+                    }
+                }
+
+                // command with optional expression(s) processed ? Execute command
+                else {
+                    execResult = execProcessedCommand();
+                    if ( execResult != result_execOK ) { break; }
+                }
+            }
+
             break;
 
         }   // end 'switch (tokenType)'
@@ -229,9 +227,17 @@ Interpreter::execResult_type  Interpreter::exec() {
         // if execution error: print current instruction being executed, signal error and exit
         // -----------------------------------------------------------------------------------
 
+        // advance to next token
+        _programCounter = _activeFunctionData.pNextStep;         // note: will be altered when calling an external function and upon return of a called function
+        tokenType = *_activeFunctionData.pNextStep & 0x0F;                                                               // next token type (could be token within caller, if returning now)
+
         if ( execResult != result_execOK ) {
-            int sourceErrorPos;
+            int sourceErrorPos { 0 };
             _pConsole->print( "\r\n  " );
+            
+            Serial.print("error - steps: "); Serial.print(_activeFunctionData.errorStatementStartStep - _programStorage); 
+            Serial.print(", "); Serial.println(_activeFunctionData.errorProgramCounter - _programStorage);Serial.print("  ");
+            
             _pmyParser->prettyPrintInstructions( true, _activeFunctionData.errorStatementStartStep, _activeFunctionData.errorProgramCounter, &sourceErrorPos );
             _pConsole->print( "  " ); for ( int i = 1; i <= sourceErrorPos; i++ ) { _pConsole->print( " " ); }
             char execInfo [100];
@@ -242,13 +248,9 @@ Interpreter::execResult_type  Interpreter::exec() {
             break;
         }
 
-        // advance to next token
-        _programCounter = _activeFunctionData.pNextStep;         // note: will be altered when calling an external function and upon return of a called function
-        tokenType = *_activeFunctionData.pNextStep & 0x0F;                                                               // next token type (could be token within caller, if returning now)
         if ( nextIsNewInstructionStart ) {
-            _activeFunctionData.errorStatementStartStep = _programCounter;
-            _activeFunctionData.errorStatementStartStep = _programCounter;
-
+            ////_activeFunctionData.errorStatementStartStep = _programCounter;
+            ////_activeFunctionData.errorProgramCounter = _programCounter;
             nextIsNewInstructionStart = false;
         }  // statement start (for pretty print only)    
 
@@ -277,11 +279,11 @@ Interpreter::execResult_type  Interpreter::exec() {
 // *   execute a processed command   *
 // -----------------------------------
 
-Interpreter::execResult_type Interpreter::execprocessedCommand( char activeCmd_ResWordCode, char* activeCmd_resWordTokenAddress ) {
+Interpreter::execResult_type Interpreter::execProcessedCommand() {
 
     execResult_type execResult = result_execOK;
     int cmdParamCount = evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels;
-    switch ( activeCmd_ResWordCode ) {
+    switch ( _activeFunctionData.activeCmd_ResWordCode ) {
 
     case MyParser::cmdcod_if:                                                                           // 'if' command
         _pFlowCtrlStackMinus2 = _pFlowCtrlStackMinus1; _pFlowCtrlStackMinus1 = _pFlowCtrlStackTop;
@@ -292,13 +294,14 @@ Interpreter::execResult_type Interpreter::execprocessedCommand( char activeCmd_R
 
     case MyParser::cmdcod_else:
     case MyParser::cmdcod_elseif:
+
     {
         bool testClauseCondition { false }, fail { false };// init
-        if ( activeCmd_ResWordCode == MyParser::cmdcod_if ) { testClauseCondition = true; }
+        if ( _activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_if ) { testClauseCondition = true; }
         else { testClauseCondition = (bool) (((IfBlockData*) _pFlowCtrlStackTop)->testResult); }                     // retrieve result of previous test (in preceding 'if' or 'elseif' clause)
 
         fail = !testClauseCondition;                                                                                    // init: assume test in preceding clause passed ('if' or 'elseif'), so this clause needs to be skipped 
-        if ( activeCmd_ResWordCode != MyParser::cmdcod_else ) {
+        if ( _activeFunctionData.activeCmd_ResWordCode != MyParser::cmdcod_else ) {
             if ( testClauseCondition ) {                                                                                // result of test in preceding 'if' or 'elseif' clause FAILED ? Check this clause
                 Val operand;                                                                                            // operand and result
                 bool operandIsVarRef = (_pEvalStackTop->varOrConst.valueType == value_isVarRef);
@@ -313,15 +316,19 @@ Interpreter::execResult_type Interpreter::execprocessedCommand( char activeCmd_R
             }
         }
 
-        Interpreter::TokenIsResWord* pToken;
+        Interpreter::TokenIsResWord* pToToken;
         int toTokenStep { 0 };
         if ( fail ) {                                                                                  // skip this clause ? (either a preceding tets passed, or it failed but the curreent test failed as well)
-            pToken = (Interpreter::TokenIsResWord*) activeCmd_resWordTokenAddress;
-            memcpy( &toTokenStep, pToken->toTokenStep, sizeof( char [2] ) );
+            pToToken = (Interpreter::TokenIsResWord*) _activeFunctionData.activeCmd_pToToken;
+            memcpy( &toTokenStep, pToToken->toTokenStep, sizeof( char [2] ) );
             _activeFunctionData.pNextStep = _programStorage + toTokenStep;              // prepare jump to else, elseif or end command
         }
 
         clearEvalStackLevels( cmdParamCount );      // clear evaluation stack
+
+        _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;
+        _activeFunctionData.activeCmd_pToToken = nullptr;
+
     }
     break;
 
@@ -330,6 +337,9 @@ Interpreter::execResult_type Interpreter::execprocessedCommand( char activeCmd_R
     {
         char blockType = *(char*) _pFlowCtrlStackTop;
         if ( (blockType == MyParser::block_if) || (blockType == MyParser::block_while) || (blockType == MyParser::block_for) ) {
+            _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // no command is being executed
+            _activeFunctionData.activeCmd_pToToken = nullptr;
+
             flowCtrlStack.deleteListElement( _pFlowCtrlStackTop );
             _pFlowCtrlStackTop = _pFlowCtrlStackMinus1;
             _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement( _pFlowCtrlStackTop );
@@ -385,7 +395,7 @@ int Interpreter::jumpTokens( int n, char*& pStep, int& tokenCode ) {
     }
 
     tokenType = *pStep & 0x0F;
-    int tokenIndex;
+    int tokenIndex { 0 };
 
     switch ( tokenType ) {
     case tok_isReservedWord:
@@ -429,7 +439,7 @@ int Interpreter::findTokenStep( int tokenTypeToFind, char tokenCodeToFind, char*
         if ( tokenTypeToFind == tok_isTerminalGroup1 ) { tokenTypeMatch = tokenTypeMatch || (tokenType == tok_isTerminalGroup2) || (tokenType == tok_isTerminalGroup3); }
         if ( tokenTypeMatch ) {
             bool tokenCodeMatch { false };
-            int tokenIndex;
+            int tokenIndex { 0 };
 
             switch ( tokenTypeToFind ) {
             case tok_isReservedWord:
@@ -556,14 +566,16 @@ void Interpreter::clearEvalStackLevels( int n ) {
     LE_evalStack* pstackLvl;
     for ( int i = 1; i <= n; i++ ) {
         pstackLvl = _pEvalStackTop;
-        if ( ((pstackLvl->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) &&
-            (pstackLvl->varOrConst.valueType == value_isStringPointer) ) {
-            if ( pstackLvl->varOrConst.value.pStringConst != nullptr ) {
+        if ( pstackLvl->genericToken.tokenType == tok_isConstant ) {            // exclude non-constant tokens (terminals, reserved words, functions, ...)
+            if ( ((pstackLvl->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) &&
+                (pstackLvl->varOrConst.valueType == value_isStringPointer) ) {
+                if ( pstackLvl->varOrConst.value.pStringConst != nullptr ) {
 #if printCreateDeleteHeapObjects
-                Serial.print( "----- (intermd str) " );   Serial.println( (uint32_t) _pEvalStackTop->varOrConst.value.pStringConst - RAMSTART );
+                    Serial.print( "----- (intermd str) " );   Serial.println( (uint32_t) _pEvalStackTop->varOrConst.value.pStringConst - RAMSTART );
 #endif
-                delete [] pstackLvl->varOrConst.value.pStringConst;
-                intermediateStringObjectCount--;
+                    delete [] pstackLvl->varOrConst.value.pStringConst;
+                    intermediateStringObjectCount--;
+                }
             }
         }
 
@@ -572,12 +584,6 @@ void Interpreter::clearEvalStackLevels( int n ) {
         _pEvalStackMinus1 = _pEvalStackMinus2;
     }
 
-    _pEvalStackMinus2 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackMinus1 );
-    return;
-
-    // delete the stack level containing the result
-    _pEvalStackTop = _pEvalStackMinus1;
-    _pEvalStackMinus1 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackTop );
     _pEvalStackMinus2 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackMinus1 );
     return;
 }
@@ -593,7 +599,7 @@ void Interpreter::clearEvalStack() {                // and intermediate strings
     // delete any intermediate result string objects used as arguments
     LE_evalStack* pstackLvl = _pEvalStackTop;
     while ( pstackLvl != nullptr ) {
-        if ( pstackLvl->genericToken.tokenType == tok_isConstant ) {            // needed to exclude non-value tokens (terminals, reserved words, functions, ...)
+        if ( pstackLvl->genericToken.tokenType == tok_isConstant ) {            // exclude non-value tokens (terminals, reserved words, functions, ...)
             if ( ((pstackLvl->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && (pstackLvl->varOrConst.valueType == value_isStringPointer) )
             {
                 if ( pstackLvl->varOrConst.value.pStringConst != nullptr ) {
@@ -711,8 +717,8 @@ Interpreter::execResult_type Interpreter::execParenthesesPair( LE_evalStack*& pP
 
     // no lower stack levels before left parenthesis (removed in the meantime) ? Is a simple parentheses pair
     if ( pPrecedingStackLvl == nullptr ) {
-            makeIntermediateConstant( _pEvalStackTop );                     // left parenthesis already removed from evaluation stack
-            return result_execOK;
+        makeIntermediateConstant( _pEvalStackTop );                     // left parenthesis already removed from evaluation stack
+        return result_execOK;
     }
 
     // stack level preceding left parenthesis is internal function ? execute function
@@ -737,8 +743,8 @@ Interpreter::execResult_type Interpreter::execParenthesesPair( LE_evalStack*& pP
     }
 
     // none of the te above: simple parenthesis pair ? If variable inside, make it an intermediate constant on the stack 
-        makeIntermediateConstant( _pEvalStackTop );                     // left parenthesis already removed from evaluation stack
-        return result_execOK;
+    makeIntermediateConstant( _pEvalStackTop );                     // left parenthesis already removed from evaluation stack
+    return result_execOK;
 }
 
 // ------------------------------------------------------------------------------------------------------------------
@@ -817,7 +823,7 @@ void Interpreter::makeIntermediateConstant( LE_evalStack* pEvalStackLvl ) {
 #endif
         }
         pEvalStackLvl->varOrConst.value = result;                        // float or pointer to string (type: no change)
-        pEvalStackLvl->varOrConst.valueType=valueType;
+        pEvalStackLvl->varOrConst.valueType = valueType;
         pEvalStackLvl->varOrConst.tokenType = tok_isConstant;              // use generic constant type
         pEvalStackLvl->varOrConst.valueAttributes = constIsIntermediate;             // is an intermediate result (intermediate constant strings must be deleted when not needed any more)
         pEvalStackLvl->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
@@ -833,9 +839,9 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
 
     // _pEvalStackTop should point to an operand on entry (parsed constant, variable, expression result)
 
-    int pendingTokenType, pendingTokenIndex;
-    int pendingTokenPriorityLvl;
-    bool currentOpHasPriority;
+    int pendingTokenIndex { 0 };
+    int pendingTokenType { tok_no_token }, pendingTokenPriorityLvl {};
+    bool currentOpHasPriority { false };
 
 #if debugPrint
     Serial.print( "** exec processed infix operators -stack levels: " ); Serial.println( evalStack.getElementCount() );
@@ -967,7 +973,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 
     int operatorCode = _pmyParser->_terminals [_pEvalStackMinus1->terminal.index].terminalCode;
 
-    bool isUserVar, isGlobalVar, isStaticVar, isLocalVar;
+    bool isUserVar { false }, isGlobalVar { false }, isStaticVar { false }, isLocalVar { false };
 
     // check if operands are compatible with operator: real for all operators except string concatenation
     _activeFunctionData.errorProgramCounter = _pEvalStackMinus1->terminal.tokenAddress;                // in the event of an error
@@ -1000,7 +1006,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     bool op1emptyString = op1real ? false : (operand1.pStringConst == nullptr);
     bool op2emptyString = op2real ? false : (operand2.pStringConst == nullptr);
 
-    int stringlen;                                                                                  // define outside switch statement
+    int stringlen { 0 };                                                                                  // define outside switch statement
 
     switch ( operatorCode ) {                                                  // operation to execute
 
@@ -1245,6 +1251,8 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 
     _activeFunctionData.functionIndex = pFunctionStackLvl->function.index;     // index of external function to call
     _activeFunctionData.blockType = MyParser::block_extFunction;
+    _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // no command is being executed
+    _activeFunctionData.activeCmd_pToToken = nullptr;
 
     // create local variable storage for external function to be called
     int localVarCount = extFunctionData [_activeFunctionData.functionIndex].localVarCountInFunction;
@@ -1368,13 +1376,13 @@ void Interpreter::initFunctionDefaultParamVariables( char*& pStep, int suppliedA
             // now positioned at constant initializer
             bool operandIsReal = (tokenType == tok_isRealConst);
             if ( operandIsReal ) {                                                      // operand is float constant
-                float f{0.};
+                float f { 0. };
                 memcpy( &f, ((TokenIsRealCst*) pStep)->realConst, sizeof( float ) );
                 _activeFunctionData.pLocalVarValues [count].realConst = f;  // store a local copy
                 _activeFunctionData.pVariableAttributes [count] = value_isFloat;                // default value: always scalar
             }
             else {                      // operand is parsed string constant: create a local copy and store in variable
-                char* s{nullptr};
+                char* s { nullptr };
                 memcpy( &s, ((TokenIsStringCst*) pStep)->pStringConst, sizeof( char* ) );  // copy the pointer, NOT the string  
 
                 _activeFunctionData.pLocalVarValues [count].pStringConst = nullptr;   // init (if empty string)
@@ -1406,14 +1414,13 @@ void Interpreter::initFunctionDefaultParamVariables( char*& pStep, int suppliedA
 void Interpreter::initFunctionLocalNonParamVariables( char* pStep, int paramCount, int localVarCount ) {
     // upon entry, positioned at first token after FUNCTION statement
 
-    int tokenType, terminalCode;
+    int tokenType {}, terminalCode {};
 
     int count = paramCount;         // sum of mandatory and optional parameters
 
     while ( count != localVarCount ) {
         findTokenStep( tok_isReservedWord, MyParser::cmdcod_local, pStep );     // find 'LOCAL' keyword (always there)
 
-        int terminalCode;
         do {
             // in case variable is not an array and it does not have an initializer: init as zero (float)
             _activeFunctionData.pLocalVarValues [count].realConst = 0;
@@ -1433,7 +1440,7 @@ void Interpreter::initFunctionLocalNonParamVariables( char* pStep, int paramCoun
                     tokenType = jumpTokens( 1, pStep );         // dimension
 
                     // increase dimension count and calculate elements (checks done during parsing)
-                    float f{0.};
+                    float f { 0. };
                     memcpy( &f, ((TokenIsRealCst*) pStep)->realConst, sizeof( float ) );
                     arrayElements *= f;
                     arrayDims [dimCount] = f;
@@ -1523,7 +1530,6 @@ void Interpreter::initFunctionLocalNonParamVariables( char* pStep, int paramCoun
 // -----------------------------------
 
 Interpreter::execResult_type Interpreter::terminateExternalFunction( bool addZeroReturnValue ) {
-
     if ( addZeroReturnValue ) {
         _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
         _pEvalStackTop = (LE_evalStack*) evalStack.appendListElement( sizeof( VarOrConstLvl ) );
@@ -1533,8 +1539,8 @@ Interpreter::execResult_type Interpreter::terminateExternalFunction( bool addZer
         _pEvalStackTop->varOrConst.variableAttributes = 0x00;
         _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
     }
-    else {makeIntermediateConstant( _pEvalStackTop );  }             // if not already an intermediate constant
-  
+    else { makeIntermediateConstant( _pEvalStackTop ); }             // if not already an intermediate constant
+
 
     // delete local variable arrays and strings (only if local variable is not a reference)
 
@@ -1553,6 +1559,7 @@ Interpreter::execResult_type Interpreter::terminateExternalFunction( bool addZer
     char blockType = MyParser::block_none;
     do {
         blockType = *(char*) _pFlowCtrlStackTop;            // always at least one open function (because returning to caller from it)
+
         if ( blockType == MyParser::block_extFunction ) {
             // load local storage pointers again for caller function and restore pending step & active function information for caller function
             _activeFunctionData = *(FunctionData*) _pFlowCtrlStackTop;
@@ -1582,8 +1589,6 @@ Interpreter::execResult_type Interpreter::terminateExternalFunction( bool addZer
         _pFlowCtrlStackMinus2 = flowCtrlStack.getPrevListElement( _pFlowCtrlStackMinus1 );
 
     } while ( blockType != MyParser::block_extFunction );
-
-    ////Serial.print( "--- Terminate: next step is " ); Serial.println( _activeFunctionData.pNextStep - _programStorage );
 
     if ( _activeFunctionData.pNextStep >= _programStart ) {   // not within a function        
         if ( localVarStringObjectCount != 0 ) {
@@ -1767,12 +1772,12 @@ void Interpreter::pushConstant( int& tokenType ) {                              
     _pEvalStackTop->varOrConst.valueAttributes = 0x00;
 
     if ( tokenType == tok_isRealConst ) {
-        float f{0.};
+        float f { 0. };
         memcpy( &f, ((TokenIsRealCst*) _programCounter)->realConst, sizeof( float ) );          // float  not necessarily aligned with word size: copy memory instead
         _pEvalStackTop->varOrConst.value.realConst = f;                                         // store float in stack, NOT the pointer to float 
     }
     else {
-        char* pAnum{nullptr};
+        char* pAnum { nullptr };
         memcpy( &pAnum, ((TokenIsStringCst*) _programCounter)->pStringConst, sizeof( pAnum ) ); // char pointer not necessarily aligned with word size: copy memory instead
         _pEvalStackTop->varOrConst.value.pStringConst = pAnum;                                  // store char* in stack, NOT the pointer to float 
     }
