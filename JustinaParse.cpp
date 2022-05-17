@@ -19,6 +19,8 @@ const char MyParser::cmdPar_P [4] { cmdPar_programName,             cmdPar_none,
 const char MyParser::cmdPar_E [4] { cmdPar_expression,              cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
 const char MyParser::cmdPar_E_opt [4] { cmdPar_expression
                                         | cmdPar_optionalFlag,      cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
+const char MyParser::cmdPar_E_optMult [4] { cmdPar_expression
+                                        | cmdPar_multipleFlag,      cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
 const char MyParser::cmdPar_F [4] { cmdPar_extFunction,             cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
 const char MyParser::cmdPar_AEE [4] { cmdPar_varOptAssignment,      cmdPar_expression,                              cmdPar_expression | cmdPar_optionalFlag ,   cmdPar_none };
 const char MyParser::cmdPar_P_mult [4] { cmdPar_programName,        cmdPar_programName | cmdPar_multipleFlag,       cmdPar_none,                                cmdPar_none };
@@ -53,6 +55,8 @@ const MyParser::ResWordDef MyParser::_resWords [] {
     {"BREAK",   cmdcod_break,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_N,       cmdBlockOpenBlock_loop},        // allowed if at least one open loop block (any level) 
     {"CONTINUE",cmdcod_continue,cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_N,       cmdBlockOpenBlock_loop },       // allowed if at least one open loop block (any level) 
     {"RETURN",  cmdcod_return,  cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E_opt,   cmdBlockOpenBlock_function},    // allowed if currently an open function definition block 
+
+    {"PRINT",   cmdcod_print,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E_optMult, cmdBlockOther},
 
     {"END",     cmdcod_end,     cmd_noRestrictions,                                 0,0,    cmdPar_N,       cmdBlockGenEnd},                // closes inner open command block
 };

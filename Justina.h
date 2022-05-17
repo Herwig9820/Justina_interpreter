@@ -258,10 +258,11 @@ public:
 
 
 
-    struct IfBlockData {
+    struct blockTestData {
         char blockType;                 // command block: will identify stack level as an IF...END block
+        char withinIteration;              // flag is set at the start of each iteration and cleared at the end 
         char testResult;                // 0x0 or 0x1
-        char spare[2];                  // boundary alignment
+        char spare;                     // boundary alignment
     };
 
     struct FunctionData {
@@ -271,7 +272,7 @@ public:
         // within a function, only one (block) command can be active at a time (ended by semicolon), in contract to command blocks, which can be nested, so next data can be stored here:
         // data is stored when a reserved word is processed and it is cleared when the ending semicolon (ending the command) is processed
         char activeCmd_ResWordCode;     // reserved word code (set to 'cmdcod_none' again when semicolon is processed)
-        char* activeCmd_pToToken;       // 'to token' address stored in parsed reserved word token (if present)                               
+        char* activeCmd_tokenAddress;   // address of parsed reserved word token                                
         
         Val* pLocalVarValues;           // local variable value: real, pointer to string or array, or (if reference): pointer to 'source' (referenced) variable
         char** ppSourceVarTypes;        // only if local variable is reference to variable or array element: pointer to 'source' variable value type  
@@ -504,6 +505,7 @@ public:
         cmdcod_continue,
         cmdcod_return,
         cmdcod_end,
+        cmdcod_print,
 
         cmdcod_test
     };
@@ -819,6 +821,7 @@ public:
     static const char cmdPar_P [4];                             // allow: 'P'=identifier name  
     static const char cmdPar_E [4];                             // allow: 'E'=expression  
     static const char cmdPar_E_opt [4];                         // allow: 'E'=expression  
+    static const char cmdPar_E_optMult [4];                     // allow: 'E'=expression, 0 to n times   
     static const char cmdPar_V [4];                             // allow: 'V'=variable (only)
     static const char cmdPar_F [4];                             // allow: 'F'=function definition 
     static const char cmdPar_AEE [4];                           // allow: 'A'=variable with (optional) assignment, 'E'=expression, 'E'=expression
