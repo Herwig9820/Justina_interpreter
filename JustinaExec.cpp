@@ -288,15 +288,16 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
     execResult_type execResult = result_execOK;
     int cmdParamCount = evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels;
 
+    // note supplied argument count and go to first argument (if any)
+    LE_evalStack* pstackLvl = _pEvalStackTop;
+    for ( int i = 1; i < cmdParamCount; i++ ) {        // skipped if no arguments, or if one argument
+        pstackLvl = (LE_evalStack*) evalStack.getPrevListElement( pstackLvl );      // go to first argument
+    }
+
     switch ( _activeFunctionData.activeCmd_ResWordCode ) {                                                                      // command code 
 
     case MyParser::cmdcod_print:
     {
-        LE_evalStack* pstackLvl = _pEvalStackTop;
-        for ( int i = 1; i < cmdParamCount; i++ ) {        // skipped if no arguments, or if one argument
-            pstackLvl = (LE_evalStack*) evalStack.getPrevListElement( pstackLvl );      // go to first argument
-        }
-        
         for ( int i = 1; i <= cmdParamCount; i++ ) {        // skipped if no arguments
             bool operandIsVarRef = (pstackLvl->varOrConst.valueType == value_isVarRef);
             char valueType = operandIsVarRef ? (*pstackLvl->varOrConst.varTypeAddress & value_typeMask) : pstackLvl->varOrConst.valueType;
@@ -317,15 +318,18 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
     }
     break;
 
+
+    case MyParser::cmdcod_for:
     case MyParser::cmdcod_if:                                                                                                   // 'if' command
     case MyParser::cmdcod_while:                                                                                                // 'while' command
     {
         // start a new loop, or execute an existing loop ? 
         bool initNew = true;                                                                                            // init: assume this is a new loop
-        if ( flowCtrlStack.getElementCount() != 0 ) {                                                                   // outer open blocks exist
+        if ( flowCtrlStack.getElementCount() != 0 ) {                                                                   // at least one open block exist
             char blockType = *(char*) _pFlowCtrlStackTop;
-            if ( (blockType == MyParser::block_if) || (blockType == MyParser::block_while) ) {                          // is last created outer block an 'if' or 'while' loop ?
-                initNew = (((blockTestData*) _pFlowCtrlStackTop)->withinIteration != 0x00);                                   // yes: retrieve 
+            if ( (blockType == MyParser::block_if) || (blockType == MyParser::block_while) ) {                          // is last created open block an 'if' or 'while' loop ?
+                // is execution within an iteration of an outer 'if' or 'while' loop ? Then this is the start of the first iteration of a new (inner) 'if' or 'while' loop
+                initNew = (((blockTestData*) _pFlowCtrlStackTop)->withinIteration != 0x00);
             }
         }
 
@@ -333,12 +337,40 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
             _pFlowCtrlStackMinus2 = _pFlowCtrlStackMinus1; _pFlowCtrlStackMinus1 = _pFlowCtrlStackTop;
             _pFlowCtrlStackTop = (blockTestData*) flowCtrlStack.appendListElement( sizeof( blockTestData ) );
             ((blockTestData*) _pFlowCtrlStackTop)->blockType =
-                (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_if) ? MyParser::block_if : MyParser::block_while;       // start of 'if...end' or 'while...end' block
+                (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_if) ? MyParser::block_if :
+                (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_while) ? MyParser::block_while :
+                MyParser::block_for;       // start of 'if...end' or 'while...end' block
+
+            if ( _activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_for ) {
+
+                // store variable reference, upper limit, optional increment / decrement (only once), address of token directly following 'FOR...; statement
+                ((blockTestData*) _pFlowCtrlStackTop)->nextTokenAddress = _activeFunctionData.pNextStep;
+                ((blockTestData*) _pFlowCtrlStackTop)->increment = 1;           // int
+
+                for ( int i = 1; i <= cmdParamCount; i++ ) {        // skipped if no arguments
+                    Val operand;                                                                                            // operand and result
+                    bool operandIsVarRef = (pstackLvl->varOrConst.valueType == value_isVarRef);
+                    char valueType = operandIsVarRef ? (*pstackLvl->varOrConst.varTypeAddress & value_typeMask) : pstackLvl->varOrConst.valueType;
+                    if ( valueType != value_isFloat ) { execResult = result_testexpr_numberExpected; return execResult; }
+                    operand.realConst = (pstackLvl->varOrConst.tokenType == tok_isVariable) ? *pstackLvl->varOrConst.value.pRealConst : pstackLvl->varOrConst.value.realConst;
+
+                    if ( i == 1 ) {
+                        ((blockTestData*) _pFlowCtrlStackTop)->pControlVar = pstackLvl->varOrConst.value.pRealConst;      // pointer to variable (containing a real constant)
+                    }
+                    else {
+                        (i == 3) ? ((blockTestData*) _pFlowCtrlStackTop)->increment :
+                            ((blockTestData*) _pFlowCtrlStackTop)->upperLimit = operand.realConst;
+                    }
+                    pstackLvl = (LE_evalStack*) evalStack.getNextListElement( pstackLvl );
+                }
+            }
         }
 
-        ((blockTestData*) _pFlowCtrlStackTop)->withinIteration = (char) true;     // at the end of an iteration
+        ((blockTestData*) _pFlowCtrlStackTop)->withinIteration = (char) true;     // at the start of an iteration
 
+        if ( _activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_for ) { break; }
     }
+
     // no break here: from here on, subsequent execution is common for 'if', 'elseif', 'else' and 'while'
 
     case MyParser::cmdcod_else:
@@ -389,14 +421,20 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
         if ( (blockType == MyParser::block_if) || (blockType == MyParser::block_while) || (blockType == MyParser::block_for) ) {
 
             bool exitLoop { true };
-            if ( blockType == MyParser::block_while ) { exitLoop = (((blockTestData*) _pFlowCtrlStackTop)->testResult != 0x00); } // 0x00: test passed
+            if ( (blockType == MyParser::block_while) || (blockType == MyParser::block_for) ) { exitLoop = (((blockTestData*) _pFlowCtrlStackTop)->testResult != 0x00); } // 0x00: test passed
 
             if ( !exitLoop ) {
-                Interpreter::TokenIsResWord* pToToken;
-                int toTokenStep { 0 };
-                pToToken = (Interpreter::TokenIsResWord*) _activeFunctionData.activeCmd_tokenAddress;
-                memcpy( &toTokenStep, pToToken->toTokenStep, sizeof( char [2] ) );
-                _activeFunctionData.pNextStep = _programStorage + toTokenStep;              // prepare jump to 'else', 'elseif' or 'end' command
+                if ( blockType == MyParser::block_for ) {
+                    _activeFunctionData.pNextStep = ((blockTestData*) _pFlowCtrlStackTop)->nextTokenAddress;
+                }
+                else {
+                    Interpreter::TokenIsResWord* pToToken;
+                    int toTokenStep { 0 };
+                    pToToken = (Interpreter::TokenIsResWord*) _activeFunctionData.activeCmd_tokenAddress;
+                    memcpy( &toTokenStep, pToToken->toTokenStep, sizeof( char [2] ) );
+
+                    _activeFunctionData.pNextStep = _programStorage + toTokenStep;
+                }              // prepare jump to start of new lopo
             }
 
             ((blockTestData*) _pFlowCtrlStackTop)->withinIteration = (char) false;     // at the end of an iteration
@@ -428,6 +466,16 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
 
     return result_execOK;
 }
+
+
+// -------------------------------
+// *   test for loop condition   *
+// -------------------------------
+
+Interpreter::execResult_type Interpreter::testForLoopCondition( bool& testResult ) {
+
+};
+
 
 // -----------------------------------------------------------------------------------------------
 // *   jump n token steps, return token type and (for terminals and reserved words) token code   *
@@ -1118,8 +1166,14 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         // store value and value type in variable and adapt variable value type
         if ( opResultReal ) { *_pEvalStackMinus2->varOrConst.value.pRealConst = opResult.realConst; }
         else { *_pEvalStackMinus2->varOrConst.value.ppStringConst = opResult.pStringConst; }
-        // save resulting var type (in case it changed)
+
+        // save resulting variable value type 
         *_pEvalStackMinus2->varOrConst.varTypeAddress = (*_pEvalStackMinus2->varOrConst.varTypeAddress & ~value_typeMask) | (opResultReal ? value_isFloat : value_isStringPointer);
+        // if variable reference, then value type on the stack indicates 'variable reference', so don't overwrite it
+        if ( !operand1IsVarRef ) { // if reference, then value type on the stack indicates 'variable reference', so don't overwrite it
+            _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) | (opResultReal ? value_isFloat : value_isStringPointer);
+        }
+
 
         break;
 
@@ -1183,7 +1237,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     case MyParser::termcod_ne:
         opResult.realConst = operand1.realConst != operand2.realConst;
         break;
-    }
+        }
 
     if ( (opResultReal) && (operatorCode != _pmyParser->termcod_assign) ) {     // check error (not for assignment)
         if ( isnan( opResult.realConst ) ) { return result_undefined; }
@@ -1231,15 +1285,16 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     //  store result in stack
     // ----------------------
 
-    // set value type
-    _pEvalStackTop->varOrConst.value = opResult;                        // float or pointer to string
-    _pEvalStackTop->varOrConst.valueType = opResultReal ? value_isFloat : value_isStringPointer;     // value type of second operand  
-    _pEvalStackTop->varOrConst.tokenType = tok_isConstant;              // use generic constant type
-    _pEvalStackTop->varOrConst.valueAttributes = (operatorCode == MyParser::termcod_assign) ? 0x00 : constIsIntermediate;             // is an intermediate result (intermediate constant strings must be deleted when not needed any more)
-    _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
-
+    // if assignment, then result is already stored in variable and the stack top still contains the reference to the variable
+    if ( operatorCode != MyParser::termcod_assign ) {
+        _pEvalStackTop->varOrConst.value = opResult;                        // float or pointer to string
+        _pEvalStackTop->varOrConst.valueType = opResultReal ? value_isFloat : value_isStringPointer;     // value type of second operand  
+        _pEvalStackTop->varOrConst.tokenType = tok_isConstant;              // use generic constant type
+        _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
+        _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
+    }
     return result_execOK;
-}
+    }
 
 
 // ---------------------------------
@@ -1362,7 +1417,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 #endif
                         }
                     };
-                }
+                        }
 
                 if ( ((pStackLvl->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && !operandIsReal ) {
                     if ( pStackLvl->varOrConst.value.pStringConst != nullptr ) {
@@ -1375,9 +1430,9 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
                 }
 
                 pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl );       // argument saved: remove argument from stack and point to next argument
+                    }
+                }
             }
-        }
-    }
 
     // also delete function name token from evaluation stack
     _pEvalStackTop = (LE_evalStack*) evalStack.getPrevListElement( pFunctionStackLvl );
@@ -1416,7 +1471,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
     */
 
     return  result_execOK;
-}
+        }
 
 
 // -----------------------------------------------------------------------------------------------
@@ -1463,12 +1518,12 @@ void Interpreter::initFunctionDefaultParamVariables( char*& pStep, int suppliedA
                 }
             }
             count++;
-        }
-    }
+                }
+            }
 
     // skip (remainder of) function definition
     findTokenStep( tok_isTerminalGroup1, MyParser::termcod_semicolon, pStep );
-};
+        };
 
 
 
@@ -1577,17 +1632,17 @@ void Interpreter::initFunctionLocalNonParamVariables( char* pStep, int paramCoun
 #endif
                         }
                     }
-                }
+                        }
 
                 tokenType = jumpTokens( 1, pStep, terminalCode );       // comma or semicolon
-            }
+                    }
 
             count++;
 
-        } while ( terminalCode == MyParser::termcod_comma );
+                } while ( terminalCode == MyParser::termcod_comma );
 
-    }
-};
+            }
+        };
 
 
 // -----------------------------------

@@ -263,6 +263,12 @@ public:
         char withinIteration;              // flag is set at the start of each iteration and cleared at the end 
         char testResult;                // 0x0 or 0x1
         char spare;                     // boundary alignment
+    
+        // FOR...END loop only
+        float* pControlVar;
+        float upperLimit;
+        float increment;
+        char* nextTokenAddress;         // address of token directly following 'FOR...; statement
     };
 
     struct FunctionData {
@@ -442,7 +448,9 @@ public:
     execResult_type  execInternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
     execResult_type  launchExternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
     execResult_type  terminateExternalFunction(bool addZeroReturnValue = false);
-    execResult_type execProcessedCommand(bool & isFunctionReturn );
+    execResult_type execProcessedCommand( bool& isFunctionReturn );
+    execResult_type testForLoopCondition( bool& testResult );
+
 
     void initFunctionDefaultParamVariables( char*& calledFunctionTokenStep, int suppliedArgCount, int paramCount );
     void initFunctionLocalNonParamVariables( char* calledFunctionTokenStep, int paramCount, int localVarCount );
