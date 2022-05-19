@@ -266,8 +266,9 @@ public:
     
         // FOR...END loop only
         float* pControlVar;
-        float upperLimit;
-        float increment;
+        char* pControlValueType;
+        float step;
+        float finalValue;
         char* nextTokenAddress;         // address of token directly following 'FOR...; statement
     };
 
