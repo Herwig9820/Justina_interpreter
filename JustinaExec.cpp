@@ -199,10 +199,8 @@ Interpreter::execResult_type  Interpreter::exec() {
                 // -----------------
                 // Process separator
                 // -----------------
-                Serial.println("is semicolon");
                 nextIsNewInstructionStart = true;         // for pretty print only   
                 if ( _activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_none ) {       // currently not executing a command, but a simple expression
-                    Serial.println( " is expression" );
                     if ( evalStack.getElementCount() > _activeFunctionData.callerEvalStackLevels + 1 ) {
                         Serial.print( "*** Evaluation stack error. Remaining stack levels for current program level: " ); Serial.println( evalStack.getElementCount() - (_activeFunctionData.callerEvalStackLevels + 1) );
                     }
@@ -218,7 +216,6 @@ Interpreter::execResult_type  Interpreter::exec() {
 
                 // command with optional expression(s) processed ? Execute command
                 else {
-                    Serial.println( " call execProcessedCommand" );
                     execResult = execProcessedCommand( isFunctionReturn );
                     if ( execResult != result_execOK ) { break; }
                 }
@@ -250,8 +247,12 @@ Interpreter::execResult_type  Interpreter::exec() {
             break;
         }
 
+        
+        // finalize token processing
+        // -------------------------
+
         if ( nextIsNewInstructionStart ) {
-            if ( !isFunctionReturn ) {   // if returning from function, error statement pointers already set while terminating function 
+            if ( !isFunctionReturn ) {   // if returning from function, error statement pointers retrieved from flow control stack 
                 _activeFunctionData.errorStatementStartStep = _programCounter;
                 _activeFunctionData.errorProgramCounter = _programCounter;
             }
@@ -333,12 +334,14 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
     case MyParser::cmdcod_while:                                                                                                // 'while' command
     {
         // start a new loop, or execute an existing loop ? 
-        bool initNew = true;                                                                                            // init: assume this is a new loop
-        if ( flowCtrlStack.getElementCount() != 0 ) {                                                                   // at least one open block exist
-            char blockType = *(char*) _pFlowCtrlStackTop;
-            if ( (blockType == MyParser::block_if) || (blockType == MyParser::block_while) || (blockType == MyParser::block_for) ) {
-                // currently executing an iteration of an outer 'if', 'while' or 'for' loop ? Then this is the start of the first iteration of a new (inner) 'if' or 'while' loop
-                initNew = (((blockTestData*) _pFlowCtrlStackTop)->withinIteration != char( false ));
+        bool initNew {true};        // IF...END: only one iteration, FOR...END loop: always first itaration of a new loop, because only pass (command skipped for next iterations)
+        if ( _activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_while ) {            
+            if ( flowCtrlStack.getElementCount() != 0 ) {                 // at least one open block exist
+                char blockType = *(char*) _pFlowCtrlStackTop;
+                if ( (blockType == MyParser::block_if) || (blockType == MyParser::block_while) || (blockType == MyParser::block_for) ) {
+                    // currently executing an iteration of an outer 'if', 'while' or 'for' loop ? Then this is the start of the first iteration of a new (inner) 'if' or 'while' loop
+                    initNew = (((blockTestData*) _pFlowCtrlStackTop)->withinIteration != char( false ));
+                }
             }
         }
 
@@ -346,10 +349,12 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
             _pFlowCtrlStackMinus2 = _pFlowCtrlStackMinus1; _pFlowCtrlStackMinus1 = _pFlowCtrlStackTop;
             _pFlowCtrlStackTop = (blockTestData*) flowCtrlStack.appendListElement( sizeof( blockTestData ) );
             ((blockTestData*) _pFlowCtrlStackTop)->blockType =
-                (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_if) ? MyParser::block_if :
+                (_activeFunctionData.activeCmd_ResWordCode== MyParser::cmdcod_if) ? MyParser::block_if :
                 (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_while) ? MyParser::block_while :
                 MyParser::block_for;       // start of 'if...end' or 'while...end' block
 
+
+            // FOR...END loops only: initialize ref to control variable, final value and step
             if ( _activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_for ) {
 
                 // store variable reference, upper limit, optional increment / decrement (only once), address of token directly following 'FOR...; statement
@@ -379,20 +384,6 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
         }
 
         ((blockTestData*) _pFlowCtrlStackTop)->withinIteration = (char) true;     // at the start of an iteration
-
-        if ( _activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_for ) {
-            Interpreter::TokenIsResWord* pToToken;
-            int toTokenStep { 0 };
-            pToToken = (Interpreter::TokenIsResWord*) _activeFunctionData.activeCmd_tokenAddress;
-            memcpy( &toTokenStep, pToToken->toTokenStep, sizeof( char [2] ) );
-            _activeFunctionData.pNextStep = _programStorage + toTokenStep;              // prepare jump to 'else', 'elseif' or 'end' command
-
-            clearEvalStackLevels( cmdParamCount );      // clear evaluation stack
-
-            _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // command execution ended
-            _activeFunctionData.activeCmd_tokenAddress = nullptr;
-            break;
-        }
     }
 
     // no break here: from here on, subsequent execution is common for 'if', 'elseif', 'else' and 'while'
@@ -401,29 +392,31 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
     case MyParser::cmdcod_elseif:
 
     {
-        bool testClauseCondition { false }, fail { false };// init
-        if ( (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_if) ||
-            (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_while) ) {
-            testClauseCondition = true;
+        bool precedingTestFailOrNone { true };  // init: preceding test failed ('elseif', 'else' command), or no preceding test ('if', 'for' command)
+        // init: set flag to test condition of current 'if', 'while', 'elseif' command
+        bool testClauseCondition = (_activeFunctionData.activeCmd_ResWordCode != MyParser::cmdcod_for);
+        // 'else, 'elseif': if result of previous test (in preceding 'if' or 'elseif' clause) FAILED (fail = false), then CLEAR flag to test condition of current command (not relevant for 'else') 
+        if ( (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_else) ||
+            (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_elseif) ) {
+            precedingTestFailOrNone = (bool) (((blockTestData*) _pFlowCtrlStackTop)->fail);
         }
-        else { testClauseCondition = (bool) (((blockTestData*) _pFlowCtrlStackTop)->testResult); }                     // retrieve result of previous test (in preceding 'if' or 'elseif' clause)
+        testClauseCondition = precedingTestFailOrNone && (_activeFunctionData.activeCmd_ResWordCode != MyParser::cmdcod_for) && (_activeFunctionData.activeCmd_ResWordCode != MyParser::cmdcod_else);
 
-        fail = !testClauseCondition;                                                                                    // init: assume test in preceding clause passed ('if' or 'elseif'), so this clause needs to be skipped 
-        if ( _activeFunctionData.activeCmd_ResWordCode != MyParser::cmdcod_else ) {
-            if ( testClauseCondition ) {                                                                                // result of test in preceding 'if' or 'elseif' clause FAILED ? Check this clause
-                Val operand;                                                                                            // operand and result
-                bool operandIsVarRef = (_pEvalStackTop->varOrConst.valueType == value_isVarRef);
-                char valueType = operandIsVarRef ? (*_pEvalStackTop->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackTop->varOrConst.valueType;
-                if ( valueType != value_isFloat ) { execResult = result_testexpr_numberExpected; return execResult; }
-                operand.realConst = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? *_pEvalStackTop->varOrConst.value.pRealConst : _pEvalStackTop->varOrConst.value.realConst;
+        //init current condition test result (assume test in preceding clause ('if' or 'elseif') passed, so this clause needs to be skipped)
+        bool fail = !precedingTestFailOrNone;
+        if ( testClauseCondition ) {                                                                                // result of test in preceding 'if' or 'elseif' clause FAILED ? Check this clause
+            Val operand;                                                                                            // operand and result
+            bool operandIsVarRef = (_pEvalStackTop->varOrConst.valueType == value_isVarRef);
+            char valueType = operandIsVarRef ? (*_pEvalStackTop->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackTop->varOrConst.valueType;
+            if ( valueType != value_isFloat ) { execResult = result_testexpr_numberExpected; return execResult; }
+            operand.realConst = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? *_pEvalStackTop->varOrConst.value.pRealConst : _pEvalStackTop->varOrConst.value.realConst;
 
-                _activeFunctionData.errorProgramCounter = _pEvalStackTop->terminal.tokenAddress;                     // in the event of an error
-                fail = (operand.realConst == 0);                                                                        // current test (elseif clause)
-                ((blockTestData*) _pFlowCtrlStackTop)->testResult = (char) fail;                                          // remember test result (true -> 0x1)
-            }
+            fail = (operand.realConst == 0);                                                                        // current test (elseif clause)
+            ((blockTestData*) _pFlowCtrlStackTop)->fail = (char) fail;                                          // remember test result (true -> 0x1)
         }
 
-        if ( fail ) {                                                                                  // skip this clause ? (either a preceding tets passed, or it failed but the curreent test failed as well)
+        bool setNextToken = fail || (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_for);
+        if ( setNextToken ) {                                                                                  // skip this clause ? (either a preceding tets passed, or it failed but the curreent test failed as well)
             Interpreter::TokenIsResWord* pToToken;
             int toTokenStep { 0 };
             pToToken = (Interpreter::TokenIsResWord*) _activeFunctionData.activeCmd_tokenAddress;
@@ -447,13 +440,13 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
             bool exitLoop { true };
 
             if ( blockType == MyParser::block_for ) { execResult = testForLoopCondition( exitLoop ); if ( execResult != result_execOK ) { return execResult; } }
-            else if ( blockType == MyParser::block_while ) { exitLoop = (((blockTestData*) _pFlowCtrlStackTop)->testResult != char( false )); } // false: test passed
+            else if ( blockType == MyParser::block_while ) { exitLoop = (((blockTestData*) _pFlowCtrlStackTop)->fail != char( false )); } // false: test passed
 
             if ( !exitLoop ) {
                 if ( blockType == MyParser::block_for ) {
                     _activeFunctionData.pNextStep = ((blockTestData*) _pFlowCtrlStackTop)->nextTokenAddress;
                 }
-                else {
+                else {      // WHILE...END block
                     Interpreter::TokenIsResWord* pToToken;
                     int toTokenStep { 0 };
                     pToToken = (Interpreter::TokenIsResWord*) _activeFunctionData.activeCmd_tokenAddress;
@@ -644,9 +637,9 @@ void Interpreter::saveLastValue( bool& overWritePrevious ) {
                 // note: this is always an intermediate string
                 delete [] lastResultValueFiFo [itemToRemove].pStringConst;
                 lastValuesStringObjectCount--;
-            }
         }
     }
+}
     else {
         _lastResultCount++;     // only adding an item, without removing previous one
     }
@@ -657,8 +650,8 @@ void Interpreter::saveLastValue( bool& overWritePrevious ) {
         for ( int i = _lastResultCount - 1; i > 0; i-- ) {
             lastResultValueFiFo [i] = lastResultValueFiFo [i - 1];
             lastResultTypeFiFo [i] = lastResultTypeFiFo [i - 1];
+        }
     }
-}
 
 
 
@@ -690,7 +683,7 @@ void Interpreter::saveLastValue( bool& overWritePrevious ) {
 #endif
             delete [] lastvalue.value.pStringConst;
             intermediateStringObjectCount--;
-        }
+    }
     }
 
     // store new last value type
@@ -727,14 +720,14 @@ void Interpreter::clearEvalStackLevels( int n ) {
 #endif
                     delete [] pstackLvl->varOrConst.value.pStringConst;
                     intermediateStringObjectCount--;
-                }
             }
         }
+    }
 
         evalStack.deleteListElement( pstackLvl );
         _pEvalStackTop = _pEvalStackMinus1;
         _pEvalStackMinus1 = _pEvalStackMinus2;
-    }
+}
 
     _pEvalStackMinus2 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackMinus1 );
     return;
@@ -760,11 +753,11 @@ void Interpreter::clearEvalStack() {                // and intermediate strings
 #endif 
                     delete [] pstackLvl->varOrConst.value.pStringConst;
                     intermediateStringObjectCount--;
-                }
             }
         }
+    }
         pstackLvl = (LE_evalStack*) evalStack.getPrevListElement( pstackLvl );
-    };
+};
 
     // error if not all intermediate string objects deleted (points to an internal Justina issue)
     if ( intermediateStringObjectCount != 0 ) {
@@ -837,26 +830,26 @@ void Interpreter::deleteStackArguments( LE_evalStack* pPrecedingStackLvl, int ar
 #endif
                 delete [] pStackLvl->varOrConst.value.pStringConst;
                 intermediateStringObjectCount--;
-            }
         }
+    }
         pStackLvl = (LE_evalStack*) evalStack.getNextListElement( pStackLvl );  // next dimspec or null pointer 
 
-    } while ( pStackLvl != nullptr );
+} while ( pStackLvl != nullptr );
 
 
-    // cleanup stack
-    // -------------
+// cleanup stack
+// -------------
 
-    // set pointer to either first token (value) after opening parenthesis (includePreceding = false -> used if array subscripts), or
-    // last token (function name) before opening parenthesis (includePreceding = true -> used if calling function)
-    // note that the left parenthesis is already removed from stack at this stage
-    pStackLvl = includePreceding ? pPrecedingStackLvl : (LE_evalStack*) evalStack.getNextListElement( pPrecedingStackLvl );
-    _pEvalStackTop = pPrecedingStackLvl;                                                        // note down before deleting list levels
-    _pEvalStackMinus1 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackTop );
-    _pEvalStackMinus2 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackMinus1 );
-    while ( pStackLvl != nullptr ) { pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl ); }
+// set pointer to either first token (value) after opening parenthesis (includePreceding = false -> used if array subscripts), or
+// last token (function name) before opening parenthesis (includePreceding = true -> used if calling function)
+// note that the left parenthesis is already removed from stack at this stage
+pStackLvl = includePreceding ? pPrecedingStackLvl : (LE_evalStack*) evalStack.getNextListElement( pPrecedingStackLvl );
+_pEvalStackTop = pPrecedingStackLvl;                                                        // note down before deleting list levels
+_pEvalStackMinus1 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackTop );
+_pEvalStackMinus2 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackMinus1 );
+while ( pStackLvl != nullptr ) { pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl ); }
 
-    return;
+return;
 }
 
 
@@ -1178,8 +1171,8 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
                 delete [] * _pEvalStackMinus2->varOrConst.value.ppStringConst;
                 isUserVar ? userVarStringObjectCount-- : (isGlobalVar || isStaticVar) ? globalStaticVarStringObjectCount-- : localVarStringObjectCount--;
-            }
         }
+    }
 
         // if the value to be assigned is real (float) OR an empty string: simply assign the value (not a heap object)
 
@@ -1275,7 +1268,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     case MyParser::termcod_ne:
         opResult.realConst = operand1.realConst != operand2.realConst;
         break;
-    }
+}
 
     if ( (opResultReal) && (operatorCode != _pmyParser->termcod_assign) ) {     // check error (not for assignment)
         if ( isnan( opResult.realConst ) ) { return result_undefined; }
@@ -1294,7 +1287,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
             delete [] _pEvalStackTop->varOrConst.value.pStringConst;
             intermediateStringObjectCount--;
-        }
+    }
     }
     // operand 1 is an intermediate constant AND it is a string ? delete char string object
     if ( ((_pEvalStackMinus2->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && !op1real )
@@ -1305,7 +1298,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
             delete [] _pEvalStackMinus2->varOrConst.value.pStringConst;
             intermediateStringObjectCount--;
-        }
+    }
     }
 
 
@@ -1332,7 +1325,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
     }
     return result_execOK;
-        }
+}
 
 
 // ---------------------------------
@@ -1464,13 +1457,13 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 #endif
                         delete [] pStackLvl->varOrConst.value.pStringConst;
                         intermediateStringObjectCount--;
-                    }
                 }
+            }
 
                 pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl );       // argument saved: remove argument from stack and point to next argument
-            }
         }
     }
+}
 
     // also delete function name token from evaluation stack
     _pEvalStackTop = (LE_evalStack*) evalStack.getPrevListElement( pFunctionStackLvl );
@@ -1952,7 +1945,7 @@ void Interpreter::pushVariable( int& tokenType ) {                              
     // push variable base address, variable value type (real, string) and array flag to stack
     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
 
-    _pEvalStackTop = (LE_evalStack*) evalStack.appendListElement( sizeof( VarOrConstLvl ) ); 
+    _pEvalStackTop = (LE_evalStack*) evalStack.appendListElement( sizeof( VarOrConstLvl ) );
     _pEvalStackTop->varOrConst.tokenType = tokenType;
     _pEvalStackTop->varOrConst.tokenAddress = _programCounter;
 

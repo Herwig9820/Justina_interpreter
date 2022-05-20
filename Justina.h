@@ -261,7 +261,7 @@ public:
     struct blockTestData {
         char blockType;                 // command block: will identify stack level as an IF...END block
         char withinIteration;              // flag is set at the start of each iteration and cleared at the end 
-        char testResult;                // 0x0 or 0x1
+        char fail;                // 0x0 or 0x1
         char spare;                     // boundary alignment
     
         // FOR...END loop only
@@ -450,7 +450,7 @@ public:
     execResult_type  launchExternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
     execResult_type  terminateExternalFunction(bool addZeroReturnValue = false);
     execResult_type execProcessedCommand( bool& isFunctionReturn );
-    execResult_type testForLoopCondition( bool& testResult );
+    execResult_type testForLoopCondition( bool& fail );
 
 
     void initFunctionDefaultParamVariables( char*& calledFunctionTokenStep, int suppliedArgCount, int paramCount );
