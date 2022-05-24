@@ -260,9 +260,9 @@ public:
 
     struct blockTestData {
         char blockType;                 // command block: will identify stack level as an IF...END block
-        char withinIteration;              // flag is set at the start of each iteration and cleared at the end 
-        char fail;                // 0x0 or 0x1
-        char spare;                     // boundary alignment
+        char withinIteration;           // flag is set at the start of each iteration and cleared at the end 
+        char fail;                      // 0x0 (pass) or 0x1 (fail)
+        char breakFromLoop;                     
     
         // FOR...END loop only
         float* pControlVar;
