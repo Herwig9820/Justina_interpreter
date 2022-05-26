@@ -894,7 +894,7 @@ public:
     static const FuncDef _functions [];                         // function names with min & max arguments allowed
     static const TerminalDef _terminals [];
     static const uint8_t _maxIdentifierNameLen { 14 };           // max length of identifier names, excluding terminating '\0'
-    static const uint8_t _maxAlphaCstLen { 20 };                 // max length of character strings, excluding terminating '\0' (also if stored in variables)
+    static const uint8_t _maxAlphaCstLen { 50 };                 // max length of character strings, excluding terminating '\0' (also if stored in variables)
 
 
     // -----------------

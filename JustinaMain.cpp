@@ -1,6 +1,6 @@
 #include "Justina.h"
 
-#define printCreateDeleteHeapObjects 0
+#define printCreateDeleteHeapObjects 1
 
 /***********************************************************
 *                    class LinkedList                   *
@@ -56,7 +56,7 @@ char* LinkedList::appendListElement( int size ) {
     Serial.print( "- list ID " ); Serial.print( _listID );
     if ( p == nullptr ) { Serial.println( "- list elem adres: nullptr" ); }
     else {
-        Serial.print( "- list elem adres: " ); Serial.println( (uint32_t) p - RAMSTART );
+        Serial.print( "- list elem address: " ); Serial.println( (uint32_t) p - RAMSTART );
     }
 #endif
     return (char*) (p + 1);                                          // pointer to payload of newly created element
@@ -85,7 +85,7 @@ char* LinkedList::deleteListElement( void* pPayload ) {                         
 #if printCreateDeleteHeapObjects
     Serial.print( "(LIST) Delete elem # " ); Serial.print( _listElementCount );
     Serial.print( "- list ID " ); Serial.print( _listID );
-    Serial.print( "- list elem adres: " ); Serial.println( (uint32_t) pElem - RAMSTART );
+    Serial.print( "- list elem address: " ); Serial.println( (uint32_t) pElem - RAMSTART );
 #endif
     _listElementCount--;
     delete []pElem;

@@ -294,21 +294,27 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
 
     // note supplied argument count and go to first argument (if any)
     LE_evalStack* pstackLvl = _pEvalStackTop;
+    Serial.print("*** command: "); Serial.print( (int) _activeFunctionData.activeCmd_ResWordCode ); 
+    if ( cmdParamCount ==0) {Serial.println( " (no params)"); }
+    else {  Serial.print(", eval stack elem address: "); Serial.print((uint32_t) pstackLvl - RAMSTART); Serial.print(", stack level: ") ; Serial.println(evalStack.getElementCount()); }
     for ( int i = 1; i < cmdParamCount; i++ ) {        // skipped if no arguments, or if one argument
         pstackLvl = (LE_evalStack*) evalStack.getPrevListElement( pstackLvl );      // go to first argument
+        Serial.print( "                 eval stack elem address: " ); Serial.print( (uint32_t) pstackLvl - RAMSTART ); Serial.print( ", stack level: " ); Serial.println( evalStack.getElementCount() );
     }
 
     switch ( _activeFunctionData.activeCmd_ResWordCode ) {                                                                      // command code 
 
     case MyParser::cmdcod_print:
     {
-        for ( int i = 1; i <= cmdParamCount; i++ ) {        // skipped if no arguments
+        for ( int i = 1; i <= cmdParamCount; i++ ) {        // skipped if no arguments 
             bool operandIsVarRef = (pstackLvl->varOrConst.valueType == value_isVarRef);
             char valueType = operandIsVarRef ? (*pstackLvl->varOrConst.varTypeAddress & value_typeMask) : pstackLvl->varOrConst.valueType;
             bool opIsReal = ((uint8_t) valueType == value_isFloat);
+            Serial.print("+++ PRINT +++ is var ref: "); Serial.print(operandIsVarRef); Serial.print(", value type: "); Serial.print((int) valueType);Serial.print(", stack elem address: ");Serial.print((uint32_t)pstackLvl - RAMSTART); Serial.print( ", stack levels: " ); Serial.println( evalStack.getElementCount() );
+            
             Val operand;
             char s [MyParser::_maxAlphaCstLen + 10];  // note: with small '_maxAlphaCstLen' values, make sure string is also long enough to print real values
-            if ( opIsReal ) {
+            if (  opIsReal ) {
                 operand.realConst = (pstackLvl->varOrConst.tokenType == tok_isVariable) ? (*pstackLvl->varOrConst.value.pRealConst) : pstackLvl->varOrConst.value.realConst;
                 sprintf( s, "%.3G", operand.realConst );
             }
@@ -321,6 +327,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
             pstackLvl = (LE_evalStack*) evalStack.getNextListElement( pstackLvl );
         }
         Serial.print( "\r\n" );
+
         clearEvalStackLevels( cmdParamCount );      // clear evaluation stack and intermediate strings
 
         _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // command execution ended
@@ -334,11 +341,12 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
     case MyParser::cmdcod_while:                                                                                                // 'while' command
     {
         // start a new loop, or execute an existing loop ? 
-        bool initNew { true };        // IF...END: only one iteration, FOR...END loop: always first itaration of a new loop, because only pass (command skipped for next iterations)
-        if ( _activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_while ) {
-            if ( flowCtrlStack.getElementCount() != 0 ) {                 // at least one open block exist
+        bool initNew { true };        // IF...END: only one iteration (always new), FOR...END loop: always first itaration of a new loop, because only pass (command skipped for next iterations)
+        if ( _activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_while ) {        // while block: start of an iteration
+            if ( flowCtrlStack.getElementCount() != 0 ) {                 // at least one open block exists ?
                 char blockType = *(char*) _pFlowCtrlStackTop;
-                if ( (blockType == MyParser::block_if) || (blockType == MyParser::block_while) || (blockType == MyParser::block_for) ) {
+                if ( (blockType == MyParser::block_for) || (blockType == MyParser::block_if) ) { initNew = true; }
+                else if ( blockType == MyParser::block_while ) {
                     // currently executing an iteration of an outer 'if', 'while' or 'for' loop ? Then this is the start of the first iteration of a new (inner) 'if' or 'while' loop
                     initNew = (((blockTestData*) _pFlowCtrlStackTop)->withinIteration != char( false ));
                 }
@@ -352,7 +360,6 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
                 (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_if) ? MyParser::block_if :
                 (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_while) ? MyParser::block_while :
                 MyParser::block_for;       // start of 'if...end' or 'while...end' block
-
 
             // FOR...END loops only: initialize ref to control variable, final value and step
             if ( _activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_for ) {
@@ -382,13 +389,14 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
                 ((blockTestData*) _pFlowCtrlStackTop)->finalValue -= ((blockTestData*) _pFlowCtrlStackTop)->step;
             }
 
-            ((blockTestData*) _pFlowCtrlStackTop)->breakFromLoop = (char) false;
+            ((blockTestData*) _pFlowCtrlStackTop)->breakFromLoop = (char) false;        // init
         }
 
         ((blockTestData*) _pFlowCtrlStackTop)->withinIteration = (char) true;     // at the start of an iteration
     }
 
     // no break here: from here on, subsequent execution is common for 'if', 'elseif', 'else' and 'while'
+
 
     case MyParser::cmdcod_else:
     case MyParser::cmdcod_elseif:
@@ -462,13 +470,14 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
         } while ( !isLoop );
 
         ((blockTestData*) _pFlowCtrlStackTop)->breakFromLoop = (char) (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_break);
+        
         _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // command execution ended
         _activeFunctionData.activeCmd_tokenAddress = nullptr;
     }
     break;
 
 
-    case MyParser::cmdcod_end:              
+    case MyParser::cmdcod_end:
     {
         char blockType = *(char*) _pFlowCtrlStackTop;       // determine currently open block
         if ( (blockType == MyParser::block_if) || (blockType == MyParser::block_while) || (blockType == MyParser::block_for) ) {
@@ -679,8 +688,8 @@ void Interpreter::saveLastValue( bool& overWritePrevious ) {
                 // note: this is always an intermediate string
                 delete [] lastResultValueFiFo [itemToRemove].pStringConst;
                 lastValuesStringObjectCount--;
-            }
         }
+    }
 }
     else {
         _lastResultCount++;     // only adding an item, without removing previous one
@@ -725,7 +734,7 @@ void Interpreter::saveLastValue( bool& overWritePrevious ) {
 #endif
             delete [] lastvalue.value.pStringConst;
             intermediateStringObjectCount--;
-        }
+    }
     }
 
     // store new last value type
@@ -762,9 +771,9 @@ void Interpreter::clearEvalStackLevels( int n ) {
 #endif
                     delete [] pstackLvl->varOrConst.value.pStringConst;
                     intermediateStringObjectCount--;
-                }
             }
         }
+    }
 
         evalStack.deleteListElement( pstackLvl );
         _pEvalStackTop = _pEvalStackMinus1;
@@ -795,9 +804,9 @@ void Interpreter::clearEvalStack() {                // and intermediate strings
 #endif 
                     delete [] pstackLvl->varOrConst.value.pStringConst;
                     intermediateStringObjectCount--;
-                }
             }
         }
+    }
         pstackLvl = (LE_evalStack*) evalStack.getPrevListElement( pstackLvl );
 };
 
@@ -872,26 +881,26 @@ void Interpreter::deleteStackArguments( LE_evalStack* pPrecedingStackLvl, int ar
 #endif
                 delete [] pStackLvl->varOrConst.value.pStringConst;
                 intermediateStringObjectCount--;
-            }
         }
+    }
         pStackLvl = (LE_evalStack*) evalStack.getNextListElement( pStackLvl );  // next dimspec or null pointer 
 
-    } while ( pStackLvl != nullptr );
+} while ( pStackLvl != nullptr );
 
 
-    // cleanup stack
-    // -------------
+// cleanup stack
+// -------------
 
-    // set pointer to either first token (value) after opening parenthesis (includePreceding = false -> used if array subscripts), or
-    // last token (function name) before opening parenthesis (includePreceding = true -> used if calling function)
-    // note that the left parenthesis is already removed from stack at this stage
-    pStackLvl = includePreceding ? pPrecedingStackLvl : (LE_evalStack*) evalStack.getNextListElement( pPrecedingStackLvl );
-    _pEvalStackTop = pPrecedingStackLvl;                                                        // note down before deleting list levels
-    _pEvalStackMinus1 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackTop );
-    _pEvalStackMinus2 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackMinus1 );
-    while ( pStackLvl != nullptr ) { pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl ); }
+// set pointer to either first token (value) after opening parenthesis (includePreceding = false -> used if array subscripts), or
+// last token (function name) before opening parenthesis (includePreceding = true -> used if calling function)
+// note that the left parenthesis is already removed from stack at this stage
+pStackLvl = includePreceding ? pPrecedingStackLvl : (LE_evalStack*) evalStack.getNextListElement( pPrecedingStackLvl );
+_pEvalStackTop = pPrecedingStackLvl;                                                        // note down before deleting list levels
+_pEvalStackMinus1 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackTop );
+_pEvalStackMinus2 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackMinus1 );
+while ( pStackLvl != nullptr ) { pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl ); }
 
-    return;
+return;
 }
 
 
@@ -1213,8 +1222,8 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
                 delete [] * _pEvalStackMinus2->varOrConst.value.ppStringConst;
                 isUserVar ? userVarStringObjectCount-- : (isGlobalVar || isStaticVar) ? globalStaticVarStringObjectCount-- : localVarStringObjectCount--;
-            }
         }
+    }
 
         // if the value to be assigned is real (float) OR an empty string: simply assign the value (not a heap object)
 
@@ -1280,7 +1289,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #if printCreateDeleteHeapObjects
             Serial.print( "+++++ (Intermd str) " );   Serial.println( (uint32_t) opResult.pStringConst - RAMSTART );
 #endif
-    }
+        }
     }
     break;
     case MyParser::termcod_plus:
@@ -1329,7 +1338,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
             delete [] _pEvalStackTop->varOrConst.value.pStringConst;
             intermediateStringObjectCount--;
-        }
+    }
     }
     // operand 1 is an intermediate constant AND it is a string ? delete char string object
     if ( ((_pEvalStackMinus2->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && !op1real )
@@ -1340,7 +1349,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
             delete [] _pEvalStackMinus2->varOrConst.value.pStringConst;
             intermediateStringObjectCount--;
-        }
+    }
     }
 
 
@@ -1490,7 +1499,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 #endif
                         }
                     };
-                    }
+                }
 
                 if ( ((pStackLvl->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && !operandIsReal ) {
                     if ( pStackLvl->varOrConst.value.pStringConst != nullptr ) {
@@ -1499,13 +1508,13 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 #endif
                         delete [] pStackLvl->varOrConst.value.pStringConst;
                         intermediateStringObjectCount--;
-                    }
-                }
-
-                pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl );       // argument saved: remove argument from stack and point to next argument
                 }
             }
+
+                pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl );       // argument saved: remove argument from stack and point to next argument
         }
+    }
+}
 
     // also delete function name token from evaluation stack
     _pEvalStackTop = (LE_evalStack*) evalStack.getPrevListElement( pFunctionStackLvl );
@@ -1588,11 +1597,11 @@ void Interpreter::initFunctionDefaultParamVariables( char*& pStep, int suppliedA
 #if printCreateDeleteHeapObjects
                     Serial.print( "+++++ (loc var str) " );   Serial.println( (uint32_t) _activeFunctionData.pLocalVarValues [count].pStringConst - RAMSTART );
 #endif
+                }
             }
-        }
             count++;
+        }
     }
-}
 
     // skip (remainder of) function definition
     findTokenStep( tok_isTerminalGroup1, MyParser::termcod_semicolon, pStep );
@@ -1658,7 +1667,7 @@ void Interpreter::initFunctionLocalNonParamVariables( char* pStep, int paramCoun
                 ((char*) pArray) [3] = dimCount;        // (note: for param arrays, set to max dimension count during parsing)
 
                 tokenType = jumpTokens( 1, pStep, terminalCode );       // assignment, comma or semicolon
-                }
+            }
 
 
             // handle initialisation (if initializer provided)
@@ -1703,9 +1712,9 @@ void Interpreter::initFunctionLocalNonParamVariables( char* pStep, int paramCoun
 #if printCreateDeleteHeapObjects
                             Serial.print( "+++++ (loc var str) " ); Serial.println( (uint32_t) pVarString - RAMSTART );
 #endif
+                        }
                     }
                 }
-            }
 
                 tokenType = jumpTokens( 1, pStep, terminalCode );       // comma or semicolon
             }
