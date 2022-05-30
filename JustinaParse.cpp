@@ -88,7 +88,7 @@ const MyParser::FuncDef MyParser::_functions [] {
 // terminal tokens
 // priority: bits b7654: priority if prefix operator, b3210: if infix operator or other terminal (0 = lowest, 15 = highest) 
 // use and associativity: defines whether terminal can be used as prefix and /or as infix operator; associativity for prefix / infix operators (only)   
- // table sorted by infix operator priority (priority bits 3210)
+// NOTE: table entries with names starting with same characters: shortest entries should come before longest (e.g. '!' before '!=', '&' before '&&')
 
 const MyParser::TerminalDef MyParser::_terminals [] {
     //  name        id code             prio        associativity & use         
@@ -96,23 +96,29 @@ const MyParser::TerminalDef MyParser::_terminals [] {
     {term_comma,    termcod_comma,      0x00,        0x00},
     {term_semicolon,termcod_semicolon,  0x00,        0x00},
     {term_rightPar, termcod_rightPar,   0x00,        0x00},
+    {term_leftPar,  termcod_leftPar,    0x0B,        0x00},
 
     // operators
     {term_assign,   termcod_assign,     0x01,        trm_assocRtoL},
-    {term_lt,       termcod_lt,         0x02,        0x00},
-    {term_gt,       termcod_gt,         0x02,        0x00},
-    {term_eq,       termcod_eq,         0x02,        0x00},
-    {term_concat,   termcod_concat,     0x03,        0x00},
-    {term_plus,     termcod_plus,       0x64,        trm_assocRtoLasPrefix},
-    {term_minus,    termcod_minus,      0x64,        trm_assocRtoLasPrefix},
-    {term_mult,     termcod_mult,       0x05,        0x00},
-    {term_div,      termcod_div,        0x05,        0x00},
-    {term_pow,      termcod_pow,        0x07,        trm_assocRtoL},
-    {term_ltoe,     termcod_ltoe,       0x02,        0x00},
-    {term_gtoe,     termcod_gtoe,       0x02,        0x00},
-    {term_neq,      termcod_ne,         0x02,        0x00},
 
-    {term_leftPar,  termcod_leftPar,    0x08,        0x00},
+    {term_concat,   termcod_concat,     0x06,        0x00},
+
+    {term_or,       termcod_or,         0x02,        0x00},
+    {term_and,      termcod_and,        0x03,        0x00},
+    {term_not,      termcod_not,        0x90,        trm_assocRtoLasPrefix},        // not used as infix
+
+    {term_eq,       termcod_eq,         0x04,        0x00},
+    {term_neq,      termcod_ne,         0x04,        0x00},
+    {term_lt,       termcod_lt,         0x05,        0x00},
+    {term_gt,       termcod_gt,         0x05,        0x00},
+    {term_ltoe,     termcod_ltoe,       0x05,        0x00},
+    {term_gtoe,     termcod_gtoe,       0x05,        0x00},
+
+    {term_plus,     termcod_plus,       0x97,        trm_assocRtoLasPrefix},
+    {term_minus,    termcod_minus,      0x97,        trm_assocRtoLasPrefix},
+    {term_mult,     termcod_mult,       0x08,        0x00},
+    {term_div,      termcod_div,        0x08,        0x00},
+    {term_pow,      termcod_pow,        0x0A,        trm_assocRtoL},
 };
 
 
@@ -517,6 +523,7 @@ MyParser::parseTokenResult_type MyParser::parseInstruction( char*& pInputStart )
     _lastTokenType_hold = Interpreter::tok_no_token;
     _lastTokenType = Interpreter::tok_no_token;                                                      // no token yet
     _lastTokenIsTerminal = false;
+    _lastTokenIsPrefixOp = false;
 
     _parenthesisLevel = 0;
     _isProgramCmd = false;
@@ -541,11 +548,12 @@ MyParser::parseTokenResult_type MyParser::parseInstruction( char*& pInputStart )
         bool isOperator = _lastTokenIsTerminal ? (_lastTermCode <= termcod_opRangeEnd) : false;
 
         // determine token group of last token parsed (bits b4 to b0): this defines which tokens are allowed as next token
-        _lastTokenGroup_sequenceCheck_bit = (isOperator || isComma) ? lastTokenGroup_0 :
-            ((t == Interpreter::tok_no_token) || isSemicolon || (t == Interpreter::tok_isReservedWord)) ? lastTokenGroup_1 :
-            ((t == Interpreter::tok_isRealConst) || (t == Interpreter::tok_isStringConst) || isRightPar) ? lastTokenGroup_2 :
-            ((t == Interpreter::tok_isInternFunction) || (t == Interpreter::tok_isExternFunction)) ? lastTokenGroup_3 :
-            isLeftPar ? lastTokenGroup_4 : lastTokenGroup_5;     // token group 5: scalar or array variable name
+        _lastTokenGroup_sequenceCheck_bit = isOperator ? lastTokenGroup_0 :
+            isComma ? lastTokenGroup_1 :
+            ((t == Interpreter::tok_no_token) || isSemicolon || (t == Interpreter::tok_isReservedWord)) ? lastTokenGroup_2 :
+            ((t == Interpreter::tok_isRealConst) || (t == Interpreter::tok_isStringConst) || isRightPar) ? lastTokenGroup_3 :
+            ((t == Interpreter::tok_isInternFunction) || (t == Interpreter::tok_isExternFunction)) ? lastTokenGroup_4 :
+            isLeftPar ? lastTokenGroup_5 : lastTokenGroup_6;     // token group 5: scalar or array variable name
 
 
         // a space may be required between last token and next token (not yet known), if one of them is a reserved word
@@ -898,7 +906,7 @@ bool MyParser::parseAsResWord( char*& pNext, parseTokenResult_type& result ) {
 
         // token is reserved word, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
         if ( _parenthesisLevel > 0 ) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
-        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2_1) ) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
+        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2) ) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
         if ( !_isCommand ) {                                                             // within commands: do not test here
 
 
@@ -923,7 +931,7 @@ bool MyParser::parseAsResWord( char*& pNext, parseTokenResult_type& result ) {
 
         _lastTokenStep = _pInterpreter->_programCounter - _pInterpreter->_programStorage;
         _lastTokenType = Interpreter::tok_isReservedWord;
-        _lastTokenIsTerminal = false;
+        _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false;
 
         _pInterpreter->_programCounter += sizeof( Interpreter::TokenIsResWord ) - (hasTokenStep ? 0 : 2);
         *_pInterpreter->_programCounter = '\0';                                                 // indicates end of program
@@ -951,7 +959,7 @@ bool MyParser::parseAsNumber( char*& pNext, parseTokenResult_type& result ) {
 
     if ( _pInterpreter->_programCounter == _pInterpreter->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
     // token is a number constant, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-    if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_numConstNotAllowedHere; return false; }
+    if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2_1_0) ) { pNext = pch; result = result_numConstNotAllowedHere; return false; }
 
     // overflow ? (underflow is not detected with strtof() ) 
     if ( !isfinite( f ) ) { pNext = pch; result = result_overflow; return false; }
@@ -976,7 +984,7 @@ bool MyParser::parseAsNumber( char*& pNext, parseTokenResult_type& result ) {
 
     _lastTokenStep = _pInterpreter->_programCounter - _pInterpreter->_programStorage;
     _lastTokenType = Interpreter::tok_isRealConst;
-    _lastTokenIsTerminal = false;
+    _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false;
 
     if ( doNonLocalVarInit ) { initVariable( _lastVariableTokenStep, _lastTokenStep ); }     // initialisation of global / static variable ? (operator: is always assignment)
 
@@ -1002,7 +1010,7 @@ bool MyParser::parseAsStringConstant( char*& pNext, parseTokenResult_type& resul
     if ( _pInterpreter->_programCounter == _pInterpreter->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
     // token is an alphanumeric constant, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-    if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
+    if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2_1_0) ) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
 
     // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
     bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
@@ -1066,7 +1074,7 @@ bool MyParser::parseAsStringConstant( char*& pNext, parseTokenResult_type& resul
 
     _lastTokenStep = _pInterpreter->_programCounter - _pInterpreter->_programStorage;
     _lastTokenType = Interpreter::tok_isStringConst;
-    _lastTokenIsTerminal = false;
+    _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false;
 
     if ( doNonLocalVarInit ) {                                     // initialisation of global / static variable ? 
         if ( !initVariable( _lastVariableTokenStep, _lastTokenStep ) ) { pNext = pch; result = result_arrayInit_emptyStringExpected; return false; };
@@ -1195,7 +1203,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
     char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
     int termIndex;
 
-    for ( termIndex = _terminalCount - 1; termIndex >= 0; termIndex-- ) {                  // for all defined function names: check against alphanumeric token (NOT ending by '\0')
+    for ( termIndex = _terminalCount - 1; termIndex >= 0; termIndex-- ) {                  // for all defined terminal names: check against alphanumeric token (NOT ending by '\0')
         int len = strlen( _terminals [termIndex].terminalName );    // token has correct length ? If not, skip remainder of loop ('continue')                            
         // do not look for trailing space, to use strncmp() wih number of non-space characters found, because a space is not required after an operator
         if ( strncmp( _terminals [termIndex].terminalName, pch, len ) == 0 ) { break; }      // token corresponds to terminal name ? Then exit loop    
@@ -1226,7 +1234,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         if ( _pInterpreter->_programCounter == _pInterpreter->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
         // token is left parenthesis, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_4_3_1_0) ) { pNext = pch;  result = result_parenthesisNotAllowedHere; return false; }
+        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_5_4_2_1_0) ) { pNext = pch;  result = result_parenthesisNotAllowedHere; return false; }
 
         // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
         bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
@@ -1271,7 +1279,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         }
 
         // left parenthesis only ? (not a function or array opening parenthesis): min & max allowed argument count not yet initialised
-        if ( _lastTokenGroup_sequenceCheck_bit & lastTokenGroup_4 ) {
+        if ( _lastTokenGroup_sequenceCheck_bit & lastTokenGroup_5 ) {
             _minFunctionArgs = 1;                                    // initialize min & max allowed argument count to 1
             _maxFunctionArgs = 1;
         }
@@ -1289,6 +1297,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
             (_lastTokenType == Interpreter::tok_isVariable) ? _variableNameIndex : 0;
         _pParsingStack->openPar.variableScope = _variableScope;
 
+        _lastTokenIsPrefixOp = false;
         break; }
 
 
@@ -1300,7 +1309,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         if ( _pInterpreter->_programCounter == _pInterpreter->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
         // token is right parenthesis, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_4_2) ) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
+        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_5_3) ) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
 
         // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
         bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
@@ -1491,6 +1500,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         // set pointer to currently last element in stack
         if ( _blockLevel + _parenthesisLevel > 0 ) { _pParsingStack = (LE_parsingStack*) parsingStack.getLastListElement(); }
 
+        _lastTokenIsPrefixOp = false;
         break;
     }
 
@@ -1503,7 +1513,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         if ( _pInterpreter->_programCounter == _pInterpreter->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
         // token is comma separator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2) ) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
+        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3) ) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
 
         // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
         bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
@@ -1582,6 +1592,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         else {}     // for documentation only: all cases handled
 
         // token is a comma separator, and it's allowed here
+        _lastTokenIsPrefixOp = false;
         break; }
 
 
@@ -1594,13 +1605,14 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 
         // token is semicolon separator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
         if ( _parenthesisLevel > 0 ) { pNext = pch; result = result_missingRightParenthesis; return false; }
-        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2_1) ) { pNext = pch; result = result_expressionNotComplete; return false; }
+        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2) ) { pNext = pch; result = result_expressionNotComplete; return false; }
 
         // token is a semicolon separator, and it's allowed here
+        _lastTokenIsPrefixOp = false;
         break; }
 
 
-    default:    // terminals
+    default:
     {
         // ----------------------------
         // Case 5: token is an operator
@@ -1610,11 +1622,24 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 
         // token is an operator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
 
-        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_4_2_1_0) ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_5_3_2_1_0) ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
 
-        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2) && (_terminals [termIndex].terminalCode != termcod_plus) && (_terminals [termIndex].terminalCode != termcod_minus) ) {
-            pNext = pch; result = result_invalidPrefixOperator; return false;
+        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3) ) {
+            if ( (_terminals [termIndex].terminalCode != termcod_plus) && (_terminals [termIndex].terminalCode != termcod_minus)
+                && (_terminals [termIndex].terminalCode != termcod_not) ) {
+                pNext = pch; result = result_invalidPrefixOperator; return false;
+            }
+            if ( _lastTokenIsPrefixOp ) { pNext = pch; result = result_prefixOperatorNotAllowedhere; return false; }     // not more than one prefix operator in a row
+            _lastTokenIsPrefixOp = true;
         }
+        else {
+            if ( _terminals [termIndex].terminalCode == termcod_not ) {
+                pNext = pch; result = result_invalidInfixOperator; return false;
+            }
+            _lastTokenIsPrefixOp = false;
+        }
+
+
 
         // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
         bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
@@ -1693,7 +1718,7 @@ bool MyParser::parseAsInternFunction( char*& pNext, parseTokenResult_type& resul
         // token is a function, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
         if ( _pInterpreter->_programCounter == _pInterpreter->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
-        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_functionNotAllowedHere; return false; }
+        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2_1_0) ) { pNext = pch; result = result_functionNotAllowedHere; return false; }
 
         // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
         bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
@@ -1714,7 +1739,7 @@ bool MyParser::parseAsInternFunction( char*& pNext, parseTokenResult_type& resul
 
         _lastTokenStep = _pInterpreter->_programCounter - _pInterpreter->_programStorage;
         _lastTokenType = Interpreter::tok_isInternFunction;
-        _lastTokenIsTerminal = false;
+        _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false;
 
         _pInterpreter->_programCounter += sizeof( Interpreter::TokenIsIntFunction );
         *_pInterpreter->_programCounter = '\0';                                                 // indicates end of program
@@ -1765,7 +1790,7 @@ bool MyParser::parseAsExternFunction( char*& pNext, parseTokenResult_type& resul
     if ( _pInterpreter->_programCounter == _pInterpreter->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
     // token is an external function, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-    if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_functionNotAllowedHere; return false; }
+    if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2_1_0) ) { pNext = pch; result = result_functionNotAllowedHere; return false; }
 
     // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
     bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
@@ -1838,7 +1863,7 @@ bool MyParser::parseAsExternFunction( char*& pNext, parseTokenResult_type& resul
 
     _lastTokenStep = _pInterpreter->_programCounter - _pInterpreter->_programStorage;
     _lastTokenType = Interpreter::tok_isExternFunction;
-    _lastTokenIsTerminal = false;
+    _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false;
 
     _pInterpreter->_programCounter += sizeof( Interpreter::TokenIsExtFunction );
     *_pInterpreter->_programCounter = '\0';                                                 // indicates end of program
@@ -1871,7 +1896,7 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
     if ( _pInterpreter->_programCounter == _pInterpreter->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
     // token is a variable, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-    if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_4_1_0) ) { pNext = pch; result = result_variableNotAllowedHere; return false; }
+    if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2_1_0) ) { pNext = pch; result = result_variableNotAllowedHere; return false; }
 
     // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
     bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
@@ -2168,7 +2193,7 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
     _lastTokenStep = _pInterpreter->_programCounter - _pInterpreter->_programStorage;
     _lastVariableTokenStep = _lastTokenStep;
     _lastTokenType = Interpreter::tok_isVariable;
-    _lastTokenIsTerminal = false;
+    _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false;
 
     _pInterpreter->_programCounter += sizeof( Interpreter::TokenIsVariable );
     *_pInterpreter->_programCounter = '\0';                                                 // indicates end of program
@@ -2211,7 +2236,7 @@ bool MyParser::parseAsIdentifierName( char*& pNext, parseTokenResult_type& resul
 
     _lastTokenStep = _pInterpreter->_programCounter - _pInterpreter->_programStorage;
     _lastTokenType = Interpreter::tok_isGenericName;
-    _lastTokenIsTerminal = false;
+    _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false;
 
     _pInterpreter->_programCounter += sizeof( Interpreter::TokenIsStringCst );
     *_pInterpreter->_programCounter = '\0';                                                 // indicates end of program
@@ -2304,12 +2329,13 @@ void MyParser::prettyPrintInstructions( bool printOneInstruction, char* startTok
             int index = (progCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F;
             index += ((tokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (tokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
 
-            if ( _terminals [index].terminalCode == termcod_concat ) {
+            if ( (_terminals [index].terminalCode == termcod_concat) || (_terminals [index].terminalCode == termcod_and) || (_terminals [index].terminalCode == termcod_or) ) {
                 strcat( prettyToken, " " );          // readability
                 errorTokenHasLeadingSpace = true;
             }
             strcat( prettyToken, _terminals [index].terminalName );         // concatenate with empty string or single-space string
-            if ( (_terminals [index].terminalCode == termcod_semicolon) || (_terminals [index].terminalCode == termcod_concat) ) {
+            if ( (_terminals [index].terminalCode == termcod_semicolon) || (_terminals [index].terminalCode == termcod_concat) ||
+                (_terminals [index].terminalCode == termcod_and) || (_terminals [index].terminalCode == termcod_or) ) {
                 strcat( prettyToken, " " );          // readability
             }
 

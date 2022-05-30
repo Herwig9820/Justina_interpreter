@@ -14,6 +14,7 @@ Interpreter::execResult_type  Interpreter::exec() {
     int tokenIndex { 0 };
     bool lastValueIsStored = false;
     bool isFunctionReturn = false;
+    bool precedingIsComma = false;                                      // used to detect prefix operators following a comma separator
     bool nextIsNewInstructionStart = false;                     // false, because this is already the start of a new instruction
     execResult_type execResult = result_execOK;
 
@@ -144,6 +145,7 @@ Interpreter::execResult_type  Interpreter::exec() {
 
                 // terminal tokens: only operators and left parentheses are pushed on the stack
                 PushTerminalToken( tokenType );
+                if ( precedingIsComma ) { _pEvalStackTop->terminal.index |= 0x80; }       //// 
 
             }
 
@@ -169,7 +171,7 @@ Interpreter::execResult_type  Interpreter::exec() {
 
                     while ( (pstackLvl->genericToken.tokenType != tok_isTerminalGroup1) && (pstackLvl->genericToken.tokenType != tok_isTerminalGroup2) && (pstackLvl->genericToken.tokenType != tok_isTerminalGroup3) ) {
                         // terminal found: continue until left parenthesis
-                        if ( MyParser::_terminals [pstackLvl->terminal.index].terminalCode == MyParser::termcod_leftPar ) { break; }   // continue until left parenthesis found
+                        if ( MyParser::_terminals [pstackLvl->terminal.index & 0x7F].terminalCode == MyParser::termcod_leftPar ) { break; }   // continue until left parenthesis found
                         pstackLvl = (LE_evalStack*) evalStack.getPrevListElement( pstackLvl );
                         argCount++;
                     }
@@ -226,12 +228,14 @@ Interpreter::execResult_type  Interpreter::exec() {
         }   // end 'switch (tokenType)'
 
 
-        // if execution error: print current instruction being executed, signal error and exit
-        // -----------------------------------------------------------------------------------
-
         // advance to next token
         _programCounter = _activeFunctionData.pNextStep;         // note: will be altered when calling an external function and upon return of a called function
         tokenType = *_activeFunctionData.pNextStep & 0x0F;                                                               // next token type (could be token within caller, if returning now)
+        precedingIsComma = isComma;
+
+
+        // if execution error: print current instruction being executed, signal error and exit
+        // -----------------------------------------------------------------------------------
 
         if ( execResult != result_execOK ) {
             int sourceErrorPos { 0 };
@@ -259,13 +263,13 @@ Interpreter::execResult_type  Interpreter::exec() {
 
             isFunctionReturn = false;
             nextIsNewInstructionStart = false;
-        }  // statement start (for pretty print only)    
+        }
 
     }   // end 'while ( tokenType != tok_no_token )'                                                                                       // end 'while ( tokenType != tok_no_token )'
 
 
-    // All tokens processed: finalize
-    // ------------------------------
+        // All tokens processed: finalize
+        // ------------------------------
     if ( lastValueIsStored ) {             // did the execution produce a result ?
         // print last result
         char s [MyParser::_maxAlphaCstLen + 10];  // note: with small '_maxAlphaCstLen' values, make sure string is also long enough to print real values
@@ -752,13 +756,14 @@ void Interpreter::saveLastValue( bool& overWritePrevious ) {
 
 void Interpreter::clearEvalStackLevels( int n ) {
 
-    if ( n == 0 ) { return; }             // nothing to do
+    if ( n <= 0 ) { return; }             // nothing to do
 
     LE_evalStack* pstackLvl = _pEvalStackTop, * pPrecedingStackLvl {};
 
     for ( int i = 1; i <= n; i++ ) {
         if ( pstackLvl->genericToken.tokenType == tok_isConstant ) {            // exclude non-constant tokens (terminals, reserved words, functions, ...)
             if ( ((pstackLvl->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) &&
+                // delete associated intermediate result string object (if present)
                 (pstackLvl->varOrConst.valueType == value_isStringPointer) ) {
                 if ( pstackLvl->varOrConst.value.pStringConst != nullptr ) {
 #if printCreateDeleteHeapObjects
@@ -770,6 +775,7 @@ void Interpreter::clearEvalStackLevels( int n ) {
             }
         }
 
+        // delete evaluation stack level
         pPrecedingStackLvl = (LE_evalStack*) evalStack.getPrevListElement( pstackLvl );
         evalStack.deleteListElement( pstackLvl );
         pstackLvl = pPrecedingStackLvl;
@@ -781,13 +787,11 @@ void Interpreter::clearEvalStackLevels( int n ) {
     return;
 }
 
-// -----------------------
-// Clear evaluation stack  
-// -----------------------
+// ----------------------------------------------------------------
+// Clear evaluation stack and associated intermediate string object 
+// ----------------------------------------------------------------
 
-void Interpreter::clearEvalStack() {                // and intermediate strings
-
-    // clear evaluation stack and all associated temporary objects
+void Interpreter::clearEvalStack() {
 
     // delete any intermediate result string objects used as arguments
     LE_evalStack* pstackLvl = _pEvalStackTop;
@@ -806,6 +810,7 @@ void Interpreter::clearEvalStack() {                // and intermediate strings
         }
         pstackLvl = (LE_evalStack*) evalStack.getPrevListElement( pstackLvl );
     };
+
 
     // error if not all intermediate string objects deleted (points to an internal Justina issue)
     if ( intermediateStringObjectCount != 0 ) {
@@ -859,11 +864,11 @@ void Interpreter::clearFlowCtrlStack() {                // and remaining local s
 }
 
 
-// ------------------------------------------------------------------------------
-// Remove operands / function arguments / array subscripts from evaluation stack
-// ------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------
+// Remove operands / function arguments / array subscripts from evaluation stack, starting at a specific stack level
+// -----------------------------------------------------------------------------------------------------------------
 
-void Interpreter::deleteStackArguments( LE_evalStack* pPrecedingStackLvl, int argCount, bool includePreceding ) {
+void Interpreter::deleteStackArguments( LE_evalStack* pPrecedingStackLvl, int argCount ) {
 
     // Delete any intermediate result string objects used as operands 
     // --------------------------------------------------------------
@@ -888,10 +893,9 @@ void Interpreter::deleteStackArguments( LE_evalStack* pPrecedingStackLvl, int ar
     // cleanup stack
     // -------------
 
-    // set pointer to either first token (value) after opening parenthesis (includePreceding = false -> used if array subscripts), or
-    // last token (function name) before opening parenthesis (includePreceding = true -> used if calling function)
+    // set pointer to either first token (value) after opening parenthesis 
     // note that the left parenthesis is already removed from stack at this stage
-    pStackLvl = includePreceding ? pPrecedingStackLvl : (LE_evalStack*) evalStack.getNextListElement( pPrecedingStackLvl );
+    pStackLvl = (LE_evalStack*) evalStack.getNextListElement( pPrecedingStackLvl );
     _pEvalStackTop = pPrecedingStackLvl;                                                        // note down before deleting list levels
     _pEvalStackMinus1 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackTop );
     _pEvalStackMinus2 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackMinus1 );
@@ -980,7 +984,7 @@ Interpreter::execResult_type Interpreter::arrayAndSubscriptsToarrayElement( LE_e
     // Remove array subscripts from evaluation stack
     // ----------------------------------------------
 
-    deleteStackArguments( pPrecedingStackLvl, argCount, false );
+    deleteStackArguments( pPrecedingStackLvl, argCount );
 
     return result_execOK;
 }
@@ -1024,9 +1028,9 @@ void Interpreter::makeIntermediateConstant( LE_evalStack* pEvalStackLvl ) {
 }
 
 
-// ----------------------------------------------
-// *   execute all processed infix operations   *
-// ----------------------------------------------
+// ----------------------------------------
+// *   execute all processed operations   *
+// ----------------------------------------
 
 Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {            // prefix and infix
 
@@ -1041,11 +1045,12 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
 #endif
     // check if (an) operation(s) can be executed 
     // when an operation is executed, check whether lower priority operations can now be executed as well (example: 3+5*7: first execute 5*7 yielding 35, then execute 3+35)
-    while ( evalStack.getElementCount() >= _activeFunctionData.callerEvalStackLevels + 2 ) {                                                      // a previous operator might exist
+    while ( evalStack.getElementCount() >= _activeFunctionData.callerEvalStackLevels + 2 ) {                                                      // a preceding token exists on the stack
 
-        bool minus1IsTerminal = (_pEvalStackMinus1->genericToken.tokenType == tok_isTerminalGroup1) || (_pEvalStackMinus1->genericToken.tokenType == tok_isTerminalGroup2)
-            || (_pEvalStackMinus1->genericToken.tokenType == tok_isTerminalGroup2);
-        bool minus1IsOperator = (MyParser::_terminals [_pEvalStackMinus1->terminal.index].terminalCode <= MyParser::termcod_opRangeEnd);
+        // the entry preceding the current parsed constant, variable or expression result is ALWAYS a terminal (but never a right parenthesis, which is never pushed to the evaluation stack)
+        // (note the current entry could also be preceded by a command (reserved word), which is never pushed to the evaluation stack as well)
+        int terminalIndex = _pEvalStackMinus1->terminal.index & 0x7F;
+        bool minus1IsOperator = (MyParser::_terminals [terminalIndex].terminalCode <= MyParser::termcod_opRangeEnd);  // preceding entry is operator ?
 
         if ( minus1IsOperator ) {
             // check pending (not yet processed) token (always present and always a terminal token after a variable or constant token)
@@ -1057,25 +1062,23 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
 
             // infix operation ?
             bool isPrefixOperator = true;             // init as prefix operation
-            if ( evalStack.getElementCount() >= _activeFunctionData.callerEvalStackLevels + 2 ) {         // already a token on the stack ?               
-                bool minus2IsTerminal = ((_pEvalStackMinus2->genericToken.tokenType == tok_isTerminalGroup1) ||
-                    (_pEvalStackMinus2->genericToken.tokenType == tok_isTerminalGroup2) || (_pEvalStackMinus2->genericToken.tokenType == tok_isTerminalGroup3));
-                bool minus2IsRightPar = (MyParser::_terminals [_pEvalStackMinus2->terminal.index].terminalCode == MyParser::termcod_rightPar);
-                isPrefixOperator = !((_pEvalStackMinus2->genericToken.tokenType == tok_isConstant) || (_pEvalStackMinus2->genericToken.tokenType == tok_isVariable)
-                    || minus2IsRightPar);
+            if ( evalStack.getElementCount() >= _activeFunctionData.callerEvalStackLevels + 3 ) {         // TWO preceding tokens exist on the stack               
+                isPrefixOperator = (!(_pEvalStackMinus2->genericToken.tokenType == tok_isConstant) && !(_pEvalStackMinus2->genericToken.tokenType == tok_isVariable));
+                // comma separators are not pushed to the stack, but if it is followed by a (prefix) operator, a flag is set in order not to mistake a token sequence as two operands and an infix operation
+                if ( _pEvalStackMinus1->terminal.index & 0x80 ) { isPrefixOperator = true; }            // e.g. print 5, -6 : prefix operation on second expression ('-6') and not '5-6' as infix operation
             }
 
             // check priority and associativity
-            int priority = _pmyParser->_terminals [_pEvalStackMinus1->terminal.index].priority;
+            int priority = _pmyParser->_terminals [terminalIndex].priority;
             if ( isPrefixOperator ) { priority = priority >> 4; }
             priority &= 0x0F;
 
-            int associativity = _pmyParser->_terminals [_pEvalStackMinus1->terminal.index].associativity;
+            int associativity = _pmyParser->_terminals [terminalIndex].associativity;
             if ( isPrefixOperator ) { associativity = associativity >> 4; }
             associativity &= _pmyParser->trm_assocRtoL;
 
             /*
-                        Serial.print( "*** read terminal index: " ); Serial.print( (int) _pEvalStackMinus1->terminal.index );
+                        Serial.print( "*** read terminal index: " ); Serial.print( (int) terminalIndex );
                         Serial.print( ", priority " ); Serial.print( (int) priority );
                         Serial.print( ", associativity " ); Serial.print( (int) associativity );
                         Serial.println( isPrefixOperator ? " - exec prefix" : " - exec infix" );
@@ -1118,7 +1121,8 @@ Interpreter::execResult_type  Interpreter::execPrefixOperation() {
 
     operand.realConst = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? *_pEvalStackTop->varOrConst.value.pRealConst : _pEvalStackTop->varOrConst.value.realConst;
 
-    if ( _pmyParser->_terminals [_pEvalStackMinus1->terminal.index].terminalCode == _pmyParser->termcod_minus ) { operand.realConst = -operand.realConst; } // prefix '-' ('+': no change in value)
+    if ( _pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_minus ) { operand.realConst = -operand.realConst; } // prefix '-' ('+': no change in value)
+    else if ( _pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_not ) { operand.realConst = (operand.realConst == 0); } // prefix: not
 
     // negation of a floating point value can not produce an error: no checks needed
 
@@ -1163,7 +1167,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     operandValueType = operand2IsVarRef ? (*_pEvalStackTop->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackTop->varOrConst.valueType;
     bool op2real = ((uint8_t) operandValueType == value_isFloat);
 
-    int operatorCode = _pmyParser->_terminals [_pEvalStackMinus1->terminal.index].terminalCode;
+    int operatorCode = _pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode;
 
     bool isUserVar { false }, isGlobalVar { false }, isStaticVar { false }, isLocalVar { false };
 
@@ -1251,7 +1255,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         // if variable reference, then value type on the stack indicates 'variable reference', so don't overwrite it
         if ( !operand1IsVarRef ) { // if reference, then value type on the stack indicates 'variable reference', so don't overwrite it
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) | (opResultReal ? value_isFloat : value_isStringPointer);
-    }
+        }
 
 
         break;
@@ -1287,8 +1291,14 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
             Serial.print( "+++++ (Intermd str) " );   Serial.println( (uint32_t) opResult.pStringConst - RAMSTART );
 #endif
         }
-}
+    }
     break;
+    case MyParser::termcod_and:
+        opResult.realConst = operand1.realConst && operand2.realConst;
+        break;
+    case MyParser::termcod_or:
+        opResult.realConst = operand1.realConst || operand2.realConst;
+        break;
     case MyParser::termcod_plus:
         opResult.realConst = operand1.realConst + operand2.realConst;
         break;
@@ -1714,14 +1724,14 @@ void Interpreter::initFunctionLocalNonParamVariables( char* pStep, int paramCoun
                 }
 
                 tokenType = jumpTokens( 1, pStep, terminalCode );       // comma or semicolon
-                }
+            }
 
             count++;
 
-            } while ( terminalCode == MyParser::termcod_comma );
+        } while ( terminalCode == MyParser::termcod_comma );
 
-        }
-    };
+    }
+};
 
 
 // -----------------------------------

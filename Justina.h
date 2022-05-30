@@ -469,7 +469,7 @@ public:
     int jumpTokens( int n, char*& pStep );
     int jumpTokens( int n );
 
-    void deleteStackArguments( LE_evalStack* pPrecedingStackLvl, int argCount, bool includePreceding );
+    void deleteStackArguments( LE_evalStack* pPrecedingStackLvl, int argCount );
 
     void PushTerminalToken( int& tokenType );
     void pushResWord( int& tokenType );
@@ -567,6 +567,9 @@ public:
     enum termin_code {
         // operators
         termcod_assign = 0,
+        termcod_or,
+        termcod_and,
+        termcod_not,
         termcod_lt,
         termcod_gt,
         termcod_ltoe,
@@ -582,7 +585,7 @@ public:
 
         termcod_opRangeEnd = termcod_pow,
 
-        // other terminals: terminal code bit 7 set
+        // other terminals
         termcod_comma = termcod_opRangeEnd + 1,
         termcod_semicolon,
         termcod_leftPar,
@@ -602,6 +605,8 @@ public:
         result_separatorNotAllowedHere = 1100,
         result_operatorNotAllowedHere,
         result_invalidPrefixOperator,
+        result_invalidInfixOperator,
+        result_prefixOperatorNotAllowedhere,
         result_parenthesisNotAllowedHere,
         result_resWordNotAllowedHere,
         result_functionNotAllowedHere,
@@ -772,20 +777,21 @@ public:
     static constexpr char c_extFunctionMaxArgs = 0xF;             // must fit in 4 bits
 
     // these constants are used to check to which token group (or group of token groups) a parsed token belongs
-    static constexpr uint8_t lastTokenGroup_0 = 1 << 0;          // operator, comma
-    static constexpr uint8_t lastTokenGroup_1 = 1 << 1;          // (line start), semicolon, reserved word
-    static constexpr uint8_t lastTokenGroup_2 = 1 << 2;          // number, alphanumeric constant, right bracket
-    static constexpr uint8_t lastTokenGroup_3 = 1 << 3;          // internal or external function name
-    static constexpr uint8_t lastTokenGroup_4 = 1 << 4;          // left parenthesis
-    static constexpr uint8_t lastTokenGroup_5 = 1 << 5;          // variable
+    static constexpr uint8_t lastTokenGroup_0 = 1 << 0;          // operator
+    static constexpr uint8_t lastTokenGroup_1 = 1 << 1;          // comma
+    static constexpr uint8_t lastTokenGroup_2 = 1 << 2;          // (line start), semicolon, reserved word
+    static constexpr uint8_t lastTokenGroup_3 = 1 << 3;          // number, alphanumeric constant, right bracket
+    static constexpr uint8_t lastTokenGroup_4 = 1 << 4;          // internal or external function name
+    static constexpr uint8_t lastTokenGroup_5 = 1 << 5;          // left parenthesis
+    static constexpr uint8_t lastTokenGroup_6 = 1 << 6;          // variable
 
     // groups of token groups: combined token groups (for testing valid token sequences when next token will be parsed)
-    static constexpr uint8_t lastTokenGroups_4_1_0 = lastTokenGroup_4 | lastTokenGroup_1 | lastTokenGroup_0;
-    static constexpr uint8_t lastTokenGroups_5_2_1 = lastTokenGroup_5 | lastTokenGroup_2 | lastTokenGroup_1;
-    static constexpr uint8_t lastTokenGroups_5_4_2 = lastTokenGroup_5 | lastTokenGroup_4 | lastTokenGroup_2;
-    static constexpr uint8_t lastTokenGroups_5_4_3_1_0 = lastTokenGroup_5 | lastTokenGroup_4 | lastTokenGroup_3 | lastTokenGroup_1 | lastTokenGroup_0;
-    static constexpr uint8_t lastTokenGroups_5_2 = lastTokenGroup_5 | lastTokenGroup_2;
-    static constexpr uint8_t lastTokenGroups_5_4_2_1_0 = lastTokenGroup_5 | lastTokenGroup_4 | lastTokenGroup_2 | lastTokenGroup_1 | lastTokenGroup_0;
+    static constexpr uint8_t lastTokenGroups_5_2_1_0 = lastTokenGroup_5 | lastTokenGroup_2 | lastTokenGroup_1 | lastTokenGroup_0;
+    static constexpr uint8_t lastTokenGroups_6_3_2 = lastTokenGroup_6 | lastTokenGroup_3 | lastTokenGroup_2;
+    static constexpr uint8_t lastTokenGroups_6_5_3 = lastTokenGroup_6 | lastTokenGroup_5 | lastTokenGroup_3;
+    static constexpr uint8_t lastTokenGroups_6_5_4_2_1_0 = lastTokenGroup_6 | lastTokenGroup_5 | lastTokenGroup_4 | lastTokenGroup_2 | lastTokenGroup_1 | lastTokenGroup_0;
+    static constexpr uint8_t lastTokenGroups_6_3 = lastTokenGroup_6 | lastTokenGroup_3;
+    static constexpr uint8_t lastTokenGroups_6_5_3_2_1_0 = lastTokenGroup_6 | lastTokenGroup_5 | lastTokenGroup_3 | lastTokenGroup_2 | lastTokenGroup_1 | lastTokenGroup_0;
 
 
     // terminal tokens 
@@ -881,7 +887,7 @@ public:
     static constexpr char* term_gt = ">";
     static constexpr char* term_ltoe = "<=";
     static constexpr char* term_gtoe = ">=";
-    static constexpr char* term_neq = "<>";
+    static constexpr char* term_neq = "!=";
     static constexpr char* term_eq = "==";
     static constexpr char* term_concat = "&";
     static constexpr char* term_plus = "+";
@@ -889,6 +895,9 @@ public:
     static constexpr char* term_mult = "*";
     static constexpr char* term_div = "/";
     static constexpr char* term_pow = "^";
+    static constexpr char* term_and = "&&";
+    static constexpr char* term_or = "||";
+    static constexpr char* term_not = "!";
 
     static const ResWordDef _resWords [];                       // reserved word names
     static const FuncDef _functions [];                         // function names with min & max arguments allowed
@@ -943,6 +952,8 @@ private:
     int _lastTokenIsTerminal;
     int _lastTokenIsTerminal_hold;
     int _previousTokenIsTerminal;
+
+    bool _lastTokenIsPrefixOp;
 
     Interpreter* _pInterpreter;
 
