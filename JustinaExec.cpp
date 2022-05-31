@@ -1122,16 +1122,38 @@ Interpreter::execResult_type  Interpreter::execPrefixOperation() {
     operand.realConst = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? *_pEvalStackTop->varOrConst.value.pRealConst : _pEvalStackTop->varOrConst.value.realConst;
 
     if ( _pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_minus ) { operand.realConst = -operand.realConst; } // prefix '-' ('+': no change in value)
+    else if ( _pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_preIncr ) { ++operand.realConst; } // prefix: increment
+    else if ( _pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_preDecr ) { --operand.realConst; } // prefix: decrement
     else if ( _pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_not ) { operand.realConst = (operand.realConst == 0); } // prefix: not
 
-    // negation of a floating point value can not produce an error: no checks needed
 
-    //  store result in stack (if not yet, then it becomes an intermediate constant now)
-    _pEvalStackTop->varOrConst.value = operand;
-    _pEvalStackTop->varOrConst.valueType = valueType;                   // real or string
-    _pEvalStackTop->varOrConst.tokenType = tok_isConstant;              // use generic constant type
-    _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
-    _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
+    // tests
+    // -----
+
+    if ( isnan( operand.realConst ) ) { return result_undefined; }
+    else if ( !isfinite( operand.realConst ) ) { return result_overflow; }
+
+
+    // decrement or increment operation: store value in variable (variable type does not change) and return variable reference instead of intermediate constant
+    // --------------------------------------------------------------------------------------------------------------------------------------------------------
+
+    if ( (_pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_preIncr)
+        || (_pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_preDecr) ) {
+        *_pEvalStackTop->varOrConst.value.pRealConst = operand.realConst;
+    }
+
+
+    //  if not a decrement or increment operation, store result in stack as an intermediate constant
+    // ---------------------------------------------------------------------------------------------
+
+    else {
+        //  store result in stack
+        _pEvalStackTop->varOrConst.value = operand;
+        _pEvalStackTop->varOrConst.valueType = valueType;                   // real or string
+        _pEvalStackTop->varOrConst.tokenType = tok_isConstant;              // use generic constant type
+        _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
+        _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
+    }
 
 
     //  clean up stack (drop prefix operator)
@@ -1171,14 +1193,13 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 
     bool isUserVar { false }, isGlobalVar { false }, isStaticVar { false }, isLocalVar { false };
 
-    // check if operands are compatible with operator: real for all operators except string concatenation
     _activeFunctionData.errorProgramCounter = _pEvalStackMinus1->terminal.tokenAddress;                // in the event of an error
 
-    if ( operatorCode != _pmyParser->termcod_assign ) {                                           // not an assignment ?
-        if ( (operatorCode == _pmyParser->termcod_concat) && (op1real || op2real) ) { return result_stringExpected; }
-        else if ( (operatorCode != _pmyParser->termcod_concat) && (!op1real || !op2real) ) { return result_numberExpected; }
-    }
-    else {                                                                                  // assignment 
+    bool operationIncludesAssignment = ((operatorCode == _pmyParser->termcod_assign)
+        || (operatorCode == _pmyParser->termcod_plusAssign) || (operatorCode == _pmyParser->termcod_minusAssign)
+        || (operatorCode == _pmyParser->termcod_multAssign) || (operatorCode == _pmyParser->termcod_divAssign));
+
+    if ( operationIncludesAssignment ) {
         if ( _pEvalStackMinus2->varOrConst.variableAttributes & var_isArray ) {        // asignment to array element: value type cannot change
             if ( op1real != op2real ) { return result_array_valueTypeIsFixed; }
         }
@@ -1188,6 +1209,12 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         isGlobalVar = ((_pEvalStackMinus2->varOrConst.variableAttributes & var_scopeMask) == var_isGlobal);
         isStaticVar = ((_pEvalStackMinus2->varOrConst.variableAttributes & var_scopeMask) == var_isStaticInFunc);
         isLocalVar = ((_pEvalStackMinus2->varOrConst.variableAttributes & var_scopeMask) == var_isLocalInFunc);            // but not function parameter definitions
+    }
+
+    // check if operands are compatible with operator: real for all operators except string concatenation
+    if ( operatorCode != _pmyParser->termcod_assign ) {                                           // not an assignment ?
+        if ( (operatorCode == _pmyParser->termcod_concat) && (op1real || op2real) ) { return result_stringExpected; }
+        else if ( (operatorCode != _pmyParser->termcod_concat) && (!op1real || !op2real) ) { return result_numberExpected; }
     }
 
     // mixed operands not allowed; 2 x real -> real; 2 x string -> string: set result value type to operand 2 value type (assignment: current operand 1 value type is not relevant)
@@ -1204,12 +1231,110 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 
     int stringlen { 0 };                                                                                  // define outside switch statement
 
+
+    // Execute infix operators taking 2 operands. Do not perform assignment yet (assignment operators)
+    // -----------------------------------------------------------------------------------------------
+
     switch ( operatorCode ) {                                                  // operation to execute
 
+    case MyParser::termcod_concat:
+    {
+        // concatenate two operand strings objects and store pointer to it in result
+        stringlen = 0;                                  // is both operands are empty strings
+        if ( !op1emptyString ) { stringlen = strlen( operand1.pStringConst ); }
+        if ( !op2emptyString ) { stringlen += strlen( operand2.pStringConst ); }
+        if ( stringlen == 0 ) { opResult.pStringConst = nullptr; }                                // empty strings are represented by a nullptr (conserve heap space)
+        else {
+            opResult.pStringConst = new char [stringlen + 1];
+            intermediateStringObjectCount++;
+            opResult.pStringConst [0] = '\0';                                // in case first operand is nullptr
+            if ( !op1emptyString ) { strcpy( opResult.pStringConst, operand1.pStringConst ); }
+            if ( !op2emptyString ) { strcat( opResult.pStringConst, operand2.pStringConst ); }
+#if printCreateDeleteHeapObjects
+            Serial.print( "+++++ (Intermd str) " );   Serial.println( (uint32_t) opResult.pStringConst - RAMSTART );
+#endif
+        }
+    }
+    break;
 
     case MyParser::termcod_assign:
-        // Case: execute assignment (only possible if first operand is a variable: checked during parsing)
-        // -----------------------------------------------------------------------------------------------
+        opResult = operand2;
+        break;
+
+    case MyParser::termcod_plus:
+    case MyParser::termcod_plusAssign:
+        opResult.realConst = operand1.realConst + operand2.realConst;
+        break;
+
+    case MyParser::termcod_minus:
+    case MyParser::termcod_minusAssign:
+        opResult.realConst = operand1.realConst - operand2.realConst;
+        break;
+
+    case MyParser::termcod_mult:
+    case MyParser::termcod_multAssign:
+        opResult.realConst = operand1.realConst * operand2.realConst;
+        if ( (operand1.realConst != 0) && (operand2.realConst != 0) && (!isnormal( opResult.realConst )) ) { return result_underflow; }
+        break;
+
+    case MyParser::termcod_div:
+    case MyParser::termcod_divAssign:
+        opResult.realConst = operand1.realConst / operand2.realConst;
+        if ( (operand1.realConst != 0) && (!isnormal( opResult.realConst )) ) { return result_underflow; }
+        break;
+
+    case MyParser::termcod_pow:
+        if ( (operand1.realConst == 0) && (operand2.realConst == 0) ) { return result_undefined; } // C++ pow() provides 1 as result
+        opResult.realConst = pow( operand1.realConst, operand2.realConst );
+        break;
+
+    case MyParser::termcod_and:
+        opResult.realConst = operand1.realConst && operand2.realConst;
+        break;
+
+    case MyParser::termcod_or:
+        opResult.realConst = operand1.realConst || operand2.realConst;
+        break;
+
+    case MyParser::termcod_lt:
+        opResult.realConst = operand1.realConst < operand2.realConst;
+        break;
+
+    case MyParser::termcod_gt:
+        opResult.realConst = operand1.realConst > operand2.realConst;
+        break;
+
+    case MyParser::termcod_eq:
+        opResult.realConst = operand1.realConst == operand2.realConst;
+        break;
+
+    case MyParser::termcod_ltoe:
+        opResult.realConst = operand1.realConst <= operand2.realConst;
+        break;
+
+    case MyParser::termcod_gtoe:
+        opResult.realConst = operand1.realConst >= operand2.realConst;
+        break;
+
+    case MyParser::termcod_ne:
+        opResult.realConst = operand1.realConst != operand2.realConst;
+        break;
+    }       // switch
+
+
+    // tests
+    // -----
+
+    if ( (opResultReal) && (operatorCode != _pmyParser->termcod_assign) ) {     // check error (not for pure assignment)
+        if ( isnan( opResult.realConst ) ) { return result_undefined; }
+        else if ( !isfinite( opResult.realConst ) ) { return result_overflow; }
+    }
+
+
+    // Execute (optional) assignment (only possible if first operand is a variable: checked during parsing)
+    // ----------------------------------------------------------------------------------------------------
+
+    if ( operationIncludesAssignment ) {
 
         // determine variable scope
 
@@ -1223,13 +1348,13 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
                 delete [] * _pEvalStackMinus2->varOrConst.value.ppStringConst;
                 isUserVar ? userVarStringObjectCount-- : (isGlobalVar || isStaticVar) ? globalStaticVarStringObjectCount-- : localVarStringObjectCount--;
-            }
         }
+    }
 
         // if the value to be assigned is real (float) OR an empty string: simply assign the value (not a heap object)
 
         if ( op2real || op2emptyString ) {
-            opResult = operand2;
+            // nothing to do
         }
         // the value (parsed constant, variable value or intermediate result) to be assigned to the receiving variable is a non-empty string value
         else {
@@ -1256,82 +1381,8 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         if ( !operand1IsVarRef ) { // if reference, then value type on the stack indicates 'variable reference', so don't overwrite it
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) | (opResultReal ? value_isFloat : value_isStringPointer);
         }
+}
 
-
-        break;
-
-
-
-        // Next cases: execute infix operators taking 2 operands 
-        // -----------------------------------------------------
-
-    case MyParser::termcod_lt:
-        opResult.realConst = operand1.realConst < operand2.realConst;
-        break;
-    case MyParser::termcod_gt:
-        opResult.realConst = operand1.realConst > operand2.realConst;
-        break;
-    case MyParser::termcod_eq:
-        opResult.realConst = operand1.realConst == operand2.realConst;
-        break;
-    case MyParser::termcod_concat:
-    {
-        // concatenate two operand strings objects and store pointer to it in result
-        stringlen = 0;                                  // is both operands are empty strings
-        if ( !op1emptyString ) { stringlen = strlen( operand1.pStringConst ); }
-        if ( !op2emptyString ) { stringlen += strlen( operand2.pStringConst ); }
-        if ( stringlen == 0 ) { opResult.pStringConst = nullptr; }                                // empty strings are represented by a nullptr (conserve heap space)
-        else {
-            opResult.pStringConst = new char [stringlen + 1];
-            intermediateStringObjectCount++;
-            opResult.pStringConst [0] = '\0';                                // in case first operand is nullptr
-            if ( !op1emptyString ) { strcpy( opResult.pStringConst, operand1.pStringConst ); }
-            if ( !op2emptyString ) { strcat( opResult.pStringConst, operand2.pStringConst ); }
-#if printCreateDeleteHeapObjects
-            Serial.print( "+++++ (Intermd str) " );   Serial.println( (uint32_t) opResult.pStringConst - RAMSTART );
-#endif
-        }
-    }
-    break;
-    case MyParser::termcod_and:
-        opResult.realConst = operand1.realConst && operand2.realConst;
-        break;
-    case MyParser::termcod_or:
-        opResult.realConst = operand1.realConst || operand2.realConst;
-        break;
-    case MyParser::termcod_plus:
-        opResult.realConst = operand1.realConst + operand2.realConst;
-        break;
-    case MyParser::termcod_minus:
-        opResult.realConst = operand1.realConst - operand2.realConst;
-        break;
-    case MyParser::termcod_mult:
-        opResult.realConst = operand1.realConst * operand2.realConst;
-        if ( (operand1.realConst != 0) && (operand2.realConst != 0) && (!isnormal( opResult.realConst )) ) { return result_underflow; }
-        break;
-    case MyParser::termcod_div:
-        opResult.realConst = operand1.realConst / operand2.realConst;
-        if ( (operand1.realConst != 0) && (!isnormal( opResult.realConst )) ) { return result_underflow; }
-        break;
-    case MyParser::termcod_pow:
-        if ( (operand1.realConst == 0) && (operand2.realConst == 0) ) { return result_undefined; } // C++ pow() provides 1 as result
-        opResult.realConst = pow( operand1.realConst, operand2.realConst );
-        break;
-    case MyParser::termcod_ltoe:
-        opResult.realConst = operand1.realConst <= operand2.realConst;
-        break;
-    case MyParser::termcod_gtoe:
-        opResult.realConst = operand1.realConst >= operand2.realConst;
-        break;
-    case MyParser::termcod_ne:
-        opResult.realConst = operand1.realConst != operand2.realConst;
-        break;
-    }
-
-    if ( (opResultReal) && (operatorCode != _pmyParser->termcod_assign) ) {     // check error (not for assignment)
-        if ( isnan( opResult.realConst ) ) { return result_undefined; }
-        else if ( !isfinite( opResult.realConst ) ) { return result_overflow; }
-    }
 
     // Delete any intermediate result string objects used as operands 
     // --------------------------------------------------------------
@@ -1345,7 +1396,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
             delete [] _pEvalStackTop->varOrConst.value.pStringConst;
             intermediateStringObjectCount--;
-        }
+    }
     }
     // operand 1 is an intermediate constant AND it is a string ? delete char string object
     if ( ((_pEvalStackMinus2->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && !op1real )
@@ -1356,7 +1407,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
             delete [] _pEvalStackMinus2->varOrConst.value.pStringConst;
             intermediateStringObjectCount--;
-        }
+    }
     }
 
 
@@ -1371,11 +1422,11 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     _pEvalStackMinus2 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackMinus1 );
 
 
-    //  store result in stack
-    // ----------------------
+    //  if operation did not include an assignment, store result in stack as an intermediate constant
+    // ----------------------------------------------------------------------------------------------
 
     // if assignment, then result is already stored in variable and the stack top still contains the reference to the variable
-    if ( operatorCode != MyParser::termcod_assign ) {
+    if ( !operationIncludesAssignment ) {
         _pEvalStackTop->varOrConst.value = opResult;                        // float or pointer to string
         _pEvalStackTop->varOrConst.valueType = opResultReal ? value_isFloat : value_isStringPointer;     // value type of second operand  
         _pEvalStackTop->varOrConst.tokenType = tok_isConstant;              // use generic constant type
@@ -1515,13 +1566,13 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 #endif
                         delete [] pStackLvl->varOrConst.value.pStringConst;
                         intermediateStringObjectCount--;
-                    }
-                }
-
-                pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl );       // argument saved: remove argument from stack and point to next argument
             }
         }
+
+                pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl );       // argument saved: remove argument from stack and point to next argument
     }
+}
+}
 
     // also delete function name token from evaluation stack
     _pEvalStackTop = (LE_evalStack*) evalStack.getPrevListElement( pFunctionStackLvl );

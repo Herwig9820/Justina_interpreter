@@ -91,34 +91,44 @@ const MyParser::FuncDef MyParser::_functions [] {
 // NOTE: table entries with names starting with same characters: shortest entries should come before longest (e.g. '!' before '!=', '&' before '&&')
 
 const MyParser::TerminalDef MyParser::_terminals [] {
-    //  name        id code             prio        associativity & use         
-    //  ----        -------             ----        -------------------   
-    {term_comma,    termcod_comma,      0x00,        0x00},
-    {term_semicolon,termcod_semicolon,  0x00,        0x00},
-    {term_rightPar, termcod_rightPar,   0x00,        0x00},
-    {term_leftPar,  termcod_leftPar,    0x0B,        0x00},
+    //  name            id code                 prio        associativity & use         
+    //  ----            -------                 ----        -------------------   
+    {term_comma,        termcod_comma,          0x00,        0x00},
+    {term_semicolon,    termcod_semicolon,      0x00,        0x00},
+    {term_rightPar,     termcod_rightPar,       0x00,        0x00},
+    {term_leftPar,      termcod_leftPar,        0x0B,        0x00},
 
     // operators
-    {term_assign,   termcod_assign,     0x01,        trm_assocRtoL},
+    {term_assign,       termcod_assign,         0x01,        trm_assocRtoL},
 
-    {term_concat,   termcod_concat,     0x06,        0x00},
+    {term_concat,       termcod_concat,         0x06,        0x00},
 
-    {term_or,       termcod_or,         0x02,        0x00},
-    {term_and,      termcod_and,        0x03,        0x00},
-    {term_not,      termcod_not,        0x90,        trm_assocRtoLasPrefix},        // not used as infix
+    {term_or,           termcod_or,             0x02,        0x00},
+    {term_and,          termcod_and,            0x03,        0x00},
+    {term_not,          termcod_not,            0x90,        trm_assocRtoLasPrefix},        // not used as infix
 
-    {term_eq,       termcod_eq,         0x04,        0x00},
-    {term_neq,      termcod_ne,         0x04,        0x00},
-    {term_lt,       termcod_lt,         0x05,        0x00},
-    {term_gt,       termcod_gt,         0x05,        0x00},
-    {term_ltoe,     termcod_ltoe,       0x05,        0x00},
-    {term_gtoe,     termcod_gtoe,       0x05,        0x00},
+    {term_eq,           termcod_eq,             0x04,        0x00},
+    {term_neq,          termcod_ne,             0x04,        0x00},
+    {term_lt,           termcod_lt,             0x05,        0x00},
+    {term_gt,           termcod_gt,             0x05,        0x00},
+    {term_ltoe,         termcod_ltoe,           0x05,        0x00},
+    {term_gtoe,         termcod_gtoe,           0x05,        0x00},
 
-    {term_plus,     termcod_plus,       0x97,        trm_assocRtoLasPrefix},
-    {term_minus,    termcod_minus,      0x97,        trm_assocRtoLasPrefix},
-    {term_mult,     termcod_mult,       0x08,        0x00},
-    {term_div,      termcod_div,        0x08,        0x00},
-    {term_pow,      termcod_pow,        0x0A,        trm_assocRtoL},
+    {term_plus,         termcod_plus,           0x97,        trm_assocRtoLasPrefix},
+    {term_minus,        termcod_minus,          0x97,        trm_assocRtoLasPrefix},
+    {term_mult,         termcod_mult,           0x08,        0x00},
+    {term_div,          termcod_div,            0x08,        0x00},
+    {term_pow,          termcod_pow,            0x0A,        trm_assocRtoL},
+
+    {term_preIncr,      termcod_preIncr,        0x90,        trm_assocRtoLasPrefix},
+    {term_preDecr,      termcod_preDecr,        0x90,        trm_assocRtoLasPrefix},
+
+    {term_plusAssign,   termcod_plusAssign ,    0x01,        trm_assocRtoL},
+    {term_minusAssign,  termcod_minusAssign,    0x01,        trm_assocRtoL},
+    {term_multAssign,   termcod_multAssign ,    0x01,        trm_assocRtoL},
+    {term_divAssign,    termcod_divAssign  ,    0x01,        trm_assocRtoL},
+
+
 };
 
 
@@ -773,8 +783,10 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
     bool isSemiColonSep = _lastTokenIsTerminal ? (_terminals [_tokenIndex].terminalCode == termcod_semicolon) : false;
     bool isLeftParenthesis = _lastTokenIsTerminal ? (_terminals [_tokenIndex].terminalCode == termcod_leftPar) : false;
     bool isLvl0CommaSep = _lastTokenIsTerminal ? ((_terminals [_tokenIndex].terminalCode == termcod_comma) && (_parenthesisLevel == 0)) : false;
-    bool isAssignmentOp = _lastTokenIsTerminal ? (_terminals [_tokenIndex].terminalCode == termcod_assign) : false;
-    bool isNonAssignmentOp = _lastTokenIsTerminal ? (((_terminals [_tokenIndex].terminalCode <= termcod_opRangeEnd)) && (_terminals [_tokenIndex].terminalCode != termcod_assign)) : false;
+    bool isAssignmentOp = _lastTokenIsTerminal ? ((_terminals [_tokenIndex].terminalCode == termcod_assign)
+        || (_terminals [_tokenIndex].terminalCode == termcod_plusAssign) || (_terminals [_tokenIndex].terminalCode == termcod_minusAssign)
+        || (_terminals [_tokenIndex].terminalCode == termcod_multAssign) || (_terminals [_tokenIndex].terminalCode == termcod_divAssign)) : false;
+    bool isNonAssignmentOp = _lastTokenIsTerminal ? (((_terminals [_tokenIndex].terminalCode <= termcod_opRangeEnd)) && !isAssignmentOp) : false;
 
     bool isExpressionFirstToken = (!isResWord) && ((cmdSecondLastTokenType == Interpreter::tok_isReservedWord) || (cmdSecondLastIsLvl0CommaSep));
 
@@ -968,19 +980,20 @@ bool MyParser::parseAsNumber( char*& pNext, parseTokenResult_type& result ) {
     bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
     if ( !tokenAllowed ) { pNext = pch; result = result_numConstNotAllowedHere; return false; ; }
 
-    // Note: in a declaration statement, operators other than assignment are not allowed, which is detected in terminal token parsing
-    // -> if previous token was operator: it's an assignment
+    // Note: in a (variable or parameter) declaration statement, operators other than assignment operators are not allowed, which is detected in terminal token parsing
     bool isParamDecl = (_isExtFunctionCmd);                                          // parameter declarations :  constant can ONLY FOLLOW an assignment operator
-    bool isAssignmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
+    bool isPureAssignmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
+    if ( isParamDecl && !isPureAssignmentOp ) { pNext = pch; result = result_numConstNotAllowedHere; return false; }
 
-    if ( isParamDecl && !isAssignmentOp ) { pNext = pch; result = result_numConstNotAllowedHere; return false; }
+    bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_preIncr) || (_lastTermCode == termcod_preDecr)) : false;
+    if ( varRequired ) { pNext = pch; result = result_variableNameExpected; return false; }
 
     // token is a number, and it's allowed here
     Interpreter::TokenIsRealCst* pToken = (Interpreter::TokenIsRealCst*) _pInterpreter->_programCounter;
     pToken->tokenType = Interpreter::tok_isRealConst | (sizeof( Interpreter::TokenIsRealCst ) << 4);
     memcpy( pToken->realConst, &f, sizeof( f ) );                                           // float not necessarily aligned with word size: copy memory instead
 
-    bool doNonLocalVarInit = ((_isGlobalOrUserVarCmd || _isStaticVarCmd) && isAssignmentOp);
+    bool doNonLocalVarInit = ((_isGlobalOrUserVarCmd || _isStaticVarCmd) && isPureAssignmentOp);
 
     _lastTokenStep = _pInterpreter->_programCounter - _pInterpreter->_programStorage;
     _lastTokenType = Interpreter::tok_isRealConst;
@@ -1016,11 +1029,13 @@ bool MyParser::parseAsStringConstant( char*& pNext, parseTokenResult_type& resul
     bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
     if ( !tokenAllowed ) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; ; }
 
-    // Note: in a declaration statement, operators other than assignment are not allowed, which is detected in terminal token parsing
-    // -> if previous token was operator: it's an assignment
+    // Note: in a (variable or parameter) declaration statement, operators other than assignment operators are not allowed, which is detected in terminal token parsing
     bool isParamDecl = (_isExtFunctionCmd);                                             // parameter declarations :  constant can ONLY FOLLOW an assignment operator
-    bool isAssignmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
-    if ( isParamDecl && !isAssignmentOp ) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
+    bool isPureAssignmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
+    if ( isParamDecl && !isPureAssignmentOp ) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
+
+    bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_preIncr) || (_lastTermCode == termcod_preDecr)) : false;
+    if ( varRequired ) { pNext = pch; result = result_variableNameExpected; return false; }
 
     bool isArrayDimSpec = (_isAnyVarCmd) && (_parenthesisLevel > 0);                    // array declaration: dimensions must be number constants (global, static, local arrays)
     if ( isArrayDimSpec ) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
@@ -1064,13 +1079,13 @@ bool MyParser::parseAsStringConstant( char*& pNext, parseTokenResult_type& resul
     pToken->tokenType = Interpreter::tok_isStringConst | (sizeof( Interpreter::TokenIsStringCst ) << 4);
     memcpy( pToken->pStringConst, &pStringCst, sizeof( pStringCst ) );            // pointer not necessarily aligned with word size: copy pointer instead
 
-    bool isLocalVarInitCheck = (_isLocalVarCmd && isAssignmentOp);
+    bool isLocalVarInitCheck = (_isLocalVarCmd && isPureAssignmentOp);
     bool isArrayVar = ((Interpreter::TokenIsVariable*) (_pInterpreter->_programStorage + _lastVariableTokenStep))->identInfo & _pInterpreter->var_isArray;
     if ( isLocalVarInitCheck && isArrayVar && (pStringCst != nullptr) ) {
         pNext = pch; result = result_arrayInit_emptyStringExpected; return false;        // only check (init when function is called)
     }
 
-    bool doNonLocalVarInit = ((_isGlobalOrUserVarCmd || _isStaticVarCmd) && isAssignmentOp);          // (operator: is always assignment)
+    bool doNonLocalVarInit = ((_isGlobalOrUserVarCmd || _isStaticVarCmd) && isPureAssignmentOp);          // (operator: is always assignment)
 
     _lastTokenStep = _pInterpreter->_programCounter - _pInterpreter->_programStorage;
     _lastTokenType = Interpreter::tok_isStringConst;
@@ -1244,6 +1259,9 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         // parenthesis nesting in function definitions, only to declare an array parameter AND only if followed by a closing parenthesis 
         if ( (_isExtFunctionCmd) && (_parenthesisLevel > 0) && (_lastTokenType != Interpreter::tok_isVariable) ) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
         if ( _isProgramCmd || _isDeleteVarCmd ) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
+
+        bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_preIncr) || (_lastTermCode == termcod_preDecr)) : false;
+        if ( varRequired ) { pNext = pch; result = result_variableNameExpected; return false; }
 
         if ( _leadingSpaceCheck ) { pNext = pch; result = result_spaceMissing; return false; }
 
@@ -1626,6 +1644,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 
         if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3) ) {
             if ( (_terminals [termIndex].terminalCode != termcod_plus) && (_terminals [termIndex].terminalCode != termcod_minus)
+                && (_terminals [termIndex].terminalCode != termcod_preIncr) && (_terminals [termIndex].terminalCode != termcod_preDecr)
                 && (_terminals [termIndex].terminalCode != termcod_not) ) {
                 pNext = pch; result = result_invalidPrefixOperator; return false;
             }
@@ -1633,7 +1652,8 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
             _lastTokenIsPrefixOp = true;
         }
         else {
-            if ( _terminals [termIndex].terminalCode == termcod_not ) {
+            if ( (_terminals [termIndex].terminalCode == termcod_preIncr) || (_terminals [termIndex].terminalCode == termcod_preDecr)
+                || (_terminals [termIndex].terminalCode == termcod_not) ) {
                 pNext = pch; result = result_invalidInfixOperator; return false;
             }
             _lastTokenIsPrefixOp = false;
@@ -1648,8 +1668,11 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         if ( _isProgramCmd || _isDeleteVarCmd ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
 
         // if assignment, check whether it's allowed here 
-        if ( _terminals [termIndex].terminalCode == termcod_assign ) {
+        bool operatorContainsAssignment = ((_terminals [termIndex].terminalCode == termcod_assign)
+            || (_terminals [termIndex].terminalCode == termcod_plusAssign) || (_terminals [termIndex].terminalCode == termcod_minusAssign)
+            || (_terminals [termIndex].terminalCode == termcod_multAssign) || (_terminals [termIndex].terminalCode == termcod_divAssign));
 
+        if ( operatorContainsAssignment ) {
             bool isSecondSubExpressionToken = (_previousTokenIsTerminal ?
                 ((_previousTermCode == termcod_semicolon) || (_previousTermCode == termcod_leftPar) || (_previousTermCode == termcod_comma)) : false);
             isSecondSubExpressionToken = isSecondSubExpressionToken || (_previousTokenType == Interpreter::tok_no_token) || (_previousTokenType == Interpreter::tok_isReservedWord);
@@ -1726,6 +1749,9 @@ bool MyParser::parseAsInternFunction( char*& pNext, parseTokenResult_type& resul
 
         if ( _isExtFunctionCmd ) { pNext = pch; result = result_redefiningIntFunctionNotAllowed; return false; }
         if ( _isAnyVarCmd ) { pNext = pch; result = result_variableNameExpected; return false; }        // is a variable declaration: internal function name not allowed
+
+        bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_preIncr) || (_lastTermCode == termcod_preDecr)) : false;
+        if ( varRequired ) { pNext = pch; result = result_variableNameExpected; return false; }
 
         // token is function, and it's allowed here
         _minFunctionArgs = _functions [funcIndex].minArgs;                       // set min & max for allowed argument count (note: minimum is 0)
@@ -1805,6 +1831,9 @@ bool MyParser::parseAsExternFunction( char*& pNext, parseTokenResult_type& resul
         index = getIdentifier( _pInterpreter->extFunctionNames, _pInterpreter->_extFunctionCount, _pInterpreter->MAX_EXT_FUNCS, pch, pNext - pch, createNewName );
         if ( index == -1 ) { pNext = pch; result = result_undefinedFunctionOrArray; return false; }
     }
+
+    bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_preIncr) || (_lastTermCode == termcod_preDecr)) : false;
+    if ( varRequired ) { pNext = pch; result = result_variableNameExpected; return false; }
 
     // token is an external function (definition or call), and it's allowed here
 
@@ -1915,11 +1944,10 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
         if ( _varDefAssignmentFound ) { pNext = pch; result = result_constantValueExpected; return false; }
     }
 
-    // Note: in a declaration statement, operators other than assignment are not allowed, which is detected in terminal token parsing
-    // -> if previous token was operator: it's an assignment
+    // Note: in a (variable or parameter) declaration statement, operators other than assignment operators are not allowed, which is detected in terminal token parsing
     bool isParamDecl = (_isExtFunctionCmd);                                          // parameter declarations: initialising ONLY with a constant, not with a variable
-    bool isAssgnmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
-    if ( isParamDecl && isAssgnmentOp )                                                    // if operator: it is an assignment
+    bool isPureAssgnmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
+    if ( isParamDecl && isPureAssgnmentOp )                                                    // if operator: it is an assignment
     {
         pNext = pch; result = result_variableNotAllowedHere; return false;
     }

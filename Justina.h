@@ -567,6 +567,10 @@ public:
     enum termin_code {
         // operators
         termcod_assign = 0,
+        termcod_plusAssign ,
+        termcod_minusAssign,
+        termcod_multAssign ,
+        termcod_divAssign   ,
         termcod_or,
         termcod_and,
         termcod_not,
@@ -582,8 +586,10 @@ public:
         termcod_mult,
         termcod_div,
         termcod_pow,
+        termcod_preIncr,
+        termcod_preDecr,
 
-        termcod_opRangeEnd = termcod_pow,
+        termcod_opRangeEnd = termcod_preDecr,
 
         // other terminals
         termcod_comma = termcod_opRangeEnd + 1,
@@ -883,6 +889,12 @@ public:
 
     // operators
     static constexpr char* term_assign = "=";
+    static constexpr char* term_plusAssign = "+=";
+    static constexpr char* term_minusAssign = "-=";
+    static constexpr char* term_multAssign = "*=";
+    static constexpr char* term_divAssign = "/=";
+    static constexpr char* term_preIncr = "++";
+    static constexpr char* term_preDecr = "--";
     static constexpr char* term_lt = "<";
     static constexpr char* term_gt = ">";
     static constexpr char* term_ltoe = "<=";
