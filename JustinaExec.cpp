@@ -1064,30 +1064,28 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
             bool isPrefixOperator = true;             // init as prefix operation
             if ( evalStack.getElementCount() >= _activeFunctionData.callerEvalStackLevels + 3 ) {         // TWO preceding tokens exist on the stack               
                 isPrefixOperator = (!(_pEvalStackMinus2->genericToken.tokenType == tok_isConstant) && !(_pEvalStackMinus2->genericToken.tokenType == tok_isVariable));
-                // comma separators are not pushed to the stack, but if it is followed by a (prefix) operator, a flag is set in order not to mistake a token sequence as two operands and an infix operation
+                // comma separators are not pushed to the evaluation stack, but if it is followed by a (prefix) operator, a flag is set in order not to mistake a token sequence as two operands and an infix operation
                 if ( _pEvalStackMinus1->terminal.index & 0x80 ) { isPrefixOperator = true; }            // e.g. print 5, -6 : prefix operation on second expression ('-6') and not '5-6' as infix operation
             }
 
             // check priority and associativity
-            int priority = _pmyParser->_terminals [terminalIndex].priority;
+            int priority = _pmyParser->_terminals [terminalIndex].prefix_infix_priority;
             if ( isPrefixOperator ) { priority = priority >> 4; }
             priority &= 0x0F;
 
-            int associativity = _pmyParser->_terminals [terminalIndex].associativity;
-            if ( isPrefixOperator ) { associativity = associativity >> 4; }
-            associativity &= _pmyParser->trm_assocRtoL;
+            int associativityAnduse = _pmyParser->_terminals [terminalIndex].associativityAnduse & (isPrefixOperator ? MyParser::op_assocRtoLasPrefix : MyParser::op_assocRtoL);
 
             /*
                         Serial.print( "*** read terminal index: " ); Serial.print( (int) terminalIndex );
                         Serial.print( ", priority " ); Serial.print( (int) priority );
-                        Serial.print( ", associativity " ); Serial.print( (int) associativity );
+                        Serial.print( ", associativityAnduse " ); Serial.print( (int) associativityAnduse );
                         Serial.println( isPrefixOperator ? " - exec prefix" : " - exec infix" );
             */
             // if a pending operator has higher priority, or, it has equal priority and operator is right-to-left associative, do not execute operator yet 
             // note that a PENDING LEFT PARENTHESIS also has priority over the preceding operator
-            pendingTokenPriorityLvl = _pmyParser->_terminals [pendingTokenIndex].priority & 0x0F;      // pending terminal is never a prefix operator 
+            pendingTokenPriorityLvl = _pmyParser->_terminals [pendingTokenIndex].prefix_infix_priority & 0x0F;      // pending terminal is never a prefix operator 
             currentOpHasPriority = (priority >= pendingTokenPriorityLvl);
-            if ( (associativity == MyParser::trm_assocRtoL) && (priority == pendingTokenPriorityLvl) ) { currentOpHasPriority = false; }
+            if ( (associativityAnduse !=0) && (priority == pendingTokenPriorityLvl) ) { currentOpHasPriority = false; }
             if ( !currentOpHasPriority ) { break; }   // exit while() loop
 
             // execute operator
@@ -1122,8 +1120,8 @@ Interpreter::execResult_type  Interpreter::execPrefixOperation() {
     operand.realConst = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? *_pEvalStackTop->varOrConst.value.pRealConst : _pEvalStackTop->varOrConst.value.realConst;
 
     if ( _pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_minus ) { operand.realConst = -operand.realConst; } // prefix '-' ('+': no change in value)
-    else if ( _pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_preIncr ) { ++operand.realConst; } // prefix: increment
-    else if ( _pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_preDecr ) { --operand.realConst; } // prefix: decrement
+    else if ( _pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_incr ) { ++operand.realConst; } // prefix: increment
+    else if ( _pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_decr ) { --operand.realConst; } // prefix: decrement
     else if ( _pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_not ) { operand.realConst = (operand.realConst == 0); } // prefix: not
 
 
@@ -1137,8 +1135,8 @@ Interpreter::execResult_type  Interpreter::execPrefixOperation() {
     // decrement or increment operation: store value in variable (variable type does not change) and return variable reference instead of intermediate constant
     // --------------------------------------------------------------------------------------------------------------------------------------------------------
 
-    if ( (_pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_preIncr)
-        || (_pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_preDecr) ) {
+    if ( (_pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_incr)
+        || (_pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_decr) ) {
         *_pEvalStackTop->varOrConst.value.pRealConst = operand.realConst;
     }
 
