@@ -145,7 +145,7 @@ Interpreter::execResult_type  Interpreter::exec() {
 
                 // terminal tokens: only operators and left parentheses are pushed on the stack
                 PushTerminalToken( tokenType );
-                if ( precedingIsComma ) { _pEvalStackTop->terminal.index |= 0x80; }       //// 
+                if ( precedingIsComma ) { _pEvalStackTop->terminal.index |= 0x80; }        
 
             }
 
@@ -1860,7 +1860,7 @@ Interpreter::execResult_type Interpreter::terminateExternalFunction( bool addZer
         }
     }
 
-    execResult_type execResult = execAllProcessedOperators();     // in caller !!!
+    execResult_type execResult = execAllProcessedOperators();     // continue in caller !!!
 
     return execResult;
 }

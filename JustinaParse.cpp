@@ -85,9 +85,9 @@ const MyParser::FuncDef MyParser::_functions [] {
 };
 
 
-// terminal tokens  //// review doc
-// priority: bits b7654: priority if prefix operator, b3210: if infix operator or other terminal (0 = lowest, 15 = highest) 
-// use and associativity: defines whether terminal can be used as prefix and /or as infix operator; associativity for prefix / infix operators (only)   
+// terminal tokens  
+// priority: 4 bits for priority if use as postfix, prefix, infix operator, respectively (0x0 = lowest, 0xF = highest) 
+// use and associativity: defines allowed operator uses (postfix, prefix, infix); associativity for use as postfix, prefix, infix operator   
 // NOTE: table entries with names starting with same characters: shortest entries should come before longest (e.g. '!' before '!=', '&' before '&&')
 
 const MyParser::TerminalDef MyParser::_terminals [] {
@@ -534,6 +534,7 @@ MyParser::parseTokenResult_type MyParser::parseInstruction( char*& pInputStart )
     _lastTokenType = Interpreter::tok_no_token;                                                      // no token yet
     _lastTokenIsTerminal = false;
     _lastTokenIsPrefixOp = false;
+    _lastTokenIsPostfixOp = false;
     _prefixIncrAllowsAssignment = false;
     _parenthesisLevel = 0;
     _isProgramCmd = false;
@@ -731,11 +732,6 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
             bool withinRange = (_pParsingStack->openBlock.cmdBlockDef.blockPosOrAction >= cmdBlockDef.blockMinPredecessor) &&     // sequence of block commands OK ?
                 (_pParsingStack->openBlock.cmdBlockDef.blockPosOrAction <= cmdBlockDef.blockMaxPredecessor);
             if ( !withinRange ) { result = result_wrongBlockSequence; return false; }   // sequence of block commands (for current stack level) is not OK: error
-
-            /* ////
-            Serial.print( "\r\nparsing: token step " ); Serial.print( _blockCmdTokenStep );
-            Serial.print( " 'to token step' " ); Serial.println( _lastTokenStep );
-            */
 
             // pointer from previous open block token to this open block token (e.g. pointer from IF token to ELSEIF or ELSE token)
             memcpy( ((Interpreter::TokenIsResWord*) (_pInterpreter->_programStorage + _blockCmdTokenStep))->toTokenStep, &_lastTokenStep, sizeof( char [2] ) );
@@ -943,7 +939,7 @@ bool MyParser::parseAsResWord( char*& pNext, parseTokenResult_type& result ) {
 
         _lastTokenStep = _pInterpreter->_programCounter - _pInterpreter->_programStorage;
         _lastTokenType = Interpreter::tok_isReservedWord;
-        _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false;
+        _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false;
 
         _pInterpreter->_programCounter += sizeof( Interpreter::TokenIsResWord ) - (hasTokenStep ? 0 : 2);
         *_pInterpreter->_programCounter = '\0';                                                 // indicates end of program
@@ -997,7 +993,7 @@ bool MyParser::parseAsNumber( char*& pNext, parseTokenResult_type& result ) {
 
     _lastTokenStep = _pInterpreter->_programCounter - _pInterpreter->_programStorage;
     _lastTokenType = Interpreter::tok_isRealConst;
-    _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false;
+    _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false;
 
     if ( doNonLocalVarInit ) { initVariable( _lastVariableTokenStep, _lastTokenStep ); }     // initialisation of global / static variable ? (operator: is always assignment)
 
@@ -1089,7 +1085,7 @@ bool MyParser::parseAsStringConstant( char*& pNext, parseTokenResult_type& resul
 
     _lastTokenStep = _pInterpreter->_programCounter - _pInterpreter->_programStorage;
     _lastTokenType = Interpreter::tok_isStringConst;
-    _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false;
+    _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false;
 
     if ( doNonLocalVarInit ) {                                     // initialisation of global / static variable ? 
         if ( !initVariable( _lastVariableTokenStep, _lastTokenStep ) ) { pNext = pch; result = result_arrayInit_emptyStringExpected; return false; };
@@ -1284,9 +1280,10 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 
         // left parenthesis follows two tokens after prefix incr/decrement token that allows assignment ? Then assignment is OK
         bool previousIsPrefixIncDecr = _previousTokenIsTerminal ? (_previousTermCode == termcod_incr) || (_previousTermCode == termcod_decr) : false;
+        if( previousIsPrefixIncDecr) {flags = flags | _pInterpreter ->arrayElemPrefixIncrDecrBit;}      // remember
+        
+        // assignment is OK if last token before left parenthesis is variable name (optionally preceded by a prefix incr/decr), AND it's the start of a (sub-) expression, but NOT part of a variable definition command
         assignmentOK = assignmentOK || (previousIsPrefixIncDecr && _prefixIncrAllowsAssignment);
-
-        // last token before left parenthesis is variable name AND the start of a (sub-) expression, but NOT part of a variable definition command
         if ( assignmentOK ) { flags = flags | _pInterpreter->arrayElemAssignmentAllowedBit; }      // after the corresponding closing parenthesis, assignment will be allowed
 
         // if function DEFINITION: initialize variables for counting of allowed mandatory and optional arguments (not an array parameter, would be parenthesis level 1)
@@ -1320,7 +1317,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
             (_lastTokenType == Interpreter::tok_isVariable) ? _variableNameIndex : 0;
         _pParsingStack->openPar.variableScope = _variableScope;
 
-        _lastTokenIsPrefixOp = false;
+        _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false;
         break; }
 
 
@@ -1516,14 +1513,16 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 
         // token is a right parenthesis, and it's allowed here
 
+        _arrayElemPrefixIncrDecrBit = (flags & _pInterpreter->arrayElemPrefixIncrDecrBit);              // array element has prefix increment / decrement operator ?
         _arrayElemAssignmentAllowed = (flags & _pInterpreter->arrayElemAssignmentAllowedBit);          // assignment possible next ? (to array element)
+
         parsingStack.deleteListElement( nullptr );                                           // decrement open parenthesis stack counter and delete corresponding list element
         _parenthesisLevel--;
 
         // set pointer to currently last element in stack
         if ( _blockLevel + _parenthesisLevel > 0 ) { _pParsingStack = (LE_parsingStack*) parsingStack.getLastListElement(); }
 
-        _lastTokenIsPrefixOp = false;
+        _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false;
         break;
     }
 
@@ -1615,7 +1614,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         else {}     // for documentation only: all cases handled
 
         // token is a comma separator, and it's allowed here
-        _lastTokenIsPrefixOp = false;
+        _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false;
         break; }
 
 
@@ -1631,7 +1630,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2) ) { pNext = pch; result = result_expressionNotComplete; return false; }
 
         // token is a semicolon separator, and it's allowed here
-        _lastTokenIsPrefixOp = false;
+        _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false;
         break; }
 
 
@@ -1645,24 +1644,67 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 
         // token is an operator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
 
+        // does last token type allow an operator as current token ?
         if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_5_3_2_1_0) ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
 
-        if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3) ) {
-            if ( !(_terminals [termIndex].associativityAnduse & op_prefix) ) { pNext = pch; result = result_invalidPrefixOperator; return false; }
-            if ( _lastTokenIsPrefixOp ) { pNext = pch; result = result_prefixOperatorNotAllowedhere; return false; }     // not more than one prefix operator in a row
-            _lastTokenIsPrefixOp = true;
+        // last token type allows operators: find out which operators are allowed and whether the provided operator is allowed 
 
+        // does last token type limit allowable operators to infix and postfix ?
+        if ( _lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3 ) {
+            // test that current operator is infix or postfix
+            if ( !(_terminals [termIndex].associativityAnduse & op_infix) && !(_terminals [termIndex].associativityAnduse & op_postfix) ) { pNext = pch; result = result_prefixOperatorNotAllowedhere; return false; }
+            _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = (_terminals [termIndex].associativityAnduse & op_postfix);    // token is either infix or postfix
+        }
+
+        // last token type is an operator ? allowable operators depends on last operator
+        else if ( _lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0 ) {
+            bool lastTokenWasPrefix = _lastTokenIsPrefixOp;       // hold
+            bool lastTokenWasPostfix = _lastTokenIsPostfixOp;       // hold
+
+            _lastTokenIsPrefixOp = (_terminals [termIndex].associativityAnduse & op_prefix);        // and remember
+            _lastTokenIsPostfixOp = (_terminals [termIndex].associativityAnduse & op_postfix);      // and remember
+            bool lastTokenIsInfixOp = (_terminals [termIndex].associativityAnduse & op_infix);
+
+            // if last token (an operator) was a prefix operator, then current operator token is always invalid
+            if ( lastTokenWasPrefix ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+
+            // if last token (an operator) was an postfix operator, then current operator token must be an infix operator to be valid
+            else if ( lastTokenWasPostfix ) {
+                if ( !lastTokenIsInfixOp ) { pNext = pch; result = result_invalidOperator; return false; }
+                _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false;
+            }
+
+            // if last token (an operator) was an infix operator, then current operator token must be a prefix operator to be valid
+            else {      // last token was infix
+                if ( !_lastTokenIsPrefixOp ) { pNext = pch; result = result_invalidOperator; return false; }
+                _lastTokenIsPostfixOp = false;
+            }
+        }
+
+        // last token type limit allowable operators to prefix 
+        else {
+            // test if current operator is prefix
+            if ( !(_terminals [termIndex].associativityAnduse & op_prefix) ) { pNext = pch; result = result_invalidOperator; return false; }  // is prefix operator ?
+            _lastTokenIsPrefixOp = true; _lastTokenIsPostfixOp = false;
+        }
+
+
+        // prefix variable increment / decrement operator: check if subsequent assignment is allowed
+        if ( _lastTokenIsPrefixOp ) {
             bool isPprefixIncDecr = (_terminals [termIndex].terminalCode == termcod_incr) || (_terminals [termIndex].terminalCode == termcod_decr);
-            _prefixIncrAllowsAssignment = isPprefixIncDecr ? (_lastTokenIsTerminal ?
-                ((_lastTermCode == termcod_semicolon) || (_lastTermCode == termcod_leftPar) || (_lastTermCode == termcod_comma)) : false) : false;
+            _prefixIncrAllowsAssignment = (isPprefixIncDecr ? (_lastTokenIsTerminal ?
+                ((_lastTermCode == termcod_semicolon) || (_lastTermCode == termcod_leftPar) || (_lastTermCode == termcod_comma)) : false) : false);
             _prefixIncrAllowsAssignment = _prefixIncrAllowsAssignment || (_lastTokenType == Interpreter::tok_no_token) || (_lastTokenType == Interpreter::tok_isReservedWord);
         }
-        else {
-            if ( !(_terminals [termIndex].associativityAnduse & op_infix) ) { pNext = pch; result = result_invalidInfixOperator; return false; }
-            _lastTokenIsPrefixOp = false;
+        
+        // postfix variable increment / decrement operator: check that variable has no prefix increment / decrement operator 
+        else if (_lastTokenIsPostfixOp ) {
+            bool previousIsPrefixIncDecr = _previousTokenIsTerminal ? (_previousTermCode == termcod_incr) || (_previousTermCode == termcod_decr) : false;
+            if( previousIsPrefixIncDecr) { pNext = pch; result = result_operatorNotAllowedHere; return false;  }                // not compatible with prefix increment / decrement
+        
+            bool lastWasRightPar = (_lastTermCode == termcod_rightPar);     // array element with postfix increment / decrement ?
+            if (lastWasRightPar && _arrayElemPrefixIncrDecrBit) { pNext = pch; result = result_operatorNotAllowedHere; return false; }  // not compatible with prefix increment / decrement
         }
-
-
 
         // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
         bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
@@ -1680,14 +1722,14 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
             bool assignmentIsSecondToken = (_previousTokenIsTerminal ?
                 ((_previousTermCode == termcod_semicolon) || (_previousTermCode == termcod_leftPar) || (_previousTermCode == termcod_comma)) : false);
             assignmentIsSecondToken = assignmentIsSecondToken || (_previousTokenType == Interpreter::tok_no_token) || (_previousTokenType == Interpreter::tok_isReservedWord);
-            bool assignmentToScalarVarOK = ((_lastTokenType == Interpreter::tok_isVariable) && assignmentIsSecondToken) ;
-            
+            bool assignmentToScalarVarOK = ((_lastTokenType == Interpreter::tok_isVariable) && assignmentIsSecondToken);
+
             // assignment follows two tokens after prefix incr/decrement token that allows assignment ? Then assignment is OK
             bool previousIsPrefixIncDecr = _previousTokenIsTerminal ? (_previousTermCode == termcod_incr) || (_previousTermCode == termcod_decr) : false;
             assignmentToScalarVarOK = assignmentToScalarVarOK || (previousIsPrefixIncDecr && _prefixIncrAllowsAssignment);
 
             // array element assignment
-            bool lastWasRightPar = (_lastTermCode == termcod_rightPar);            // ok because no nesting in progress here
+            bool lastWasRightPar = (_lastTermCode == termcod_rightPar);            
             bool assignmentToArrayElemOK = (lastWasRightPar && _arrayElemAssignmentAllowed && (!_isExtFunctionCmd));
 
             if ( !(assignmentToScalarVarOK || assignmentToArrayElemOK) ) { pNext = pch; result = result_assignmNotAllowedHere; return false; }
@@ -1774,7 +1816,7 @@ bool MyParser::parseAsInternFunction( char*& pNext, parseTokenResult_type& resul
 
         _lastTokenStep = _pInterpreter->_programCounter - _pInterpreter->_programStorage;
         _lastTokenType = Interpreter::tok_isInternFunction;
-        _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false;
+        _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false;
 
         _pInterpreter->_programCounter += sizeof( Interpreter::TokenIsIntFunction );
         *_pInterpreter->_programCounter = '\0';                                                 // indicates end of program
@@ -1901,7 +1943,7 @@ bool MyParser::parseAsExternFunction( char*& pNext, parseTokenResult_type& resul
 
     _lastTokenStep = _pInterpreter->_programCounter - _pInterpreter->_programStorage;
     _lastTokenType = Interpreter::tok_isExternFunction;
-    _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false;
+    _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false;
 
     _pInterpreter->_programCounter += sizeof( Interpreter::TokenIsExtFunction );
     *_pInterpreter->_programCounter = '\0';                                                 // indicates end of program
@@ -2230,7 +2272,7 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
     _lastTokenStep = _pInterpreter->_programCounter - _pInterpreter->_programStorage;
     _lastVariableTokenStep = _lastTokenStep;
     _lastTokenType = Interpreter::tok_isVariable;
-    _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false;
+    _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false;
 
     _pInterpreter->_programCounter += sizeof( Interpreter::TokenIsVariable );
     *_pInterpreter->_programCounter = '\0';                                                 // indicates end of program
@@ -2273,7 +2315,7 @@ bool MyParser::parseAsIdentifierName( char*& pNext, parseTokenResult_type& resul
 
     _lastTokenStep = _pInterpreter->_programCounter - _pInterpreter->_programStorage;
     _lastTokenType = Interpreter::tok_isGenericName;
-    _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false;
+    _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false;
 
     _pInterpreter->_programCounter += sizeof( Interpreter::TokenIsStringCst );
     *_pInterpreter->_programCounter = '\0';                                                 // indicates end of program

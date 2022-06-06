@@ -127,6 +127,7 @@ public:
     static constexpr uint8_t openParenthesisBit { B00001000 };                                  // not a function
     static constexpr uint8_t arrayBit { B00010000 };
     static constexpr uint8_t arrayElemAssignmentAllowedBit { B00100000 };
+    static constexpr uint8_t arrayElemPrefixIncrDecrBit { B01000000 };
 
     static constexpr int PROG_MEM_SIZE { 2000 };
     static constexpr int IMM_MEM_SIZE { 300 };
@@ -610,9 +611,8 @@ public:
         // token not allowed errors
         result_separatorNotAllowedHere = 1100,
         result_operatorNotAllowedHere,
-        result_invalidPrefixOperator,
-        result_invalidInfixOperator,
         result_prefixOperatorNotAllowedhere,
+        result_invalidOperator,
         result_parenthesisNotAllowedHere,
         result_resWordNotAllowedHere,
         result_functionNotAllowedHere,
@@ -946,6 +946,7 @@ private:
     int _variableNameIndex { 0 };
     int _variableScope { 0 };
     bool _arrayElemAssignmentAllowed { false };                    // value returned: assignment to array element is allowed next
+    bool _arrayElemPrefixIncrDecrBit{false};
 
     int _tokenIndex { 0 };
     int _resWordCount;                                          // index into list of reserved words
@@ -970,7 +971,7 @@ private:
     int _lastTokenIsTerminal_hold;
     int _previousTokenIsTerminal;
 
-    bool _lastTokenIsPrefixOp;
+    bool _lastTokenIsPrefixOp, _lastTokenIsPostfixOp;
     bool _prefixIncrAllowsAssignment;
 
     Interpreter* _pInterpreter;
