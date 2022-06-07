@@ -445,7 +445,7 @@ public:
     execResult_type  execParenthesesPair( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
     execResult_type  execAllProcessedOperators();
 
-    execResult_type  execPrefixOperation();
+    execResult_type  execUnaryOperation(bool isPrefix);
     execResult_type  execInfixOperation();
     execResult_type  execInternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
     execResult_type  launchExternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
@@ -650,7 +650,7 @@ public:
         result_functionDefMaxArgsExceeded,
         result_prevCallsWrongArgCount,
         result_functionDefsCannotBeNested,
-        result_fcnScalarAndArrayArgOrderNotConsistent,////
+        result_fcnScalarAndArrayArgOrderNotConsistent,
         result_scalarArgExpected,
         result_arrayArgExpected,
         result_redefiningIntFunctionNotAllowed,
@@ -794,10 +794,11 @@ public:
 
     // groups of token groups: combined token groups (for testing valid token sequences when next token will be parsed)
     static constexpr uint8_t lastTokenGroups_5_2_1_0 = lastTokenGroup_5 | lastTokenGroup_2 | lastTokenGroup_1 | lastTokenGroup_0;
-    static constexpr uint8_t lastTokenGroups_6_3_2 = lastTokenGroup_6 | lastTokenGroup_3 | lastTokenGroup_2;
-    static constexpr uint8_t lastTokenGroups_6_5_3 = lastTokenGroup_6 | lastTokenGroup_5 | lastTokenGroup_3;
+    static constexpr uint8_t lastTokenGroups_6_3 = lastTokenGroup_6 | lastTokenGroup_3;                                                         
+    static constexpr uint8_t lastTokenGroups_6_3_0 = lastTokenGroup_6 | lastTokenGroup_3 | lastTokenGroup_0;
+    static constexpr uint8_t lastTokenGroups_6_3_2_0 = lastTokenGroup_6 | lastTokenGroup_3 | lastTokenGroup_2 | lastTokenGroup_0;
+    static constexpr uint8_t lastTokenGroups_6_5_3_0 = lastTokenGroup_6 | lastTokenGroup_5 | lastTokenGroup_3 | lastTokenGroup_0;
     static constexpr uint8_t lastTokenGroups_6_5_4_2_1_0 = lastTokenGroup_6 | lastTokenGroup_5 | lastTokenGroup_4 | lastTokenGroup_2 | lastTokenGroup_1 | lastTokenGroup_0;
-    static constexpr uint8_t lastTokenGroups_6_3 = lastTokenGroup_6 | lastTokenGroup_3;
     static constexpr uint8_t lastTokenGroups_6_5_3_2_1_0 = lastTokenGroup_6 | lastTokenGroup_5 | lastTokenGroup_3 | lastTokenGroup_2 | lastTokenGroup_1 | lastTokenGroup_0;
 
 

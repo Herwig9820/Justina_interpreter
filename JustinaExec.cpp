@@ -145,8 +145,21 @@ Interpreter::execResult_type  Interpreter::exec() {
 
                 // terminal tokens: only operators and left parentheses are pushed on the stack
                 PushTerminalToken( tokenType );
-                if ( precedingIsComma ) { _pEvalStackTop->terminal.index |= 0x80; }        
 
+                if ( precedingIsComma ) { _pEvalStackTop->terminal.index |= 0x80;   break; }
+
+                if ( evalStack.getElementCount() < _activeFunctionData.callerEvalStackLevels + 2 ) { break; }         // no preceding token exist on the stack               
+                if ( !(_pEvalStackMinus1->genericToken.tokenType == tok_isConstant) && !(_pEvalStackMinus1->genericToken.tokenType == tok_isVariable) ) { break; };
+
+                // previous token is constant or variable: check if current token is an infix or a postfix operator (it cannot be a prefix operator)
+                // if postfix operation, execute it first (it always has highest priority)
+                bool isPostfixOperator = (_pmyParser->_terminals [_pEvalStackTop->terminal.index & 0x7F].associativityAnduse & MyParser::op_postfix);
+                if ( isPostfixOperator ) {
+                    Serial.print( "--- exec unary: token index (hex) is " ); Serial.println( _pEvalStackTop->terminal.index, HEX );
+                    execUnaryOperation( false );        // flag postfix operation
+                    execResult = execAllProcessedOperators();
+                    if ( execResult != result_execOK ) { break; }
+                }
             }
 
             else if ( isComma ) {
@@ -194,8 +207,8 @@ Interpreter::execResult_type  Interpreter::exec() {
                     execResult = execAllProcessedOperators();
                     if ( execResult != result_execOK ) { break; }
 
-                }
             }
+        }
 
             else if ( isSemicolon ) {
                 // -----------------
@@ -225,10 +238,10 @@ Interpreter::execResult_type  Interpreter::exec() {
 
             break;
 
-        }   // end 'switch (tokenType)'
+    }   // end 'switch (tokenType)'
 
 
-        // advance to next token
+    // advance to next token
         _programCounter = _activeFunctionData.pNextStep;         // note: will be altered when calling an external function and upon return of a called function
         tokenType = *_activeFunctionData.pNextStep & 0x0F;                                                               // next token type (could be token within caller, if returning now)
         precedingIsComma = isComma;
@@ -265,11 +278,11 @@ Interpreter::execResult_type  Interpreter::exec() {
             nextIsNewInstructionStart = false;
         }
 
-    }   // end 'while ( tokenType != tok_no_token )'                                                                                       // end 'while ( tokenType != tok_no_token )'
+}   // end 'while ( tokenType != tok_no_token )'                                                                                       // end 'while ( tokenType != tok_no_token )'
 
 
-        // All tokens processed: finalize
-        // ------------------------------
+    // All tokens processed: finalize
+    // ------------------------------
     if ( lastValueIsStored ) {             // did the execution produce a result ?
         // print last result
         char s [MyParser::_maxAlphaCstLen + 10];  // note: with small '_maxAlphaCstLen' values, make sure string is also long enough to print real values
@@ -733,8 +746,8 @@ void Interpreter::saveLastValue( bool& overWritePrevious ) {
 #endif
             delete [] lastvalue.value.pStringConst;
             intermediateStringObjectCount--;
-        }
     }
+}
 
     // store new last value type
     lastResultTypeFiFo [0] = _pEvalStackTop->varOrConst.valueType;               // value type
@@ -1024,8 +1037,8 @@ void Interpreter::makeIntermediateConstant( LE_evalStack* pEvalStackLvl ) {
         pEvalStackLvl->varOrConst.tokenType = tok_isConstant;              // use generic constant type
         pEvalStackLvl->varOrConst.valueAttributes = constIsIntermediate;             // is an intermediate result (intermediate constant strings must be deleted when not needed any more)
         pEvalStackLvl->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
+        }
     }
-}
 
 
 // ----------------------------------------
@@ -1033,7 +1046,7 @@ void Interpreter::makeIntermediateConstant( LE_evalStack* pEvalStackLvl ) {
 // ----------------------------------------
 
 Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {            // prefix and infix
-
+    Serial.println( "--- exec all processed" );
     // _pEvalStackTop should point to an operand on entry (parsed constant, variable, expression result)
 
     int pendingTokenIndex { 0 };
@@ -1045,6 +1058,7 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
 #endif
     // check if (an) operation(s) can be executed 
     // when an operation is executed, check whether lower priority operations can now be executed as well (example: 3+5*7: first execute 5*7 yielding 35, then execute 3+35)
+
     while ( evalStack.getElementCount() >= _activeFunctionData.callerEvalStackLevels + 2 ) {                                                      // a preceding token exists on the stack
 
         // the entry preceding the current parsed constant, variable or expression result is ALWAYS a terminal (but never a right parenthesis, which is never pushed to the evaluation stack)
@@ -1072,24 +1086,21 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
             int priority = _pmyParser->_terminals [terminalIndex].prefix_infix_priority;
             if ( isPrefixOperator ) { priority = priority >> 4; }
             priority &= 0x0F;
-
             int associativityAnduse = _pmyParser->_terminals [terminalIndex].associativityAnduse & (isPrefixOperator ? MyParser::op_assocRtoLasPrefix : MyParser::op_assocRtoL);
 
-            /*
-                        Serial.print( "*** read terminal index: " ); Serial.print( (int) terminalIndex );
-                        Serial.print( ", priority " ); Serial.print( (int) priority );
-                        Serial.print( ", associativityAnduse " ); Serial.print( (int) associativityAnduse );
-                        Serial.println( isPrefixOperator ? " - exec prefix" : " - exec infix" );
-            */
+            // is pending token a postfix operator ? (it can not be a prefix operator)
+            bool isPostfixOperator = (_pmyParser->_terminals [pendingTokenIndex].associativityAnduse & MyParser::op_postfix);
+
             // if a pending operator has higher priority, or, it has equal priority and operator is right-to-left associative, do not execute operator yet 
             // note that a PENDING LEFT PARENTHESIS also has priority over the preceding operator
-            pendingTokenPriorityLvl = _pmyParser->_terminals [pendingTokenIndex].prefix_infix_priority & 0x0F;      // pending terminal is never a prefix operator 
+            pendingTokenPriorityLvl = (isPostfixOperator ? _pmyParser->_terminals [pendingTokenIndex].postfix_priority :
+                _pmyParser->_terminals [pendingTokenIndex].prefix_infix_priority) & 0x0F;  // pending terminal is either an infix or a postfix operator
             currentOpHasPriority = (priority >= pendingTokenPriorityLvl);
-            if ( (associativityAnduse !=0) && (priority == pendingTokenPriorityLvl) ) { currentOpHasPriority = false; }
+            if ( (associativityAnduse != 0) && (priority == pendingTokenPriorityLvl) ) { currentOpHasPriority = false; }
             if ( !currentOpHasPriority ) { break; }   // exit while() loop
 
             // execute operator
-            execResult_type execResult = (isPrefixOperator) ? execPrefixOperation() : execInfixOperation();
+            execResult_type execResult = (isPrefixOperator) ? execUnaryOperation( true ) : execInfixOperation();
             if ( execResult != result_execOK ) { return execResult; }
         }
 
@@ -1102,65 +1113,75 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
 
 
 // -------------------------------
-// *   execute prefix operation   *
+// *   execute unary operation   *
 // -------------------------------
 
-Interpreter::execResult_type  Interpreter::execPrefixOperation() {
+Interpreter::execResult_type  Interpreter::execUnaryOperation( bool isPrefix ) {
 
-    // check that operand is real, fetch operand and execute prefix operator
-    // ---------------------------------------------------------------------
+    Serial.print( "*** is prefix ? " );  Serial.println( isPrefix );
 
-    Val operand;                                                               // operand and result
-    _activeFunctionData.errorProgramCounter = _pEvalStackMinus1->terminal.tokenAddress;                // in the event of an error
+    // check that operand is real, fetch operand and execute unary operator
+    // --------------------------------------------------------------------
 
-    bool operandIsVarRef = (_pEvalStackTop->varOrConst.valueType == value_isVarRef);
-    char valueType = operandIsVarRef ? (*_pEvalStackTop->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackTop->varOrConst.valueType;
+    LE_evalStack* pOperandStackLvl = isPrefix ? _pEvalStackTop : _pEvalStackMinus1;
+    LE_evalStack* pUnaryOpStackLvl = isPrefix ? _pEvalStackMinus1 : _pEvalStackTop;
+
+    Val operand, opResult;                                                               // operand and result
+    _activeFunctionData.errorProgramCounter = pUnaryOpStackLvl->terminal.tokenAddress;                // in the event of an error
+
+    // value is real ?
+    bool operandIsVarRef = (pOperandStackLvl->varOrConst.valueType == value_isVarRef);
+    char valueType = operandIsVarRef ? (*pOperandStackLvl->varOrConst.varTypeAddress & value_typeMask) : pOperandStackLvl->varOrConst.valueType;
     if ( valueType != value_isFloat ) { return result_numberExpected; }
 
-    operand.realConst = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? *_pEvalStackTop->varOrConst.value.pRealConst : _pEvalStackTop->varOrConst.value.realConst;
+    // fetch operand (real value)
+    operand.realConst = (pOperandStackLvl->varOrConst.tokenType == tok_isVariable) ? *pOperandStackLvl->varOrConst.value.pRealConst : pOperandStackLvl->varOrConst.value.realConst;
 
-    if ( _pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_minus ) { operand.realConst = -operand.realConst; } // prefix '-' ('+': no change in value)
-    else if ( _pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_incr ) { ++operand.realConst; } // prefix: increment
-    else if ( _pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_decr ) { --operand.realConst; } // prefix: decrement
-    else if ( _pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_not ) { operand.realConst = (operand.realConst == 0); } // prefix: not
+    // execute: 'operand' will now contains resulting value (constant)
+    int terminalIndex = pUnaryOpStackLvl->terminal.index & 0x7F;
+    char terminalCode = _pmyParser->_terminals [terminalIndex].terminalCode;
+
+    if ( terminalCode == _pmyParser->termcod_minus ) { opResult.realConst = -operand.realConst; } // prefix minus 
+    else if ( terminalCode == _pmyParser->termcod_plus ) { opResult.realConst = operand.realConst; } // prefix plus
+    else if ( terminalCode == _pmyParser->termcod_incr ) { opResult.realConst = operand.realConst + 1; } // prefix: increment
+    else if ( terminalCode == _pmyParser->termcod_decr ) { opResult.realConst = operand.realConst - 1; } // prefix: decrement
+    else if ( terminalCode == _pmyParser->termcod_not ) { opResult.realConst = (operand.realConst == 0); } // prefix: not
 
 
     // tests
     // -----
 
-    if ( isnan( operand.realConst ) ) { return result_undefined; }
-    else if ( !isfinite( operand.realConst ) ) { return result_overflow; }
+    if ( isnan( opResult.realConst ) ) { return result_undefined; }
+    else if ( !isfinite( opResult.realConst ) ) { return result_overflow; }
+
+    bool isIncrDecr = ((terminalCode == _pmyParser->termcod_incr)
+        || (terminalCode == _pmyParser->termcod_decr));
+
+    // decrement or increment operation: store value in variable (variable type does not change) 
+    // -----------------------------------------------------------------------------------------
+    if ( isIncrDecr ) { *pOperandStackLvl->varOrConst.value.pRealConst = opResult.realConst; }
 
 
-    // decrement or increment operation: store value in variable (variable type does not change) and return variable reference instead of intermediate constant
-    // --------------------------------------------------------------------------------------------------------------------------------------------------------
-
-    if ( (_pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_incr)
-        || (_pmyParser->_terminals [_pEvalStackMinus1->terminal.index & 0x7F].terminalCode == _pmyParser->termcod_decr) ) {
-        *_pEvalStackTop->varOrConst.value.pRealConst = operand.realConst;
-    }
-
-
-    //  if not a decrement or increment operation, store result in stack as an intermediate constant
-    // ---------------------------------------------------------------------------------------------
-
-    else {
-        //  store result in stack
-        _pEvalStackTop->varOrConst.value = operand;
-        _pEvalStackTop->varOrConst.valueType = valueType;                   // real or string
-        _pEvalStackTop->varOrConst.tokenType = tok_isConstant;              // use generic constant type
-        _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
-        _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
+    // if a prefix increment / decrement, then keep variable reference on the stack
+    // if a postfix increment / decrement, replace variable reference in stack by UNMODIFIED value as intermediate constant
+    //  if not a decrement / increment, replace value in stack by a new value (intermediate constant)
+    // --------------------------------------------------------------------------------------------------------------------
+    if ( !(isIncrDecr && isPrefix) ) {                                              // prefix increment / decrement: keep variable reference (skip)
+        pOperandStackLvl->varOrConst.value = isIncrDecr ? operand : opResult;       // replace stack entry with unmodified or modified value as intermediate constant
+        pOperandStackLvl->varOrConst.valueType = valueType;                         // real or string
+        pOperandStackLvl->varOrConst.tokenType = tok_isConstant;                    // use generic constant type
+        pOperandStackLvl->varOrConst.valueAttributes = constIsIntermediate;
+        pOperandStackLvl->varOrConst.variableAttributes = 0x00;                     // not an array, not an array element (it's a constant) 
     }
 
 
     //  clean up stack (drop prefix operator)
     // --------------------------------------
 
-    evalStack.deleteListElement( _pEvalStackMinus1 );
+    _pEvalStackTop = pOperandStackLvl;
+    evalStack.deleteListElement( pUnaryOpStackLvl );
     _pEvalStackMinus1 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackTop );
     _pEvalStackMinus2 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackMinus1 );
-
 
     return result_execOK;
 }
@@ -1172,6 +1193,7 @@ Interpreter::execResult_type  Interpreter::execPrefixOperation() {
 
 Interpreter::execResult_type  Interpreter::execInfixOperation() {
 
+    Serial.println( "*** is infix" );
     // Fetch operands and operands value type
     // --------------------------------------
 
@@ -1346,8 +1368,8 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
                 delete [] * _pEvalStackMinus2->varOrConst.value.ppStringConst;
                 isUserVar ? userVarStringObjectCount-- : (isGlobalVar || isStaticVar) ? globalStaticVarStringObjectCount-- : localVarStringObjectCount--;
+            }
         }
-    }
 
         // if the value to be assigned is real (float) OR an empty string: simply assign the value (not a heap object)
 
@@ -1379,7 +1401,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         if ( !operand1IsVarRef ) { // if reference, then value type on the stack indicates 'variable reference', so don't overwrite it
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) | (opResultReal ? value_isFloat : value_isStringPointer);
         }
-}
+    }
 
 
     // Delete any intermediate result string objects used as operands 
@@ -1394,7 +1416,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
             delete [] _pEvalStackTop->varOrConst.value.pStringConst;
             intermediateStringObjectCount--;
-    }
+        }
     }
     // operand 1 is an intermediate constant AND it is a string ? delete char string object
     if ( ((_pEvalStackMinus2->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && !op1real )
@@ -1405,7 +1427,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
             delete [] _pEvalStackMinus2->varOrConst.value.pStringConst;
             intermediateStringObjectCount--;
-    }
+        }
     }
 
 
@@ -1564,13 +1586,13 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 #endif
                         delete [] pStackLvl->varOrConst.value.pStringConst;
                         intermediateStringObjectCount--;
-            }
-        }
+                    }
+                }
 
                 pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl );       // argument saved: remove argument from stack and point to next argument
+            }
+        }
     }
-}
-}
 
     // also delete function name token from evaluation stack
     _pEvalStackTop = (LE_evalStack*) evalStack.getPrevListElement( pFunctionStackLvl );
