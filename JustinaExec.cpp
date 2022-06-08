@@ -1046,7 +1046,7 @@ void Interpreter::makeIntermediateConstant( LE_evalStack* pEvalStackLvl ) {
 // ----------------------------------------
 
 Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {            // prefix and infix
-    Serial.println( "--- exec all processed" );
+
     // _pEvalStackTop should point to an operand on entry (parsed constant, variable, expression result)
 
     int pendingTokenIndex { 0 };
@@ -1118,8 +1118,6 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
 
 Interpreter::execResult_type  Interpreter::execUnaryOperation( bool isPrefix ) {
 
-    Serial.print( "*** is prefix ? " );  Serial.println( isPrefix );
-
     // check that operand is real, fetch operand and execute unary operator
     // --------------------------------------------------------------------
 
@@ -1143,9 +1141,10 @@ Interpreter::execResult_type  Interpreter::execUnaryOperation( bool isPrefix ) {
 
     if ( terminalCode == _pmyParser->termcod_minus ) { opResult.realConst = -operand.realConst; } // prefix minus 
     else if ( terminalCode == _pmyParser->termcod_plus ) { opResult.realConst = operand.realConst; } // prefix plus
-    else if ( terminalCode == _pmyParser->termcod_incr ) { opResult.realConst = operand.realConst + 1; } // prefix: increment
-    else if ( terminalCode == _pmyParser->termcod_decr ) { opResult.realConst = operand.realConst - 1; } // prefix: decrement
     else if ( terminalCode == _pmyParser->termcod_not ) { opResult.realConst = (operand.realConst == 0); } // prefix: not
+    else if ( terminalCode == _pmyParser->termcod_incr ) { opResult.realConst = operand.realConst + 1; } // prefix & postfix: increment
+    else if ( terminalCode == _pmyParser->termcod_decr ) { opResult.realConst = operand.realConst - 1; } // prefix & postfix: decrement
+    else if ( terminalCode == _pmyParser->termcod_testpostfix ) { opResult.realConst = operand.realConst *10; } // postfix: test
 
 
     // tests
@@ -1154,11 +1153,13 @@ Interpreter::execResult_type  Interpreter::execUnaryOperation( bool isPrefix ) {
     if ( isnan( opResult.realConst ) ) { return result_undefined; }
     else if ( !isfinite( opResult.realConst ) ) { return result_overflow; }
 
-    bool isIncrDecr = ((terminalCode == _pmyParser->termcod_incr)
-        || (terminalCode == _pmyParser->termcod_decr));
-
+    
     // decrement or increment operation: store value in variable (variable type does not change) 
     // -----------------------------------------------------------------------------------------
+
+    bool isIncrDecr = ((terminalCode == _pmyParser->termcod_incr)
+        || (terminalCode == _pmyParser->termcod_decr));
+    
     if ( isIncrDecr ) { *pOperandStackLvl->varOrConst.value.pRealConst = opResult.realConst; }
 
 
@@ -1193,7 +1194,6 @@ Interpreter::execResult_type  Interpreter::execUnaryOperation( bool isPrefix ) {
 
 Interpreter::execResult_type  Interpreter::execInfixOperation() {
 
-    Serial.println( "*** is infix" );
     // Fetch operands and operands value type
     // --------------------------------------
 

@@ -589,8 +589,9 @@ public:
         termcod_pow,
         termcod_incr,
         termcod_decr,
+        termcod_testpostfix,
 
-        termcod_opRangeEnd = termcod_decr,
+        termcod_opRangeEnd = termcod_testpostfix,
 
         // other terminals
         termcod_comma = termcod_opRangeEnd + 1,
@@ -793,8 +794,9 @@ public:
     static constexpr uint8_t lastTokenGroup_6 = 1 << 6;          // variable
 
     // groups of token groups: combined token groups (for testing valid token sequences when next token will be parsed)
-    static constexpr uint8_t lastTokenGroups_5_2_1_0 = lastTokenGroup_5 | lastTokenGroup_2 | lastTokenGroup_1 | lastTokenGroup_0;
-    static constexpr uint8_t lastTokenGroups_6_3 = lastTokenGroup_6 | lastTokenGroup_3;                                                         
+    static constexpr uint8_t lastTokenGroups_5_2_1 = lastTokenGroup_5 | lastTokenGroup_2 | lastTokenGroup_1; //// check use
+    static constexpr uint8_t lastTokenGroups_5_2_1_0 = lastTokenGroup_5 | lastTokenGroup_2 | lastTokenGroup_1 | lastTokenGroup_0; //// check use
+    static constexpr uint8_t lastTokenGroups_6_3 = lastTokenGroup_6 | lastTokenGroup_3;
     static constexpr uint8_t lastTokenGroups_6_3_0 = lastTokenGroup_6 | lastTokenGroup_3 | lastTokenGroup_0;
     static constexpr uint8_t lastTokenGroups_6_3_2_0 = lastTokenGroup_6 | lastTokenGroup_3 | lastTokenGroup_2 | lastTokenGroup_0;
     static constexpr uint8_t lastTokenGroups_6_5_3_0 = lastTokenGroup_6 | lastTokenGroup_5 | lastTokenGroup_3 | lastTokenGroup_0;
@@ -916,6 +918,7 @@ public:
     static constexpr char* term_and = "&&";
     static constexpr char* term_or = "||";
     static constexpr char* term_not = "!";
+    static constexpr char* term_testpostfix = "~";
 
     static const ResWordDef _resWords [];                       // reserved word names
     static const FuncDef _functions [];                         // function names with min & max arguments allowed
@@ -947,7 +950,7 @@ private:
     int _variableNameIndex { 0 };
     int _variableScope { 0 };
     bool _arrayElemAssignmentAllowed { false };                    // value returned: assignment to array element is allowed next
-    bool _arrayElemPrefixIncrDecrBit{false};
+    bool _arrayElemPostfixIncrDecrAllowed {false};
 
     int _tokenIndex { 0 };
     int _resWordCount;                                          // index into list of reserved words

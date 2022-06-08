@@ -125,6 +125,7 @@ const MyParser::TerminalDef MyParser::_terminals [] {
 
     {term_incr,         termcod_incr,           0x0C,       0xB0,        op_prefix | op_assocRtoLasPrefix | op_postfix},
     {term_decr,         termcod_decr,           0x0C,       0xB0,        op_prefix | op_assocRtoLasPrefix | op_postfix},
+    {term_testpostfix,  termcod_testpostfix,    0x0C,       0x00,        op_postfix},
 
     {term_plusAssign,   termcod_plusAssign ,    0x00,       0x01,        op_infix | op_assocRtoL},
     {term_minusAssign,  termcod_minusAssign,    0x00,       0x01,        op_infix | op_assocRtoL},
@@ -538,8 +539,13 @@ MyParser::parseTokenResult_type MyParser::parseInstruction( char*& pInputStart )
     _lastTokenIsTerminal = false;
     _lastTokenIsPrefixOp = false;
     _lastTokenIsPostfixOp = false;
+
+    _arrayElemPostfixIncrDecrAllowed = false;               // array element allows postfix increment / decrement operator ?
     _prefixIncrAllowsAssignment = false;
+    _arrayElemAssignmentAllowed = false;                    // array element allows assignment ? 
+
     _parenthesisLevel = 0;
+
     _isProgramCmd = false;
     _isExtFunctionCmd = false;
     _isGlobalOrUserVarCmd = false;
@@ -876,7 +882,7 @@ bool MyParser::checkCommandSyntax( parseTokenResult_type& result ) {            
     bool previousWasTerminal = ((cmdSecondLastTokenType == Interpreter::tok_isTerminalGroup1) || (cmdSecondLastTokenType == Interpreter::tok_isTerminalGroup2) || (cmdSecondLastTokenType == Interpreter::tok_isTerminalGroup3));
     bool previousParamMainLvlElementIsArray = previousWasTerminal ? ((_terminals [cmdSecondLastTokenIndex].terminalCode == termcod_rightPar) && (_parenthesisLevel == 0)) : false;
     if ( previousParamMainLvlElementIsArray ) {          // previous expression main level element is an array element ?  
-        bool isSecondMainLvlElement = _arrayElemAssignmentAllowed;     // because only then an assignment is possible
+        bool isSecondMainLvlElement = _arrayElemAssignmentAllowed;     // because only then an assignment is possible    //// to check
 
         // If assignment operator, check that first token is variable and assignment is allowed  
         if ( isAssignmentOp ) {
@@ -1515,10 +1521,12 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         else {}     // for documentation only: all cases handled
 
 
-        // token is a right parenthesis, and it's allowed here
+        // processing of right parenthesis is finished: note what is allowed next 
+        _arrayElemPostfixIncrDecrAllowed = (flags & _pInterpreter->arrayBit) && !(flags & _pInterpreter->arrayElemPrefixIncrDecrBit);              // array element has prefix increment / decrement operator ?
+        _arrayElemAssignmentAllowed = (flags & _pInterpreter->arrayBit) && (flags & _pInterpreter->arrayElemAssignmentAllowedBit);          // assignment possible next ? (to array element)
 
-        _arrayElemPrefixIncrDecrBit = (flags & _pInterpreter->arrayElemPrefixIncrDecrBit);              // array element has prefix increment / decrement operator ?
-        _arrayElemAssignmentAllowed = (flags & _pInterpreter->arrayElemAssignmentAllowedBit);          // assignment possible next ? (to array element)
+
+        // token is a right parenthesis, and it's allowed here
 
         parsingStack.deleteListElement( nullptr );                                           // decrement open parenthesis stack counter and delete corresponding list element
         _parenthesisLevel--;
@@ -1653,97 +1661,93 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         // does last token type allow an operator as current token ?
         if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_5_3_2_1_0) ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
 
-        // last token type allows operators: find out which operators are allowed and whether the provided operator is allowed 
+        // allow token (pending further tests) if within most commands, if in immediate mode and inside a function   
+        bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
+        if ( !tokenAllowed ) { pNext = pch; result = result_operatorNotAllowedHere; return false; ; }
+        if ( _isProgramCmd || _isDeleteVarCmd ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+
+
+        // find out if the provided operator (prefix, infix or postfix) is allowed 
+        // -----------------------------------------------------------------------
 
         // does last token type limit allowable operators to infix and postfix ?
-        if ( _lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3 ) {
-            // test that current operator is infix or postfix
+        if ( (_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3) ||
+            ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp) ) {
+            // infix and postfix operators are allowed: test that current operator is infix or postfix
             if ( !(_terminals [termIndex].associativityAnduse & op_infix) && !(_terminals [termIndex].associativityAnduse & op_postfix) ) { pNext = pch; result = result_prefixOperatorNotAllowedhere; return false; }
             _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = (_terminals [termIndex].associativityAnduse & op_postfix);    // token is either infix or postfix
         }
 
-        // last token type is an operator ? allowable operators depends on last operator
-        else if ( _lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0 ) {
-            bool lastTokenWasPrefix = _lastTokenIsPrefixOp;       // hold
-            bool lastTokenWasPostfix = _lastTokenIsPostfixOp;       // hold
-
-            _lastTokenIsPrefixOp = (_terminals [termIndex].associativityAnduse & op_prefix);        // and remember
-            _lastTokenIsPostfixOp = (_terminals [termIndex].associativityAnduse & op_postfix);      // and remember
-            bool lastTokenIsInfixOp = (_terminals [termIndex].associativityAnduse & op_infix);
-
-            // if last token (an operator) was a prefix operator, then current operator token must be a prefix operator to be valid //// is always invalid
-            if ( lastTokenWasPrefix ) {
-                if ( !_lastTokenIsPrefixOp ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
-            }
-
-            // if last token (an operator) was an postfix operator, then current operator token must be an infix operator or a postfix operator to be valid  //// to be valid
-            else if ( lastTokenWasPostfix ) {
-                if ( _lastTokenIsPrefixOp ) { pNext = pch; result = result_invalidOperator; return false; }
-                _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false;
-            }
-
-            // if last token (an operator) was an infix operator, then current operator token must be a prefix operator to be valid
-            else {      // last token was infix
-                if ( !_lastTokenIsPrefixOp ) { pNext = pch; result = result_invalidOperator; return false; }
-                _lastTokenIsPostfixOp = false;
-            }
-        }
-
-        // last token type limit allowable operators to prefix 
-        else {  // last token group is 5, 2 or 1
-            // test if current operator is prefix
-            if ( !(_terminals [termIndex].associativityAnduse & op_prefix) ) { pNext = pch; result = result_invalidOperator; return false; }  // is prefix operator ?
+        // prefix operators only are allowed: test that current operator is prefix
+        else {
+            if ( !(_terminals [termIndex].associativityAnduse & op_prefix) ) { pNext = pch; result = result_invalidOperator; return false; }
             _lastTokenIsPrefixOp = true; _lastTokenIsPostfixOp = false;
         }
 
 
-        // prefix variable increment / decrement operator: check if subsequent assignment is allowed
+        // if current token is a prefix variable increment / decrement operator: note if subsequent assignment is allowed
+        // ---------------------------------------------------------------------------------------------------------------
+
         if ( _lastTokenIsPrefixOp ) {
-            bool isPprefixIncDecr = (_terminals [termIndex].terminalCode == termcod_incr) || (_terminals [termIndex].terminalCode == termcod_decr);
-            _prefixIncrAllowsAssignment = (isPprefixIncDecr ? (_lastTokenIsTerminal ?
+            bool isPrefixIncDecr = (_terminals [termIndex].terminalCode == termcod_incr) || (_terminals [termIndex].terminalCode == termcod_decr);
+            _prefixIncrAllowsAssignment = (isPrefixIncDecr ? (_lastTokenIsTerminal ?
                 ((_lastTermCode == termcod_semicolon) || (_lastTermCode == termcod_leftPar) || (_lastTermCode == termcod_comma)) : false) : false);
             _prefixIncrAllowsAssignment = _prefixIncrAllowsAssignment || (_lastTokenType == Interpreter::tok_no_token) || (_lastTokenType == Interpreter::tok_isReservedWord);
         }
 
-        // postfix variable increment / decrement operator: check that variable has no prefix increment / decrement operator 
-        else if ( _lastTokenIsPostfixOp ) {
-            bool previousIsPrefixIncDecr = _previousTokenIsTerminal ? (_previousTermCode == termcod_incr) || (_previousTermCode == termcod_decr) : false;
-            if ( previousIsPrefixIncDecr ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }                // not compatible with prefix increment / decrement
 
-            bool lastWasRightPar = (_lastTermCode == termcod_rightPar);     // array element with postfix increment / decrement ?
-            if ( lastWasRightPar && _arrayElemPrefixIncrDecrBit ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }  // not compatible with prefix increment / decrement
+        // if current token is postfix variable increment / decrement operator: check that variable has no prefix increment / decrement operator 
+        // -------------------------------------------------------------------------------------------------------------------------------------
+
+        else if ( _lastTokenIsPostfixOp ) {
+            bool isPostfixIncDecr = (_terminals [termIndex].terminalCode == termcod_incr) || (_terminals [termIndex].terminalCode == termcod_decr);
+            if ( isPostfixIncDecr ) {
+                // token before a postfix incr/decr operator must a scalar variable OR a right parenthesis (behind the last array element subscript) 
+                bool lastWasRightPar = _lastTokenIsTerminal ? (_lastTermCode == termcod_rightPar):false;     // array element
+                if ( lastWasRightPar ) {
+                    if ( !_arrayElemPostfixIncrDecrAllowed ) {  pNext = pch; result = result_operatorNotAllowedHere; return false; }  // not compatible with prefix increment / decrement
+                }
+
+                else if ( _lastTokenType == Interpreter::tok_isVariable ) {  // last token was a scalar variable
+                    bool previousIsPrefixIncDecr = _previousTokenIsTerminal ? (_previousTermCode == termcod_incr) || (_previousTermCode == termcod_decr) : false;
+                    if ( previousIsPrefixIncDecr ) {  pNext = pch; result = result_operatorNotAllowedHere; return false; }                // not compatible with prefix increment / decrement
+                }
+
+                else {  pNext = pch; result = result_operatorNotAllowedHere; return false; }   // not a variable or array element
+            }
         }
 
-        // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
-        bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
-        if ( !tokenAllowed ) { pNext = pch; result = result_operatorNotAllowedHere; return false; ; }
 
-        if ( _isProgramCmd || _isDeleteVarCmd ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+        // if current token is an assignment operator, check whether it's allowed here
+        // ---------------------------------------------------------------------------
 
-        // if assignment, check whether it's allowed here 
         bool operatorContainsAssignment = ((_terminals [termIndex].terminalCode == termcod_assign)
             || (_terminals [termIndex].terminalCode == termcod_plusAssign) || (_terminals [termIndex].terminalCode == termcod_minusAssign)
             || (_terminals [termIndex].terminalCode == termcod_multAssign) || (_terminals [termIndex].terminalCode == termcod_divAssign));
 
         if ( operatorContainsAssignment ) {
-            // assignment is second token in expression ? If first token is variable, then assignment is OK
-            bool assignmentIsSecondToken = (_previousTokenIsTerminal ?
-                ((_previousTermCode == termcod_semicolon) || (_previousTermCode == termcod_leftPar) || (_previousTermCode == termcod_comma)) : false);
-            assignmentIsSecondToken = assignmentIsSecondToken || (_previousTokenType == Interpreter::tok_no_token) || (_previousTokenType == Interpreter::tok_isReservedWord);
-            bool assignmentToScalarVarOK = ((_lastTokenType == Interpreter::tok_isVariable) && assignmentIsSecondToken);
+            // token before an assignment operator is always a scalar variable OR a right parenthesis (behind the last array element subscript) 
+            bool lastWasRightPar = _lastTokenIsTerminal ? (_lastTermCode == termcod_rightPar): false;     // array element
+            if ( lastWasRightPar ) {
+                if ( !_arrayElemAssignmentAllowed ) { pNext = pch; result = result_assignmNotAllowedHere; return false; }  // not compatible with prefix increment / decrement
+            }
 
-            // assignment follows two tokens after prefix incr/decrement token that allows assignment ? Then assignment is OK
-            bool previousIsPrefixIncDecr = _previousTokenIsTerminal ? (_previousTermCode == termcod_incr) || (_previousTermCode == termcod_decr) : false;
-            assignmentToScalarVarOK = assignmentToScalarVarOK || (previousIsPrefixIncDecr && _prefixIncrAllowsAssignment);
-
-            // array element assignment
-            bool lastWasRightPar = (_lastTermCode == termcod_rightPar);
-            bool assignmentToArrayElemOK = (lastWasRightPar && _arrayElemAssignmentAllowed && (!_isExtFunctionCmd));
-
-            if ( !(assignmentToScalarVarOK || assignmentToArrayElemOK) ) { pNext = pch; result = result_assignmNotAllowedHere; return false; }
+            else if ( _lastTokenType == Interpreter::tok_isVariable ) {  // last token was a scalar variable
+                // assignment is second token in expression ? If first token is variable, then assignment is OK
+                bool assignmentIsSecondToken = (_previousTokenIsTerminal ?
+                    ((_previousTermCode == termcod_semicolon) || (_previousTermCode == termcod_leftPar) || (_previousTermCode == termcod_comma)) : false);
+                assignmentIsSecondToken = assignmentIsSecondToken || (_previousTokenType == Interpreter::tok_no_token) || (_previousTokenType == Interpreter::tok_isReservedWord);
+                if( !assignmentIsSecondToken) { pNext = pch; result = result_assignmNotAllowedHere; return false; }
+            }
+        
+            else { pNext = pch; result = result_assignmNotAllowedHere; return false; }   // not a variable or array element
         }
 
-        else  if ( _isExtFunctionCmd || _isAnyVarCmd ) {
+
+        // numeric initializer with + or minus prefix: handle as part of number
+        // --------------------------------------------------------------------
+
+        else if ( _isExtFunctionCmd || _isAnyVarCmd ) {         // and not an assignment token
             if ( (_terminals [termIndex].terminalCode == termcod_plus) || (_terminals [termIndex].terminalCode == termcod_minus) ) {
                 // normally, a prefix operator needs its own token (example: expression -2^2 evaluates as -(2^2) yielding -4, whereas a number -2 (stored as one token) ^2 would yield 4, which is incorrect
                 // but initializers are pure constants: no prefix operators are allowed here, because this would create a constant expression
@@ -1751,7 +1755,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
                 if ( nextTermIndex >= 0 ) { pNext = pch; result = result_operatorNotAllowedHere; return false; } // next token is terminal as well. It risks to be another prefix operator
                 else { pNext = pch; return true; }         // do not move input pointer
             }
-            else { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+            else { pNext = pch; result = result_operatorNotAllowedHere; return false; }       // not a plus or minus prefix
         }
 
         // token is an operator, and it's allowed here
