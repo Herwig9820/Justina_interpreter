@@ -155,7 +155,6 @@ Interpreter::execResult_type  Interpreter::exec() {
                 // if postfix operation, execute it first (it always has highest priority)
                 bool isPostfixOperator = (_pmyParser->_terminals [_pEvalStackTop->terminal.index & 0x7F].associativityAnduse & MyParser::op_postfix);
                 if ( isPostfixOperator ) {
-                    Serial.print( "--- exec unary: token index (hex) is " ); Serial.println( _pEvalStackTop->terminal.index, HEX );
                     execUnaryOperation( false );        // flag postfix operation
                     execResult = execAllProcessedOperators();
                     if ( execResult != result_execOK ) { break; }

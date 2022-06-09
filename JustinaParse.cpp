@@ -541,7 +541,7 @@ MyParser::parseTokenResult_type MyParser::parseInstruction( char*& pInputStart )
     _lastTokenIsPostfixOp = false;
 
     _arrayElemPostfixIncrDecrAllowed = false;               // array element allows postfix increment / decrement operator ?
-    _prefixIncrAllowsAssignment = false;
+    _prefixIncrDecrIsFirstToken = false;
     _arrayElemAssignmentAllowed = false;                    // array element allows assignment ? 
 
     _parenthesisLevel = 0;
@@ -1281,19 +1281,24 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
             if ( _pInterpreter->extFunctionData [_functionIndex].pExtFunctionStartToken != nullptr ) { flags = flags | _pInterpreter->extFunctionPrevDefinedBit; }
         }
 
-        // left parenthesis is second token in expression ? If first token is variable, then assignment is OK
-        bool leftParIsSecondToken = (_previousTokenIsTerminal ?
-            ((_previousTermCode == termcod_semicolon) || (_previousTermCode == termcod_leftPar) || (_previousTermCode == termcod_comma)) : false);
-        leftParIsSecondToken = leftParIsSecondToken || (_previousTokenType == Interpreter::tok_no_token) || (_previousTokenType == Interpreter::tok_isReservedWord);
-        bool assignmentOK = ((_lastTokenType == Interpreter::tok_isVariable) && leftParIsSecondToken);
 
-        // left parenthesis follows two tokens after prefix incr/decrement token that allows assignment ? Then assignment is OK
-        bool previousIsPrefixIncDecr = _previousTokenIsTerminal ? (_previousTermCode == termcod_incr) || (_previousTermCode == termcod_decr) : false;
-        if ( previousIsPrefixIncDecr ) { flags = flags | _pInterpreter->arrayElemPrefixIncrDecrBit; }      // remember
+        // if start of array element subscript(s): record if postfix incr/decr operator and / or assignment operator are allowed after closing parenthesis
+        // -----------------------------------------------------------------------------------------------------------------------------------------------
 
-        // assignment is OK if last token before left parenthesis is variable name (optionally preceded by a prefix incr/decr), AND it's the start of a (sub-) expression, but NOT part of a variable definition command
-        assignmentOK = assignmentOK || (previousIsPrefixIncDecr && _prefixIncrAllowsAssignment);
-        if ( assignmentOK ) { flags = flags | _pInterpreter->arrayElemAssignmentAllowedBit; }      // after the corresponding closing parenthesis, assignment will be allowed
+        if ( _lastTokenType == Interpreter::tok_isVariable ) {      // start of array element
+
+            // postfix incr/decr operator allowed ?
+            bool previousIsPrefixIncDecr = (_previousTokenIsTerminal ? (_previousTermCode == termcod_incr) || (_previousTermCode == termcod_decr) : false);
+            if ( !previousIsPrefixIncDecr ) { flags = flags | _pInterpreter->arrayElemPostfixIncrDecrAllowedBit; }      // remember
+
+            // (sub-)expression STARTS with this array element, or with prefix incr/decr operator followed by this array element ? Assignment is allowed 
+            bool leftParIsSecondToken = (_previousTokenIsTerminal ?
+                ((_previousTermCode == termcod_semicolon) || (_previousTermCode == termcod_leftPar) || (_previousTermCode == termcod_comma)) : false);
+            bool assignmentOK = leftParIsSecondToken || (_previousTokenType == Interpreter::tok_no_token) || (_previousTokenType == Interpreter::tok_isReservedWord);
+            assignmentOK = assignmentOK || (previousIsPrefixIncDecr && _prefixIncrDecrIsFirstToken);
+            if ( assignmentOK ) { flags = flags | _pInterpreter->arrayElemAssignmentAllowedBit; }      // after the corresponding closing parenthesis, assignment will be allowed
+        }
+
 
         // if function DEFINITION: initialize variables for counting of allowed mandatory and optional arguments (not an array parameter, would be parenthesis level 1)
         if ( _isExtFunctionCmd && (_parenthesisLevel == 0) ) {      // not an array parameter (would be parenthesis level 1)
@@ -1522,9 +1527,8 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 
 
         // processing of right parenthesis is finished: note what is allowed next 
-        _arrayElemPostfixIncrDecrAllowed = (flags & _pInterpreter->arrayBit) && !(flags & _pInterpreter->arrayElemPrefixIncrDecrBit);              // array element has prefix increment / decrement operator ?
-        _arrayElemAssignmentAllowed = (flags & _pInterpreter->arrayBit) && (flags & _pInterpreter->arrayElemAssignmentAllowedBit);          // assignment possible next ? (to array element)
-
+        _arrayElemPostfixIncrDecrAllowed = (flags & _pInterpreter->arrayElemPostfixIncrDecrAllowedBit);              // array element has prefix increment / decrement operator ?
+        _arrayElemAssignmentAllowed = (flags & _pInterpreter->arrayElemAssignmentAllowedBit);          // assignment possible next ? (to array element)
 
         // token is a right parenthesis, and it's allowed here
 
@@ -1690,9 +1694,9 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 
         if ( _lastTokenIsPrefixOp ) {
             bool isPrefixIncDecr = (_terminals [termIndex].terminalCode == termcod_incr) || (_terminals [termIndex].terminalCode == termcod_decr);
-            _prefixIncrAllowsAssignment = (isPrefixIncDecr ? (_lastTokenIsTerminal ?
+            _prefixIncrDecrIsFirstToken = (isPrefixIncDecr ? (_lastTokenIsTerminal ?
                 ((_lastTermCode == termcod_semicolon) || (_lastTermCode == termcod_leftPar) || (_lastTermCode == termcod_comma)) : false) : false);
-            _prefixIncrAllowsAssignment = _prefixIncrAllowsAssignment || (_lastTokenType == Interpreter::tok_no_token) || (_lastTokenType == Interpreter::tok_isReservedWord);
+            _prefixIncrDecrIsFirstToken = _prefixIncrDecrIsFirstToken || (_lastTokenType == Interpreter::tok_no_token) || (_lastTokenType == Interpreter::tok_isReservedWord);
         }
 
 
@@ -1703,17 +1707,17 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
             bool isPostfixIncDecr = (_terminals [termIndex].terminalCode == termcod_incr) || (_terminals [termIndex].terminalCode == termcod_decr);
             if ( isPostfixIncDecr ) {
                 // token before a postfix incr/decr operator must a scalar variable OR a right parenthesis (behind the last array element subscript) 
-                bool lastWasRightPar = _lastTokenIsTerminal ? (_lastTermCode == termcod_rightPar):false;     // array element
+                bool lastWasRightPar = _lastTokenIsTerminal ? (_lastTermCode == termcod_rightPar) : false;     // array element
                 if ( lastWasRightPar ) {
-                    if ( !_arrayElemPostfixIncrDecrAllowed ) {  pNext = pch; result = result_operatorNotAllowedHere; return false; }  // not compatible with prefix increment / decrement
+                    if ( !_arrayElemPostfixIncrDecrAllowed ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }  // not compatible with prefix increment / decrement
                 }
 
                 else if ( _lastTokenType == Interpreter::tok_isVariable ) {  // last token was a scalar variable
                     bool previousIsPrefixIncDecr = _previousTokenIsTerminal ? (_previousTermCode == termcod_incr) || (_previousTermCode == termcod_decr) : false;
-                    if ( previousIsPrefixIncDecr ) {  pNext = pch; result = result_operatorNotAllowedHere; return false; }                // not compatible with prefix increment / decrement
+                    if ( previousIsPrefixIncDecr ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }                // not compatible with prefix increment / decrement
                 }
 
-                else {  pNext = pch; result = result_operatorNotAllowedHere; return false; }   // not a variable or array element
+                else { pNext = pch; result = result_operatorNotAllowedHere; return false; }   // not a variable or array element
             }
         }
 
@@ -1727,19 +1731,21 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 
         if ( operatorContainsAssignment ) {
             // token before an assignment operator is always a scalar variable OR a right parenthesis (behind the last array element subscript) 
-            bool lastWasRightPar = _lastTokenIsTerminal ? (_lastTermCode == termcod_rightPar): false;     // array element
+            bool lastWasRightPar = _lastTokenIsTerminal ? (_lastTermCode == termcod_rightPar) : false;     // array element
             if ( lastWasRightPar ) {
                 if ( !_arrayElemAssignmentAllowed ) { pNext = pch; result = result_assignmNotAllowedHere; return false; }  // not compatible with prefix increment / decrement
             }
 
             else if ( _lastTokenType == Interpreter::tok_isVariable ) {  // last token was a scalar variable
-                // assignment is second token in expression ? If first token is variable, then assignment is OK
+                // (sub-)expression STARTS with this variable, or with prefix incr/decr operator followed by this variable ? Assignment is allowed 
                 bool assignmentIsSecondToken = (_previousTokenIsTerminal ?
                     ((_previousTermCode == termcod_semicolon) || (_previousTermCode == termcod_leftPar) || (_previousTermCode == termcod_comma)) : false);
                 assignmentIsSecondToken = assignmentIsSecondToken || (_previousTokenType == Interpreter::tok_no_token) || (_previousTokenType == Interpreter::tok_isReservedWord);
-                if( !assignmentIsSecondToken) { pNext = pch; result = result_assignmNotAllowedHere; return false; }
+                bool previousIsPrefixIncDecr = _previousTokenIsTerminal ? (_previousTermCode == termcod_incr) || (_previousTermCode == termcod_decr) : false;
+                bool assignmentOK = assignmentIsSecondToken || (previousIsPrefixIncDecr && _prefixIncrDecrIsFirstToken);
+                if ( !assignmentOK ) { pNext = pch; result = result_assignmNotAllowedHere; return false; }
             }
-        
+
             else { pNext = pch; result = result_assignmNotAllowedHere; return false; }   // not a variable or array element
         }
 
@@ -1747,7 +1753,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
         // numeric initializer with + or minus prefix: handle as part of number
         // --------------------------------------------------------------------
 
-        else if ( _isExtFunctionCmd || _isAnyVarCmd ) {         // and not an assignment token
+        if ( _isExtFunctionCmd || _isAnyVarCmd ) {         // and not an assignment token
             if ( (_terminals [termIndex].terminalCode == termcod_plus) || (_terminals [termIndex].terminalCode == termcod_minus) ) {
                 // normally, a prefix operator needs its own token (example: expression -2^2 evaluates as -(2^2) yielding -4, whereas a number -2 (stored as one token) ^2 would yield 4, which is incorrect
                 // but initializers are pure constants: no prefix operators are allowed here, because this would create a constant expression
@@ -1755,7 +1761,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
                 if ( nextTermIndex >= 0 ) { pNext = pch; result = result_operatorNotAllowedHere; return false; } // next token is terminal as well. It risks to be another prefix operator
                 else { pNext = pch; return true; }         // do not move input pointer
             }
-            else { pNext = pch; result = result_operatorNotAllowedHere; return false; }       // not a plus or minus prefix
+            else if ( _terminals [termIndex].terminalCode != termcod_assign ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }       // not a plus or minus prefix
         }
 
         // token is an operator, and it's allowed here
