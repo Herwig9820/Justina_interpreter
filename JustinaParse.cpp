@@ -977,6 +977,7 @@ bool MyParser::parseAsNumber( char*& pNext, parseTokenResult_type& result ) {
     if ( _pInterpreter->_programCounter == _pInterpreter->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
     // token is a number constant, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
     if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2_1_0) ) { pNext = pch; result = result_numConstNotAllowedHere; return false; }
+    if ( (_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp ) { pNext = pch; result = result_numConstNotAllowedHere; return false; }
 
     // overflow ? (underflow is not detected with strtof() ) 
     if ( !isfinite( f ) ) { pNext = pch; result = result_overflow; return false; }
@@ -1029,6 +1030,7 @@ bool MyParser::parseAsStringConstant( char*& pNext, parseTokenResult_type& resul
 
     // token is an alphanumeric constant, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
     if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2_1_0) ) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
+    if ( (_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp ) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
 
     // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
     bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
@@ -1255,6 +1257,7 @@ bool MyParser::parseTerminalToken( char*& pNext, parseTokenResult_type& result )
 
         // token is left parenthesis, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
         if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_5_4_2_1_0) ) { pNext = pch;  result = result_parenthesisNotAllowedHere; return false; }
+        if ( (_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp ) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
 
         // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
         bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
@@ -1811,6 +1814,7 @@ bool MyParser::parseAsInternFunction( char*& pNext, parseTokenResult_type& resul
         if ( _pInterpreter->_programCounter == _pInterpreter->_programStorage ) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
         if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2_1_0) ) { pNext = pch; result = result_functionNotAllowedHere; return false; }
+        if ( (_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp ) { pNext = pch; result = result_functionNotAllowedHere; return false; }
 
         // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
         bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
@@ -1886,6 +1890,7 @@ bool MyParser::parseAsExternFunction( char*& pNext, parseTokenResult_type& resul
 
     // token is an external function, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
     if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2_1_0) ) { pNext = pch; result = result_functionNotAllowedHere; return false; }
+    if ( (_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp ) { pNext = pch; result = result_functionNotAllowedHere; return false; }
 
     // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
     bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
@@ -1995,6 +2000,7 @@ bool MyParser::parseAsVariable( char*& pNext, parseTokenResult_type& result ) {
 
     // token is a variable, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
     if ( !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2_1_0) ) { pNext = pch; result = result_variableNotAllowedHere; return false; }
+    if ( (_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp ) { pNext = pch; result = result_variableNotAllowedHere; return false; }
 
     // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
     bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
@@ -2351,6 +2357,9 @@ void MyParser::prettyPrintInstructions( bool printOneInstruction, char* startTok
     Interpreter::TokenPointer progCnt;
     progCnt.pTokenChars = (startToken == nullptr) ? _pInterpreter->_programStart : startToken;
     int tokenType = *progCnt.pTokenChars & 0x0F;
+    int lastTokenType = Interpreter::tok_no_token;
+    bool lastHasTrailingSpace = false, testForPostfix = false, testForPrefix = false;
+    bool lastWasPostfixOperator = false, lastWasInfixOperator = false;
 
     // output: printable token (text)
     const int maxCharsPretty { 100 };           // must be long enough to hold one token in text (e.g. a variable name)
@@ -2361,7 +2370,8 @@ void MyParser::prettyPrintInstructions( bool printOneInstruction, char* startTok
         Interpreter::TokenPointer nextProgCnt;
         nextProgCnt.pTokenChars = progCnt.pTokenChars + tokenLength;
         int nextTokenType = *nextProgCnt.pTokenChars & 0x0F;                                                                // next token type (look ahead)
-        bool errorTokenHasLeadingSpace = false;
+        bool tokenHasLeadingSpace = false, testNextForPostfix = false, isPostfixOperator = false, isInfixOperator = false;
+        bool hasTrailingSpace = false;
         bool isSemicolon = false;
 
         char prettyToken [maxCharsPretty] = "";
@@ -2379,6 +2389,7 @@ void MyParser::prettyPrintInstructions( bool printOneInstruction, char* startTok
             }
 
             sprintf( prettyToken, nextIsSemicolon ? "%s" : "%s ", _resWords [progCnt.pResW->tokenIndex]._resWordName );
+            hasTrailingSpace = true;
             break;
         }
 
@@ -2401,6 +2412,7 @@ void MyParser::prettyPrintInstructions( bool printOneInstruction, char* startTok
             bool isUserVar = (progCnt.pVar->identInfo & _pInterpreter->var_scopeMask) == _pInterpreter->var_isUser;
             char* identifierName = isUserVar ? _pInterpreter->userVarNames [identNameIndex] : _pInterpreter->programVarNames [identNameIndex];
             strcpy( prettyToken, identifierName );
+            testNextForPostfix = true;
             break;
         }
 
@@ -2409,10 +2421,13 @@ void MyParser::prettyPrintInstructions( bool printOneInstruction, char* startTok
             float f;
             memcpy( &f, progCnt.pFloat->realConst, sizeof( f ) );                         // pointer not necessarily aligned with word size: copy memory instead
             sprintf( prettyToken, "%.3G", f );
+            testNextForPostfix = true;
             break;
         }
 
         case Interpreter::tok_isStringConst:
+            testNextForPostfix = true;
+
         case Interpreter::tok_isGenericName:
         {
             char* pAnum { nullptr };
@@ -2425,17 +2440,49 @@ void MyParser::prettyPrintInstructions( bool printOneInstruction, char* startTok
         {
             int index = (progCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F;
             index += ((tokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (tokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
+            char trailing [2] = "\0";      // init: empty string
 
-            if ( (_terminals [index].terminalCode == termcod_concat) || (_terminals [index].terminalCode == termcod_and) || (_terminals [index].terminalCode == termcod_or) ) {
-                strcat( prettyToken, " " );          // readability
-                errorTokenHasLeadingSpace = true;
+            if ( _terminals [index].terminalCode <= termcod_opRangeEnd ) {      // operator //// adapt spacing
+                isPostfixOperator = testForPostfix ? (_terminals [index].associativityAnduse & MyParser::op_postfix) : false;
+
+                isInfixOperator = lastWasInfixOperator ? false : testForPostfix ? !isPostfixOperator : false;
+
+                if ( lastWasPostfixOperator && isPostfixOperator ) {             // check if operator is postfix operator 
+                    strcat( prettyToken, " " );          // leading space
+                    tokenHasLeadingSpace = true;
+                }
+
+                if ( !isPostfixOperator && !lastHasTrailingSpace ) {             // check if operator is postfix operator 
+                    strcat( prettyToken, " " );          // leading space
+                    tokenHasLeadingSpace = true;
+                }
+
+                if ( (isInfixOperator) ) {
+                    trailing [0] = ' ';      // single space (already terminated by '\0')
+                    hasTrailingSpace = true;
+                }
+
+
+                testNextForPostfix = isPostfixOperator;
             }
+
+            else if ( _terminals [index].terminalCode == termcod_rightPar ) {
+                testNextForPostfix = true;
+            }
+
+            else if ( _terminals [index].terminalCode == termcod_leftPar ) {
+                hasTrailingSpace = true;
+                testNextForPostfix = false;
+            }
+
+            else if ( (_terminals [index].terminalCode == termcod_comma) || (_terminals [index].terminalCode == termcod_semicolon) ) {
+                testNextForPostfix = false;
+                trailing [0] = ' ';      // single space (already terminated by '\0')
+                hasTrailingSpace = true;
+            }
+
             strcat( prettyToken, _terminals [index].terminalName );         // concatenate with empty string or single-space string
-            if ( (_terminals [index].terminalCode == termcod_semicolon) || (_terminals [index].terminalCode == termcod_concat) ||
-                (_terminals [index].terminalCode == termcod_and) || (_terminals [index].terminalCode == termcod_or) ) {
-                strcat( prettyToken, " " );          // readability
-            }
-
+            strcat( prettyToken, trailing );
             isSemicolon = (_terminals [index].terminalCode == termcod_semicolon);
             break; }
         }
@@ -2453,7 +2500,7 @@ void MyParser::prettyPrintInstructions( bool printOneInstruction, char* startTok
         // if printing one instruction, return output error position based on token where execution error was produced
         if ( printOneInstruction ) {
             if ( errorProgCounter == progCnt.pTokenChars ) {
-                *sourceErrorPos = outputLength + (errorTokenHasLeadingSpace ? 1 : 0);
+                *sourceErrorPos = outputLength + (tokenHasLeadingSpace ? 1 : 0);
             }
             else if ( isSemicolon ) { break; }
             outputLength += tokenSourceLength;
@@ -2464,7 +2511,12 @@ void MyParser::prettyPrintInstructions( bool printOneInstruction, char* startTok
         // ---------------------
 
         progCnt.pTokenChars = nextProgCnt.pTokenChars;
+        lastTokenType = tokenType;
         tokenType = nextTokenType;                                                     // next token type
+        testForPostfix = testNextForPostfix;
+        lastHasTrailingSpace = hasTrailingSpace;
+        lastWasInfixOperator = isInfixOperator;
+        lastWasPostfixOperator = isPostfixOperator;
     }
 
     // exit

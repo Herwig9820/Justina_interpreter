@@ -459,7 +459,6 @@ bool Interpreter::processCharacter( char c ) {
 
                     // evaluation comes here
                     _pmyParser->prettyPrintInstructions( false );                    // immediate mode and result OK: pretty print input line
-
                     exec();                                 // execute parsed user statements
                 }
             }
