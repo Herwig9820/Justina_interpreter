@@ -28,6 +28,7 @@ Interpreter::execResult_type  Interpreter::exec() {
     _activeFunctionData.activeCmd_tokenAddress = nullptr;
     _activeFunctionData.errorStatementStartStep = _programCounter;
     _activeFunctionData.errorProgramCounter = _programCounter;
+    _activeFunctionData.blockType = MyParser::block_extFunction;  // consider main as an 'external' function      
 
     intermediateStringObjectCount = 0;      // reset at the start of execution
     localVarStringObjectCount = 0;
@@ -57,7 +58,7 @@ Interpreter::execResult_type  Interpreter::exec() {
             // Case: process reserved word token
             // ---------------------------------
 
-            // compile time statements (VAR, LOCAL, STATIC): skip for execution
+            // compile time statements (program, function, var, local, static, ...): skip for execution
 
         {   // start block (required for variable definitions inside)
             tokenIndex = ((TokenIsResWord*) _programCounter)->tokenIndex;
@@ -181,6 +182,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                     int argCount = 0;                                                // init number of supplied arguments (or array subscripts) to 0
                     LE_evalStack* pstackLvl = _pEvalStackTop;     // stack level of last argument / array subscript before right parenthesis, or left parenthesis (if function call and no arguments supplied)
 
+                    // set pointer to stack level for left parenthesis and to preceding stack level
                     while ( (pstackLvl->genericToken.tokenType != tok_isTerminalGroup1) && (pstackLvl->genericToken.tokenType != tok_isTerminalGroup2) && (pstackLvl->genericToken.tokenType != tok_isTerminalGroup3) ) {
                         // terminal found: continue until left parenthesis
                         if ( MyParser::_terminals [pstackLvl->terminal.index & 0x7F].terminalCode == MyParser::termcod_leftPar ) { break; }   // continue until left parenthesis found
@@ -198,6 +200,7 @@ Interpreter::execResult_type  Interpreter::exec() {
 
                     // execute internal or external function, calculate array element address or remove parenthesis around single argument (if no function or array)
                     execResult = execParenthesesPair( pPrecedingStackLvl, pstackLvl, argCount );
+
                     if ( execResult != result_execOK ) { break; }
 
                     // the left parenthesis and the argument(s) are now removed and replaced by a single scalar (function result, array element, single argument)
@@ -206,8 +209,8 @@ Interpreter::execResult_type  Interpreter::exec() {
                     execResult = execAllProcessedOperators();
                     if ( execResult != result_execOK ) { break; }
 
+                }
             }
-        }
 
             else if ( isSemicolon ) {
                 // -----------------
@@ -237,10 +240,10 @@ Interpreter::execResult_type  Interpreter::exec() {
 
             break;
 
-    }   // end 'switch (tokenType)'
+        }   // end 'switch (tokenType)'
 
 
-    // advance to next token
+        // advance to next token
         _programCounter = _activeFunctionData.pNextStep;         // note: will be altered when calling an external function and upon return of a called function
         tokenType = *_activeFunctionData.pNextStep & 0x0F;                                                               // next token type (could be token within caller, if returning now)
         precedingIsComma = isComma;
@@ -277,11 +280,11 @@ Interpreter::execResult_type  Interpreter::exec() {
             nextIsNewInstructionStart = false;
         }
 
-}   // end 'while ( tokenType != tok_no_token )'                                                                                       // end 'while ( tokenType != tok_no_token )'
+    }   // end 'while ( tokenType != tok_no_token )'                                                                                       // end 'while ( tokenType != tok_no_token )'
 
 
-    // All tokens processed: finalize
-    // ------------------------------
+        // All tokens processed: finalize
+        // ------------------------------
     if ( lastValueIsStored ) {             // did the execution produce a result ?
         // print last result
         char s [MyParser::_maxAlphaCstLen + 10];  // note: with small '_maxAlphaCstLen' values, make sure string is also long enough to print real values
@@ -491,6 +494,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
     case MyParser::cmdcod_end:
     {
         char blockType = *(char*) _pFlowCtrlStackTop;       // determine currently open block
+
         if ( (blockType == MyParser::block_if) || (blockType == MyParser::block_while) || (blockType == MyParser::block_for) ) {
 
             bool exitLoop { true };
@@ -745,8 +749,8 @@ void Interpreter::saveLastValue( bool& overWritePrevious ) {
 #endif
             delete [] lastvalue.value.pStringConst;
             intermediateStringObjectCount--;
+        }
     }
-}
 
     // store new last value type
     lastResultTypeFiFo [0] = _pEvalStackTop->varOrConst.valueType;               // value type
@@ -838,37 +842,41 @@ void Interpreter::clearEvalStack() {
 }
 
 
-// -----------------------
-// Clear evaluation stack  
-// -----------------------
+// ------------------------
+// Clear flow control stack  
+// ------------------------
 
 void Interpreter::clearFlowCtrlStack() {                // and remaining local storage + local variable string and array values for open functions
 
-    void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;
+    void* pMainLvl = flowCtrlStack.getFirstListElement();        // main level or null pointer
 
-    while ( pFlowCtrlStackLvl != nullptr ) {
-        char blockType = *(char*) _pFlowCtrlStackTop;
+    if ( flowCtrlStack.getElementCount() > 1 ) {                // exclude main level
+        void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;
 
-        if ( blockType == MyParser::block_extFunction ) {               // open function
-            int localVarCount = extFunctionData [_activeFunctionData.functionIndex].localVarCountInFunction;
+        while ( pFlowCtrlStackLvl != pMainLvl ) {
+            char blockType = *(char*) _pFlowCtrlStackTop;
 
-            if ( localVarCount > 0 ) {
-                _pmyParser->deleteArrayElementStringObjects( _activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, false, false, true );
-                _pmyParser->deleteVariableValueObjects( _activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, false, false, true );
+            if ( blockType == MyParser::block_extFunction ) {               // open function
+                int localVarCount = extFunctionData [_activeFunctionData.functionIndex].localVarCountInFunction;
 
-                // release local variable storage for function that has been called
-                delete [] _activeFunctionData.pLocalVarValues;
-                delete [] _activeFunctionData.pVariableAttributes;
-                delete [] _activeFunctionData.ppSourceVarTypes;
+                if ( localVarCount > 0 ) {
+                    _pmyParser->deleteArrayElementStringObjects( _activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, false, false, true );
+                    _pmyParser->deleteVariableValueObjects( _activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, false, false, true );
+
+                    // release local variable storage for function that has been called
+                    delete [] _activeFunctionData.pLocalVarValues;
+                    delete [] _activeFunctionData.pVariableAttributes;
+                    delete [] _activeFunctionData.ppSourceVarTypes;
+                }
+
+                pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement( pFlowCtrlStackLvl );
+                if ( pFlowCtrlStackLvl == nullptr ) { break; }         // all done
+
+                // load local storage pointers again for deepest CALLER function and restore pending step & active function information for caller function
+                _activeFunctionData = *(FunctionData*) _pFlowCtrlStackTop;
             }
-
-            pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement( pFlowCtrlStackLvl );
-            if ( pFlowCtrlStackLvl == nullptr ) { break; }         // all done
-
-            // load local storage pointers again for deepest CALLER function and restore pending step & active function information for caller function
-            _activeFunctionData = *(FunctionData*) _pFlowCtrlStackTop;
+            else { pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement( pFlowCtrlStackLvl ); }
         }
-        else { pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement( pFlowCtrlStackLvl ); }
     }
 
     flowCtrlStack.deleteList();
@@ -932,13 +940,14 @@ Interpreter::execResult_type Interpreter::execParenthesesPair( LE_evalStack*& pP
 
     // stack level preceding left parenthesis is internal function ? execute function
     else if ( pPrecedingStackLvl->genericToken.tokenType == tok_isInternFunction ) {
-        execResult_type execResult = result_execOK;//// vervang door call naar int func exec
+        execResult_type execResult = execInternalFunction( pPrecedingStackLvl, firstArgStackLvl, argCount );
+
         return execResult;
     }
 
     // stack level preceding left parenthesis is external function ? execute function
     else if ( pPrecedingStackLvl->genericToken.tokenType == tok_isExternFunction ) {
-        execResult_type execResult = launchExternalFunction( pPrecedingStackLvl, firstArgStackLvl, argCount );    // exec only when next instruction is fetched !
+        execResult_type execResult = launchExternalFunction( pPrecedingStackLvl, firstArgStackLvl, argCount );
         return execResult;
     }
 
@@ -1143,7 +1152,7 @@ Interpreter::execResult_type  Interpreter::execUnaryOperation( bool isPrefix ) {
     else if ( terminalCode == _pmyParser->termcod_not ) { opResult.realConst = (operand.realConst == 0); } // prefix: not
     else if ( terminalCode == _pmyParser->termcod_incr ) { opResult.realConst = operand.realConst + 1; } // prefix & postfix: increment
     else if ( terminalCode == _pmyParser->termcod_decr ) { opResult.realConst = operand.realConst - 1; } // prefix & postfix: decrement
-    else if ( terminalCode == _pmyParser->termcod_testpostfix ) { opResult.realConst = operand.realConst *10; } // postfix: test
+    else if ( terminalCode == _pmyParser->termcod_testpostfix ) { opResult.realConst = operand.realConst * 10; } // postfix: test
 
 
     // tests
@@ -1152,13 +1161,13 @@ Interpreter::execResult_type  Interpreter::execUnaryOperation( bool isPrefix ) {
     if ( isnan( opResult.realConst ) ) { return result_undefined; }
     else if ( !isfinite( opResult.realConst ) ) { return result_overflow; }
 
-    
+
     // decrement or increment operation: store value in variable (variable type does not change) 
     // -----------------------------------------------------------------------------------------
 
     bool isIncrDecr = ((terminalCode == _pmyParser->termcod_incr)
         || (terminalCode == _pmyParser->termcod_decr));
-    
+
     if ( isIncrDecr ) { *pOperandStackLvl->varOrConst.value.pRealConst = opResult.realConst; }
 
 
@@ -1338,11 +1347,11 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     case MyParser::termcod_ne:
         opResult.realConst = operand1.realConst != operand2.realConst;
         break;
-    }       // switch
+        }       // switch
 
 
-    // tests
-    // -----
+        // tests
+        // -----
 
     if ( (opResultReal) && (operatorCode != _pmyParser->termcod_assign) ) {     // check error (not for pure assignment)
         if ( isnan( opResult.realConst ) ) { return result_undefined; }
@@ -1400,7 +1409,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         if ( !operand1IsVarRef ) { // if reference, then value type on the stack indicates 'variable reference', so don't overwrite it
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) | (opResultReal ? value_isFloat : value_isStringPointer);
         }
-    }
+        }
 
 
     // Delete any intermediate result string objects used as operands 
@@ -1453,53 +1462,71 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
     }
     return result_execOK;
-}
+    }
 
 
 // ---------------------------------
 // *   execute internal function   *
 // ---------------------------------
 
-Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pStackLvl, int argCount ) {
+Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount ) {
 
-    int functionIndex = ((TokenIsIntFunction*) _programCounter)->tokenIndex & 0x0F;
+    _activeFunctionData.errorProgramCounter = pFunctionStackLvl->function.tokenAddress;  // before pushing to stack   
+    int functionIndex = pFunctionStackLvl->function.index;
     char functionCode = MyParser::_functions [functionIndex].functionCode;
+    int arrayPattern = MyParser::_functions [functionIndex].arrayPattern;
+    int minArgs = MyParser::_functions [functionIndex].minArgs;
+    int maxArgs = MyParser::_functions [functionIndex].maxArgs;
+    Val fcnResult;
 
     // variables for intermediate storage of operands (constants, variable values or intermediate results from previous calculations) and result
-    LE_evalStack* pArgStackLvl = pStackLvl;
-    Val operands [8], opResult;                                                               // operands and result
-    bool opIsReal [8], opResultReal;
 
     // value type of operands
-    if ( argCount > 0 ) {
-        for ( int i = 0; i < argCount; i++ ) {
-            opIsReal [i] = (pArgStackLvl->varOrConst.valueType == value_isFloat);
+    if ( suppliedArgCount > 0 ) {
+
+        LE_evalStack* pStackLvl = pFirstArgStackLvl;         // pointing to first argument on stack
+        bool operandIsVarRef [8], operandIsReal [8];
+        Val operands [8];
+
+        for ( int i = 0; i < suppliedArgCount; i++ ) {
+            // value type of operands
+            operandIsVarRef [i] = (pStackLvl->varOrConst.valueType == value_isVarRef);
+            char operandValueType = operandIsVarRef [i] ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
+            operandIsReal [i] = ((uint8_t) operandValueType == value_isFloat);
 
             // fetch operands: real constants or pointers to character strings
-            if ( opIsReal [i] ) { operands [i].realConst = (pArgStackLvl->varOrConst.tokenType == tok_isVariable) ? (*pArgStackLvl->varOrConst.value.pRealConst) : pArgStackLvl->varOrConst.value.realConst; }
-            else { operands [i].pStringConst = (pArgStackLvl->varOrConst.tokenType == tok_isVariable) ? (*pArgStackLvl->varOrConst.value.ppStringConst) : pArgStackLvl->varOrConst.value.pStringConst; }
+            if ( operandIsReal ) { operands [i].realConst = (pStackLvl->varOrConst.tokenType == tok_isVariable) ? (*pStackLvl->varOrConst.value.pRealConst) : pStackLvl->varOrConst.value.realConst; }
+            else { operands [i].pStringConst = (pStackLvl->varOrConst.tokenType == tok_isVariable) ? (*pStackLvl->varOrConst.value.ppStringConst) : pStackLvl->varOrConst.value.pStringConst; }
+
+            pStackLvl = (LE_evalStack*) evalStack.getNextListElement( pStackLvl );       // argument saved: remove argument from stack and point to next argument
+        }
+
+
+        switch ( functionCode ) {
+
+        case MyParser::fnccod_sqrt:
+            fcnResult.realConst = sqrt( operands [0].realConst );
+            break;
+        
+        case MyParser::fnccod_ubound:
+            fcnResult.realConst = operands [1].realConst; //// test
+            break;
         }
     }
 
-    // check if operands are compatible with operator: real for all operators except string concatenation
-    _activeFunctionData.errorProgramCounter = pFunctionStackLvl->function.tokenAddress;                // in the event of an error  
+    // delete function name token and arguments from evaluation stack, create stack entry for function result 
+    clearEvalStackLevels(suppliedArgCount + 1);
 
+    _pEvalStackTop = (LE_evalStack*) evalStack.appendListElement( sizeof( VarOrConstLvl ) );
+    _pEvalStackMinus1 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackTop );
+    _pEvalStackMinus2 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackMinus1 );
 
-
-
-    switch ( functionIndex ) {
-
-    case MyParser::fnccod_and:
-
-        // Fetch operands and operands value type
-        // --------------------------------------
-
-
-
-
-
-        break;
-    }
+    // push result to stack
+    _pEvalStackTop->varOrConst.value = fcnResult;                        // float or pointer to string
+    _pEvalStackTop->varOrConst.valueType = value_isFloat;  ////   opResultReal ? value_isFloat : value_isStringPointer;     // value type of second operand  
+    _pEvalStackTop->varOrConst.tokenType = tok_isConstant;              // use generic constant type
+    _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
+    _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
 
     return result_execOK;
 }
@@ -1509,12 +1536,12 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
 // *   launch external function   *
 // --------------------------------
 
-Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pArgStackLvl, int suppliedArgCount ) {
+Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount ) {
 
     // note current token (function token) position, in case an error happens IN THE CALLER immediately upon return from function to be called
     // ---------------------------------------------------------------------------------------------------------------------------------------
 
-    _activeFunctionData.errorProgramCounter = pFunctionStackLvl->function.tokenAddress;  // before pushing to stack   
+    _activeFunctionData.errorProgramCounter = pFunctionStackLvl->function.tokenAddress;  // CALLER function token position, before pushing caler function data to stack   
 
 
     // push caller function data (or main = user entry level in immediate mode) on FLOW CONTROL stack 
@@ -1522,7 +1549,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 
     _pFlowCtrlStackMinus2 = _pFlowCtrlStackMinus1; _pFlowCtrlStackMinus1 = _pFlowCtrlStackTop;
     _pFlowCtrlStackTop = (FunctionData*) flowCtrlStack.appendListElement( sizeof( FunctionData ) );
-    *((FunctionData*) _pFlowCtrlStackTop) = _activeFunctionData;                // push caller function data
+    *((FunctionData*) _pFlowCtrlStackTop) = _activeFunctionData;                // push caller function data to stack
 
 
     // function to be called: create storage and init local variables with supplied arguments (populate _activeFunctionData)
@@ -1544,10 +1571,9 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 
         // save function caller's arguments to function's local storage and remove them from evaluation stack
         if ( suppliedArgCount > 0 ) {
-            LE_evalStack* pStackLvl = pArgStackLvl;         // pointing to first argument on stack
+            LE_evalStack* pStackLvl = pFirstArgStackLvl;         // pointing to first argument on stack
             for ( int i = 0; i < suppliedArgCount; i++ ) {
                 int valueType = pStackLvl->varOrConst.valueType;
-                bool operandIsRef = (valueType == value_isVarRef);
                 bool operandIsReal = (valueType == value_isFloat);
                 bool operandIsVariable = (pStackLvl->varOrConst.tokenType == tok_isVariable);
 
@@ -1576,7 +1602,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 #endif
                         }
                     };
-                }
+                        }
 
                 if ( ((pStackLvl->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && !operandIsReal ) {
                     if ( pStackLvl->varOrConst.value.pStringConst != nullptr ) {
@@ -1589,9 +1615,9 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
                 }
 
                 pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl );       // argument saved: remove argument from stack and point to next argument
+                    }
+                }
             }
-        }
-    }
 
     // also delete function name token from evaluation stack
     _pEvalStackTop = (LE_evalStack*) evalStack.getPrevListElement( pFunctionStackLvl );
@@ -1630,7 +1656,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
     */
 
     return  result_execOK;
-}
+        }
 
 
 // -----------------------------------------------------------------------------------------------
@@ -1677,12 +1703,12 @@ void Interpreter::initFunctionDefaultParamVariables( char*& pStep, int suppliedA
                 }
             }
             count++;
-        }
-    }
+                }
+            }
 
     // skip (remainder of) function definition
     findTokenStep( tok_isTerminalGroup1, MyParser::termcod_semicolon, pStep );
-};
+        };
 
 
 
@@ -1791,17 +1817,17 @@ void Interpreter::initFunctionLocalNonParamVariables( char* pStep, int paramCoun
 #endif
                         }
                     }
-                }
+                        }
 
                 tokenType = jumpTokens( 1, pStep, terminalCode );       // comma or semicolon
-            }
+                    }
 
             count++;
 
-        } while ( terminalCode == MyParser::termcod_comma );
+                } while ( terminalCode == MyParser::termcod_comma );
 
-    }
-};
+            }
+        };
 
 
 // -----------------------------------
@@ -1809,6 +1835,7 @@ void Interpreter::initFunctionLocalNonParamVariables( char* pStep, int paramCoun
 // -----------------------------------
 
 Interpreter::execResult_type Interpreter::terminateExternalFunction( bool addZeroReturnValue ) {
+
     if ( addZeroReturnValue ) {
         _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
         _pEvalStackTop = (LE_evalStack*) evalStack.appendListElement( sizeof( VarOrConstLvl ) );
@@ -1819,7 +1846,6 @@ Interpreter::execResult_type Interpreter::terminateExternalFunction( bool addZer
         _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
     }
     else { makeIntermediateConstant( _pEvalStackTop ); }             // if not already an intermediate constant
-
 
     // delete local variable arrays and strings (only if local variable is not a reference)
 
@@ -1836,30 +1862,12 @@ Interpreter::execResult_type Interpreter::terminateExternalFunction( bool addZer
     }
 
     char blockType = MyParser::block_none;
+
     do {
         blockType = *(char*) _pFlowCtrlStackTop;            // always at least one open function (because returning to caller from it)
 
-        if ( blockType == MyParser::block_extFunction ) {
-            // load local storage pointers again for caller function and restore pending step & active function information for caller function
-            _activeFunctionData = *(FunctionData*) _pFlowCtrlStackTop;
-
-            /*
-            if ( flowCtrlStack.getElementCount() == 1 ) {   // caller is main   //// fout: niet 0 indien ope blocks in main (FOR, ...)
-                Serial.println( "==== ending function; going back to main" );
-            }
-            else {
-                Serial.print( "==== ending function; going back to caller " ); Serial.print( extFunctionNames [_activeFunctionData.functionIndex] );
-                Serial.print( ", function index: " ); Serial.println( (int) _activeFunctionData.functionIndex );
-            }
-
-            Serial.print( "     caller token step: " ); Serial.println( _activeFunctionData.pNextStep - _programStorage );
-            Serial.print( "     error statement start token step: " ); Serial.println( _activeFunctionData.errorStatementStartStep - _programStorage );
-            Serial.print( "     error token step: " ); Serial.println( _activeFunctionData.errorProgramCounter - _programStorage );
-            Serial.print( "     higher level caller eval stack levels: " ); Serial.println( (int) _activeFunctionData.callerEvalStackLevels );
-
-            Serial.print( "     flow control stack levels: " ); Serial.println( (int) flowCtrlStack.getElementCount() );
-            */
-        }
+        // load local storage pointers again for caller function and restore pending step & active function information for caller function
+        if ( blockType == MyParser::block_extFunction ) { _activeFunctionData = *(FunctionData*) _pFlowCtrlStackTop; }
 
         // delete FLOW CONTROL stack level that contained caller function storage pointers and return address (all just retrieved to _activeFunctionData)
         flowCtrlStack.deleteListElement( _pFlowCtrlStackTop );
@@ -1868,6 +1876,7 @@ Interpreter::execResult_type Interpreter::terminateExternalFunction( bool addZer
         _pFlowCtrlStackMinus2 = flowCtrlStack.getPrevListElement( _pFlowCtrlStackMinus1 );
 
     } while ( blockType != MyParser::block_extFunction );
+
 
     if ( _activeFunctionData.pNextStep >= _programStart ) {   // not within a function        
         if ( localVarStringObjectCount != 0 ) {
@@ -1882,6 +1891,7 @@ Interpreter::execResult_type Interpreter::terminateExternalFunction( bool addZer
     }
 
     execResult_type execResult = execAllProcessedOperators();     // continue in caller !!!
+
 
     return execResult;
 }

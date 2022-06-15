@@ -21,6 +21,8 @@ int LinkedList::_listIDcounter = 0;
 LinkedList::LinkedList() {
     _listID = _listIDcounter;
     _listIDcounter++;       // static variable
+    _pFirstElement = nullptr;
+    _pLastElement = nullptr;
 }
 
 
@@ -73,7 +75,7 @@ char* LinkedList::deleteListElement( void* pPayload ) {                         
     if ( pElem == nullptr ) { pElem = _pLastElement; }                                  // nullptr: delete last element in list (if it exists)
     else { pElem = pElem - 1; }                                                         // pointer to list element header
 
-    if ( pElem == nullptr ) { return nullptr; }                                         // still nullptr: return
+    if ( pElem == nullptr ) { return nullptr; }                                         // still nullptr: return (list is empty)
 
     ListElemHead* p = pElem->pNext;                                                     // remember return value
 
@@ -90,7 +92,7 @@ char* LinkedList::deleteListElement( void* pPayload ) {                         
     _listElementCount--;
     delete []pElem;
      
-    if ( p == nullptr ) { return nullptr; }
+    if ( p == nullptr ) {  return nullptr; }
     else { return (char*) (p + 1); }                                           // pointer to payload of next element in list, or nullptr if last element deleted
 }
 
@@ -116,7 +118,7 @@ void LinkedList::deleteList() {
 // ----------------------------------------------------
 
 char* LinkedList::getFirstListElement() {
-    return (char*) (_pFirstElement + (_pFirstElement == nullptr, 0, 1));
+    return (char*) (_pFirstElement + (_pFirstElement == nullptr ? 0 : 1)); // add one header length
 }
 
 
@@ -125,7 +127,7 @@ char* LinkedList::getFirstListElement() {
 //----------------------------------------------------
 
 char* LinkedList::getLastListElement() {
-    return (char*) (_pLastElement + (_pFirstElement == nullptr, 0, 1));
+    return (char*) (_pLastElement + (_pFirstElement == nullptr ? 0 : 1)); // add one header length
 }
 
 

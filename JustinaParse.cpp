@@ -82,7 +82,7 @@ const MyParser::FuncDef MyParser::_functions [] {
     {"tan",         fnccod_tan,         1,1,    0b0},
     {"time",        fnccod_time,        0,0,    0b0},
     {"sqrt",        fnccod_sqrt,        1,1,    0b0},
-    {"ubound",      fnccod_ubound,      2,2,    0b00000001},
+    {"ubound",      fnccod_ubound,      2,2,    0b00000001},        // first parameter is array (LSB)
     {"L",           fnccod_l,           0,1,    0b0}
 };
 

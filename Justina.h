@@ -260,7 +260,7 @@ public:
 
 
     struct blockTestData {
-        char blockType;                 // command block: will identify stack level as an IF...END block
+        char blockType;                 // command block: will identify stack level as an if...end, for...end, ... block
         char withinIteration;           // flag is set at the start of each iteration and cleared at the end 
         char fail;                      // 0x0 (pass) or 0x1 (fail)
         char breakFromLoop;                     
@@ -277,9 +277,10 @@ public:
         char blockType;                 // command block: will identify stack level as a function block
         char functionIndex;             // for error messages only
         char callerEvalStackLevels;     // evaluation stack levels in use by caller(s) and main (call stack)
-        // within a function, only one (block) command can be active at a time (ended by semicolon), in contract to command blocks, which can be nested, so next data can be stored here:
+        // within a function, as in immediate mode, only one (block) command can be active at a time (ended by semicolon), in contrast to command blocks, which can be nested, so command data can be stored here:
         // data is stored when a reserved word is processed and it is cleared when the ending semicolon (ending the command) is processed
         char activeCmd_ResWordCode;     // reserved word code (set to 'cmdcod_none' again when semicolon is processed)
+        
         char* activeCmd_tokenAddress;   // address of parsed reserved word token                                
         
         Val* pLocalVarValues;           // local variable value: real, pointer to string or array, or (if reference): pointer to 'source' (referenced) variable
