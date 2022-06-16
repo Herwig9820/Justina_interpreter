@@ -112,6 +112,7 @@ public:
 
         result_array_outsideBounds = 3000,
         result_array_paramUseWrongDimCount,
+        result_array_wrongDimension,
         result_array_valueTypeIsFixed,
         result_numberExpected,
         result_stringExpected,
@@ -437,8 +438,13 @@ public:
     ~Interpreter();               // deconstructor
     bool run( Stream* const pConsole, Stream** const pTerminal, int definedTerms );
     bool processCharacter( char c );
-    void (*_callbackFcn)(bool& requestQuit);                                         // pointer to callback function for heartbeat
+    
     void setMainLoopCallback( void (*func)(bool& requistQuit) );                   // set callback function for connection state change
+    void (*_callbackFcn)(bool& requestQuit);                                         // pointer to callback function for heartbeat
+
+    void setUserFcnCallback( void (*func)( void* &arg1, void* &arg2) );                   // set callback function for connection state change
+    void (*_callbackUserFcn)( void* arg1, void* arg2);                           // user functions                                   
+
     void* fetchVarBaseAddress( TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& variableAttributes, char& sourceVarAttributes );
     void* arrayElemAddress( void* varBaseAddress, int* dims );
 
@@ -563,6 +569,7 @@ public:
         fnccod_time,
         fnccod_sqrt,
         fnccod_ubound,
+        fcncod_dims,
         fnccod_l
     };
 

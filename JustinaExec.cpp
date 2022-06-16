@@ -1045,8 +1045,8 @@ void Interpreter::makeIntermediateConstant( LE_evalStack* pEvalStackLvl ) {
         pEvalStackLvl->varOrConst.tokenType = tok_isConstant;              // use generic constant type
         pEvalStackLvl->varOrConst.valueAttributes = constIsIntermediate;             // is an intermediate result (intermediate constant strings must be deleted when not needed any more)
         pEvalStackLvl->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
-        }
     }
+}
 
 
 // ----------------------------------------
@@ -1347,11 +1347,11 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     case MyParser::termcod_ne:
         opResult.realConst = operand1.realConst != operand2.realConst;
         break;
-        }       // switch
+    }       // switch
 
 
-        // tests
-        // -----
+    // tests
+    // -----
 
     if ( (opResultReal) && (operatorCode != _pmyParser->termcod_assign) ) {     // check error (not for pure assignment)
         if ( isnan( opResult.realConst ) ) { return result_undefined; }
@@ -1409,7 +1409,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         if ( !operand1IsVarRef ) { // if reference, then value type on the stack indicates 'variable reference', so don't overwrite it
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) | (opResultReal ? value_isFloat : value_isStringPointer);
         }
-        }
+    }
 
 
     // Delete any intermediate result string objects used as operands 
@@ -1462,7 +1462,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
     }
     return result_execOK;
-    }
+}
 
 
 // ---------------------------------
@@ -1491,10 +1491,10 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
         for ( int i = 0; i < suppliedArgCount; i++ ) {
             // value type of operands
             operandIsVarRef [i] = (pStackLvl->varOrConst.valueType == value_isVarRef);
-            char operandValueType = operandIsVarRef [i] ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
+            char operandValueType =  (*pStackLvl->varOrConst.varTypeAddress & value_typeMask);  //// check
             operandIsReal [i] = ((uint8_t) operandValueType == value_isFloat);
 
-            // fetch operands: real constants or pointers to character strings
+            // fetch operands: real constants or pointers to character strings //// enkel zinvol indien geen array
             if ( operandIsReal ) { operands [i].realConst = (pStackLvl->varOrConst.tokenType == tok_isVariable) ? (*pStackLvl->varOrConst.value.pRealConst) : pStackLvl->varOrConst.value.realConst; }
             else { operands [i].pStringConst = (pStackLvl->varOrConst.tokenType == tok_isVariable) ? (*pStackLvl->varOrConst.value.ppStringConst) : pStackLvl->varOrConst.value.pStringConst; }
 
@@ -1505,17 +1505,33 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
         switch ( functionCode ) {
 
         case MyParser::fnccod_sqrt:
+            if ( !operandIsReal [0] ) { return result_numberExpected; }
             fcnResult.realConst = sqrt( operands [0].realConst );
             break;
-        
+
+        case MyParser::fcncod_dims:
+        {
+            float* pArray = *pFirstArgStackLvl->varOrConst.value.ppArray;
+            fcnResult.realConst = ((char*) pArray) [3];
+        }
+        break;
+
         case MyParser::fnccod_ubound:
-            fcnResult.realConst = operands [1].realConst; //// test
-            break;
+        {
+            if ( !operandIsReal [1] ) { return result_numberExpected; }
+            float* pArray = *pFirstArgStackLvl->varOrConst.value.ppArray;
+            int arrayDimCount = ((char*) pArray) [3];
+            int dimNo = int( operands [1].realConst );
+            if ( operands [1].realConst != dimNo ) { return result_array_wrongDimension; }
+            if ( (dimNo < 1) || (dimNo > arrayDimCount) ) { return result_array_wrongDimension; }
+            fcnResult.realConst = ((char*) pArray) [--dimNo];
+        }
+        break;
         }
     }
 
     // delete function name token and arguments from evaluation stack, create stack entry for function result 
-    clearEvalStackLevels(suppliedArgCount + 1);
+    clearEvalStackLevels( suppliedArgCount + 1 );
 
     _pEvalStackTop = (LE_evalStack*) evalStack.appendListElement( sizeof( VarOrConstLvl ) );
     _pEvalStackMinus1 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackTop );
@@ -1602,7 +1618,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 #endif
                         }
                     };
-                        }
+                }
 
                 if ( ((pStackLvl->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && !operandIsReal ) {
                     if ( pStackLvl->varOrConst.value.pStringConst != nullptr ) {
@@ -1615,9 +1631,9 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
                 }
 
                 pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl );       // argument saved: remove argument from stack and point to next argument
-                    }
-                }
             }
+        }
+    }
 
     // also delete function name token from evaluation stack
     _pEvalStackTop = (LE_evalStack*) evalStack.getPrevListElement( pFunctionStackLvl );
@@ -1656,7 +1672,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
     */
 
     return  result_execOK;
-        }
+}
 
 
 // -----------------------------------------------------------------------------------------------
@@ -1703,12 +1719,12 @@ void Interpreter::initFunctionDefaultParamVariables( char*& pStep, int suppliedA
                 }
             }
             count++;
-                }
-            }
+        }
+    }
 
     // skip (remainder of) function definition
     findTokenStep( tok_isTerminalGroup1, MyParser::termcod_semicolon, pStep );
-        };
+};
 
 
 
@@ -1817,17 +1833,17 @@ void Interpreter::initFunctionLocalNonParamVariables( char* pStep, int paramCoun
 #endif
                         }
                     }
-                        }
+                }
 
                 tokenType = jumpTokens( 1, pStep, terminalCode );       // comma or semicolon
-                    }
+            }
 
             count++;
 
-                } while ( terminalCode == MyParser::termcod_comma );
+        } while ( terminalCode == MyParser::termcod_comma );
 
-            }
-        };
+    }
+};
 
 
 // -----------------------------------

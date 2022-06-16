@@ -78,7 +78,11 @@ Stream* pTerminal [terminalCount] { (Stream*) &Serial };
 void switchConsole();
 void onConnStateChange( connectionState_type  connectionState );
 #endif
+
 void housekeeping( bool& requestQuit );
+void userFcn_doSomething (void* & ptrToSomething, void* & ptrToAnotherThing);
+void userFcn_setTimer(void* & ptrToValue);
+
 void heartbeat();
 
 
@@ -222,6 +226,7 @@ void loop() {
             // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
             // this callback function will be called regularly, e.g. every time the interpreter reads a character
             pcalculator->setMainLoopCallback( (&housekeeping) );                    // set callback function to housekeeping routine in this .ino file
+            pcalculator->setUserFcnCallback( (&userFcn_doSomething) );
 
             interpreterInMemory = pcalculator->run( pConsole, pTerminal, terminalCount );                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
             if ( !interpreterInMemory ) {                                               // interpreter not running anymore ?
@@ -354,3 +359,15 @@ void heartbeat() {
         lastHeartbeat = currentTime;
     }
 }
+
+
+//// test ----------------------------
+
+void userFcn_doSomething( void*& ptrToSomething, void*& ptrToAnotherThing ) {
+
+};
+
+void userFcn_setTimer( void*& ptrToValue ) {
+
+
+};

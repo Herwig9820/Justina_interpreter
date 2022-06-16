@@ -255,6 +255,12 @@ void Interpreter::setMainLoopCallback( void (*func)(bool& requestQuit) ) {
     _callbackFcn = func;
 }
 
+//// test -------------------------------------
+void Interpreter::setUserFcnCallback( void( *func ) ( void*& arg1, void*& arg2)) {
+    //// assign
+}
+
+
 
 // ----------------------------
 // *   interpreter main loop   *
