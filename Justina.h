@@ -110,10 +110,18 @@ public:
     enum execResult_type {
         result_execOK = 0,
 
-        result_array_outsideBounds = 3000,
-        result_array_paramUseWrongDimCount,
-        result_array_wrongDimension,
+        // arrays
+        result_array_subscriptOutsideBounds = 3000,
+        result_array_subscriptNonInteger,
+        result_array_dimCountInvalid,
         result_array_valueTypeIsFixed,
+        
+        result_array_dimNumberNonInteger,
+        result_array_dimNumberInvalid,
+
+        // numbers and strings
+        result_numberOutsideRange,
+        result_numberNonInteger,
         result_numberExpected,
         result_stringExpected,
         result_undefined,
@@ -121,6 +129,7 @@ public:
         result_underflow,
         result_testexpr_numberExpected
     };
+
 
     static constexpr uint8_t extFunctionBit { B00000001 };
     static constexpr uint8_t extFunctionPrevDefinedBit { B00000010 };
@@ -569,8 +578,8 @@ public:
         fnccod_time,
         fnccod_sqrt,
         fnccod_ubound,
-        fcncod_dims,
-        fnccod_l
+        fnccod_dims,
+        fnccod_last
     };
 
     enum termin_code {
