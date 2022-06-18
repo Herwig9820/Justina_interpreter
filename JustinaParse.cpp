@@ -80,11 +80,12 @@ const MyParser::FuncDef MyParser::_functions [] {
     {"sin",         fnccod_sin,         1,1,    0b0},
     {"cos",         fnccod_cos,         1,1,    0b0},
     {"tan",         fnccod_tan,         1,1,    0b0},
-    {"time",        fnccod_time,        0,0,    0b0},
+    {"millis",      fnccod_millis,      0,0,    0b0},
     {"sqrt",        fnccod_sqrt,        1,1,    0b0},
     {"ubound",      fnccod_ubound,      2,2,    0b00000001},        // first parameter is array (LSB)
     {"dims",        fnccod_dims,        1,1,    0b00000001},
-    {"last",        fnccod_last,        0,1,    0b0}
+    {"last",        fnccod_last,        0,1,    0b0},
+    {"valType",     fnccod_valueType,   1,1,    0b0}
 };
 
 
@@ -992,8 +993,13 @@ bool MyParser::parseAsNumber( char*& pNext, parseTokenResult_type& result ) {
     bool isPureAssignmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
     if ( isParamDecl && !isPureAssignmentOp ) { pNext = pch; result = result_numConstNotAllowedHere; return false; }
 
+    // is a variable required instead of a constant ?
     bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_incr) || (_lastTermCode == termcod_decr)) : false;
     if ( varRequired ) { pNext = pch; result = result_variableNameExpected; return false; }
+
+    // array declaration: dimensions must be number constants (global, static, local arrays)
+    bool isArrayDimSpec = (_isAnyVarCmd) && (_parenthesisLevel > 0);
+    if ( isArrayDimSpec && ((f != int(f)) || (f < 1))) { pNext = pch; result = result_arrayDimNotValid; return false; }
 
     // token is a number, and it's allowed here
     Interpreter::TokenIsRealCst* pToken = (Interpreter::TokenIsRealCst*) _pInterpreter->_programCounter;
@@ -1042,11 +1048,13 @@ bool MyParser::parseAsStringConstant( char*& pNext, parseTokenResult_type& resul
     bool isPureAssignmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
     if ( isParamDecl && !isPureAssignmentOp ) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
 
+    // is a variable required instead of a constant ?
     bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_incr) || (_lastTermCode == termcod_decr)) : false;
     if ( varRequired ) { pNext = pch; result = result_variableNameExpected; return false; }
 
-    bool isArrayDimSpec = (_isAnyVarCmd) && (_parenthesisLevel > 0);                    // array declaration: dimensions must be number constants (global, static, local arrays)
-    if ( isArrayDimSpec ) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
+    // array declaration: dimensions must be number constants (global, static, local arrays)
+    bool isArrayDimSpec = (_isAnyVarCmd) && (_parenthesisLevel > 0);                    
+    if ( isArrayDimSpec ) { pNext = pch; result = result_arrayDimNotValid; return false; }
 
     if ( _leadingSpaceCheck ) { pNext = pch; result = result_spaceMissing; return false; }
 

@@ -116,6 +116,13 @@ public:
         result_array_dimCountInvalid,
         result_array_valueTypeIsFixed,
         
+        // internal functions
+        result_arg_outsideRange,
+        result_arg_nonInteger,
+        result_arg_invalid,
+        result_arg_dimNumberNonInteger,
+        result_arg_dimNumberInvalid,
+        
         result_array_dimNumberNonInteger,
         result_array_dimNumberInvalid,
 
@@ -575,10 +582,11 @@ public:
         fnccod_sin,
         fnccod_cos,
         fnccod_tan,
-        fnccod_time,
+        fnccod_millis,
         fnccod_sqrt,
         fnccod_ubound,
         fnccod_dims,
+        fnccod_valueType,
         fnccod_last
     };
 
@@ -691,6 +699,7 @@ public:
         result_arrayUseWrongDimCount,
         result_arrayParamExpected,
         result_arrayInit_emptyStringExpected,
+        result_arrayDimNotValid,
 
         // command errors 
         result_resWordExpectedAsCmdPar = 1800,

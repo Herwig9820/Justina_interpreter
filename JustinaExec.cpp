@@ -192,9 +192,10 @@ Interpreter::execResult_type  Interpreter::exec() {
                     LE_evalStack* pPrecedingStackLvl = (LE_evalStack*) evalStack.getPrevListElement( pstackLvl );     // stack level PRECEDING left parenthesis (or null pointer)
 
                     // remove left parenthesis stack level
-                    pstackLvl = (LE_evalStack*) evalStack.deleteListElement( pstackLvl );                            // pstackLvl now pointing to first function argument or array subscript
+                    pstackLvl = (LE_evalStack*) evalStack.deleteListElement( pstackLvl );                            // pstackLvl now pointing to first function argument or array subscript (or nullptr if none)
 
                     // correct pointers (now wrong, if only one or 2 arguments)
+                    _pEvalStackTop = (LE_evalStack*) evalStack.getLastListElement();        // this line needed if no arguments
                     _pEvalStackMinus1 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackTop );
                     _pEvalStackMinus2 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackMinus1 );
 
@@ -225,8 +226,8 @@ Interpreter::execResult_type  Interpreter::exec() {
                     // did the last expression produce a result ?  
                     else if ( evalStack.getElementCount() == _activeFunctionData.callerEvalStackLevels + 1 ) {
                         // in main program level ? store as last value (for now, we don't know if it will be followed by other 'last' values)
-                        if ( _programCounter >= _programStart ) {Serial.println("    save"); saveLastValue(lastValueIsStored); }                // save last result in FIFO and delete stack level
-                        else {  clearEvalStackLevels( 1 ); } // NOT main program level: we don't need to keep the statement result
+                        if ( _programCounter >= _programStart ) { saveLastValue( lastValueIsStored ); }                // save last result in FIFO and delete stack level
+                        else { clearEvalStackLevels( 1 ); } // NOT main program level: we don't need to keep the statement result
                     }
                 }
 
@@ -295,7 +296,6 @@ Interpreter::execResult_type  Interpreter::exec() {
     // Delete any intermediate result string objects used as arguments, delete remaining evaluation stack level objects 
 
     clearEvalStack();               // and intermediate strings
-
     clearFlowCtrlStack();           // and remaining local storage + local variable string and array values
 
     return execResult;   // return result, in case it's needed by caller
@@ -759,7 +759,7 @@ void Interpreter::saveLastValue( bool& overWritePrevious ) {
 
     // delete the stack level containing the result
     evalStack.deleteListElement( _pEvalStackTop );
-    _pEvalStackTop = (LE_evalStack*) evalStack.getLastListElement( );
+    _pEvalStackTop = (LE_evalStack*) evalStack.getLastListElement();
     _pEvalStackMinus1 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackTop );
     _pEvalStackMinus2 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackMinus1 );
 
@@ -767,6 +767,23 @@ void Interpreter::saveLastValue( bool& overWritePrevious ) {
 
     return;
 }
+
+// ----------------------------------------------------------------
+// Clear evaluation stack and associated intermediate string object 
+// ----------------------------------------------------------------
+
+void Interpreter::clearEvalStack() {
+
+    clearEvalStackLevels(evalStack.getElementCount());
+    _pEvalStackTop = nullptr;  _pEvalStackMinus1 = nullptr; _pEvalStackMinus2 = nullptr;            // should be already
+    
+    // error if not all intermediate string objects deleted (points to an internal Justina issue)
+    if ( intermediateStringObjectCount != 0 ) {
+        Serial.print( "*** Intermediate string cleanup error. Remaining: " ); Serial.println( intermediateStringObjectCount );
+    }
+    return;
+}
+
 
 // --------------------------------------------------------------------------
 // Clear n evaluation stack levels and associated intermediate string objects  
@@ -804,44 +821,6 @@ void Interpreter::clearEvalStackLevels( int n ) {
     _pEvalStackMinus2 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackMinus1 );
     return;
 }
-
-// ----------------------------------------------------------------
-// Clear evaluation stack and associated intermediate string object 
-// ----------------------------------------------------------------
-
-void Interpreter::clearEvalStack() {
-
-    // delete any intermediate result string objects used as arguments
-    LE_evalStack* pstackLvl = _pEvalStackTop;
-    while ( pstackLvl != nullptr ) {
-        if ( pstackLvl->genericToken.tokenType == tok_isConstant ) {            // exclude non-value tokens (terminals, reserved words, functions, ...)
-            if ( ((pstackLvl->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && (pstackLvl->varOrConst.valueType == value_isStringPointer) ) {
-                if ( pstackLvl->varOrConst.value.pStringConst != nullptr ) {
-#if printCreateDeleteHeapObjects
-                    Serial.print( "----- (Intermd str) " );   Serial.println( (uint32_t) pstackLvl->varOrConst.value.pStringConst - RAMSTART );
-#endif 
-                    delete [] pstackLvl->varOrConst.value.pStringConst;
-                    intermediateStringObjectCount--;
-                }
-            }
-        }
-        pstackLvl = (LE_evalStack*) evalStack.getPrevListElement( pstackLvl );
-    };
-
-
-    // error if not all intermediate string objects deleted (points to an internal Justina issue)
-    if ( intermediateStringObjectCount != 0 ) {
-        Serial.print( "*** Intermediate string cleanup error. Remaining: " ); Serial.println( intermediateStringObjectCount );
-    }
-
-    // delete all remaining stack level objects 
-
-    evalStack.deleteList();
-    _pEvalStackTop = nullptr;  _pEvalStackMinus1 = nullptr; _pEvalStackMinus2 = nullptr;
-
-    return;
-}
-
 
 // ------------------------
 // Clear flow control stack  
@@ -882,47 +861,6 @@ void Interpreter::clearFlowCtrlStack() {                // and remaining local s
 
     flowCtrlStack.deleteList();
     _pFlowCtrlStackTop = nullptr;   _pFlowCtrlStackMinus2 = nullptr; _pFlowCtrlStackMinus1 = nullptr;
-}
-
-
-// -----------------------------------------------------------------------------------------------------------------
-// Remove operands / function arguments / array subscripts from evaluation stack, starting at a specific stack level
-// -----------------------------------------------------------------------------------------------------------------
-
-void Interpreter::deleteStackArguments( LE_evalStack* pPrecedingStackLvl, int argCount ) {
-
-    // Delete any intermediate result string objects used as operands 
-    // --------------------------------------------------------------
-
-    LE_evalStack* pStackLvl = (LE_evalStack*) evalStack.getNextListElement( pPrecedingStackLvl );   // array subscripts or function arguments (NOT the preceding list element) 
-    do {
-        // stack levels contain variables and (interim) constants only
-        if ( ((pStackLvl->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && (pStackLvl->varOrConst.valueType == value_isStringPointer) ) {
-            if ( pStackLvl->varOrConst.value.pStringConst != nullptr ) {
-#if printCreateDeleteHeapObjects
-                Serial.print( "----- (Intermd str) " );   Serial.println( (uint32_t) pStackLvl->varOrConst.value.pStringConst - RAMSTART );
-#endif
-                delete [] pStackLvl->varOrConst.value.pStringConst;
-                intermediateStringObjectCount--;
-            }
-        }
-        pStackLvl = (LE_evalStack*) evalStack.getNextListElement( pStackLvl );  // next dimspec or null pointer 
-
-    } while ( pStackLvl != nullptr );
-
-
-    // cleanup stack
-    // -------------
-
-    // set pointer to either first token (value) after opening parenthesis 
-    // note that the left parenthesis is already removed from stack at this stage
-    pStackLvl = (LE_evalStack*) evalStack.getNextListElement( pPrecedingStackLvl );
-    _pEvalStackTop = pPrecedingStackLvl;                                                        // note down before deleting list levels
-    _pEvalStackMinus1 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackTop );
-    _pEvalStackMinus2 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackMinus1 );
-    while ( pStackLvl != nullptr ) { pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl ); }
-
-    return;
 }
 
 
@@ -1006,7 +944,7 @@ Interpreter::execResult_type Interpreter::arrayAndSubscriptsToarrayElement( LE_e
     // Remove array subscripts from evaluation stack
     // ----------------------------------------------
 
-    deleteStackArguments( pPrecedingStackLvl, argCount );
+    clearEvalStackLevels( argCount );
 
     return result_execOK;
 }
@@ -1466,7 +1404,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
     }
     return result_execOK;
-}
+    }
 
 
 // ---------------------------------
@@ -1482,6 +1420,7 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
     int minArgs = MyParser::_functions [functionIndex].minArgs;
     int maxArgs = MyParser::_functions [functionIndex].maxArgs;
     bool fcnResultIsReal = true;   // init
+    bool mathChecks = false; // init
     Val fcnResult;
 
     // variables for intermediate storage of operands (constants, variable values or intermediate results from previous calculations) and result
@@ -1489,6 +1428,7 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
     // value type of operands
 
     bool operandIsVar [8], operandIsReal [8];
+    char operandValueType[8];
     Val operands [8];
 
     if ( suppliedArgCount > 0 ) {
@@ -1497,8 +1437,8 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
         for ( int i = 0; i < suppliedArgCount; i++ ) {
             // value type of operands
             operandIsVar [i] = (pStackLvl->varOrConst.tokenType == tok_isVariable);
-            char operandValueType = operandIsVar [i] ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
-            operandIsReal [i] = ((uint8_t) operandValueType == value_isFloat);
+            operandValueType[i] = operandIsVar [i] ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
+            operandIsReal [i] = ((uint8_t) operandValueType[i] == value_isFloat);
 
             // fetch operands: real constants or pointers to character strings //// enkel zinvol indien geen array
             if ( operandIsReal ) { operands [i].realConst = operandIsVar [i] ? (*pStackLvl->varOrConst.value.pRealConst) : pStackLvl->varOrConst.value.realConst; }
@@ -1512,48 +1452,76 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
 
     case MyParser::fnccod_sqrt:
         if ( !operandIsReal [0] ) { return result_numberExpected; }
+        if ( operands [0].realConst < 0 ) { return result_arg_outsideRange; }
+
+        fcnResultIsReal = true;
         fcnResult.realConst = sqrt( operands [0].realConst );
+        if ( (operands [0].realConst > 0) && !isnormal( fcnResult.realConst ) ) { return result_underflow; }
+        mathChecks = true;
         break;
 
     case MyParser::fnccod_dims:
     {
         float* pArray = *pFirstArgStackLvl->varOrConst.value.ppArray;
+
+        fcnResultIsReal = true;
         fcnResult.realConst = ((char*) pArray) [3];
     }
     break;
 
     case MyParser::fnccod_ubound:
     {
-        if ( !operandIsReal [1] ) { return result_array_dimNumberNonInteger; }
+        if ( !operandIsReal [1] ) { return result_arg_dimNumberNonInteger; }
         float* pArray = *pFirstArgStackLvl->varOrConst.value.ppArray;
         int arrayDimCount = ((char*) pArray) [3];
         int dimNo = int( operands [1].realConst );
-        if ( operands [1].realConst != dimNo ) { return result_array_dimNumberNonInteger; }
-        if ( (dimNo < 1) || (dimNo > arrayDimCount) ) { return result_array_dimNumberInvalid; }
+        if ( operands [1].realConst != dimNo ) { return result_arg_dimNumberNonInteger; }
+        if ( (dimNo < 1) || (dimNo > arrayDimCount) ) { return result_arg_dimNumberInvalid; }
+
+        fcnResultIsReal = true;
         fcnResult.realConst = ((char*) pArray) [--dimNo];
     }
     break;
 
+    case MyParser::fnccod_valueType:
+    {
+        fcnResultIsReal = true;
+        fcnResult.realConst = operandValueType[0];
+    }
+    break;
+    
+    
+    
     case MyParser::fnccod_last:
     {
-        
-        //// meer tests
-        //// fout indien geen argument
-        if ( _lastResultCount == 0 ) { return result_numberOutsideRange; }
+        int FiFoElement = 1;    // init: newest FiFo element
+        if ( suppliedArgCount == 1 ) {              // FiFo element specified
+            if ( !operandIsReal [0] ) { return result_arg_nonInteger; }
+            FiFoElement = int( operands [0].realConst );
+            if ( operands [0].realConst != FiFoElement ) { return result_arg_nonInteger; }
+            if ( (FiFoElement < 1) || (FiFoElement > MAX_LAST_RESULT_DEPTH) ) { return result_arg_outsideRange; }
+        }
+        if ( FiFoElement > _lastResultCount ) { return result_arg_invalid; }
 
         fcnResultIsReal = (lastResultTypeFiFo [0] == value_isFloat);
-        fcnResult.realConst = lastResultValueFiFo [0].realConst;//// strings
+        fcnResult = lastResultValueFiFo [--FiFoElement];
     }
     break;
 
-    case MyParser::fnccod_time:
+    case MyParser::fnccod_millis:
     {
         fcnResultIsReal = true;
         fcnResult.realConst = millis();     // converted to float
     }
     break;
 
-    }       // switch
+    }       // end switch
+
+
+    if ( mathChecks ) {
+        if ( isnan( fcnResult.realConst ) ) { return result_undefined; }
+        else if ( !isfinite( fcnResult.realConst ) ) { return result_overflow; }
+    }
 
 
     // delete function name token and arguments from evaluation stack, create stack entry for function result 
@@ -1658,8 +1626,8 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 
                 pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl );       // argument saved: remove argument from stack and point to next argument
             }
+            }
         }
-    }
 
     // also delete function name token from evaluation stack
     _pEvalStackTop = (LE_evalStack*) evalStack.getPrevListElement( pFunctionStackLvl );
@@ -1698,7 +1666,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
     */
 
     return  result_execOK;
-}
+    }
 
 
 // -----------------------------------------------------------------------------------------------
