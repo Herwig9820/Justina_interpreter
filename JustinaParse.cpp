@@ -84,8 +84,11 @@ const MyParser::FuncDef MyParser::_functions [] {
     {"sqrt",        fnccod_sqrt,        1,1,    0b0},
     {"ubound",      fnccod_ubound,      2,2,    0b00000001},        // first parameter is array (LSB)
     {"dims",        fnccod_dims,        1,1,    0b00000001},
+    {"valType",     fnccod_valueType,   1,1,    0b0},
     {"last",        fnccod_last,        0,1,    0b0},
-    {"valType",     fnccod_valueType,   1,1,    0b0}
+    {"asc",         fnccod_asc,         1,2,    0b0},
+    {"char",        fnccod_char,        1,1,    0b0},
+    {"nl",          fnccod_nl,        0,0,    0b0}
 };
 
 

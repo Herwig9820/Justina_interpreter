@@ -122,6 +122,7 @@ public:
         result_arg_invalid,
         result_arg_dimNumberNonInteger,
         result_arg_dimNumberInvalid,
+        result_arg_stringExpected,
         
         result_array_dimNumberNonInteger,
         result_array_dimNumberInvalid,
@@ -587,7 +588,10 @@ public:
         fnccod_ubound,
         fnccod_dims,
         fnccod_valueType,
-        fnccod_last
+        fnccod_last,
+        fnccod_asc,
+        fnccod_char,
+        fnccod_nl
     };
 
     enum termin_code {

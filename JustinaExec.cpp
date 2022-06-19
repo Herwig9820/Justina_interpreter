@@ -1460,6 +1460,7 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
         mathChecks = true;
         break;
 
+    
     case MyParser::fnccod_dims:
     {
         float* pArray = *pFirstArgStackLvl->varOrConst.value.ppArray;
@@ -1469,6 +1470,7 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
     }
     break;
 
+    
     case MyParser::fnccod_ubound:
     {
         if ( !operandIsReal [1] ) { return result_arg_dimNumberNonInteger; }
@@ -1483,13 +1485,13 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
     }
     break;
 
+
     case MyParser::fnccod_valueType:
     {
         fcnResultIsReal = true;
         fcnResult.realConst = operandValueType[0];
     }
     break;
-    
     
     
     case MyParser::fnccod_last:
@@ -1508,10 +1510,57 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
     }
     break;
 
+
     case MyParser::fnccod_millis:
     {
         fcnResultIsReal = true;
         fcnResult.realConst = millis();     // converted to float
+    }
+    break;
+
+    
+    case MyParser::fnccod_asc:      // return ASCII code of a single character n a string
+    {
+        if ( operandIsReal [0] ) { return result_arg_stringExpected; }
+        if( operands [0].pStringConst == nullptr ) {return result_arg_invalid;}     // empty string
+        int charPos = 1;            // first character
+        if ( suppliedArgCount == 2 ) {              // character position in string specified
+            if ( !operandIsReal [1] ) { return result_arg_nonInteger; }
+            charPos = int( operands [1].realConst );
+            if ( operands [1].realConst != charPos ) { return result_arg_nonInteger; }
+            if  (charPos < 1) { return result_arg_outsideRange; }
+        }
+        if(charPos > strlen(operands[0].pStringConst) ){return result_arg_invalid;}
+
+        fcnResultIsReal = true;
+        fcnResult.realConst = operands[0].pStringConst[--charPos];     // character code converted to float
+    }
+    break;
+    
+    
+    case MyParser::fnccod_char:     // convert ASCII code to 1-character string
+    {
+        if (! operandIsReal [0] ) { return result_arg_nonInteger; }
+        int asciiCode= int(operands[0].realConst);
+        if ( operands [0].realConst != asciiCode ) { return result_arg_nonInteger; }
+        if (( asciiCode < 1 ) || (asciiCode > 0xFF)) { return result_arg_outsideRange; }        // do not allow \0
+
+        fcnResultIsReal = false;
+        fcnResult.pStringConst = new char [2];
+        intermediateStringObjectCount++;
+        fcnResult.pStringConst [0] = asciiCode;
+        fcnResult.pStringConst [1] = '\0';                                // terminating \0
+    }
+    break;
+    
+    
+    case MyParser::fnccod_nl:             // new line character
+    {
+        fcnResultIsReal = false;
+        fcnResult.pStringConst = new char [2];
+        intermediateStringObjectCount++;
+        fcnResult.pStringConst [0] = 0x10;
+        fcnResult.pStringConst [1] = '\0';                                // terminating \0
     }
     break;
 
