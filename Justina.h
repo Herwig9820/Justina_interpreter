@@ -118,12 +118,12 @@ public:
         
         // internal functions
         result_arg_outsideRange,
-        result_arg_nonInteger,
+        result_arg_integerExpected,
         result_arg_invalid,
-        result_arg_dimNumberNonInteger,
+        result_arg_dimNumberIntegerExpected,
         result_arg_dimNumberInvalid,
         result_arg_stringExpected,
-        
+        result_arg_numValueExpected,
         result_array_dimNumberNonInteger,
         result_array_dimNumberInvalid,
 
@@ -591,7 +591,9 @@ public:
         fnccod_last,
         fnccod_asc,
         fnccod_char,
-        fnccod_nl
+        fnccod_nl,
+        fnccod_fmtNum,
+        fnccod_fmtStr
     };
 
     enum termin_code {

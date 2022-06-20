@@ -288,8 +288,8 @@ Interpreter::execResult_type  Interpreter::exec() {
     if ( lastValueIsStored ) {             // did the execution produce a result ?
         // print last result
         char s [MyParser::_maxAlphaCstLen + 10];  // note: with small '_maxAlphaCstLen' values, make sure string is also long enough to print real values
-        if ( lastResultTypeFiFo [0] == value_isFloat ) { sprintf( s, "  %.3G", lastResultValueFiFo [0].realConst ); }
-        else { sprintf( s, "  %s", (lastResultValueFiFo [0].pStringConst == nullptr) ? "" : lastResultValueFiFo [0].pStringConst ); }    // immediate mode: print evaluation result
+        if ( lastResultTypeFiFo [0] == value_isFloat ) { sprintf( s, "%.3G", lastResultValueFiFo [0].realConst ); }
+        else { sprintf( s, "%s", (lastResultValueFiFo [0].pStringConst == nullptr) ? "" : lastResultValueFiFo [0].pStringConst ); }    // immediate mode: print evaluation result
         _pConsole->println( s );
     }
 
@@ -774,9 +774,9 @@ void Interpreter::saveLastValue( bool& overWritePrevious ) {
 
 void Interpreter::clearEvalStack() {
 
-    clearEvalStackLevels(evalStack.getElementCount());
+    clearEvalStackLevels( evalStack.getElementCount() );
     _pEvalStackTop = nullptr;  _pEvalStackMinus1 = nullptr; _pEvalStackMinus2 = nullptr;            // should be already
-    
+
     // error if not all intermediate string objects deleted (points to an internal Justina issue)
     if ( intermediateStringObjectCount != 0 ) {
         Serial.print( "*** Intermediate string cleanup error. Remaining: " ); Serial.println( intermediateStringObjectCount );
@@ -1404,7 +1404,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
     }
     return result_execOK;
-    }
+}
 
 
 // ---------------------------------
@@ -1428,7 +1428,7 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
     // value type of operands
 
     bool operandIsVar [8], operandIsReal [8];
-    char operandValueType[8];
+    char operandValueType [8];
     Val operands [8];
 
     if ( suppliedArgCount > 0 ) {
@@ -1437,8 +1437,8 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
         for ( int i = 0; i < suppliedArgCount; i++ ) {
             // value type of operands
             operandIsVar [i] = (pStackLvl->varOrConst.tokenType == tok_isVariable);
-            operandValueType[i] = operandIsVar [i] ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
-            operandIsReal [i] = ((uint8_t) operandValueType[i] == value_isFloat);
+            operandValueType [i] = operandIsVar [i] ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
+            operandIsReal [i] = ((uint8_t) operandValueType [i] == value_isFloat);
 
             // fetch operands: real constants or pointers to character strings //// enkel zinvol indien geen array
             if ( operandIsReal ) { operands [i].realConst = operandIsVar [i] ? (*pStackLvl->varOrConst.value.pRealConst) : pStackLvl->varOrConst.value.realConst; }
@@ -1460,7 +1460,7 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
         mathChecks = true;
         break;
 
-    
+
     case MyParser::fnccod_dims:
     {
         float* pArray = *pFirstArgStackLvl->varOrConst.value.ppArray;
@@ -1470,14 +1470,14 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
     }
     break;
 
-    
+
     case MyParser::fnccod_ubound:
     {
-        if ( !operandIsReal [1] ) { return result_arg_dimNumberNonInteger; }
+        if ( !operandIsReal [1] ) { return result_arg_dimNumberIntegerExpected; }
         float* pArray = *pFirstArgStackLvl->varOrConst.value.ppArray;
         int arrayDimCount = ((char*) pArray) [3];
         int dimNo = int( operands [1].realConst );
-        if ( operands [1].realConst != dimNo ) { return result_arg_dimNumberNonInteger; }
+        if ( operands [1].realConst != dimNo ) { return result_arg_dimNumberIntegerExpected; }
         if ( (dimNo < 1) || (dimNo > arrayDimCount) ) { return result_arg_dimNumberInvalid; }
 
         fcnResultIsReal = true;
@@ -1489,18 +1489,18 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
     case MyParser::fnccod_valueType:
     {
         fcnResultIsReal = true;
-        fcnResult.realConst = operandValueType[0];
+        fcnResult.realConst = operandValueType [0];
     }
     break;
-    
-    
+
+
     case MyParser::fnccod_last:
     {
         int FiFoElement = 1;    // init: newest FiFo element
         if ( suppliedArgCount == 1 ) {              // FiFo element specified
-            if ( !operandIsReal [0] ) { return result_arg_nonInteger; }
+            if ( !operandIsReal [0] ) { return result_arg_integerExpected; }
             FiFoElement = int( operands [0].realConst );
-            if ( operands [0].realConst != FiFoElement ) { return result_arg_nonInteger; }
+            if ( operands [0].realConst != FiFoElement ) { return result_arg_integerExpected; }
             if ( (FiFoElement < 1) || (FiFoElement > MAX_LAST_RESULT_DEPTH) ) { return result_arg_outsideRange; }
         }
         if ( FiFoElement > _lastResultCount ) { return result_arg_invalid; }
@@ -1518,32 +1518,32 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
     }
     break;
 
-    
+
     case MyParser::fnccod_asc:      // return ASCII code of a single character n a string
     {
         if ( operandIsReal [0] ) { return result_arg_stringExpected; }
-        if( operands [0].pStringConst == nullptr ) {return result_arg_invalid;}     // empty string
+        if ( operands [0].pStringConst == nullptr ) { return result_arg_invalid; }     // empty string
         int charPos = 1;            // first character
         if ( suppliedArgCount == 2 ) {              // character position in string specified
-            if ( !operandIsReal [1] ) { return result_arg_nonInteger; }
+            if ( !operandIsReal [1] ) { return result_arg_integerExpected; }
             charPos = int( operands [1].realConst );
-            if ( operands [1].realConst != charPos ) { return result_arg_nonInteger; }
-            if  (charPos < 1) { return result_arg_outsideRange; }
+            if ( operands [1].realConst != charPos ) { return result_arg_integerExpected; }
+            if ( charPos < 1 ) { return result_arg_outsideRange; }
         }
-        if(charPos > strlen(operands[0].pStringConst) ){return result_arg_invalid;}
+        if ( charPos > strlen( operands [0].pStringConst ) ) { return result_arg_invalid; }
 
         fcnResultIsReal = true;
-        fcnResult.realConst = operands[0].pStringConst[--charPos];     // character code converted to float
+        fcnResult.realConst = operands [0].pStringConst [--charPos];     // character code converted to float
     }
     break;
-    
-    
+
+
     case MyParser::fnccod_char:     // convert ASCII code to 1-character string
     {
-        if (! operandIsReal [0] ) { return result_arg_nonInteger; }
-        int asciiCode= int(operands[0].realConst);
-        if ( operands [0].realConst != asciiCode ) { return result_arg_nonInteger; }
-        if (( asciiCode < 1 ) || (asciiCode > 0xFF)) { return result_arg_outsideRange; }        // do not allow \0
+        if ( !operandIsReal [0] ) { return result_arg_integerExpected; }
+        int asciiCode = int( operands [0].realConst );
+        if ( operands [0].realConst != asciiCode ) { return result_arg_integerExpected; }
+        if ( (asciiCode < 1) || (asciiCode > 0xFF) ) { return result_arg_outsideRange; }        // do not allow \0
 
         fcnResultIsReal = false;
         fcnResult.pStringConst = new char [2];
@@ -1552,17 +1552,85 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
         fcnResult.pStringConst [1] = '\0';                                // terminating \0
     }
     break;
-    
-    
+
+
     case MyParser::fnccod_nl:             // new line character
     {
         fcnResultIsReal = false;
-        fcnResult.pStringConst = new char [2];
+        fcnResult.pStringConst = new char [3];
         intermediateStringObjectCount++;
-        fcnResult.pStringConst [0] = 0x10;
-        fcnResult.pStringConst [1] = '\0';                                // terminating \0
+        fcnResult.pStringConst [0] = '\r';
+        fcnResult.pStringConst [1] = '\n';
+        fcnResult.pStringConst [2] = '\0';                                // terminating \0
     }
     break;
+
+
+    case MyParser::fnccod_fmtNum:
+    case MyParser::fnccod_fmtStr:
+    {
+        // mandatory argument 1: numeric value to be converted to string
+        // optional arguments 2-5: width, precision, number format (F:fixed, E:scientific, G:general, A:hex), flags
+        const int leftJustify = 0b1, forceSign = 0b10, blankIfNoSign = 0b100, addDecPoint = 0b1000, padWithZeros = 0b10000;     // flags
+        int maxWidth = MyParser::_maxAlphaCstLen, maxPrecision = 7; // maxWidth should be long enough to allow the resulting string to contain the longest possible number as formatted
+        int width = 16, precision = 3, flags = 0x0;
+        char numFmt [3] = "G";
+        bool isHexFmt { false };
+        bool isFmtString = (functionCode == MyParser::fnccod_fmtStr);
+
+        if ( isFmtString == operandIsReal [0] ) { return isFmtString ? result_arg_stringExpected : result_arg_numValueExpected; }
+
+        if ( isFmtString ) {
+            numFmt [0] = 's';           // string value
+            precision = width;
+            maxPrecision = maxWidth;    // strings: increase allowed maximum to enter
+        }
+
+        for ( int argNo = 2; argNo <= suppliedArgCount; argNo++ ) {
+            if ( !isFmtString && (argNo == 4) ) {       // single number format character (FfGgEeXx) expected
+                if ( operandIsReal [argNo - 1] ) { return result_arg_stringExpected; }
+                if ( operands [argNo - 1].pStringConst == nullptr ) { return result_arg_invalid; }
+                if ( strlen( operands [argNo - 1].pStringConst ) != 1 ) { return result_arg_invalid; }
+                numFmt [0] = operands [argNo - 1].pStringConst [0];
+                char* pChar( strchr( "FfGgEeXx", numFmt [0] ) );
+                if ( pChar == nullptr ) { return result_arg_invalid; }
+                isHexFmt = (numFmt [0] == 'X') || (numFmt [0] == 'x');
+            }
+            else {      // numeric argument expected
+                if ( !operandIsReal [argNo - 1] ) { return result_arg_numValueExpected; }
+                if ( operands [argNo - 1].realConst < 0 ) { return result_arg_outsideRange; }
+                ((argNo == 2) ? width : (argNo == 3) ? precision : flags) = operands [argNo - 1].realConst;
+                if (argNo == 2) {precision = width;  } // strings: precision specifies MAXIMUM n° of characters that will be printed
+                if ( argNo <= 3 ) {       // exclude flags
+                    if ( operands [argNo - 1].realConst != ((argNo == 2) ? width : precision) ) { return result_arg_invalid; }
+                }
+                if ( ((argNo == 2) ? width : (argNo == 3) ? precision : flags) > ( (argNo == 2) ? maxWidth : (argNo == 3) ? maxPrecision : 0b11111 ) ) { return result_arg_invalid; }
+            }
+        }
+
+
+        char s [maxWidth], fmtString [15];        // long enough to contain all format specifier parts
+        fmtString [0] = '%';
+        int strPos = 1;
+        for ( int i = 1; i <= 5; i++, flags >>= 1 ) {
+            if ( flags & 0b1 ) { fmtString [strPos] = ((i == 1) ? '-' : (i == 2) ? '+' : (i == 3) ? ' ' : (i == 4) ? '#' : '0'); ++strPos; }
+        }
+        fmtString [strPos] = '*'; ++strPos;
+        fmtString [strPos] = '.'; ++strPos;
+        fmtString [strPos] = '*'; ++strPos;
+        if ( isHexFmt ) { fmtString [strPos] = 'l'; ++strPos; fmtString [strPos] = numFmt [0]; ++strPos; }
+        else { fmtString [strPos] = numFmt [0]; ++strPos; }
+        fmtString [strPos] = '\0'; ++strPos;
+
+        fcnResultIsReal = false;
+        fcnResult.pStringConst = new char [maxWidth + 10];        // safety
+        if ( isFmtString ) { sprintf( fcnResult.pStringConst, fmtString, width, precision, operands [0].pStringConst ); }
+        else if ( isHexFmt ) { sprintf( fcnResult.pStringConst, fmtString, width, precision, (long) operands [0].realConst ); }     // hex output for floating point numbers not provided (Arduino)
+        else { sprintf( fcnResult.pStringConst, fmtString, width, precision, operands [0].realConst ); }
+        intermediateStringObjectCount++;
+    }
+    break;
+
 
     }       // end switch
 
@@ -1661,7 +1729,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 #endif
                         }
                     };
-                }
+                        }
 
                 if ( ((pStackLvl->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && !operandIsReal ) {
                     if ( pStackLvl->varOrConst.value.pStringConst != nullptr ) {
@@ -1674,9 +1742,9 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
                 }
 
                 pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl );       // argument saved: remove argument from stack and point to next argument
+                    }
+                }
             }
-            }
-        }
 
     // also delete function name token from evaluation stack
     _pEvalStackTop = (LE_evalStack*) evalStack.getPrevListElement( pFunctionStackLvl );
@@ -1715,7 +1783,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
     */
 
     return  result_execOK;
-    }
+        }
 
 
 // -----------------------------------------------------------------------------------------------
@@ -1762,12 +1830,12 @@ void Interpreter::initFunctionDefaultParamVariables( char*& pStep, int suppliedA
                 }
             }
             count++;
-        }
-    }
+                }
+            }
 
     // skip (remainder of) function definition
     findTokenStep( tok_isTerminalGroup1, MyParser::termcod_semicolon, pStep );
-};
+        };
 
 
 
@@ -1876,17 +1944,17 @@ void Interpreter::initFunctionLocalNonParamVariables( char* pStep, int paramCoun
 #endif
                         }
                     }
-                }
+                        }
 
                 tokenType = jumpTokens( 1, pStep, terminalCode );       // comma or semicolon
-            }
+                    }
 
             count++;
 
-        } while ( terminalCode == MyParser::termcod_comma );
+                } while ( terminalCode == MyParser::termcod_comma );
 
-    }
-};
+            }
+        };
 
 
 // -----------------------------------
