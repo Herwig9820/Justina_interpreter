@@ -115,7 +115,7 @@ public:
         result_array_subscriptNonInteger,
         result_array_dimCountInvalid,
         result_array_valueTypeIsFixed,
-        
+
         // internal functions
         result_arg_outsideRange,
         result_arg_integerExpected,
@@ -126,11 +126,14 @@ public:
         result_arg_numValueExpected,
         result_array_dimNumberNonInteger,
         result_array_dimNumberInvalid,
+        result_arg_varExpected,
 
         // numbers and strings
+        result_outsideRange,
         result_numberOutsideRange,
         result_numberNonInteger,
         result_numberExpected,
+        result_integerExpected,
         result_stringExpected,
         result_undefined,
         result_overflow,
@@ -281,8 +284,8 @@ public:
         char blockType;                 // command block: will identify stack level as an if...end, for...end, ... block
         char withinIteration;           // flag is set at the start of each iteration and cleared at the end 
         char fail;                      // 0x0 (pass) or 0x1 (fail)
-        char breakFromLoop;                     
-    
+        char breakFromLoop;
+
         // FOR...END loop only
         float* pControlVar;
         char* pControlValueType;
@@ -298,9 +301,9 @@ public:
         // within a function, as in immediate mode, only one (block) command can be active at a time (ended by semicolon), in contrast to command blocks, which can be nested, so command data can be stored here:
         // data is stored when a reserved word is processed and it is cleared when the ending semicolon (ending the command) is processed
         char activeCmd_ResWordCode;     // reserved word code (set to 'cmdcod_none' again when semicolon is processed)
-        
+
         char* activeCmd_tokenAddress;   // address of parsed reserved word token                                
-        
+
         Val* pLocalVarValues;           // local variable value: real, pointer to string or array, or (if reference): pointer to 'source' (referenced) variable
         char** ppSourceVarTypes;        // only if local variable is reference to variable or array element: pointer to 'source' variable value type  
         char* pVariableAttributes;      // local variable: value type (float, local string or reference); 'source' (if reference) or local variable scope (user, global, static; local, param) 
@@ -455,12 +458,12 @@ public:
     ~Interpreter();               // deconstructor
     bool run( Stream* const pConsole, Stream** const pTerminal, int definedTerms );
     bool processCharacter( char c );
-    
+
     void setMainLoopCallback( void (*func)(bool& requistQuit) );                   // set callback function for connection state change
     void (*_callbackFcn)(bool& requestQuit);                                         // pointer to callback function for heartbeat
 
-    void setUserFcnCallback( void (*func)( void* &arg1, void* &arg2) );                   // set callback function for connection state change
-    void (*_callbackUserFcn)( void* arg1, void* arg2);                           // user functions                                   
+    void setUserFcnCallback( void (*func)(void*& arg1, void*& arg2) );                   // set callback function for connection state change
+    void (*_callbackUserFcn)(void* arg1, void* arg2);                           // user functions                                   
 
     void* fetchVarBaseAddress( TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& variableAttributes, char& sourceVarAttributes );
     void* arrayElemAddress( void* varBaseAddress, int* dims );
@@ -469,11 +472,11 @@ public:
     execResult_type  execParenthesesPair( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
     execResult_type  execAllProcessedOperators();
 
-    execResult_type  execUnaryOperation(bool isPrefix);
+    execResult_type  execUnaryOperation( bool isPrefix );
     execResult_type  execInfixOperation();
     execResult_type  execInternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
     execResult_type  launchExternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
-    execResult_type  terminateExternalFunction(bool addZeroReturnValue = false);
+    execResult_type  terminateExternalFunction( bool addZeroReturnValue = false );
     execResult_type execProcessedCommand( bool& isFunctionReturn );
     execResult_type testForLoopCondition( bool& fail );
 
@@ -485,16 +488,18 @@ public:
 
     Interpreter::execResult_type arrayAndSubscriptsToarrayElement( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
 
-    void saveLastValue( bool &overWritePrevious );
+    void saveLastValue( bool& overWritePrevious );
     void clearEvalStack();
-    void clearEvalStackLevels(int n);
+    void clearEvalStackLevels( int n );
     void clearFlowCtrlStack();
+
+    execResult_type makeFormatString();
+    execResult_type deleteVarStringObject( LE_evalStack* pStackLvl );
+
     int findTokenStep( int tokenTypeToFind, char tokenCodeToFind, char*& pStep );
-    int jumpTokens( int n, char*& pStep,  int& tokenCode );
+    int jumpTokens( int n, char*& pStep, int& tokenCode );
     int jumpTokens( int n, char*& pStep );
     int jumpTokens( int n );
-
-    void deleteStackArguments( LE_evalStack* pPrecedingStackLvl, int argCount );
 
     void PushTerminalToken( int& tokenType );
     void pushResWord( int& tokenType );
@@ -540,6 +545,8 @@ public:
         cmdcod_return,
         cmdcod_end,
         cmdcod_print,
+        cmdcod_numfmt,
+        cmdcod_dispfmt,
 
         cmdcod_test
     };
@@ -599,10 +606,10 @@ public:
     enum termin_code {
         // operators
         termcod_assign = 0,
-        termcod_plusAssign ,
+        termcod_plusAssign,
         termcod_minusAssign,
-        termcod_multAssign ,
-        termcod_divAssign   ,
+        termcod_multAssign,
+        termcod_divAssign,
         termcod_or,
         termcod_and,
         termcod_not,
@@ -771,7 +778,7 @@ public:
     struct TerminalDef {                                        // function names with min & max number of arguments allowed 
         const char* terminalName;
         char terminalCode;
-        char postfix_priority;                                      
+        char postfix_priority;
         char prefix_infix_priority;
         char associativityAnduse;
     };
@@ -826,7 +833,7 @@ public:
     static constexpr uint8_t lastTokenGroup_6 = 1 << 6;          // variable
 
     // groups of token groups: combined token groups (for testing valid token sequences when next token will be parsed)
-    static constexpr uint8_t lastTokenGroups_5_2_1_0 = lastTokenGroup_5 | lastTokenGroup_2 | lastTokenGroup_1 | lastTokenGroup_0; 
+    static constexpr uint8_t lastTokenGroups_5_2_1_0 = lastTokenGroup_5 | lastTokenGroup_2 | lastTokenGroup_1 | lastTokenGroup_0;
     static constexpr uint8_t lastTokenGroups_6_3 = lastTokenGroup_6 | lastTokenGroup_3;
     static constexpr uint8_t lastTokenGroups_6_3_0 = lastTokenGroup_6 | lastTokenGroup_3 | lastTokenGroup_0;
     static constexpr uint8_t lastTokenGroups_6_3_2_0 = lastTokenGroup_6 | lastTokenGroup_3 | lastTokenGroup_2 | lastTokenGroup_0;
@@ -838,7 +845,7 @@ public:
     // operator accociativity: bits b10 indiciate right-to-left associativity for use as infix (b0) and prefix operator (b1). Postfix: always left_to_right 
     static constexpr uint8_t op_assocRtoL = 0x01;                 // infix operator associativityAnduse right-to-left (not relevant for other terminals) 
     static constexpr uint8_t op_assocRtoLasPrefix = 0x02;         // prefix operator associativityAnduse right-to-left (only)
-    
+
     // operator use: bits b654 indicate use as infix, prefix and postfix operator is allowed
     static constexpr uint8_t op_infix = 0x10;                       // operator can be used as infix operator
     static constexpr uint8_t op_prefix = 0x20;                       // operator can be used as prefix operator
@@ -859,7 +866,6 @@ public:
     static constexpr uint8_t cmdPar_multipleFlag = 0x08;             // allowed 0 to n times. Only for last command parameter
     static constexpr uint8_t cmdPar_optionalFlag = 0x10;             // allowed 0 to 1 times. If parameter is present, next parameters do not have to be optional 
 
-
     // bits b3210: indicate command (not parameter) usage restrictions 
     static constexpr char cmd_usageRestrictionMask = 0x0F;               // mask
 
@@ -868,7 +874,7 @@ public:
     static constexpr char cmd_onlyInProgramOutsideFunctionBlock = 0x02;    // command is only allowed insde a program
     static constexpr char cmd_onlyInFunctionBlock = 0x03;               // command is only allowed inside a function block
     static constexpr char cmd_onlyImmediate = 0x04;                   // command is only allowed in immediate mode
-    static constexpr char cmd_onlyOutsideFunctionBlock = 0x05;             // command is only allowed inside a function block
+    static constexpr char cmd_onlyOutsideFunctionBlock = 0x05;             // command is only allowed outside a function block (so also in immediate mode)
     static constexpr char cmd_onlyImmOrInsideFuncBlock = 0x06;   // command is only allowed inside a function block
     static constexpr char cmd_onlyProgramTop = 0x07;                        // only as first program statement
 
@@ -880,6 +886,7 @@ public:
     static const char cmdPar_N [4];                             // command takes no parameters
     static const char cmdPar_P [4];                             // allow: 'P'=identifier name  
     static const char cmdPar_E [4];                             // allow: 'E'=expression  
+    static const char cmdPar_E_2 [4];                           // allow:  2 expressions
     static const char cmdPar_E_opt [4];                         // allow: 'E'=expression  
     static const char cmdPar_E_optMult [4];                     // allow: 'E'=expression, 0 to n times   
     static const char cmdPar_V [4];                             // allow: 'V'=variable (only)
@@ -981,7 +988,7 @@ private:
     int _variableNameIndex { 0 };
     int _variableScope { 0 };
     bool _arrayElemAssignmentAllowed { false };                    // value returned: assignment to array element is allowed next
-    bool _arrayElemPostfixIncrDecrAllowed {false};
+    bool _arrayElemPostfixIncrDecrAllowed { false };
 
     int _tokenIndex { 0 };
     int _resWordCount;                                          // index into list of reserved words

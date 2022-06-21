@@ -27,6 +27,7 @@ const char MyParser::cmdPar_F [4] { cmdPar_extFunction,             cmdPar_none,
 const char MyParser::cmdPar_AEE [4] { cmdPar_varOptAssignment,      cmdPar_expression,                              cmdPar_expression | cmdPar_optionalFlag ,   cmdPar_none };
 const char MyParser::cmdPar_P_mult [4] { cmdPar_programName,        cmdPar_programName | cmdPar_multipleFlag,       cmdPar_none,                                cmdPar_none };
 const char MyParser::cmdPar_AA_mult [4] { cmdPar_varOptAssignment,  cmdPar_varOptAssignment | cmdPar_multipleFlag,  cmdPar_none,                                cmdPar_none };
+const char MyParser::cmdPar_E_2 [4] { cmdPar_expression,            cmdPar_expression,                              cmdPar_none,                                cmdPar_none };
 
 const char MyParser::cmdPar_test [4] { cmdPar_programName
                                         | cmdPar_optionalFlag,      cmdPar_programName,                             cmdPar_programName | cmdPar_multipleFlag,   cmdPar_none };  // test: either 0 or 2 to n parameters ok
@@ -40,7 +41,7 @@ const MyParser::ResWordDef MyParser::_resWords [] {
 
     {"program", cmdcod_program, cmd_onlyProgramTop | cmd_skipDuringExec,            0,0,    cmdPar_P,       cmdProgram},
     {"delete",  cmdcod_delete,  cmd_onlyImmediate,                                  0,0,    cmdPar_P_mult,  cmdDeleteVar},
-    {"clear",   cmdcod_clear,   cmd_onlyImmediate,0,0, cmdPar_N, cmdBlockOther},
+    {"clear",   cmdcod_clear,   cmd_onlyImmediate,                                  0,0,    cmdPar_N,       cmdBlockOther},
     {"vars",    cmdcod_vars,    cmd_onlyImmediate,                                  0,0,    cmdPar_N,       cmdBlockOther},
     {"function",cmdcod_function,cmd_onlyInProgram | cmd_skipDuringExec,             0,0,    cmdPar_F,       cmdBlockExtFunction},
 
@@ -59,6 +60,8 @@ const MyParser::ResWordDef MyParser::_resWords [] {
     {"return",  cmdcod_return,  cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E_opt,   cmdBlockOpenBlock_function},    // allowed if currently an open function definition block 
 
     {"print",   cmdcod_print,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E_optMult, cmdBlockOther},
+    {"numfmt",  cmdcod_numfmt,  cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E_2,     cmdBlockOther},
+    {"dispfmt", cmdcod_dispfmt, cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E_2,     cmdBlockOther},
 
     {"end",     cmdcod_end,     cmd_noRestrictions,                                 0,0,    cmdPar_N,       cmdBlockGenEnd},                // closes inner open command block
 };
@@ -89,8 +92,8 @@ const MyParser::FuncDef MyParser::_functions [] {
     {"asc",         fnccod_asc,         1,2,    0b0},
     {"char",        fnccod_char,        1,1,    0b0},
     {"nl",          fnccod_nl,          0,0,    0b0},
-    {"fnum",        fnccod_fmtNum,      1,5,    0b0},
-    {"fstr",        fnccod_fmtStr,      1,4,    0b0}
+    {"fnum",        fnccod_fmtNum,      1,6,    0b0},
+    {"fstr",        fnccod_fmtStr,      1,5,    0b0}
 };
 
 
@@ -1004,7 +1007,7 @@ bool MyParser::parseAsNumber( char*& pNext, parseTokenResult_type& result ) {
 
     // array declaration: dimensions must be number constants (global, static, local arrays)
     bool isArrayDimSpec = (_isAnyVarCmd) && (_parenthesisLevel > 0);
-    if ( isArrayDimSpec && ((f != int(f)) || (f < 1))) { pNext = pch; result = result_arrayDimNotValid; return false; }
+    if ( isArrayDimSpec && ((f != int( f )) || (f < 1)) ) { pNext = pch; result = result_arrayDimNotValid; return false; }
 
     // token is a number, and it's allowed here
     Interpreter::TokenIsRealCst* pToken = (Interpreter::TokenIsRealCst*) _pInterpreter->_programCounter;
@@ -1058,7 +1061,7 @@ bool MyParser::parseAsStringConstant( char*& pNext, parseTokenResult_type& resul
     if ( varRequired ) { pNext = pch; result = result_variableNameExpected; return false; }
 
     // array declaration: dimensions must be number constants (global, static, local arrays)
-    bool isArrayDimSpec = (_isAnyVarCmd) && (_parenthesisLevel > 0);                    
+    bool isArrayDimSpec = (_isAnyVarCmd) && (_parenthesisLevel > 0);
     if ( isArrayDimSpec ) { pNext = pch; result = result_arrayDimNotValid; return false; }
 
     if ( _leadingSpaceCheck ) { pNext = pch; result = result_spaceMissing; return false; }

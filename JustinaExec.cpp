@@ -322,7 +322,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
 
     case MyParser::cmdcod_print:
     {
-        for ( int i = 1; i <= cmdParamCount; i++ ) {        // skipped if no arguments 
+        for ( int i = 1; i <= cmdParamCount; i++ ) {
             bool operandIsVar = (pstackLvl->varOrConst.tokenType == tok_isVariable);
             char valueType = operandIsVar ? (*pstackLvl->varOrConst.varTypeAddress & value_typeMask) : pstackLvl->varOrConst.valueType;
             bool opIsReal = ((uint8_t) valueType == value_isFloat);
@@ -341,7 +341,30 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
 
             pstackLvl = (LE_evalStack*) evalStack.getNextListElement( pstackLvl );
         }
-        _pConsole->print( "\r\n" );
+
+        clearEvalStackLevels( cmdParamCount );      // clear evaluation stack and intermediate strings
+
+        _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // command execution ended
+        _activeFunctionData.activeCmd_tokenAddress = nullptr;
+    }
+    break;
+
+
+    case MyParser::cmdcod_numfmt:
+    case MyParser::cmdcod_dispfmt:
+    {
+        for ( int i = 1; i <= cmdParamCount; i++ ) {
+            bool operandIsVar = (pstackLvl->varOrConst.tokenType == tok_isVariable);
+            char valueType = operandIsVar ? (*pstackLvl->varOrConst.varTypeAddress & value_typeMask) : pstackLvl->varOrConst.valueType;
+            if ((uint8_t) valueType != value_isFloat) {return result_numberExpected;}
+            float &f = operandIsVar  ? (*pstackLvl->varOrConst.value.pRealConst) : pstackLvl->varOrConst.value.realConst;
+            if (f < 0) {return result_outsideRange;}
+            int val = int(f);
+            if (val != f ) { return result_integerExpected; }
+            pstackLvl = (LE_evalStack*) evalStack.getNextListElement( pstackLvl );
+
+            
+        }
 
         clearEvalStackLevels( cmdParamCount );      // clear evaluation stack and intermediate strings
 
@@ -704,9 +727,9 @@ void Interpreter::saveLastValue( bool& overWritePrevious ) {
                 // note: this is always an intermediate string
                 delete [] lastResultValueFiFo [itemToRemove].pStringConst;
                 lastValuesStringObjectCount--;
-            }
         }
     }
+}
     else {
         _lastResultCount++;     // only adding an item, without removing previous one
     }
@@ -751,7 +774,7 @@ void Interpreter::saveLastValue( bool& overWritePrevious ) {
 #endif
             delete [] lastvalue.value.pStringConst;
             intermediateStringObjectCount--;
-        }
+    }
     }
 
     // store new last value type
@@ -806,15 +829,15 @@ void Interpreter::clearEvalStackLevels( int n ) {
 #endif
                     delete [] pstackLvl->varOrConst.value.pStringConst;
                     intermediateStringObjectCount--;
-                }
             }
         }
+    }
 
         // delete evaluation stack level
         pPrecedingStackLvl = (LE_evalStack*) evalStack.getPrevListElement( pstackLvl );
         evalStack.deleteListElement( pstackLvl );
         pstackLvl = pPrecedingStackLvl;
-    }
+}
 
     _pEvalStackTop = pstackLvl;
     _pEvalStackMinus1 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackTop );
@@ -1317,8 +1340,8 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
                 delete [] * _pEvalStackMinus2->varOrConst.value.ppStringConst;
                 isUserVar ? userVarStringObjectCount-- : (isGlobalVar || isStaticVar) ? globalStaticVarStringObjectCount-- : localVarStringObjectCount--;
-            }
         }
+    }
 
         // if the value to be assigned is real (float) OR an empty string: simply assign the value (not a heap object)
 
@@ -1351,7 +1374,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         if ( !operand1IsVarRef ) { // if reference, then value type on the stack indicates 'variable reference', so don't overwrite it
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) | (opResultReal ? value_isFloat : value_isStringPointer);
         }
-    }
+}
 
 
     // Delete any intermediate result string objects used as operands 
@@ -1366,7 +1389,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
             delete [] _pEvalStackTop->varOrConst.value.pStringConst;
             intermediateStringObjectCount--;
-        }
+    }
     }
     // operand 1 is an intermediate constant AND it is a string ? delete char string object
     if ( ((_pEvalStackMinus2->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && !op1real )
@@ -1377,7 +1400,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
             delete [] _pEvalStackMinus2->varOrConst.value.pStringConst;
             intermediateStringObjectCount--;
-        }
+    }
     }
 
 
@@ -1411,7 +1434,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 // *   execute internal function   *
 // ---------------------------------
 
-Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount ) {
+Interpreter::execResult_type Interpreter::execInternalFunction( LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount ) {
 
     _activeFunctionData.errorProgramCounter = pFunctionStackLvl->function.tokenAddress;  // before pushing to stack   
     int functionIndex = pFunctionStackLvl->function.index;
@@ -1420,16 +1443,15 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
     int minArgs = MyParser::_functions [functionIndex].minArgs;
     int maxArgs = MyParser::_functions [functionIndex].maxArgs;
     bool fcnResultIsReal = true;   // init
-    bool mathChecks = false; // init
     Val fcnResult;
-
-    // variables for intermediate storage of operands (constants, variable values or intermediate results from previous calculations) and result
-
-    // value type of operands
-
     bool operandIsVar [8], operandIsReal [8];
     char operandValueType [8];
     Val operands [8];
+
+
+    // retrieve argument(s) info: variable or constant, value type
+    // -----------------------------------------------------------
+
 
     if ( suppliedArgCount > 0 ) {
         LE_evalStack* pStackLvl = pFirstArgStackLvl;         // pointing to first argument on stack
@@ -1448,18 +1470,30 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
         }
     }
 
+    // execute a specific function
+    // ---------------------------
+
     switch ( functionCode ) {
 
+        // square root
+        // -----------
+
     case MyParser::fnccod_sqrt:
+    {
         if ( !operandIsReal [0] ) { return result_numberExpected; }
         if ( operands [0].realConst < 0 ) { return result_arg_outsideRange; }
 
         fcnResultIsReal = true;
         fcnResult.realConst = sqrt( operands [0].realConst );
         if ( (operands [0].realConst > 0) && !isnormal( fcnResult.realConst ) ) { return result_underflow; }
-        mathChecks = true;
-        break;
+        if ( isnan( fcnResult.realConst ) ) { return result_undefined; }
+        if ( !isfinite( fcnResult.realConst ) ) { return result_overflow; }
+    }
+    break;
 
+
+    // dimension count of an array
+    // ---------------------------
 
     case MyParser::fnccod_dims:
     {
@@ -1471,6 +1505,8 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
     break;
 
 
+    // array upper bound
+    // -----------------
     case MyParser::fnccod_ubound:
     {
         if ( !operandIsReal [1] ) { return result_arg_dimNumberIntegerExpected; }
@@ -1486,6 +1522,9 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
     break;
 
 
+    // variable value type
+    // -------------------
+
     case MyParser::fnccod_valueType:
     {
         fcnResultIsReal = true;
@@ -1493,6 +1532,9 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
     }
     break;
 
+
+    // retrieve one of the last calculation results
+    // --------------------------------------------
 
     case MyParser::fnccod_last:
     {
@@ -1511,6 +1553,9 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
     break;
 
 
+    // time since boot, in milliseconds
+    // --------------------------------
+
     case MyParser::fnccod_millis:
     {
         fcnResultIsReal = true;
@@ -1519,7 +1564,10 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
     break;
 
 
-    case MyParser::fnccod_asc:      // return ASCII code of a single character n a string
+    // ASCII code of a single character n a string
+    // -------------------------------------------
+
+    case MyParser::fnccod_asc:
     {
         if ( operandIsReal [0] ) { return result_arg_stringExpected; }
         if ( operands [0].pStringConst == nullptr ) { return result_arg_invalid; }     // empty string
@@ -1538,6 +1586,9 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
     break;
 
 
+    // return character with a given ASCII code
+    // ----------------------------------------
+
     case MyParser::fnccod_char:     // convert ASCII code to 1-character string
     {
         if ( !operandIsReal [0] ) { return result_arg_integerExpected; }
@@ -1554,6 +1605,9 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
     break;
 
 
+    // return CR and LF character string
+    // ---------------------------------
+
     case MyParser::fnccod_nl:             // new line character
     {
         fcnResultIsReal = false;
@@ -1566,18 +1620,29 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
     break;
 
 
+    // format a number or a string into a destination string
+    // -----------------------------------------------------
+
     case MyParser::fnccod_fmtNum:
     case MyParser::fnccod_fmtStr:
     {
         // mandatory argument 1: numeric value to be converted to string
-        // optional arguments 2-5: width, precision, number format (F:fixed, E:scientific, G:general, A:hex), flags
+        // optional arguments 2-5: width, precision, [ONLY if fnccod_fmtStr: specifier (F:fixed, E:scientific, G:general, X:hex)], flags, characters printed (return value)
+        // note that behaviour is as with c++ printf, sprintf, ... 
+
         const int leftJustify = 0b1, forceSign = 0b10, blankIfNoSign = 0b100, addDecPoint = 0b1000, padWithZeros = 0b10000;     // flags
         int maxWidth = MyParser::_maxAlphaCstLen, maxPrecision = 7; // maxWidth should be long enough to allow the resulting string to contain the longest possible number as formatted
         int width = 16, precision = 3, flags = 0x0;
         char numFmt [3] = "G";
         bool isHexFmt { false };
         bool isFmtString = (functionCode == MyParser::fnccod_fmtStr);
+        int charsPrinted { 0 };
 
+
+        // test arguments
+        // --------------
+
+        // value to format is the correct type ?
         if ( isFmtString == operandIsReal [0] ) { return isFmtString ? result_arg_stringExpected : result_arg_numValueExpected; }
 
         if ( isFmtString ) {
@@ -1587,7 +1652,8 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
         }
 
         for ( int argNo = 2; argNo <= suppliedArgCount; argNo++ ) {
-            if ( !isFmtString && (argNo == 4) ) {       // single number format character (FfGgEeXx) expected
+            // Specifier argument ? Single character specifier (FfGgEeXx) expected
+            if ( !isFmtString && (argNo == 4) ) {
                 if ( operandIsReal [argNo - 1] ) { return result_arg_stringExpected; }
                 if ( operands [argNo - 1].pStringConst == nullptr ) { return result_arg_invalid; }
                 if ( strlen( operands [argNo - 1].pStringConst ) != 1 ) { return result_arg_invalid; }
@@ -1596,38 +1662,66 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
                 if ( pChar == nullptr ) { return result_arg_invalid; }
                 isHexFmt = (numFmt [0] == 'X') || (numFmt [0] == 'x');
             }
-            else {      // numeric argument expected
-                if ( !operandIsReal [argNo - 1] ) { return result_arg_numValueExpected; }
-                if ( operands [argNo - 1].realConst < 0 ) { return result_arg_outsideRange; }
-                ((argNo == 2) ? width : (argNo == 3) ? precision : flags) = operands [argNo - 1].realConst;
-                if (argNo == 2) {precision = width;  } // strings: precision specifies MAXIMUM n° of characters that will be printed
-                if ( argNo <= 3 ) {       // exclude flags
-                    if ( operands [argNo - 1].realConst != ((argNo == 2) ? width : precision) ) { return result_arg_invalid; }
-                }
-                if ( ((argNo == 2) ? width : (argNo == 3) ? precision : flags) > ( (argNo == 2) ? maxWidth : (argNo == 3) ? maxPrecision : 0b11111 ) ) { return result_arg_invalid; }
+
+            // Width, precision flags ? Numeric arguments expected
+            else if ( argNo != (isFmtString ? 5 : 6) ) {      // (exclude optional argument returning #chars printed from tests)
+                if ( !operandIsReal [argNo - 1] ) { return result_arg_numValueExpected; }                                               // numeric ?
+                if ( operands [argNo - 1].realConst < 0 ) { return result_arg_outsideRange; }                                           // positive ?
+                ((argNo == 2) ? width : (argNo == 3) ? precision : flags) = operands [argNo - 1].realConst;                             // set with, precision, flags to respective argument
+                if ( operands [argNo - 1].realConst != ((argNo == 2) ? width : (argNo == 3) ? precision : flags) ) { return result_arg_invalid; }    // integer ?
+
+                if ( argNo == 2 ) { precision = width; }    // width argument: init precision to width again. Note that for strings, precision specifies MAXIMUM n° of characters that will be printed
             }
         }
 
+        width = min( width, maxWidth );
+        precision = min( precision, maxPrecision );
+        flags &= 0b11111;
 
-        char s [maxWidth], fmtString [15];        // long enough to contain all format specifier parts
+        // optional argument returning #chars that were printed is present ?  Variable expected
+        if ( suppliedArgCount == (isFmtString ? 5 : 6) ) {
+            if ( !operandIsVar [suppliedArgCount - 1] ) { return result_arg_varExpected; }          // it should be a variable
+        }
+
+
+        // prepare format string
+        // ---------------------
+
+        char s [maxWidth], fmtString [20];        // long enough to contain all format specifier parts
         fmtString [0] = '%';
         int strPos = 1;
         for ( int i = 1; i <= 5; i++, flags >>= 1 ) {
             if ( flags & 0b1 ) { fmtString [strPos] = ((i == 1) ? '-' : (i == 2) ? '+' : (i == 3) ? ' ' : (i == 4) ? '#' : '0'); ++strPos; }
         }
-        fmtString [strPos] = '*'; ++strPos;
-        fmtString [strPos] = '.'; ++strPos;
-        fmtString [strPos] = '*'; ++strPos;
+        fmtString [strPos] = '*'; ++strPos; fmtString [strPos] = '.'; ++strPos; fmtString [strPos] = '*'; ++strPos;             // width and precision specified with additional arguments
         if ( isHexFmt ) { fmtString [strPos] = 'l'; ++strPos; fmtString [strPos] = numFmt [0]; ++strPos; }
         else { fmtString [strPos] = numFmt [0]; ++strPos; }
-        fmtString [strPos] = '\0'; ++strPos;
+        fmtString [strPos] = '%'; ++strPos; fmtString [strPos] = 'n'; ++strPos; fmtString [strPos] = '\0'; ++strPos;            // %n specifier (return characters printed)
+        
+        
+        // format
+        // ------
 
         fcnResultIsReal = false;
         fcnResult.pStringConst = new char [maxWidth + 10];        // safety
-        if ( isFmtString ) { sprintf( fcnResult.pStringConst, fmtString, width, precision, operands [0].pStringConst ); }
-        else if ( isHexFmt ) { sprintf( fcnResult.pStringConst, fmtString, width, precision, (long) operands [0].realConst ); }     // hex output for floating point numbers not provided (Arduino)
-        else { sprintf( fcnResult.pStringConst, fmtString, width, precision, operands [0].realConst ); }
+        if ( isFmtString ) { sprintf( fcnResult.pStringConst, fmtString, width, precision, operands [0].pStringConst, &charsPrinted ); }
+        else if ( isHexFmt ) { sprintf( fcnResult.pStringConst, fmtString, width, precision, (long) operands [0].realConst, &charsPrinted ); }     // hex output for floating point numbers not provided (Arduino)
+        else { sprintf( fcnResult.pStringConst, fmtString, width, precision, operands [0].realConst, &charsPrinted ); }
         intermediateStringObjectCount++;
+
+
+        // return number of characters printed into (variable) argument if it was supplied
+        // -------------------------------------------------------------------------------
+
+        // note: NO errors should occur beyond this point, OR the intermediate string containing the function result should be deleted
+        if ( suppliedArgCount == (isFmtString ? 5 : 6) ) {      // optional argument returning #chars that were printed is present
+            deleteVarStringObject( _pEvalStackTop );
+
+            // save value in variable and set variable value type to real 
+            // note: if variable reference, then value type on the stack indicates 'variable reference' which should not be changed (but stack level will be deleted now anyway)
+            *_pEvalStackTop->varOrConst.value.pRealConst = charsPrinted;
+            *_pEvalStackTop->varOrConst.varTypeAddress = (*_pEvalStackTop->varOrConst.varTypeAddress & ~value_typeMask) | value_isFloat;
+        }
     }
     break;
 
@@ -1635,13 +1729,9 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
     }       // end switch
 
 
-    if ( mathChecks ) {
-        if ( isnan( fcnResult.realConst ) ) { return result_undefined; }
-        else if ( !isfinite( fcnResult.realConst ) ) { return result_overflow; }
-    }
-
-
     // delete function name token and arguments from evaluation stack, create stack entry for function result 
+    // ------------------------------------------------------------------------------------------------------
+
     clearEvalStackLevels( suppliedArgCount + 1 );
 
     _pEvalStackTop = (LE_evalStack*) evalStack.appendListElement( sizeof( VarOrConstLvl ) );
@@ -1649,11 +1739,119 @@ Interpreter::execResult_type  Interpreter::execInternalFunction( LE_evalStack*& 
     _pEvalStackMinus2 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackMinus1 );
 
     // push result to stack
+    // --------------------
+
     _pEvalStackTop->varOrConst.value = fcnResult;                        // float or pointer to string
     _pEvalStackTop->varOrConst.valueType = fcnResultIsReal ? value_isFloat : value_isStringPointer;     // value type of second operand  
     _pEvalStackTop->varOrConst.tokenType = tok_isConstant;              // use generic constant type
     _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
     _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
+
+    return result_execOK;
+}
+
+
+// ----------------------
+// create a format string
+// ----------------------
+
+Interpreter::execResult_type  Interpreter::makeFormatString(  ) {
+    
+    /*
+    const int leftJustify = 0b1, forceSign = 0b10, blankIfNoSign = 0b100, addDecPoint = 0b1000, padWithZeros = 0b10000;     // flags
+    int maxWidth = MyParser::_maxAlphaCstLen, maxPrecision = 7; // maxWidth should be long enough to allow the resulting string to contain the longest possible number as formatted
+    int width = 16, precision = 3, flags = 0x0;
+    char numFmt [3] = "G";
+    bool isHexFmt { false };
+    bool isFmtString = (functionCode == MyParser::fnccod_fmtStr);
+    int charsPrinted { 0 };
+
+    // test arguments
+    // --------------
+
+    // value to format is the correct type ?
+    if ( isFmtString == operandIsReal [0] ) { return isFmtString ? result_arg_stringExpected : result_arg_numValueExpected; }
+
+    if ( isFmtString ) {
+        numFmt [0] = 's';           // string value
+        precision = width;
+        maxPrecision = maxWidth;    // strings: increase allowed maximum to enter
+    }
+
+    for ( int argNo = 2; argNo <= suppliedArgCount; argNo++ ) {
+        // Specifier argument ? Single character specifier (FfGgEeXx) expected
+        if ( !isFmtString && (argNo == 4) ) {
+            if ( operandIsReal [argNo - 1] ) { return result_arg_stringExpected; }
+            if ( operands [argNo - 1].pStringConst == nullptr ) { return result_arg_invalid; }
+            if ( strlen( operands [argNo - 1].pStringConst ) != 1 ) { return result_arg_invalid; }
+            numFmt [0] = operands [argNo - 1].pStringConst [0];
+            char* pChar( strchr( "FfGgEeXx", numFmt [0] ) );
+            if ( pChar == nullptr ) { return result_arg_invalid; }
+            isHexFmt = (numFmt [0] == 'X') || (numFmt [0] == 'x');
+        }
+
+        // Width, precision flags ? Numeric arguments expected
+        else if ( argNo != (isFmtString ? 5 : 6) ) {      // (exclude optional argument returning #chars printed from tests)
+            if ( !operandIsReal [argNo - 1] ) { return result_arg_numValueExpected; }                                               // numeric ?
+            if ( operands [argNo - 1].realConst < 0 ) { return result_arg_outsideRange; }                                           // positive ?
+            ((argNo == 2) ? width : (argNo == 3) ? precision : flags) = operands [argNo - 1].realConst;                             // set with, precision, flags to respective argument
+            if ( operands [argNo - 1].realConst != ((argNo == 2) ? width : (argNo == 3) ? precision : flags) ) { return result_arg_invalid; }    // integer ?
+
+            if ( argNo == 2 ) { precision = width; }    // width argument: init precision to width again. Note that for strings, precision specifies MAXIMUM n° of characters that will be printed
+        }
+    }
+
+    width = min( width, maxWidth );
+    precision = min( precision, maxPrecision );
+    flags &= 0b11111;
+
+    // optional argument returning #chars that were printed is present ?  Variable expected
+    if ( suppliedArgCount == (isFmtString ? 5 : 6) ) {
+        if ( !operandIsVar [suppliedArgCount - 1] ) { return result_arg_varExpected; }          // it should be a variable
+    }
+
+
+    // prepare format string
+    // ---------------------
+
+    char s [maxWidth], fmtString [20];        // long enough to contain all format specifier parts
+    fmtString [0] = '%';
+    int strPos = 1;
+    for ( int i = 1; i <= 5; i++, flags >>= 1 ) {
+        if ( flags & 0b1 ) { fmtString [strPos] = ((i == 1) ? '-' : (i == 2) ? '+' : (i == 3) ? ' ' : (i == 4) ? '#' : '0'); ++strPos; }
+    }
+    fmtString [strPos] = '*'; ++strPos; fmtString [strPos] = '.'; ++strPos; fmtString [strPos] = '*'; ++strPos;             // width and precision specified with additional arguments
+    if ( isHexFmt ) { fmtString [strPos] = 'l'; ++strPos; fmtString [strPos] = numFmt [0]; ++strPos; }
+    else { fmtString [strPos] = numFmt [0]; ++strPos; }
+    fmtString [strPos] = '%'; ++strPos; fmtString [strPos] = 'n'; ++strPos; fmtString [strPos] = '\0'; ++strPos;            // %n specifier (return characters printed)
+
+    */
+    return result_execOK;////
+}
+
+
+// -------------------------------
+// delete a variable string object
+// -------------------------------
+
+// if not a string, then do nothing. If not a variable, then exit with error
+
+Interpreter::execResult_type Interpreter::deleteVarStringObject( LE_evalStack* pStackLvl ) {
+
+    if ( pStackLvl->varOrConst.tokenType != tok_isVariable ) { return result_arg_varExpected; };
+    if ( (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) != value_isStringPointer ) { return result_execOK; }     // not a string object
+
+    char varScope = (pStackLvl->varOrConst.variableAttributes & var_scopeMask);
+
+    // delete variable string object
+    if ( *pStackLvl->varOrConst.value.ppStringConst != nullptr ) {
+#if printCreateDeleteHeapObjects
+        Serial.print( (varScope == var_isUser) ? "----- (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "----- (var string ) " : "----- (loc var str) " );
+        Serial.println( (uint32_t) *_pEvalStackMinus2->varOrConst.value.ppStringConst - RAMSTART );
+#endif
+        delete [] * pStackLvl->varOrConst.value.ppStringConst;
+        (varScope == var_isUser) ? userVarStringObjectCount-- : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? globalStaticVarStringObjectCount-- : localVarStringObjectCount--;
+}
 
     return result_execOK;
 }
@@ -1729,7 +1927,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 #endif
                         }
                     };
-                        }
+                }
 
                 if ( ((pStackLvl->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && !operandIsReal ) {
                     if ( pStackLvl->varOrConst.value.pStringConst != nullptr ) {
@@ -1738,13 +1936,13 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 #endif
                         delete [] pStackLvl->varOrConst.value.pStringConst;
                         intermediateStringObjectCount--;
-                    }
-                }
-
-                pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl );       // argument saved: remove argument from stack and point to next argument
-                    }
                 }
             }
+
+                pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl );       // argument saved: remove argument from stack and point to next argument
+        }
+    }
+}
 
     // also delete function name token from evaluation stack
     _pEvalStackTop = (LE_evalStack*) evalStack.getPrevListElement( pFunctionStackLvl );
@@ -1783,7 +1981,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
     */
 
     return  result_execOK;
-        }
+}
 
 
 // -----------------------------------------------------------------------------------------------
@@ -1830,12 +2028,12 @@ void Interpreter::initFunctionDefaultParamVariables( char*& pStep, int suppliedA
                 }
             }
             count++;
-                }
-            }
+        }
+    }
 
     // skip (remainder of) function definition
     findTokenStep( tok_isTerminalGroup1, MyParser::termcod_semicolon, pStep );
-        };
+};
 
 
 
@@ -1944,17 +2142,17 @@ void Interpreter::initFunctionLocalNonParamVariables( char* pStep, int paramCoun
 #endif
                         }
                     }
-                        }
+                }
 
                 tokenType = jumpTokens( 1, pStep, terminalCode );       // comma or semicolon
-                    }
+            }
 
             count++;
 
-                } while ( terminalCode == MyParser::termcod_comma );
+        } while ( terminalCode == MyParser::termcod_comma );
 
-            }
-        };
+    }
+};
 
 
 // -----------------------------------
