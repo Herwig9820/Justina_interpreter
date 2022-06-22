@@ -379,6 +379,7 @@ public:
     int userArrayObjectCount = 0;
     int localArrayObjectCount = 0;
 
+    bool _atLineStart = true;                       
 
     char _instruction [_maxInstructionChars + 1] = "";
     int _instructionCharCount { 0 };

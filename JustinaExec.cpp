@@ -254,6 +254,7 @@ Interpreter::execResult_type  Interpreter::exec() {
 
         if ( execResult != result_execOK ) {
             int sourceErrorPos { 0 };
+            if ( !_atLineStart ) { _pConsole->println(); _atLineStart = true; }
             _pConsole->print( "\r\n  " );
 
             _pmyParser->prettyPrintInstructions( true, _activeFunctionData.errorStatementStartStep, _activeFunctionData.errorProgramCounter, &sourceErrorPos );
@@ -271,7 +272,7 @@ Interpreter::execResult_type  Interpreter::exec() {
         // -------------------------
 
         if ( nextIsNewInstructionStart ) {
-            if ( !isFunctionReturn ) {   // if returning from function, error statement pointers retrieved from flow control stack 
+            if ( !isFunctionReturn ) {   // if returning from user function, error statement pointers retrieved from flow control stack 
                 _activeFunctionData.errorStatementStartStep = _programCounter;
                 _activeFunctionData.errorProgramCounter = _programCounter;
             }
@@ -285,9 +286,12 @@ Interpreter::execResult_type  Interpreter::exec() {
 
     // All tokens processed: finalize
     // ------------------------------
+    if ( !_atLineStart ) { _pConsole->println(); _atLineStart = true; }
+
     if ( lastValueIsStored ) {             // did the execution produce a result ?
         // print last result
-        char s [MyParser::_maxAlphaCstLen + 10];  // note: with small '_maxAlphaCstLen' values, make sure string is also long enough to print real values
+        //// max numeric string length bepalen
+        char s [max( MyParser::_maxAlphaCstLen + 10, 50 )];  // note: with small '_maxAlphaCstLen' values, make sure string is also long enough to print real values
         if ( lastResultTypeFiFo [0] == value_isFloat ) { sprintf( s, "%.3G", lastResultValueFiFo [0].realConst ); }
         else { sprintf( s, "%s", (lastResultValueFiFo [0].pStringConst == nullptr) ? "" : lastResultValueFiFo [0].pStringConst ); }    // immediate mode: print evaluation result
         _pConsole->println( s );
@@ -318,6 +322,8 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
         pstackLvl = (LE_evalStack*) evalStack.getPrevListElement( pstackLvl );      // go to first argument
     }
 
+    _activeFunctionData.errorProgramCounter = _activeFunctionData.activeCmd_tokenAddress;
+
     switch ( _activeFunctionData.activeCmd_ResWordCode ) {                                                                      // command code 
 
     case MyParser::cmdcod_print:
@@ -328,7 +334,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
             bool opIsReal = ((uint8_t) valueType == value_isFloat);
 
             Val operand;
-            char s [MyParser::_maxAlphaCstLen + 10];  // note: with small '_maxAlphaCstLen' values, make sure string is also long enough to print real values
+            char s [max( MyParser::_maxAlphaCstLen + 10, 50 )];  // note: with small '_maxAlphaCstLen' values, make sure string is also long enough to print real values
             if ( opIsReal ) {
                 operand.realConst = operandIsVar ? (*pstackLvl->varOrConst.value.pRealConst) : pstackLvl->varOrConst.value.realConst;
                 sprintf( s, "%.3G", operand.realConst );
@@ -338,6 +344,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
                 sprintf( s, "%s", (operand.pStringConst == nullptr) ? "" : operand.pStringConst );
             }
             _pConsole->print( s );
+            if ( strlen( s ) > 0 ) { _atLineStart = (s [strlen( s ) - 1] == '\n'); }       // no change if empty string
 
             pstackLvl = (LE_evalStack*) evalStack.getNextListElement( pstackLvl );
         }
@@ -356,14 +363,14 @@ Interpreter::execResult_type Interpreter::execProcessedCommand( bool& isFunction
         for ( int i = 1; i <= cmdParamCount; i++ ) {
             bool operandIsVar = (pstackLvl->varOrConst.tokenType == tok_isVariable);
             char valueType = operandIsVar ? (*pstackLvl->varOrConst.varTypeAddress & value_typeMask) : pstackLvl->varOrConst.valueType;
-            if ((uint8_t) valueType != value_isFloat) {return result_numberExpected;}
-            float &f = operandIsVar  ? (*pstackLvl->varOrConst.value.pRealConst) : pstackLvl->varOrConst.value.realConst;
-            if (f < 0) {return result_outsideRange;}
-            int val = int(f);
-            if (val != f ) { return result_integerExpected; }
+            if ( (uint8_t) valueType != value_isFloat ) { return result_numberExpected; }
+            float& f = operandIsVar ? (*pstackLvl->varOrConst.value.pRealConst) : pstackLvl->varOrConst.value.realConst;
+            if ( f < 0 ) { return result_outsideRange; }
+            int val = int( f );
+            if ( val != f ) { return result_integerExpected; }
             pstackLvl = (LE_evalStack*) evalStack.getNextListElement( pstackLvl );
 
-            
+
         }
 
         clearEvalStackLevels( cmdParamCount );      // clear evaluation stack and intermediate strings
@@ -727,9 +734,9 @@ void Interpreter::saveLastValue( bool& overWritePrevious ) {
                 // note: this is always an intermediate string
                 delete [] lastResultValueFiFo [itemToRemove].pStringConst;
                 lastValuesStringObjectCount--;
+            }
         }
     }
-}
     else {
         _lastResultCount++;     // only adding an item, without removing previous one
     }
@@ -774,7 +781,7 @@ void Interpreter::saveLastValue( bool& overWritePrevious ) {
 #endif
             delete [] lastvalue.value.pStringConst;
             intermediateStringObjectCount--;
-    }
+        }
     }
 
     // store new last value type
@@ -829,15 +836,15 @@ void Interpreter::clearEvalStackLevels( int n ) {
 #endif
                     delete [] pstackLvl->varOrConst.value.pStringConst;
                     intermediateStringObjectCount--;
+                }
             }
         }
-    }
 
         // delete evaluation stack level
         pPrecedingStackLvl = (LE_evalStack*) evalStack.getPrevListElement( pstackLvl );
         evalStack.deleteListElement( pstackLvl );
         pstackLvl = pPrecedingStackLvl;
-}
+    }
 
     _pEvalStackTop = pstackLvl;
     _pEvalStackMinus1 = (LE_evalStack*) evalStack.getPrevListElement( _pEvalStackTop );
@@ -1340,8 +1347,8 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
                 delete [] * _pEvalStackMinus2->varOrConst.value.ppStringConst;
                 isUserVar ? userVarStringObjectCount-- : (isGlobalVar || isStaticVar) ? globalStaticVarStringObjectCount-- : localVarStringObjectCount--;
+            }
         }
-    }
 
         // if the value to be assigned is real (float) OR an empty string: simply assign the value (not a heap object)
 
@@ -1374,7 +1381,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         if ( !operand1IsVarRef ) { // if reference, then value type on the stack indicates 'variable reference', so don't overwrite it
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) | (opResultReal ? value_isFloat : value_isStringPointer);
         }
-}
+    }
 
 
     // Delete any intermediate result string objects used as operands 
@@ -1389,7 +1396,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
             delete [] _pEvalStackTop->varOrConst.value.pStringConst;
             intermediateStringObjectCount--;
-    }
+        }
     }
     // operand 1 is an intermediate constant AND it is a string ? delete char string object
     if ( ((_pEvalStackMinus2->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && !op1real )
@@ -1400,7 +1407,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
             delete [] _pEvalStackMinus2->varOrConst.value.pStringConst;
             intermediateStringObjectCount--;
-    }
+        }
     }
 
 
@@ -1547,8 +1554,20 @@ Interpreter::execResult_type Interpreter::execInternalFunction( LE_evalStack*& p
         }
         if ( FiFoElement > _lastResultCount ) { return result_arg_invalid; }
 
+        --FiFoElement;
         fcnResultIsReal = (lastResultTypeFiFo [0] == value_isFloat);
-        fcnResult = lastResultValueFiFo [--FiFoElement];
+        if ( (fcnResultIsReal) || (!fcnResultIsReal && (lastResultValueFiFo [FiFoElement].pStringConst == nullptr)) ) {
+            fcnResult = lastResultValueFiFo [FiFoElement];
+        }
+        else {                              // string
+            fcnResult.pStringConst = new char [strlen( lastResultValueFiFo [FiFoElement].pStringConst + 1 )];
+            intermediateStringObjectCount++;
+            strcpy( fcnResult.pStringConst, lastResultValueFiFo [FiFoElement].pStringConst );
+#if printCreateDeleteHeapObjects
+            Serial.print( "+++++ (Intermd str) " );   Serial.println( (uint32_t) fcnResult.pStringConst - RAMSTART );
+#endif            
+        }
+
     }
     break;
 
@@ -1601,6 +1620,9 @@ Interpreter::execResult_type Interpreter::execInternalFunction( LE_evalStack*& p
         intermediateStringObjectCount++;
         fcnResult.pStringConst [0] = asciiCode;
         fcnResult.pStringConst [1] = '\0';                                // terminating \0
+#if printCreateDeleteHeapObjects
+        Serial.print( "+++++ (Intermd str) " );   Serial.println( (uint32_t) fcnResult.pStringConst - RAMSTART );
+#endif            
     }
     break;
 
@@ -1617,6 +1639,9 @@ Interpreter::execResult_type Interpreter::execInternalFunction( LE_evalStack*& p
         fcnResult.pStringConst [1] = '\n';
         fcnResult.pStringConst [2] = '\0';                                // terminating \0
     }
+#if printCreateDeleteHeapObjects
+    Serial.print( "+++++ (Intermd str) " );   Serial.println( (uint32_t) fcnResult.pStringConst - RAMSTART );
+#endif            
     break;
 
 
@@ -1687,7 +1712,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction( LE_evalStack*& p
         // prepare format string
         // ---------------------
 
-        char s [maxWidth], fmtString [20];        // long enough to contain all format specifier parts
+        char  fmtString [20];        // long enough to contain all format specifier parts
         fmtString [0] = '%';
         int strPos = 1;
         for ( int i = 1; i <= 5; i++, flags >>= 1 ) {
@@ -1697,17 +1722,25 @@ Interpreter::execResult_type Interpreter::execInternalFunction( LE_evalStack*& p
         if ( isHexFmt ) { fmtString [strPos] = 'l'; ++strPos; fmtString [strPos] = numFmt [0]; ++strPos; }
         else { fmtString [strPos] = numFmt [0]; ++strPos; }
         fmtString [strPos] = '%'; ++strPos; fmtString [strPos] = 'n'; ++strPos; fmtString [strPos] = '\0'; ++strPos;            // %n specifier (return characters printed)
-        
-        
+
+
         // format
         // ------
 
         fcnResultIsReal = false;
-        fcnResult.pStringConst = new char [maxWidth + 10];        // safety
-        if ( isFmtString ) { sprintf( fcnResult.pStringConst, fmtString, width, precision, operands [0].pStringConst, &charsPrinted ); }
-        else if ( isHexFmt ) { sprintf( fcnResult.pStringConst, fmtString, width, precision, (long) operands [0].realConst, &charsPrinted ); }     // hex output for floating point numbers not provided (Arduino)
-        else { sprintf( fcnResult.pStringConst, fmtString, width, precision, operands [0].realConst, &charsPrinted ); }
-        intermediateStringObjectCount++;
+        char s [maxWidth];        // safety  
+        if ( isFmtString ) { sprintf( s, fmtString, width, precision, operands [0].pStringConst, &charsPrinted ); }
+        else if ( isHexFmt ) { sprintf( s, fmtString, width, precision, (long) operands [0].realConst, &charsPrinted ); }     // hex output for floating point numbers not provided (Arduino)
+        else { sprintf( s, fmtString, width, precision, operands [0].realConst, &charsPrinted ); }
+        if ( strlen( s ) == 0 ) { fcnResult.pStringConst = nullptr; }
+        else {
+            fcnResult.pStringConst = new char [strlen( s ) + 1];        // safety
+            intermediateStringObjectCount++;
+            strcpy( fcnResult.pStringConst, s );
+#if printCreateDeleteHeapObjects
+            Serial.print( "+++++ (Intermd str) " );   Serial.println( (uint32_t) fcnResult.pStringConst - RAMSTART );
+#endif            
+        }
 
 
         // return number of characters printed into (variable) argument if it was supplied
@@ -1755,8 +1788,8 @@ Interpreter::execResult_type Interpreter::execInternalFunction( LE_evalStack*& p
 // create a format string
 // ----------------------
 
-Interpreter::execResult_type  Interpreter::makeFormatString(  ) {
-    
+Interpreter::execResult_type  Interpreter::makeFormatString() {
+
     /*
     const int leftJustify = 0b1, forceSign = 0b10, blankIfNoSign = 0b100, addDecPoint = 0b1000, padWithZeros = 0b10000;     // flags
     int maxWidth = MyParser::_maxAlphaCstLen, maxPrecision = 7; // maxWidth should be long enough to allow the resulting string to contain the longest possible number as formatted
@@ -1851,7 +1884,7 @@ Interpreter::execResult_type Interpreter::deleteVarStringObject( LE_evalStack* p
 #endif
         delete [] * pStackLvl->varOrConst.value.ppStringConst;
         (varScope == var_isUser) ? userVarStringObjectCount-- : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? globalStaticVarStringObjectCount-- : localVarStringObjectCount--;
-}
+    }
 
     return result_execOK;
 }
@@ -1926,8 +1959,8 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
                             Serial.print( "+++++ (loc var str) " );   Serial.println( (uint32_t) _activeFunctionData.pLocalVarValues [i].pStringConst - RAMSTART );
 #endif
                         }
-                    };
-                }
+                        };
+                    }
 
                 if ( ((pStackLvl->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate) && !operandIsReal ) {
                     if ( pStackLvl->varOrConst.value.pStringConst != nullptr ) {
@@ -1936,13 +1969,13 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
 #endif
                         delete [] pStackLvl->varOrConst.value.pStringConst;
                         intermediateStringObjectCount--;
+                    }
                 }
-            }
 
                 pStackLvl = (LE_evalStack*) evalStack.deleteListElement( pStackLvl );       // argument saved: remove argument from stack and point to next argument
+                }
+            }
         }
-    }
-}
 
     // also delete function name token from evaluation stack
     _pEvalStackTop = (LE_evalStack*) evalStack.getPrevListElement( pFunctionStackLvl );
@@ -1981,7 +2014,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction( LE_evalStack*
     */
 
     return  result_execOK;
-}
+    }
 
 
 // -----------------------------------------------------------------------------------------------
@@ -2026,14 +2059,14 @@ void Interpreter::initFunctionDefaultParamVariables( char*& pStep, int suppliedA
                     Serial.print( "+++++ (loc var str) " );   Serial.println( (uint32_t) _activeFunctionData.pLocalVarValues [count].pStringConst - RAMSTART );
 #endif
                 }
-            }
+                }
             count++;
+            }
         }
-    }
 
     // skip (remainder of) function definition
     findTokenStep( tok_isTerminalGroup1, MyParser::termcod_semicolon, pStep );
-};
+    };
 
 
 
@@ -2141,18 +2174,18 @@ void Interpreter::initFunctionLocalNonParamVariables( char* pStep, int paramCoun
                             Serial.print( "+++++ (loc var str) " ); Serial.println( (uint32_t) pVarString - RAMSTART );
 #endif
                         }
+                        }
                     }
-                }
 
                 tokenType = jumpTokens( 1, pStep, terminalCode );       // comma or semicolon
-            }
+                }
 
             count++;
 
-        } while ( terminalCode == MyParser::termcod_comma );
+            } while ( terminalCode == MyParser::termcod_comma );
 
-    }
-};
+        }
+    };
 
 
 // -----------------------------------
