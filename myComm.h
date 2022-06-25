@@ -29,7 +29,7 @@
 #define _MYCOMM_h
 
 #include "arduino.h"
-#include <WiFiNINA.h>
+#include <WiFiNINA_Generic.h>
 
 
 enum connectionState_type {

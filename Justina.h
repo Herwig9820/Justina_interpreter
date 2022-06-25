@@ -142,6 +142,9 @@ public:
     };
 
 
+    const int _defaultPrintWidth = 30, _defaultNumPrecision = 3, _defaultCharsToPrint = 30, _defaultPrintFlags = 0x00;       // at start up
+    const int _maxPrintFieldWidth = 200, _maxNumPrecision = 7, _maxCharsToPrint = 200, _printFlagMask = 0x1F;               // # characters to print: strings only
+
     static constexpr uint8_t extFunctionBit { B00000001 };
     static constexpr uint8_t extFunctionPrevDefinedBit { B00000010 };
     static constexpr uint8_t intFunctionBit { B00000100 };
@@ -158,7 +161,7 @@ public:
     static constexpr int MAX_LOC_VARS_IN_FUNC { 32 };               // max. local and parameter vars (only) in an INDIVIDUAL function. Absolute limit: 255 
     static constexpr int MAX_EXT_FUNCS { 16 };                      // max. external functions. Absolute limit: 255
     static constexpr int MAX_ARRAY_DIMS { 3 };                        // 1, 2 or 3 is allwed: must fit in 3 bytes
-    static constexpr int MAX_ARRAY_ELEM { 200 };                      // max. n° of floats in a single array
+    static constexpr int MAX_ARRAY_ELEM { 200 };                      // max. nï¿½ of floats in a single array
     static constexpr int MAX_LAST_RESULT_DEPTH { 10 };
 
     // storage for tokens
@@ -167,7 +170,7 @@ public:
     struct TokenIsResWord {                                     // reserved word token (command): length 4 (if not a block command, token step is not stored and length will be 2)
         char tokenType;                                         // will be set to specific token type
         char tokenIndex;                                        // index into list of tokens of a specific type
-        char toTokenStep [2];                                     // tokens for block commands (IF, FOR, BREAK, END, ...): step n° of block start token or next block token (uint16_t)
+        char toTokenStep [2];                                     // tokens for block commands (IF, FOR, BREAK, END, ...): step nï¿½ of block start token or next block token (uint16_t)
     };
 
     struct TokenIsRealCst {                                    // token storage for a numeric constant token: length 5
@@ -381,6 +384,16 @@ public:
 
     bool _atLineStart = true;                       
 
+    // calculation result print
+    int _dispWidth = _defaultPrintWidth, _dispNumPrecision = _defaultNumPrecision, _dispCharsToPrint = _defaultCharsToPrint, _dispFmtFlags = _defaultPrintFlags;
+    char _dispNumSpecifier[2] = "G";      // room for 1 character and an extra terminating \0 (space voor length sub-specifier) (initialized during reset)
+    bool _dispIsHexFmt{false};              // initialized during reset          
+    char  _dispNumberFmtString[20]= "", _dispStringFmtString[20] = "%*.*s%n";        // long enough to contain all format specifier parts; initialized during reset
+
+     // for print command
+    int _printWidth = _defaultPrintWidth, _printNumPrecision = _defaultNumPrecision, _printCharsToPrint = _defaultCharsToPrint, _printFmtFlags = _defaultPrintFlags;
+    char _printNumSpecifier[2] = "G" ;      // room for 2 characters and an extra terminating \0 (space voor length sub-specifier) (initialized during reset)
+
     char _instruction [_maxInstructionChars + 1] = "";
     int _instructionCharCount { 0 };
     bool _programMode { false };
@@ -401,7 +414,7 @@ public:
     int _lastResultCount { 0 };
 
     char _arrayDimCount { 0 };
-    char* _programCounter { nullptr };                                // pointer to token memory address (not token step n°)
+    char* _programCounter { nullptr };                                // pointer to token memory address (not token step nï¿½)
 
     uint16_t _paramIsArrayPattern { 0 };
 
@@ -480,7 +493,12 @@ public:
     execResult_type  terminateExternalFunction( bool addZeroReturnValue = false );
     execResult_type execProcessedCommand( bool& isFunctionReturn );
     execResult_type testForLoopCondition( bool& fail );
-
+    
+    execResult_type checkFmtSpecifiers(bool isDispFmt, bool isFmtString, int suppliedArgCount, bool* operandIsReal, Val* operands, char &numSpecifier, 
+        bool& isHexFmt, int& width, int& precision, int& flags);
+    execResult_type makeFormatString(int flags, bool isHexFmt, char* numFmt, char* fmtString);
+    execResult_type printToString(int width, int precision, bool isFmtString, bool isHexFmt, Val* operands, char* fmtString,
+        Val& fcnResult, int& charsPrinted);
 
     void initFunctionDefaultParamVariables( char*& calledFunctionTokenStep, int suppliedArgCount, int paramCount );
     void initFunctionLocalNonParamVariables( char* calledFunctionTokenStep, int paramCount, int localVarCount );
@@ -496,6 +514,7 @@ public:
 
     execResult_type makeFormatString();
     execResult_type deleteVarStringObject( LE_evalStack* pStackLvl );
+    execResult_type deleteIntermStringObject( LE_evalStack* pStackLvl );
 
     int findTokenStep( int tokenTypeToFind, char tokenCodeToFind, char*& pStep );
     int jumpTokens( int n, char*& pStep, int& tokenCode );
@@ -546,7 +565,6 @@ public:
         cmdcod_return,
         cmdcod_end,
         cmdcod_print,
-        cmdcod_numfmt,
         cmdcod_dispfmt,
 
         cmdcod_test
@@ -771,7 +789,7 @@ public:
     struct FuncDef {                                            // function names with min & max number of arguments allowed 
         const char* funcName;
         char functionCode;
-        char minArgs;                                           // internal (intrinsic) functions: min & max n° of allowed arguments
+        char minArgs;                                           // internal (intrinsic) functions: min & max nï¿½ of allowed arguments
         char maxArgs;
         char arrayPattern;                                      // order of arraysand scalars; bit b0 to bit b7 refer to parameter 1 to 8, if a bit is set, an array is expected as argument
     };
@@ -806,7 +824,7 @@ private:
 
     struct OpenCmdBlockLvl {
         CmdBlockDef cmdBlockDef;                                // storage for info about block commands
-        char tokenStep [2];                                     // block commands: step n° of next block command, or to block start command, in open block
+        char tokenStep [2];                                     // block commands: step nï¿½ of next block command, or to block start command, in open block
         char fcnBlock_functionIndex;                            // function definition block only: function index
     };
 
@@ -887,7 +905,7 @@ public:
     static const char cmdPar_N [4];                             // command takes no parameters
     static const char cmdPar_P [4];                             // allow: 'P'=identifier name  
     static const char cmdPar_E [4];                             // allow: 'E'=expression  
-    static const char cmdPar_E_2 [4];                           // allow:  2 expressions
+    static const char cmdPar_E_3 [4];                           // allow:  2 expressions
     static const char cmdPar_E_opt [4];                         // allow: 'E'=expression  
     static const char cmdPar_E_optMult [4];                     // allow: 'E'=expression, 0 to n times   
     static const char cmdPar_V [4];                             // allow: 'V'=variable (only)
@@ -1073,4 +1091,3 @@ public:
 
 
 #endif
-

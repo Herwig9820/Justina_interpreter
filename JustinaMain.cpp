@@ -228,6 +228,17 @@ Interpreter::Interpreter( Stream* const pConsole ) : _pConsole( pConsole ) {
     localArrayObjectCount = 0;
 
     _lastResultCount = 0;                                       // current last result FiFo depth (values currently stored)
+    
+    // calculation result print
+    _dispWidth = _defaultPrintWidth, _dispNumPrecision = _defaultNumPrecision, _dispCharsToPrint = _defaultCharsToPrint, _dispFmtFlags = _defaultPrintFlags;
+    _dispNumSpecifier[0] = 'G'; _dispNumSpecifier[1] = '\0';
+    _dispIsHexFmt = false;
+    makeFormatString( _dispFmtFlags,  false, _dispNumSpecifier, _dispNumberFmtString);       // for numbers
+    strcpy(_dispStringFmtString, "%*.*s%n");                                                           // for strings
+
+     // for print command
+    _printWidth = _defaultPrintWidth, _printNumPrecision = _defaultNumPrecision, _printCharsToPrint = _defaultCharsToPrint, _printFmtFlags = _defaultPrintFlags;
+    _printNumSpecifier[0] = 'G'; _printNumSpecifier[1] = '\0';
 
     *_programStorage = '\0';                                    //  current end of program 
     *_programStart = '\0';                                      //  current end of program (immediate mode)
@@ -524,5 +535,3 @@ bool Interpreter::processCharacter( char c ) {
 
     return _quitCalcAtEOF;  // and wait for next character
 }
-
-

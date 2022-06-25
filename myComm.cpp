@@ -247,7 +247,3 @@ void MyTCPconnection::printConnectionStateInfo( connectionState_type newState ) 
 
     Serial.println( s );
 }
-
-
-
-
