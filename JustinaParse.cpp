@@ -19,6 +19,7 @@
 const char MyParser::cmdPar_N[4]{ cmdPar_none,                    cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
 const char MyParser::cmdPar_P[4]{ cmdPar_programName,             cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
 const char MyParser::cmdPar_E[4]{ cmdPar_expression,              cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
+const char MyParser::cmdPar_E_2[4]{ cmdPar_expression,            cmdPar_expression,                              cmdPar_none,                                cmdPar_none };
 const char MyParser::cmdPar_E_opt[4]{ cmdPar_expression
                                         | cmdPar_optionalFlag,      cmdPar_none,                                    cmdPar_none,                                cmdPar_none };
 const char MyParser::cmdPar_E_optMult[4]{ cmdPar_expression
@@ -29,40 +30,37 @@ const char MyParser::cmdPar_P_mult[4]{ cmdPar_programName,        cmdPar_program
 const char MyParser::cmdPar_AA_mult[4]{ cmdPar_varOptAssignment,  cmdPar_varOptAssignment | cmdPar_multipleFlag,  cmdPar_none,                                cmdPar_none };
 const char MyParser::cmdPar_E_3[4]{ cmdPar_expression,            cmdPar_expression | cmdPar_optionalFlag,        cmdPar_expression | cmdPar_optionalFlag,    cmdPar_none };
 
-const char MyParser::cmdPar_test[4]{ cmdPar_programName
-                                        | cmdPar_optionalFlag,      cmdPar_programName,                             cmdPar_programName | cmdPar_multipleFlag,   cmdPar_none };  // test: either 0 or 2 to n parameters ok
-
 // commands: reserved words
 
 const MyParser::ResWordDef MyParser::_resWords[]{
     //  name        id code         where allowed           padding (boundary alignment)    param spec      control info
     //  ----        -------         -------------           ----------------------------    ----------      ------------   
-    {"test",    cmdcod_test,    cmd_noRestrictions,                                 0,0,    cmdPar_test,    cmdDeleteVar},
+    {"Program", cmdcod_program, cmd_onlyProgramTop | cmd_skipDuringExec,            0,0,    cmdPar_P,       cmdProgram},
+    {"Function",cmdcod_function,cmd_onlyInProgram | cmd_skipDuringExec,             0,0,    cmdPar_F,       cmdBlockExtFunction},
+    
+    {"Delete",  cmdcod_delete,  cmd_onlyImmediate,                                  0,0,    cmdPar_P_mult,  cmdDeleteVar},
+    {"Clear",   cmdcod_clear,   cmd_onlyImmediate,                                  0,0,    cmdPar_N,       cmdBlockOther},
+    {"Vars",    cmdcod_vars,    cmd_onlyImmediate,                                  0,0,    cmdPar_N,       cmdBlockOther},
 
-    {"program", cmdcod_program, cmd_onlyProgramTop | cmd_skipDuringExec,            0,0,    cmdPar_P,       cmdProgram},
-    {"delete",  cmdcod_delete,  cmd_onlyImmediate,                                  0,0,    cmdPar_P_mult,  cmdDeleteVar},
-    {"clear",   cmdcod_clear,   cmd_onlyImmediate,                                  0,0,    cmdPar_N,       cmdBlockOther},
-    {"vars",    cmdcod_vars,    cmd_onlyImmediate,                                  0,0,    cmdPar_N,       cmdBlockOther},
-    {"function",cmdcod_function,cmd_onlyInProgram | cmd_skipDuringExec,             0,0,    cmdPar_F,       cmdBlockExtFunction},
+    {"Static",  cmdcod_static,  cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_AA_mult, cmdStaticVar},
+    {"Local",   cmdcod_local,   cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_AA_mult, cmdLocalVar},
+    {"Var",     cmdcod_var,     cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_AA_mult, cmdGlobalVar},
 
-    {"static",  cmdcod_static,  cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_AA_mult, cmdStaticVar},
-    {"local",   cmdcod_local,   cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_AA_mult, cmdLocalVar},
-    {"var",     cmdcod_var,     cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_AA_mult, cmdGlobalVar},
+    {"For",     cmdcod_for,     cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_AEE,     cmdBlockFor},
+    {"While",   cmdcod_while,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E,       cmdBlockWhile},
+    {"If",      cmdcod_if,      cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E,       cmdBlockIf},
+    {"Elseif",  cmdcod_elseif,  cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E,       cmdBlockIf_elseIf},
+    {"Else",    cmdcod_else,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_N,       cmdBlockIf_else},
 
-    {"for",     cmdcod_for,     cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_AEE,     cmdBlockFor},
-    {"while",   cmdcod_while,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E,       cmdBlockWhile},
-    {"if",      cmdcod_if,      cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E,       cmdBlockIf},
-    {"elseif",  cmdcod_elseif,  cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E,       cmdBlockIf_elseIf},
-    {"else",    cmdcod_else,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_N,       cmdBlockIf_else},
+    {"Break",   cmdcod_break,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_N,       cmdBlockOpenBlock_loop},        // allowed if at least one open loop block (any level) 
+    {"Continue",cmdcod_continue,cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_N,       cmdBlockOpenBlock_loop },       // allowed if at least one open loop block (any level) 
+    {"Return",  cmdcod_return,  cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E_opt,   cmdBlockOpenBlock_function},    // allowed if currently an open function definition block 
 
-    {"break",   cmdcod_break,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_N,       cmdBlockOpenBlock_loop},        // allowed if at least one open loop block (any level) 
-    {"continue",cmdcod_continue,cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_N,       cmdBlockOpenBlock_loop },       // allowed if at least one open loop block (any level) 
-    {"return",  cmdcod_return,  cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E_opt,   cmdBlockOpenBlock_function},    // allowed if currently an open function definition block 
+    {"Print",   cmdcod_print,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E_optMult, cmdBlockOther},
+    {"Dispfmt", cmdcod_dispfmt, cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E_3,     cmdBlockOther},
+    {"Dispmod", cmdcod_dispmod, cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E_2,     cmdBlockOther},
 
-    {"print",   cmdcod_print,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E_optMult, cmdBlockOther},
-    {"dispfmt", cmdcod_dispfmt, cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E_3,     cmdBlockOther},
-
-    {"end",     cmdcod_end,     cmd_noRestrictions,                                 0,0,    cmdPar_N,       cmdBlockGenEnd},                // closes inner open command block
+    {"End",     cmdcod_end,     cmd_noRestrictions,                                 0,0,    cmdPar_N,       cmdBlockGenEnd},                // closes inner open command block
 };
 
 // internal (intrinsic) functions
@@ -92,7 +90,8 @@ const MyParser::FuncDef MyParser::_functions[]{
     {"char",        fnccod_char,        1,1,    0b0},
     {"nl",          fnccod_nl,          0,0,    0b0},
     {"fnum",        fnccod_fmtNum,      1,6,    0b0},
-    {"fstr",        fnccod_fmtStr,      1,5,    0b0}
+    {"fstr",        fnccod_fmtStr,      1,5,    0b0},
+    {"sysvar",      fnccod_sysVar,      1,1,    0b0}
 };
 
 
@@ -363,6 +362,9 @@ void MyParser::resetMachine(bool withUserVariables) {
     _pInterpreter->_printWidth = _pInterpreter->_defaultPrintWidth, _pInterpreter->_printNumPrecision = _pInterpreter->_defaultNumPrecision;
     _pInterpreter->_printCharsToPrint = _pInterpreter->_defaultCharsToPrint, _pInterpreter->_printFmtFlags = _pInterpreter->_defaultPrintFlags;
     _pInterpreter->_printNumSpecifier[0] = 'G'; _pInterpreter->_printNumSpecifier[1] = '\0';
+
+    // display output settings
+    _pInterpreter->_promptAndEcho = 2, _pInterpreter->_printLastResult = true;
 
 
     _pInterpreter->_programStart = _pInterpreter->_programStorage + (_pInterpreter->_programMode ? 0 : _pInterpreter->PROG_MEM_SIZE);

@@ -12,7 +12,6 @@ Interpreter::execResult_type  Interpreter::exec() {
     // init
     int tokenType = *_programStart & 0x0F;
     int tokenIndex{ 0 };
-    bool lastValueIsStored = false;
     bool isFunctionReturn = false;
     bool precedingIsComma = false;                                      // used to detect prefix operators following a comma separator
     bool nextIsNewInstructionStart = false;                     // false, because this is already the start of a new instruction
@@ -29,6 +28,8 @@ Interpreter::execResult_type  Interpreter::exec() {
     _activeFunctionData.errorStatementStartStep = _programCounter;
     _activeFunctionData.errorProgramCounter = _programCounter;
     _activeFunctionData.blockType = MyParser::block_extFunction;  // consider main as an 'external' function      
+
+    _lastValueIsStored = false;
 
     intermediateStringObjectCount = 0;      // reset at the start of execution
     localVarStringObjectCount = 0;
@@ -226,7 +227,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                     // did the last expression produce a result ?  
                     else if (evalStack.getElementCount() == _activeFunctionData.callerEvalStackLevels + 1) {
                         // in main program level ? store as last value (for now, we don't know if it will be followed by other 'last' values)
-                        if (_programCounter >= _programStart) { saveLastValue(lastValueIsStored); }                // save last result in FIFO and delete stack level
+                        if (_programCounter >= _programStart) { saveLastValue(_lastValueIsStored); }                // save last result in FIFO and delete stack level
                         else { clearEvalStackLevels(1); } // NOT main program level: we don't need to keep the statement result
                     }
                 }
@@ -263,7 +264,7 @@ Interpreter::execResult_type  Interpreter::exec() {
             if (_programCounter >= _programStart) { sprintf(execInfo, "^ Exec error %d\r\n", execResult); }     // in main program level 
             else { sprintf(execInfo, "^ Exec error %d in user function %s\r\n", execResult, extFunctionNames[_activeFunctionData.functionIndex]); }
             _pConsole->print(execInfo);
-            lastValueIsStored = false;              // prevent printing last result (if any)
+            _lastValueIsStored = false;              // prevent printing last result (if any)
             break;
         }
 
@@ -288,10 +289,9 @@ Interpreter::execResult_type  Interpreter::exec() {
     // ------------------------------
     if (!_atLineStart) { _pConsole->println(); _atLineStart = true; }
 
-    if (lastValueIsStored) {             // did the execution produce a result ?
-        // print last result
-        //// max numeric string length bepalen
+    if (_lastValueIsStored && _printLastResult) {             // did the execution produce a result ?
 
+        // print last result
         bool isFloat = (lastResultTypeFiFo[0] == value_isFloat);
         int charsPrinted{ 0 };        // not used
         Val toPrint;
@@ -379,17 +379,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         bool argIsVar[3], valueIsReal[3];
         Val args[3];
 
-        for (int i = 0; i < cmdParamCount; i++) {
-            argIsVar[i] = (pstackLvl->varOrConst.tokenType == tok_isVariable);
-            char valueType = argIsVar[i] ? (*pstackLvl->varOrConst.varTypeAddress & value_typeMask) : pstackLvl->varOrConst.valueType;
-            valueIsReal[i] = ((uint8_t)valueType == value_isFloat);
-
-            // fetch operands: real constants or pointers to character strings (note: scalars expected)
-            if (valueIsReal[i]) { args[i].realConst = argIsVar[i] ? (*pstackLvl->varOrConst.value.pRealConst) : pstackLvl->varOrConst.value.realConst; }
-            else { args[i].pStringConst = argIsVar[i] ? (*pstackLvl->varOrConst.value.ppStringConst) : pstackLvl->varOrConst.value.pStringConst; }
-
-            pstackLvl = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
-        }
+        copyArgsFromStack(pstackLvl, cmdParamCount, argIsVar, valueIsReal, args);
 
         execResult_type execResult = checkFmtSpecifiers(true, false, cmdParamCount, valueIsReal, args, _dispNumSpecifier[0],
             _dispIsHexFmt, _dispWidth, _dispNumPrecision, _dispFmtFlags); if (execResult != result_execOK) { return execResult; }
@@ -397,6 +387,29 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
         _dispCharsToPrint = _dispWidth;
         strcpy(_dispStringFmtString, "%*.*s%n");                                                           // for strings
+
+        clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings
+
+        _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // command execution ended
+        _activeFunctionData.activeCmd_tokenAddress = nullptr;
+    }
+    break;
+
+
+    case MyParser::cmdcod_dispmod:      // takes two arguments: width & flags
+    {
+        bool argIsVar[2], valueIsReal[2];               // 2 arguments
+        Val args[2];
+
+        copyArgsFromStack(pstackLvl, cmdParamCount, argIsVar, valueIsReal, args);
+
+        for (int i = 0; i < cmdParamCount; i++) { if (!valueIsReal[i]) { execResult = result_arg_numValueExpected; return execResult; } }
+        if (((args[0].realConst != 0) && (args[0].realConst != 1) && (args[0].realConst != 2)) || ((args[1].realConst != 0) && (args[1].realConst != 1))) { execResult = result_arg_invalid; return execResult; };
+
+        // if last result printing switched back on, then prevent printing pending last result (if any)
+        _lastValueIsStored = false;               // prevent printing last result (if any)
+
+        _promptAndEcho = args[0].realConst, _printLastResult = args[1].realConst;
 
         clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings
 
@@ -1029,8 +1042,8 @@ void Interpreter::makeIntermediateConstant(LE_evalStack* pEvalStackLvl) {
         pEvalStackLvl->varOrConst.tokenType = tok_isConstant;              // use generic constant type
         pEvalStackLvl->varOrConst.valueAttributes = constIsIntermediate;             // is an intermediate result (intermediate constant strings must be deleted when not needed any more)
         pEvalStackLvl->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
+        }
     }
-}
 
 
 // ----------------------------------------
@@ -1266,7 +1279,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)opResult.pStringConst - RAMSTART);
 #endif
         }
-    }
+        }
     break;
 
     case MyParser::termcod_assign:
@@ -1384,7 +1397,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         if (!operand1IsVarRef) { // if reference, then value type on the stack indicates 'variable reference', so don't overwrite it
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) | (opResultReal ? value_isFloat : value_isStringPointer);
         }
-    }
+        }
 
 
     // Delete any intermediate result string objects used as operands 
@@ -1418,7 +1431,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
     }
     return result_execOK;
-}
+    }
 
 
 // ---------------------------------
@@ -1552,7 +1565,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
 #endif            
         }
 
-    }
+        }
     break;
 
 
@@ -1646,18 +1659,19 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
         int charsPrinted{ 0 };
 
         // init print, precision, flags
-        int& width = _printWidth, &precision =(isFmtString ? _printCharsToPrint : _printNumPrecision),& flags = _printFmtFlags;
-        if (isFmtString) {specifier = "s"; } else {specifier = _printNumSpecifier;}
+        int& width = _printWidth, & precision = (isFmtString ? _printCharsToPrint : _printNumPrecision), & flags = _printFmtFlags;
+        if (isFmtString) { specifier = "s"; }
+        else { specifier = _printNumSpecifier; }
 
 
-// test arguments
-// --------------
+        // test arguments
+        // --------------
 
-// value to format is the correct type for the function ?
+        // value to format is the correct type for the function ?
         if (isFmtString == operandIsReal[0]) { return isFmtString ? result_arg_stringExpected : result_arg_numValueExpected; }
 
         execResult_type execResult = checkFmtSpecifiers(false, isFmtString, suppliedArgCount, operandIsReal, operands, specifier[0], isHexFmt, width, precision, flags); if (execResult != result_execOK) { return execResult; }
-        if(!isFmtString) { _printNumSpecifier[0] = specifier[0]; }
+        if (!isFmtString) { _printNumSpecifier[0] = specifier[0]; }
 
         fcnResultIsReal = false;        // because formatted string
 
@@ -1692,6 +1706,47 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
     break;
 
 
+    case MyParser::fnccod_sysVar:
+    {
+        if (!operandIsReal[0]) { return result_arg_integerExpected; }
+        int sysVar = int(operands[0].realConst);
+        if (operands[0].realConst != sysVar) { return result_arg_integerExpected; }
+
+        fcnResultIsReal = true;  //init
+
+        switch (sysVar) {
+
+        case 0: fcnResult.realConst = _dispWidth; break;
+        case 1: fcnResult.realConst = _dispNumPrecision; break;
+        case 2: fcnResult.realConst = _dispCharsToPrint; break;
+        case 3: fcnResult.realConst = _dispFmtFlags; break;
+
+        case 5: fcnResult.realConst = _printWidth; break;
+        case 6: fcnResult.realConst = _printNumPrecision; break;
+        case 7: fcnResult.realConst = _printCharsToPrint; break;
+        case 8: fcnResult.realConst = _printFmtFlags; break;
+
+        case 4:
+        case 9:
+        {
+            fcnResult.pStringConst = new char[2];
+            intermediateStringObjectCount++;
+            strcpy(fcnResult.pStringConst, (sysVar == 4) ? _dispNumSpecifier : _printNumSpecifier);
+#if printCreateDeleteHeapObjects
+            Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
+#endif
+            fcnResultIsReal = false;
+        }
+        break;
+
+        case 10: fcnResult.realConst = _promptAndEcho; break;
+        case 11: fcnResult.realConst = _printLastResult; break;
+        default:return result_arg_invalid; break;
+        }       // switch (sysVar)
+        break;
+    }
+
+
     }       // end switch
 
 
@@ -1714,7 +1769,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
     _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
 
     return result_execOK;
-}
+    }
 
 
 // -----------------------
@@ -1746,7 +1801,7 @@ Interpreter::execResult_type Interpreter::checkFmtSpecifiers(bool isDispFmt, boo
     }
     // process STRING format precision argument NOT specified: init precision to width. Note that for strings, precision specifies MAXIMUM no of characters that will be printed
 
-    ////if (isFmtString && (suppliedArgCount <= (isDispFmt ? 1 : 2))) { precision = width; }
+    if (isFmtString && (suppliedArgCount == 2)) { precision = width; }        // fstr() with explicit change of width and without explicit change of precision: init precision to width
 
     width = min(width, _maxPrintFieldWidth);
     precision = min(precision, isFmtString ? _maxCharsToPrint : _maxNumPrecision);
@@ -1802,7 +1857,7 @@ Interpreter::execResult_type  Interpreter::printToString(int width, int precisio
     }
 
     return result_execOK;
-}
+    }
 
 
 // -------------------------------
@@ -1851,6 +1906,27 @@ Interpreter::execResult_type Interpreter::deleteIntermStringObject(LE_evalStack*
     return result_execOK;
 }
 
+// -----------------------------------------------------------------
+// copy command or internal function arguments from evaluation stack
+// -----------------------------------------------------------------
+
+Interpreter::execResult_type Interpreter::copyArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, bool* argIsReal, Val* args) {
+    execResult_type execResult;
+
+    for (int i = 0; i < argCount; i++) {               // 2 arguments
+        argIsVar[i] = (pStackLvl->varOrConst.tokenType == tok_isVariable);
+        char valueType = argIsVar[i] ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
+        argIsReal[i] = ((uint8_t)valueType == value_isFloat);
+
+        // fetch operands: real constants or pointers to character strings (note: scalars expected)
+        if (argIsReal[i]) { args[i].realConst = argIsVar[i] ? (*pStackLvl->varOrConst.value.pRealConst) : pStackLvl->varOrConst.value.realConst; }
+        else { args[i].pStringConst = argIsVar[i] ? (*pStackLvl->varOrConst.value.ppStringConst) : pStackLvl->varOrConst.value.pStringConst; }
+
+        pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
+    }
+
+    return result_execOK;
+}
 
 // --------------------------------
 // *   launch external function   *
@@ -1921,14 +1997,14 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction(LE_evalStack*&
                             Serial.print("+++++ (loc var str) ");   Serial.println((uint32_t)_activeFunctionData.pLocalVarValues[i].pStringConst - RAMSTART);
 #endif
                         }
-                    };
-                }
+                        };
+                    }
 
                 deleteIntermStringObject(pStackLvl);                                              // if intermediate constant string, then delete char string object (tested within called routine)
                 pStackLvl = (LE_evalStack*)evalStack.deleteListElement(pStackLvl);        // argument saved: remove argument from stack and point to next argument
+                }
             }
         }
-    }
 
     // also delete function name token from evaluation stack
     _pEvalStackTop = (LE_evalStack*)evalStack.getPrevListElement(pFunctionStackLvl);
@@ -1967,7 +2043,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction(LE_evalStack*&
     */
 
     return  result_execOK;
-}
+    }
 
 
 // -----------------------------------------------------------------------------------------------
@@ -2012,14 +2088,14 @@ void Interpreter::initFunctionDefaultParamVariables(char*& pStep, int suppliedAr
                     Serial.print("+++++ (loc var str) ");   Serial.println((uint32_t)_activeFunctionData.pLocalVarValues[count].pStringConst - RAMSTART);
 #endif
                 }
-            }
+                }
             count++;
+            }
         }
-    }
 
     // skip (remainder of) function definition
     findTokenStep(tok_isTerminalGroup1, MyParser::termcod_semicolon, pStep);
-};
+    };
 
 
 
@@ -2105,7 +2181,7 @@ void Interpreter::initFunctionLocalNonParamVariables(char* pStep, int paramCount
                         (_activeFunctionData.pVariableAttributes[count] & ~value_typeMask) | value_isStringPointer;
                 }    // was initialised to float
 
-// array: initialize (note: test for non-empty string done during parsing
+    // array: initialize (note: test for non-empty string done during parsing
                 if ((_activeFunctionData.pVariableAttributes[count] & var_isArray) == var_isArray) {
                     void* pArray = ((void**)_activeFunctionData.pLocalVarValues)[count];        // void pointer to an array 
                     // fill up with numeric constants or (empty strings:) null pointers
@@ -2127,18 +2203,18 @@ void Interpreter::initFunctionLocalNonParamVariables(char* pStep, int paramCount
                             Serial.print("+++++ (loc var str) "); Serial.println((uint32_t)pVarString - RAMSTART);
 #endif
                         }
+                        }
                     }
-                }
 
                 tokenType = jumpTokens(1, pStep, terminalCode);       // comma or semicolon
-            }
+                }
 
             count++;
 
-        } while (terminalCode == MyParser::termcod_comma);
+            } while (terminalCode == MyParser::termcod_comma);
 
-    }
-};
+        }
+    };
 
 
 // -----------------------------------

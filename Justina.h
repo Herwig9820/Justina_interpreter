@@ -142,6 +142,7 @@ public:
     };
 
 
+    // printing (to string, to stream)
     const int _defaultPrintWidth = 30, _defaultNumPrecision = 3, _defaultCharsToPrint = 30, _defaultPrintFlags = 0x00;       // at start up
     const int _maxPrintFieldWidth = 200, _maxNumPrecision = 7, _maxCharsToPrint = 200, _printFlagMask = 0x1F;               // # characters to print: strings only
 
@@ -383,6 +384,7 @@ public:
     int localArrayObjectCount = 0;
 
     bool _atLineStart = true;                       
+    bool _lastValueIsStored = false;
 
     // calculation result print
     int _dispWidth = _defaultPrintWidth, _dispNumPrecision = _defaultNumPrecision, _dispCharsToPrint = _defaultCharsToPrint, _dispFmtFlags = _defaultPrintFlags;
@@ -393,6 +395,10 @@ public:
      // for print command
     int _printWidth = _defaultPrintWidth, _printNumPrecision = _defaultNumPrecision, _printCharsToPrint = _defaultCharsToPrint, _printFmtFlags = _defaultPrintFlags;
     char _printNumSpecifier[2] = "G" ;      // room for 2 characters and an extra terminating \0 (space voor length sub-specifier) (initialized during reset)
+
+    // display output settings
+    int _promptAndEcho{2};              // output prompt and echo of input
+    bool _printLastResult{true};
 
     char _instruction [_maxInstructionChars + 1] = "";
     int _instructionCharCount { 0 };
@@ -516,6 +522,8 @@ public:
     execResult_type deleteVarStringObject( LE_evalStack* pStackLvl );
     execResult_type deleteIntermStringObject( LE_evalStack* pStackLvl );
 
+    execResult_type copyArgsFromStack(LE_evalStack* &pStackLvl, int argCount, bool* argIsVar, bool* argIsReal, Val* args);
+
     int findTokenStep( int tokenTypeToFind, char tokenCodeToFind, char*& pStep );
     int jumpTokens( int n, char*& pStep, int& tokenCode );
     int jumpTokens( int n, char*& pStep );
@@ -566,6 +574,7 @@ public:
         cmdcod_end,
         cmdcod_print,
         cmdcod_dispfmt,
+        cmdcod_dispmod,
 
         cmdcod_test
     };
@@ -619,7 +628,8 @@ public:
         fnccod_char,
         fnccod_nl,
         fnccod_fmtNum,
-        fnccod_fmtStr
+        fnccod_fmtStr,
+        fnccod_sysVar
     };
 
     enum termin_code {
@@ -905,7 +915,8 @@ public:
     static const char cmdPar_N [4];                             // command takes no parameters
     static const char cmdPar_P [4];                             // allow: 'P'=identifier name  
     static const char cmdPar_E [4];                             // allow: 'E'=expression  
-    static const char cmdPar_E_3 [4];                           // allow:  2 expressions
+    static const char cmdPar_E_2[4];                           
+    static const char cmdPar_E_3[4];                           
     static const char cmdPar_E_opt [4];                         // allow: 'E'=expression  
     static const char cmdPar_E_optMult [4];                     // allow: 'E'=expression, 0 to n times   
     static const char cmdPar_V [4];                             // allow: 'V'=variable (only)
@@ -913,8 +924,6 @@ public:
     static const char cmdPar_AEE [4];                           // allow: 'A'=variable with (optional) assignment, 'E'=expression, 'E'=expression
     static const char cmdPar_P_mult [4];                        // allow: 'P'=identifier name : 1 + (0 to n) times
     static const char cmdPar_AA_mult [4];                       // allow: 'A'=variable with (optional) assignment : 1 + (0 to n) times                       
-
-    static const char cmdPar_test [4];                          //// test                      
 
 
 private:
