@@ -353,7 +353,7 @@ void heartbeat() {
     static unsigned long lastHeartbeat { 0 };                                           // last heartbeat time in ms
 
     uint32_t currentTime = millis();
-    if ( lastHeartbeat + 1000UL < currentTime ) {                                       // time passed: switch led state
+    if ( lastHeartbeat + 500UL < currentTime ) {                                       // time passed: switch led state
         ledOn = !ledOn;
         digitalWrite( HEARTBEAT_PIN, ledOn );
         lastHeartbeat = currentTime;

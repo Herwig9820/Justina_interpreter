@@ -138,13 +138,14 @@ public:
         result_undefined,
         result_overflow,
         result_underflow,
-        result_testexpr_numberExpected
+        result_testexpr_numberExpected,
+        result_stringTooLong
     };
 
 
     // printing (to string, to stream)
     const int _defaultPrintWidth = 30, _defaultNumPrecision = 3, _defaultCharsToPrint = 30, _defaultPrintFlags = 0x00;       // at start up
-    const int _maxPrintFieldWidth = 200, _maxNumPrecision = 7, _maxCharsToPrint = 200, _printFlagMask = 0x1F;               // # characters to print: strings only
+    const int _maxPrintFieldWidth = 200, _maxNumPrecision = 7, _maxCharsToPrint = 200, _printFlagMask = 0x1F;               
 
     static constexpr uint8_t extFunctionBit { B00000001 };
     static constexpr uint8_t extFunctionPrevDefinedBit { B00000010 };
@@ -990,7 +991,7 @@ public:
     static const FuncDef _functions [];                         // function names with min & max arguments allowed
     static const TerminalDef _terminals [];
     static const uint8_t _maxIdentifierNameLen { 14 };           // max length of identifier names, excluding terminating '\0'
-    static const uint8_t _maxAlphaCstLen { 50 };                 // max length of character strings, excluding terminating '\0' (also if stored in variables)
+    static const uint8_t _maxAlphaCstLen { 60 };                 // max length of character strings, excluding terminating '\0' (also if stored in variables)
 
 
     // -----------------

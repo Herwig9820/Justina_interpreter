@@ -537,6 +537,8 @@ bool Interpreter::processCharacter(char c) {
         _lineCount = 0;
         _StarCmdCharCount = 0;
         _flushAllUntilEOF = false;
+
+        withinComment = false;
     }
 
     return _quitCalcAtEOF;  // and wait for next character
