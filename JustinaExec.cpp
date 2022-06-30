@@ -65,7 +65,7 @@ Interpreter::execResult_type  Interpreter::exec() {
             tokenIndex = ((TokenIsResWord*)_programCounter)->tokenIndex;
             bool skipStatement = ((_pmyParser->_resWords[tokenIndex].restrictions & MyParser::cmd_skipDuringExec) != 0);
             if (skipStatement) {
-                findTokenStep(tok_isTerminalGroup1, MyParser::termcod_semicolon, _activeFunctionData.pNextStep);  // find semicolon (always match)
+                findTokenStep(tok_isTerminalGroup1, MyParser::termcod_semicolon, _programCounter);  // find semicolon (always match)
                 int tokIndx = ((((TokenIsTerminal*)_activeFunctionData.pNextStep)->tokenTypeAndIndex >> 4) & 0x0F);
                 break;
             }
@@ -74,6 +74,7 @@ Interpreter::execResult_type  Interpreter::exec() {
             _activeFunctionData.activeCmd_ResWordCode = _pmyParser->_resWords[tokenIndex].resWordCode;       // store command for now
             _activeFunctionData.activeCmd_tokenAddress = _programCounter;
         }
+
         break;
 
 
@@ -231,7 +232,6 @@ Interpreter::execResult_type  Interpreter::exec() {
                         else { clearEvalStackLevels(1); } // NOT main program level: we don't need to keep the statement result
                     }
                 }
-
                 // command with optional expression(s) processed ? Execute command
                 else {
                     execResult = execProcessedCommand(isFunctionReturn);
@@ -269,7 +269,7 @@ Interpreter::execResult_type  Interpreter::exec() {
         }
 
 
-        // finalize token processing
+       // finalize token processing
         // -------------------------
 
         if (nextIsNewInstructionStart) {
@@ -299,6 +299,7 @@ Interpreter::execResult_type  Interpreter::exec() {
         char* fmtString = isFloat ? _dispNumberFmtString : _dispStringFmtString;
 
         printToString(_dispWidth, isFloat ? _dispNumPrecision : (_dispWidth == 0 ? _maxCharsToPrint : _dispCharsToPrint), !isFloat, _dispIsHexFmt, lastResultValueFiFo, fmtString, toPrint, charsPrinted);
+
         _pConsole->println(toPrint.pStringConst);
 #if printCreateDeleteHeapObjects
         Serial.print("----- (Intermd str) "); Serial.println((uint32_t)toPrint.pStringConst - RAMSTART);
@@ -314,6 +315,7 @@ Interpreter::execResult_type  Interpreter::exec() {
 
     clearEvalStack();               // and intermediate strings
     clearFlowCtrlStack();           // and remaining local storage + local variable string and array values
+
 
     return execResult;   // return result, in case it's needed by caller
 };
@@ -385,7 +387,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         bool argIsVar[3], valueIsReal[3];
         Val args[3];
 
-        copyArgsFromStack(pstackLvl, cmdParamCount, argIsVar, valueIsReal, args);
+        copyValueArgsFromStack(pstackLvl, cmdParamCount, argIsVar, valueIsReal, args);
 
         execResult_type execResult = checkFmtSpecifiers(true, false, cmdParamCount, valueIsReal, args, _dispNumSpecifier[0],
             _dispIsHexFmt, _dispWidth, _dispNumPrecision, _dispFmtFlags); if (execResult != result_execOK) { return execResult; }
@@ -407,7 +409,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         bool argIsVar[2], valueIsReal[2];               // 2 arguments
         Val args[2];
 
-        copyArgsFromStack(pstackLvl, cmdParamCount, argIsVar, valueIsReal, args);
+        copyValueArgsFromStack(pstackLvl, cmdParamCount, argIsVar, valueIsReal, args);
 
         for (int i = 0; i < cmdParamCount; i++) { if (!valueIsReal[i]) { execResult = result_arg_numValueExpected; return execResult; } }
         if (((args[0].realConst != 0) && (args[0].realConst != 1) && (args[0].realConst != 2)) || ((args[1].realConst != 0) && (args[1].realConst != 1))) { execResult = result_arg_invalid; return execResult; };
@@ -417,6 +419,36 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
         _promptAndEcho = args[0].realConst, _printLastResult = args[1].realConst;
 
+        clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings
+
+        _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // command execution ended
+        _activeFunctionData.activeCmd_tokenAddress = nullptr;
+    }
+    break;
+
+
+    case MyParser::cmdcod_setCBdata:
+    {
+        // argument 1: alias to retrieve 
+        ////char* alias = ;
+        Serial.print("args: "); Serial.println(cmdParamCount);
+        // arguments 2[..4]: variable references to store 
+
+        void* varRef = pstackLvl->varOrConst.value.pVariable;
+
+
+
+        clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings
+
+        _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // command execution ended
+        _activeFunctionData.activeCmd_tokenAddress = nullptr;
+    }
+    break;
+
+
+    case MyParser::cmdcod_callback:
+    {
+        
         clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings
 
         _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // command execution ended
@@ -721,6 +753,7 @@ int Interpreter::findTokenStep(int tokenTypeToFind, char tokenCodeToFind, char*&
 
     do {
         tokenType = *pStep & 0x0F;
+
         bool tokenTypeMatch = (tokenTypeToFind == tokenType);
         if (tokenTypeToFind == tok_isTerminalGroup1) { tokenTypeMatch = tokenTypeMatch || (tokenType == tok_isTerminalGroup2) || (tokenType == tok_isTerminalGroup3); }
         if (tokenTypeMatch) {
@@ -1744,6 +1777,8 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
 
         case 10: fcnResult.realConst = _promptAndEcho; break;
         case 11: fcnResult.realConst = _printLastResult; break;
+        case 12: fcnResult.realConst = _userCBprocStartSet_count; break;
+        case 13: fcnResult.realConst = _userCBprocAliasSet_count; break;
         default:return result_arg_invalid; break;
         }       // switch (sysVar)
         break;
@@ -1842,16 +1877,16 @@ Interpreter::execResult_type  Interpreter::makeFormatString(int flags, bool isHe
 // format numbr or string according to format string (result is a string)
 // ----------------------------------------------------------------------
 
-Interpreter::execResult_type  Interpreter::printToString(int width, int precision, bool isFmtString, bool isHexFmt, Val* operands, char* fmtString,
+Interpreter::execResult_type  Interpreter::printToString(int width, int precision, bool inputIsString, bool isHexFmt, Val* operands, char* fmtString,
     Val& fcnResult, int& charsPrinted) {
 
-    int opStrLen{0}, resultStrLen{ 0 };
-    if (fmtString) {
+    int opStrLen{ 0 }, resultStrLen{ 0 };
+    if (inputIsString) {
         if (operands[0].pStringConst != nullptr) {
             opStrLen = strlen(operands[0].pStringConst);
             if (opStrLen > _maxPrintFieldWidth) { operands[0].pStringConst[_maxPrintFieldWidth] = '\0'; opStrLen = _maxPrintFieldWidth; }   // clip input string without warning (won't need it any more)
         }
-        resultStrLen = max(width + 10,  opStrLen+10);  // allow for a few extra formatting characters, if any
+        resultStrLen = max(width + 10, opStrLen + 10);  // allow for a few extra formatting characters, if any
     }
     else {
         resultStrLen = max(width + 10, 30);         // 30: minimum required ro print a formatted nummber
@@ -1859,12 +1894,13 @@ Interpreter::execResult_type  Interpreter::printToString(int width, int precisio
 
     fcnResult.pStringConst = new char[resultStrLen];
     intermediateStringObjectCount++;
-    
+
 #if printCreateDeleteHeapObjects
     Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
 #endif
 
-    if (isFmtString) {        sprintf(fcnResult.pStringConst, fmtString, width, precision, (operands[0].pStringConst == nullptr) ? "" : operands[0].pStringConst, &charsPrinted);    }
+
+    if (inputIsString) { sprintf(fcnResult.pStringConst, fmtString, width, precision, (operands[0].pStringConst == nullptr) ? "" : operands[0].pStringConst, &charsPrinted); }
     else if (isHexFmt) { sprintf(fcnResult.pStringConst, fmtString, width, precision, (long)operands[0].realConst, &charsPrinted); }     // hex output for floating point numbers not provided (Arduino)
     else { sprintf(fcnResult.pStringConst, fmtString, width, precision, operands[0].realConst, &charsPrinted); }
 
@@ -1918,11 +1954,11 @@ Interpreter::execResult_type Interpreter::deleteIntermStringObject(LE_evalStack*
     return result_execOK;
 }
 
-// -----------------------------------------------------------------
-// copy command or internal function arguments from evaluation stack
-// -----------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// copy command arguments or internal function arguments from evaluation stack
+// ---------------------------------------------------------------------------
 
-Interpreter::execResult_type Interpreter::copyArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, bool* argIsReal, Val* args) {
+Interpreter::execResult_type Interpreter::copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, bool* argIsReal, Val* args) {
     execResult_type execResult;
 
     for (int i = 0; i < argCount; i++) {               // 2 arguments

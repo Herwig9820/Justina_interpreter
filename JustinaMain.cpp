@@ -187,6 +187,9 @@ int LinkedList::getElementCount() {
 Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
     _pConsole->println("Justina: starting...");
     _callbackFcn = nullptr;
+    for (int i=0; i< _userCBarrayDepth; i++) { _callbackUserProcStart[i] = nullptr;}    
+    _userCBprocStartSet_count = 0;
+
     _pmyParser = new MyParser(this);              // pass the address of this Interpreter object to the MyParser constructor
     _quitCalcAtEOF = false;
     _isPrompt = false;
@@ -226,9 +229,9 @@ Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
     globalStaticArrayObjectCount = 0;
     userArrayObjectCount = 0;
     localArrayObjectCount = 0;
-    
+
     // current last result FiFo depth (values currently stored)
-    _lastResultCount = 0;                                       
+    _lastResultCount = 0;
 
     // calculation result print
     _dispWidth = _defaultPrintWidth, _dispNumPrecision = _defaultNumPrecision, _dispCharsToPrint = _defaultCharsToPrint, _dispFmtFlags = _defaultPrintFlags;
@@ -263,18 +266,22 @@ Interpreter::~Interpreter() {
 };
 
 
-// ----------------------------
-// *   interpreter main loop   call back   *
-// ----------------------------
+// ------------------------------
+// *   set call back functons   *
+// ------------------------------
 
 void Interpreter::setMainLoopCallback(void (*func)(bool& requestQuit)) {
-    // initialize callback function (e.g. to maintain a TCP connection, to implement a heartbeat, ...)
+
+    // a call from the user program initializes the address of a 'user callback' function.
+    // Justina will call this user routine repeatedly and automatically, allowing  the user...
+    // ...to execute a specific routine regularly (e.g. to maintain a TCP connection, to implement a heartbeat, ...)
     _callbackFcn = func;
 }
 
-//// test -------------------------------------
-void Interpreter::setUserFcnCallback(void(*func) (void*& arg1, void*& arg2)) {
-    //// assign
+void Interpreter::setUserFcnCallback(void(*func) (const void* data)) {
+
+    // each call from the user program initializes a next 'user callback' function address in an array of function addresses 
+    if (_userCBprocStartSet_count < _userCBarrayDepth) { _callbackUserProcStart[_userCBprocStartSet_count++] = func; }      // throw away if callback array full
 }
 
 
@@ -292,6 +299,19 @@ bool Interpreter::run(Stream* const pConsole, Stream** const pTerminal, int defi
     _isPrompt = false;                 // end of parsing
     _pTerminal = pTerminal;
     _definedTerminals = definedTerms;
+
+    //// ***** test hierna
+
+    long aaa = 5, bbb = 6;
+    void* paaa = &aaa, * pbbb = &bbb;
+
+    long dataArray[5]{ 10,11,12,13,14 };
+
+    if (_callbackUserProcStart[0] != nullptr) { _callbackUserProcStart[0](paaa); }      //// test: roep 3 CB functies op
+    if (_callbackUserProcStart[1] != nullptr) { _callbackUserProcStart[1](pbbb); }
+    if (_callbackUserProcStart[2] != nullptr) { _callbackUserProcStart[2](dataArray); }
+
+    //// ***** test tot hier
 
     do {
         if (_callbackFcn != nullptr) { _callbackFcn(quitNow); }
@@ -364,7 +384,7 @@ bool Interpreter::processCharacter(char c) {
 
         if (_isPrompt) { _pConsole->println(); }
         _pConsole->print(_programMode ? "Waiting for program...\r\n" : ((_promptAndEcho != 0) ? "Justina> " : ""));
-        _isPrompt = (_promptAndEcho !=0) ? !_programMode : false;
+        _isPrompt = (_promptAndEcho != 0) ? !_programMode : false;
         return false;
     }
     else if (isParserReset) {  // temporary
@@ -484,16 +504,17 @@ bool Interpreter::processCharacter(char c) {
                 if (!_programMode) {
 
                     // evaluation comes here
-                    if (_promptAndEcho==2) { _pmyParser->prettyPrintInstructions(false); }                    // immediate mode and result OK: pretty print input line
-                    else if (_promptAndEcho == 1) {_pConsole->println(); _isPrompt = false;}
+                    if (_promptAndEcho == 2) { _pmyParser->prettyPrintInstructions(false); }                    // immediate mode and result OK: pretty print input line
+                    else if (_promptAndEcho == 1) { _pConsole->println(); _isPrompt = false; }
                     exec();                                 // execute parsed user statements
+
                 }
             }
             // parsing OK message (program mode only - no message in immediate mode) or error message 
             _pmyParser->printParsingResult(result, funcNotDefIndex, _instruction, _lineCount, pErrorPos);
         }
         else { _pConsole->println(); }                                       // empty line: advance to next line only
-        if (_promptAndEcho !=0) { _pConsole->print("Justina> "); _isPrompt = true; }                 // print new prompt
+        if (_promptAndEcho != 0) { _pConsole->print("Justina> "); _isPrompt = true; }                 // print new prompt
 
 
 

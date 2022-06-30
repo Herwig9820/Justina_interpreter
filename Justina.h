@@ -166,6 +166,8 @@ public:
     static constexpr int MAX_ARRAY_ELEM { 200 };                      // max. n� of floats in a single array
     static constexpr int MAX_LAST_RESULT_DEPTH { 10 };
 
+    static const uint8_t _maxIdentifierNameLen{ 15 };           // max length of identifier names, excluding terminating '\0'
+
     // storage for tokens
     // note: to avoid boundary alignment of structure members, character placeholders of correct size are used for all structure members
 
@@ -323,7 +325,7 @@ public:
 
     // bit b7: program variable name has a global program variable associated with it. Only used during parsing, not stored in token
     static constexpr uint8_t var_hasGlobalValue = 0x80;              // flag: global program variable attached to this name
-    static constexpr uint8_t var_userVarUsedByProgram = 0x80;       // flag: user variable is used by program
+    static constexpr uint8_t var_userVarUsedByProgram = 0x80;        // flag: user variable is used by program
 
     // bits b654: variable scope. Use: (1) during parsing: temporarily store the variable type associated with a particular reference of a variable name 
     // (2) stored in 'variable' token to indicate the variable type associated with a particular reference of a variable name 
@@ -356,7 +358,7 @@ public:
     // execution
     static constexpr uint8_t constIsIntermediate = 0x01;
 
-
+    static const int _userCBarrayDepth = 10;
 
     static constexpr  int _maxInstructionChars { 300 };
     static constexpr char promptText [10] = "Justina> ";
@@ -470,6 +472,14 @@ public:
     LinkedList evalStack;
     LinkedList flowCtrlStack;
 
+    int _userCBprocStartSet_count = 0;
+    int _userCBprocAliasSet_count = 0;
+
+    void (*_callbackFcn)(bool& requestQuit);                                         // pointer to callback function for heartbeat
+    
+    void (*_callbackUserProcStart[_userCBarrayDepth])(const void* data);             // user functions: pointers to c++ procedures                                   
+    char _callbackUserProcAlias[_userCBarrayDepth][_maxIdentifierNameLen + 1];       // user functions aliases                                   
+    void* _callbackUserData[_userCBarrayDepth][3]{nullptr};                          // user functions: pointers to data                                   
 
     // ------------------------------------
     // *   methods (doc: see .cpp file)   *
@@ -480,11 +490,8 @@ public:
     bool run( Stream* const pConsole, Stream** const pTerminal, int definedTerms );
     bool processCharacter( char c );
 
-    void setMainLoopCallback( void (*func)(bool& requistQuit) );                   // set callback function for connection state change
-    void (*_callbackFcn)(bool& requestQuit);                                         // pointer to callback function for heartbeat
-
-    void setUserFcnCallback( void (*func)(void*& arg1, void*& arg2) );                   // set callback function for connection state change
-    void (*_callbackUserFcn)(void* arg1, void* arg2);                           // user functions                                   
+    void setMainLoopCallback( void (*func)(bool& requistQuit) );                   // set callback functions
+    void setUserFcnCallback( void (*func) (const void* data) );                   
 
     void* fetchVarBaseAddress( TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& variableAttributes, char& sourceVarAttributes );
     void* arrayElemAddress( void* varBaseAddress, int* dims );
@@ -523,7 +530,7 @@ public:
     execResult_type deleteVarStringObject( LE_evalStack* pStackLvl );
     execResult_type deleteIntermStringObject( LE_evalStack* pStackLvl );
 
-    execResult_type copyArgsFromStack(LE_evalStack* &pStackLvl, int argCount, bool* argIsVar, bool* argIsReal, Val* args);
+    execResult_type copyValueArgsFromStack(LE_evalStack* &pStackLvl, int argCount, bool* argIsVar, bool* argIsReal, Val* args);
 
     int findTokenStep( int tokenTypeToFind, char tokenCodeToFind, char*& pStep );
     int jumpTokens( int n, char*& pStep, int& tokenCode );
@@ -576,7 +583,9 @@ public:
         cmdcod_print,
         cmdcod_dispfmt,
         cmdcod_dispmod,
-
+        cmdcod_decCBproc, 
+        cmdcod_setCBdata, 
+        cmdcod_callback,
         cmdcod_test
     };
 
@@ -689,6 +698,7 @@ public:
         result_alphaConstNotAllowedHere,
         result_numConstNotAllowedHere,
         result_assignmNotAllowedHere,
+        result_identifierNotAllowedHere,
 
         // token expected errors
         result_constantValueExpected = 1200,
@@ -749,12 +759,17 @@ public:
         result_expressionExpectedAsCmdPar,
         result_varWithoutAssignmentExpectedAsCmdPar,
         result_variableExpectedAsCmdPar,
-        result_nameExpectedAsCmdPar,
+        result_varRefExpectedAsCmdPar,
+        result_identExpectedAsCmdPar,
         result_cmdParameterMissing,
         result_cmdHasTooManyParameters,
 
+        // generic identifier errors
+        result_allUserCBAliasesSet =1900,
+        
+        
         // block command errors
-        result_programCmdMissing = 1900,
+        result_programCmdMissing = 2000,
         result_onlyImmediateMode,
         result_onlyProgramStart,
         result_onlyInsideProgram,
@@ -771,7 +786,7 @@ public:
         result_wrongBlockSequence,
 
         // other program errors
-        result_progMemoryFull = 2000
+        result_progMemoryFull = 1000
     };
 
 
@@ -856,7 +871,7 @@ public:
     // these constants are used to check to which token group (or group of token groups) a parsed token belongs
     static constexpr uint8_t lastTokenGroup_0 = 1 << 0;          // operator
     static constexpr uint8_t lastTokenGroup_1 = 1 << 1;          // comma
-    static constexpr uint8_t lastTokenGroup_2 = 1 << 2;          // (line start), semicolon, reserved word
+    static constexpr uint8_t lastTokenGroup_2 = 1 << 2;          // (line start), semicolon, reserved word, generic identifier
     static constexpr uint8_t lastTokenGroup_3 = 1 << 3;          // number, alphanumeric constant, right bracket
     static constexpr uint8_t lastTokenGroup_4 = 1 << 4;          // internal or external function name
     static constexpr uint8_t lastTokenGroup_5 = 1 << 5;          // left parenthesis
@@ -889,7 +904,7 @@ public:
     static constexpr uint8_t cmdPar_expression = 4;
     static constexpr uint8_t cmdPar_extFunction = 5;
     static constexpr uint8_t cmdPar_numConstOnly = 6;
-    static constexpr uint8_t cmdPar_programName = 7;
+    static constexpr uint8_t cmdPar_ident = 7;
 
     // flags may be combined with value of one of the allowed types above
     static constexpr uint8_t cmdPar_flagMask = 0x18;             // allowed 0 to n times. Only for last command parameter
@@ -914,17 +929,20 @@ public:
 
     // commands (FUNCTION, FOR, ...): allowed command parameters (naming: cmdPar_<n[nnn]> with A'=variable with (optional) assignment, 'E'=expression, 'E'=expression, 'R'=reserved word
     static const char cmdPar_N [4];                             // command takes no parameters
-    static const char cmdPar_P [4];                             // allow: 'P'=identifier name  
-    static const char cmdPar_E [4];                             // allow: 'E'=expression  
+    static const char cmdPar_P[4];                              
+    static const char cmdPar_100[4];
+    static const char cmdPar_101[4];
+    static const char cmdPar_102[4];
+    static const char cmdPar_E [4];
     static const char cmdPar_E_2[4];                           
     static const char cmdPar_E_3[4];                           
-    static const char cmdPar_E_opt [4];                         // allow: 'E'=expression  
-    static const char cmdPar_E_optMult [4];                     // allow: 'E'=expression, 0 to n times   
-    static const char cmdPar_V [4];                             // allow: 'V'=variable (only)
-    static const char cmdPar_F [4];                             // allow: 'F'=function definition 
-    static const char cmdPar_AEE [4];                           // allow: 'A'=variable with (optional) assignment, 'E'=expression, 'E'=expression
-    static const char cmdPar_P_mult [4];                        // allow: 'P'=identifier name : 1 + (0 to n) times
-    static const char cmdPar_AA_mult [4];                       // allow: 'A'=variable with (optional) assignment : 1 + (0 to n) times                       
+    static const char cmdPar_E_opt [4];                         
+    static const char cmdPar_E_optMult [4];                     
+    static const char cmdPar_V [4];                             
+    static const char cmdPar_F [4];                             
+    static const char cmdPar_AEE [4];                           
+    static const char cmdPar_I_mult [4];                        
+    static const char cmdPar_AA_mult [4];                                  
 
 
 private:
@@ -990,7 +1008,6 @@ public:
     static const ResWordDef _resWords [];                       // reserved word names
     static const FuncDef _functions [];                         // function names with min & max arguments allowed
     static const TerminalDef _terminals [];
-    static const uint8_t _maxIdentifierNameLen { 14 };           // max length of identifier names, excluding terminating '\0'
     static const uint8_t _maxAlphaCstLen { 60 };                 // max length of character strings, excluding terminating '\0' (also if stored in variables)
 
 
@@ -1006,6 +1023,10 @@ private:
     bool _isStaticVarCmd = false;                               // STATIC command is being parsed
     bool _isAnyVarCmd = false;                                     // VAR, LOCAL or STATIC command is being parsed
     bool _isDeleteVarCmd = false;
+
+    bool _isDecCBprocCmd = false;
+    bool _isSetCBdataCmd = false;
+    bool _isCallbackCmd = false;
 
     bool _varDefAssignmentFound = false;
     bool _leadingSpaceCheck { false };
@@ -1049,7 +1070,9 @@ private:
 
 public:
     const char* _pCmdAllowedParTypes;
-    int _commandParNo { 0 };
+    int _cmdParSpecColumn { 0 };
+    int _cmdArgNo{0};
+    int _cmdExprArgTokenNo{0};
     bool _isCommand = false;                                    // a command is being parsed (instruction starting with a reserved word)
     int _parenthesisLevel = 0;                               // current number of open parentheses
     uint8_t _lastTokenGroup_sequenceCheck_bit = 0;                   // bits indicate which token group the last token parsed belongs to          
