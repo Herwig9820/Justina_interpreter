@@ -20,8 +20,7 @@ const char
 MyParser::cmdPar_N[4]{ cmdPar_none,                                     cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
 MyParser::cmdPar_P[4]{ cmdPar_ident,                                    cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
 MyParser::cmdPar_100[4]{ cmdPar_ident | cmdPar_multipleFlag,            cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
-MyParser::cmdPar_101[4]{ cmdPar_ident,                                  cmdPar_varOptAssignment | cmdPar_optionalFlag,  cmdPar_varOptAssignment | cmdPar_optionalFlag, cmdPar_varOptAssignment | cmdPar_optionalFlag },
-MyParser::cmdPar_102[4]{ cmdPar_ident,                                  cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
+MyParser::cmdPar_101[4]{ cmdPar_ident,                                  cmdPar_varOptAssignment | cmdPar_optionalFlag,  cmdPar_none,                                    cmdPar_none },
 MyParser::cmdPar_E[4]{ cmdPar_expression,                               cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
 MyParser::cmdPar_E_2[4]{ cmdPar_expression,                             cmdPar_expression,                              cmdPar_none,                                    cmdPar_none },
 MyParser::cmdPar_E_opt[4]{ cmdPar_expression | cmdPar_optionalFlag,     cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
@@ -60,13 +59,12 @@ const MyParser::ResWordDef MyParser::_resWords[]{
 
     {"End",             cmdcod_end,         cmd_noRestrictions,                                 0,0,    cmdPar_N,       cmdBlockGenEnd},                // closes inner open command block
 
-    {"Delusrvar",       cmdcod_delete,      cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_I_mult,  cmdDeleteVar},
-    {"Clearusrvars",    cmdcod_clear,       cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_N,       cmdBlockOther},
+    {"Delvar",          cmdcod_delete,      cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_I_mult,  cmdDeleteVar},
+    {"Clearvars",       cmdcod_clear,       cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_N,       cmdBlockOther},
     {"Vars",            cmdcod_vars,        cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_N,       cmdBlockOther},
 
-    {"DeclareCBproc",   cmdcod_decCBproc,   cmd_noRestrictions | cmd_skipDuringExec,            0,0,    cmdPar_100,     cmdBlockOther},
-    {"SetCBdata",       cmdcod_setCBdata,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_101,     cmdBlockOther},
-    {"Callback",        cmdcod_callback,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockOther},
+    {"DeclareCBproc",   cmdcod_decCBproc,   cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_100,     cmdBlockOther},
+    {"Callback",        cmdcod_callback,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_101,     cmdBlockOther},
 };
 
 // internal (intrinsic) functions
@@ -351,10 +349,14 @@ void MyParser::resetMachine(bool withUserVariables) {
     if (withUserVariables) { _pInterpreter->_userVarCount = 0; }
     else {
         int index = 0;          // clear user variable flag 'variable is used by program'
-        while (index++ < _pInterpreter->_userVarCount) { _pInterpreter->userVarType[index] = _pInterpreter->userVarType[index] & ~_pInterpreter->var_userVarUsedByProgram; }
+        while (index++ < _pInterpreter->_userVarCount) {
+            _pInterpreter->userVarType[index] = _pInterpreter->userVarType[index] & ~_pInterpreter->var_userVarUsedByProgram;
+        }
     }
 
     _pInterpreter->_lastResultCount = 0;                                       // current last result FiFo depth (values currently stored)
+    int _userCBprocStartSet_count = 0;
+    int _userCBprocAliasSet_count = 0;
 
     // calculation result print
     _pInterpreter->_dispWidth = _pInterpreter->_defaultPrintWidth, _pInterpreter->_dispNumPrecision = _pInterpreter->_defaultNumPrecision;
@@ -579,7 +581,6 @@ MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
     _isProgramCmd = false;
 
     _isDecCBprocCmd = false;
-    _isSetCBdataCmd = false;
     _isCallbackCmd = false;
 
     _isExtFunctionCmd = false;
@@ -703,7 +704,6 @@ bool MyParser::checkCommandSyntax(parseTokenResult_type& result) {              
             _isExtFunctionCmd = _resWords[_tokenIndex].resWordCode == cmdcod_function;
             _isProgramCmd = _resWords[_tokenIndex].resWordCode == cmdcod_program;
             _isDecCBprocCmd = _resWords[_tokenIndex].resWordCode == cmdcod_decCBproc;
-            _isSetCBdataCmd = _resWords[_tokenIndex].resWordCode == cmdcod_setCBdata;
             _isCallbackCmd = _resWords[_tokenIndex].resWordCode == cmdcod_callback;
             _isGlobalOrUserVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_var;
             _isLocalVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_local;
@@ -877,7 +877,6 @@ bool MyParser::checkCommandSyntax(parseTokenResult_type& result) {              
 
         _isProgramCmd = false;
         _isDecCBprocCmd = false;
-        _isSetCBdataCmd = false;
         _isCallbackCmd = false;
         _isExtFunctionCmd = false;
         _isAnyVarCmd = false;
@@ -1328,8 +1327,8 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
         if (_isAnyVarCmd && (_parenthesisLevel > 0)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }     // no parenthesis nesting in array declarations
         // parenthesis nesting in function definitions, only to declare an array parameter AND only if followed by a closing parenthesis 
         if ((_isExtFunctionCmd) && (_parenthesisLevel > 0) && (_lastTokenType != Interpreter::tok_isVariable)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
-        if (_isProgramCmd || _isDeleteVarCmd || _isDecCBprocCmd || _isCallbackCmd) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
-        if (_isSetCBdataCmd && (_cmdArgNo == 0)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
+        if (_isProgramCmd || _isDeleteVarCmd || _isDecCBprocCmd ) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
+        if (_isCallbackCmd && (_cmdArgNo == 0)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
 
         bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_incr) || (_lastTermCode == termcod_decr)) : false;
         if (varRequired) { pNext = pch; result = result_variableNameExpected; return false; }
@@ -1391,7 +1390,7 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
         _pParsingStack->openPar.minArgs = _minFunctionArgs;
         _pParsingStack->openPar.maxArgs = _maxFunctionArgs;
         _pParsingStack->openPar.actualArgsOrDims = 0;
-        _pParsingStack->openPar.arrayDimCount = _pInterpreter->_arrayDimCount;         // dimensions of previously defined array. If zero, then this array did not yet exist, or it's a sclarar variable
+        _pParsingStack->openPar.arrayDimCount = _pInterpreter->_arrayDimCount;         // dimensions of previously defined array. If zero, then this array did not yet exist, or it's a scalar variable
         _pParsingStack->openPar.flags = flags;
         _pParsingStack->openPar.identifierIndex = (_lastTokenType == Interpreter::tok_isInternFunction) ? _functionIndex :
             (_lastTokenType == Interpreter::tok_isExternFunction) ? _functionIndex :
@@ -1735,8 +1734,8 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
         // allow token (pending further tests) if within most commands, if in immediate mode and inside a function   
         bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
         if (!tokenAllowed) { pNext = pch; result = result_operatorNotAllowedHere; return false; ; }
-        if (_isProgramCmd || _isDeleteVarCmd || _isDecCBprocCmd || _isCallbackCmd) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
-        if (_isSetCBdataCmd && (_cmdArgNo == 0)) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+        if (_isProgramCmd || _isDeleteVarCmd || _isDecCBprocCmd ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+        if (_isCallbackCmd && (_cmdArgNo == 0)) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
 
         // find out if the provided operator (prefix, infix or postfix) is allowed 
         // -----------------------------------------------------------------------
@@ -1924,7 +1923,7 @@ bool MyParser::parseAsInternFunction(char*& pNext, parseTokenResult_type& result
 bool MyParser::parseAsExternFunction(char*& pNext, parseTokenResult_type& result) {
 
     if (_isProgramCmd || _isDeleteVarCmd) { return true; }                             // looking for an UNQUALIFIED identifier name; prevent it's mistaken for a variable name (same format)
-    if (_isDecCBprocCmd || _isSetCBdataCmd || _isCallbackCmd) { return true; }
+    if (_isDecCBprocCmd || _isCallbackCmd) { return true; }
 
     // 1. Is this token a function name ? 
     // ----------------------------------
@@ -2048,8 +2047,8 @@ bool MyParser::parseAsExternFunction(char*& pNext, parseTokenResult_type& result
 
 bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
 
-    if (_isProgramCmd || _isDeleteVarCmd || _isDecCBprocCmd || _isCallbackCmd) { return true; }                             // looking for an UNQUALIFIED identifier name; prevent it's mistaken for a variable name (same format)
-    if (_isSetCBdataCmd && (_cmdArgNo == 0)) { return true; }
+    if (_isProgramCmd || _isDeleteVarCmd || _isDecCBprocCmd ) { return true; }                             // looking for an UNQUALIFIED identifier name; prevent it's mistaken for a variable name (same format)
+    if (_isCallbackCmd && (_cmdArgNo == 0)) { return true; }
 
     // 1. Is this token a variable name ? 
     // ----------------------------------
@@ -2159,7 +2158,7 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
             activeNameRange = secondaryNameRange;
         }
 
-        // user variable referenced in program: set flag
+        // user variable referenced in program: set flag in user var types array (only; will not be copied in token info)
         if (_pInterpreter->_programMode && !isProgramVar) { varType[activeNameRange][varNameIndex] = varType[activeNameRange][varNameIndex] | _pInterpreter->var_userVarUsedByProgram; }
     }
 
@@ -2381,9 +2380,9 @@ bool MyParser::parseAsIdentifierName(char*& pNext, parseTokenResult_type& result
     result = result_tokenNotFound;                                                      // init: flag 'no token found'
     char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
 
-    bool exit = (_isProgramCmd || _isDeleteVarCmd || _isDecCBprocCmd || _isCallbackCmd);
-    exit = exit || (_isSetCBdataCmd && (_cmdArgNo == 0));
-    if (!exit) { return true; }
+    bool stay = (_isProgramCmd || _isDeleteVarCmd || _isDecCBprocCmd );
+    stay = stay || (_isCallbackCmd && (_cmdArgNo == 0));
+    if (!stay) { return true; }
 
     if (!isalpha(pNext[0])) { return true; }                                       // first character is not a letter ? Then it's not an identifier name (it can still be something else)
     while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                   // do until first character after alphanumeric token (can be anything, including '\0')
@@ -2407,6 +2406,9 @@ bool MyParser::parseAsIdentifierName(char*& pNext, parseTokenResult_type& result
     // Declaring aliases ? Store alias
     if (_isDecCBprocCmd) {
         if (_pInterpreter->_userCBprocAliasSet_count >= _pInterpreter->_userCBprocStartSet_count) { pNext = pch; result = result_allUserCBAliasesSet;  return false; }
+        for (int i = 0; i < _pInterpreter->_userCBprocAliasSet_count; i++) {
+            if (strcmp(_pInterpreter->_callbackUserProcAlias[i], pIdentifierName) == 0) { pNext = pch; result = result_userCBAliasRedeclared;  return false; }
+        }
         strcpy(_pInterpreter->_callbackUserProcAlias[_pInterpreter->_userCBprocAliasSet_count++], pIdentifierName);                           // maximum 10 user functions                                   
     }
 

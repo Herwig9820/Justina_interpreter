@@ -30,12 +30,13 @@
 // includes
 // --------
 
-#include <avr/dtostrf.h>        
 #include "Justina.h"
+#include <avr/dtostrf.h>        
 #if withTCP
 #include "secrets.h"
 #include "TCPserverClient.h"
 #endif
+
 
 // Global constants, variables and objects
 // ---------------------------------------
@@ -59,9 +60,10 @@ bool console_isRemoteTerm{ false };                                             
 bool withinApplication{ false };                                                       // init: currently not within an application
 bool interpreterInMemory{ false };                                                     // init: interpreter is not in memory
 
+Stream* pConsole = (Stream*)&Serial;                                                   // init pointer to Serial or TCP terminal
+
 Interpreter* pcalculator{ nullptr };                                                    // pointer to Interpreter object
 
-Stream* pConsole = (Stream*)&Serial;                                                   // init pointer to Serial or TCP terminal
 #if withTCP
 // connect as TCP server: create class object myTCPconnection
 TCPconnection myTCPconnection(SSID, PASS, serverAddress, gatewayAddress, subnetMask, DNSaddress, serverPort, conn_2_TCPconnected);
@@ -222,16 +224,16 @@ void loop() {
             // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
             // this callback function will be called regularly, e.g. every time the interpreter reads a character
             pcalculator->setMainLoopCallback((&housekeeping));                    // set callback function to housekeeping routine in this .ino file (pass 'housekeeping' routine address to Interpreter library)
-
+            
             pcalculator->setUserFcnCallback((&userFcn_readPort));                // pass user function addresses to Interpreter library 
             pcalculator->setUserFcnCallback((&userFcn_writePort));
             pcalculator->setUserFcnCallback((&userFcn_togglePort));                 
-
             interpreterInMemory = pcalculator->run(pConsole, pTerminal, terminalCount);                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
             if (!interpreterInMemory) {                                               // interpreter not running anymore ?
                 delete pcalculator;                                                     // cleanup and delete calculator object itself
                 pcalculator = nullptr;                                                  // only to indicate memory is released
             }
+            
             withinApplication = false;                                                  // return from application
             break;
 
@@ -362,16 +364,20 @@ void heartbeat() {
 
 //// test ----------------------------
 
-void userFcn_readPort(const void* data) {     // data: can be anything, as long as user functin knows what to expect
-    Serial.print("callback: read port: ");  Serial.println((uint32_t) data - RAMSTART);
+void userFcn_readPort(const void* pdata, const char valueType) {     // data: can be anything, as long as user functin knows what to expect
+    Serial.print("- read port - float: "); Serial.println(*(float*)pdata);
+    *(float*)pdata += 10;
 };
 
-void userFcn_writePort(const void* data) {
-    Serial.print("callback: write port: ");  Serial.println((uint32_t)data - RAMSTART);
+void userFcn_writePort(const void* pdata, const char valueType) {
+    Serial.print("- write port - float: "); Serial.println(*(float*)pdata);
+    *(float*) pdata += 20;
+    float f = *((float*)pdata +1);      // next element
+    Serial.print("- next element: "); Serial.println(f);
 };
 
-void userFcn_togglePort(const void* data) {
-    Serial.print("callback: read port: ");  Serial.println((uint32_t)data - RAMSTART);
-    long* dataValue =( (long*) data+4);
-    Serial.print("               data: ");  Serial.println(*((long*)data + 4));
+void userFcn_togglePort(const void* pdata, const char valueType) {
+    Serial.print("callback: read port: ");  Serial.println((uint32_t)pdata - RAMSTART);
+    long* dataValue =( (long*) pdata);
+    Serial.print("               data: ");  Serial.println(*dataValue);
 };

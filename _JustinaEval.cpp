@@ -66,7 +66,7 @@ Interpreter::execResult_type  Interpreter::exec() {
             bool skipStatement = ((_pmyParser->_resWords[tokenIndex].restrictions & MyParser::cmd_skipDuringExec) != 0);
             if (skipStatement) {
                 findTokenStep(tok_isTerminalGroup1, MyParser::termcod_semicolon, _programCounter);  // find semicolon (always match)
-                int tokIndx = ((((TokenIsTerminal*)_activeFunctionData.pNextStep)->tokenTypeAndIndex >> 4) & 0x0F);
+                _activeFunctionData.pNextStep = _programCounter;
                 break;
             }
 
@@ -85,6 +85,11 @@ Interpreter::execResult_type  Interpreter::exec() {
             // -------------------------------------------------
 
             pushFunctionName(tokenType);
+            break;
+
+
+        case tok_isGenericName:
+            pushGenericName(tokenType);
             break;
 
 
@@ -269,8 +274,8 @@ Interpreter::execResult_type  Interpreter::exec() {
         }
 
 
-       // finalize token processing
-        // -------------------------
+        // finalize token processing
+         // -------------------------
 
         if (nextIsNewInstructionStart) {
             if (!isFunctionReturn) {   // if returning from user function, error statement pointers retrieved from flow control stack 
@@ -427,28 +432,35 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     break;
 
 
-    case MyParser::cmdcod_setCBdata:
-    {
-        // argument 1: alias to retrieve 
-        ////char* alias = ;
-        Serial.print("args: "); Serial.println(cmdParamCount);
-        // arguments 2[..4]: variable references to store 
-
-        void* varRef = pstackLvl->varOrConst.value.pVariable;
-
-
-
-        clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings
-
-        _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // command execution ended
-        _activeFunctionData.activeCmd_tokenAddress = nullptr;
-    }
-    break;
-
-
     case MyParser::cmdcod_callback:
     {
-        
+        // argument 1: alias to retrieve 
+        char* alias = pstackLvl->genericName.pStringConst;
+        bool isDeclared = false;
+        int index{};
+        for (index = 0; index < _userCBprocAliasSet_count; index++) {
+            Serial.print(_callbackUserProcAlias[index]); Serial.print(" "); Serial.println(alias);
+            if (strcmp(_callbackUserProcAlias[index], alias) == 0) { isDeclared = true; break; }   // alias declared ? break
+        }
+        if (!isDeclared) { execResult = result_aliasNotDeclared; return execResult; }
+
+        pstackLvl = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
+
+        // arguments 2[..4]: variable references to store 
+
+        char valueType{};
+        void* varRef = nullptr;
+        if (cmdParamCount == 2) {       // variable provided for data transfer 
+            // the argument is a variable (verified during parsing) but we still need to check that it contains a real value (not a string pointer)
+            valueType = *pstackLvl->varOrConst.varTypeAddress & value_typeMask;
+            if ((uint8_t)valueType != value_isFloat) { execResult = result_numericVariableExpected; return execResult; }
+            varRef = pstackLvl->varOrConst.value.pVariable;
+        }
+        Serial.print(">index: "); Serial.println(index);
+        Serial.print(">float: "); Serial.println(* (float*) varRef );
+        _callbackUserProcStart[index](varRef, valueType);
+        Serial.print(">float: "); Serial.println(*(float*)varRef);
+
         clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings
 
         _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // command execution ended
@@ -2486,6 +2498,26 @@ void Interpreter::pushConstant(int& tokenType) {                                
         _pEvalStackTop->varOrConst.value.pStringConst = pAnum;                                  // store char* in stack, NOT the pointer to float 
     }
 
+};
+
+
+// ---------------------------------------------------
+// *   push generic name token to evaluation stack   *
+// ---------------------------------------------------
+
+void Interpreter::pushGenericName(int& tokenType) {                                              // float or string constant token is assumed
+
+    // push real or string parsed constant, value type and array flag (false) to stack
+    _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
+
+    // just push the string pointer to the generic name (no indexes, ...)
+    _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(GenNameLvl));
+    _pEvalStackTop->varOrConst.tokenType = tok_isGenericName;          // use generic constant type
+    _pEvalStackTop->varOrConst.tokenAddress = _programCounter;                                  // only for finding source error position during unparsing (for printing)
+
+    char* pAnum{ nullptr };
+    memcpy(&pAnum, ((TokenIsStringCst*)_programCounter)->pStringConst, sizeof(pAnum)); // char pointer not necessarily aligned with word size: copy memory instead
+    _pEvalStackTop->genericName.pStringConst = pAnum;                                  // store char* in stack 
 };
 
 

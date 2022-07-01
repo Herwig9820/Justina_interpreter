@@ -127,6 +127,8 @@ public:
         result_array_dimNumberNonInteger,
         result_array_dimNumberInvalid,
         result_arg_varExpected,
+        result_aliasNotDeclared,
+        result_numericVariableExpected,
 
         // numbers and strings
         result_outsideRange,
@@ -254,6 +256,13 @@ public:
         char* tokenAddress;                                     // must be second 4-byte word
     };
 
+    struct GenNameLvl {
+        char tokenType;
+        char spare[3];
+        char* pStringConst;
+        char* tokenAddress;                                     // must be second 4-byte word, only for finding source error position during unparsing (for printing)
+    };
+
     struct VarOrConstLvl {
         char tokenType;
         char valueType;
@@ -280,6 +289,7 @@ public:
 
     union LE_evalStack {
         GenericTokenLvl genericToken;
+        GenNameLvl genericName;
         VarOrConstLvl varOrConst;
         FunctionLvl function;
         TerminalTokenLvl terminal;
@@ -421,6 +431,8 @@ public:
     int _staticVarCount { 0 };                                      // static variable count (across all functions)
     int _extFunctionCount { 0 };                                    // external function count
     int _lastResultCount { 0 };
+    int _userCBprocStartSet_count = 0;
+    int _userCBprocAliasSet_count = 0;
 
     char _arrayDimCount { 0 };
     char* _programCounter { nullptr };                                // pointer to token memory address (not token step n�)
@@ -472,12 +484,9 @@ public:
     LinkedList evalStack;
     LinkedList flowCtrlStack;
 
-    int _userCBprocStartSet_count = 0;
-    int _userCBprocAliasSet_count = 0;
-
     void (*_callbackFcn)(bool& requestQuit);                                         // pointer to callback function for heartbeat
     
-    void (*_callbackUserProcStart[_userCBarrayDepth])(const void* data);             // user functions: pointers to c++ procedures                                   
+    void (*_callbackUserProcStart[_userCBarrayDepth])(const void* pdata, const char valueType);             // user functions: pointers to c++ procedures                                   
     char _callbackUserProcAlias[_userCBarrayDepth][_maxIdentifierNameLen + 1];       // user functions aliases                                   
     void* _callbackUserData[_userCBarrayDepth][3]{nullptr};                          // user functions: pointers to data                                   
 
@@ -491,7 +500,7 @@ public:
     bool processCharacter( char c );
 
     void setMainLoopCallback( void (*func)(bool& requistQuit) );                   // set callback functions
-    void setUserFcnCallback( void (*func) (const void* data) );                   
+    void setUserFcnCallback( void (*func) (const void* pdata, const char valueType) );
 
     void* fetchVarBaseAddress( TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& variableAttributes, char& sourceVarAttributes );
     void* arrayElemAddress( void* varBaseAddress, int* dims );
@@ -540,7 +549,8 @@ public:
     void PushTerminalToken( int& tokenType );
     void pushResWord( int& tokenType );
     void pushFunctionName( int& tokenType );
-    void pushConstant( int& tokenType );
+    void pushGenericName(int& tokenType);
+    void pushConstant(int& tokenType);
     void pushVariable( int& tokenType );
     void pushIdentifierName( int& tokenType );
 };
@@ -584,7 +594,6 @@ public:
         cmdcod_dispfmt,
         cmdcod_dispmod,
         cmdcod_decCBproc, 
-        cmdcod_setCBdata, 
         cmdcod_callback,
         cmdcod_test
     };
@@ -766,7 +775,7 @@ public:
 
         // generic identifier errors
         result_allUserCBAliasesSet =1900,
-        
+        result_userCBAliasRedeclared,
         
         // block command errors
         result_programCmdMissing = 2000,
@@ -1025,7 +1034,6 @@ private:
     bool _isDeleteVarCmd = false;
 
     bool _isDecCBprocCmd = false;
-    bool _isSetCBdataCmd = false;
     bool _isCallbackCmd = false;
 
     bool _varDefAssignmentFound = false;

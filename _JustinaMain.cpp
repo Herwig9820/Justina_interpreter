@@ -233,6 +233,10 @@ Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
     // current last result FiFo depth (values currently stored)
     _lastResultCount = 0;
 
+    // user call back alias storage
+    int _userCBprocStartSet_count = 0;
+    int _userCBprocAliasSet_count = 0;
+
     // calculation result print
     _dispWidth = _defaultPrintWidth, _dispNumPrecision = _defaultNumPrecision, _dispCharsToPrint = _defaultCharsToPrint, _dispFmtFlags = _defaultPrintFlags;
     _dispNumSpecifier[0] = 'G'; _dispNumSpecifier[1] = '\0';
@@ -278,7 +282,7 @@ void Interpreter::setMainLoopCallback(void (*func)(bool& requestQuit)) {
     _callbackFcn = func;
 }
 
-void Interpreter::setUserFcnCallback(void(*func) (const void* data)) {
+void Interpreter::setUserFcnCallback(void(*func) (const void* data, const char valueType)) {
 
     // each call from the user program initializes a next 'user callback' function address in an array of function addresses 
     if (_userCBprocStartSet_count < _userCBarrayDepth) { _callbackUserProcStart[_userCBprocStartSet_count++] = func; }      // throw away if callback array full
@@ -307,9 +311,9 @@ bool Interpreter::run(Stream* const pConsole, Stream** const pTerminal, int defi
 
     long dataArray[5]{ 10,11,12,13,14 };
 
-    if (_callbackUserProcStart[0] != nullptr) { _callbackUserProcStart[0](paaa); }      //// test: roep 3 CB functies op
-    if (_callbackUserProcStart[1] != nullptr) { _callbackUserProcStart[1](pbbb); }
-    if (_callbackUserProcStart[2] != nullptr) { _callbackUserProcStart[2](dataArray); }
+    if (_callbackUserProcStart[0] != nullptr) { _callbackUserProcStart[0](paaa, value_isFloat); }      //// test: roep 3 CB functies op
+    if (_callbackUserProcStart[1] != nullptr) { _callbackUserProcStart[1](pbbb, value_isFloat); }
+    if (_callbackUserProcStart[2] != nullptr) { _callbackUserProcStart[2](dataArray, value_isFloat); }
 
     //// ***** test tot hier
 
