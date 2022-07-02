@@ -50,11 +50,11 @@ private:
 
     ListElemHead* _pFirstElement = nullptr;                      // pointers to first and last list element
     ListElemHead* _pLastElement = nullptr;
-    int _listElementCount { 0 };                                // list element count (currently not used)
-    listType_type _listType {};
+    int _listElementCount{ 0 };                                // list element count (currently not used)
+    listType_type _listType{};
 
 public:
-    int _listID { 0 };                                       // list ID (in order of creation) 
+    int _listID{ 0 };                                       // list ID (in order of creation) 
 
 
     // ------------------------------------
@@ -65,13 +65,13 @@ public:
 
     LinkedList();                   // constructor
     ~LinkedList();                   // constructor
-    char* appendListElement( int size );
-    char* deleteListElement( void* pPayload );                  // pointer to payload of list element to be removed
+    char* appendListElement(int size);
+    char* deleteListElement(void* pPayload);                  // pointer to payload of list element to be removed
     void deleteList();
     char* getFirstListElement();
     char* getLastListElement();
-    char* getPrevListElement( void* pPayload );
-    char* getNextListElement( void* pPayload );
+    char* getPrevListElement(void* pPayload);
+    char* getNextListElement(void* pPayload);
     int getElementCount();
     int getListID();
 };
@@ -147,26 +147,26 @@ public:
 
     // printing (to string, to stream)
     const int _defaultPrintWidth = 30, _defaultNumPrecision = 3, _defaultCharsToPrint = 30, _defaultPrintFlags = 0x00;       // at start up
-    const int _maxPrintFieldWidth = 200, _maxNumPrecision = 7, _maxCharsToPrint = 200, _printFlagMask = 0x1F;               
+    const int _maxPrintFieldWidth = 200, _maxNumPrecision = 7, _maxCharsToPrint = 200, _printFlagMask = 0x1F;
 
-    static constexpr uint8_t extFunctionBit { B00000001 };
-    static constexpr uint8_t extFunctionPrevDefinedBit { B00000010 };
-    static constexpr uint8_t intFunctionBit { B00000100 };
-    static constexpr uint8_t openParenthesisBit { B00001000 };                                  // not a function
-    static constexpr uint8_t arrayBit { B00010000 };
-    static constexpr uint8_t arrayElemAssignmentAllowedBit { B00100000 };
-    static constexpr uint8_t arrayElemPostfixIncrDecrAllowedBit { B01000000 };
+    static constexpr uint8_t extFunctionBit{ B00000001 };
+    static constexpr uint8_t extFunctionPrevDefinedBit{ B00000010 };
+    static constexpr uint8_t intFunctionBit{ B00000100 };
+    static constexpr uint8_t openParenthesisBit{ B00001000 };                                  // not a function
+    static constexpr uint8_t arrayBit{ B00010000 };
+    static constexpr uint8_t arrayElemAssignmentAllowedBit{ B00100000 };
+    static constexpr uint8_t arrayElemPostfixIncrDecrAllowedBit{ B01000000 };
 
-    static constexpr int PROG_MEM_SIZE { 2000 };
-    static constexpr int IMM_MEM_SIZE { 300 };
-    static constexpr int MAX_USERVARNAMES { 32 };                       // max. vars (all types: global, static, local, parameter). Absolute limit: 255
-    static constexpr int MAX_PROGVARNAMES { 64 };                       // max. vars (all types: global, static, local, parameter). Absolute limit: 255
-    static constexpr int MAX_STAT_VARS { 32 };                      // max. static vars (only). Absolute limit: 255
-    static constexpr int MAX_LOC_VARS_IN_FUNC { 32 };               // max. local and parameter vars (only) in an INDIVIDUAL function. Absolute limit: 255 
-    static constexpr int MAX_EXT_FUNCS { 16 };                      // max. external functions. Absolute limit: 255
-    static constexpr int MAX_ARRAY_DIMS { 3 };                        // 1, 2 or 3 is allwed: must fit in 3 bytes
-    static constexpr int MAX_ARRAY_ELEM { 200 };                      // max. n� of floats in a single array
-    static constexpr int MAX_LAST_RESULT_DEPTH { 10 };
+    static constexpr int PROG_MEM_SIZE{ 2000 };
+    static constexpr int IMM_MEM_SIZE{ 300 };
+    static constexpr int MAX_USERVARNAMES{ 32 };                       // max. vars (all types: global, static, local, parameter). Absolute limit: 255
+    static constexpr int MAX_PROGVARNAMES{ 64 };                       // max. vars (all types: global, static, local, parameter). Absolute limit: 255
+    static constexpr int MAX_STAT_VARS{ 32 };                      // max. static vars (only). Absolute limit: 255
+    static constexpr int MAX_LOC_VARS_IN_FUNC{ 32 };               // max. local and parameter vars (only) in an INDIVIDUAL function. Absolute limit: 255 
+    static constexpr int MAX_EXT_FUNCS{ 16 };                      // max. external functions. Absolute limit: 255
+    static constexpr int MAX_ARRAY_DIMS{ 3 };                        // 1, 2 or 3 is allwed: must fit in 3 bytes
+    static constexpr int MAX_ARRAY_ELEM{ 200 };                      // max. n� of floats in a single array
+    static constexpr int MAX_LAST_RESULT_DEPTH{ 10 };
 
     static const uint8_t _maxIdentifierNameLen{ 15 };           // max length of identifier names, excluding terminating '\0'
 
@@ -176,17 +176,17 @@ public:
     struct TokenIsResWord {                                     // reserved word token (command): length 4 (if not a block command, token step is not stored and length will be 2)
         char tokenType;                                         // will be set to specific token type
         char tokenIndex;                                        // index into list of tokens of a specific type
-        char toTokenStep [2];                                     // tokens for block commands (IF, FOR, BREAK, END, ...): step n� of block start token or next block token (uint16_t)
+        char toTokenStep[2];                                     // tokens for block commands (IF, FOR, BREAK, END, ...): step n� of block start token or next block token (uint16_t)
     };
 
     struct TokenIsRealCst {                                    // token storage for a numeric constant token: length 5
         char tokenType;                                         // will be set to specific token type
-        char realConst [4];                                       // placeholder for float - avoiding boundary alignment
+        char realConst[4];                                       // placeholder for float - avoiding boundary alignment
     };
 
     struct TokenIsStringCst {                                 // token storage for an alphanumeric constant token: length 5
         char tokenType;                                         // will be set to specific token type
-        char pStringConst [4];                                 // pointer to string object
+        char pStringConst[4];                                 // pointer to string object
     };
 
     struct TokenIsIntFunction {                                 // token storage for internal function: length 2
@@ -234,17 +234,13 @@ public:
         float* pRealConst;
         char** ppStringConst;
         float** ppArray;
-
-        float** ppRealConst;
-        char*** pppStringConst;
-        float*** pppArray;
     };
 
     struct ExtFunctionData {
         char* pExtFunctionStartToken;                           // ext. function: pointer to start of function (token)
         char paramOnlyCountInFunction;
         char localVarCountInFunction;                             // needed to reserve run time storage for local variables 
-        char paramIsArrayPattern [2];                         // parameter pattern: b15 flag set when parsing function definition or first function call; b14-b0 flags set when corresponding parameter or argument is array      
+        char paramIsArrayPattern[2];                         // parameter pattern: b15 flag set when parsing function definition or first function call; b14-b0 flags set when corresponding parameter or argument is array      
     };
 
 
@@ -252,7 +248,7 @@ public:
 
     struct GenericTokenLvl {                                    // only to determine token type and for finding source error position during unparsing (for printing)
         tokenType_type tokenType;
-        char spare [3];                                          // boundary alignment
+        char spare[3];                                          // boundary alignment
         char* tokenAddress;                                     // must be second 4-byte word
     };
 
@@ -276,14 +272,14 @@ public:
     struct FunctionLvl {
         char tokenType;
         char index;
-        char spare [2];
+        char spare[2];
         char* tokenAddress;                                     // must be second 4-byte word, only for finding source error position during unparsing (for printing)
     };
 
     struct TerminalTokenLvl {
         char tokenType;
         char index;
-        char spare [2];                                          // boundary alignment
+        char spare[2];                                          // boundary alignment
         char* tokenAddress;                                     // must be second 4-byte word, only for finding source error position during unparsing (for printing)
     };
 
@@ -370,9 +366,9 @@ public:
 
     static const int _userCBarrayDepth = 10;
 
-    static constexpr  int _maxInstructionChars { 300 };
-    static constexpr char promptText [10] = "Justina> ";
-    static constexpr int _promptLength = sizeof( promptText ) - 1;////
+    static constexpr  int _maxInstructionChars{ 300 };
+    static constexpr char promptText[10] = "Justina> ";
+    static constexpr int _promptLength = sizeof(promptText) - 1;////
 
 
     // counting of heap objects (note: linked list element count is maintained within the linked list objects)
@@ -396,163 +392,168 @@ public:
     int userArrayObjectCount = 0;
     int localArrayObjectCount = 0;
 
-    bool _atLineStart = true;                       
+    bool _atLineStart = true;
     bool _lastValueIsStored = false;
 
     // calculation result print
     int _dispWidth = _defaultPrintWidth, _dispNumPrecision = _defaultNumPrecision, _dispCharsToPrint = _defaultCharsToPrint, _dispFmtFlags = _defaultPrintFlags;
     char _dispNumSpecifier[2] = "G";      // room for 1 character and an extra terminating \0 (space voor length sub-specifier) (initialized during reset)
-    bool _dispIsHexFmt{false};              // initialized during reset          
-    char  _dispNumberFmtString[20]= "", _dispStringFmtString[20] = "%*.*s%n";        // long enough to contain all format specifier parts; initialized during reset
+    bool _dispIsHexFmt{ false };              // initialized during reset          
+    char  _dispNumberFmtString[20] = "", _dispStringFmtString[20] = "%*.*s%n";        // long enough to contain all format specifier parts; initialized during reset
 
      // for print command
     int _printWidth = _defaultPrintWidth, _printNumPrecision = _defaultNumPrecision, _printCharsToPrint = _defaultCharsToPrint, _printFmtFlags = _defaultPrintFlags;
-    char _printNumSpecifier[2] = "G" ;      // room for 2 characters and an extra terminating \0 (space voor length sub-specifier) (initialized during reset)
+    char _printNumSpecifier[2] = "G";      // room for 2 characters and an extra terminating \0 (space voor length sub-specifier) (initialized during reset)
 
     // display output settings
-    int _promptAndEcho{2};              // output prompt and echo of input
-    bool _printLastResult{true};
+    int _promptAndEcho{ 2 };              // output prompt and echo of input
+    bool _printLastResult{ true };
 
-    char _instruction [_maxInstructionChars + 1] = "";
-    int _instructionCharCount { 0 };
-    bool _programMode { false };
-    bool _flushAllUntilEOF { false };
-    bool _quitCalcAtEOF { false };
-    bool _keepInMemory { true };                        //// maak afhankelijk van command parameter
-    bool _isPrompt { false };
+    char _instruction[_maxInstructionChars + 1] = "";
+    int _instructionCharCount{ 0 };
+    bool _programMode{ false };
+    bool _flushAllUntilEOF{ false };
+    bool _quitCalcAtEOF{ false };
+    bool _keepInMemory{ true };                        //// maak afhankelijk van command parameter
+    bool _isPrompt{ false };
 
-    int _lineCount { 0 };                             // taking into account new line after 'load program' command ////
-    int _StarCmdCharCount { 0 };
+    int _lineCount{ 0 };                             // taking into account new line after 'load program' command ////
+    int _StarCmdCharCount{ 0 };
 
-    int _userVarCount { 0 };                                        // counts number of user variables (names and values) 
-    int _programVarNameCount { 0 };                                        // counts number of variable names (global variables: also stores values) 
-    int _localVarCountInFunction { 0 };                             // counts number of local variables in a specific function (names only, values not used)
-    int _paramOnlyCountInFunction { 0 };
-    int _staticVarCount { 0 };                                      // static variable count (across all functions)
-    int _extFunctionCount { 0 };                                    // external function count
-    int _lastResultCount { 0 };
+    int _userVarCount{ 0 };                                        // counts number of user variables (names and values) 
+    int _programVarNameCount{ 0 };                                        // counts number of variable names (global variables: also stores values) 
+    int _localVarCountInFunction{ 0 };                             // counts number of local variables in a specific function (names only, values not used)
+    int _paramOnlyCountInFunction{ 0 };
+    int _staticVarCount{ 0 };                                      // static variable count (across all functions)
+    int _extFunctionCount{ 0 };                                    // external function count
+    int _lastResultCount{ 0 };
     int _userCBprocStartSet_count = 0;
     int _userCBprocAliasSet_count = 0;
 
-    char _arrayDimCount { 0 };
-    char* _programCounter { nullptr };                                // pointer to token memory address (not token step n�)
+    char _arrayDimCount{ 0 };
+    char* _programCounter{ nullptr };                                // pointer to token memory address (not token step n�)
 
-    uint16_t _paramIsArrayPattern { 0 };
+    uint16_t _paramIsArrayPattern{ 0 };
 
-    Stream* _pConsole { nullptr };
-    Stream** _pTerminal { nullptr };
-    int _definedTerminals { 0 };
+    Stream* _pConsole{ nullptr };
+    Stream** _pTerminal{ nullptr };
+    int _definedTerminals{ 0 };
 
     // program storage
-    char _programStorage [PROG_MEM_SIZE + IMM_MEM_SIZE];
+    char _programStorage[PROG_MEM_SIZE + IMM_MEM_SIZE];
     char* _programStart;
     int  _programSize;
 
     MyParser* _pmyParser;
 
     // user variable storage
-    char* userVarNames [MAX_USERVARNAMES];                              // store distinct user variable names: ONLY for user variables (same name as program variable is OK)
-    Val userVarValues [MAX_USERVARNAMES];
-    char userVarType [MAX_USERVARNAMES];
+    char* userVarNames[MAX_USERVARNAMES];                              // store distinct user variable names: ONLY for user variables (same name as program variable is OK)
+    Val userVarValues[MAX_USERVARNAMES];
+    char userVarType[MAX_USERVARNAMES];
 
     // variable name storage                                         
-    char* programVarNames [MAX_PROGVARNAMES];                            // store distinct variable names: COMMON NAME for all program variables (global, static, local)
-    char programVarValueIndex [MAX_PROGVARNAMES] { 0 };                  // temporarily maintains index to variable storage during function parsing
-    Val globalVarValues [MAX_PROGVARNAMES];                              // if variable name is in use for global variable: store global value (float, pointer to string, pointer to array of floats)
-    char globalVarType [MAX_PROGVARNAMES] { 0 };                         // stores value type (float, pointer to string) and 'is array' flag
+    char* programVarNames[MAX_PROGVARNAMES];                            // store distinct variable names: COMMON NAME for all program variables (global, static, local)
+    char programVarValueIndex[MAX_PROGVARNAMES]{ 0 };                  // temporarily maintains index to variable storage during function parsing
+    Val globalVarValues[MAX_PROGVARNAMES];                              // if variable name is in use for global variable: store global value (float, pointer to string, pointer to array of floats)
+    char globalVarType[MAX_PROGVARNAMES]{ 0 };                         // stores value type (float, pointer to string) and 'is array' flag
 
     // static variable value storage
-    Val staticVarValues [MAX_STAT_VARS];                            // store static variable values (float, pointer to string, pointer to array of floats) 
-    char staticVarType [MAX_STAT_VARS] { 0 };                       // stores value type (float, pointer to string) and 'is array' flag
+    Val staticVarValues[MAX_STAT_VARS];                            // store static variable values (float, pointer to string, pointer to array of floats) 
+    char staticVarType[MAX_STAT_VARS]{ 0 };                       // stores value type (float, pointer to string) and 'is array' flag
     // local variable value storage
     FunctionData _activeFunctionData;
 
     // temporary local variable stoarage during function parsing (without values)
-    char localVarType [MAX_LOC_VARS_IN_FUNC] { 0 };                 // parameter, local variables: temporarily maintains array flag during function parsing (storage reused by functions during parsing)
-    char localVarDims [MAX_LOC_VARS_IN_FUNC][4] { 0 };              // LOCAL variables: temporarily maintains dimensions during function parsing (storage reused by functions during parsing)
+    char localVarType[MAX_LOC_VARS_IN_FUNC]{ 0 };                 // parameter, local variables: temporarily maintains array flag during function parsing (storage reused by functions during parsing)
+    char localVarDims[MAX_LOC_VARS_IN_FUNC][4]{ 0 };              // LOCAL variables: temporarily maintains dimensions during function parsing (storage reused by functions during parsing)
 
     // function key data storage
-    char* extFunctionNames [MAX_EXT_FUNCS];
-    ExtFunctionData extFunctionData [MAX_EXT_FUNCS];
+    char* extFunctionNames[MAX_EXT_FUNCS];
+    ExtFunctionData extFunctionData[MAX_EXT_FUNCS];
 
-    LE_evalStack* _pEvalStackTop { nullptr }, * _pEvalStackMinus1 { nullptr }, * _pEvalStackMinus2 { nullptr };
-    void* _pFlowCtrlStackTop { nullptr }, * _pFlowCtrlStackMinus1 { nullptr }, * _pFlowCtrlStackMinus2 { nullptr };
+    LE_evalStack* _pEvalStackTop{ nullptr }, * _pEvalStackMinus1{ nullptr }, * _pEvalStackMinus2{ nullptr };
+    void* _pFlowCtrlStackTop{ nullptr }, * _pFlowCtrlStackMinus1{ nullptr }, * _pFlowCtrlStackMinus2{ nullptr };
 
-    Val lastResultValueFiFo [MAX_LAST_RESULT_DEPTH];                // keep last evaluation results
-    char lastResultTypeFiFo [MAX_LAST_RESULT_DEPTH] { value_noValue };
+    Val lastResultValueFiFo[MAX_LAST_RESULT_DEPTH];                // keep last evaluation results
+    char lastResultTypeFiFo[MAX_LAST_RESULT_DEPTH]{ value_noValue };
 
     LinkedList evalStack;
     LinkedList flowCtrlStack;
 
+
+    // callback functions and storage
+
     void (*_callbackFcn)(bool& requestQuit);                                         // pointer to callback function for heartbeat
-    
-    void (*_callbackUserProcStart[_userCBarrayDepth])(const void* pdata, const char valueType);             // user functions: pointers to c++ procedures                                   
+
+    void (*_callbackUserProcStart[_userCBarrayDepth])(const Val* pdata, const char* valueType);             // user functions: pointers to c++ procedures                                   
+
     char _callbackUserProcAlias[_userCBarrayDepth][_maxIdentifierNameLen + 1];       // user functions aliases                                   
-    void* _callbackUserData[_userCBarrayDepth][3]{nullptr};                          // user functions: pointers to data                                   
+    void* _callbackUserData[_userCBarrayDepth][3]{ nullptr };                          // user functions: pointers to data                                   
+
 
     // ------------------------------------
     // *   methods (doc: see .cpp file)   *
     // ------------------------------------
 
-    Interpreter( Stream* const pConsole );               // constructor
+    Interpreter(Stream* const pConsole);               // constructor
     ~Interpreter();               // deconstructor
-    bool run( Stream* const pConsole, Stream** const pTerminal, int definedTerms );
-    bool processCharacter( char c );
+    bool run(Stream* const pConsole, Stream** const pTerminal, int definedTerms);
+    bool processCharacter(char c);
 
-    void setMainLoopCallback( void (*func)(bool& requistQuit) );                   // set callback functions
-    void setUserFcnCallback( void (*func) (const void* pdata, const char valueType) );
+    bool setMainLoopCallback(void (*func)(bool& requistQuit));                   // set callback functions
+    bool setUserFcnCallback(void (*func) (const Val* pdata, const char* valueType));
 
-    void* fetchVarBaseAddress( TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& variableAttributes, char& sourceVarAttributes );
-    void* arrayElemAddress( void* varBaseAddress, int* dims );
+    void* fetchVarBaseAddress(TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& variableAttributes, char& sourceVarAttributes);
+    void* arrayElemAddress(void* varBaseAddress, int* dims);
 
     execResult_type  exec();
-    execResult_type  execParenthesesPair( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
+    execResult_type  execParenthesesPair(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount);
     execResult_type  execAllProcessedOperators();
 
-    execResult_type  execUnaryOperation( bool isPrefix );
+    execResult_type  execUnaryOperation(bool isPrefix);
     execResult_type  execInfixOperation();
-    execResult_type  execInternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
-    execResult_type  launchExternalFunction( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
-    execResult_type  terminateExternalFunction( bool addZeroReturnValue = false );
-    execResult_type execProcessedCommand( bool& isFunctionReturn );
-    execResult_type testForLoopCondition( bool& fail );
-    
-    execResult_type checkFmtSpecifiers(bool isDispFmt, bool isFmtString, int suppliedArgCount, bool* operandIsReal, Val* operands, char &numSpecifier, 
+    execResult_type  execInternalFunction(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount);
+    execResult_type  launchExternalFunction(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount);
+    execResult_type  terminateExternalFunction(bool addZeroReturnValue = false);
+    execResult_type execProcessedCommand(bool& isFunctionReturn);
+    execResult_type testForLoopCondition(bool& fail);
+
+    execResult_type checkFmtSpecifiers(bool isDispFmt, bool isFmtString, int suppliedArgCount, char* valueType, Val* operands, char& numSpecifier,
         bool& isHexFmt, int& width, int& precision, int& flags);
     execResult_type makeFormatString(int flags, bool isHexFmt, char* numFmt, char* fmtString);
     execResult_type printToString(int width, int precision, bool isFmtString, bool isHexFmt, Val* operands, char* fmtString,
         Val& fcnResult, int& charsPrinted);
 
-    void initFunctionDefaultParamVariables( char*& calledFunctionTokenStep, int suppliedArgCount, int paramCount );
-    void initFunctionLocalNonParamVariables( char* calledFunctionTokenStep, int paramCount, int localVarCount );
+    void initFunctionDefaultParamVariables(char*& calledFunctionTokenStep, int suppliedArgCount, int paramCount);
+    void initFunctionLocalNonParamVariables(char* calledFunctionTokenStep, int paramCount, int localVarCount);
 
-    void makeIntermediateConstant( LE_evalStack* pEvalStackLvl );
+    void makeIntermediateConstant(LE_evalStack* pEvalStackLvl);
 
-    Interpreter::execResult_type arrayAndSubscriptsToarrayElement( LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount );
+    Interpreter::execResult_type arrayAndSubscriptsToarrayElement(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount);
 
-    void saveLastValue( bool& overWritePrevious );
+    void saveLastValue(bool& overWritePrevious);
     void clearEvalStack();
-    void clearEvalStackLevels( int n );
+    void clearEvalStackLevels(int n);
     void clearFlowCtrlStack();
 
     execResult_type makeFormatString();
-    execResult_type deleteVarStringObject( LE_evalStack* pStackLvl );
-    execResult_type deleteIntermStringObject( LE_evalStack* pStackLvl );
+    execResult_type deleteVarStringObject(LE_evalStack* pStackLvl);
+    execResult_type deleteIntermStringObject(LE_evalStack* pStackLvl);
 
-    execResult_type copyValueArgsFromStack(LE_evalStack* &pStackLvl, int argCount, bool* argIsVar, bool* argIsReal, Val* args);
+    execResult_type copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, char* valueType, Val* args, bool passVarRefOrConst = false);
 
-    int findTokenStep( int tokenTypeToFind, char tokenCodeToFind, char*& pStep );
-    int jumpTokens( int n, char*& pStep, int& tokenCode );
-    int jumpTokens( int n, char*& pStep );
-    int jumpTokens( int n );
+    int findTokenStep(int tokenTypeToFind, char tokenCodeToFind, char*& pStep);
+    int jumpTokens(int n, char*& pStep, int& tokenCode);
+    int jumpTokens(int n, char*& pStep);
+    int jumpTokens(int n);
 
-    void PushTerminalToken( int& tokenType );
-    void pushResWord( int& tokenType );
-    void pushFunctionName( int& tokenType );
+    void PushTerminalToken(int& tokenType);
+    void pushResWord(int& tokenType);
+    void pushFunctionName(int& tokenType);
     void pushGenericName(int& tokenType);
     void pushConstant(int& tokenType);
-    void pushVariable( int& tokenType );
-    void pushIdentifierName( int& tokenType );
+    void pushVariable(int& tokenType);
+    void pushIdentifierName(int& tokenType);
 };
 
 
@@ -593,7 +594,7 @@ public:
         cmdcod_print,
         cmdcod_dispfmt,
         cmdcod_dispmod,
-        cmdcod_decCBproc, 
+        cmdcod_decCBproc,
         cmdcod_callback,
         cmdcod_test
     };
@@ -774,9 +775,9 @@ public:
         result_cmdHasTooManyParameters,
 
         // generic identifier errors
-        result_allUserCBAliasesSet =1900,
+        result_allUserCBAliasesSet = 1900,
         result_userCBAliasRedeclared,
-        
+
         // block command errors
         result_programCmdMissing = 2000,
         result_onlyImmediateMode,
@@ -859,7 +860,7 @@ private:
 
     struct OpenCmdBlockLvl {
         CmdBlockDef cmdBlockDef;                                // storage for info about block commands
-        char tokenStep [2];                                     // block commands: step n� of next block command, or to block start command, in open block
+        char tokenStep[2];                                     // block commands: step n� of next block command, or to block start command, in open block
         char fcnBlock_functionIndex;                            // function definition block only: function index
     };
 
@@ -937,47 +938,47 @@ public:
 
 
     // commands (FUNCTION, FOR, ...): allowed command parameters (naming: cmdPar_<n[nnn]> with A'=variable with (optional) assignment, 'E'=expression, 'E'=expression, 'R'=reserved word
-    static const char cmdPar_N [4];                             // command takes no parameters
-    static const char cmdPar_P[4];                              
+    static const char cmdPar_N[4];                             // command takes no parameters
+    static const char cmdPar_P[4];
     static const char cmdPar_100[4];
     static const char cmdPar_101[4];
     static const char cmdPar_102[4];
-    static const char cmdPar_E [4];
-    static const char cmdPar_E_2[4];                           
-    static const char cmdPar_E_3[4];                           
-    static const char cmdPar_E_opt [4];                         
-    static const char cmdPar_E_optMult [4];                     
-    static const char cmdPar_V [4];                             
-    static const char cmdPar_F [4];                             
-    static const char cmdPar_AEE [4];                           
-    static const char cmdPar_I_mult [4];                        
-    static const char cmdPar_AA_mult [4];                                  
+    static const char cmdPar_E[4];
+    static const char cmdPar_E_2[4];
+    static const char cmdPar_E_3[4];
+    static const char cmdPar_E_opt[4];
+    static const char cmdPar_E_optMult[4];
+    static const char cmdPar_V[4];
+    static const char cmdPar_F[4];
+    static const char cmdPar_AEE[4];
+    static const char cmdPar_I_mult[4];
+    static const char cmdPar_AA_mult[4];
 
 
 private:
     // block commands only (FOR, END, etc.): type of block, position in block, sequence check in block: allowed previous block commands 
-    static constexpr CmdBlockDef cmdBlockExtFunction { block_extFunction,block_startPos,block_na,block_na };                // 'IF' block mid position 2, min & max previous position is block start & block position 1, resp.
-    static constexpr CmdBlockDef cmdBlockWhile { block_while,block_startPos,block_na,block_na };                            // 'WHILE' block start
-    static constexpr CmdBlockDef cmdBlockFor { block_for, block_startPos,block_na,block_na };                               // 'FOR' block start
-    static constexpr CmdBlockDef cmdBlockIf { block_if,block_startPos,block_na,block_na };                                  // 'IF' block start
-    static constexpr CmdBlockDef cmdBlockIf_elseIf { block_if,block_midPos1,block_startPos,block_midPos1 };                 // 'IF' block mid position 1, min & max previous position is block start & block position 1, resp.
-    static constexpr CmdBlockDef cmdBlockIf_else { block_if,block_midPos2,block_startPos,block_midPos1 };                   // 'IF' block mid position 2, min & max previous position is block start & block position 1, resp.
+    static constexpr CmdBlockDef cmdBlockExtFunction{ block_extFunction,block_startPos,block_na,block_na };                // 'IF' block mid position 2, min & max previous position is block start & block position 1, resp.
+    static constexpr CmdBlockDef cmdBlockWhile{ block_while,block_startPos,block_na,block_na };                            // 'WHILE' block start
+    static constexpr CmdBlockDef cmdBlockFor{ block_for, block_startPos,block_na,block_na };                               // 'FOR' block start
+    static constexpr CmdBlockDef cmdBlockIf{ block_if,block_startPos,block_na,block_na };                                  // 'IF' block start
+    static constexpr CmdBlockDef cmdBlockIf_elseIf{ block_if,block_midPos1,block_startPos,block_midPos1 };                 // 'IF' block mid position 1, min & max previous position is block start & block position 1, resp.
+    static constexpr CmdBlockDef cmdBlockIf_else{ block_if,block_midPos2,block_startPos,block_midPos1 };                   // 'IF' block mid position 2, min & max previous position is block start & block position 1, resp.
 
     // 'alter flow' block commands require an open block of a specific type, NOT necessary in the current inner open block 
     // the second value ('position in block') is specified to indicate which type of open block is required (e.g. a RETURN command can only occur within a FUNCTION...END block)
-    static constexpr CmdBlockDef cmdBlockOpenBlock_loop { block_alterFlow,block_inOpenLoopBlock,block_na,block_na };        // only if an open FOR or WHILE block 
-    static constexpr CmdBlockDef cmdBlockOpenBlock_function { block_alterFlow,block_inOpenFunctionBlock,block_na,block_na };// only if an open FUNCTION definition block 
+    static constexpr CmdBlockDef cmdBlockOpenBlock_loop{ block_alterFlow,block_inOpenLoopBlock,block_na,block_na };        // only if an open FOR or WHILE block 
+    static constexpr CmdBlockDef cmdBlockOpenBlock_function{ block_alterFlow,block_inOpenFunctionBlock,block_na,block_na };// only if an open FUNCTION definition block 
 
     // other commands: first value indicates it's not a block command, second value specifies command (last positions not used)
-    static constexpr CmdBlockDef cmdProgram { block_none, cmd_program , block_na , block_na };
-    static constexpr CmdBlockDef cmdGlobalVar { block_none, cmd_globalVar , block_na , block_na };
-    static constexpr CmdBlockDef cmdLocalVar { block_none, cmd_localVar , block_na , block_na };
-    static constexpr CmdBlockDef cmdStaticVar { block_none, cmd_staticVar , block_na , block_na };
-    static constexpr CmdBlockDef cmdDeleteVar { block_none, cmd_deleteVar , block_na , block_na };
-    static constexpr CmdBlockDef cmdBlockOther { block_none, block_na,block_na,block_na };                                   // not a 'block' command
+    static constexpr CmdBlockDef cmdProgram{ block_none, cmd_program , block_na , block_na };
+    static constexpr CmdBlockDef cmdGlobalVar{ block_none, cmd_globalVar , block_na , block_na };
+    static constexpr CmdBlockDef cmdLocalVar{ block_none, cmd_localVar , block_na , block_na };
+    static constexpr CmdBlockDef cmdStaticVar{ block_none, cmd_staticVar , block_na , block_na };
+    static constexpr CmdBlockDef cmdDeleteVar{ block_none, cmd_deleteVar , block_na , block_na };
+    static constexpr CmdBlockDef cmdBlockOther{ block_none, block_na,block_na,block_na };                                   // not a 'block' command
 
     // used to close any type of currently open inner block
-    static constexpr CmdBlockDef cmdBlockGenEnd { block_genericEnd,block_endPos,block_na,block_endPos };            // all block types: block end 
+    static constexpr CmdBlockDef cmdBlockGenEnd{ block_genericEnd,block_endPos,block_na,block_endPos };            // all block types: block end 
 
 
     // terminals - should NOT start and end with an alphanumeric character or with an underscore
@@ -1014,10 +1015,10 @@ public:
     static constexpr char* term_not = "!";
     static constexpr char* term_testpostfix = "~";
 
-    static const ResWordDef _resWords [];                       // reserved word names
-    static const FuncDef _functions [];                         // function names with min & max arguments allowed
-    static const TerminalDef _terminals [];
-    static const uint8_t _maxAlphaCstLen { 60 };                 // max length of character strings, excluding terminating '\0' (also if stored in variables)
+    static const ResWordDef _resWords[];                       // reserved word names
+    static const FuncDef _functions[];                         // function names with min & max arguments allowed
+    static const TerminalDef _terminals[];
+    static const uint8_t _maxAlphaCstLen{ 60 };                 // max length of character strings, excluding terminating '\0' (also if stored in variables)
 
 
     // -----------------
@@ -1037,18 +1038,18 @@ private:
     bool _isCallbackCmd = false;
 
     bool _varDefAssignmentFound = false;
-    bool _leadingSpaceCheck { false };
+    bool _leadingSpaceCheck{ false };
 
     // parsing stack: value supplied when pushing data to stack OR value returned when stack drops 
-    char _minFunctionArgs { 0 };                                // if external function defined prior to call: min & max allowed arguments. Otherwise, counters to keep track of min & max actual arguments in previous calls 
-    char _maxFunctionArgs { 0 };
-    int _functionIndex { 0 };
-    int _variableNameIndex { 0 };
-    int _variableScope { 0 };
-    bool _arrayElemAssignmentAllowed { false };                    // value returned: assignment to array element is allowed next
-    bool _arrayElemPostfixIncrDecrAllowed { false };
+    char _minFunctionArgs{ 0 };                                // if external function defined prior to call: min & max allowed arguments. Otherwise, counters to keep track of min & max actual arguments in previous calls 
+    char _maxFunctionArgs{ 0 };
+    int _functionIndex{ 0 };
+    int _variableNameIndex{ 0 };
+    int _variableScope{ 0 };
+    bool _arrayElemAssignmentAllowed{ false };                    // value returned: assignment to array element is allowed next
+    bool _arrayElemPostfixIncrDecrAllowed{ false };
 
-    int _tokenIndex { 0 };
+    int _tokenIndex{ 0 };
     int _resWordCount;                                          // index into list of reserved words
     int _functionCount;                                         // index into list of internal (intrinsic) functions
     int _terminalCount;
@@ -1078,9 +1079,9 @@ private:
 
 public:
     const char* _pCmdAllowedParTypes;
-    int _cmdParSpecColumn { 0 };
-    int _cmdArgNo{0};
-    int _cmdExprArgTokenNo{0};
+    int _cmdParSpecColumn{ 0 };
+    int _cmdArgNo{ 0 };
+    int _cmdExprArgTokenNo{ 0 };
     bool _isCommand = false;                                    // a command is being parsed (instruction starting with a reserved word)
     int _parenthesisLevel = 0;                               // current number of open parentheses
     uint8_t _lastTokenGroup_sequenceCheck_bit = 0;                   // bits indicate which token group the last token parsed belongs to          
@@ -1094,38 +1095,38 @@ public:
     // ------------------------------------
 
 public:
-    bool parseAsResWord( char*& pNext, parseTokenResult_type& result );
-    bool parseAsNumber( char*& pNext, parseTokenResult_type& result );
-    bool parseAsStringConstant( char*& pNext, parseTokenResult_type& result );
-    bool parseTerminalToken( char*& pNext, parseTokenResult_type& result );
-    bool parseAsInternFunction( char*& pNext, parseTokenResult_type& result );
-    bool parseAsExternFunction( char*& pNext, parseTokenResult_type& result );
-    bool parseAsVariable( char*& pNext, parseTokenResult_type& result );
-    bool parseAsIdentifierName( char*& pNext, parseTokenResult_type& result );
+    bool parseAsResWord(char*& pNext, parseTokenResult_type& result);
+    bool parseAsNumber(char*& pNext, parseTokenResult_type& result);
+    bool parseAsStringConstant(char*& pNext, parseTokenResult_type& result);
+    bool parseTerminalToken(char*& pNext, parseTokenResult_type& result);
+    bool parseAsInternFunction(char*& pNext, parseTokenResult_type& result);
+    bool parseAsExternFunction(char*& pNext, parseTokenResult_type& result);
+    bool parseAsVariable(char*& pNext, parseTokenResult_type& result);
+    bool parseAsIdentifierName(char*& pNext, parseTokenResult_type& result);
 
-    bool checkCommandSyntax( parseTokenResult_type& result );
-    bool checkExtFunctionArguments( parseTokenResult_type& result, int& minArgCnt, int& maxArgCnt );
-    bool checkArrayDimCountAndSize( parseTokenResult_type& result, int* arrayDef_dims, int& dimCnt );
-    int getIdentifier( char** pIdentArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNew, bool isUserVar = false );
-    bool checkInternFuncArgArrayPattern( parseTokenResult_type& result );
-    bool checkExternFuncArgArrayPattern( parseTokenResult_type& result, bool isFunctionClosingParenthesis );
-    bool initVariable( uint16_t varTokenStep, uint16_t constTokenStep );
+    bool checkCommandSyntax(parseTokenResult_type& result);
+    bool checkExtFunctionArguments(parseTokenResult_type& result, int& minArgCnt, int& maxArgCnt);
+    bool checkArrayDimCountAndSize(parseTokenResult_type& result, int* arrayDef_dims, int& dimCnt);
+    int getIdentifier(char** pIdentArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNew, bool isUserVar = false);
+    bool checkInternFuncArgArrayPattern(parseTokenResult_type& result);
+    bool checkExternFuncArgArrayPattern(parseTokenResult_type& result, bool isFunctionClosingParenthesis);
+    bool initVariable(uint16_t varTokenStep, uint16_t constTokenStep);
 
 
-    MyParser( Interpreter* const pInterpreter );                                                 // constructor
+    MyParser(Interpreter* const pInterpreter);                                                 // constructor
     ~MyParser();                                                 // constructor
-    void resetMachine( bool withUserVariables );
-    void deleteIdentifierNameObjects( char** pIdentArray, int identifiersInUse, bool isUserVar = false );
-    void deleteArrayElementStringObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false );
-    void deleteVariableValueObjects( Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false );
+    void resetMachine(bool withUserVariables);
+    void deleteIdentifierNameObjects(char** pIdentArray, int identifiersInUse, bool isUserVar = false);
+    void deleteArrayElementStringObjects(Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false);
+    void deleteVariableValueObjects(Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false);
     void deleteLastValueFiFoStringObjects();
-    void deleteConstStringObjects( char* pToken );
-    parseTokenResult_type parseSource( char* const inputLine, char*& pErrorPos );
-    parseTokenResult_type  parseInstruction( char*& pInputLine );
+    void deleteConstStringObjects(char* pToken);
+    parseTokenResult_type parseSource(char* const inputLine, char*& pErrorPos);
+    parseTokenResult_type  parseInstruction(char*& pInputLine);
     void deleteParsedData();
-    bool allExternalFunctionsDefined( int& index );
-    void prettyPrintInstructions( bool oneInstruction, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr );
-    void printParsingResult( parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* const pErrorPos );
+    bool allExternalFunctionsDefined(int& index);
+    void prettyPrintInstructions(bool oneInstruction, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
+    void printParsingResult(parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* const pErrorPos);
 
 
 };

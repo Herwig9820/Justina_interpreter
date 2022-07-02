@@ -20,7 +20,7 @@ const char
 MyParser::cmdPar_N[4]{ cmdPar_none,                                     cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
 MyParser::cmdPar_P[4]{ cmdPar_ident,                                    cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
 MyParser::cmdPar_100[4]{ cmdPar_ident | cmdPar_multipleFlag,            cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
-MyParser::cmdPar_101[4]{ cmdPar_ident,                                  cmdPar_varOptAssignment | cmdPar_optionalFlag,  cmdPar_none,                                    cmdPar_none },
+MyParser::cmdPar_101[4]{ cmdPar_ident,                                  cmdPar_expression | cmdPar_optionalFlag,        cmdPar_expression | cmdPar_optionalFlag,        cmdPar_expression | cmdPar_optionalFlag, },
 MyParser::cmdPar_E[4]{ cmdPar_expression,                               cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
 MyParser::cmdPar_E_2[4]{ cmdPar_expression,                             cmdPar_expression,                              cmdPar_none,                                    cmdPar_none },
 MyParser::cmdPar_E_opt[4]{ cmdPar_expression | cmdPar_optionalFlag,     cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
@@ -1327,7 +1327,7 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
         if (_isAnyVarCmd && (_parenthesisLevel > 0)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }     // no parenthesis nesting in array declarations
         // parenthesis nesting in function definitions, only to declare an array parameter AND only if followed by a closing parenthesis 
         if ((_isExtFunctionCmd) && (_parenthesisLevel > 0) && (_lastTokenType != Interpreter::tok_isVariable)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
-        if (_isProgramCmd || _isDeleteVarCmd || _isDecCBprocCmd ) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
+        if (_isProgramCmd || _isDeleteVarCmd || _isDecCBprocCmd) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
         if (_isCallbackCmd && (_cmdArgNo == 0)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
 
         bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_incr) || (_lastTermCode == termcod_decr)) : false;
@@ -1734,7 +1734,7 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
         // allow token (pending further tests) if within most commands, if in immediate mode and inside a function   
         bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
         if (!tokenAllowed) { pNext = pch; result = result_operatorNotAllowedHere; return false; ; }
-        if (_isProgramCmd || _isDeleteVarCmd || _isDecCBprocCmd ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+        if (_isProgramCmd || _isDeleteVarCmd || _isDecCBprocCmd) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
         if (_isCallbackCmd && (_cmdArgNo == 0)) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
 
         // find out if the provided operator (prefix, infix or postfix) is allowed 
@@ -2047,7 +2047,7 @@ bool MyParser::parseAsExternFunction(char*& pNext, parseTokenResult_type& result
 
 bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
 
-    if (_isProgramCmd || _isDeleteVarCmd || _isDecCBprocCmd ) { return true; }                             // looking for an UNQUALIFIED identifier name; prevent it's mistaken for a variable name (same format)
+    if (_isProgramCmd || _isDeleteVarCmd || _isDecCBprocCmd) { return true; }                             // looking for an UNQUALIFIED identifier name; prevent it's mistaken for a variable name (same format)
     if (_isCallbackCmd && (_cmdArgNo == 0)) { return true; }
 
     // 1. Is this token a variable name ? 
@@ -2380,7 +2380,7 @@ bool MyParser::parseAsIdentifierName(char*& pNext, parseTokenResult_type& result
     result = result_tokenNotFound;                                                      // init: flag 'no token found'
     char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
 
-    bool stay = (_isProgramCmd || _isDeleteVarCmd || _isDecCBprocCmd );
+    bool stay = (_isProgramCmd || _isDeleteVarCmd || _isDecCBprocCmd);
     stay = stay || (_isCallbackCmd && (_cmdArgNo == 0));
     if (!stay) { return true; }
 

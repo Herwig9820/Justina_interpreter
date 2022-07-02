@@ -274,18 +274,21 @@ Interpreter::~Interpreter() {
 // *   set call back functons   *
 // ------------------------------
 
-void Interpreter::setMainLoopCallback(void (*func)(bool& requestQuit)) {
+bool Interpreter::setMainLoopCallback(void (*func)(bool& requestQuit)) {
 
     // a call from the user program initializes the address of a 'user callback' function.
     // Justina will call this user routine repeatedly and automatically, allowing  the user...
     // ...to execute a specific routine regularly (e.g. to maintain a TCP connection, to implement a heartbeat, ...)
     _callbackFcn = func;
+    return true;
 }
 
-void Interpreter::setUserFcnCallback(void(*func) (const void* data, const char valueType)) {
+bool Interpreter::setUserFcnCallback(void(*func) (const Val* data, const char* valueType)) {
 
     // each call from the user program initializes a next 'user callback' function address in an array of function addresses 
-    if (_userCBprocStartSet_count < _userCBarrayDepth) { _callbackUserProcStart[_userCBprocStartSet_count++] = func; }      // throw away if callback array full
+    if (_userCBprocStartSet_count >+ _userCBarrayDepth) { return false;}      // throw away if callback array full
+    _callbackUserProcStart[_userCBprocStartSet_count++] = func;
+    return true; // success
 }
 
 
@@ -305,16 +308,16 @@ bool Interpreter::run(Stream* const pConsole, Stream** const pTerminal, int defi
     _definedTerminals = definedTerms;
 
     //// ***** test hierna
-
+    /*
     long aaa = 5, bbb = 6;
     void* paaa = &aaa, * pbbb = &bbb;
 
     long dataArray[5]{ 10,11,12,13,14 };
-
-    if (_callbackUserProcStart[0] != nullptr) { _callbackUserProcStart[0](paaa, value_isFloat); }      //// test: roep 3 CB functies op
-    if (_callbackUserProcStart[1] != nullptr) { _callbackUserProcStart[1](pbbb, value_isFloat); }
-    if (_callbackUserProcStart[2] != nullptr) { _callbackUserProcStart[2](dataArray, value_isFloat); }
-
+    char valueType[3]{value_isFloat};
+    if (_callbackUserProcStart[0] != nullptr) { _callbackUserProcStart[0](paaa, valueType); }      //// test: roep 3 CB functies op
+    if (_callbackUserProcStart[1] != nullptr) { _callbackUserProcStart[1](pbbb, valueType); }
+    if (_callbackUserProcStart[2] != nullptr) { _callbackUserProcStart[2](dataArray, valueType); }
+    */
     //// ***** test tot hier
 
     do {

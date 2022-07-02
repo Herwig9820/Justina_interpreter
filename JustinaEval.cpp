@@ -360,7 +360,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
             if (opIsReal) {
                 char s[20];  // largely long enough to print real values with "G" specifier, without leading characters
                 printString = s;    // pointer
-                operand.realConst = operandIsVar ? (*pstackLvl->varOrConst.value.pRealConst) : pstackLvl->varOrConst.value.realConst;
+                operand.realConst = (operandIsVar ? (*pstackLvl->varOrConst.value.pRealConst) : pstackLvl->varOrConst.value.realConst);
                 sprintf(s, "%.3G", operand.realConst);
             }
             else {
@@ -389,12 +389,13 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         // mandatory argument 1: width
         // optional arguments 2-3 (relevant for numbers only): precision (# decimals, specifier (F:fixed, E:scientific, G:general, X:hex)]
 
-        bool argIsVar[3], valueIsReal[3];
+        bool argIsVar[3];
+        char valueType[3];
         Val args[3];
 
-        copyValueArgsFromStack(pstackLvl, cmdParamCount, argIsVar, valueIsReal, args);
+        copyValueArgsFromStack(pstackLvl, cmdParamCount, argIsVar, valueType, args);
 
-        execResult_type execResult = checkFmtSpecifiers(true, false, cmdParamCount, valueIsReal, args, _dispNumSpecifier[0],
+        execResult_type execResult = checkFmtSpecifiers(true, false, cmdParamCount, valueType, args, _dispNumSpecifier[0],
             _dispIsHexFmt, _dispWidth, _dispNumPrecision, _dispFmtFlags); if (execResult != result_execOK) { return execResult; }
         makeFormatString(_dispFmtFlags, _dispIsHexFmt, _dispNumSpecifier, _dispNumberFmtString);       // for numbers
 
@@ -411,12 +412,13 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
     case MyParser::cmdcod_dispmod:      // takes two arguments: width & flags
     {
-        bool argIsVar[2], valueIsReal[2];               // 2 arguments
+        bool argIsVar[2];
+        char valueType[2];               // 2 arguments
         Val args[2];
 
-        copyValueArgsFromStack(pstackLvl, cmdParamCount, argIsVar, valueIsReal, args);
+        copyValueArgsFromStack(pstackLvl, cmdParamCount, argIsVar, valueType, args);
 
-        for (int i = 0; i < cmdParamCount; i++) { if (!valueIsReal[i]) { execResult = result_arg_numValueExpected; return execResult; } }
+        for (int i = 0; i < cmdParamCount; i++) { if (valueType[i] != value_isFloat) { execResult = result_arg_numValueExpected; return execResult; } }
         if (((args[0].realConst != 0) && (args[0].realConst != 1) && (args[0].realConst != 2)) || ((args[1].realConst != 0) && (args[1].realConst != 1))) { execResult = result_arg_invalid; return execResult; };
 
         // if last result printing switched back on, then prevent printing pending last result (if any)
@@ -443,23 +445,18 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
             if (strcmp(_callbackUserProcAlias[index], alias) == 0) { isDeclared = true; break; }   // alias declared ? break
         }
         if (!isDeclared) { execResult = result_aliasNotDeclared; return execResult; }
-
         pstackLvl = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
 
         // arguments 2[..4]: variable references to store 
+        bool argIsVar[3]{};
+        char valueType[3]{ value_noValue,value_noValue,value_noValue };               // maximum 3 arguments
+        Val args[3]{  };
 
-        char valueType{};
-        void* varRef = nullptr;
-        if (cmdParamCount == 2) {       // variable provided for data transfer 
-            // the argument is a variable (verified during parsing) but we still need to check that it contains a real value (not a string pointer)
-            valueType = *pstackLvl->varOrConst.varTypeAddress & value_typeMask;
-            if ((uint8_t)valueType != value_isFloat) { execResult = result_numericVariableExpected; return execResult; }
-            varRef = pstackLvl->varOrConst.value.pVariable;
+        if (cmdParamCount >= 2) {
+            copyValueArgsFromStack(pstackLvl, cmdParamCount - 1, argIsVar, valueType, args, true);    // first argument processed (but still on the sta
+            for (int i = 0; i < cmdParamCount -1; i++) {if (argIsVar[i]){valueType[i] |= 0x80; } }      // bit b7 indicates 'variable' (scalar or array element)
         }
-        Serial.print(">index: "); Serial.println(index);
-        Serial.print(">float: "); Serial.println(* (float*) varRef );
-        _callbackUserProcStart[index](varRef, valueType);
-        Serial.print(">float: "); Serial.println(*(float*)varRef);
+        _callbackUserProcStart[index](args, valueType);
 
         clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings
 
@@ -506,7 +503,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                     bool operandIsVar = (pstackLvl->varOrConst.tokenType == tok_isVariable);
                     char valueType = operandIsVar ? (*pstackLvl->varOrConst.varTypeAddress & value_typeMask) : pstackLvl->varOrConst.valueType;
                     if (valueType != value_isFloat) { execResult = result_testexpr_numberExpected; return execResult; }
-                    operand.realConst = operandIsVar ? *pstackLvl->varOrConst.value.pRealConst : pstackLvl->varOrConst.value.realConst;
+                    operand.realConst = (operandIsVar ? *pstackLvl->varOrConst.value.pRealConst : pstackLvl->varOrConst.value.realConst);
 
                     if (i == 1) {
                         ((blockTestData*)_pFlowCtrlStackTop)->pControlVar = pstackLvl->varOrConst.value.pRealConst;      // pointer to variable (containing a real constant)
@@ -847,8 +844,8 @@ void Interpreter::saveLastValue(bool& overWritePrevious) {
     bool lastValueReal = (_pEvalStackTop->varOrConst.valueType == value_isFloat);
     bool lastValueIntermediate = ((_pEvalStackTop->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate);
 
-    if (lastValueReal) { lastvalue.value.realConst = lastValueIsVariable ? (*_pEvalStackTop->varOrConst.value.pRealConst) : _pEvalStackTop->varOrConst.value.realConst; }
-    else { lastvalue.value.pStringConst = lastValueIsVariable ? (*_pEvalStackTop->varOrConst.value.ppStringConst) : _pEvalStackTop->varOrConst.value.pStringConst; }
+    if (lastValueReal) { lastvalue.value.realConst = (lastValueIsVariable ? (*_pEvalStackTop->varOrConst.value.pRealConst) : _pEvalStackTop->varOrConst.value.realConst); }
+    else { lastvalue.value.pStringConst = (lastValueIsVariable ? (*_pEvalStackTop->varOrConst.value.ppStringConst) : _pEvalStackTop->varOrConst.value.pStringConst); }
 
     if ((lastValueReal) || (!lastValueReal && (lastvalue.value.pStringConst == nullptr))) {
         lastResultValueFiFo[0] = lastvalue.value;
@@ -1297,10 +1294,10 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     bool opResultReal = op2real;                                                                    // do NOT set to operand 1 value type (would not work in case of assignment)
 
     // fetch operands: real constants or pointers to character strings
-    if (op1real) { operand1.realConst = operand1IsVar ? (*_pEvalStackMinus2->varOrConst.value.pRealConst) : _pEvalStackMinus2->varOrConst.value.realConst; }
-    else { operand1.pStringConst = operand1IsVar ? (*_pEvalStackMinus2->varOrConst.value.ppStringConst) : _pEvalStackMinus2->varOrConst.value.pStringConst; }
-    if (op2real) { operand2.realConst = operand2IsVar ? (*_pEvalStackTop->varOrConst.value.pRealConst) : _pEvalStackTop->varOrConst.value.realConst; }
-    else { operand2.pStringConst = operand2IsVar ? (*_pEvalStackTop->varOrConst.value.ppStringConst) : _pEvalStackTop->varOrConst.value.pStringConst; }
+    if (op1real) { operand1.realConst = (operand1IsVar ? (*_pEvalStackMinus2->varOrConst.value.pRealConst) : _pEvalStackMinus2->varOrConst.value.realConst); }
+    else { operand1.pStringConst = (operand1IsVar ? (*_pEvalStackMinus2->varOrConst.value.ppStringConst) : _pEvalStackMinus2->varOrConst.value.pStringConst); }
+    if (op2real) { operand2.realConst = (operand2IsVar ? (*_pEvalStackTop->varOrConst.value.pRealConst) : _pEvalStackTop->varOrConst.value.realConst); }
+    else { operand2.pStringConst = (operand2IsVar ? (*_pEvalStackTop->varOrConst.value.ppStringConst) : _pEvalStackTop->varOrConst.value.pStringConst); }
 
     bool op1emptyString = op1real ? false : (operand1.pStringConst == nullptr);
     bool op2emptyString = op2real ? false : (operand2.pStringConst == nullptr);
@@ -1518,8 +1515,8 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
             operandIsReal[i] = ((uint8_t)operandValueType[i] == value_isFloat);
 
             // fetch operands: real constants or pointers to character strings (pointers to arrays: not used) 
-            if (operandIsReal) { operands[i].realConst = operandIsVar[i] ? (*pStackLvl->varOrConst.value.pRealConst) : pStackLvl->varOrConst.value.realConst; }
-            else { operands[i].pStringConst = operandIsVar[i] ? (*pStackLvl->varOrConst.value.ppStringConst) : pStackLvl->varOrConst.value.pStringConst; }
+            if (operandIsReal) { operands[i].realConst = (operandIsVar[i] ? (*pStackLvl->varOrConst.value.pRealConst) : pStackLvl->varOrConst.value.realConst); }
+            else { operands[i].pStringConst = (operandIsVar[i] ? (*pStackLvl->varOrConst.value.ppStringConst) : pStackLvl->varOrConst.value.pStringConst); }
 
             pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);       // value fetched: go to next argument
         }
@@ -1720,7 +1717,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
         // value to format is the correct type for the function ?
         if (isFmtString == operandIsReal[0]) { return isFmtString ? result_arg_stringExpected : result_arg_numValueExpected; }
 
-        execResult_type execResult = checkFmtSpecifiers(false, isFmtString, suppliedArgCount, operandIsReal, operands, specifier[0], isHexFmt, width, precision, flags); if (execResult != result_execOK) { return execResult; }
+        execResult_type execResult = checkFmtSpecifiers(false, isFmtString, suppliedArgCount, operandValueType, operands, specifier[0], isHexFmt, width, precision, flags); if (execResult != result_execOK) { return execResult; }
         if (!isFmtString) { _printNumSpecifier[0] = specifier[0]; }
 
         fcnResultIsReal = false;        // because formatted string
@@ -1826,12 +1823,12 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
 // check format specifiers
 // -----------------------
 
-Interpreter::execResult_type Interpreter::checkFmtSpecifiers(bool isDispFmt, bool isFmtString, int suppliedArgCount, bool* operandIsReal, Val* operands, char& numSpecifier,
+Interpreter::execResult_type Interpreter::checkFmtSpecifiers(bool isDispFmt, bool isFmtString, int suppliedArgCount, char* valueType, Val* operands, char& numSpecifier,
     bool& isHexFmt, int& width, int& precision, int& flags) {
     for (int argNo = (isDispFmt ? 1 : 2); argNo <= suppliedArgCount; argNo++) {
         // Specifier argument ? Single character specifier (FfEeGgXx) expected
         if (!isFmtString && (argNo == (isDispFmt ? 3 : 4))) {     // position of specifier in arg list varies
-            if (operandIsReal[argNo - 1]) { return result_arg_stringExpected; }
+            if (valueType[argNo - 1] != value_isStringPointer) { return result_arg_stringExpected; }
             if (operands[argNo - 1].pStringConst == nullptr) { return result_arg_invalid; }
             if (strlen(operands[argNo - 1].pStringConst) != 1) { return result_arg_invalid; }
             numSpecifier = operands[argNo - 1].pStringConst[0];
@@ -1843,7 +1840,7 @@ Interpreter::execResult_type Interpreter::checkFmtSpecifiers(bool isDispFmt, boo
         // Width, precision flags ? Numeric arguments expected
         else if (argNo != (isFmtString ? 5 : 6)) {      // (exclude optional argument returning #chars printed from tests)
 
-            if (!operandIsReal[argNo - 1]) { return result_arg_numValueExpected; }                                               // numeric ?
+            if (valueType[argNo - 1] != value_isFloat) { return result_arg_numValueExpected; }                                               // numeric ?
             if (operands[argNo - 1].realConst < 0) { return result_arg_outsideRange; }                                           // positive ?
             ((argNo == (isDispFmt ? 1 : 2)) ? width : (argNo == (isDispFmt ? 2 : 3)) ? precision : flags) = operands[argNo - 1].realConst;                             // set with, precision, flags to respective argument
             if (operands[argNo - 1].realConst != ((argNo == (isDispFmt ? 1 : 2)) ? width : (argNo == (isDispFmt ? 2 : 3)) ? precision : flags)) { return result_arg_invalid; }    // integer ?
@@ -1970,17 +1967,24 @@ Interpreter::execResult_type Interpreter::deleteIntermStringObject(LE_evalStack*
 // copy command arguments or internal function arguments from evaluation stack
 // ---------------------------------------------------------------------------
 
-Interpreter::execResult_type Interpreter::copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, bool* argIsReal, Val* args) {
+Interpreter::execResult_type Interpreter::copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, char* valueType, Val* args, bool passVarRefOrConst) {
     execResult_type execResult;
 
     for (int i = 0; i < argCount; i++) {               // 2 arguments
         argIsVar[i] = (pStackLvl->varOrConst.tokenType == tok_isVariable);
-        char valueType = argIsVar[i] ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
-        argIsReal[i] = ((uint8_t)valueType == value_isFloat);
+        valueType[i] = argIsVar[i] ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
 
-        // fetch operands: real constants or pointers to character strings (note: scalars expected)
-        if (argIsReal[i]) { args[i].realConst = argIsVar[i] ? (*pStackLvl->varOrConst.value.pRealConst) : pStackLvl->varOrConst.value.realConst; }
-        else { args[i].pStringConst = argIsVar[i] ? (*pStackLvl->varOrConst.value.ppStringConst) : pStackLvl->varOrConst.value.pStringConst; }
+        // if variable, pass veriable reference instead of value ? (constants: always pass value)
+        if (argIsVar[i] && passVarRefOrConst) {
+            args[i].pVariable = pStackLvl->varOrConst.value.pVariable;
+        }
+
+        // pass value for variables and constants ?
+        else {
+            // fetch operands: real constants or pointers to character strings (note: scalars expected)
+            if (valueType[i] == value_isFloat) { args[i].realConst = (argIsVar[i] ? (*pStackLvl->varOrConst.value.pRealConst) : pStackLvl->varOrConst.value.realConst); }
+            else { args[i].pStringConst = (argIsVar[i] ? (*pStackLvl->varOrConst.value.ppStringConst) : pStackLvl->varOrConst.value.pStringConst); }
+        }
 
         pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
     }

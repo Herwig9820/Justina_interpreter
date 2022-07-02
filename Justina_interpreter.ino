@@ -224,16 +224,16 @@ void loop() {
             // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
             // this callback function will be called regularly, e.g. every time the interpreter reads a character
             pcalculator->setMainLoopCallback((&housekeeping));                    // set callback function to housekeeping routine in this .ino file (pass 'housekeeping' routine address to Interpreter library)
-            
-            pcalculator->setUserFcnCallback((&userFcn_readPort));                // pass user function addresses to Interpreter library 
+
+            pcalculator->setUserFcnCallback((&userFcn_readPort));                // pass user function addresses to Interpreter library (return value 'true' indicates success)
             pcalculator->setUserFcnCallback((&userFcn_writePort));
-            pcalculator->setUserFcnCallback((&userFcn_togglePort));                 
+            pcalculator->setUserFcnCallback((&userFcn_togglePort));
             interpreterInMemory = pcalculator->run(pConsole, pTerminal, terminalCount);                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
             if (!interpreterInMemory) {                                               // interpreter not running anymore ?
                 delete pcalculator;                                                     // cleanup and delete calculator object itself
                 pcalculator = nullptr;                                                  // only to indicate memory is released
             }
-            
+
             withinApplication = false;                                                  // return from application
             break;
 
@@ -364,20 +364,70 @@ void heartbeat() {
 
 //// test ----------------------------
 
-void userFcn_readPort(const void* pdata, const char valueType) {     // data: can be anything, as long as user functin knows what to expect
-    Serial.print("- read port - float: "); Serial.println(*(float*)pdata);
-    *(float*)pdata += 10;
+void userFcn_readPort(const Interpreter::Val* pdata, const char* valueType) {     // data: can be anything, as long as user function knows what to expect
+
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // when returning changed values, NEVER
+    // - change the value type (float, character string)
+    // - strings: change the length of it (you can change the characters in the string)
+    //   -> empty strings can not be changed at all (in Justina, an empty string is just a null pointer)
+    // because you risk serious trouble when you do so (hanging system, wrong results, ...)
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    
+    // argument pdata is an array containing from 0 to 3 variable references and / or constants  
+    // argument valueType is an array containing the corresponding values (or an indication that no value is present)
+
+    // see sample code to retrieve values, below
+
+    //// voorbeeld tonen: testen op value_noValue
+
+    bool isVariable{}, isReal{};
+
+    isReal = ((valueType[0] & Interpreter::value_typeMask ) == Interpreter::value_isFloat);
+    isVariable = (valueType[0] & 0x80);           // bit b7 indicates 'variable' (scalar or array element)
+    
+    float num;          // variables and constants: receives value
+    char* pText;
+    
+    float* pNum;        // numeric variables only: receives pointer to value  
+
+    // retrieve value (float or pointer to char string); either from a Justina variable reference (value stored in a scalar or array variable element) or from a Justina constant
+    // --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+    if (isReal) { num = (isVariable ? *pdata[0].pRealConst : pdata[0].realConst); }
+    else { pText = (isVariable ? *pdata[0].ppStringConst : pdata[0].pStringConst); }
+
+    // variables containing floats only: retrieve pointer to the value (for char string variables, we have the pointer already)
+    if(isVariable) {if (isReal) {pNum = pdata[0].pRealConst;} }     // only for faster typing and better readability
+
+    
+    // change the value (number or character string) of a passed variable reference
+    // ----------------------------------------------------------------------------
+    
+    // if a variable reference (not a constant value), then change the value and return it  
+    if (isVariable) {
+        if (isReal) { *pNum +=10; Serial.print("Changed real number: "); Serial.println(*pNum);   }
+        // in Justina, a pointer to an empty string ("") does not point to an empty string but contains a null pointer
+        else if (pText != nullptr) {pText[0] = '!'; Serial.print("Changed text: "); Serial.println(pText);}
+    }
+    
+    
+    // read a constant passed 
+    // ----------------------
+
+    // you can NOT return values to array 'pdata'; but for character strings this is actually a pointer to the original string
+    // so, the original string can be changed, but you should NEVER do it 
+    else { 
+    if (isReal) {  Serial.print("Real number: "); Serial.println(num);   
+    }
+    else if (pText != nullptr) { Serial.print("Text: "); Serial.println(pText);   }
+    }
 };
 
-void userFcn_writePort(const void* pdata, const char valueType) {
-    Serial.print("- write port - float: "); Serial.println(*(float*)pdata);
-    *(float*) pdata += 20;
-    float f = *((float*)pdata +1);      // next element
-    Serial.print("- next element: "); Serial.println(f);
+void userFcn_writePort(const Interpreter::Val* pdata, const char* valueType) {
+    Serial.println("Callback: write bits"); 
 };
 
-void userFcn_togglePort(const void* pdata, const char valueType) {
-    Serial.print("callback: read port: ");  Serial.println((uint32_t)pdata - RAMSTART);
-    long* dataValue =( (long*) pdata);
-    Serial.print("               data: ");  Serial.println(*dataValue);
+void userFcn_togglePort(const Interpreter::Val* pdata, const char* valueType) {
+    Serial.println("Callback: toggle bits");
 };
