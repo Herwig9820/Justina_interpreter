@@ -441,7 +441,6 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         bool isDeclared = false;
         int index{};
         for (index = 0; index < _userCBprocAliasSet_count; index++) {
-            Serial.print(_callbackUserProcAlias[index]); Serial.print(" "); Serial.println(alias);
             if (strcmp(_callbackUserProcAlias[index], alias) == 0) { isDeclared = true; break; }   // alias declared ? break
         }
         if (!isDeclared) { execResult = result_aliasNotDeclared; return execResult; }
@@ -460,8 +459,8 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                 values[i] = args[i].pVariable;        // suits all (constants as well, because in this case, we supply a pointer to it)
             }
         }
-        
-        _callbackUserProcStart[index](values, valueType);
+
+        _callbackUserProcStart[index](values, valueType);       // call back user procedure
 
         for (int i = 0; i < 3; i++) {
             // delete any copies of constant strings made before calling the callback procedure
@@ -471,8 +470,8 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 #endif
                 delete[] args[i].pStringConst;
                 intermediateStringObjectCount--;
+            }
         }
-    }
 
         clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings
 
@@ -679,7 +678,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     }
     break;
 
-}
+    }
 
     return result_execOK;
 }
@@ -836,9 +835,9 @@ void Interpreter::saveLastValue(bool& overWritePrevious) {
                 // note: this is always an intermediate string
                 delete[] lastResultValueFiFo[itemToRemove].pStringConst;
                 lastValuesStringObjectCount--;
+            }
         }
     }
-}
     else {
         _lastResultCount++;     // only adding an item, without removing previous one
     }
@@ -884,7 +883,7 @@ void Interpreter::saveLastValue(bool& overWritePrevious) {
 #endif
             delete[] lastvalue.value.pStringConst;
             intermediateStringObjectCount--;
-    }
+        }
     }
 
     // store new last value type
@@ -1832,7 +1831,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
     _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
 
     return result_execOK;
-    }
+}
 
 
 // -----------------------
@@ -1989,16 +1988,15 @@ Interpreter::execResult_type Interpreter::copyValueArgsFromStack(LE_evalStack*& 
     for (int i = 0; i < argCount; i++) {               // 2 arguments
         argIsVar[i] = (pStackLvl->varOrConst.tokenType == tok_isVariable);
         valueType[i] = argIsVar[i] ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
-        if (valueType[i] == value_noValue) { continue; }
+        if (valueType[i] == value_noValue) {  continue; }
 
-        // if variable, pass veriable reference instead of value ? (constants: always pass value)
+        // always pass reference  (to float or character string pointer) for variables and constants ?
         if (passVarRefOrConstCopy) {
             // fetch operands: POINTERS to real constants or pointers to character strings (note: scalars expected)
-            if (valueType[i] == value_isFloat) { args[i].pRealConst = (argIsVar[i] ? (pStackLvl->varOrConst.value.pRealConst) : &pStackLvl->varOrConst.value.realConst); }
-            else if (argIsVar[i]) { args[i].pStringConst = *pStackLvl->varOrConst.value.ppStringConst; }
-            else {      // constant string: make a copy of the string to prevent the user from changing it
+            if (valueType[i] == value_isFloat) { args[i].pRealConst = (argIsVar[i] ? (pStackLvl->varOrConst.value.pRealConst) : &pStackLvl->varOrConst.value.realConst);  }
+            else if (argIsVar[i]) { args[i].pStringConst = *pStackLvl->varOrConst.value.ppStringConst;  }
+            else {      // constant string: make a copy of the string and return a pointer to the copy to prevent changing the original string
                 args[i].pStringConst = new char[strlen(pStackLvl->varOrConst.value.pStringConst) + 1];
-                strcpy(args[i].pStringConst, pStackLvl->varOrConst.value.pStringConst);
                 intermediateStringObjectCount++;
                 strcpy(args[i].pStringConst, pStackLvl->varOrConst.value.pStringConst);
 #if printCreateDeleteHeapObjects
@@ -2007,7 +2005,7 @@ Interpreter::execResult_type Interpreter::copyValueArgsFromStack(LE_evalStack*& 
             }
         }
 
-        // always pass value (float or character string pointer) for variables and constants ?
+        // always pass value (float or character string pointer) for variables and constants 
         else {
             // fetch operands: real constants or pointers to character strings (note: scalars expected)
             if (valueType[i] == value_isFloat) { args[i].realConst = (argIsVar[i] ? (*pStackLvl->varOrConst.value.pRealConst) : pStackLvl->varOrConst.value.realConst); }

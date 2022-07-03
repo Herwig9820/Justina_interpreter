@@ -378,7 +378,7 @@ struct Values {
 // in Justina, the mechanism is used to allow the user to write specific procedures in C++ (not in Justina) and call them afterwards from within Justina
 // 
 // a user callback function should contain two parameters, as shown below
-// parameter 1 (const void** pdata) is a three-element array optionally containing pointers to data 
+// parameter 1 (const void** pdata) is a three-element array containing void pointers to data (if data present) 
 // parameter 2 (const char* valueType) is a three-element array indicating presence of corresponding data, the value type, and whether the data is a Justina variable or constant
 // if data is present, it can be be numeric (float) or text (char*)
 // the data pointers can point to a Justina scalar variable, a Justina array element or a constant 
@@ -388,18 +388,18 @@ struct Values {
 // 
 // refer to Justina documentation to learn how to call a user procedure ('callback') from Justina and change the maximum number allowed
 // 
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-// !! 
-// !! when returning changed values
-// !! - NEVER change the value type (float, character string)
-// !! - NEVER increase the length of strings (you can change the characters in the string, however)
-// !!   -> empty strings can not be changed at all (in Justina, an empty string is just a null pointer)
-// !! because you risk serious trouble when you do so (hanging system, wrong results, ...)
-// !! 
-// !! //// you can not change values in const array 'pdata'; but for character strings this is actually a pointer to the original string
-// !! so, the original string can be changed, but you should NEVER do it 
-// !! 
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// !!                                                                                                                                  !!
+// !! when returning changed values                                                                                                    !!
+// !! - NEVER change the value type (float, character string)                                                                          !!
+// !! - NEVER increase the length of strings (you can change the characters in the string, however)                                    !! 
+// !!   -> empty strings can not be changed at all (in Justina, an empty string is just a null pointer)                                !!
+// !! because you risk serious trouble when you do so (hanging system, wrong results, ...)                                             !!
+// !!                                                                                                                                  !!
+// !! you can not change the pointers in const array 'pdata', nor can you change the value types in const array 'valueType'            !!
+// !! but you can change the data supplied (this will be without any effect for Justina constants after return)                        !!
+// !!                                                                                                                                  !!
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
 // --------------------------------------------------
@@ -416,16 +416,18 @@ void userFcn_readPort(const void** pdata, const char* valueType) {     // data: 
         bool isReal = ((valueType[i] & Interpreter::value_typeMask) == Interpreter::value_isFloat);
         bool isVariable = (valueType[i] & 0x80);                                                                 // bit b7 indicates 'variable' (scalar or array element)
 
-        char* pText;
-        float* pNum;
+        char* pText{};          // character pointer
+        float* pNum{};          // pointer to float
+        
+        if (isReal) { pNum = (float*)pdata[i]; }   // copy a pointer to a float argument or copy the float itself (two ways)
+        else { pText = (char*)pdata[i] ;}                                               // copy a pointer to a character string argument
 
-        if (isReal) { pNum = (float*)pdata[i]; }
-        else { pText = (char*)pdata[i]; }
-
-        // change data (will have no effect for constants) - you can always check for variable / constant (see above)
+        // change data (-> after return, will have no effect for constants) - you can always check for variable / constant (see above)
         if (isReal) { *pNum += 10; }
         // in Justina, a pointer to an empty string ("") does not point to an empty string but contains a null pointer: test this first
-        else if (pText != nullptr) { if(strlen(pText) >= 5) pText[4] = '!';  }
+        else if (pText != nullptr) { if (strlen(pText) >= 5) pText[3] = pText[4]; pText[4] = '>'; }
+    
+        pConsole->print("*** value "); Serial.print(i); Serial.print(" returned: "); if (isReal) {pConsole->println(*pNum); } else {pConsole->println(pText); }
     };
 }
 
