@@ -283,7 +283,7 @@ bool Interpreter::setMainLoopCallback(void (*func)(bool& requestQuit)) {
     return true;
 }
 
-bool Interpreter::setUserFcnCallback(void(*func) (const Val* data, const char* valueType)) {
+bool Interpreter::setUserFcnCallback(void(*func) (const void** data, const char* valueType)) {
 
     // each call from the user program initializes a next 'user callback' function address in an array of function addresses 
     if (_userCBprocStartSet_count >+ _userCBarrayDepth) { return false;}      // throw away if callback array full
@@ -306,19 +306,6 @@ bool Interpreter::run(Stream* const pConsole, Stream** const pTerminal, int defi
     _isPrompt = false;                 // end of parsing
     _pTerminal = pTerminal;
     _definedTerminals = definedTerms;
-
-    //// ***** test hierna
-    /*
-    long aaa = 5, bbb = 6;
-    void* paaa = &aaa, * pbbb = &bbb;
-
-    long dataArray[5]{ 10,11,12,13,14 };
-    char valueType[3]{value_isFloat};
-    if (_callbackUserProcStart[0] != nullptr) { _callbackUserProcStart[0](paaa, valueType); }      //// test: roep 3 CB functies op
-    if (_callbackUserProcStart[1] != nullptr) { _callbackUserProcStart[1](pbbb, valueType); }
-    if (_callbackUserProcStart[2] != nullptr) { _callbackUserProcStart[2](dataArray, valueType); }
-    */
-    //// ***** test tot hier
 
     do {
         if (_callbackFcn != nullptr) { _callbackFcn(quitNow); }

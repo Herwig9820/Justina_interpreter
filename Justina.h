@@ -236,6 +236,7 @@ public:
         float** ppArray;
     };
 
+    
     struct ExtFunctionData {
         char* pExtFunctionStartToken;                           // ext. function: pointer to start of function (token)
         char paramOnlyCountInFunction;
@@ -485,7 +486,7 @@ public:
 
     void (*_callbackFcn)(bool& requestQuit);                                         // pointer to callback function for heartbeat
 
-    void (*_callbackUserProcStart[_userCBarrayDepth])(const Val* pdata, const char* valueType);             // user functions: pointers to c++ procedures                                   
+    void (*_callbackUserProcStart[_userCBarrayDepth])(const void** pdata, const char* valueType);             // user functions: pointers to c++ procedures                                   
 
     char _callbackUserProcAlias[_userCBarrayDepth][_maxIdentifierNameLen + 1];       // user functions aliases                                   
     void* _callbackUserData[_userCBarrayDepth][3]{ nullptr };                          // user functions: pointers to data                                   
@@ -501,7 +502,7 @@ public:
     bool processCharacter(char c);
 
     bool setMainLoopCallback(void (*func)(bool& requistQuit));                   // set callback functions
-    bool setUserFcnCallback(void (*func) (const Val* pdata, const char* valueType));
+    bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType));
 
     void* fetchVarBaseAddress(TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& variableAttributes, char& sourceVarAttributes);
     void* arrayElemAddress(void* varBaseAddress, int* dims);

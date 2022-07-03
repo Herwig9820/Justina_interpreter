@@ -364,70 +364,81 @@ void heartbeat() {
 
 //// test ----------------------------
 
-void userFcn_readPort(const Interpreter::Val* pdata, const char* valueType) {     // data: can be anything, as long as user function knows what to expect
-
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    // when returning changed values, NEVER
-    // - change the value type (float, character string)
-    // - strings: change the length of it (you can change the characters in the string)
-    //   -> empty strings can not be changed at all (in Justina, an empty string is just a null pointer)
-    // because you risk serious trouble when you do so (hanging system, wrong results, ...)
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    
-    // argument pdata is an array containing from 0 to 3 variable references and / or constants  
-    // argument valueType is an array containing the corresponding values (or an indication that no value is present)
-
-    // see sample code to retrieve values, below
-
-    //// voorbeeld tonen: testen op value_noValue
-
-    bool isVariable{}, isReal{};
-
-    isReal = ((valueType[0] & Interpreter::value_typeMask ) == Interpreter::value_isFloat);
-    isVariable = (valueType[0] & 0x80);           // bit b7 indicates 'variable' (scalar or array element)
-    
-    float num;          // variables and constants: receives value
+struct Values {
+    float* pNum;
     char* pText;
-    
-    float* pNum;        // numeric variables only: receives pointer to value  
-
-    // retrieve value (float or pointer to char string); either from a Justina variable reference (value stored in a scalar or array variable element) or from a Justina constant
-    // --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-    if (isReal) { num = (isVariable ? *pdata[0].pRealConst : pdata[0].realConst); }
-    else { pText = (isVariable ? *pdata[0].ppStringConst : pdata[0].pStringConst); }
-
-    // variables containing floats only: retrieve pointer to the value (for char string variables, we have the pointer already)
-    if(isVariable) {if (isReal) {pNum = pdata[0].pRealConst;} }     // only for faster typing and better readability
-
-    
-    // change the value (number or character string) of a passed variable reference
-    // ----------------------------------------------------------------------------
-    
-    // if a variable reference (not a constant value), then change the value and return it  
-    if (isVariable) {
-        if (isReal) { *pNum +=10; Serial.print("Changed real number: "); Serial.println(*pNum);   }
-        // in Justina, a pointer to an empty string ("") does not point to an empty string but contains a null pointer
-        else if (pText != nullptr) {pText[0] = '!'; Serial.print("Changed text: "); Serial.println(pText);}
-    }
-    
-    
-    // read a constant passed 
-    // ----------------------
-
-    // you can NOT return values to array 'pdata'; but for character strings this is actually a pointer to the original string
-    // so, the original string can be changed, but you should NEVER do it 
-    else { 
-    if (isReal) {  Serial.print("Real number: "); Serial.println(num);   
-    }
-    else if (pText != nullptr) { Serial.print("Text: "); Serial.println(pText);   }
-    }
 };
 
-void userFcn_writePort(const Interpreter::Val* pdata, const char* valueType) {
-    Serial.println("Callback: write bits"); 
+
+// -----------------------------
+// user callback functions: demo
+// -----------------------------
+
+// a callback function is a mechanism to allow a library (like Justina) to call a procedure in a user program without having any knowledge about the name of the procedure
+// in Justina, the mechanism is used to allow the user to write specific procedures in C++ (not in Justina) and call them afterwards from within Justina
+// 
+// a user callback function should contain two parameters, as shown below
+// parameter 1 (const void** pdata) is a three-element array optionally containing pointers to data 
+// parameter 2 (const char* valueType) is a three-element array indicating presence of corresponding data, the value type, and whether the data is a Justina variable or constant
+// if data is present, it can be be numeric (float) or text (char*)
+// the data pointers can point to a Justina scalar variable, a Justina array element or a constant 
+// the data pointed to can be changed (the pointers themselves not)
+// changing a Justina CONSTANT, however, will have no effect (for safety, a copy of constant data is actually supplied that will be thrown away upon returning)
+// in case you supply an array element as data, you actually have access to the complete array by setting a pointer to subsequent or preceding elements
+// 
+// refer to Justina documentation to learn how to call a user procedure ('callback') from Justina and change the maximum number allowed
+// 
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// !! 
+// !! when returning changed values
+// !! - NEVER change the value type (float, character string)
+// !! - NEVER increase the length of strings (you can change the characters in the string, however)
+// !!   -> empty strings can not be changed at all (in Justina, an empty string is just a null pointer)
+// !! because you risk serious trouble when you do so (hanging system, wrong results, ...)
+// !! 
+// !! //// you can not change values in const array 'pdata'; but for character strings this is actually a pointer to the original string
+// !! so, the original string can be changed, but you should NEVER do it 
+// !! 
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+// --------------------------------------------------
+// example: show how to read and modify data supplied
+// --------------------------------------------------
+
+void userFcn_readPort(const void** pdata, const char* valueType) {     // data: can be anything, as long as user function knows what to expect
+
+    pConsole->println("*** Justina was here ***");
+
+    for (int i = 0; i < 3; i++) {
+        if ((valueType[i] & Interpreter::value_typeMask) == Interpreter::value_noValue) { continue; }       // no data
+
+        bool isReal = ((valueType[i] & Interpreter::value_typeMask) == Interpreter::value_isFloat);
+        bool isVariable = (valueType[i] & 0x80);                                                                 // bit b7 indicates 'variable' (scalar or array element)
+
+        char* pText;
+        float* pNum;
+
+        if (isReal) { pNum = (float*)pdata[i]; }
+        else { pText = (char*)pdata[i]; }
+
+        // change data (will have no effect for constants) - you can always check for variable / constant (see above)
+        if (isReal) { *pNum += 10; }
+        // in Justina, a pointer to an empty string ("") does not point to an empty string but contains a null pointer: test this first
+        else if (pText != nullptr) { if(strlen(pText) >= 5) pText[4] = '!';  }
+    };
+}
+
+
+// --------------------------------------
+// example: a few other callback routines
+// --------------------------------------
+
+void userFcn_writePort(const void** pdata, const char* valueType) {
+    pConsole->println("*** Justina was here too ***");
 };
 
-void userFcn_togglePort(const Interpreter::Val* pdata, const char* valueType) {
-    Serial.println("Callback: toggle bits");
+
+void userFcn_togglePort(const void** pdata, const char* valueType) {
+    pConsole->println("*** Justina just passed by");
 };
