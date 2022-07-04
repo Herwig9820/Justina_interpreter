@@ -289,11 +289,15 @@ void MyParser::deleteLastValueFiFoStringObjects() {
 void MyParser::deleteConstStringObjects(char* programStart) {
     char* pAnum;
     Interpreter::TokenPointer prgmCnt;
+
+    
+
     prgmCnt.pTokenChars = programStart;
     uint8_t tokenType = *prgmCnt.pTokenChars & 0x0F;
     while (tokenType != '\0') {                                                                    // for all tokens in token list
-        if ((tokenType == Interpreter::tok_isStringConst) || (tokenType == Interpreter::tok_isGenericName)) {
-            memcpy(&pAnum, prgmCnt.pAnumP->pStringConst, sizeof(pAnum));                         // pointer not necessarily aligned with word size: copy memory instead
+        bool isStringConst = (tokenType == Interpreter::tok_isConstant) ? (((*prgmCnt.pTokenChars >> 4) & Interpreter::value_typeMask) == Interpreter::value_isStringPointer) : false;
+        if (isStringConst || (tokenType == Interpreter::tok_isGenericName)) {
+            memcpy(&pAnum, prgmCnt.pCstToken->cstValue.pStringConst, sizeof(pAnum));                         // pointer not necessarily aligned with word size: copy memory instead
             if (pAnum != nullptr) {
 #if printCreateDeleteHeapObjects
                 Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pAnum - RAMSTART);
@@ -498,11 +502,15 @@ bool MyParser::initVariable(uint16_t varTokenStep, uint16_t constTokenStep) {
     void* pArrayStorage;        // array storage (if array) 
 
     // fetch constant (numeric or alphanumeric) 
-    bool isNumberCst = (Interpreter::tokenType_type)((((Interpreter::TokenIsRealCst*)(_pInterpreter->_programStorage + constTokenStep))->tokenType) & 0x0F) == Interpreter::tok_isRealConst;
-    if (isNumberCst) { memcpy(&f, ((Interpreter::TokenIsRealCst*)(_pInterpreter->_programStorage + constTokenStep))->realConst, sizeof(f)); }        // copy float
+    bool isRealConst = false, isStringConst = false;
+    char valueType = (((Interpreter::TokenIsConstant*)(_pInterpreter->_programStorage + constTokenStep))->tokenType >> 4) & Interpreter::value_typeMask;
+    isRealConst = (valueType == Interpreter::value_isFloat);
+    isStringConst = (valueType == Interpreter::value_isStringPointer);
 
-    else { memcpy(&pString, ((Interpreter::TokenIsStringCst*)(_pInterpreter->_programStorage + constTokenStep))->pStringConst, sizeof(pString)); }     // copy pointer to string (not the string itself)
-    int length = isNumberCst ? 0 : (pString == nullptr) ? 0 : strlen(pString);       // only relevant for strings
+    if (isRealConst) { memcpy(&f, ((Interpreter::TokenIsConstant*)(_pInterpreter->_programStorage + constTokenStep))->cstValue.realConst, sizeof(f)); }        // copy float
+
+    else { memcpy(&pString, ((Interpreter::TokenIsConstant*)(_pInterpreter->_programStorage + constTokenStep))->cstValue.pStringConst, sizeof(pString)); }     // copy pointer to string (not the string itself)
+    int length = isRealConst ? 0 : (pString == nullptr) ? 0 : strlen(pString);       // only relevant for strings
 
 
     if (isArrayVar) {
@@ -511,7 +519,7 @@ bool MyParser::initVariable(uint16_t varTokenStep, uint16_t constTokenStep) {
         int arrayElements = 1;                                  // determine array size
         for (int dimCnt = 0; dimCnt < dimensions; dimCnt++) { arrayElements *= (int)((((char*)pArrayStorage)[dimCnt])); }
         // fill up with numeric constants or (empty strings:) null pointers
-        if (isNumberCst) { for (int arrayElem = 1; arrayElem <= arrayElements; arrayElem++) { ((float*)pArrayStorage)[arrayElem] = f; } }
+        if (isRealConst) { for (int arrayElem = 1; arrayElem <= arrayElements; arrayElem++) { ((float*)pArrayStorage)[arrayElem] = f; } }
         else {                                                      // alphanumeric constant
             if (length != 0) { return false; };       // to limit memory usage, no mass initialisation with non-empty strings
             for (int arrayElem = 1; arrayElem <= arrayElements; arrayElem++) {
@@ -521,7 +529,7 @@ bool MyParser::initVariable(uint16_t varTokenStep, uint16_t constTokenStep) {
     }
 
     else {                                  // scalar
-        if (isNumberCst) {
+        if (isRealConst) {
             ((float*)pVarStorage)[varValueIndex] = f;
         }      // store numeric constant
         else {                                                  // alphanumeric constant
@@ -542,7 +550,7 @@ bool MyParser::initVariable(uint16_t varTokenStep, uint16_t constTokenStep) {
     }
 
 
-    pVarTypeStorage[varValueIndex] = (pVarTypeStorage[varValueIndex] & ~_pInterpreter->value_typeMask) | (isNumberCst ? _pInterpreter->value_isFloat : _pInterpreter->value_isStringPointer);
+    pVarTypeStorage[varValueIndex] = (pVarTypeStorage[varValueIndex] & ~_pInterpreter->value_typeMask) | (isRealConst ? _pInterpreter->value_isFloat : _pInterpreter->value_isStringPointer);
     return true;
 };
 
@@ -603,11 +611,18 @@ MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
         bool isSemicolon = _lastTokenIsTerminal ? (_lastTermCode == termcod_semicolon) : false;
         bool isOperator = _lastTokenIsTerminal ? (_lastTermCode <= termcod_opRangeEnd) : false;
 
+        bool isRealConst = false, isStringConst = false;
+        if (t == Interpreter::tok_isConstant) {
+            char valueType = (((Interpreter::TokenIsConstant*)(_pInterpreter->_programStorage + _lastTokenStep))->tokenType >> 4) & Interpreter::value_typeMask;
+            isRealConst = (valueType == Interpreter::value_isFloat);
+            isStringConst = (valueType == Interpreter::value_isStringPointer);
+        }
+
         // determine token group of last token parsed (bits b4 to b0): this defines which tokens are allowed as next token
         _lastTokenGroup_sequenceCheck_bit = isOperator ? lastTokenGroup_0 :
             isComma ? lastTokenGroup_1 :
             ((t == Interpreter::tok_no_token) || isSemicolon || (t == Interpreter::tok_isReservedWord) || (t == Interpreter::tok_isGenericName)) ? lastTokenGroup_2 :
-            ((t == Interpreter::tok_isRealConst) || (t == Interpreter::tok_isStringConst) || isRightPar) ? lastTokenGroup_3 :
+            ((t == Interpreter::tok_isConstant) || isRightPar) ? lastTokenGroup_3 :
             ((t == Interpreter::tok_isInternFunction) || (t == Interpreter::tok_isExternFunction)) ? lastTokenGroup_4 :
             isLeftPar ? lastTokenGroup_5 : lastTokenGroup_6;     // token group 5: scalar or array variable name
 
@@ -615,7 +630,7 @@ MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
         // a space may be required between last token and next token (not yet known), if one of them is a reserved word
         // and the other token is either a reserved word, an alphanumeric constant or a parenthesis
         // space check result is OK if a check is not required or if a space is present anyway
-        _leadingSpaceCheck = ((t == Interpreter::tok_isReservedWord) || (t == Interpreter::tok_isStringConst) || isRightPar) && (pNext[0] != ' ');
+        _leadingSpaceCheck = ((t == Interpreter::tok_isReservedWord) || isStringConst || isRightPar) && (pNext[0] != ' ');
 
         // move to the first character of next token (within one instruction)
         while (pNext[0] == ' ') { pNext++; }                                         // skip leading spaces
@@ -636,7 +651,7 @@ MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
         pNext_hold = pNext;
 
         do {                                                                                                                // one loop only
-            if ((_pInterpreter->_programCounter + sizeof(Interpreter::TokenIsStringCst) + 1) > (_pInterpreter->_programStart + _pInterpreter->_programSize)) { result = result_progMemoryFull; break; };
+            if ((_pInterpreter->_programCounter + sizeof(Interpreter::TokenIsConstant) + 1) > (_pInterpreter->_programStart + _pInterpreter->_programSize)) { result = result_progMemoryFull; break; };
             if (!parseAsResWord(pNext, result)) { break; } if (result == result_tokenFound) { continue; }             // check before checking for identifier  
             if (!parseTerminalToken(pNext, result)) { break; }  if (result == result_tokenFound) { continue; }       // check before checking for number
             if (!parseAsNumber(pNext, result)) { break; }  if (result == result_tokenFound) { continue; }
@@ -1054,19 +1069,19 @@ bool MyParser::parseAsNumber(char*& pNext, parseTokenResult_type& result) {
     if (isArrayDimSpec && ((f != int(f)) || (f < 1))) { pNext = pch; result = result_arrayDimNotValid; return false; }
 
     // token is a number, and it's allowed here
-    Interpreter::TokenIsRealCst* pToken = (Interpreter::TokenIsRealCst*)_pInterpreter->_programCounter;
-    pToken->tokenType = Interpreter::tok_isRealConst | (sizeof(Interpreter::TokenIsRealCst) << 4);
-    memcpy(pToken->realConst, &f, sizeof(f));                                           // float not necessarily aligned with word size: copy memory instead
+    Interpreter::TokenIsConstant* pToken = (Interpreter::TokenIsConstant*)_pInterpreter->_programCounter;
+    pToken->tokenType = Interpreter::tok_isConstant | (Interpreter::value_isFloat << 4);
+    memcpy(pToken->cstValue.realConst, &f, sizeof(f));                                           // float not necessarily aligned with word size: copy memory instead
 
     bool doNonLocalVarInit = ((_isGlobalOrUserVarCmd || _isStaticVarCmd) && isPureAssignmentOp);
 
     _lastTokenStep = _pInterpreter->_programCounter - _pInterpreter->_programStorage;
-    _lastTokenType = Interpreter::tok_isRealConst;
+    _lastTokenType = Interpreter::tok_isConstant;
     _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false;
 
     if (doNonLocalVarInit) { initVariable(_lastVariableTokenStep, _lastTokenStep); }     // initialisation of global / static variable ? (operator: is always assignment)
 
-    _pInterpreter->_programCounter += sizeof(Interpreter::TokenIsRealCst);
+    _pInterpreter->_programCounter += sizeof(Interpreter::TokenIsConstant);
     *_pInterpreter->_programCounter = '\0';                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
@@ -1143,9 +1158,9 @@ bool MyParser::parseAsStringConstant(char*& pNext, parseTokenResult_type& result
     }
     pNext++;                                                                            // skip closing quote
 
-    Interpreter::TokenIsStringCst* pToken = (Interpreter::TokenIsStringCst*)_pInterpreter->_programCounter;
-    pToken->tokenType = Interpreter::tok_isStringConst | (sizeof(Interpreter::TokenIsStringCst) << 4);
-    memcpy(pToken->pStringConst, &pStringCst, sizeof(pStringCst));            // pointer not necessarily aligned with word size: copy pointer instead
+    Interpreter::TokenIsConstant* pToken = (Interpreter::TokenIsConstant*)_pInterpreter->_programCounter;
+    pToken->tokenType = Interpreter::tok_isConstant | (Interpreter::value_isStringPointer << 4);
+    memcpy(pToken->cstValue.pStringConst, &pStringCst, sizeof(pStringCst));            // pointer not necessarily aligned with word size: copy pointer instead
 
     bool isLocalVarInitCheck = (_isLocalVarCmd && isPureAssignmentOp);
     bool isArrayVar = ((Interpreter::TokenIsVariable*)(_pInterpreter->_programStorage + _lastVariableTokenStep))->identInfo & _pInterpreter->var_isArray;
@@ -1156,14 +1171,14 @@ bool MyParser::parseAsStringConstant(char*& pNext, parseTokenResult_type& result
     bool doNonLocalVarInit = ((_isGlobalOrUserVarCmd || _isStaticVarCmd) && isPureAssignmentOp);          // (operator: is always assignment)
 
     _lastTokenStep = _pInterpreter->_programCounter - _pInterpreter->_programStorage;
-    _lastTokenType = Interpreter::tok_isStringConst;
+    _lastTokenType = Interpreter::tok_isConstant;
     _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false;
 
     if (doNonLocalVarInit) {                                     // initialisation of global / static variable ? 
         if (!initVariable(_lastVariableTokenStep, _lastTokenStep)) { pNext = pch; result = result_arrayInit_emptyStringExpected; return false; };
     }
 
-    _pInterpreter->_programCounter += sizeof(Interpreter::TokenIsStringCst);
+    _pInterpreter->_programCounter += sizeof(Interpreter::TokenIsConstant);
     *_pInterpreter->_programCounter = '\0';                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
@@ -1186,7 +1201,7 @@ bool MyParser::checkArrayDimCountAndSize(parseTokenResult_type& result, int* arr
 
     if (dimCnt > _pInterpreter->MAX_ARRAY_DIMS) { result = result_arrayDefMaxDimsExceeded; return false; }
     float f{ 0 };        // last token is a number constant: dimension spec
-    memcpy(&f, ((Interpreter::TokenIsRealCst*)(_pInterpreter->_programStorage + _lastTokenStep))->realConst, sizeof(f));
+    memcpy(&f, ((Interpreter::TokenIsConstant*)(_pInterpreter->_programStorage + _lastTokenStep))->cstValue.realConst, sizeof(f));
     if (f < 1) { result = result_arrayDefNegativeDim; return false; }
     arrayDef_dims[dimCnt - 1] = (int)f;
     int arrayElements = 1;
@@ -2413,15 +2428,15 @@ bool MyParser::parseAsIdentifierName(char*& pNext, parseTokenResult_type& result
     }
 
 
-    Interpreter::TokenIsStringCst* pToken = (Interpreter::TokenIsStringCst*)_pInterpreter->_programCounter;
-    pToken->tokenType = Interpreter::tok_isGenericName | (sizeof(Interpreter::TokenIsStringCst) << 4);
-    memcpy(pToken->pStringConst, &pIdentifierName, sizeof(pIdentifierName));            // pointer not necessarily aligned with word size: copy memory instead
+    Interpreter::TokenIsConstant* pToken = (Interpreter::TokenIsConstant*)_pInterpreter->_programCounter;
+    pToken->tokenType = Interpreter::tok_isGenericName | (sizeof(Interpreter::TokenIsConstant) << 4);
+    memcpy(pToken->cstValue.pStringConst, &pIdentifierName, sizeof(pIdentifierName));            // pointer not necessarily aligned with word size: copy memory instead
 
     _lastTokenStep = _pInterpreter->_programCounter - _pInterpreter->_programStorage;
     _lastTokenType = Interpreter::tok_isGenericName;
     _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false;
 
-    _pInterpreter->_programCounter += sizeof(Interpreter::TokenIsStringCst);
+    _pInterpreter->_programCounter += sizeof(Interpreter::TokenIsConstant);
     *_pInterpreter->_programCounter = '\0';                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
@@ -2455,6 +2470,10 @@ void MyParser::prettyPrintInstructions(bool printOneInstruction, char* startToke
         bool isSemicolon = false;
 
         char prettyToken[maxCharsPretty] = "";
+
+        char valueType = (*progCnt.pTokenChars >> 4) & Interpreter::value_typeMask;
+        bool isRealConst = (valueType == Interpreter::value_isFloat);
+        bool isStringConst = (valueType == Interpreter::value_isStringPointer);
 
         switch (tokenType) {
         case Interpreter::tok_isReservedWord:
@@ -2496,22 +2515,21 @@ void MyParser::prettyPrintInstructions(bool printOneInstruction, char* startToke
             break;
         }
 
-        case Interpreter::tok_isRealConst:
-        {
-            float f;
-            memcpy(&f, progCnt.pFloat->realConst, sizeof(f));                         // pointer not necessarily aligned with word size: copy memory instead
-            sprintf(prettyToken, "%.3G", f);
-            testNextForPostfix = true;
-            break;
-        }
+        case Interpreter::tok_isConstant:
+            if (isRealConst) {
+                float f;
+                memcpy(&f, progCnt.pCstToken->cstValue.realConst, sizeof(f));                         // pointer not necessarily aligned with word size: copy memory instead
+                sprintf(prettyToken, "%.3G", f);
+                testNextForPostfix = true;
+                break;   // and quit switch
+            }
 
-        case Interpreter::tok_isStringConst:
-            testNextForPostfix = true;
+            else { testNextForPostfix = true; }     // no break here: fall into generic name handling
 
         case Interpreter::tok_isGenericName:
         {
             char* pAnum{ nullptr };
-            memcpy(&pAnum, progCnt.pAnumP->pStringConst, sizeof(pAnum));                         // pointer not necessarily aligned with word size: copy memory instead
+            memcpy(&pAnum, progCnt.pCstToken->cstValue.pStringConst, sizeof(pAnum));                         // pointer not necessarily aligned with word size: copy memory instead
             sprintf(prettyToken, (testNextForPostfix ? "\"%s\"" : "%s "), (pAnum == nullptr) ? "" : pAnum);
             hasTrailingSpace = !testNextForPostfix;
 

@@ -93,13 +93,9 @@ public:
         tok_isReservedWord,
         tok_isInternFunction,
         tok_isExternFunction,
-        tok_isRealConst,
-        tok_isStringConst,
+        tok_isConstant,
         tok_isVariable,
         tok_isGenericName,
-
-        // generic constant: use in execution stack only
-        tok_isConstant,
 
         // all terminal tokens: at the end of the list ! (occupy only one character in program, combining token type and index)
         tok_isTerminalGroup1,       // if index < 15 -    because too many operators to fit in 4 bits
@@ -173,20 +169,20 @@ public:
     // storage for tokens
     // note: to avoid boundary alignment of structure members, character placeholders of correct size are used for all structure members
 
+    union CstValue {
+        char realConst[4];
+        char pStringConst[4];                                 // pointer to string object
+    };
+
     struct TokenIsResWord {                                     // reserved word token (command): length 4 (if not a block command, token step is not stored and length will be 2)
         char tokenType;                                         // will be set to specific token type
         char tokenIndex;                                        // index into list of tokens of a specific type
         char toTokenStep[2];                                     // tokens for block commands (IF, FOR, BREAK, END, ...): step n� of block start token or next block token (uint16_t)
     };
 
-    struct TokenIsRealCst {                                    // token storage for a numeric constant token: length 5
+    struct TokenIsConstant {                                    // token storage for a numeric constant token: length 5
         char tokenType;                                         // will be set to specific token type
-        char realConst[4];                                       // placeholder for float - avoiding boundary alignment
-    };
-
-    struct TokenIsStringCst {                                 // token storage for an alphanumeric constant token: length 5
-        char tokenType;                                         // will be set to specific token type
-        char pStringConst[4];                                 // pointer to string object
+        CstValue cstValue;
     };
 
     struct TokenIsIntFunction {                                 // token storage for internal function: length 2
@@ -214,8 +210,7 @@ public:
     union TokenPointer {
         char* pTokenChars;
         TokenIsResWord* pResW;
-        TokenIsRealCst* pFloat;
-        TokenIsStringCst* pAnumP;
+        TokenIsConstant* pCstToken;
         TokenIsIntFunction* pIntFnc;
         TokenIsExtFunction* pExtFnc;
         TokenIsVariable* pVar;
@@ -236,7 +231,7 @@ public:
         float** ppArray;
     };
 
-    
+
     struct ExtFunctionData {
         char* pExtFunctionStartToken;                           // ext. function: pointer to start of function (token)
         char paramOnlyCountInFunction;
@@ -358,9 +353,10 @@ public:
     static constexpr uint8_t value_isLong = 1 << 0;
     static constexpr uint8_t value_isFloat = 2 << 0;
     static constexpr uint8_t value_isStringPointer = 3 << 0;
-    static constexpr uint8_t value_isVarRef = 4 << 0;
-
     
+     static constexpr uint8_t value_isVarRef = 4 << 0;
+
+
     // constants used during execution, only stored within the stack for value tokens
 
     // bit b0: intermediate constant (not a parsed constant, not a constant stored in a variable) 

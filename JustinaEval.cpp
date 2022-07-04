@@ -49,7 +49,8 @@ Interpreter::execResult_type  Interpreter::exec() {
         bool isLeftPar = (isTerminal ? (MyParser::_terminals[tokenIndex].terminalCode == MyParser::termcod_leftPar) : false);
         bool isRightPar = (isTerminal ? (MyParser::_terminals[tokenIndex].terminalCode == MyParser::termcod_rightPar) : false);
 
-        int tokenLength = (tokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*_programCounter >> 4) & 0x0F;        // fetch next token 
+        // fetch next token (for some token types, the size is stored in the upper 4 bits of the token type byte)
+        int tokenLength = (tokenType >= Interpreter::tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == Interpreter::tok_isConstant) ? sizeof(TokenIsConstant) : (*_programCounter >> 4) & 0x0F;
         _activeFunctionData.pNextStep = _programCounter + tokenLength;                                  // look ahead
 
         switch (tokenType) {
@@ -93,8 +94,7 @@ Interpreter::execResult_type  Interpreter::exec() {
             break;
 
 
-        case tok_isRealConst:
-        case tok_isStringConst:
+        case tok_isConstant:
         case tok_isVariable:
             // -----------------------------------------------------------
             // Case: process real or string constant token, variable token
@@ -732,7 +732,7 @@ int Interpreter::jumpTokens(int n, char*& pStep, int& tokenCode) {
     for (int i = 1; i <= n; i++) {
         tokenType = *pStep & 0x0F;
         if (tokenType == tok_no_token) { return tok_no_token; }               // end of program reached
-        int tokenLength = (tokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*pStep >> 4) & 0x0F;        // fetch next token 
+        int tokenLength = (tokenType >= Interpreter::tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == Interpreter::tok_isConstant) ? sizeof(TokenIsConstant) : (*_programCounter >> 4) & 0x0F;     // fetch next token 
         pStep = pStep + tokenLength;
     }
 
@@ -772,7 +772,7 @@ int Interpreter::findTokenStep(int tokenTypeToFind, char tokenCodeToFind, char*&
 
     // exclude current token step
     int tokenType = *pStep & 0x0F;
-    int tokenLength = (tokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*pStep >> 4) & 0x0F;        // fetch next token 
+    int tokenLength = (tokenType >= Interpreter::tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == Interpreter::tok_isConstant) ? sizeof(TokenIsConstant) : (*_programCounter >> 4) & 0x0F;        // fetch next token 
     pStep = pStep + tokenLength;
 
     do {
@@ -806,7 +806,7 @@ int Interpreter::findTokenStep(int tokenTypeToFind, char tokenCodeToFind, char*&
             if (tokenCodeMatch) { return tokenType; }      // if terminal, then return exact group (entry: use terminalGroup1) 
         }
 
-        int tokenLength = (tokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*pStep >> 4) & 0x0F;        // fetch next token 
+        int tokenLength = (tokenType >= Interpreter::tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == Interpreter::tok_isConstant) ? sizeof(TokenIsConstant) : (*_programCounter >> 4) & 0x0F;    // fetch next token 
         pStep = pStep + tokenLength;
     } while (true);
 }
@@ -928,7 +928,7 @@ void Interpreter::clearEvalStackLevels(int n) {
     LE_evalStack* pstackLvl = _pEvalStackTop, * pPrecedingStackLvl{};
 
     for (int i = 1; i <= n; i++) {
-        // if intermediate constant string, then delete char string object (tested within called routine)
+        // if intermediate constant string, then delete char string object (test op non-empty intermediate string object in called routine)  
         if (pstackLvl->genericToken.tokenType == tok_isConstant) { deleteIntermStringObject(pstackLvl); }    // exclude non-constant tokens (terminals, reserved words, functions, ...)
 
         // delete evaluation stack level
@@ -1988,13 +1988,13 @@ Interpreter::execResult_type Interpreter::copyValueArgsFromStack(LE_evalStack*& 
     for (int i = 0; i < argCount; i++) {               // 2 arguments
         argIsVar[i] = (pStackLvl->varOrConst.tokenType == tok_isVariable);
         valueType[i] = argIsVar[i] ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
-        if (valueType[i] == value_noValue) {  continue; }
+        if (valueType[i] == value_noValue) { continue; }
 
         // always pass reference  (to float or character string pointer) for variables and constants ?
         if (passVarRefOrConstCopy) {
             // fetch operands: POINTERS to real constants or pointers to character strings (note: scalars expected)
-            if (valueType[i] == value_isFloat) { args[i].pRealConst = (argIsVar[i] ? (pStackLvl->varOrConst.value.pRealConst) : &pStackLvl->varOrConst.value.realConst);  }
-            else if (argIsVar[i]) { args[i].pStringConst = *pStackLvl->varOrConst.value.ppStringConst;  }
+            if (valueType[i] == value_isFloat) { args[i].pRealConst = (argIsVar[i] ? (pStackLvl->varOrConst.value.pRealConst) : &pStackLvl->varOrConst.value.realConst); }
+            else if (argIsVar[i]) { args[i].pStringConst = *pStackLvl->varOrConst.value.ppStringConst; }
             else {      // constant string: make a copy of the string and return a pointer to the copy to prevent changing the original string
                 args[i].pStringConst = new char[strlen(pStackLvl->varOrConst.value.pStringConst) + 1];
                 intermediateStringObjectCount++;
@@ -2145,16 +2145,17 @@ void Interpreter::initFunctionDefaultParamVariables(char*& pStep, int suppliedAr
             tokenType = jumpTokens(((count == suppliedArgCount) ? 3 : 4), pStep);
 
             // now positioned at constant initializer
-            bool operandIsReal = (tokenType == tok_isRealConst);
+            char valueType = ((*(char*)pStep) >> 4)& value_typeMask;
+            bool operandIsReal = (valueType == value_isFloat);
             if (operandIsReal) {                                                      // operand is float constant
                 float f{ 0. };
-                memcpy(&f, ((TokenIsRealCst*)pStep)->realConst, sizeof(float));
+                memcpy(&f, ((TokenIsConstant*)pStep)->cstValue.realConst, sizeof(float));
                 _activeFunctionData.pLocalVarValues[count].realConst = f;  // store a local copy
                 _activeFunctionData.pVariableAttributes[count] = value_isFloat;                // default value: always scalar
             }
             else {                      // operand is parsed string constant: create a local copy and store in variable
                 char* s{ nullptr };
-                memcpy(&s, ((TokenIsStringCst*)pStep)->pStringConst, sizeof(char*));  // copy the pointer, NOT the string  
+                memcpy(&s, ((TokenIsConstant*)pStep)->cstValue.pStringConst, sizeof(char*));  // copy the pointer, NOT the string  
 
                 _activeFunctionData.pLocalVarValues[count].pStringConst = nullptr;   // init (if empty string)
                 _activeFunctionData.pVariableAttributes[count] = value_isStringPointer;                // default value: always scalar
@@ -2212,7 +2213,7 @@ void Interpreter::initFunctionLocalNonParamVariables(char* pStep, int paramCount
 
                     // increase dimension count and calculate elements (checks done during parsing)
                     float f{ 0. };
-                    memcpy(&f, ((TokenIsRealCst*)pStep)->realConst, sizeof(float));
+                    memcpy(&f, ((TokenIsConstant*)pStep)->cstValue.realConst, sizeof(float));
                     arrayElements *= f;
                     arrayDims[dimCount] = f;
                     dimCount++;
@@ -2250,10 +2251,12 @@ void Interpreter::initFunctionLocalNonParamVariables(char* pStep, int paramCount
 
                 float f{ 0. };        // last token is a number constant: dimension spec
                 char* pString{ nullptr };
-                bool isNumberCst = (tokenType == tok_isRealConst);
 
-                if (isNumberCst) { memcpy(&f, ((TokenIsRealCst*)pStep)->realConst, sizeof(float)); }
-                else { memcpy(&pString, ((TokenIsStringCst*)pStep)->pStringConst, sizeof(pString)); }     // copy pointer to string (not the string itself)
+                char valueType = ((*(char*)pStep) >> 4) & value_typeMask;
+                bool isNumberCst = (valueType == value_isFloat);
+
+                if (isNumberCst) { memcpy(&f, ((TokenIsConstant*)pStep)->cstValue.realConst, sizeof(float)); }
+                else { memcpy(&pString, ((TokenIsConstant*)pStep)->cstValue.pStringConst, sizeof(pString)); }     // copy pointer to string (not the string itself)
                 int length = isNumberCst ? 0 : (pString == nullptr) ? 0 : strlen(pString);       // only relevant for strings
                 if (!isNumberCst) {
                     _activeFunctionData.pVariableAttributes[count] =
@@ -2513,18 +2516,18 @@ void Interpreter::pushConstant(int& tokenType) {                                
     _pEvalStackTop->varOrConst.tokenType = tok_isConstant;          // use generic constant type
     _pEvalStackTop->varOrConst.tokenAddress = _programCounter;                                  // only for finding source error position during unparsing (for printing)
 
-    _pEvalStackTop->varOrConst.valueType = (tokenType == tok_isRealConst) ? value_isFloat : value_isStringPointer;
+    _pEvalStackTop->varOrConst.valueType = ((*(char*)_programCounter) >> 4) & value_typeMask;     // for constants, upper 4 bits contain the value type
     _pEvalStackTop->varOrConst.variableAttributes = 0x00;
     _pEvalStackTop->varOrConst.valueAttributes = 0x00;
 
-    if (tokenType == tok_isRealConst) {
+    if ((_pEvalStackTop->varOrConst.valueType & value_typeMask) == value_isFloat) {
         float f{ 0. };
-        memcpy(&f, ((TokenIsRealCst*)_programCounter)->realConst, sizeof(float));          // float  not necessarily aligned with word size: copy memory instead
+        memcpy(&f, ((TokenIsConstant*)_programCounter)->cstValue.realConst, sizeof(float));          // float  not necessarily aligned with word size: copy memory instead
         _pEvalStackTop->varOrConst.value.realConst = f;                                         // store float in stack, NOT the pointer to float 
     }
     else {
         char* pAnum{ nullptr };
-        memcpy(&pAnum, ((TokenIsStringCst*)_programCounter)->pStringConst, sizeof(pAnum)); // char pointer not necessarily aligned with word size: copy memory instead
+        memcpy(&pAnum, ((TokenIsConstant*)_programCounter)->cstValue.pStringConst, sizeof(pAnum)); // char pointer not necessarily aligned with word size: copy memory instead
         _pEvalStackTop->varOrConst.value.pStringConst = pAnum;                                  // store char* in stack, NOT the pointer to float 
     }
 
@@ -2546,7 +2549,7 @@ void Interpreter::pushGenericName(int& tokenType) {                             
     _pEvalStackTop->varOrConst.tokenAddress = _programCounter;                                  // only for finding source error position during unparsing (for printing)
 
     char* pAnum{ nullptr };
-    memcpy(&pAnum, ((TokenIsStringCst*)_programCounter)->pStringConst, sizeof(pAnum)); // char pointer not necessarily aligned with word size: copy memory instead
+    memcpy(&pAnum, ((TokenIsConstant*)_programCounter)->cstValue.pStringConst, sizeof(pAnum)); // char pointer not necessarily aligned with word size: copy memory instead
     _pEvalStackTop->genericName.pStringConst = pAnum;                                  // store char* in stack 
 };
 
