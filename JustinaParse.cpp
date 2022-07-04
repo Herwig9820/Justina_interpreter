@@ -63,7 +63,7 @@ const MyParser::ResWordDef MyParser::_resWords[]{
     {"Clearvars",       cmdcod_clear,       cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_N,       cmdBlockOther},
     {"Vars",            cmdcod_vars,        cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_N,       cmdBlockOther},
 
-    {"DeclareCBproc",   cmdcod_decCBproc,   cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_100,     cmdBlockOther},
+    {"DeclareCB",       cmdcod_decCBproc,   cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_100,     cmdBlockOther},
     {"Callback",        cmdcod_callback,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_101,     cmdBlockOther},
 };
 

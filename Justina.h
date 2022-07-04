@@ -331,6 +331,7 @@ public:
     // variable scope and value type bits: 
 
     // bit b7: program variable name has a global program variable associated with it. Only used during parsing, not stored in token
+    //         user variables: user variable is used by program. Not stored in token 
     static constexpr uint8_t var_hasGlobalValue = 0x80;              // flag: global program variable attached to this name
     static constexpr uint8_t var_userVarUsedByProgram = 0x80;        // flag: user variable is used by program
 
@@ -344,26 +345,30 @@ public:
     static constexpr uint8_t var_isParamInFunc = 1 << 4;             // variable is function parameter
     static constexpr uint8_t var_scopeToSpecify = 0 << 4;             // scope is not yet defined (temporary use during parsing; never stored in token)
 
-    // bit b3 (execution only): the address is the address of an array element. If this bit is zero, the adress is the scalar or array variable base address 
-    // maintained in the parsed 'variable' token
-    static constexpr uint8_t var_isArray_pendingSubscripts = 0x08;
+    // bit b3: variable is an array (and not a scalar)
+    static constexpr uint8_t var_isArray = 0x08;                     // stored with variable attributes and in 'variable' token. Can not be changed at runtime
 
-    // bit b2: variable is an array (and not a scalar)
-    static constexpr uint8_t var_isArray = 0x04;                     // stored with variable attributes and in 'variable' token. Can not be changed at runtime
-
-    // bits b10: value type 
-    // - PARSED constants (string or real): these constants have a different 'constant' token type, so value type bits are NOT maintained
+    // bits b210: value type 
+    // - PARSED constants: these constants have a different 'constant' token type, so value type bits are NOT maintained
     // - INTERMEDIATE constants (execution only) and variables: value type is maintained together with variable / intermediate constant data (per variable, array or constant) 
     // Note: because the value type is not fixed for scalar variables (type can dynamically change at runtime), this info is not maintained in the parsed 'variable' token 
 
-    static constexpr uint8_t value_typeMask = 0x03;                    // mask: float, char* 
-    static constexpr uint8_t value_isFloat = 0 << 0;
-    static constexpr uint8_t value_isStringPointer = 1 << 0;
-    static constexpr uint8_t value_isVarRef = 2 << 0;
-    static constexpr uint8_t value_noValue = 3 << 0;
+    static constexpr uint8_t value_typeMask = 0x07;                    // mask: float, char* 
+    static constexpr uint8_t value_noValue = 0 << 0;
+    static constexpr uint8_t value_isLong = 1 << 0;
+    static constexpr uint8_t value_isFloat = 2 << 0;
+    static constexpr uint8_t value_isStringPointer = 3 << 0;
+    static constexpr uint8_t value_isVarRef = 4 << 0;
 
-    // execution
+    
+    // constants used during execution, only stored within the stack for value tokens
+
+    // bit b0: intermediate constant (not a parsed constant, not a constant stored in a variable) 
     static constexpr uint8_t constIsIntermediate = 0x01;
+    // bit b1: the address is the address of an array element. If this bit is zero, the address is the scalar or array variable base address 
+    static constexpr uint8_t var_isArray_pendingSubscripts = 0x02;
+
+
 
     static const int _userCBarrayDepth = 10;
 

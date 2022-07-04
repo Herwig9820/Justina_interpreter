@@ -120,7 +120,7 @@ Interpreter::execResult_type  Interpreter::exec() {
 
                     bool nextIsLeftPar = (nextIsTerminal ? (MyParser::_terminals[nextTokenIndex].terminalCode == MyParser::termcod_leftPar) : false);
                     if (nextIsLeftPar) {                                                           // array variable name (this token) is followed by subscripts (to be processed)
-                        _pEvalStackTop->varOrConst.variableAttributes |= var_isArray_pendingSubscripts;    // flag that array element still needs to be processed
+                        _pEvalStackTop->varOrConst.valueAttributes |= var_isArray_pendingSubscripts;    // flag that array element still needs to be processed
                     }
                 }
                 else { pushConstant(tokenType); }
@@ -1014,7 +1014,7 @@ Interpreter::execResult_type Interpreter::execParenthesesPair(LE_evalStack*& pPr
     // stack level preceding left parenthesis is an array variable name AND it requires an array element ?
     // (if it is a variable name, it can still be an array name used as previous argument in a function call)
     else if (pPrecedingStackLvl->genericToken.tokenType == tok_isVariable) {
-        if ((pPrecedingStackLvl->varOrConst.variableAttributes & var_isArray_pendingSubscripts) == var_isArray_pendingSubscripts) {
+        if ((pPrecedingStackLvl->varOrConst.valueAttributes & var_isArray_pendingSubscripts) == var_isArray_pendingSubscripts) {
             execResult_type execResult = arrayAndSubscriptsToarrayElement(pPrecedingStackLvl, firstArgStackLvl, argCount);
             return execResult;
         }
@@ -1058,7 +1058,7 @@ Interpreter::execResult_type Interpreter::arrayAndSubscriptsToarrayElement(LE_ev
     if (pArrayElem == nullptr) { return result_array_subscriptOutsideBounds; }
 
     pPrecedingStackLvl->varOrConst.value.pVariable = pArrayElem;
-    pPrecedingStackLvl->varOrConst.variableAttributes &= ~var_isArray_pendingSubscripts;           // remove 'pending subscripts' flag 
+    pPrecedingStackLvl->varOrConst.valueAttributes &= ~var_isArray_pendingSubscripts;           // remove 'pending subscripts' flag 
     // note: other data does not change (array attributes, value type, token type, intermediate constant, variable type address)
 
 
