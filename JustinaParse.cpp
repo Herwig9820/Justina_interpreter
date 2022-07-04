@@ -290,8 +290,6 @@ void MyParser::deleteConstStringObjects(char* programStart) {
     char* pAnum;
     Interpreter::TokenPointer prgmCnt;
 
-    
-
     prgmCnt.pTokenChars = programStart;
     uint8_t tokenType = *prgmCnt.pTokenChars & 0x0F;
     while (tokenType != '\0') {                                                                    // for all tokens in token list
@@ -306,7 +304,8 @@ void MyParser::deleteConstStringObjects(char* programStart) {
                 _pInterpreter->parsedStringConstObjectCount--;
             }
         }
-        uint8_t tokenLength = (tokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*prgmCnt.pTokenChars >> 4) & 0x0F;
+        uint8_t tokenLength = (tokenType >= Interpreter::tok_isTerminalGroup1) ? sizeof(Interpreter::TokenIsTerminal) :
+            (tokenType == Interpreter::tok_isConstant) ? sizeof(Interpreter::TokenIsConstant) : (*prgmCnt.pTokenChars >> 4) & 0x0F;
         prgmCnt.pTokenChars += tokenLength;
         tokenType = *prgmCnt.pTokenChars & 0x0F;
     }
@@ -2461,7 +2460,8 @@ void MyParser::prettyPrintInstructions(bool printOneInstruction, char* startToke
     int outputLength = 0;                       // init: first position
 
     while (tokenType != Interpreter::tok_no_token) {                                                                    // for all tokens in token list
-        int tokenLength = (tokenType >= Interpreter::tok_isTerminalGroup1) ? 1 : (*progCnt.pTokenChars >> 4) & 0x0F;
+        int tokenLength = (tokenType >= Interpreter::tok_isTerminalGroup1) ? sizeof(Interpreter::TokenIsTerminal) :
+            (tokenType == Interpreter::tok_isConstant) ? sizeof(Interpreter::TokenIsConstant) : (*progCnt.pTokenChars >> 4) & 0x0F;
         Interpreter::TokenPointer nextProgCnt;
         nextProgCnt.pTokenChars = progCnt.pTokenChars + tokenLength;
         int nextTokenType = *nextProgCnt.pTokenChars & 0x0F;                                                                // next token type (look ahead)
@@ -2470,10 +2470,6 @@ void MyParser::prettyPrintInstructions(bool printOneInstruction, char* startToke
         bool isSemicolon = false;
 
         char prettyToken[maxCharsPretty] = "";
-
-        char valueType = (*progCnt.pTokenChars >> 4) & Interpreter::value_typeMask;
-        bool isRealConst = (valueType == Interpreter::value_isFloat);
-        bool isStringConst = (valueType == Interpreter::value_isStringPointer);
 
         switch (tokenType) {
         case Interpreter::tok_isReservedWord:
@@ -2516,6 +2512,11 @@ void MyParser::prettyPrintInstructions(bool printOneInstruction, char* startToke
         }
 
         case Interpreter::tok_isConstant:
+        {
+            char valueType = (*progCnt.pTokenChars >> 4) & Interpreter::value_typeMask;
+            bool isRealConst = (valueType == Interpreter::value_isFloat);
+            bool isStringConst = (valueType == Interpreter::value_isStringPointer);
+
             if (isRealConst) {
                 float f;
                 memcpy(&f, progCnt.pCstToken->cstValue.realConst, sizeof(f));                         // pointer not necessarily aligned with word size: copy memory instead
@@ -2525,6 +2526,7 @@ void MyParser::prettyPrintInstructions(bool printOneInstruction, char* startToke
             }
 
             else { testNextForPostfix = true; }     // no break here: fall into generic name handling
+        }
 
         case Interpreter::tok_isGenericName:
         {
@@ -2561,7 +2563,6 @@ void MyParser::prettyPrintInstructions(bool printOneInstruction, char* startToke
                     trailing[0] = ' ';      // single space (already terminated by '\0')
                     hasTrailingSpace = true;
                 }
-
 
                 testNextForPostfix = isPostfixOperator;
             }

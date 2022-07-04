@@ -131,6 +131,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                 // when an operation is executed, check whether lower priority operations can now be executed as well (example: 3+5*7: first execute 5*7 yielding 35, then execute 3+35)
 
                 execResult = execAllProcessedOperators();
+
                 if (execResult != result_execOK) { break; }
             }
             break;
@@ -189,13 +190,15 @@ Interpreter::execResult_type  Interpreter::exec() {
                     int argCount = 0;                                                // init number of supplied arguments (or array subscripts) to 0
                     LE_evalStack* pstackLvl = _pEvalStackTop;     // stack level of last argument / array subscript before right parenthesis, or left parenthesis (if function call and no arguments supplied)
 
-                    // set pointer to stack level for left parenthesis and to preceding stack level
-                    while ((pstackLvl->genericToken.tokenType != tok_isTerminalGroup1) && (pstackLvl->genericToken.tokenType != tok_isTerminalGroup2) && (pstackLvl->genericToken.tokenType != tok_isTerminalGroup3)) {
-                        // terminal found: continue until left parenthesis
-                        if (MyParser::_terminals[pstackLvl->terminal.index & 0x7F].terminalCode == MyParser::termcod_leftPar) { break; }   // continue until left parenthesis found
+                    // set pointer to stack level for left parenthesis and pointer to stack level for preceding token (if any)
+                    while (true) {
+                        bool isTerminalLvl = ((pstackLvl->genericToken.tokenType == tok_isTerminalGroup1) || (pstackLvl->genericToken.tokenType == tok_isTerminalGroup2) || (pstackLvl->genericToken.tokenType == tok_isTerminalGroup3));
+                        bool isLeftParLvl = isTerminalLvl ? (MyParser::_terminals[pstackLvl->terminal.index & 0x7F].terminalCode == MyParser::termcod_leftPar) : false;
+                        if (isLeftParLvl) { break; }   // break if left parenthesis found
                         pstackLvl = (LE_evalStack*)evalStack.getPrevListElement(pstackLvl);
                         argCount++;
                     }
+
                     LE_evalStack* pPrecedingStackLvl = (LE_evalStack*)evalStack.getPrevListElement(pstackLvl);     // stack level PRECEDING left parenthesis (or null pointer)
 
                     // remove left parenthesis stack level
@@ -1081,6 +1084,7 @@ void Interpreter::makeIntermediateConstant(LE_evalStack* pEvalStackLvl) {
         Val operand, result;                                                               // operands and result
         bool operandIsVar = (pEvalStackLvl->varOrConst.tokenType == tok_isVariable);
         char valueType = operandIsVar ? (*pEvalStackLvl->varOrConst.varTypeAddress & value_typeMask) : pEvalStackLvl->varOrConst.valueType;
+
         bool opReal = (valueType == value_isFloat);
         if (opReal) { operand.realConst = operandIsVar ? (*pEvalStackLvl->varOrConst.value.pRealConst) : pEvalStackLvl->varOrConst.value.realConst; }
         else { operand.pStringConst = operandIsVar ? (*pEvalStackLvl->varOrConst.value.ppStringConst) : pEvalStackLvl->varOrConst.value.pStringConst; }
@@ -2145,7 +2149,7 @@ void Interpreter::initFunctionDefaultParamVariables(char*& pStep, int suppliedAr
             tokenType = jumpTokens(((count == suppliedArgCount) ? 3 : 4), pStep);
 
             // now positioned at constant initializer
-            char valueType = ((*(char*)pStep) >> 4)& value_typeMask;
+            char valueType = ((*(char*)pStep) >> 4) & value_typeMask;
             bool operandIsReal = (valueType == value_isFloat);
             if (operandIsReal) {                                                      // operand is float constant
                 float f{ 0. };
@@ -2435,9 +2439,6 @@ void* Interpreter::fetchVarBaseAddress(TokenIsVariable* pVarToken, char*& source
             return (Val*)&_activeFunctionData.pLocalVarValues[valueIndex];                           // pointer to local variable value 
         }
     }
-
-
-
 }
 
 
@@ -2527,7 +2528,7 @@ void Interpreter::pushConstant(int& tokenType) {                                
     }
     else {
         char* pAnum{ nullptr };
-        memcpy(&pAnum, ((TokenIsConstant*)_programCounter)->cstValue.pStringConst, sizeof(pAnum)); // char pointer not necessarily aligned with word size: copy memory instead
+        memcpy(&pAnum, ((TokenIsConstant*)_programCounter)->cstValue.pStringConst, sizeof(pAnum)); // char pointer not necessarily aligned with word size: copy pointer instead
         _pEvalStackTop->varOrConst.value.pStringConst = pAnum;                                  // store char* in stack, NOT the pointer to float 
     }
 
@@ -2549,7 +2550,7 @@ void Interpreter::pushGenericName(int& tokenType) {                             
     _pEvalStackTop->varOrConst.tokenAddress = _programCounter;                                  // only for finding source error position during unparsing (for printing)
 
     char* pAnum{ nullptr };
-    memcpy(&pAnum, ((TokenIsConstant*)_programCounter)->cstValue.pStringConst, sizeof(pAnum)); // char pointer not necessarily aligned with word size: copy memory instead
+    memcpy(&pAnum, ((TokenIsConstant*)_programCounter)->cstValue.pStringConst, sizeof(pAnum)); // char pointer not necessarily aligned with word size: copy pointer instead
     _pEvalStackTop->genericName.pStringConst = pAnum;                                  // store char* in stack 
 };
 
