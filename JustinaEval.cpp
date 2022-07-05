@@ -466,8 +466,8 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         _callbackUserProcStart[index](values, valueType);       // call back user procedure
 
         for (int i = 0; i < 3; i++) {
-            // delete any copies of constant strings made before calling the callback procedure
-            if (!argIsVar[i] && (valueType[i] == value_isStringPointer) && (args[i].pStringConst != nullptr)) {
+            // delete any copies of constant strings made before calling the callback procedure (empty strings (no null pointers here) and constant strings)
+            if (((valueType[i] & ~0x80) == value_isStringPointer) && ((strlen(args[i].pStringConst) == 0) || !argIsVar[i])) {            // empty or constant string
 #if printCreateDeleteHeapObjects
                 Serial.print("----- (Intermd str) "); Serial.println((uint32_t)args[i].pStringConst - RAMSTART);
 #endif
@@ -1994,22 +1994,30 @@ Interpreter::execResult_type Interpreter::copyValueArgsFromStack(LE_evalStack*& 
         valueType[i] = argIsVar[i] ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
         if (valueType[i] == value_noValue) { continue; }
 
-        // always pass reference  (to float or character string pointer) for variables and constants ?
         if (passVarRefOrConstCopy) {
-            // fetch operands: POINTERS to real constants or pointers to character strings (note: scalars expected)
+            int strLength{ 0 };      // init: zero-length string
+
+            // float: fetch POINTER to float, for variables and constants 
+            // character string: fetch pointer to string for variables, copy string and set pointer to string copy for constants
             if (valueType[i] == value_isFloat) { args[i].pRealConst = (argIsVar[i] ? (pStackLvl->varOrConst.value.pRealConst) : &pStackLvl->varOrConst.value.realConst); }
-            else if (argIsVar[i]) { args[i].pStringConst = *pStackLvl->varOrConst.value.ppStringConst; }
-            else {      // constant string: make a copy of the string and return a pointer to the copy to prevent changing the original string
-                args[i].pStringConst = new char[strlen(pStackLvl->varOrConst.value.pStringConst) + 1];
+            else { args[i].pStringConst = (argIsVar[i] ? (*pStackLvl->varOrConst.value.ppStringConst) : pStackLvl->varOrConst.value.pStringConst); }    // init
+
+            // for EMPTY variable strings (null pointer) and for ALL constant strings, create an empty string or make a copy of the non-empty string ...
+            // ... and CHANGE the pointer to the new / copied string to prevent changing the original string 
+            // -> empty variable strings: new string, but because it's empty it can't be changed (it has no characters), so a copy is OK
+            if ((valueType[i] == value_isStringPointer) && ((args[i].pStringConst == nullptr) || !argIsVar[i])) {            // empty or constant string
+                strLength = (args[i].pStringConst == nullptr) ? 0 : strlen(args[i].pStringConst);
+                args[i].pStringConst = new char[strLength + 1];         // change pointer to copy of string
                 intermediateStringObjectCount++;
-                strcpy(args[i].pStringConst, pStackLvl->varOrConst.value.pStringConst);
+                if (strLength == 0) { args[i].pStringConst[0] = '\0'; }                                   // empty variable or constant string (null pointer)
+                else { strcpy(args[i].pStringConst, pStackLvl->varOrConst.value.pStringConst); }        // non-empty constant string
 #if printCreateDeleteHeapObjects
                 Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)args[i].pStringConst - RAMSTART);
 #endif
             }
         }
 
-        // always pass value (float or character string pointer) for variables and constants 
+        // fetch float, or pointer to character string, for variables and constants 
         else {
             // fetch operands: real constants or pointers to character strings (note: scalars expected)
             if (valueType[i] == value_isFloat) { args[i].realConst = (argIsVar[i] ? (*pStackLvl->varOrConst.value.pRealConst) : pStackLvl->varOrConst.value.realConst); }

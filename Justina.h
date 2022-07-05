@@ -353,9 +353,9 @@ public:
     static constexpr uint8_t value_isLong = 1 << 0;
     static constexpr uint8_t value_isFloat = 2 << 0;
     static constexpr uint8_t value_isStringPointer = 3 << 0;
-    
+private:     
      static constexpr uint8_t value_isVarRef = 4 << 0;
-
+public:
 
     // constants used during execution, only stored within the stack for value tokens
 

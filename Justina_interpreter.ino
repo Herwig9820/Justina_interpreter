@@ -424,8 +424,7 @@ void userFcn_readPort(const void** pdata, const char* valueType) {     // data: 
 
         // change data (-> after return, will have no effect for constants) - you can always check for variable / constant (see above)
         if (isReal) { *pNum += 10; }
-        // in Justina, a pointer to an empty string ("") does not point to an empty string but contains a null pointer: test this first
-        else if (pText != nullptr) { if (strlen(pText) >= 5) pText[3] = pText[4]; pText[4] = '>'; }
+        else  { if (strlen(pText) >= 5) pText[3] = pText[4]; pText[4] = '>'; }  // do NOT increase the length of strings
     
         pConsole->print("*** value "); Serial.print(i); Serial.print(" returned: "); if (isReal) {pConsole->println(*pNum); } else {pConsole->println(pText); }
     };
