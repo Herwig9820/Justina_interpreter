@@ -1,6 +1,6 @@
 #include "Justina.h"
 
-#define printCreateDeleteHeapObjects 0
+#define printCreateDeleteHeapObjects 1
 #define debugPrint 0
 
 // -----------------------------------
@@ -123,17 +123,16 @@ Interpreter::execResult_type  Interpreter::exec() {
                         _pEvalStackTop->varOrConst.valueAttributes |= var_isArray_pendingSubscripts;    // flag that array element still needs to be processed
                     }
                 }
-                else { pushConstant(tokenType); }
 
-                // set flag to save the current value as 'last value', in case the expression does not contain any operation or function to execute (this value only) 
-
-                // check if (an) operation(s) can be executed. 
-                // when an operation is executed, check whether lower priority operations can now be executed as well (example: 3+5*7: first execute 5*7 yielding 35, then execute 3+35)
-
-                execResult = execAllProcessedOperators();
-
-                if (execResult != result_execOK) { break; }
+                else {
+                    pushConstant(tokenType);
+                }
             }
+
+            // check if (an) operation(s) can be executed. 
+            // when an operation is executed, check whether lower priority operations can now be executed as well (example: 3+5*7: first execute 5*7 yielding 35, then execute 3+35)
+            execResult = execAllProcessedOperators();
+            if (execResult != result_execOK) { break; }
             break;
 
 
@@ -151,7 +150,6 @@ Interpreter::execResult_type  Interpreter::exec() {
 #if debugPrint
                 Serial.print(tok_isOperator ? "\r\n** operator: stack level " : "\r\n** left parenthesis: stack level "); Serial.println(evalStack.getElementCount());
 #endif
-
                 // terminal tokens: only operators and left parentheses are pushed on the stack
                 PushTerminalToken(tokenType);
 
@@ -257,7 +255,6 @@ Interpreter::execResult_type  Interpreter::exec() {
         tokenType = *_activeFunctionData.pNextStep & 0x0F;                                                               // next token type (could be token within caller, if returning now)
         precedingIsComma = isComma;
 
-
         // if execution error: print current instruction being executed, signal error and exit
         // -----------------------------------------------------------------------------------
 
@@ -336,7 +333,6 @@ Interpreter::execResult_type  Interpreter::exec() {
 Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionReturn) {
 
     // this function is called when the end of the command is encountered during execution, and all arguments are on the stack already
-
     isFunctionReturn = false;  // init
     execResult_type execResult = result_execOK;
     int cmdParamCount = evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels;
@@ -440,40 +436,67 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     case MyParser::cmdcod_callback:
     {
         // argument 1: alias to retrieve 
-        char* alias = pstackLvl->genericName.pStringConst;
+        LE_evalStack* aliasStackLvl = pstackLvl;
+        char* alias = aliasStackLvl->genericName.pStringConst;
         bool isDeclared = false;
         int index{};
         for (index = 0; index < _userCBprocAliasSet_count; index++) {
             if (strcmp(_callbackUserProcAlias[index], alias) == 0) { isDeclared = true; break; }   // alias declared ? break
         }
         if (!isDeclared) { execResult = result_aliasNotDeclared; return execResult; }
-        pstackLvl = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
+
+        LE_evalStack* pStackLvlFirstValueArg = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
+        pstackLvl = pStackLvlFirstValueArg;
 
         // arguments 2[..4]: variable references to store 
+        const char isVariable = 0x80;       // flag: is variable 
+        const char passCopyToCallback = 0x40;       // flag: is an empty string 
         bool argIsVar[3]{};
+        char varScope[3]{};
         char valueType[3]{ value_noValue,value_noValue,value_noValue };               // maximum 3 arguments
         Val args[3]{  };
         const void* values[3]{};
 
-        if (cmdParamCount >= 2) {
-            copyValueArgsFromStack(pstackLvl, cmdParamCount - 1, argIsVar, valueType, args, true);    // first argument processed (but still on the sta
+        if (cmdParamCount >= 2) {                                // first argument (callback procedure) processed (but still on the stack)
+            copyValueArgsFromStack(pstackLvl, cmdParamCount - 1, argIsVar, valueType, args, true);  // creates a string object if empty string OR or constant (non-variable) string 
+            pstackLvl = pStackLvlFirstValueArg;     // set stack level again to first value argument
             for (int i = 0; i < cmdParamCount - 1; i++) {
-                if (argIsVar[i]) { valueType[i] |= 0x80; }  // bit b7 indicates 'variable' (scalar or array element)
-                values[i] = args[i].pVariable;        // suits all (constants as well, because in this case, we supply a pointer to it)
+                if (argIsVar[i]) {
+                    valueType[i] |= isVariable;   // variable: scalar or array element
+                    varScope[i] = (pstackLvl->varOrConst.variableAttributes & var_scopeMask);
+                }
+                values[i] = args[i].pVariable;        // suits all (constants as well, because in this case, we supply a pointer to the value - not the value)
+                pstackLvl = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
             }
         }
 
         _callbackUserProcStart[index](values, valueType);       // call back user procedure
 
+        // process strings RETURNED by callback procedure
+        pstackLvl = pStackLvlFirstValueArg;     // set stack level again to first value argument
         for (int i = 0; i < 3; i++) {
-            // delete any copies of constant strings made before calling the callback procedure (empty strings (no null pointers here) and constant strings)
-            if (((valueType[i] & ~0x80) == value_isStringPointer) && ((strlen(args[i].pStringConst) == 0) || !argIsVar[i])) {            // empty or constant string
+            if ((valueType[i] & value_typeMask) == value_isStringPointer) {
+                if (valueType[i] & passCopyToCallback) {            // constant string or empty variable string: delete string copy passed to callback procedure
 #if printCreateDeleteHeapObjects
-                Serial.print("----- (Intermd str) "); Serial.println((uint32_t)args[i].pStringConst - RAMSTART);
+                    Serial.print("----- (Intermd str) "); Serial.println((uint32_t)args[i].pStringConst - RAMSTART);
 #endif
-                delete[] args[i].pStringConst;
-                intermediateStringObjectCount--;
+                    delete[] args[i].pStringConst;
+                    intermediateStringObjectCount--;
+                }
+                else if (strlen(args[i].pStringConst) == 0) {      // callback routine changed non-empty VARIABLE string into empty variable string ("")  
+                    // delete variable string object  
+#if printCreateDeleteHeapObjects 
+                    Serial.print((varScope[i] == var_isUser) ? "----- (usr var str) " : ((varScope[i] == var_isGlobal) || (varScope[i] == var_isStaticInFunc)) ? "----- (var string ) " : "----- (loc var str) ");
+                    Serial.println((uint32_t)(char*)values[i] - RAMSTART);
+#endif
+                    delete[](char*)values[i];
+                    (varScope[i] == var_isUser) ? userVarStringObjectCount-- : ((varScope[i] == var_isGlobal) || (varScope[i] == var_isStaticInFunc)) ? globalStaticVarStringObjectCount-- : localVarStringObjectCount--;
+
+                    // set variable string pointer to null pointer
+                    pstackLvl->varOrConst.value.pStringConst = nullptr;
+                }
             }
+            pstackLvl = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
         }
 
         clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings
@@ -1134,10 +1157,16 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
     while (evalStack.getElementCount() >= _activeFunctionData.callerEvalStackLevels + 2) {                                                      // a preceding token exists on the stack
 
         // the entry preceding the current parsed constant, variable or expression result is ALWAYS a terminal (but never a right parenthesis, which is never pushed to the evaluation stack)
-        // (note the current entry could also be preceded by a command (reserved word), which is never pushed to the evaluation stack as well)
-        int terminalIndex = _pEvalStackMinus1->terminal.index & 0x7F;
-        bool minus1IsOperator = (MyParser::_terminals[terminalIndex].terminalCode <= MyParser::termcod_opRangeEnd);  // preceding entry is operator ?
+        // the current entry could also be preceded by a generic name on the evaluation stack: check
+        ////  kan generic name zijn !!! test !!! comment ///
 
+        int terminalIndex{};
+        bool minus1IsOperator{ false };       // init
+        bool minus1IsTerminal = ((_pEvalStackMinus1->genericToken.tokenType == tok_isTerminalGroup1) || (_pEvalStackMinus1->genericToken.tokenType == tok_isTerminalGroup2) || (_pEvalStackMinus1->genericToken.tokenType == tok_isTerminalGroup3));
+        if (minus1IsTerminal) {
+            terminalIndex = _pEvalStackMinus1->terminal.index & 0x7F;
+            minus1IsOperator = (MyParser::_terminals[terminalIndex].terminalCode <= MyParser::termcod_opRangeEnd);  // preceding entry is operator ?
+        }
         if (minus1IsOperator) {
             // check pending (not yet processed) token (always present and always a terminal token after a variable or constant token)
             // pending token can be any terminal token: infix operator, left or right parenthesis, comma or semicolon 
@@ -1957,7 +1986,6 @@ Interpreter::execResult_type Interpreter::deleteVarStringObject(LE_evalStack* pS
 #endif
     delete[] * pStackLvl->varOrConst.value.ppStringConst;
     (varScope == var_isUser) ? userVarStringObjectCount-- : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? globalStaticVarStringObjectCount-- : localVarStringObjectCount--;
-
     return result_execOK;
 }
 
@@ -1986,42 +2014,38 @@ Interpreter::execResult_type Interpreter::deleteIntermStringObject(LE_evalStack*
 // copy command arguments or internal function arguments from evaluation stack
 // ---------------------------------------------------------------------------
 
-Interpreter::execResult_type Interpreter::copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, char* valueType, Val* args, bool passVarRefOrConstCopy) {
+Interpreter::execResult_type Interpreter::copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, char* valueType, Val* args, bool prepareForCallback) {
     execResult_type execResult;
 
     for (int i = 0; i < argCount; i++) {               // 2 arguments
         argIsVar[i] = (pStackLvl->varOrConst.tokenType == tok_isVariable);
         valueType[i] = argIsVar[i] ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
-        if (valueType[i] == value_noValue) { continue; }
+        if (prepareForCallback && ((valueType[i] & value_typeMask) == value_noValue)) { continue; }
 
-        if (passVarRefOrConstCopy) {
-            int strLength{ 0 };      // init: zero-length string
-
-            // float: fetch POINTER to float, for variables and constants 
-            // character string: fetch pointer to string for variables, copy string and set pointer to string copy for constants
-            if (valueType[i] == value_isFloat) { args[i].pRealConst = (argIsVar[i] ? (pStackLvl->varOrConst.value.pRealConst) : &pStackLvl->varOrConst.value.realConst); }
-            else { args[i].pStringConst = (argIsVar[i] ? (*pStackLvl->varOrConst.value.ppStringConst) : pStackLvl->varOrConst.value.pStringConst); }    // init
-
-            // for EMPTY variable strings (null pointer) and for ALL constant strings, create an empty string or make a copy of the non-empty string ...
-            // ... and CHANGE the pointer to the new / copied string to prevent changing the original string 
-            // -> empty variable strings: new string, but because it's empty it can't be changed (it has no characters), so a copy is OK
-            if ((valueType[i] == value_isStringPointer) && ((args[i].pStringConst == nullptr) || !argIsVar[i])) {            // empty or constant string
-                strLength = (args[i].pStringConst == nullptr) ? 0 : strlen(args[i].pStringConst);
-                args[i].pStringConst = new char[strLength + 1];         // change pointer to copy of string
-                intermediateStringObjectCount++;
-                if (strLength == 0) { args[i].pStringConst[0] = '\0'; }                                   // empty variable or constant string (null pointer)
-                else { strcpy(args[i].pStringConst, pStackLvl->varOrConst.value.pStringConst); }        // non-empty constant string
-#if printCreateDeleteHeapObjects
-                Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)args[i].pStringConst - RAMSTART);
-#endif
-            }
+        // argument is float: if preparing for callback, return pointer to float. Otherwise, return float itself
+        if ((valueType[i] & value_typeMask) == value_isFloat) {
+            if (prepareForCallback) { args[i].pRealConst = (argIsVar[i] ? (pStackLvl->varOrConst.value.pRealConst) : &pStackLvl->varOrConst.value.realConst); }
+            else { args[i].realConst = (argIsVar[i] ? (*pStackLvl->varOrConst.value.pRealConst) : pStackLvl->varOrConst.value.realConst); }
         }
 
-        // fetch float, or pointer to character string, for variables and constants 
+        // argument is string: always return a pointer to string, but if preparing for callback, this pointer MAY point to a newly created copy of the string or empty string (see below)
         else {
-            // fetch operands: real constants or pointers to character strings (note: scalars expected)
-            if (valueType[i] == value_isFloat) { args[i].realConst = (argIsVar[i] ? (*pStackLvl->varOrConst.value.pRealConst) : pStackLvl->varOrConst.value.realConst); }
-            else { args[i].pStringConst = (argIsVar[i] ? (*pStackLvl->varOrConst.value.ppStringConst) : pStackLvl->varOrConst.value.pStringConst); }
+            args[i].pStringConst = (argIsVar[i] ? (*pStackLvl->varOrConst.value.ppStringConst) : pStackLvl->varOrConst.value.pStringConst); // init: fetch pointer to string  
+            if (prepareForCallback) {       // for callback calls only      
+                int strLength{ 0 };
+                // empty variable and empty constant strings: create a real empty string (no null pointer); non-empty constant strings: create a string copy
+                if ((args[i].pStringConst == nullptr) || !argIsVar[i]) {       // note: non-empty variable strings: pointer keeps pointing to variable string (no copy)           
+                    valueType[i] |= 0x40;           // string copy, or new empty string, passed
+                    strLength = (args[i].pStringConst == nullptr) ? 0 : strlen(args[i].pStringConst);
+                    args[i].pStringConst = new char[strLength + 1];                                         // change pointer to copy of string
+                    intermediateStringObjectCount++;
+                    if (strLength == 0) { args[i].pStringConst[0] = '\0'; }                                 // empty strings ("" -> no null pointer)
+                    else { strcpy(args[i].pStringConst, pStackLvl->varOrConst.value.pStringConst); }        // non-empty constant string
+#if printCreateDeleteHeapObjects
+                    Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)args[i].pStringConst - RAMSTART);
+#endif
+                }
+            }
         }
 
         pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);

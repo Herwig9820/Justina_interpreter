@@ -123,8 +123,8 @@ public:
         result_array_dimNumberNonInteger,
         result_array_dimNumberInvalid,
         result_arg_varExpected,
-        result_aliasNotDeclared,
         result_numericVariableExpected,
+        result_aliasNotDeclared,
 
         // numbers and strings
         result_outsideRange,
@@ -170,6 +170,7 @@ public:
     // note: to avoid boundary alignment of structure members, character placeholders of correct size are used for all structure members
 
     union CstValue {
+        char longConst[4];
         char realConst[4];
         char pStringConst[4];                                 // pointer to string object
     };
@@ -222,10 +223,12 @@ public:
         void* pVariable;                                        // address of a variable value (which can be a float, a string pointer or a variable address itself)
 
         // global, static, local variables; parameters with default initialisation (if no argument provided)
+        long longConst;                                        // long
         float realConst;                                        // float
         char* pStringConst;                                     // pointer to a character string
         float* pArray;                                          // pointer to memory block reserved for array
 
+        long* pLongConst;                                       
         float* pRealConst;
         char** ppStringConst;
         float** ppArray;
@@ -327,7 +330,7 @@ public:
 
     // bit b7: program variable name has a global program variable associated with it. Only used during parsing, not stored in token
     //         user variables: user variable is used by program. Not stored in token 
-    static constexpr uint8_t var_hasGlobalValue = 0x80;              // flag: global program variable attached to this name
+    static constexpr uint8_t var_nameHasGlobalValue = 0x80;          // flag: global program variable attached to this variable name (note that meaning is different from 'var_isGlobal' constant)
     static constexpr uint8_t var_userVarUsedByProgram = 0x80;        // flag: user variable is used by program
 
     // bits b654: variable scope. Use: (1) during parsing: temporarily store the variable type associated with a particular reference of a variable name 
@@ -353,8 +356,8 @@ public:
     static constexpr uint8_t value_isLong = 1 << 0;
     static constexpr uint8_t value_isFloat = 2 << 0;
     static constexpr uint8_t value_isStringPointer = 3 << 0;
-private:     
-     static constexpr uint8_t value_isVarRef = 4 << 0;
+private:
+    static constexpr uint8_t value_isVarRef = 4 << 0;
 public:
 
     // constants used during execution, only stored within the stack for value tokens
@@ -448,26 +451,59 @@ public:
 
     MyParser* _pmyParser;
 
+
+    // variable storage
+    // ----------------
+
+    // variable scope: global (program variables and user variables), local within function (including function parameters), static within function     
+
+    // global program and user variables bearing the same name: in a program, the program variable has priority; in immediate mode a user variable has priority
+
+    // variable names: 
+    // two storage areas, one for all program variables (global, local and static) and one for user variables
+    // program variable names are attributed to each program variable (minimum one) bearing that name (0>1 global, 0>n local, 0>n static variables)
+    // user variable names are 1:1 linked with user variables
+
+    // variable values: 
+    // separate storage areas for user, global and static variable values 
+    // storage space for local function variable values (including function parameters) is only reserved during execution of a procedure (based on info collected during parsing) 
+    // variable values: stored in a 4-byte word. Either a float, a long, a pointer to a character string or a pointer to the start of an array 
+
+    // variable types:
+    // separate storage areas for user, global and static variable types
+    // storage space for local function variable types (including function parameters) is only reserved during execution of a procedure (based on info collected during parsing) 
+    // the variable type is maintained in one byte for each variable (see relevant constant definitions): 
+    // - bit 7: program variables: global program variable attached to this program variable NAME; user variables: flag - variable in use by program 
+    // - bit b654: variable type ('scope'): user, program global, local, static, function parameter 
+    // - bit b3: variable is an array
+    // - bits b210: value type (long, float, ... see constant definitions) 
+
+    // the 'identInfo' field in variable tokens only stores variable scope (bits 654) and bit b3 (variable is array) 
+
+    
     // user variable storage
-    char* userVarNames[MAX_USERVARNAMES];                              // store distinct user variable names: ONLY for user variables (same name as program variable is OK)
+    char* userVarNames[MAX_USERVARNAMES];                               // store distinct user variable names: ONLY for user variables (same name as program variable is OK)
     Val userVarValues[MAX_USERVARNAMES];
     char userVarType[MAX_USERVARNAMES];
 
     // variable name storage                                         
     char* programVarNames[MAX_PROGVARNAMES];                            // store distinct variable names: COMMON NAME for all program variables (global, static, local)
-    char programVarValueIndex[MAX_PROGVARNAMES]{ 0 };                  // temporarily maintains index to variable storage during function parsing
+    char programVarValueIndex[MAX_PROGVARNAMES]{ 0 };                   // temporarily maintains index to variable storage during function parsing
     Val globalVarValues[MAX_PROGVARNAMES];                              // if variable name is in use for global variable: store global value (float, pointer to string, pointer to array of floats)
-    char globalVarType[MAX_PROGVARNAMES]{ 0 };                         // stores value type (float, pointer to string) and 'is array' flag
+    char globalVarType[MAX_PROGVARNAMES]{ 0 };                          // stores value type (float, pointer to string) and 'is array' flag
 
     // static variable value storage
-    Val staticVarValues[MAX_STAT_VARS];                            // store static variable values (float, pointer to string, pointer to array of floats) 
-    char staticVarType[MAX_STAT_VARS]{ 0 };                       // stores value type (float, pointer to string) and 'is array' flag
+    Val staticVarValues[MAX_STAT_VARS];                                 // store static variable values (float, pointer to string, pointer to array of floats) 
+    char staticVarType[MAX_STAT_VARS]{ 0 };                             // stores value type (float, pointer to string) and 'is array' flag
+
     // local variable value storage
     FunctionData _activeFunctionData;
 
     // temporary local variable stoarage during function parsing (without values)
     char localVarType[MAX_LOC_VARS_IN_FUNC]{ 0 };                 // parameter, local variables: temporarily maintains array flag during function parsing (storage reused by functions during parsing)
     char localVarDims[MAX_LOC_VARS_IN_FUNC][4]{ 0 };              // LOCAL variables: temporarily maintains dimensions during function parsing (storage reused by functions during parsing)
+
+
 
     // function key data storage
     char* extFunctionNames[MAX_EXT_FUNCS];

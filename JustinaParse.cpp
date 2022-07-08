@@ -196,7 +196,7 @@ void MyParser::deleteIdentifierNameObjects(char** pIdentNameArray, int identifie
 void MyParser::deleteArrayElementStringObjects(Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar, bool isLocalVar) {
     int index = 0;
     while (index < varNameCount) {
-        if (!checkIfGlobalValue || (varType[index] & (_pInterpreter->var_hasGlobalValue))) { // if only for global values: is it a global value ?
+        if (!checkIfGlobalValue || (varType[index] & (_pInterpreter->var_nameHasGlobalValue))) { // if only for global values: is it a global value ?
             if ((varType[index] & (_pInterpreter->var_isArray | _pInterpreter->value_typeMask)) ==
                 (_pInterpreter->var_isArray | _pInterpreter->value_isStringPointer)) {              // array of strings
 
@@ -233,7 +233,7 @@ void MyParser::deleteArrayElementStringObjects(Interpreter::Val* varValues, char
 void MyParser::deleteVariableValueObjects(Interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar, bool isLocalVar) {
     int index = 0;
     while (index < varNameCount) {
-        if (!checkIfGlobalValue || (varType[index] & (_pInterpreter->var_hasGlobalValue))) { // global value ?
+        if (!checkIfGlobalValue || (varType[index] & (_pInterpreter->var_nameHasGlobalValue))) { // global value ?
             // check for arrays before checking for strings (if both 'var_isArray' and 'value_isStringPointer' bits are set: array of strings, with strings already deleted)
             if (varType[index] & _pInterpreter->var_isArray) {       // variable is an array: delete array storage          
 #if printCreateDeleteHeapObjects
@@ -486,6 +486,7 @@ int MyParser::getIdentifier(char** pIdentNameArray, int& identifiersInUse, int m
 // --------------------------------------------------------------
 
 bool MyParser::initVariable(uint16_t varTokenStep, uint16_t constTokenStep) {
+    long l{ 0 };
     float f{ 0. };        // last token is a number constant: dimension spec
     char* pString{ nullptr };
 
@@ -501,15 +502,15 @@ bool MyParser::initVariable(uint16_t varTokenStep, uint16_t constTokenStep) {
     void* pArrayStorage;        // array storage (if array) 
 
     // fetch constant (numeric or alphanumeric) 
-    bool isRealConst = false, isStringConst = false;
     char valueType = (((Interpreter::TokenIsConstant*)(_pInterpreter->_programStorage + constTokenStep))->tokenType >> 4) & Interpreter::value_typeMask;
-    isRealConst = (valueType == Interpreter::value_isFloat);
-    isStringConst = (valueType == Interpreter::value_isStringPointer);
+    bool isLongConst = (valueType == Interpreter::value_isLong);
+    bool isFloatConst = (valueType == Interpreter::value_isFloat);
+    bool isStringConst = (valueType == Interpreter::value_isStringPointer);
 
-    if (isRealConst) { memcpy(&f, ((Interpreter::TokenIsConstant*)(_pInterpreter->_programStorage + constTokenStep))->cstValue.realConst, sizeof(f)); }        // copy float
-
+    if (isLongConst) { memcpy(&l, ((Interpreter::TokenIsConstant*)(_pInterpreter->_programStorage + constTokenStep))->cstValue.longConst, sizeof(l)); }        // copy float
+    if (isFloatConst) { memcpy(&f, ((Interpreter::TokenIsConstant*)(_pInterpreter->_programStorage + constTokenStep))->cstValue.realConst, sizeof(f)); }        // copy float
     else { memcpy(&pString, ((Interpreter::TokenIsConstant*)(_pInterpreter->_programStorage + constTokenStep))->cstValue.pStringConst, sizeof(pString)); }     // copy pointer to string (not the string itself)
-    int length = isRealConst ? 0 : (pString == nullptr) ? 0 : strlen(pString);       // only relevant for strings
+    int length = (!isStringConst) ? 0 : (pString == nullptr) ? 0 : strlen(pString);       // only relevant for strings
 
 
     if (isArrayVar) {
@@ -518,7 +519,8 @@ bool MyParser::initVariable(uint16_t varTokenStep, uint16_t constTokenStep) {
         int arrayElements = 1;                                  // determine array size
         for (int dimCnt = 0; dimCnt < dimensions; dimCnt++) { arrayElements *= (int)((((char*)pArrayStorage)[dimCnt])); }
         // fill up with numeric constants or (empty strings:) null pointers
-        if (isRealConst) { for (int arrayElem = 1; arrayElem <= arrayElements; arrayElem++) { ((float*)pArrayStorage)[arrayElem] = f; } }
+        if (isLongConst) { for (int arrayElem = 1; arrayElem <= arrayElements; arrayElem++) { ((long*)pArrayStorage)[arrayElem] = l; } }
+        if (isFloatConst) { for (int arrayElem = 1; arrayElem <= arrayElements; arrayElem++) { ((float*)pArrayStorage)[arrayElem] = f; } }
         else {                                                      // alphanumeric constant
             if (length != 0) { return false; };       // to limit memory usage, no mass initialisation with non-empty strings
             for (int arrayElem = 1; arrayElem <= arrayElements; arrayElem++) {
@@ -528,9 +530,8 @@ bool MyParser::initVariable(uint16_t varTokenStep, uint16_t constTokenStep) {
     }
 
     else {                                  // scalar
-        if (isRealConst) {
-            ((float*)pVarStorage)[varValueIndex] = f;
-        }      // store numeric constant
+        if (isLongConst) { ((long*)pVarStorage)[varValueIndex] = l; }      // store numeric constant
+        if (isFloatConst) { ((float*)pVarStorage)[varValueIndex] = f; }      // store numeric constant
         else {                                                  // alphanumeric constant
             if (length == 0) {
                 ((char**)pVarStorage)[varValueIndex] = nullptr;       // an empty string does not create a heap object
@@ -549,7 +550,8 @@ bool MyParser::initVariable(uint16_t varTokenStep, uint16_t constTokenStep) {
     }
 
 
-    pVarTypeStorage[varValueIndex] = (pVarTypeStorage[varValueIndex] & ~_pInterpreter->value_typeMask) | (isRealConst ? _pInterpreter->value_isFloat : _pInterpreter->value_isStringPointer);
+    pVarTypeStorage[varValueIndex] = (pVarTypeStorage[varValueIndex] & ~_pInterpreter->value_typeMask) |
+        (isLongConst ? _pInterpreter->value_isLong : isFloatConst ? _pInterpreter->value_isFloat : _pInterpreter->value_isStringPointer);
     return true;
 };
 
@@ -610,10 +612,9 @@ MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
         bool isSemicolon = _lastTokenIsTerminal ? (_lastTermCode == termcod_semicolon) : false;
         bool isOperator = _lastTokenIsTerminal ? (_lastTermCode <= termcod_opRangeEnd) : false;
 
-        bool isRealConst = false, isStringConst = false;
+        bool isLongConst = false, isFloatConst = false, isStringConst = false;
         if (t == Interpreter::tok_isConstant) {
             char valueType = (((Interpreter::TokenIsConstant*)(_pInterpreter->_programStorage + _lastTokenStep))->tokenType >> 4) & Interpreter::value_typeMask;
-            isRealConst = (valueType == Interpreter::value_isFloat);
             isStringConst = (valueType == Interpreter::value_isStringPointer);
         }
 
@@ -1039,7 +1040,17 @@ bool MyParser::parseAsNumber(char*& pNext, parseTokenResult_type& result) {
 
     // all numbers will be positive, because leading '-' or '+' characters are parsed separately as prefix operators
     // this is important if next infix operator (power) has higher priority then this prefix operator: -2^4 <==> -(2^4) <==> -16, AND NOT (-2)^4 <==> 16 
-    float f = strtof(pch, &pNext);                                                    // token can be parsed as float ?
+    // exception: variable declarations with initializers: prefix operators are not parsed separately
+
+    // check if number (if valid) will be stored as integer ([+ or -] [digits] (no decimal separator, no exponent) or float
+    float f{ 0 }; long l{ 0 };
+    bool isLong{ false }, hasPrefix{ false };
+    int i{ 0 };
+    if ((pNext[i] == '+') || (pNext[i] == '-')) { hasPrefix = true; ++i; };  // start with a plus or minus sign ? start looking for digits at next position 
+    while (isDigit(pNext[++i])) {}      // find first non-digit
+    isLong = ((pNext[i] != '.') && (pNext[i] != 'E') && (pNext[i] != 'e') && (i > (hasPrefix ? 1 : 0)));        // no decimal point and minimum one digit
+    if (isLong) { l = strtol(pch, &pNext, 10); }                                       // token can be parsed as long ?
+    else { f = strtof(pch, &pNext); }                                                    // token can be parsed as float ?
     if (pch == pNext) { return true; }                                                // token is not a number if pointer pNext was not moved
 
     if (_pInterpreter->_programCounter == _pInterpreter->_programStorage) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
@@ -1047,8 +1058,9 @@ bool MyParser::parseAsNumber(char*& pNext, parseTokenResult_type& result) {
     if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2_1_0)) { pNext = pch; result = result_numConstNotAllowedHere; return false; }
     if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp) { pNext = pch; result = result_numConstNotAllowedHere; return false; }
 
+    ////    Serial.print("long: "); Serial.print(isLong);Serial.print(", value: "); if (isLong) { Serial.println(l);} else {Serial.println(f); }
     // overflow ? (underflow is not detected with strtof() ) 
-    if (!isfinite(f)) { pNext = pch; result = result_overflow; return false; }
+    if (!isLong) { if (!isfinite(f)) { pNext = pch; result = result_overflow; return false; } }
 
     // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
     bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
@@ -1065,12 +1077,16 @@ bool MyParser::parseAsNumber(char*& pNext, parseTokenResult_type& result) {
 
     // array declaration: dimensions must be number constants (global, static, local arrays)
     bool isArrayDimSpec = (_isAnyVarCmd) && (_parenthesisLevel > 0);
-    if (isArrayDimSpec && ((f != int(f)) || (f < 1))) { pNext = pch; result = result_arrayDimNotValid; return false; }
+    if (isArrayDimSpec) {
+        if (isLong && (l < 1)) { pNext = pch; result = result_arrayDimNotValid; return false; }
+        else if ((!isLong) && ((f != int(f)) || (f < 1))) { pNext = pch; result = result_arrayDimNotValid; return false; }
+    }
 
     // token is a number, and it's allowed here
     Interpreter::TokenIsConstant* pToken = (Interpreter::TokenIsConstant*)_pInterpreter->_programCounter;
-    pToken->tokenType = Interpreter::tok_isConstant | (Interpreter::value_isFloat << 4);
-    memcpy(pToken->cstValue.realConst, &f, sizeof(f));                                           // float not necessarily aligned with word size: copy memory instead
+    pToken->tokenType = Interpreter::tok_isConstant | ((isLong ? Interpreter::value_isLong : Interpreter::value_isFloat) << 4);
+    if (isLong) { memcpy(pToken->cstValue.longConst, &l, sizeof(l)); }
+    else { memcpy(pToken->cstValue.realConst, &f, sizeof(f)); }                                           // float not necessarily aligned with word size: copy memory instead
 
     bool doNonLocalVarInit = ((_isGlobalOrUserVarCmd || _isStaticVarCmd) && isPureAssignmentOp);
 
@@ -1199,10 +1215,21 @@ bool MyParser::checkArrayDimCountAndSize(parseTokenResult_type& result, int* arr
     dimCnt++;
 
     if (dimCnt > _pInterpreter->MAX_ARRAY_DIMS) { result = result_arrayDefMaxDimsExceeded; return false; }
-    float f{ 0 };        // last token is a number constant: dimension spec
-    memcpy(&f, ((Interpreter::TokenIsConstant*)(_pInterpreter->_programStorage + _lastTokenStep))->cstValue.realConst, sizeof(f));
-    if (f < 1) { result = result_arrayDefNegativeDim; return false; }
-    arrayDef_dims[dimCnt - 1] = (int)f;
+
+    char valueType = (*(_pInterpreter->_programStorage + _lastTokenStep) >> 4) & Interpreter::value_typeMask;
+
+    long l{};        // last token is a number constant: dimension spec
+    float f{ 0 };
+    if (valueType == (Interpreter::value_isLong)) {     // float
+        memcpy(&l, ((Interpreter::TokenIsConstant*)(_pInterpreter->_programStorage + _lastTokenStep))->cstValue.longConst, sizeof(l));
+    }
+    else {
+        memcpy(&f, ((Interpreter::TokenIsConstant*)(_pInterpreter->_programStorage + _lastTokenStep))->cstValue.realConst, sizeof(f));
+        l = int(f);
+    }
+
+    if (l < 1) { result = result_arrayDefNegativeDim; return false; }
+    arrayDef_dims[dimCnt - 1] = l;
     int arrayElements = 1;
     for (int cnt = 0; cnt < dimCnt; cnt++) { arrayElements *= arrayDef_dims[cnt]; }
     if (arrayElements > _pInterpreter->MAX_ARRAY_ELEM) { result = result_arrayDefMaxElementsExceeded; return false; }
@@ -1210,7 +1237,7 @@ bool MyParser::checkArrayDimCountAndSize(parseTokenResult_type& result, int* arr
 }
 
 
-// External function definition statement parsing: check order of mandatory and optional arguments, check if max. n� not exceeded
+// External function definition statement parsing: check order of mandatory and optional arguments, check if max. n° not exceeded
 // -------------------------------------------------------------------------------------------------------------------------------
 
 bool MyParser::checkExtFunctionArguments(parseTokenResult_type& result, int& minArgCnt, int& maxArgCnt) {
@@ -1518,7 +1545,7 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
                 if (!arrayHasInitializer) {                    // no explicit initializer: initialize now (as real) 
                     for (int arrayElem = 1; arrayElem <= arrayElements; arrayElem++) { ((float*)pArray)[arrayElem] = 0.; }
                 }
-            }
+        }
 
             // local arrays (note: NOT for function parameter arrays): set pointer to dimension storage 
             // the array flag has been set when local variable was created (including function parameters, which are also local variables)
@@ -1533,7 +1560,7 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
                 ((char*)pArray)[i] = arrayDef_dims[i];
             }
             ((char*)pArray)[3] = array_dimCounter;        // (note: for param arrays, set to max dimension count during parsing)
-        }
+    }
 
 
         // 2.3 Internal or external function call, or parenthesis pair, closing parenthesis ?
@@ -1848,7 +1875,7 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
 
         // token is an operator, and it's allowed here
     }
-    }
+}
 
 
     // create token
@@ -2203,7 +2230,7 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
                 if (_pInterpreter->_staticVarCount == _pInterpreter->MAX_STAT_VARS) { pNext = pch; result = result_maxStaticVariablesReached; return false; }
                 _pInterpreter->programVarValueIndex[varNameIndex] = _pInterpreter->_staticVarCount;
                 if (!isArray) { _pInterpreter->staticVarValues[_pInterpreter->_staticVarCount].realConst = 0.; }           // initialize variable (if initializer and/or array: will be overwritten)
-                _pInterpreter->staticVarType[_pInterpreter->_staticVarCount] = _pInterpreter->value_isFloat;                                         // init (for array or scalar)
+                _pInterpreter->staticVarType[_pInterpreter->_staticVarCount] = _pInterpreter->value_isFloat;                                         // init as float (for array or scalar)
                 _pInterpreter->staticVarType[_pInterpreter->_staticVarCount] = (_pInterpreter->staticVarType[_pInterpreter->_staticVarCount] & ~_pInterpreter->var_isArray); // init (array flag will be added when storage is created)    
                 _pInterpreter->_staticVarCount++;
             }
@@ -2229,7 +2256,7 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
                 // not a variable definition:  CAN BE an EXISTING global or user variable, within a function
                 // it CANNOT be a local or static variable, because this is the first reference of this variable name in the function and it's not a variable definition
                 // if the variable name refers to a user variable, the variable exists, so it's known then
-                variableNotYetKnown = isProgramVar ? (!(varType[activeNameRange][varNameIndex] & _pInterpreter->var_hasGlobalValue)) : false;
+                variableNotYetKnown = isProgramVar ? (!(varType[activeNameRange][varNameIndex] & _pInterpreter->var_nameHasGlobalValue)) : false;
                 // variable is NEW ? Variable has not been declared
                 if (variableNotYetKnown) {              // undeclared global program variable                                                             
                     pNext = pch; result = result_varNotDeclared; return false;
@@ -2252,7 +2279,7 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
 
     // note: while parsing program instructions AND while parsing instructions entered in immediate mode
     else {
-        variableNotYetKnown = !(varType[activeNameRange][varNameIndex] & (isProgramVar ? _pInterpreter->var_hasGlobalValue : _pInterpreter->var_isUser));
+        variableNotYetKnown = !(varType[activeNameRange][varNameIndex] & (isProgramVar ? _pInterpreter->var_nameHasGlobalValue : _pInterpreter->var_isUser));
         // qualifier 'var_isGlobal' (program variables): set, because could be cleared by previously parsed function (will be stored in token)
         varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~_pInterpreter->var_scopeMask) | (isProgramVar ? _pInterpreter->var_isGlobal : _pInterpreter->var_isUser);
 
@@ -2264,8 +2291,8 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
             // is a declaration of a new program global variable (in program mode), or a new user user variable (in immediate mode) 
             // variable qualifier : don't care for now (global varables: reset at start of next external function parsing)
             if (!isArray) { varValues[activeNameRange][varNameIndex].realConst = 0.; }                  // initialize variable (if initializer and/or array: will be overwritten)
-            varType[activeNameRange][varNameIndex] = varType[activeNameRange][varNameIndex] | _pInterpreter->value_isFloat;         // init (for scalar and array)
-            varType[activeNameRange][varNameIndex] = varType[activeNameRange][varNameIndex] | (isProgramVar ? _pInterpreter->var_hasGlobalValue : _pInterpreter->var_isUser);   // set 'has global value' bit
+            varType[activeNameRange][varNameIndex] = varType[activeNameRange][varNameIndex] | _pInterpreter->value_isFloat;         // init as float (for scalar and array)
+            varType[activeNameRange][varNameIndex] = varType[activeNameRange][varNameIndex] | (isProgramVar ? _pInterpreter->var_nameHasGlobalValue : _pInterpreter->var_isUser);   // set 'has global value' or 'user var' bit
             varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~_pInterpreter->var_isArray); // init (array flag may only be added when storage is created) 
         }
 
@@ -2281,10 +2308,10 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
     //    If it is a FOR loop control variable, check that it is not in use by a FOR outer loop (in same function)
     // --------------------------------------------------------------------------------------------------------------------------------------------
 
-    uint8_t varScope = varType[activeNameRange][varNameIndex] & _pInterpreter->var_scopeMask;  // may only contain variable scope info (parameter, local, static, global)
+    uint8_t varScope = varType[activeNameRange][varNameIndex] & _pInterpreter->var_scopeMask;  // may only contain variable scope info (parameter, local, static, global, user)
     bool isGlobalOrUserVar = isProgramVar ?
-        ((_extFunctionBlockOpen && (varScope == _pInterpreter->var_isGlobal)) ||                             // NOTE: outside a function, test against 'var_hasGlobalValue'
-            (!_extFunctionBlockOpen && (varType[activeNameRange][varNameIndex] & _pInterpreter->var_hasGlobalValue))) :
+        ((_extFunctionBlockOpen && (varScope == _pInterpreter->var_isGlobal)) ||                             // NOTE: outside a function, test against 'var_nameHasGlobalValue'
+            (!_extFunctionBlockOpen && (varType[activeNameRange][varNameIndex] & _pInterpreter->var_nameHasGlobalValue))) :
         varType[activeNameRange][varNameIndex] & _pInterpreter->var_isUser;
     bool isStaticVar = (_extFunctionBlockOpen && (varScope == _pInterpreter->var_isStaticInFunc));
     bool isLocalVar = (_extFunctionBlockOpen && (varScope == _pInterpreter->var_isLocalInFunc));
@@ -2514,10 +2541,19 @@ void MyParser::prettyPrintInstructions(bool printOneInstruction, char* startToke
         case Interpreter::tok_isConstant:
         {
             char valueType = (*progCnt.pTokenChars >> 4) & Interpreter::value_typeMask;
-            bool isRealConst = (valueType == Interpreter::value_isFloat);
+            bool isLongConst = (valueType == Interpreter::value_isLong);
+            bool isFloatConst = (valueType == Interpreter::value_isFloat);
             bool isStringConst = (valueType == Interpreter::value_isStringPointer);
 
-            if (isRealConst) {
+            if (isLongConst) {
+                long  l;
+                memcpy(&l, progCnt.pCstToken->cstValue.longConst, sizeof(l));                         // pointer not necessarily aligned with word size: copy memory instead
+                sprintf(prettyToken, "%ld", l);  //// of %d ???
+                testNextForPostfix = true;
+                break;   // and quit switch
+            }
+
+            else if (isFloatConst) {
                 float f;
                 memcpy(&f, progCnt.pCstToken->cstValue.realConst, sizeof(f));                         // pointer not necessarily aligned with word size: copy memory instead
                 sprintf(prettyToken, "%.3G", f);

@@ -418,15 +418,20 @@ void userFcn_readPort(const void** pdata, const char* valueType) {     // data: 
 
         char* pText{};          // character pointer
         float* pNum{};          // pointer to float
-        
+
         if (isReal) { pNum = (float*)pdata[i]; }   // copy a pointer to a float argument or copy the float itself (two ways)
-        else { pText = (char*)pdata[i] ;}                                               // copy a pointer to a character string argument
+        else { pText = (char*)pdata[i]; }                                               // copy a pointer to a character string argument
 
         // change data (-> after return, will have no effect for constants) - you can always check for variable / constant (see above)
         if (isReal) { *pNum += 10; }
-        else  { if (strlen(pText) >= 5) pText[3] = pText[4]; pText[4] = '>'; }  // do NOT increase the length of strings
-    
-        pConsole->print("*** value "); Serial.print(i); Serial.print(" returned: "); if (isReal) {pConsole->println(*pNum); } else {pConsole->println(pText); }
+        else {
+            if (strlen(pText) >= 10) { pText[7] = '\0'; }  // do NOT increase the length of strings
+            if (strlen(pText) >= 5) { pText[3] = pText[4]; pText[4] = '>'; }  // do NOT increase the length of strings
+            else if (strlen(pText) >= 2) { pText[0] = '\0'; }       // change non-empty string into empty string //// test: moet error produceren
+        }
+
+        pConsole->print("*** value "); Serial.print(i); Serial.print(" returned: "); if (isReal) { pConsole->println(*pNum); }
+        else { pConsole->println(pText); }
     };
 }
 
