@@ -380,11 +380,12 @@ struct Values {
 // a user callback function should contain two parameters, as shown below
 // parameter 1 (const void** pdata) is a three-element array containing void pointers to data (if data present) 
 // parameter 2 (const char* valueType) is a three-element array indicating presence of corresponding data, the value type, and whether the data is a Justina variable or constant
-// if data is present, it can be be numeric (float) or text (char*)
-// the data pointers can point to a Justina scalar variable, a Justina array element or a constant 
+// if data is present, the pointer passed will point to an integer, float or text (char*).
+// the value pointed to can be the value stored in a Justina variable or array element, or it can be a Justina constant 
 // the data pointed to can be changed (the pointers themselves not)
 // changing a Justina CONSTANT, however, will have no effect (for safety, a copy of constant data is actually supplied that will be thrown away upon returning)
-// in case you supply an array element as data, you actually have access to the complete array by setting a pointer to subsequent or preceding elements
+// in case the value pointed to is an INTEGER or a FLOAT stored in an ARRAY element, you actually have access to the complete array by setting a pointer to subsequent or preceding array elements
+// if the value pointed to is a character string (char*), changing the pointer allows you to access all characters in the string and NOT to access other array elements
 // 
 // refer to Justina documentation to learn how to call a user procedure ('callback') from Justina and change the maximum number allowed
 // 
@@ -392,7 +393,7 @@ struct Values {
 // !!                                                                                                                                  !!
 // !! when returning changed values                                                                                                    !!
 // !! - NEVER change the value type (float, character string)                                                                          !!
-// !! - NEVER increase the length of strings (you can change the characters in the string, however)                                    !! 
+// !! - NEVER INCREASE the length of strings (you can change the characters in the string, however)                                    !! 
 // !!   -> empty strings can not be changed at all (in Justina, an empty string is just a null pointer)                                !!
 // !! because you risk serious trouble when you do so (hanging system, wrong results, ...)                                             !!
 // !!                                                                                                                                  !!
@@ -410,27 +411,39 @@ void userFcn_readPort(const void** pdata, const char* valueType) {     // data: 
 
     pConsole->println("*** Justina was here ***");
 
+    char isVariableMask = 0x80;             // as defined in Justina
+
     for (int i = 0; i < 3; i++) {
+        // data available ?
         if ((valueType[i] & Interpreter::value_typeMask) == Interpreter::value_noValue) { continue; }       // no data
 
-        bool isReal = ((valueType[i] & Interpreter::value_typeMask) == Interpreter::value_isFloat);
-        bool isVariable = (valueType[i] & 0x80);                                                                 // bit b7 indicates 'variable' (scalar or array element)
-
+        long* pLong{};          // pointer to long
+        float* pFloat{};          // pointer to float
         char* pText{};          // character pointer
-        float* pNum{};          // pointer to float
 
-        if (isReal) { pNum = (float*)pdata[i]; }   // copy a pointer to a float argument or copy the float itself (two ways)
+        // get value type and variable / constant info
+        bool isLong = ((valueType[i] & Interpreter::value_typeMask) == Interpreter::value_isLong);
+        bool isFloat = ((valueType[i] & Interpreter::value_typeMask) == Interpreter::value_isFloat);
+        bool isVariable = (valueType[i] & isVariableMask);                                                                 // bit b7: '1' indicates 'variable', '0' means 'constant'
+
+        // get a (pointer to a) value
+        if (isLong) { pLong = (long*)pdata[i]; }                                        // copy a pointer to a long argument 
+        else if (isFloat) { pFloat = (float*)pdata[i]; }                                // copy a pointer to a float argument
         else { pText = (char*)pdata[i]; }                                               // copy a pointer to a character string argument
 
         // change data (-> after return, will have no effect for constants) - you can always check for variable / constant (see above)
-        if (isReal) { *pNum += 10; }
+        if (isLong) { *pLong += 10; }
+        else if (isFloat) { *pFloat += 10.; }
         else {
             if (strlen(pText) >= 10) { pText[7] = '\0'; }  // do NOT increase the length of strings
             if (strlen(pText) >= 5) { pText[3] = pText[4]; pText[4] = '>'; }  // do NOT increase the length of strings
             else if (strlen(pText) >= 2) { pText[0] = '\0'; }       // change non-empty string into empty string //// test: moet error produceren
         }
 
-        pConsole->print("*** value "); Serial.print(i); Serial.print(" returned: "); if (isReal) { pConsole->println(*pNum); }
+        // print a value
+        pConsole->print("*** value "); Serial.print(i); Serial.print(" returned: "); 
+        if (isLong) { pConsole->println(*pLong); }
+        else if (isFloat) { pConsole->println(*pFloat); }
         else { pConsole->println(pText); }
     };
 }
@@ -442,9 +455,11 @@ void userFcn_readPort(const void** pdata, const char* valueType) {     // data: 
 
 void userFcn_writePort(const void** pdata, const char* valueType) {
     pConsole->println("*** Justina was here too ***");
+    // do your thing here
 };
 
 
 void userFcn_togglePort(const void** pdata, const char* valueType) {
-    pConsole->println("*** Justina just passed by");
+    pConsole->println("*** Justina just passed by ***");
+    // do your thing here
 };

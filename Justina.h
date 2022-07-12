@@ -220,15 +220,14 @@ public:
 
 
     union Val {
-        void* pVariable;                                        // address of a variable value (which can be a float, a string pointer or a variable address itself)
-
+        void* pBaseValue;                                        // address of a variable value (which can be a float, a string pointer or a variable address itself)
         // global, static, local variables; parameters with default initialisation (if no argument provided)
         long longConst;                                        // long
         float realConst;                                        // float
         char* pStringConst;                                     // pointer to a character string
         float* pArray;                                          // pointer to memory block reserved for array
 
-        long* pLongConst;                                       
+        long* pLongConst;
         float* pRealConst;
         char** ppStringConst;
         float** ppArray;
@@ -480,7 +479,7 @@ public:
 
     // the 'identInfo' field in variable tokens only stores variable scope (bits 654) and bit b3 (variable is array) 
 
-    
+
     // user variable storage
     char* userVarNames[MAX_USERVARNAMES];                               // store distinct user variable names: ONLY for user variables (same name as program variable is OK)
     Val userVarValues[MAX_USERVARNAMES];
