@@ -300,14 +300,23 @@ Interpreter::execResult_type  Interpreter::exec() {
     if (_lastValueIsStored && _printLastResult) {             // did the execution produce a result ?
 
         // print last result
+        bool isLong = (lastResultTypeFiFo[0] == value_isLong);
         bool isFloat = (lastResultTypeFiFo[0] == value_isFloat);
         int charsPrinted{ 0 };        // not used
         Val toPrint;
         char* fmtString = isFloat ? _dispNumberFmtString : _dispStringFmtString;
 
-        printToString(_dispWidth, isFloat ? _dispNumPrecision : (_dispWidth == 0 ? _maxCharsToPrint : _dispCharsToPrint), !isFloat, _dispIsHexFmt, lastResultValueFiFo, fmtString, toPrint, charsPrinted);
+        /*      //// tijdelijk weg
+        printToString(_dispWidth, isFloat ? _dispNumPrecision : _dispWidth == 0 ? _maxCharsToPrint : _dispCharsToPrint, //// long: precision argument is not relevant
+            !isFloat, _dispIsHexFmt, lastResultValueFiFo, fmtString, toPrint, charsPrinted);
 
         _pConsole->println(toPrint.pStringConst);
+        */
+
+        if (isLong) { Serial.println(lastResultValueFiFo[0].longConst); }
+        else if (isFloat) { Serial.println(lastResultValueFiFo[0].floatConst); }
+        else { Serial.println(lastResultValueFiFo[0].pStringConst); }
+
 #if printCreateDeleteHeapObjects
         Serial.print("----- (Intermd str) "); Serial.println((uint32_t)toPrint.pStringConst - RAMSTART);
 #endif
@@ -361,8 +370,8 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
             if (opIsReal) {
                 char s[20];  // largely long enough to print real values with "G" specifier, without leading characters
                 printString = s;    // pointer
-                operand.realConst = (operandIsVar ? (*pstackLvl->varOrConst.value.pRealConst) : pstackLvl->varOrConst.value.realConst);
-                sprintf(s, "%.3G", operand.realConst);
+                operand.floatConst = (operandIsVar ? (*pstackLvl->varOrConst.value.pFloatConst) : pstackLvl->varOrConst.value.floatConst);
+                sprintf(s, "%.3G", operand.floatConst);
             }
             else {
                 operand.pStringConst = operandIsVar ? (*pstackLvl->varOrConst.value.ppStringConst) : pstackLvl->varOrConst.value.pStringConst;
@@ -420,12 +429,12 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         copyValueArgsFromStack(pstackLvl, cmdParamCount, argIsVar, valueType, args);
 
         for (int i = 0; i < cmdParamCount; i++) { if (valueType[i] != value_isFloat) { execResult = result_arg_numValueExpected; return execResult; } }
-        if (((args[0].realConst != 0) && (args[0].realConst != 1) && (args[0].realConst != 2)) || ((args[1].realConst != 0) && (args[1].realConst != 1))) { execResult = result_arg_invalid; return execResult; };
+        if (((args[0].floatConst != 0) && (args[0].floatConst != 1) && (args[0].floatConst != 2)) || ((args[1].floatConst != 0) && (args[1].floatConst != 1))) { execResult = result_arg_invalid; return execResult; };
 
         // if last result printing switched back on, then prevent printing pending last result (if any)
         _lastValueIsStored = false;               // prevent printing last result (if any)
 
-        _promptAndEcho = args[0].realConst, _printLastResult = args[1].realConst;
+        _promptAndEcho = args[0].floatConst, _printLastResult = args[1].floatConst;
 
         clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings
 
@@ -450,7 +459,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         bool isDeclared = false;
         int index{};
         for (index = 0; index < _userCBprocAliasSet_count; index++) {                               // find alias in table (break if found)
-            if (strcmp(_callbackUserProcAlias[index], alias) == 0) { isDeclared = true; break; }  
+            if (strcmp(_callbackUserProcAlias[index], alias) == 0) { isDeclared = true; break; }
         }
         if (!isDeclared) { execResult = result_aliasNotDeclared; return execResult; }
 
@@ -494,19 +503,19 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         pstackLvl = pStackLvlFirstValueArg;                                                         // set stack level again to first value argument
         for (int i = 0; i < 3; i++) {
             if ((valueType[i] & value_typeMask) == value_isStringPointer) {
-                
+
                 // string COPY (or newly created empty variable string) passed to user routine ? (only if string passed is empty string OR or constant (non-variable) string)
-                if (valueType[i] & passCopyToCallback) {                                                                                      
+                if (valueType[i] & passCopyToCallback) {
 #if printCreateDeleteHeapObjects
                     Serial.print("----- (Intermd str) "); Serial.println((uint32_t)args[i].pStringConst - RAMSTART);
 #endif
                     delete[] args[i].pStringConst;                                                  // delete temporary string
                     intermediateStringObjectCount--;
                 }
-                
+
                 // callback routine changed non-empty VARIABLE string into empty variable string ("\0") ?
-                else if (strlen(args[i].pStringConst) == 0) {                                       
-                    
+                else if (strlen(args[i].pStringConst) == 0) {
+
 #if printCreateDeleteHeapObjects 
                     Serial.print((varScope[i] == var_isUser) ? "----- (usr var str) " : ((varScope[i] == var_isGlobal) || (varScope[i] == var_isStaticInFunc)) ? "----- (var string ) " : "----- (loc var str) ");
                     Serial.println((uint32_t)args[i].pStringConst - RAMSTART);
@@ -517,9 +526,9 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                     // set variable string pointer to null pointer
                     *pstackLvl->varOrConst.value.ppStringConst = nullptr;                           // change pointer to string (in variable) to null pointer
                 }
-    }
+            }
             pstackLvl = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
-    }
+        }
 
 
         // finalize
@@ -529,7 +538,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
         _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;                          // command execution ended
         _activeFunctionData.activeCmd_tokenAddress = nullptr;
-}
+    }
     break;
 
 
@@ -570,14 +579,14 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                     bool operandIsVar = (pstackLvl->varOrConst.tokenType == tok_isVariable);
                     char valueType = operandIsVar ? (*pstackLvl->varOrConst.varTypeAddress & value_typeMask) : pstackLvl->varOrConst.valueType;
                     if (valueType != value_isFloat) { execResult = result_testexpr_numberExpected; return execResult; }
-                    operand.realConst = (operandIsVar ? *pstackLvl->varOrConst.value.pRealConst : pstackLvl->varOrConst.value.realConst);
+                    operand.floatConst = (operandIsVar ? *pstackLvl->varOrConst.value.pFloatConst : pstackLvl->varOrConst.value.floatConst);
 
                     if (i == 1) {
-                        ((blockTestData*)_pFlowCtrlStackTop)->pControlVar = pstackLvl->varOrConst.value.pRealConst;      // pointer to variable (containing a real constant)
+                        ((blockTestData*)_pFlowCtrlStackTop)->pControlVar = pstackLvl->varOrConst.value.pFloatConst;      // pointer to variable (containing a real constant)
                         ((blockTestData*)_pFlowCtrlStackTop)->pControlValueType = pstackLvl->varOrConst.varTypeAddress;        // pointer to variable value type
                     }
-                    else if (i == 2) { (((blockTestData*)_pFlowCtrlStackTop)->finalValue = operand.realConst); }
-                    else { (((blockTestData*)_pFlowCtrlStackTop)->step = operand.realConst); }
+                    else if (i == 2) { (((blockTestData*)_pFlowCtrlStackTop)->finalValue = operand.floatConst); }
+                    else { (((blockTestData*)_pFlowCtrlStackTop)->step = operand.floatConst); }
 
                     pstackLvl = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
                 }
@@ -616,9 +625,9 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
             bool operandIsVar = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable);
             char valueType = operandIsVar ? (*_pEvalStackTop->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackTop->varOrConst.valueType;
             if (valueType != value_isFloat) { execResult = result_testexpr_numberExpected; return execResult; }
-            operand.realConst = operandIsVar ? *_pEvalStackTop->varOrConst.value.pRealConst : _pEvalStackTop->varOrConst.value.realConst;
+            operand.floatConst = operandIsVar ? *_pEvalStackTop->varOrConst.value.pFloatConst : _pEvalStackTop->varOrConst.value.floatConst;
 
-            fail = (operand.realConst == 0);                                                                        // current test (elseif clause)
+            fail = (operand.floatConst == 0);                                                                        // current test (elseif clause)
             ((blockTestData*)_pFlowCtrlStackTop)->fail = (char)fail;                                          // remember test result (true -> 0x1)
         }
 
@@ -908,15 +917,16 @@ void Interpreter::saveLastValue(bool& overWritePrevious) {
     // store new last value
     VarOrConstLvl lastvalue;
     bool lastValueIsVariable = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable);
-    bool lastValueReal = (_pEvalStackTop->varOrConst.valueType == value_isFloat);
+    bool lastValueNumeric = ((_pEvalStackTop->varOrConst.valueType == value_isLong) || (_pEvalStackTop->varOrConst.valueType == value_isFloat));
     bool lastValueIntermediate = ((_pEvalStackTop->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate);
 
-    if (lastValueReal) { lastvalue.value.realConst = (lastValueIsVariable ? (*_pEvalStackTop->varOrConst.value.pRealConst) : _pEvalStackTop->varOrConst.value.realConst); }
+    // line below works for long integers as well
+    if (lastValueNumeric) { lastvalue.value.floatConst = (lastValueIsVariable ? (*_pEvalStackTop->varOrConst.value.pFloatConst) : _pEvalStackTop->varOrConst.value.floatConst); }
     else { lastvalue.value.pStringConst = (lastValueIsVariable ? (*_pEvalStackTop->varOrConst.value.ppStringConst) : _pEvalStackTop->varOrConst.value.pStringConst); }
 
-    if ((lastValueReal) || (!lastValueReal && (lastvalue.value.pStringConst == nullptr))) {
+    if ((lastValueNumeric) || (!lastValueNumeric && (lastvalue.value.pStringConst == nullptr))) {
         lastResultValueFiFo[0] = lastvalue.value;
-}
+    }
     // new last value is a non-empty string: make a copy of the string and store a reference to this new string
     else {
         int stringlen = min(strlen(lastvalue.value.pStringConst), MyParser::_maxAlphaCstLen);        // excluding terminating \0
@@ -1090,7 +1100,7 @@ Interpreter::execResult_type Interpreter::arrayAndSubscriptsToarrayElement(LE_ev
     do {
         bool opReal = (pStackLvl->varOrConst.valueType == value_isFloat);
         if (!opReal) { return result_array_subscriptNonInteger; }
-        float f = (pStackLvl->varOrConst.tokenType == tok_isVariable) ? (*pStackLvl->varOrConst.value.pRealConst) : pStackLvl->varOrConst.value.realConst;
+        float f = (pStackLvl->varOrConst.tokenType == tok_isVariable) ? (*pStackLvl->varOrConst.value.pFloatConst) : pStackLvl->varOrConst.value.floatConst;
         elemSpec[dimNo] = f;
         if (f != elemSpec[dimNo]) { return result_array_subscriptNonInteger; }
 
@@ -1135,7 +1145,7 @@ void Interpreter::makeIntermediateConstant(LE_evalStack* pEvalStackLvl) {
         char valueType = operandIsVar ? (*pEvalStackLvl->varOrConst.varTypeAddress & value_typeMask) : pEvalStackLvl->varOrConst.valueType;
 
         bool opReal = (valueType == value_isFloat);
-        if (opReal) { operand.realConst = operandIsVar ? (*pEvalStackLvl->varOrConst.value.pRealConst) : pEvalStackLvl->varOrConst.value.realConst; }
+        if (opReal) { operand.floatConst = operandIsVar ? (*pEvalStackLvl->varOrConst.value.pFloatConst) : pEvalStackLvl->varOrConst.value.floatConst; }
         else { operand.pStringConst = operandIsVar ? (*pEvalStackLvl->varOrConst.value.ppStringConst) : pEvalStackLvl->varOrConst.value.pStringConst; }
 
         // if the value (parsed constant or variable value) is a non-empty string value, make a copy of the character string and store a pointer to this copy as result
@@ -1184,7 +1194,7 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
 
         // the entry preceding the current parsed constant, variable or expression result is ALWAYS a terminal (but never a right parenthesis, which is never pushed to the evaluation stack)
         // the current entry could also be preceded by a generic name on the evaluation stack: check
-        ////  kan generic name zijn !!! test !!! comment ///
+        ////  kan generic name zijn !!! adapt comment 
 
         int terminalIndex{};
         bool minus1IsOperator{ false };       // init
@@ -1254,31 +1264,34 @@ Interpreter::execResult_type  Interpreter::execUnaryOperation(bool isPrefix) {
     Val operand, opResult;                                                               // operand and result
     _activeFunctionData.errorProgramCounter = pUnaryOpStackLvl->terminal.tokenAddress;                // in the event of an error
 
-    // value is real ?
+
     bool operandIsVar = (pOperandStackLvl->varOrConst.tokenType == tok_isVariable);
     char valueType = operandIsVar ? (*pOperandStackLvl->varOrConst.varTypeAddress & value_typeMask) : pOperandStackLvl->varOrConst.valueType;
-    if (valueType != value_isFloat) { return result_numberExpected; }
+    if ((valueType != value_isLong) && (valueType != value_isFloat)) { return result_numberExpected; }                   // value is numeric ?
 
-    // fetch operand (real value)
-    operand.realConst = operandIsVar ? *pOperandStackLvl->varOrConst.value.pRealConst : pOperandStackLvl->varOrConst.value.realConst;
+    // fetch operand (numeric value) - line is valid for long integers as well
+    operand.floatConst = operandIsVar ? *pOperandStackLvl->varOrConst.value.pFloatConst : pOperandStackLvl->varOrConst.value.floatConst;
 
     // execute: 'operand' will now contains resulting value (constant)
     int terminalIndex = pUnaryOpStackLvl->terminal.index & 0x7F;
     char terminalCode = _pmyParser->_terminals[terminalIndex].terminalCode;
+    bool isFloat = (valueType == value_isFloat);
 
-    if (terminalCode == _pmyParser->termcod_minus) { opResult.realConst = -operand.realConst; } // prefix minus 
-    else if (terminalCode == _pmyParser->termcod_plus) { opResult.realConst = operand.realConst; } // prefix plus
-    else if (terminalCode == _pmyParser->termcod_not) { opResult.realConst = (operand.realConst == 0); } // prefix: not
-    else if (terminalCode == _pmyParser->termcod_incr) { opResult.realConst = operand.realConst + 1; } // prefix & postfix: increment
-    else if (terminalCode == _pmyParser->termcod_decr) { opResult.realConst = operand.realConst - 1; } // prefix & postfix: decrement
-    else if (terminalCode == _pmyParser->termcod_testpostfix) { opResult.realConst = operand.realConst * 10; } // postfix: test
+    if (terminalCode == _pmyParser->termcod_minus) { isFloat ? opResult.floatConst = -operand.floatConst : opResult.longConst = -operand.longConst; } // prefix minus 
+    else if (terminalCode == _pmyParser->termcod_plus) { opResult = operand; } // prefix plus
+    else if (terminalCode == _pmyParser->termcod_not) { isFloat ? opResult.floatConst = (operand.floatConst == 0) : opResult.longConst = (operand.longConst == 0); } // prefix: not
+    else if (terminalCode == _pmyParser->termcod_incr) { isFloat ? opResult.floatConst = operand.floatConst + 1 : opResult.longConst = operand.longConst + 1; } // prefix & postfix: increment
+    else if (terminalCode == _pmyParser->termcod_decr) { isFloat ? opResult.floatConst = operand.floatConst - 1 : opResult.longConst = operand.longConst - 1; } // prefix & postfix: decrement
+    else if (terminalCode == _pmyParser->termcod_testpostfix) { isFloat ? opResult.floatConst = operand.floatConst * 10 : opResult.longConst = operand.longConst * 10; } // postfix: test
 
 
     // tests
     // -----
 
-    if (isnan(opResult.realConst)) { return result_undefined; }
-    else if (!isfinite(opResult.realConst)) { return result_overflow; }
+    if (isFloat) {      // floats only
+        if (isnan(opResult.floatConst)) { return result_undefined; }
+        else if (!isfinite(opResult.floatConst)) { return result_overflow; }
+    }
 
 
     // decrement or increment operation: store value in variable (variable type does not change) 
@@ -1287,7 +1300,7 @@ Interpreter::execResult_type  Interpreter::execUnaryOperation(bool isPrefix) {
     bool isIncrDecr = ((terminalCode == _pmyParser->termcod_incr)
         || (terminalCode == _pmyParser->termcod_decr));
 
-    if (isIncrDecr) { *pOperandStackLvl->varOrConst.value.pRealConst = opResult.realConst; }
+    if (isIncrDecr) { *pOperandStackLvl->varOrConst.value.pFloatConst = opResult.floatConst; }   // line is valid for long integers as well
 
 
     // if a prefix increment / decrement, then keep variable reference on the stack
@@ -1329,12 +1342,14 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 
     // value type of operands
     bool operand1IsVar = (_pEvalStackMinus2->varOrConst.tokenType == tok_isVariable);
-    char operandValueType = operand1IsVar ? (*_pEvalStackMinus2->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackMinus2->varOrConst.valueType;
-    bool op1real = ((uint8_t)operandValueType == value_isFloat);
+    char operand1valueType = operand1IsVar ? (*_pEvalStackMinus2->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackMinus2->varOrConst.valueType;
+    bool op1isLong = ((uint8_t)operand1valueType == value_isLong);
+    bool op1isFloat = ((uint8_t)operand1valueType == value_isFloat);
 
     bool operand2IsVar = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable);
-    operandValueType = operand2IsVar ? (*_pEvalStackTop->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackTop->varOrConst.valueType;
-    bool op2real = ((uint8_t)operandValueType == value_isFloat);
+    char operand2valueType = operand2IsVar ? (*_pEvalStackTop->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackTop->varOrConst.valueType;
+    bool op2isLong = ((uint8_t)operand2valueType == value_isLong);
+    bool op2isFloat = ((uint8_t)operand2valueType == value_isFloat);
 
     int operatorCode = _pmyParser->_terminals[_pEvalStackMinus1->terminal.index & 0x7F].terminalCode;
 
@@ -1348,7 +1363,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 
     if (operationIncludesAssignment) {
         if (_pEvalStackMinus2->varOrConst.variableAttributes & var_isArray) {        // asignment to array element: value type cannot change
-            if (op1real != op2real) { return result_array_valueTypeIsFixed; }
+            if (operand1valueType != operand1valueType) { return result_array_valueTypeIsFixed; }
         }
 
         // note that for reference variables, the variable type fetched is the SOURCE variable type
@@ -1358,23 +1373,31 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         isLocalVar = ((_pEvalStackMinus2->varOrConst.variableAttributes & var_scopeMask) == var_isLocalInFunc);            // but not function parameter definitions
     }
 
-    // check if operands are compatible with operator: real for all operators except string concatenation
+    // check if operands are compatible with operator: numeric for all operators except string concatenation
     if (operatorCode != _pmyParser->termcod_assign) {                                           // not an assignment ?
-        if ((operatorCode == _pmyParser->termcod_concat) && (op1real || op2real)) { return result_stringExpected; }
-        else if ((operatorCode != _pmyParser->termcod_concat) && (!op1real || !op2real)) { return result_numberExpected; }
+        if ((operatorCode == _pmyParser->termcod_concat) && (op1isLong || op1isFloat || op2isLong || op2isFloat)) { return result_stringExpected; }
+        else if ((operatorCode != _pmyParser->termcod_concat) && (!(op1isLong || op1isFloat) || !(op2isLong || op2isFloat))) { return result_numberExpected; }
     }
 
-    // mixed operands not allowed; 2 x real -> real; 2 x string -> string: set result value type to operand 2 value type (assignment: current operand 1 value type is not relevant)
-    bool opResultReal = op2real;                                                                    // do NOT set to operand 1 value type (would not work in case of assignment)
+    // allowed operand types: 2 x number -> number; 2 x string -> string
+    // assignment: set result value type to operand 2 value type. Other operators: promote long to float if other operand is float
+    bool opResultLong = (operatorCode == _pmyParser->termcod_pow) ? false : (operatorCode == _pmyParser->termcod_assign) ? op2isLong : op1isLong && op2isLong;
+    bool opResultFloat = (operatorCode == _pmyParser->termcod_pow) ? true : (operatorCode == _pmyParser->termcod_assign) ? op2isFloat : op1isFloat || op2isFloat;
+    bool convertOperandsToFloat = opResultFloat && (operatorCode != _pmyParser->termcod_assign) && (op1isLong || op2isLong);
 
-    // fetch operands: real constants or pointers to character strings
-    if (op1real) { operand1.realConst = (operand1IsVar ? (*_pEvalStackMinus2->varOrConst.value.pRealConst) : _pEvalStackMinus2->varOrConst.value.realConst); }
+    // fetch operands: numeric constants or pointers to character strings - line is valid for long integers as well
+    if (op1isLong || op1isFloat) { operand1.floatConst = (operand1IsVar ? (*_pEvalStackMinus2->varOrConst.value.pFloatConst) : _pEvalStackMinus2->varOrConst.value.floatConst); }
     else { operand1.pStringConst = (operand1IsVar ? (*_pEvalStackMinus2->varOrConst.value.ppStringConst) : _pEvalStackMinus2->varOrConst.value.pStringConst); }
-    if (op2real) { operand2.realConst = (operand2IsVar ? (*_pEvalStackTop->varOrConst.value.pRealConst) : _pEvalStackTop->varOrConst.value.realConst); }
+    if (op2isLong || op2isFloat) { operand2.floatConst = (operand2IsVar ? (*_pEvalStackTop->varOrConst.value.pFloatConst) : _pEvalStackTop->varOrConst.value.floatConst); }
     else { operand2.pStringConst = (operand2IsVar ? (*_pEvalStackTop->varOrConst.value.ppStringConst) : _pEvalStackTop->varOrConst.value.pStringConst); }
 
-    bool op1emptyString = op1real ? false : (operand1.pStringConst == nullptr);
-    bool op2emptyString = op2real ? false : (operand2.pStringConst == nullptr);
+    if (convertOperandsToFloat) {
+        if (op1isLong) { operand1.floatConst = operand1.longConst; }
+        if (op2isLong) { operand2.floatConst = operand2.longConst; }
+    }
+
+    bool op1emptyString = (op1isLong || op1isFloat) ? false : (operand1.pStringConst == nullptr);
+    bool op2emptyString = (op2isLong || op2isFloat) ? false : (operand2.pStringConst == nullptr);
 
     int stringlen{ 0 };                                                                                  // define outside switch statement
 
@@ -1408,73 +1431,79 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         opResult = operand2;
         break;
 
+        // note: no overflow checks for arithmatic operators (+ - * /)
+
     case MyParser::termcod_plus:
     case MyParser::termcod_plusAssign:
-        opResult.realConst = operand1.realConst + operand2.realConst;
+        opResultLong ? opResult.longConst = operand1.longConst + operand2.longConst : opResult.floatConst = operand1.floatConst + operand2.floatConst;
         break;
 
     case MyParser::termcod_minus:
     case MyParser::termcod_minusAssign:
-        opResult.realConst = operand1.realConst - operand2.realConst;
+        opResultLong ? opResult.longConst = operand1.longConst - operand2.longConst : opResult.floatConst = operand1.floatConst - operand2.floatConst;
         break;
 
     case MyParser::termcod_mult:
     case MyParser::termcod_multAssign:
-        opResult.realConst = operand1.realConst * operand2.realConst;
-        if ((operand1.realConst != 0) && (operand2.realConst != 0) && (!isnormal(opResult.realConst))) { return result_underflow; }
+        opResultLong ? opResult.longConst = operand1.longConst * operand2.longConst : opResult.floatConst = operand1.floatConst * operand2.floatConst;
+        if (opResultFloat) { if ((operand1.floatConst != 0) && (operand2.floatConst != 0) && (!isnormal(opResult.floatConst))) { return result_underflow; } }
         break;
 
     case MyParser::termcod_div:
     case MyParser::termcod_divAssign:
-        opResult.realConst = operand1.realConst / operand2.realConst;
-        if ((operand1.realConst != 0) && (!isnormal(opResult.realConst))) { return result_underflow; }
+        opResultLong ? opResult.longConst = operand1.longConst / operand2.longConst : opResult.floatConst = operand1.floatConst / operand2.floatConst;
+        if (opResultFloat) {
+            if ((operand1.floatConst != 0) && (operand2.floatConst == 0)) { return result_divByZero; }
+            else if ((operand1.floatConst != 0) && (!isnormal(opResult.floatConst))) { return result_underflow; }
+        }
+        else { if (operand2.longConst == 0) { return (operand1.longConst == 0) ? result_undefined : result_divByZero; } }
         break;
 
-    case MyParser::termcod_pow:
-        if ((operand1.realConst == 0) && (operand2.realConst == 0)) { return result_undefined; } // C++ pow() provides 1 as result
-        opResult.realConst = pow(operand1.realConst, operand2.realConst);
+    case MyParser::termcod_pow:     // operands always (converted to) floats
+        if ((operand1.floatConst == 0) && (operand2.floatConst == 0)) { return result_undefined; } // C++ pow() provides 1 as result
+        opResult.floatConst = pow(operand1.floatConst, operand2.floatConst);
         break;
 
     case MyParser::termcod_and:
-        opResult.realConst = operand1.realConst && operand2.realConst;
+        opResultLong ? opResult.longConst = operand1.longConst && operand2.longConst : opResult.floatConst = operand1.floatConst && operand2.floatConst;
         break;
 
     case MyParser::termcod_or:
-        opResult.realConst = operand1.realConst || operand2.realConst;
+        opResultLong ? opResult.longConst = operand1.longConst || operand2.longConst : opResult.floatConst = operand1.floatConst || operand2.floatConst;
         break;
 
     case MyParser::termcod_lt:
-        opResult.realConst = operand1.realConst < operand2.realConst;
+        opResultLong ? opResult.longConst = operand1.longConst < operand2.longConst : opResult.floatConst = operand1.floatConst < operand2.floatConst;
         break;
 
     case MyParser::termcod_gt:
-        opResult.realConst = operand1.realConst > operand2.realConst;
+        opResultLong ? opResult.longConst = operand1.longConst > operand2.longConst : opResult.floatConst = operand1.floatConst > operand2.floatConst;
         break;
 
     case MyParser::termcod_eq:
-        opResult.realConst = operand1.realConst == operand2.realConst;
+        opResultLong ? opResult.longConst = operand1.longConst == operand2.longConst : opResult.floatConst = operand1.floatConst == operand2.floatConst;
         break;
 
     case MyParser::termcod_ltoe:
-        opResult.realConst = operand1.realConst <= operand2.realConst;
+        opResultLong ? opResult.longConst = operand1.longConst <= operand2.longConst : opResult.floatConst = operand1.floatConst <= operand2.floatConst;
         break;
 
     case MyParser::termcod_gtoe:
-        opResult.realConst = operand1.realConst >= operand2.realConst;
+        opResultLong ? opResult.longConst = operand1.longConst >= operand2.longConst : opResult.floatConst = operand1.floatConst >= operand2.floatConst;
         break;
 
     case MyParser::termcod_ne:
-        opResult.realConst = operand1.realConst != operand2.realConst;
+        opResultLong ? opResult.longConst = operand1.longConst != operand2.longConst : opResult.floatConst = operand1.floatConst != operand2.floatConst;
         break;
-}       // switch
+    }       // switch
 
 
-// tests
-// -----
+    // tests
+    // -----
 
-    if ((opResultReal) && (operatorCode != _pmyParser->termcod_assign)) {     // check error (not for pure assignment)
-        if (isnan(opResult.realConst)) { return result_undefined; }
-        else if (!isfinite(opResult.realConst)) { return result_overflow; }
+    if ((opResultFloat) && (operatorCode != _pmyParser->termcod_assign)) {     // check error (float values only, not for pure assignment)
+        if (isnan(opResult.floatConst)) { return result_undefined; }
+        else if (!isfinite(opResult.floatConst)) { return result_overflow; }
     }
 
 
@@ -1488,9 +1517,9 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         // if variable currently holds a non-empty string (indicated by a nullptr), delete char string object
         execResult_type execResult = deleteVarStringObject(_pEvalStackMinus2); if (execResult != result_execOK) { return execResult; }
 
-        // if the value to be assigned is real (float) OR an empty string: simply assign the value (not a heap object)
+        // if the value to be assigned is numeric OR an empty string: simply assign the value (not a heap object)
 
-        if (op2real || op2emptyString) {
+        if (op2isLong || op2isFloat || op2emptyString) {
             // nothing to do
         }
         // the value (parsed constant, variable value or intermediate result) to be assigned to the receiving variable is a non-empty string value
@@ -1508,16 +1537,18 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 #endif
         }
 
-        // store value in variable and adapt variable value type
-        if (opResultReal) { *_pEvalStackMinus2->varOrConst.value.pRealConst = opResult.realConst; }
+        // store value in variable and adapt variable value type - line is valid for long integers as well
+        if (opResultLong || opResultFloat) { *_pEvalStackMinus2->varOrConst.value.pFloatConst = opResult.floatConst; }
         else { *_pEvalStackMinus2->varOrConst.value.ppStringConst = opResult.pStringConst; }
 
         // save resulting variable value type 
-        *_pEvalStackMinus2->varOrConst.varTypeAddress = (*_pEvalStackMinus2->varOrConst.varTypeAddress & ~value_typeMask) | (opResultReal ? value_isFloat : value_isStringPointer);
+        *_pEvalStackMinus2->varOrConst.varTypeAddress = (*_pEvalStackMinus2->varOrConst.varTypeAddress & ~value_typeMask) |
+            (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
 
         // if variable reference, then value type on the stack indicates 'variable reference', so don't overwrite it
         if (!operand1IsVarRef) { // if reference, then value type on the stack indicates 'variable reference', so don't overwrite it
-            _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) | (opResultReal ? value_isFloat : value_isStringPointer);
+            _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) |
+                (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
         }
     }
 
@@ -1547,13 +1578,13 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     // if assignment, then result is already stored in variable and the stack top still contains the reference to the variable
     if (!operationIncludesAssignment) {
         _pEvalStackTop->varOrConst.value = opResult;                        // float or pointer to string
-        _pEvalStackTop->varOrConst.valueType = opResultReal ? value_isFloat : value_isStringPointer;     // value type of second operand  
+        _pEvalStackTop->varOrConst.valueType = opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer;     // value type of second operand  
         _pEvalStackTop->varOrConst.tokenType = tok_isConstant;              // use generic constant type
         _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
         _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
     }
     return result_execOK;
-    }
+}
 
 
 // ---------------------------------
@@ -1575,8 +1606,8 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
     Val operands[8];
 
 
-    // retrieve argument(s) info: variable or constant, value type
-    // -----------------------------------------------------------
+    // preprocess: retrieve argument(s) info: variable or constant, value type
+    // -----------------------------------------------------------------------
 
 
     if (suppliedArgCount > 0) {
@@ -1589,7 +1620,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
             operandIsReal[i] = ((uint8_t)operandValueType[i] == value_isFloat);
 
             // fetch operands: real constants or pointers to character strings (pointers to arrays: not used) 
-            if (operandIsReal) { operands[i].realConst = (operandIsVar[i] ? (*pStackLvl->varOrConst.value.pRealConst) : pStackLvl->varOrConst.value.realConst); }
+            if (operandIsReal) { operands[i].floatConst = (operandIsVar[i] ? (*pStackLvl->varOrConst.value.pFloatConst) : pStackLvl->varOrConst.value.floatConst); }
             else { operands[i].pStringConst = (operandIsVar[i] ? (*pStackLvl->varOrConst.value.ppStringConst) : pStackLvl->varOrConst.value.pStringConst); }
 
             pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);       // value fetched: go to next argument
@@ -1607,13 +1638,13 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
     case MyParser::fnccod_sqrt:
     {
         if (!operandIsReal[0]) { return result_numberExpected; }
-        if (operands[0].realConst < 0) { return result_arg_outsideRange; }
+        if (operands[0].floatConst < 0) { return result_arg_outsideRange; }
 
         fcnResultIsReal = true;
-        fcnResult.realConst = sqrt(operands[0].realConst);
-        if ((operands[0].realConst > 0) && !isnormal(fcnResult.realConst)) { return result_underflow; }
-        if (isnan(fcnResult.realConst)) { return result_undefined; }
-        if (!isfinite(fcnResult.realConst)) { return result_overflow; }
+        fcnResult.floatConst = sqrt(operands[0].floatConst);
+        if ((operands[0].floatConst > 0) && !isnormal(fcnResult.floatConst)) { return result_underflow; }
+        if (isnan(fcnResult.floatConst)) { return result_undefined; }
+        if (!isfinite(fcnResult.floatConst)) { return result_overflow; }
     }
     break;
 
@@ -1626,7 +1657,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
         float* pArray = *pFirstArgStackLvl->varOrConst.value.ppArray;
 
         fcnResultIsReal = true;
-        fcnResult.realConst = ((char*)pArray)[3];
+        fcnResult.floatConst = ((char*)pArray)[3];
     }
     break;
 
@@ -1638,12 +1669,12 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
         if (!operandIsReal[1]) { return result_arg_dimNumberIntegerExpected; }
         float* pArray = *pFirstArgStackLvl->varOrConst.value.ppArray;
         int arrayDimCount = ((char*)pArray)[3];
-        int dimNo = int(operands[1].realConst);
-        if (operands[1].realConst != dimNo) { return result_arg_dimNumberIntegerExpected; }
+        int dimNo = int(operands[1].floatConst);
+        if (operands[1].floatConst != dimNo) { return result_arg_dimNumberIntegerExpected; }
         if ((dimNo < 1) || (dimNo > arrayDimCount)) { return result_arg_dimNumberInvalid; }
 
         fcnResultIsReal = true;
-        fcnResult.realConst = ((char*)pArray)[--dimNo];
+        fcnResult.floatConst = ((char*)pArray)[--dimNo];
     }
     break;
 
@@ -1654,7 +1685,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
     case MyParser::fnccod_valueType:
     {
         fcnResultIsReal = true;
-        fcnResult.realConst = operandValueType[0];
+        fcnResult.floatConst = operandValueType[0];
     }
     break;
 
@@ -1667,8 +1698,8 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
         int FiFoElement = 1;    // init: newest FiFo element
         if (suppliedArgCount == 1) {              // FiFo element specified
             if (!operandIsReal[0]) { return result_arg_integerExpected; }
-            FiFoElement = int(operands[0].realConst);
-            if (operands[0].realConst != FiFoElement) { return result_arg_integerExpected; }
+            FiFoElement = int(operands[0].floatConst);
+            if (operands[0].floatConst != FiFoElement) { return result_arg_integerExpected; }
             if ((FiFoElement < 1) || (FiFoElement > MAX_LAST_RESULT_DEPTH)) { return result_arg_outsideRange; }
         }
         if (FiFoElement > _lastResultCount) { return result_arg_invalid; }
@@ -1697,12 +1728,12 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
     case MyParser::fnccod_millis:
     {
         fcnResultIsReal = true;
-        fcnResult.realConst = millis();     // converted to float
+        fcnResult.floatConst = millis();     // converted to float
     }
     break;
 
 
-    // ASCII code of a single character n a string
+    // ASCII code of a single character in a string
     // -------------------------------------------
 
     case MyParser::fnccod_asc:
@@ -1712,14 +1743,14 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
         int charPos = 1;            // first character
         if (suppliedArgCount == 2) {              // character position in string specified
             if (!operandIsReal[1]) { return result_arg_integerExpected; }
-            charPos = int(operands[1].realConst);
-            if (operands[1].realConst != charPos) { return result_arg_integerExpected; }
+            charPos = int(operands[1].floatConst);
+            if (operands[1].floatConst != charPos) { return result_arg_integerExpected; }
             if (charPos < 1) { return result_arg_outsideRange; }
         }
         if (charPos > strlen(operands[0].pStringConst)) { return result_arg_invalid; }
 
         fcnResultIsReal = true;
-        fcnResult.realConst = operands[0].pStringConst[--charPos];     // character code converted to float
+        fcnResult.floatConst = operands[0].pStringConst[--charPos];     // character code converted to float
     }
     break;
 
@@ -1730,8 +1761,8 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
     case MyParser::fnccod_char:     // convert ASCII code to 1-character string
     {
         if (!operandIsReal[0]) { return result_arg_integerExpected; }
-        int asciiCode = int(operands[0].realConst);
-        if (operands[0].realConst != asciiCode) { return result_arg_integerExpected; }
+        int asciiCode = int(operands[0].floatConst);
+        if (operands[0].floatConst != asciiCode) { return result_arg_integerExpected; }
         if ((asciiCode < 1) || (asciiCode > 0xFF)) { return result_arg_outsideRange; }        // do not allow \0
 
         fcnResultIsReal = false;
@@ -1818,32 +1849,35 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
 
             // save value in variable and set variable value type to real 
             // note: if variable reference, then value type on the stack indicates 'variable reference' which should not be changed (but stack level will be deleted now anyway)
-            *_pEvalStackTop->varOrConst.value.pRealConst = charsPrinted;
+            *_pEvalStackTop->varOrConst.value.pFloatConst = charsPrinted;
             *_pEvalStackTop->varOrConst.varTypeAddress = (*_pEvalStackTop->varOrConst.varTypeAddress & ~value_typeMask) | value_isFloat;
         }
     }
     break;
 
 
+    // retrieve a system variable
+    // --------------------------
+
     case MyParser::fnccod_sysVar:
     {
         if (!operandIsReal[0]) { return result_arg_integerExpected; }
-        int sysVar = int(operands[0].realConst);
-        if (operands[0].realConst != sysVar) { return result_arg_integerExpected; }
+        int sysVar = int(operands[0].floatConst);
+        if (operands[0].floatConst != sysVar) { return result_arg_integerExpected; }
 
         fcnResultIsReal = true;  //init
 
         switch (sysVar) {
 
-        case 0: fcnResult.realConst = _dispWidth; break;
-        case 1: fcnResult.realConst = _dispNumPrecision; break;
-        case 2: fcnResult.realConst = _dispCharsToPrint; break;
-        case 3: fcnResult.realConst = _dispFmtFlags; break;
+        case 0: fcnResult.floatConst = _dispWidth; break;
+        case 1: fcnResult.floatConst = _dispNumPrecision; break;
+        case 2: fcnResult.floatConst = _dispCharsToPrint; break;
+        case 3: fcnResult.floatConst = _dispFmtFlags; break;
 
-        case 5: fcnResult.realConst = _printWidth; break;
-        case 6: fcnResult.realConst = _printNumPrecision; break;
-        case 7: fcnResult.realConst = _printCharsToPrint; break;
-        case 8: fcnResult.realConst = _printFmtFlags; break;
+        case 5: fcnResult.floatConst = _printWidth; break;
+        case 6: fcnResult.floatConst = _printNumPrecision; break;
+        case 7: fcnResult.floatConst = _printCharsToPrint; break;
+        case 8: fcnResult.floatConst = _printFmtFlags; break;
 
         case 4:
         case 9:
@@ -1858,10 +1892,10 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
         }
         break;
 
-        case 10: fcnResult.realConst = _promptAndEcho; break;
-        case 11: fcnResult.realConst = _printLastResult; break;
-        case 12: fcnResult.realConst = _userCBprocStartSet_count; break;
-        case 13: fcnResult.realConst = _userCBprocAliasSet_count; break;
+        case 10: fcnResult.floatConst = _promptAndEcho; break;
+        case 11: fcnResult.floatConst = _printLastResult; break;
+        case 12: fcnResult.floatConst = _userCBprocStartSet_count; break;
+        case 13: fcnResult.floatConst = _userCBprocAliasSet_count; break;
         default:return result_arg_invalid; break;
         }       // switch (sysVar)
         break;
@@ -1871,8 +1905,8 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
     }       // end switch
 
 
-    // delete function name token and arguments from evaluation stack, create stack entry for function result 
-    // ------------------------------------------------------------------------------------------------------
+    // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
+    // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
@@ -1915,9 +1949,9 @@ Interpreter::execResult_type Interpreter::checkFmtSpecifiers(bool isDispFmt, boo
         else if (argNo != (isFmtString ? 5 : 6)) {      // (exclude optional argument returning #chars printed from tests)
 
             if (valueType[argNo - 1] != value_isFloat) { return result_arg_numValueExpected; }                                               // numeric ?
-            if (operands[argNo - 1].realConst < 0) { return result_arg_outsideRange; }                                           // positive ?
-            ((argNo == (isDispFmt ? 1 : 2)) ? width : (argNo == (isDispFmt ? 2 : 3)) ? precision : flags) = operands[argNo - 1].realConst;                             // set with, precision, flags to respective argument
-            if (operands[argNo - 1].realConst != ((argNo == (isDispFmt ? 1 : 2)) ? width : (argNo == (isDispFmt ? 2 : 3)) ? precision : flags)) { return result_arg_invalid; }    // integer ?
+            if (operands[argNo - 1].floatConst < 0) { return result_arg_outsideRange; }                                           // positive ?
+            ((argNo == (isDispFmt ? 1 : 2)) ? width : (argNo == (isDispFmt ? 2 : 3)) ? precision : flags) = operands[argNo - 1].floatConst;                             // set with, precision, flags to respective argument
+            if (operands[argNo - 1].floatConst != ((argNo == (isDispFmt ? 1 : 2)) ? width : (argNo == (isDispFmt ? 2 : 3)) ? precision : flags)) { return result_arg_invalid; }    // integer ?
         }
     }
     // process STRING format precision argument NOT specified: init precision to width. Note that for strings, precision specifies MAXIMUM no of characters that will be printed
@@ -1984,8 +2018,8 @@ Interpreter::execResult_type  Interpreter::printToString(int width, int precisio
 
 
     if (inputIsString) { sprintf(fcnResult.pStringConst, fmtString, width, precision, (operands[0].pStringConst == nullptr) ? "" : operands[0].pStringConst, &charsPrinted); }
-    else if (isHexFmt) { sprintf(fcnResult.pStringConst, fmtString, width, precision, (long)operands[0].realConst, &charsPrinted); }     // hex output for floating point numbers not provided (Arduino)
-    else { sprintf(fcnResult.pStringConst, fmtString, width, precision, operands[0].realConst, &charsPrinted); }
+    else if (isHexFmt) { sprintf(fcnResult.pStringConst, fmtString, width, precision, (long)operands[0].floatConst, &charsPrinted); }     // hex output for floating point numbers not provided (Arduino)
+    else { sprintf(fcnResult.pStringConst, fmtString, width, precision, operands[0].floatConst, &charsPrinted); }
 
     return result_execOK;
 }
@@ -2050,8 +2084,8 @@ Interpreter::execResult_type Interpreter::copyValueArgsFromStack(LE_evalStack*& 
 
         // argument is float: if preparing for callback, return pointer to float. Otherwise, return float itself
         if ((valueType[i] & value_typeMask) == value_isFloat) {
-            if (prepareForCallback) { args[i].pRealConst = (argIsVar[i] ? (pStackLvl->varOrConst.value.pRealConst) : &pStackLvl->varOrConst.value.realConst); }
-            else { args[i].realConst = (argIsVar[i] ? (*pStackLvl->varOrConst.value.pRealConst) : pStackLvl->varOrConst.value.realConst); }
+            if (prepareForCallback) { args[i].pFloatConst = (argIsVar[i] ? (pStackLvl->varOrConst.value.pFloatConst) : &pStackLvl->varOrConst.value.floatConst); }
+            else { args[i].floatConst = (argIsVar[i] ? (*pStackLvl->varOrConst.value.pFloatConst) : pStackLvl->varOrConst.value.floatConst); }
         }
 
         // argument is string: always return a pointer to string, but if preparing for callback, this pointer MAY point to a newly created copy of the string or empty string (see below)
@@ -2075,10 +2109,10 @@ Interpreter::execResult_type Interpreter::copyValueArgsFromStack(LE_evalStack*& 
         }
 
         pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-        }
+    }
 
     return result_execOK;
-    }
+}
 
 // --------------------------------
 // *   launch external function   *
@@ -2134,7 +2168,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction(LE_evalStack*&
                 }
                 else {      // parsed, or intermediate, constant passed as value
                     if (operandIsReal) {                                                      // operand is float constant
-                        _activeFunctionData.pLocalVarValues[i].realConst = pStackLvl->varOrConst.value.realConst;   // store a local copy
+                        _activeFunctionData.pLocalVarValues[i].floatConst = pStackLvl->varOrConst.value.floatConst;   // store a local copy
                         _activeFunctionData.pVariableAttributes[i] = value_isFloat;
                     }
                     else {                      // operand is string constant: create a local copy
@@ -2211,8 +2245,8 @@ void Interpreter::initFunctionDefaultParamVariables(char*& pStep, int suppliedAr
             bool operandIsReal = (valueType == value_isFloat);
             if (operandIsReal) {                                                      // operand is float constant
                 float f{ 0. };
-                memcpy(&f, ((TokenIsConstant*)pStep)->cstValue.realConst, sizeof(float));
-                _activeFunctionData.pLocalVarValues[count].realConst = f;  // store a local copy
+                memcpy(&f, ((TokenIsConstant*)pStep)->cstValue.floatConst, sizeof(float));
+                _activeFunctionData.pLocalVarValues[count].floatConst = f;  // store a local copy
                 _activeFunctionData.pVariableAttributes[count] = value_isFloat;                // default value: always scalar
             }
             else {                      // operand is parsed string constant: create a local copy and store in variable
@@ -2257,7 +2291,7 @@ void Interpreter::initFunctionLocalNonParamVariables(char* pStep, int paramCount
 
         do {
             // in case variable is not an array and it does not have an initializer: init as zero (float)
-            _activeFunctionData.pLocalVarValues[count].realConst = 0;
+            _activeFunctionData.pLocalVarValues[count].floatConst = 0;
             _activeFunctionData.pVariableAttributes[count] = value_isFloat;        // for now, assume scalar
 
             tokenType = jumpTokens(2, pStep, terminalCode);            // either left parenthesis, assignment, comma or semicolon separator (always a terminal)
@@ -2275,31 +2309,31 @@ void Interpreter::initFunctionLocalNonParamVariables(char* pStep, int paramCount
 
                     // increase dimension count and calculate elements (checks done during parsing)
                     float f{ 0. };
-                    memcpy(&f, ((TokenIsConstant*)pStep)->cstValue.realConst, sizeof(float));
+                    memcpy(&f, ((TokenIsConstant*)pStep)->cstValue.floatConst, sizeof(float));
                     arrayElements *= f;
                     arrayDims[dimCount] = f;
                     dimCount++;
 
                     tokenType = jumpTokens(1, pStep, terminalCode);         // comma (dimension separator) or right parenthesis
-            } while (terminalCode != MyParser::termcod_rightPar);
+                } while (terminalCode != MyParser::termcod_rightPar);
 
-            // create array (init later)
-            float* pArray = new float[arrayElements + 1];
-            localArrayObjectCount++;
+                // create array (init later)
+                float* pArray = new float[arrayElements + 1];
+                localArrayObjectCount++;
 #if printCreateDeleteHeapObjects
-            Serial.print("+++++ (loc ar stor) "); Serial.println((uint32_t)pArray - RAMSTART);
+                Serial.print("+++++ (loc ar stor) "); Serial.println((uint32_t)pArray - RAMSTART);
 #endif
-            _activeFunctionData.pLocalVarValues[count].pArray = pArray;
-            _activeFunctionData.pVariableAttributes[count] |= var_isArray;             // set array bit
+                _activeFunctionData.pLocalVarValues[count].pArray = pArray;
+                _activeFunctionData.pVariableAttributes[count] |= var_isArray;             // set array bit
 
-            // store dimensions in element 0: char 0 to 2 is dimensions; char 3 = dimension count 
-            for (int i = 0; i < MAX_ARRAY_DIMS; i++) {
-                ((char*)pArray)[i] = arrayDims[i];
+                // store dimensions in element 0: char 0 to 2 is dimensions; char 3 = dimension count 
+                for (int i = 0; i < MAX_ARRAY_DIMS; i++) {
+                    ((char*)pArray)[i] = arrayDims[i];
+                }
+                ((char*)pArray)[3] = dimCount;        // (note: for param arrays, set to max dimension count during parsing)
+
+                tokenType = jumpTokens(1, pStep, terminalCode);       // assignment, comma or semicolon
             }
-            ((char*)pArray)[3] = dimCount;        // (note: for param arrays, set to max dimension count during parsing)
-
-            tokenType = jumpTokens(1, pStep, terminalCode);       // assignment, comma or semicolon
-        }
 
 
             // handle initialisation (if initializer provided)
@@ -2317,7 +2351,7 @@ void Interpreter::initFunctionLocalNonParamVariables(char* pStep, int paramCount
                 char valueType = ((*(char*)pStep) >> 4) & value_typeMask;
                 bool isNumberCst = (valueType == value_isFloat);
 
-                if (isNumberCst) { memcpy(&f, ((TokenIsConstant*)pStep)->cstValue.realConst, sizeof(float)); }
+                if (isNumberCst) { memcpy(&f, ((TokenIsConstant*)pStep)->cstValue.floatConst, sizeof(float)); }
                 else { memcpy(&pString, ((TokenIsConstant*)pStep)->cstValue.pStringConst, sizeof(pString)); }     // copy pointer to string (not the string itself)
                 int length = isNumberCst ? 0 : (pString == nullptr) ? 0 : strlen(pString);       // only relevant for strings
                 if (!isNumberCst) {
@@ -2334,7 +2368,7 @@ void Interpreter::initFunctionLocalNonParamVariables(char* pStep, int paramCount
                 }
                 // scalar: initialize
                 else {
-                    if (isNumberCst) { _activeFunctionData.pLocalVarValues[count].realConst = f; }      // store numeric constant
+                    if (isNumberCst) { _activeFunctionData.pLocalVarValues[count].floatConst = f; }      // store numeric constant
                     else {
                         if (length == 0) { _activeFunctionData.pLocalVarValues[count].pStringConst = nullptr; }       // an empty string does not create a heap object
                         else { // create string object and store string
@@ -2355,9 +2389,9 @@ void Interpreter::initFunctionLocalNonParamVariables(char* pStep, int paramCount
 
             count++;
 
-    } while (terminalCode == MyParser::termcod_comma);
+        } while (terminalCode == MyParser::termcod_comma);
 
-}
+    }
 };
 
 
@@ -2371,7 +2405,7 @@ Interpreter::execResult_type Interpreter::terminateExternalFunction(bool addZero
         _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
         _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(VarOrConstLvl));
         _pEvalStackTop->varOrConst.tokenType = tok_isConstant;          // use generic constant type
-        _pEvalStackTop->varOrConst.value.realConst = 0.;                // default return value
+        _pEvalStackTop->varOrConst.value.floatConst = 0.;                // default return value
         _pEvalStackTop->varOrConst.valueType = value_isFloat;
         _pEvalStackTop->varOrConst.variableAttributes = 0x00;
         _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
@@ -2579,10 +2613,15 @@ void Interpreter::pushConstant(int& tokenType) {                                
     _pEvalStackTop->varOrConst.variableAttributes = 0x00;
     _pEvalStackTop->varOrConst.valueAttributes = 0x00;
 
-    if ((_pEvalStackTop->varOrConst.valueType & value_typeMask) == value_isFloat) {
+    if ((_pEvalStackTop->varOrConst.valueType & value_typeMask) == value_isLong) {
+        long l{ 0 };
+        memcpy(&l, ((TokenIsConstant*)_programCounter)->cstValue.longConst, sizeof(long));          // float  not necessarily aligned with word size: copy memory instead
+        _pEvalStackTop->varOrConst.value.longConst = l;                                         // store float in stack, NOT the pointer to float 
+    }
+    else if ((_pEvalStackTop->varOrConst.valueType & value_typeMask) == value_isFloat) {
         float f{ 0. };
-        memcpy(&f, ((TokenIsConstant*)_programCounter)->cstValue.realConst, sizeof(float));          // float  not necessarily aligned with word size: copy memory instead
-        _pEvalStackTop->varOrConst.value.realConst = f;                                         // store float in stack, NOT the pointer to float 
+        memcpy(&f, ((TokenIsConstant*)_programCounter)->cstValue.floatConst, sizeof(float));          // float  not necessarily aligned with word size: copy memory instead
+        _pEvalStackTop->varOrConst.value.floatConst = f;                                         // store float in stack, NOT the pointer to float 
     }
     else {
         char* pAnum{ nullptr };

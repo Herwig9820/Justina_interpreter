@@ -136,6 +136,7 @@ public:
         result_undefined,
         result_overflow,
         result_underflow,
+        result_divByZero,
         result_testexpr_numberExpected,
         result_stringTooLong
     };
@@ -171,7 +172,7 @@ public:
 
     union CstValue {
         char longConst[4];
-        char realConst[4];
+        char floatConst[4];
         char pStringConst[4];                                 // pointer to string object
     };
 
@@ -223,12 +224,12 @@ public:
         void* pBaseValue;                                        // address of a variable value (which can be a float, a string pointer or a variable address itself)
         // global, static, local variables; parameters with default initialisation (if no argument provided)
         long longConst;                                        // long
-        float realConst;                                        // float
+        float floatConst;                                        // float
         char* pStringConst;                                     // pointer to a character string
         float* pArray;                                          // pointer to memory block reserved for array
 
         long* pLongConst;
-        float* pRealConst;
+        float* pFloatConst;
         char** ppStringConst;
         float** ppArray;
     };
@@ -766,6 +767,7 @@ public:
         result_alphaConstInvalidEscSeq,
         result_alphaNoCtrlCharAllowed,
         result_alphaClosingQuoteMissing,
+        result_numberInvalidFormat,
         result_overflow,                // underflow not detected during parsing
 
         // function errors
