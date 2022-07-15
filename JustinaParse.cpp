@@ -64,7 +64,7 @@ const MyParser::ResWordDef MyParser::_resWords[]{
     {"Vars",            cmdcod_vars,        cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_N,       cmdBlockOther},
 
     {"DeclareCB",       cmdcod_decCBproc,   cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_100,     cmdBlockOther},
-    {"Callback",        cmdcod_callback,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_101,     cmdBlockOther},
+    {"Callback",        cmdcod_callback,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_101,     cmdBlockOther},
 };
 
 // internal (intrinsic) functions
@@ -100,51 +100,48 @@ const MyParser::FuncDef MyParser::_functions[]{
 
 
 // terminal tokens  
-// priority: 4 bits for priority if use as postfix, prefix, infix operator, respectively (0x0 = lowest, 0xF = highest) 
-// use and associativity: defines allowed operator uses (postfix, prefix, infix); associativity for use as postfix, prefix, infix operator   
+// priority: bits b43210 define priority if used as prefix, infix, postfix operator, respectively (0x1 = lowest, 0x1F = highest) 
+// priority 0 means operator not available for use as use as postfix, prefix, infix operator
+// bit b7 defines associativity for infix operators (bit set indicates 'right-to-left').
+// prefix operators: always right-to-left. postfix operators: always left-to-right
 // NOTE: table entries with names starting with same characters: shortest entries should come before longest (e.g. '!' before '!=', '&' before '&&')
 // postfix operator names can only be shared with prefix operator names
 
 const MyParser::TerminalDef MyParser::_terminals[]{
-    //  name            id code                 post <prio> pre_in      associativity & use         
-    //  ----            -------                 ----        ----        -------------------   
-    {term_comma,        termcod_comma,          0x00,       0x00,        0x00},
-    {term_semicolon,    termcod_semicolon,      0x00,       0x00,        0x00},
-    {term_rightPar,     termcod_rightPar,       0x00,       0x00,        0x00},
-    {term_leftPar,      termcod_leftPar,        0x00,       0x0D,        0x00},
+    //  name            id code                 prefix prio     infix prio          postfix prio         
+    //  ----            -------                 -----------     ----------          ------------   
+    {term_comma,        termcod_comma,          0x00,           0x00,               0x00},
+    {term_semicolon,    termcod_semicolon,      0x00,           0x00,               0x00},
+    {term_rightPar,     termcod_rightPar,       0x00,           0x00,               0x00},
+    {term_leftPar,      termcod_leftPar,        0x00,           0x0D,               0x00},
 
-    // operators                                           
-    {term_assign,       termcod_assign,         0x00,       0x01,        op_infix | op_assocRtoL},
+    // operators                                                       
+    {term_assign,       termcod_assign,         0x00,           0x02 | op_RtoL,     0x00},
 
-    {term_concat,       termcod_concat,         0x00,       0x06,        op_infix | 0x00},
+    {term_or,           termcod_or,             0x00,           0x03,               0x00},
+    {term_and,          termcod_and,            0x00,           0x04,               0x00},
+    {term_not,          termcod_not,            0x09,           0x00,               0x00},
 
-    {term_or,           termcod_or,             0x00,       0x02,        op_infix | 0x00},
-    {term_and,          termcod_and,            0x00,       0x03,        op_infix | 0x00},
-    {term_not,          termcod_not,            0x00,       0x90,        op_prefix | op_assocRtoLasPrefix},        // not used as infix
+    {term_eq,           termcod_eq,             0x00,           0x05,               0x00},
+    {term_neq,          termcod_ne,             0x00,           0x05,               0x00},
+    {term_lt,           termcod_lt,             0x00,           0x06,               0x00},
+    {term_gt,           termcod_gt,             0x00,           0x06,               0x00},
+    {term_ltoe,         termcod_ltoe,           0x00,           0x06,               0x00},
+    {term_gtoe,         termcod_gtoe,           0x00,           0x06,               0x00},
 
-    {term_eq,           termcod_eq,             0x00,       0x04,        op_infix | 0x00},
-    {term_neq,          termcod_ne,             0x00,       0x04,        op_infix | 0x00},
-    {term_lt,           termcod_lt,             0x00,       0x05,        op_infix | 0x00},
-    {term_gt,           termcod_gt,             0x00,       0x05,        op_infix | 0x00},
-    {term_ltoe,         termcod_ltoe,           0x00,       0x05,        op_infix | 0x00},
-    {term_gtoe,         termcod_gtoe,           0x00,       0x05,        op_infix | 0x00},
+    {term_plus,         termcod_plus,           0x09,           0x07,               0x00},      // strings: concatenate
+    {term_minus,        termcod_minus,          0x09,           0x07,               0x00},
+    {term_mult,         termcod_mult,           0x00,           0x08,               0x00},
+    {term_div,          termcod_div,            0x00,           0x08,               0x00},
+    {term_pow,          termcod_pow,            0x00,           0x0A | op_RtoL,     0x00},
 
-    {term_plus,         termcod_plus,           0x00,       0x97,        op_infix | op_prefix | op_assocRtoLasPrefix},
-    {term_minus,        termcod_minus,          0x00,       0x97,        op_infix | op_prefix | op_assocRtoLasPrefix},
-    {term_mult,         termcod_mult,           0x00,       0x08,        op_infix | 0x00},
-    {term_div,          termcod_div,            0x00,       0x08,        op_infix | 0x00},
-    {term_pow,          termcod_pow,            0x00,       0x0A,        op_infix | op_assocRtoL},
+    {term_incr,         termcod_incr,           0x0B,           0x00,               0x0C},
+    {term_decr,         termcod_decr,           0x0B,           0x00,               0x0C},
 
-    {term_incr,         termcod_incr,           0x0C,       0xB0,        op_prefix | op_assocRtoLasPrefix | op_postfix},
-    {term_decr,         termcod_decr,           0x0C,       0xB0,        op_prefix | op_assocRtoLasPrefix | op_postfix},
-    {term_testpostfix,  termcod_testpostfix,    0x0C,       0x00,        op_postfix},
-
-    {term_plusAssign,   termcod_plusAssign ,    0x00,       0x01,        op_infix | op_assocRtoL},
-    {term_minusAssign,  termcod_minusAssign,    0x00,       0x01,        op_infix | op_assocRtoL},
-    {term_multAssign,   termcod_multAssign ,    0x00,       0x01,        op_infix | op_assocRtoL},
-    {term_divAssign,    termcod_divAssign  ,    0x00,       0x01,        op_infix | op_assocRtoL},
-
-
+    {term_plusAssign,   termcod_plusAssign ,    0x00,           0x02 | op_RtoL,     0x00},
+    {term_minusAssign,  termcod_minusAssign,    0x00,           0x02 | op_RtoL,     0x00},
+    {term_multAssign,   termcod_multAssign ,    0x00,           0x02 | op_RtoL,     0x00},
+    {term_divAssign,    termcod_divAssign  ,    0x00,           0x02 | op_RtoL,     0x00},
 };
 
 
@@ -1041,27 +1038,41 @@ bool MyParser::parseAsNumber(char*& pNext, parseTokenResult_type& result) {
     // this is important if next infix operator (power) has higher priority then this prefix operator: -2^4 <==> -(2^4) <==> -16, AND NOT (-2)^4 <==> 16 
     // exception: variable declarations with initializers: prefix operators are not parsed separately
 
-    // check if number (if valid) will be stored as integer ([+ or -] [digits] (no decimal separator, no exponent) or float
-    float f{ 0 }; long l{ 0 };
-    bool isLong{ false }, hasPrefix{ false };
+    // check if number (if valid) will be stored as long or float
+
+    char* pNumStart = pNext;
+    float f{ 0 }; long l{ 0 }; unsigned long ul{ 0 };
+    bool isLong{ false }, negate{ false };
     int i{ 0 };
-    if ((pNext[i] == '+') || (pNext[i] == '-')) { hasPrefix = true; ++i; };  // start with a plus or minus sign ? start looking for digits at next position 
 
-    int base = ((pNext[i] == '0') && (pNext[i + 1] == 'x')) ? 16 : 10;
-    if (base == 16) {       // hexadecimal
-        i += 2;
-        while (isxdigit(pNext[++i])) {}
-        isLong = ((pNext[i] != '.')  && (i > (hasPrefix ? 3 : 2)));        // no decimal point and minimum one digit
-        if(!isLong){ pNext = pch; result = result_numberInvalidFormat; return false; }  // not a long constant, but not a float either
-    }
-    else {      // base 10
-        while (isDigit(pNext[++i])) {}  
-        isLong = ((pNext[i] != '.') && (pNext[i] != 'E') && (pNext[i] != 'e') && (i > (hasPrefix ? 1 : 0)));        // no decimal point, no exponent and minimum one digit
+    if (pNumStart[0] == '-') { negate = true; }
+    if ((pNumStart[0] == '+') || (pNumStart[0] == '-')) { pNumStart++; };  // start with a plus or minus sign ? start looking for digits at next position 
+
+    int base = ((pNumStart[0] == '0') && ((pNumStart[1] == 'x') || (pNumStart[1] == 'X'))) ? 16 : ((pNumStart[0] == '0') && ((pNumStart[1] == 'b') || (pNumStart[1] == 'B'))) ? 2 : 10;
+
+    if (base == 10) {      // base 10
+        while (isDigit(pNumStart[++i]));
+        isLong = ((i > 0) && (pNumStart[i] != '.') && (pNumStart[i] != 'E') && (pNumStart[i] != 'e'));        // no decimal point, no exponent and minimum one digit
     }
 
-    if (isLong) { l = strtol(pch, &pNext, base); }                                       // token can be parsed as long ?
-    else { f = strtof(pch, &pNext); }                                                    // token can be parsed as float ?
-    if (pch == pNext) { return true; }                                                // token is not a number if pointer pNext was not moved
+    else {       // binary or hexadecimal
+        pNumStart += 2;      // skip "0b" or "0x" and start looking for digits at next position
+        while ((base == 16) ? isxdigit(pNumStart[++i]) : ((pNumStart[i] == '0') || (pNumStart[i] == '1'))) { ++i; }
+        isLong = (i > 0);        // minimum one digit
+        if (!isLong) { pNext = pch; result = result_numberInvalidFormat; return false; }  // not a long constant, but not a float either
+    }
+
+    if (isLong) {                                                       // token can be parsed as long ?
+        ul = strtoul(pNumStart, &pNext, base);
+        memcpy(&l, &ul, sizeof(long));
+        if (negate) { l = -l; }
+    }
+    else { f = strtof(pNumStart, &pNext); }                                                    // token can be parsed as float ?
+
+    if (pNumStart == pNext) { return true; }                                                // token is not a number if pointer pNext was not moved
+
+
+    // is valid number: continue processing
 
     if (_pInterpreter->_programCounter == _pInterpreter->_programStorage) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
     // token is a number constant, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
@@ -1460,7 +1471,7 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
 
         // token is right parenthesis, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
         if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_5_3_0)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
-        if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
+        if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
 
         // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
         bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
@@ -1668,7 +1679,7 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
 
         // token is comma separator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
         if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_0)) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
-        if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
+        if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
 
         // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
         bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
@@ -1760,8 +1771,8 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
 
         // token is semicolon separator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
         if (_parenthesisLevel > 0) { pNext = pch; result = result_missingRightParenthesis; return false; }
-        if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2_0)) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
-        if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
+        if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2_0)) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
+        if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
 
         // token is a semicolon separator, and it's allowed here
         _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false;
@@ -1794,13 +1805,13 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
         if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3) ||
             ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp)) {
             // infix and postfix operators are allowed: test that current operator is infix or postfix
-            if (!(_terminals[termIndex].associativityAnduse & op_infix) && !(_terminals[termIndex].associativityAnduse & op_postfix)) { pNext = pch; result = result_prefixOperatorNotAllowedhere; return false; }
-            _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = (_terminals[termIndex].associativityAnduse & op_postfix);    // token is either infix or postfix
+            if ((_terminals[termIndex].infix_priority == 0) && (_terminals[termIndex].postfix_priority == 0)) { pNext = pch; result = result_prefixOperatorNotAllowedhere; return false; }
+            _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = (_terminals[termIndex].postfix_priority != 0);    // token is either infix or postfix
         }
 
         // prefix operators only are allowed: test that current operator is prefix
         else {
-            if (!(_terminals[termIndex].associativityAnduse & op_prefix)) { pNext = pch; result = result_invalidOperator; return false; }
+            if (_terminals[termIndex].prefix_priority == 0) { pNext = pch; result = result_invalidOperator; return false; }
             _lastTokenIsPrefixOp = true; _lastTokenIsPostfixOp = false;
         }
 
@@ -2590,7 +2601,7 @@ void MyParser::prettyPrintInstructions(bool printOneInstruction, char* startToke
             char trailing[2] = "\0";      // init: empty string
 
             if (_terminals[index].terminalCode <= termcod_opRangeEnd) {      // operator 
-                isPostfixOperator = testForPostfix ? (_terminals[index].associativityAnduse & MyParser::op_postfix) : false;
+                isPostfixOperator = testForPostfix ? (_terminals[index].postfix_priority != 0) : false;
 
                 isInfixOperator = lastWasInfixOperator ? false : testForPostfix ? !isPostfixOperator : false;
 

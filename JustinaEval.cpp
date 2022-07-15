@@ -162,7 +162,7 @@ Interpreter::execResult_type  Interpreter::exec() {
 
                 // previous token is constant or variable: check if current token is an infix or a postfix operator (it cannot be a prefix operator)
                 // if postfix operation, execute it first (it always has highest priority)
-                bool isPostfixOperator = (_pmyParser->_terminals[_pEvalStackTop->terminal.index & 0x7F].associativityAnduse & MyParser::op_postfix);
+                bool isPostfixOperator = (_pmyParser->_terminals[_pEvalStackTop->terminal.index & 0x7F].postfix_priority != 0);
                 if (isPostfixOperator) {
                     execUnaryOperation(false);        // flag postfix operation
                     execResult = execAllProcessedOperators();
@@ -1219,21 +1219,22 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
                 if (_pEvalStackMinus1->terminal.index & 0x80) { isPrefixOperator = true; }            // e.g. print 5, -6 : prefix operation on second expression ('-6') and not '5-6' as infix operation
             }
 
-            // check priority and associativity
-            int priority = _pmyParser->_terminals[terminalIndex].prefix_infix_priority;
-            if (isPrefixOperator) { priority = priority >> 4; }
-            priority &= 0x0F;
-            int associativityAnduse = _pmyParser->_terminals[terminalIndex].associativityAnduse & (isPrefixOperator ? MyParser::op_assocRtoLasPrefix : MyParser::op_assocRtoL);
+            // check priority and associativity (prefix or infix)
+            int priority{ 0 };
+            if (isPrefixOperator) { priority = _pmyParser->_terminals[terminalIndex].prefix_priority & 0x1F; }       // bits v43210 = priority
+            else { priority = _pmyParser->_terminals[terminalIndex].infix_priority & 0x1F; }
+
+            bool RtoLassociativity = isPrefixOperator ? true : _pmyParser->_terminals[terminalIndex].infix_priority & MyParser::op_RtoL;
 
             // is pending token a postfix operator ? (it can not be a prefix operator)
-            bool isPostfixOperator = (_pmyParser->_terminals[pendingTokenIndex].associativityAnduse & MyParser::op_postfix);
+            bool isPostfixOperator = (_pmyParser->_terminals[pendingTokenIndex].postfix_priority != 0);
 
             // if a pending operator has higher priority, or, it has equal priority and operator is right-to-left associative, do not execute operator yet 
             // note that a PENDING LEFT PARENTHESIS also has priority over the preceding operator
-            pendingTokenPriorityLvl = (isPostfixOperator ? _pmyParser->_terminals[pendingTokenIndex].postfix_priority :
-                _pmyParser->_terminals[pendingTokenIndex].prefix_infix_priority) & 0x0F;  // pending terminal is either an infix or a postfix operator
+            pendingTokenPriorityLvl = (isPostfixOperator ? (_pmyParser->_terminals[pendingTokenIndex].postfix_priority & 0x1F) :        // bits v43210 = priority
+                (_pmyParser->_terminals[pendingTokenIndex].infix_priority) & 0x1F);  // pending terminal is either an infix or a postfix operator
             currentOpHasPriority = (priority >= pendingTokenPriorityLvl);
-            if ((associativityAnduse != 0) && (priority == pendingTokenPriorityLvl)) { currentOpHasPriority = false; }
+            if (RtoLassociativity && (priority == pendingTokenPriorityLvl)) { currentOpHasPriority = false; }
             if (!currentOpHasPriority) { break; }   // exit while() loop
 
             // execute operator
@@ -1282,7 +1283,6 @@ Interpreter::execResult_type  Interpreter::execUnaryOperation(bool isPrefix) {
     else if (terminalCode == _pmyParser->termcod_not) { isFloat ? opResult.floatConst = (operand.floatConst == 0) : opResult.longConst = (operand.longConst == 0); } // prefix: not
     else if (terminalCode == _pmyParser->termcod_incr) { isFloat ? opResult.floatConst = operand.floatConst + 1 : opResult.longConst = operand.longConst + 1; } // prefix & postfix: increment
     else if (terminalCode == _pmyParser->termcod_decr) { isFloat ? opResult.floatConst = operand.floatConst - 1 : opResult.longConst = operand.longConst - 1; } // prefix & postfix: decrement
-    else if (terminalCode == _pmyParser->termcod_testpostfix) { isFloat ? opResult.floatConst = operand.floatConst * 10 : opResult.longConst = operand.longConst * 10; } // postfix: test
 
 
     // tests
@@ -1345,15 +1345,15 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     char operand1valueType = operand1IsVar ? (*_pEvalStackMinus2->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackMinus2->varOrConst.valueType;
     bool op1isLong = ((uint8_t)operand1valueType == value_isLong);
     bool op1isFloat = ((uint8_t)operand1valueType == value_isFloat);
+    bool op1isString = ((uint8_t)operand1valueType == value_isStringPointer);
 
     bool operand2IsVar = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable);
     char operand2valueType = operand2IsVar ? (*_pEvalStackTop->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackTop->varOrConst.valueType;
     bool op2isLong = ((uint8_t)operand2valueType == value_isLong);
     bool op2isFloat = ((uint8_t)operand2valueType == value_isFloat);
+    bool op2isString = ((uint8_t)operand2valueType == value_isStringPointer);
 
     int operatorCode = _pmyParser->_terminals[_pEvalStackMinus1->terminal.index & 0x7F].terminalCode;
-
-    bool isUserVar{ false }, isGlobalVar{ false }, isStaticVar{ false }, isLocalVar{ false };
 
     _activeFunctionData.errorProgramCounter = _pEvalStackMinus1->terminal.tokenAddress;                // in the event of an error
 
@@ -1361,28 +1361,49 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         || (operatorCode == _pmyParser->termcod_plusAssign) || (operatorCode == _pmyParser->termcod_minusAssign)
         || (operatorCode == _pmyParser->termcod_multAssign) || (operatorCode == _pmyParser->termcod_divAssign));
 
+    // RULES 
+    // (1) check for value type errors. ERROR if:
+    //   - any operation, except a pure assignment ('='), between a string and a number (long, float)
+    //   - '='  (pure assignment) to an ARRAY: the value to be assigned OR the (fixed) value type of the array is string, the other value type is numeric (long, float) 
+    //   - '%'   AND  '%='  (remainder) operator: not both strings are long
+    //   - '<<'   '>>'   AND   '<<='   '>>='   AND   '~'  (bitwise operators): not both strings are long 
+    //   - '.&.'   '.|.'   '.^.'   EN   '.&=.'   '.|=.'   '.^=.'  (bitwise operators): not both strings are long 
+    //   - infix '+' (math or string concat operator): not both operands are either strings or numeric (long, float)
+    //   - other infix operators: operands are not both numeric (infix)
+    //   - prefix and postfix operators: the operand is not a number (long, float)
+    //
+    // (2) determine result value type before (optional) assignment
+    //   - '=' (pure assignent): value type of the second operand (value to be assigned)
+    //   - '%'   AND  '%='  (remainder) operator: long
+    //   - '<<'   '>>'   AND   '<<='   '>>='   AND   '~'  (bitwise operators): long 
+    //   - '.&.'   '.|.'   '.^.'   EN   '.&=.'   '.|=.'   '.^=.'  (bitwise operators): long 
+    //   - infix '+' operator with string operands: string
+    //   - all infix operators (including infix '+' operator with numeric arguments: FLOAT if at least one of the operands is a float, otherwise LONG
+    //   - prefix and postfix operators: the value type of the operand
+    // 
+    // (3) if the operator is a direct or compound assignment:
+    //   - if the receiving variable is an array element, cast into the (fixed) array value type
+    //   - if the receiving variable is a scalar, set the variable value type to the value type of the value to be assigned
+
+
     if (operationIncludesAssignment) {
         if (_pEvalStackMinus2->varOrConst.variableAttributes & var_isArray) {        // asignment to array element: value type cannot change
-            if (operand1valueType != operand1valueType) { return result_array_valueTypeIsFixed; }
+            if (operand1valueType != operand2valueType) { return result_array_valueTypeIsFixed; }
         }
-
-        // note that for reference variables, the variable type fetched is the SOURCE variable type
-        isUserVar = ((_pEvalStackMinus2->varOrConst.variableAttributes & var_scopeMask) == var_isUser);
-        isGlobalVar = ((_pEvalStackMinus2->varOrConst.variableAttributes & var_scopeMask) == var_isGlobal);
-        isStaticVar = ((_pEvalStackMinus2->varOrConst.variableAttributes & var_scopeMask) == var_isStaticInFunc);
-        isLocalVar = ((_pEvalStackMinus2->varOrConst.variableAttributes & var_scopeMask) == var_isLocalInFunc);            // but not function parameter definitions
     }
 
     // check if operands are compatible with operator: numeric for all operators except string concatenation
-    if (operatorCode != _pmyParser->termcod_assign) {                                           // not an assignment ?
-        if ((operatorCode == _pmyParser->termcod_concat) && (op1isLong || op1isFloat || op2isLong || op2isFloat)) { return result_stringExpected; }
-        else if ((operatorCode != _pmyParser->termcod_concat) && (!(op1isLong || op1isFloat) || !(op2isLong || op2isFloat))) { return result_numberExpected; }
+    if (operatorCode != _pmyParser->termcod_assign) {                                           // not a pure assignment ?
+        if (((operatorCode == _pmyParser->termcod_plus) || (operatorCode == _pmyParser->termcod_plusAssign)) && (op1isString != op2isString)) { return result_operandsNumOrStringExpected; }
+        else if (((operatorCode != _pmyParser->termcod_plus) && (operatorCode != _pmyParser->termcod_plusAssign)) && (!(op1isLong || op1isFloat) || !(op2isLong || op2isFloat))) { return result_numberExpected; }
     }
 
     // allowed operand types: 2 x number -> number; 2 x string -> string
     // assignment: set result value type to operand 2 value type. Other operators: promote long to float if other operand is float
     bool opResultLong = (operatorCode == _pmyParser->termcod_pow) ? false : (operatorCode == _pmyParser->termcod_assign) ? op2isLong : op1isLong && op2isLong;
     bool opResultFloat = (operatorCode == _pmyParser->termcod_pow) ? true : (operatorCode == _pmyParser->termcod_assign) ? op2isFloat : op1isFloat || op2isFloat;
+    bool opResultString = !opResultLong && !opResultFloat;
+
     bool convertOperandsToFloat = opResultFloat && (operatorCode != _pmyParser->termcod_assign) && (op1isLong || op2isLong);
 
     // fetch operands: numeric constants or pointers to character strings - line is valid for long integers as well
@@ -1407,35 +1428,38 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 
     switch (operatorCode) {                                                  // operation to execute
 
-    case MyParser::termcod_concat:
-    {
-        // concatenate two operand strings objects and store pointer to it in result
-        stringlen = 0;                                  // is both operands are empty strings
-        if (!op1emptyString) { stringlen = strlen(operand1.pStringConst); }
-        if (!op2emptyString) { stringlen += strlen(operand2.pStringConst); }
-        if (stringlen == 0) { opResult.pStringConst = nullptr; }                                // empty strings are represented by a nullptr (conserve heap space)
-        else {
-            opResult.pStringConst = new char[stringlen + 1];
-            intermediateStringObjectCount++;
-            opResult.pStringConst[0] = '\0';                                // in case first operand is nullptr
-            if (!op1emptyString) { strcpy(opResult.pStringConst, operand1.pStringConst); }
-            if (!op2emptyString) { strcat(opResult.pStringConst, operand2.pStringConst); }
-#if printCreateDeleteHeapObjects
-            Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)opResult.pStringConst - RAMSTART);
-#endif
-        }
-    }
-    break;
-
     case MyParser::termcod_assign:
         opResult = operand2;
         break;
 
         // note: no overflow checks for arithmatic operators (+ - * /)
 
-    case MyParser::termcod_plus:
+    case MyParser::termcod_plus:            // also for concatenation
     case MyParser::termcod_plusAssign:
-        opResultLong ? opResult.longConst = operand1.longConst + operand2.longConst : opResult.floatConst = operand1.floatConst + operand2.floatConst;
+        if (op1isString) {      // then operand 2 is a string as well
+
+            // concatenate two operand strings objects and store pointer to it in result
+            stringlen = 0;                                  // is both operands are empty strings
+            if (!op1emptyString) { stringlen = strlen(operand1.pStringConst); }
+            if (!op2emptyString) { stringlen += strlen(operand2.pStringConst); }
+            if (stringlen == 0) { opResult.pStringConst = nullptr; }                                // empty strings are represented by a nullptr (conserve heap space)
+            else {
+                opResult.pStringConst = new char[stringlen + 1];
+                intermediateStringObjectCount++;
+                opResult.pStringConst[0] = '\0';                                // in case first operand is nullptr
+                if (!op1emptyString) { strcpy(opResult.pStringConst, operand1.pStringConst); }
+                if (!op2emptyString) { strcat(opResult.pStringConst, operand2.pStringConst); }
+
+                Serial.print("result: "); Serial.println(opResult.pStringConst);
+#if printCreateDeleteHeapObjects
+                Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)opResult.pStringConst - RAMSTART);
+#endif
+            }
+        }
+
+        else {
+            opResultLong ? opResult.longConst = operand1.longConst + operand2.longConst : opResult.floatConst = operand1.floatConst + operand2.floatConst;
+        }
         break;
 
     case MyParser::termcod_minus:
@@ -1519,22 +1543,37 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 
         // if the value to be assigned is numeric OR an empty string: simply assign the value (not a heap object)
 
-        if (op2isLong || op2isFloat || op2emptyString) {
+        if (opResultLong || opResultFloat || (opResultString && (opResult.pStringConst == nullptr))) {
             // nothing to do
         }
         // the value (parsed constant, variable value or intermediate result) to be assigned to the receiving variable is a non-empty string value
         else {
+            // note that for reference variables, the variable type fetched is the SOURCE variable type
+            bool isUserVar = ((_pEvalStackMinus2->varOrConst.variableAttributes & var_scopeMask) == var_isUser);
+            bool isGlobalVar = ((_pEvalStackMinus2->varOrConst.variableAttributes & var_scopeMask) == var_isGlobal);
+            bool isStaticVar = ((_pEvalStackMinus2->varOrConst.variableAttributes & var_scopeMask) == var_isStaticInFunc);
+
             // make a copy of the character string and store a pointer to this copy as result (even if operand string is already an intermediate constant)
             // because the value will be stored in a variable, limit to the maximum allowed string length
-            stringlen = min(strlen(operand2.pStringConst), MyParser::_maxAlphaCstLen);
+            char* pUnclippedResultString = opResult.pStringConst;
+            stringlen = min(strlen(pUnclippedResultString), MyParser::_maxAlphaCstLen);
             opResult.pStringConst = new char[stringlen + 1];
             isUserVar ? userVarStringObjectCount++ : (isGlobalVar || isStaticVar) ? globalStaticVarStringObjectCount++ : localVarStringObjectCount++;
-            memcpy(opResult.pStringConst, operand2.pStringConst, stringlen);        // copy the actual string (not the pointer); do not use strcpy
+            memcpy(opResult.pStringConst, pUnclippedResultString, stringlen);        // copy the actual string (not the pointer); do not use strcpy
             opResult.pStringConst[stringlen] = '\0';                                         // add terminating \0
 #if printCreateDeleteHeapObjects
             Serial.print(isUserVar ? "+++++ (usr var str) " : (isGlobalVar || isStaticVar) ? "+++++ (var string ) " : "+++++ (loc var str) ");
             Serial.println((uint32_t)opResult.pStringConst - RAMSTART);
 #endif
+            if (operatorCode != _pmyParser->termcod_assign) {           // compound statement
+#if printCreateDeleteHeapObjects
+                Serial.print("----- (Intermd str) "); Serial.println((uint32_t)toPrint.pStringConst - RAMSTART);
+#endif
+                if (pUnclippedResultString != nullptr) {     // pure assignment: is in fact pointing to operand 2 
+                    delete[] pUnclippedResultString;
+                    intermediateStringObjectCount--;
+                }
+            }
         }
 
         // store value in variable and adapt variable value type - line is valid for long integers as well
@@ -1550,7 +1589,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) |
                 (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
         }
-    }
+        }
 
 
     // Delete any intermediate result string objects used as operands 
@@ -1584,7 +1623,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
     }
     return result_execOK;
-}
+    }
 
 
 // ---------------------------------
@@ -1924,7 +1963,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
     _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
 
     return result_execOK;
-    }
+}
 
 
 // -----------------------
@@ -2389,10 +2428,10 @@ void Interpreter::initFunctionLocalNonParamVariables(char* pStep, int paramCount
 
             count++;
 
-        } while (terminalCode == MyParser::termcod_comma);
+            } while (terminalCode == MyParser::termcod_comma);
 
     }
-};
+        };
 
 
 // -----------------------------------

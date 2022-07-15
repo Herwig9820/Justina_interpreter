@@ -133,6 +133,7 @@ public:
         result_numberExpected,
         result_integerExpected,
         result_stringExpected,
+        result_operandsNumOrStringExpected,
         result_undefined,
         result_overflow,
         result_underflow,
@@ -706,7 +707,6 @@ public:
         termcod_gtoe,
         termcod_ne,
         termcod_eq,
-        termcod_concat,
         termcod_plus,
         termcod_minus,
         termcod_mult,
@@ -714,9 +714,8 @@ public:
         termcod_pow,
         termcod_incr,
         termcod_decr,
-        termcod_testpostfix,
 
-        termcod_opRangeEnd = termcod_testpostfix,
+        termcod_opRangeEnd = termcod_decr,
 
         // other terminals
         termcod_comma = termcod_opRangeEnd + 1,
@@ -872,8 +871,9 @@ public:
     struct TerminalDef {                                        // function names with min & max number of arguments allowed 
         const char* terminalName;
         char terminalCode;
-        char postfix_priority;
-        char prefix_infix_priority;
+        char prefix_priority;                                   // 0: not a prefix operator
+        char infix_priority;                                    // 0: not an infix operator
+        char postfix_priority;                                  // 0: not a postfix operator
         char associativityAnduse;
     };
 
@@ -936,14 +936,9 @@ public:
     static constexpr uint8_t lastTokenGroups_6_5_3_2_1_0 = lastTokenGroup_6 | lastTokenGroup_5 | lastTokenGroup_3 | lastTokenGroup_2 | lastTokenGroup_1 | lastTokenGroup_0;
 
 
-    // operator accociativity: bits b10 indiciate right-to-left associativity for use as infix (b0) and prefix operator (b1). Postfix: always left_to_right 
-    static constexpr uint8_t op_assocRtoL = 0x01;                 // infix operator associativityAnduse right-to-left (not relevant for other terminals) 
-    static constexpr uint8_t op_assocRtoLasPrefix = 0x02;         // prefix operator associativityAnduse right-to-left (only)
-
-    // operator use: bits b654 indicate use as infix, prefix and postfix operator is allowed
-    static constexpr uint8_t op_infix = 0x10;                       // operator can be used as infix operator
-    static constexpr uint8_t op_prefix = 0x20;                       // operator can be used as prefix operator
-    static constexpr uint8_t op_postfix = 0x40;                       // operator can be used as postfix operator
+    // infix operator accociativity: bit b7 indiciates right-to-left associativity
+    // note: prefix operators always have right-to-left associativity; postfix operators: always left_to_right 
+    static constexpr uint8_t op_RtoL = 0x80;                 // infix operator: right-to-left associativity 
 
     // commands parameters: types allowed
     static constexpr uint8_t cmdPar_none = 0;
@@ -1043,12 +1038,11 @@ public:
     static constexpr char* term_gtoe = ">=";
     static constexpr char* term_neq = "!=";
     static constexpr char* term_eq = "==";
-    static constexpr char* term_concat = "&";
     static constexpr char* term_plus = "+";
     static constexpr char* term_minus = "-";
     static constexpr char* term_mult = "*";
     static constexpr char* term_div = "/";
-    static constexpr char* term_pow = "^";
+    static constexpr char* term_pow = "**";
     static constexpr char* term_and = "&&";
     static constexpr char* term_or = "||";
     static constexpr char* term_not = "!";

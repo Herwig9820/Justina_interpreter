@@ -102,6 +102,7 @@ void setup() {
     delay(4000);                                                                      // 'while(!Serial) {}' does not work
     digitalWrite(HEARTBEAT_PIN, LOW);
 
+
 #if withTCP
     Serial.println("Starting server");
     Serial.print("WiFi firmware version  "); Serial.println(WiFi.firmwareVersion()); Serial.println();
