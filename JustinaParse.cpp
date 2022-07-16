@@ -104,44 +104,69 @@ const MyParser::FuncDef MyParser::_functions[]{
 // priority 0 means operator not available for use as use as postfix, prefix, infix operator
 // bit b7 defines associativity for infix operators (bit set indicates 'right-to-left').
 // prefix operators: always right-to-left. postfix operators: always left-to-right
-// NOTE: table entries with names starting with same characters: shortest entries should come before longest (e.g. '!' before '!=', '&' before '&&')
+// NOTE: table entries with names starting with same characters: shortest entries should come BEFORE longest (e.g. '!' before '!=', '&' before '&&')
 // postfix operator names can only be shared with prefix operator names
 
 const MyParser::TerminalDef MyParser::_terminals[]{
+    
     //  name            id code                 prefix prio     infix prio          postfix prio         
     //  ----            -------                 -----------     ----------          ------------   
-    {term_comma,        termcod_comma,          0x00,           0x00,               0x00},
-    {term_semicolon,    termcod_semicolon,      0x00,           0x00,               0x00},
-    {term_rightPar,     termcod_rightPar,       0x00,           0x00,               0x00},
-    {term_leftPar,      termcod_leftPar,        0x00,           0x0D,               0x00},
+    
+    // non-operator terminals
 
-    // operators                                                       
-    {term_assign,       termcod_assign,         0x00,           0x02 | op_RtoL,     0x00},
+    {term_comma,            termcod_comma,              0x00,               0x00,               0x00},
+    {term_semicolon,        termcod_semicolon,          0x00,               0x00,               0x00},
+    {term_rightPar,         termcod_rightPar,           0x00,               0x00,               0x00},
+    {term_leftPar,          termcod_leftPar,            0x00,               0x10,               0x00},
 
-    {term_or,           termcod_or,             0x00,           0x03,               0x00},
-    {term_and,          termcod_and,            0x00,           0x04,               0x00},
-    {term_not,          termcod_not,            0x09,           0x00,               0x00},
+    // operators (0x00 -> operator not available, 0x01 -> pure or compound assignment)
+    // op_long: operands must be long, a long is returned (e.g. 'bitand' operator)
+    // res_long: operands can be float or long, a long is returned (e.g. 'and' operator)
+    // op_RtoL: operator has right-to-left associativity
 
-    {term_eq,           termcod_eq,             0x00,           0x05,               0x00},
-    {term_neq,          termcod_ne,             0x00,           0x05,               0x00},
-    {term_lt,           termcod_lt,             0x00,           0x06,               0x00},
-    {term_gt,           termcod_gt,             0x00,           0x06,               0x00},
-    {term_ltoe,         termcod_ltoe,           0x00,           0x06,               0x00},
-    {term_gtoe,         termcod_gtoe,           0x00,           0x06,               0x00},
+    {term_assign,           termcod_assign,             0x00,               0x01 | op_RtoL,             0x00},
 
-    {term_plus,         termcod_plus,           0x09,           0x07,               0x00},      // strings: concatenate
-    {term_minus,        termcod_minus,          0x09,           0x07,               0x00},
-    {term_mult,         termcod_mult,           0x00,           0x08,               0x00},
-    {term_div,          termcod_div,            0x00,           0x08,               0x00},
-    {term_pow,          termcod_pow,            0x00,           0x0A | op_RtoL,     0x00},
+    {term_bitAnd,           termcod_bitAnd,             0x00,               0x06 | op_long,             0x00},
+    {term_bitXor,           termcod_bitXor,             0x00,               0x05 | op_long,             0x00},
+    {term_bitOr,            termcod_bitOr,              0x00,               0x04 | op_long,             0x00},
 
-    {term_incr,         termcod_incr,           0x0B,           0x00,               0x0C},
-    {term_decr,         termcod_decr,           0x0B,           0x00,               0x0C},
+    {term_and,              termcod_and,                0x00,               0x03 | res_long,            0x00},
+    {term_or,               termcod_or,                 0x00,               0x02 | res_long,            0x00},
+    {term_not,              termcod_not,                0x0C | res_long,    0x00,                       0x00},
+    {term_bitCompl,         termcod_bitCompl,           0x0C | op_long,     0x00,                       0x00},
 
-    {term_plusAssign,   termcod_plusAssign ,    0x00,           0x02 | op_RtoL,     0x00},
-    {term_minusAssign,  termcod_minusAssign,    0x00,           0x02 | op_RtoL,     0x00},
-    {term_multAssign,   termcod_multAssign ,    0x00,           0x02 | op_RtoL,     0x00},
-    {term_divAssign,    termcod_divAssign  ,    0x00,           0x02 | op_RtoL,     0x00},
+    {term_eq,               termcod_eq,                 0x00,               0x07 | res_long,            0x00},
+    {term_neq,              termcod_ne,                 0x00,               0x07 | res_long,            0x00},
+    {term_lt,               termcod_lt,                 0x00,               0x08 | res_long,            0x00},
+    {term_gt,               termcod_gt,                 0x00,               0x08 | res_long,            0x00},
+    {term_ltoe,             termcod_ltoe,               0x00,               0x08 | res_long,            0x00},
+    {term_gtoe,             termcod_gtoe,               0x00,               0x08 | res_long,            0x00},
+
+    {term_bitShLeft,        termcod_bitShLeft,          0x00,               0x09 | op_long,             0x00},
+    {term_bitShRight,       termcod_bitShRight,         0x00,               0x09 | op_long,             0x00},
+
+    {term_plus,             termcod_plus,               0x0C,               0x0A,                       0x00},      // strings: concatenate
+    {term_minus,            termcod_minus,              0x0C,               0x0A,                       0x00},
+    {term_mult,             termcod_mult,               0x00,               0x0B,                       0x00},
+    {term_div,              termcod_div,                0x00,               0x0B,                       0x00},
+    {term_mod,              termcod_mod,                0x00,               0x0B | op_long,             0x00},
+    {term_pow,              termcod_pow,                0x00,               0x0D | op_RtoL,             0x00},
+
+    {term_incr,             termcod_incr,               0x0E,               0x00,                       0x0F},
+    {term_decr,             termcod_decr,               0x0E,               0x00,                       0x0F},
+
+    {term_plusAssign,       termcod_plusAssign,         0x00,               0x01 | op_RtoL,             0x00},
+    {term_minusAssign,      termcod_minusAssign,        0x00,               0x01 | op_RtoL,             0x00},
+    {term_multAssign,       termcod_multAssign,         0x00,               0x01 | op_RtoL,             0x00},
+    {term_divAssign,        termcod_divAssign,          0x00,               0x01 | op_RtoL,             0x00},
+    {term_modAssign,        termcod_modAssign,          0x00,               0x01 | op_RtoL,             0x00},
+
+    {term_bitAndAssign,     termcod_bitAndAssign,       0x00,               0x01 | op_RtoL | op_long,   0x00},
+    {term_bitOrAssign,      termcod_bitOrAssign,        0x00,               0x01 | op_RtoL | op_long,   0x00},
+    {term_bitXorAssign,     termcod_bitXorAssign,       0x00,               0x01 | op_RtoL | op_long,   0x00},
+
+    {term_bitShLeftAssign,  termcod_bitShLeftAssign,    0x00,               0x01 | op_RtoL | op_long,   0x00},
+    {term_bitShRightAssign, termcod_bitShRightAssign,   0x00,               0x01 | op_RtoL | op_long,   0x00},
 };
 
 
@@ -1041,7 +1066,7 @@ bool MyParser::parseAsNumber(char*& pNext, parseTokenResult_type& result) {
     // check if number (if valid) will be stored as long or float
 
     char* pNumStart = pNext;
-    float f{ 0 }; long l{ 0 }; unsigned long ul{ 0 };
+    float f{ 0 }; long l{ 0 }; 
     bool isLong{ false }, negate{ false };
     int i{ 0 };
 
@@ -1063,8 +1088,7 @@ bool MyParser::parseAsNumber(char*& pNext, parseTokenResult_type& result) {
     }
 
     if (isLong) {                                                       // token can be parsed as long ?
-        ul = strtoul(pNumStart, &pNext, base);
-        memcpy(&l, &ul, sizeof(long));
+        l = strtoul(pNumStart, &pNext, base);                       // string to UNSIGNED long before assigning to (signed) long -> 0xFFFFFFFF will be stored as -1, as it should (all bits set)
         if (negate) { l = -l; }
     }
     else { f = strtof(pNumStart, &pNext); }                                                    // token can be parsed as float ?

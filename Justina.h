@@ -698,24 +698,40 @@ public:
         termcod_minusAssign,
         termcod_multAssign,
         termcod_divAssign,
-        termcod_or,
-        termcod_and,
-        termcod_not,
+        termcod_modAssign,
+        termcod_bitAndAssign,
+        termcod_bitOrAssign, 
+        termcod_bitXorAssign,
+        termcod_bitShLeftAssign,
+        termcod_bitShRightAssign,
+        
         termcod_lt,
         termcod_gt,
         termcod_ltoe,
         termcod_gtoe,
         termcod_ne,
         termcod_eq,
+
         termcod_plus,
         termcod_minus,
         termcod_mult,
         termcod_div,
+        termcod_mod,
         termcod_pow,
         termcod_incr,
         termcod_decr,
+        termcod_and,
+        termcod_or,
+        termcod_not,
 
-        termcod_opRangeEnd = termcod_decr,
+        termcod_bitCompl,
+        termcod_bitShLeft,
+        termcod_bitShRight,
+        termcod_bitAnd,
+        termcod_bitOr,
+        termcod_bitXor,
+
+        termcod_opRangeEnd = termcod_bitXor,
 
         // other terminals
         termcod_comma = termcod_opRangeEnd + 1,
@@ -939,6 +955,8 @@ public:
     // infix operator accociativity: bit b7 indiciates right-to-left associativity
     // note: prefix operators always have right-to-left associativity; postfix operators: always left_to_right 
     static constexpr uint8_t op_RtoL = 0x80;                 // infix operator: right-to-left associativity 
+    static constexpr uint8_t op_long = 0x40;                 // operators: operand(s) must be long (no casting), result is long 
+    static constexpr uint8_t res_long = 0x20;                // result is long (operators can be long or float)
 
     // commands parameters: types allowed
     static constexpr uint8_t cmdPar_none = 0;
@@ -1030,23 +1048,42 @@ public:
     static constexpr char* term_minusAssign = "-=";
     static constexpr char* term_multAssign = "*=";
     static constexpr char* term_divAssign = "/=";
+    static constexpr char* term_modAssign = "%=";
+    static constexpr char* term_bitShLeftAssign = "<<=";
+    static constexpr char* term_bitShRightAssign = ">>=";
+    static constexpr char* term_bitAndAssign = "&=";
+    static constexpr char* term_bitOrAssign = "|=";
+    static constexpr char* term_bitXorAssign = "^=";
+
     static constexpr char* term_incr = "++";
     static constexpr char* term_decr = "--";
+    
     static constexpr char* term_lt = "<";
     static constexpr char* term_gt = ">";
     static constexpr char* term_ltoe = "<=";
     static constexpr char* term_gtoe = ">=";
     static constexpr char* term_neq = "!=";
     static constexpr char* term_eq = "==";
+    
     static constexpr char* term_plus = "+";
     static constexpr char* term_minus = "-";
     static constexpr char* term_mult = "*";
     static constexpr char* term_div = "/";
+    static constexpr char* term_mod = "%";
     static constexpr char* term_pow = "**";
+    
     static constexpr char* term_and = "&&";
     static constexpr char* term_or = "||";
     static constexpr char* term_not = "!";
-    static constexpr char* term_testpostfix = "~";
+    
+    static constexpr char* term_bitShLeft = "<<";
+    static constexpr char* term_bitShRight = ">>";
+    static constexpr char* term_bitAnd = "&";
+    static constexpr char* term_bitOr = "|";
+    static constexpr char* term_bitXor = "^";
+    static constexpr char* term_bitCompl = "~";
+
+
 
     static const ResWordDef _resWords[];                       // reserved word names
     static const FuncDef _functions[];                         // function names with min & max arguments allowed

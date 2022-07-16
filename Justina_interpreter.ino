@@ -396,7 +396,8 @@ struct Values {
 // !! - NEVER change the value type (float, character string)                                                                          !!
 // !! - NEVER INCREASE the length of strings (you can change the characters in the string, however)                                    !! 
 // !!   -> empty strings can not be changed at all (in Justina, an empty string is just a null pointer)                                !!
-// !! because you risk serious trouble when you do so (hanging system, wrong results, ...)                                             !!
+// !! - if you DECREASE the length of a string from within a user callback function, it will still occupy the same amount of memory    !!
+// !!   -> but if you change it to an empty string, memory will be released (in Justina, an empty string is just a null pointer)       !!
 // !!                                                                                                                                  !!
 // !! you can not change the pointers in const array 'pdata', nor can you change the value types in const array 'valueType'            !!
 // !! but you can change the data supplied (this will be without any effect for Justina constants after return)                        !!
