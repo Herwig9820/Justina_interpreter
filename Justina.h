@@ -109,6 +109,7 @@ public:
         // arrays
         result_array_subscriptOutsideBounds = 3000,
         result_array_subscriptNonInteger,
+        result_array_subscriptNonNumeric,
         result_array_dimCountInvalid,
         result_array_valueTypeIsFixed,
 
