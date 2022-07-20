@@ -1304,15 +1304,16 @@ Interpreter::execResult_type  Interpreter::execUnaryOperation(bool isPrefix) {
 
     if (terminalCode == _pmyParser->termcod_minus) { opIsFloat ? opResult.floatConst = -operand.floatConst : opResult.longConst = -operand.longConst; } // prefix minus 
     else if (terminalCode == _pmyParser->termcod_plus) { opResult = operand; } // prefix plus
-    else if (terminalCode == _pmyParser->termcod_not) { opResult.longConst = opIsFloat ? (operand.floatConst == 0) : (operand.longConst == 0); } // prefix: not
-    else if (terminalCode == _pmyParser->termcod_incr) { opIsFloat ? opResult.floatConst = operand.floatConst + 1 : opResult.longConst = operand.longConst + 1; } // prefix & postfix: increment
-    else if (terminalCode == _pmyParser->termcod_decr) { opIsFloat ? opResult.floatConst = operand.floatConst - 1 : opResult.longConst = operand.longConst - 1; } // prefix & postfix: decrement
+    else if (terminalCode == _pmyParser->termcod_not) { opResult.longConst = opIsFloat ? (operand.floatConst == 0.) : (operand.longConst == 0); } // prefix: not
+    else if (terminalCode == _pmyParser->termcod_incr) { opIsFloat ? opResult.floatConst = operand.floatConst + 1. : opResult.longConst = operand.longConst + 1; } // prefix & postfix: increment
+    else if (terminalCode == _pmyParser->termcod_decr) { opIsFloat ? opResult.floatConst = operand.floatConst - 1. : opResult.longConst = operand.longConst - 1; } // prefix & postfix: decrement
     else if (terminalCode == _pmyParser->termcod_bitCompl) { opResult.longConst = ~operand.longConst; } // prefix: bit complement
 
 
     // float values: extra value tests
 
-    bool resultValueType = resultCastLong ? value_isLong : opValueType;
+    int resultValueType = resultCastLong ? value_isLong : opValueType;
+
     if (resultValueType == value_isFloat) {      // floats only
         if (isnan(opResult.floatConst)) { return result_undefined; }
         else if (!isfinite(opResult.floatConst)) { return result_overflow; }

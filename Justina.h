@@ -1144,7 +1144,8 @@ private:
     int _previousTokenIsTerminal;
 
     bool _lastTokenIsPrefixOp, _lastTokenIsPostfixOp;
-    bool _prefixIncrDecrIsFirstToken;
+    bool _lastTokenIsPrefixIncrDecr;
+    bool _prefixIncrDecrIsExpressionStart;
 
     Interpreter* _pInterpreter;
 
