@@ -343,7 +343,8 @@ Interpreter::execResult_type  Interpreter::exec() {
 
 Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionReturn) {
 
-    // this function is called when the end of the command is encountered during execution, and all arguments are on the stack already
+    // this function is called when the END of the command is encountered during execution, and all arguments are on the stack already
+
     isFunctionReturn = false;  // init
     execResult_type execResult = result_execOK;
     int cmdParamCount = evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels;
@@ -358,20 +359,27 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
     switch (_activeFunctionData.activeCmd_ResWordCode) {                                                                      // command code 
 
+    // -------------------------------------------------------------------------------------------------------------------------------------------------------------
+    // print all arguments (longs, floats and strings) in succession. Floats are printed in compact format with maximum 3 digits / decimals and an optional exponent
+    // -------------------------------------------------------------------------------------------------------------------------------------------------------------
+
     case MyParser::cmdcod_print:
     {
         for (int i = 1; i <= cmdParamCount; i++) {
             bool operandIsVar = (pstackLvl->varOrConst.tokenType == tok_isVariable);
             char valueType = operandIsVar ? (*pstackLvl->varOrConst.varTypeAddress & value_typeMask) : pstackLvl->varOrConst.valueType;
-            bool opIsReal = ((uint8_t)valueType == value_isFloat);
+            bool opIsLong = ((uint8_t)valueType == value_isLong);
+            bool opIsFloat = ((uint8_t)valueType == value_isFloat);
             char* printString = nullptr;
 
             Val operand;
-            if (opIsReal) {
-                char s[20];  // largely long enough to print real values with "G" specifier, without leading characters
+            if (opIsLong || opIsFloat) {
+                char s[20];  // largely long enough to print long values, or float values with "G" specifier, without leading characters
                 printString = s;    // pointer
+                // next line is valid for long values as well (same memory locations are copied)
                 operand.floatConst = (operandIsVar ? (*pstackLvl->varOrConst.value.pFloatConst) : pstackLvl->varOrConst.value.floatConst);
-                sprintf(s, "%.3G", operand.floatConst);
+                if (opIsLong) { sprintf(s, "%ld", operand.longConst); }
+                else { sprintf(s, "%.3G", operand.floatConst); }
             }
             else {
                 operand.pStringConst = operandIsVar ? (*pstackLvl->varOrConst.value.ppStringConst) : pstackLvl->varOrConst.value.pStringConst;
@@ -393,6 +401,11 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     }
     break;
 
+    // -------------------------------------------
+    // //// beschrijf functie 'set display format'
+    // -------------------------------------------
+
+    //// implement LONG
 
     case MyParser::cmdcod_dispfmt:      // takes two arguments: width & flags
     {
@@ -420,22 +433,34 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     break;
 
 
+    // ------------------------
+    // set console display mode
+    // ------------------------
+
     case MyParser::cmdcod_dispmod:      // takes two arguments: width & flags
     {
+        // mandatory argument 1: 0 = do not print prompt and do not echo user input; 1 = print prompt but no not echo user input; 2 = print prompt and echo user input 
+        // mandatory argument 2: 0 = do not print last result; 1 = print last result
+
         bool argIsVar[2];
         char valueType[2];               // 2 arguments
         Val args[2];
 
         copyValueArgsFromStack(pstackLvl, cmdParamCount, argIsVar, valueType, args);
 
-        for (int i = 0; i < cmdParamCount; i++) { if (valueType[i] != value_isFloat) { execResult = result_arg_numValueExpected; return execResult; } }
-        if (((args[0].floatConst != 0) && (args[0].floatConst != 1) && (args[0].floatConst != 2)) || ((args[1].floatConst != 0) && (args[1].floatConst != 1))) { execResult = result_arg_invalid; return execResult; };
+        for (int i = 0; i < cmdParamCount; i++) {           // always 2 parameters
+            bool argIsLong = (valueType[i] == value_isLong);
+            bool argIsFloat = (valueType[i] == value_isFloat);
+            if (!(argIsLong || argIsFloat)) { execResult = result_arg_numValueExpected; return execResult; }
+
+            if (argIsFloat) { args[i].longConst = (int)args[i].floatConst; }
+            if ((args[i].longConst != 0) && (args[i].longConst != 1) && ((i == 0) ? (args[i].longConst != 2) : true)) { execResult = result_arg_invalid; return execResult; };
+        }
 
         // if last result printing switched back on, then prevent printing pending last result (if any)
         _lastValueIsStored = false;               // prevent printing last result (if any)
 
-        _promptAndEcho = args[0].floatConst, _printLastResult = args[1].floatConst;
-
+        _promptAndEcho = args[0].longConst, _printLastResult = args[1].longConst;
         clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings
 
         _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // command execution ended
@@ -542,6 +567,10 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     break;
 
 
+    // -----------------
+    //
+    // -----------------
+
     case MyParser::cmdcod_for:
     case MyParser::cmdcod_if:                                                                                                   // 'if' command
     case MyParser::cmdcod_while:                                                                                                // 'while' command
@@ -572,27 +601,60 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
                 // store variable reference, upper limit, optional increment / decrement (only once), address of token directly following 'FOR...; statement
                 ((blockTestData*)_pFlowCtrlStackTop)->nextTokenAddress = _activeFunctionData.pNextStep;
-                ((blockTestData*)_pFlowCtrlStackTop)->step = 1;           // int
 
+                bool controlVarIsLong{ false };
                 for (int i = 1; i <= cmdParamCount; i++) {        // skipped if no arguments
                     Val operand;                                                                                            // operand and result
                     bool operandIsVar = (pstackLvl->varOrConst.tokenType == tok_isVariable);
                     char valueType = operandIsVar ? (*pstackLvl->varOrConst.varTypeAddress & value_typeMask) : pstackLvl->varOrConst.valueType;
-                    if (valueType != value_isFloat) { execResult = result_testexpr_numberExpected; return execResult; }
-                    operand.floatConst = (operandIsVar ? *pstackLvl->varOrConst.value.pFloatConst : pstackLvl->varOrConst.value.floatConst);
+                    if ((valueType != value_isLong) && (valueType != value_isFloat)) { execResult = result_testexpr_numberExpected; return execResult; }
+                    operand.floatConst = (operandIsVar ? *pstackLvl->varOrConst.value.pFloatConst : pstackLvl->varOrConst.value.floatConst);        // valid for long values as well
 
+                    // store references to control variable and its value type
                     if (i == 1) {
-                        ((blockTestData*)_pFlowCtrlStackTop)->pControlVar = pstackLvl->varOrConst.value.pFloatConst;      // pointer to variable (containing a real constant)
+                        controlVarIsLong = (valueType == value_isLong);         // remember
+                        // next line valid for long values as well    
+                        ((blockTestData*)_pFlowCtrlStackTop)->pControlVar.pFloatConst = pstackLvl->varOrConst.value.pFloatConst;      // pointer to variable (containing a long or float constant)
                         ((blockTestData*)_pFlowCtrlStackTop)->pControlValueType = pstackLvl->varOrConst.varTypeAddress;        // pointer to variable value type
                     }
-                    else if (i == 2) { (((blockTestData*)_pFlowCtrlStackTop)->finalValue = operand.floatConst); }
-                    else { (((blockTestData*)_pFlowCtrlStackTop)->step = operand.floatConst); }
+
+                    // store final loop value, converted to control variable type (floats will be truncated if converted to long, without warning)
+                    else if (i == 2) {
+                        if (controlVarIsLong) {                                                            // control variable value type is long
+                            (((blockTestData*)_pFlowCtrlStackTop)->finalValue.longConst = (valueType == value_isLong) ? operand.longConst : (long)operand.floatConst);
+                        }
+                        else {                                                                              // control variable value type is float
+                            (((blockTestData*)_pFlowCtrlStackTop)->finalValue.floatConst = (valueType == value_isLong) ? (float)operand.longConst : operand.floatConst);
+                        }
+                    }
+
+                    // store loop step, converted to control variable type (floats will be truncated if converted to long, without warning)
+                    else {      // third parameter
+                        if (controlVarIsLong) {                                                             // control variable value type is long
+                            (((blockTestData*)_pFlowCtrlStackTop)->step.longConst = (valueType == value_isLong) ? operand.longConst : (long)operand.floatConst);
+                        }
+                        else {                                                                              // control variable value type is float
+                            (((blockTestData*)_pFlowCtrlStackTop)->step.floatConst = (valueType == value_isLong) ? (float)operand.longConst : operand.floatConst);
+                        }
+                    }                         // store loop increment / decrement 
 
                     pstackLvl = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
                 }
 
-                *((blockTestData*)_pFlowCtrlStackTop)->pControlVar -= ((blockTestData*)_pFlowCtrlStackTop)->step;
-                ((blockTestData*)_pFlowCtrlStackTop)->finalValue -= ((blockTestData*)_pFlowCtrlStackTop)->step;
+                if (cmdParamCount < 3) {        // step not specified: init with default (1) with value type of control variable 
+                    if (controlVarIsLong) { ((blockTestData*)_pFlowCtrlStackTop)->step.longConst = 1; }
+                    else { ((blockTestData*)_pFlowCtrlStackTop)->step.floatConst = 1.; }
+                }
+
+                // prepare initial control variable value and final value for first loop 
+                if (controlVarIsLong) {                                                            // control variable value type is long
+                    *((blockTestData*)_pFlowCtrlStackTop)->pControlVar.pLongConst -= ((blockTestData*)_pFlowCtrlStackTop)->step.longConst;
+                    ((blockTestData*)_pFlowCtrlStackTop)->finalValue.longConst -= ((blockTestData*)_pFlowCtrlStackTop)->step.longConst;
+                }
+                else {
+                    *((blockTestData*)_pFlowCtrlStackTop)->pControlVar.pFloatConst -= ((blockTestData*)_pFlowCtrlStackTop)->step.floatConst;
+                    ((blockTestData*)_pFlowCtrlStackTop)->finalValue.floatConst -= ((blockTestData*)_pFlowCtrlStackTop)->step.floatConst;
+                }
             }
 
             ((blockTestData*)_pFlowCtrlStackTop)->breakFromLoop = (char)false;        // init
@@ -603,6 +665,10 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
     // no break here: from here on, subsequent execution is common for 'if', 'elseif', 'else' and 'while'
 
+
+    // -----------------
+    //
+    // -----------------
 
     case MyParser::cmdcod_else:
     case MyParser::cmdcod_elseif:
@@ -624,10 +690,10 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
             Val operand;                                                                                            // operand and result
             bool operandIsVar = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable);
             char valueType = operandIsVar ? (*_pEvalStackTop->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackTop->varOrConst.valueType;
-            if (valueType != value_isFloat) { execResult = result_testexpr_numberExpected; return execResult; }
-            operand.floatConst = operandIsVar ? *_pEvalStackTop->varOrConst.value.pFloatConst : _pEvalStackTop->varOrConst.value.floatConst;
+            if ((valueType != value_isLong) && (valueType != value_isFloat)) { execResult = result_testexpr_numberExpected; return execResult; }
+            operand.floatConst = operandIsVar ? *_pEvalStackTop->varOrConst.value.pFloatConst : _pEvalStackTop->varOrConst.value.floatConst;        // valid for long values as well (same memory locations are copied)
 
-            fail = (operand.floatConst == 0);                                                                        // current test (elseif clause)
+            fail = (valueType == value_isFloat) ? (operand.floatConst == 0.) : (operand.longConst == 0);                                                                        // current test (elseif clause)
             ((blockTestData*)_pFlowCtrlStackTop)->fail = (char)fail;                                          // remember test result (true -> 0x1)
         }
 
@@ -647,6 +713,10 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     }
     break;
 
+
+    // -----------------
+    //
+    // -----------------
 
     case MyParser::cmdcod_break:
     case MyParser::cmdcod_continue:
@@ -682,6 +752,10 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     }
     break;
 
+
+    // -----------------
+    //
+    // -----------------
 
     case MyParser::cmdcod_end:
     {
@@ -730,6 +804,11 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
     // no break here: from here on, subsequent execution is the same for 'end' (function) and for 'return'
 
+
+    // -----------------
+    //
+    // -----------------
+
     case MyParser::cmdcod_return:
     {
         isFunctionReturn = true;
@@ -751,17 +830,24 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
 Interpreter::execResult_type Interpreter::testForLoopCondition(bool& testFails) {
 
-    if ((*(uint8_t*)((blockTestData*)_pFlowCtrlStackTop)->pControlValueType & value_typeMask) != value_isFloat) { return result_testexpr_numberExpected; }
+    bool valueIsLong = ((*(uint8_t*)((blockTestData*)_pFlowCtrlStackTop)->pControlValueType & value_typeMask) == value_isLong);
+    bool valueIsFloat = ((*(uint8_t*)((blockTestData*)_pFlowCtrlStackTop)->pControlValueType & value_typeMask) == value_isFloat);
+    if (!valueIsLong && !valueIsFloat) { return result_testexpr_numberExpected; }
 
-    float f = *((blockTestData*)_pFlowCtrlStackTop)->pControlVar;                 // pointer to control variable
-    float finalValue = ((blockTestData*)_pFlowCtrlStackTop)->finalValue;
-    float step = ((blockTestData*)_pFlowCtrlStackTop)->step;
+    Val pCtrlVar = ((blockTestData*)_pFlowCtrlStackTop)->pControlVar;                 // pointer to control variable
+    Val finalValue = ((blockTestData*)_pFlowCtrlStackTop)->finalValue;
+    Val step = ((blockTestData*)_pFlowCtrlStackTop)->step;
 
-    if (step > 0) { testFails = (f > finalValue); }
-    else { testFails = (f < finalValue); }
-
-    *((blockTestData*)_pFlowCtrlStackTop)->pControlVar = f + step;
-
+    if (valueIsLong) {
+        if (step.longConst > 0) { testFails = (*pCtrlVar.pLongConst > finalValue.longConst); }
+        else { testFails = (*pCtrlVar.pLongConst < finalValue.longConst); }
+        *pCtrlVar.pLongConst = *pCtrlVar.pLongConst + step.longConst;
+    }
+    else {
+        if (step.floatConst > 0.) { testFails = (*pCtrlVar.pFloatConst > finalValue.floatConst); }
+        else { testFails = (*pCtrlVar.pFloatConst < finalValue.floatConst); }
+        *pCtrlVar.pFloatConst = *pCtrlVar.pFloatConst + step.floatConst;
+    }
     return result_execOK;
 };
 
@@ -1152,13 +1238,15 @@ void Interpreter::makeIntermediateConstant(LE_evalStack* pEvalStackLvl) {
         bool operandIsVar = (pEvalStackLvl->varOrConst.tokenType == tok_isVariable);
         char valueType = operandIsVar ? (*pEvalStackLvl->varOrConst.varTypeAddress & value_typeMask) : pEvalStackLvl->varOrConst.valueType;
 
-        bool opReal = (valueType == value_isFloat);
-        if (opReal) { operand.floatConst = operandIsVar ? (*pEvalStackLvl->varOrConst.value.pFloatConst) : pEvalStackLvl->varOrConst.value.floatConst; }
+        bool opIsLong = (valueType == value_isLong);
+        bool opIsFloat = (valueType == value_isFloat);
+        // next line is valid for long integers as well
+        if (opIsLong || opIsFloat) { operand.floatConst = operandIsVar ? (*pEvalStackLvl->varOrConst.value.pFloatConst) : pEvalStackLvl->varOrConst.value.floatConst; }
         else { operand.pStringConst = operandIsVar ? (*pEvalStackLvl->varOrConst.value.ppStringConst) : pEvalStackLvl->varOrConst.value.pStringConst; }
 
         // if the value (parsed constant or variable value) is a non-empty string value, make a copy of the character string and store a pointer to this copy as result
         // as the operand is not an intermediate constant, NO intermediate string object (if it's a string) needs to be deleted
-        if (opReal || (!opReal && ((operand.pStringConst == nullptr)))) {
+        if (opIsLong || opIsFloat || ((!opIsLong && !opIsFloat) && ((operand.pStringConst == nullptr)))) {
             result = operand;
         }
         else {
@@ -1290,7 +1378,7 @@ Interpreter::execResult_type  Interpreter::execUnaryOperation(bool isPrefix) {
     // (2) apply RULES: check for value type errors. ERROR if operand is either not numeric, or it is a float while a long is required
     // -------------------------------------------------------------------------------------------------------------------------------
 
-   if (!opIsLong && !opIsFloat) { return result_numberExpected; }                   // value is numeric ?
+    if (!opIsLong && !opIsFloat) { return result_numberExpected; }                   // value is numeric ?
     if (!opIsLong && requiresLongOp) { return result_integerExpected; }              // only integer value type allowed
 
 
@@ -1363,7 +1451,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
 
     _activeFunctionData.errorProgramCounter = _pEvalStackMinus1->terminal.tokenAddress;                // in the event of an error
 
-    
+
     // (1) Fetch operator info, whether operands are variables, and operand value types 
     // --------------------------------------------------------------------------------
 
@@ -1439,7 +1527,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     switch (operatorCode) {                                                  // operation to execute
 
     case MyParser::termcod_assign:
-        opResult = operand2;        
+        opResult = operand2;
         break;
 
         // note: no overflow checks for arithmatic operators (+ - * /)
@@ -1621,8 +1709,8 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
                     delete[] pUnclippedResultString;
                     intermediateStringObjectCount--;
                 }
-            }
         }
+    }
 
         // store value in variable and adapt variable value type - line is valid for long integers as well
         if (opResultLong || opResultFloat) { *_pEvalStackMinus2->varOrConst.value.pFloatConst = opResult.floatConst; }
@@ -1638,7 +1726,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) |
                 (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
         }
-    }
+}
 
 
     // (7) post process
@@ -2012,7 +2100,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
     _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
 
     return result_execOK;
-}
+    }
 
 
 // -----------------------

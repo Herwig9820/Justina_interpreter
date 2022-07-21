@@ -301,10 +301,10 @@ public:
         char breakFromLoop;
 
         // FOR...END loop only
-        float* pControlVar;
         char* pControlValueType;
-        float step;
-        float finalValue;
+        Val pControlVar;
+        Val step;
+        Val finalValue;
         char* nextTokenAddress;         // address of token directly following 'FOR...; statement
     };
 
