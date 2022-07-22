@@ -296,9 +296,9 @@ public:
 
     struct blockTestData {
         char blockType;                 // command block: will identify stack level as an if...end, for...end, ... block
-        char withinIteration;           // flag is set at the start of each iteration and cleared at the end 
-        char fail;                      // 0x0 (pass) or 0x1 (fail)
-        char breakFromLoop;
+        char loopControl;               // flags: within iteration, request break from loop, test failed
+        char initialValueType;          // initial control variable value type for 'for' loop tests (can be changed within loop if scalar)
+        char spare;                     // boundary alignment
 
         // FOR...END loop only
         char* pControlValueType;
@@ -369,6 +369,10 @@ public:
     // bit b1: the address is the address of an array element. If this bit is zero, the address is the scalar or array variable base address 
     static constexpr uint8_t var_isArray_pendingSubscripts = 0x02;
 
+    // block statements
+    static constexpr uint8_t withinIteration = 0x01;        // flag is set at the start of each iteration and cleared at the end
+    static constexpr uint8_t breakFromLoop = 0x02;          // flag: break statement encountered
+    static constexpr uint8_t testFail = 0x04;                   // flag: loop test failed
 
 
     static const int _userCBarrayDepth = 10;

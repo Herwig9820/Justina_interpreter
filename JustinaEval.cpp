@@ -583,7 +583,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                 if ((blockType == MyParser::block_for) || (blockType == MyParser::block_if)) { initNew = true; }
                 else if (blockType == MyParser::block_while) {
                     // currently executing an iteration of an outer 'if', 'while' or 'for' loop ? Then this is the start of the first iteration of a new (inner) 'if' or 'while' loop
-                    initNew = (((blockTestData*)_pFlowCtrlStackTop)->withinIteration != char(false));
+                    initNew = ((blockTestData*)_pFlowCtrlStackTop)->loopControl & withinIteration;      // 'within iteration' flag set ?
                 }
             }
         }
@@ -616,6 +616,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                         // next line valid for long values as well    
                         ((blockTestData*)_pFlowCtrlStackTop)->pControlVar.pFloatConst = pstackLvl->varOrConst.value.pFloatConst;      // pointer to variable (containing a long or float constant)
                         ((blockTestData*)_pFlowCtrlStackTop)->pControlValueType = pstackLvl->varOrConst.varTypeAddress;        // pointer to variable value type
+                        ((blockTestData*)_pFlowCtrlStackTop)->initialValueType = *pstackLvl->varOrConst.varTypeAddress & value_typeMask;        // pointer to variable value type
                     }
 
                     // store final loop value, converted to control variable type (floats will be truncated if converted to long, without warning)
@@ -657,10 +658,10 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                 }
             }
 
-            ((blockTestData*)_pFlowCtrlStackTop)->breakFromLoop = (char)false;        // init
+            ((blockTestData*)_pFlowCtrlStackTop)->loopControl &= ~breakFromLoop;        // init
         }
 
-        ((blockTestData*)_pFlowCtrlStackTop)->withinIteration = (char)true;     // at the start of an iteration
+        ((blockTestData*)_pFlowCtrlStackTop)->loopControl |= withinIteration;     // at the start of an iteration
     }
 
     // no break here: from here on, subsequent execution is common for 'if', 'elseif', 'else' and 'while'
@@ -680,7 +681,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         // 'else, 'elseif': if result of previous test (in preceding 'if' or 'elseif' clause) FAILED (fail = false), then CLEAR flag to test condition of current command (not relevant for 'else') 
         if ((_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_else) ||
             (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_elseif)) {
-            precedingTestFailOrNone = (bool)(((blockTestData*)_pFlowCtrlStackTop)->fail);
+            precedingTestFailOrNone = (bool)(((blockTestData*)_pFlowCtrlStackTop)->loopControl & testFail);
         }
         testClauseCondition = precedingTestFailOrNone && (_activeFunctionData.activeCmd_ResWordCode != MyParser::cmdcod_for) && (_activeFunctionData.activeCmd_ResWordCode != MyParser::cmdcod_else);
 
@@ -694,7 +695,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
             operand.floatConst = operandIsVar ? *_pEvalStackTop->varOrConst.value.pFloatConst : _pEvalStackTop->varOrConst.value.floatConst;        // valid for long values as well (same memory locations are copied)
 
             fail = (valueType == value_isFloat) ? (operand.floatConst == 0.) : (operand.longConst == 0);                                                                        // current test (elseif clause)
-            ((blockTestData*)_pFlowCtrlStackTop)->fail = (char)fail;                                          // remember test result (true -> 0x1)
+            ((blockTestData*)_pFlowCtrlStackTop)->loopControl = fail ? ((blockTestData*)_pFlowCtrlStackTop)->loopControl | testFail : ((blockTestData*)_pFlowCtrlStackTop)->loopControl & ~testFail;                                          // remember test result (true -> 0x1)
         }
 
         bool setNextToken = fail || (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_for);
@@ -745,7 +746,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
             }
         } while (!isLoop);
 
-        ((blockTestData*)_pFlowCtrlStackTop)->breakFromLoop = (char)(_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_break);
+        if (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_break) { ((blockTestData*)_pFlowCtrlStackTop)->loopControl |= breakFromLoop; }
 
         _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // command execution ended
         _activeFunctionData.activeCmd_tokenAddress = nullptr;
@@ -766,12 +767,12 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
             bool exitLoop{ true };
 
             if ((blockType == MyParser::block_for) || (blockType == MyParser::block_while)) {
-                exitLoop = (((blockTestData*)_pFlowCtrlStackTop)->breakFromLoop == (char)true);  // BREAK command encountered
+                exitLoop = ((blockTestData*)_pFlowCtrlStackTop)->loopControl & breakFromLoop;  // BREAK command encountered
             }
 
             if (!exitLoop) {      // no BREAK encountered: loop terminated anyway ?
                 if (blockType == MyParser::block_for) { execResult = testForLoopCondition(exitLoop); if (execResult != result_execOK) { return execResult; } }
-                else if (blockType == MyParser::block_while) { exitLoop = (((blockTestData*)_pFlowCtrlStackTop)->fail != char(false)); } // false: test passed
+                else if (blockType == MyParser::block_while) { exitLoop = (((blockTestData*)_pFlowCtrlStackTop)->loopControl & testFail); } // false: test passed
             }
 
             if (!exitLoop) {
@@ -788,7 +789,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                 }
             }
 
-            ((blockTestData*)_pFlowCtrlStackTop)->withinIteration = (char)false;     // at the end of an iteration
+            ((blockTestData*)_pFlowCtrlStackTop)->loopControl &= ~withinIteration;          // at the end of an iteration
             _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // command execution ended
             _activeFunctionData.activeCmd_tokenAddress = nullptr;
 
@@ -830,23 +831,42 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
 Interpreter::execResult_type Interpreter::testForLoopCondition(bool& testFails) {
 
-    bool valueIsLong = ((*(uint8_t*)((blockTestData*)_pFlowCtrlStackTop)->pControlValueType & value_typeMask) == value_isLong);
-    bool valueIsFloat = ((*(uint8_t*)((blockTestData*)_pFlowCtrlStackTop)->pControlValueType & value_typeMask) == value_isFloat);
-    if (!valueIsLong && !valueIsFloat) { return result_testexpr_numberExpected; }
+    char testTypeIsLong = (((blockTestData*)_pFlowCtrlStackTop)->initialValueType == value_isLong);    // loop final value and step have the initial control variable value type
+    bool ctrlVarIsLong = ((*(uint8_t*)((blockTestData*)_pFlowCtrlStackTop)->pControlValueType & value_typeMask) == value_isLong);
+    bool ctrlVarIsFloat = ((*(uint8_t*)((blockTestData*)_pFlowCtrlStackTop)->pControlValueType & value_typeMask) == value_isFloat);
+    if (!ctrlVarIsLong && !ctrlVarIsFloat) { return result_testexpr_numberExpected; }                       // value type changed to string within loop: error
 
-    Val pCtrlVar = ((blockTestData*)_pFlowCtrlStackTop)->pControlVar;                 // pointer to control variable
-    Val finalValue = ((blockTestData*)_pFlowCtrlStackTop)->finalValue;
+    Val pCtrlVar = ((blockTestData*)_pFlowCtrlStackTop)->pControlVar;                                       // pointer to control variable
+    Val finalValue = ((blockTestData*)_pFlowCtrlStackTop)->finalValue;                              
     Val step = ((blockTestData*)_pFlowCtrlStackTop)->step;
 
-    if (valueIsLong) {
-        if (step.longConst > 0) { testFails = (*pCtrlVar.pLongConst > finalValue.longConst); }
-        else { testFails = (*pCtrlVar.pLongConst < finalValue.longConst); }
-        *pCtrlVar.pLongConst = *pCtrlVar.pLongConst + step.longConst;
+    // if the value type of the control variable is changed from within the loop (which is not a good idea anyway), then
+    // all long values (value of either the current loop control variable or the final and step values) are promoted to float before test and change
+    // the new control variable value (with step added) is converted back to long before it is stored, if the current value type is long and the calculation result is float 
+
+    if (ctrlVarIsLong) {                                                                                    // current control variable value type is long
+        if (testTypeIsLong) {                                                                               // loop final value and step are long
+            if (step.longConst > 0) { testFails = (*pCtrlVar.pLongConst > finalValue.longConst); }
+            else { testFails = (*pCtrlVar.pLongConst < finalValue.longConst); }
+            *pCtrlVar.pLongConst = *pCtrlVar.pLongConst + step.longConst;
+        }
+        else {                                                                                              // loop final value and step are float: promote long values to float
+            if (step.floatConst > 0.) { testFails = ((float)*pCtrlVar.pLongConst > finalValue.floatConst); }
+            else { testFails = ((float)*pCtrlVar.pLongConst < finalValue.floatConst); }
+            *pCtrlVar.pLongConst = (long)((float)*pCtrlVar.pLongConst + step.floatConst);
+        }
     }
-    else {
-        if (step.floatConst > 0.) { testFails = (*pCtrlVar.pFloatConst > finalValue.floatConst); }
-        else { testFails = (*pCtrlVar.pFloatConst < finalValue.floatConst); }
-        *pCtrlVar.pFloatConst = *pCtrlVar.pFloatConst + step.floatConst;
+    else {                                                                                                  // current control variable value type is float
+        if (testTypeIsLong) {                                                                               // loop final value and step are long: promote long values to float
+            if ((float)step.longConst > 0.) { testFails = (*pCtrlVar.pFloatConst > (float)finalValue.longConst); }
+            else { testFails = (*pCtrlVar.pFloatConst < (float)finalValue.longConst); }
+            *pCtrlVar.pFloatConst = (*pCtrlVar.pFloatConst + (float)step.longConst);
+        }
+        else {                                                                                              // loop final value and step are float
+            if (step.floatConst > 0.) { testFails = (*pCtrlVar.pFloatConst > finalValue.floatConst); }
+            else { testFails = (*pCtrlVar.pFloatConst < finalValue.floatConst); }
+            *pCtrlVar.pFloatConst = *pCtrlVar.pFloatConst + step.floatConst;
+        }
     }
     return result_execOK;
 };
@@ -982,9 +1002,9 @@ void Interpreter::saveLastValue(bool& overWritePrevious) {
                 // note: this is always an intermediate string
                 delete[] lastResultValueFiFo[itemToRemove].pStringConst;
                 lastValuesStringObjectCount--;
-            }
         }
     }
+}
     else {
         _lastResultCount++;     // only adding an item, without removing previous one
     }
@@ -1031,7 +1051,7 @@ void Interpreter::saveLastValue(bool& overWritePrevious) {
 #endif
             delete[] lastvalue.value.pStringConst;
             intermediateStringObjectCount--;
-        }
+    }
     }
 
     // store new last value type
