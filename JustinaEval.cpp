@@ -602,7 +602,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                 // store variable reference, upper limit, optional increment / decrement (only once), address of token directly following 'FOR...; statement
                 ((blockTestData*)_pFlowCtrlStackTop)->nextTokenAddress = _activeFunctionData.pNextStep;
 
-                bool controlVarIsLong{ false };
+                bool controlVarIsLong{ false }, finalValueIsLong{ false }, stepIsLong{ false };
                 for (int i = 1; i <= cmdParamCount; i++) {        // skipped if no arguments
                     Val operand;                                                                                            // operand and result
                     bool operandIsVar = (pstackLvl->varOrConst.tokenType == tok_isVariable);
@@ -613,55 +613,45 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                     // store references to control variable and its value type
                     if (i == 1) {
                         controlVarIsLong = (valueType == value_isLong);         // remember
-                        // next line valid for long values as well    
-                        ((blockTestData*)_pFlowCtrlStackTop)->pControlVar.pFloatConst = pstackLvl->varOrConst.value.pFloatConst;      // pointer to variable (containing a long or float constant)
+                        ((blockTestData*)_pFlowCtrlStackTop)->pControlVar = pstackLvl->varOrConst.value;      // pointer to variable (containing a long or float constant)
                         ((blockTestData*)_pFlowCtrlStackTop)->pControlValueType = pstackLvl->varOrConst.varTypeAddress;        // pointer to variable value type
-                        ((blockTestData*)_pFlowCtrlStackTop)->initialValueType = *pstackLvl->varOrConst.varTypeAddress & value_typeMask;        // pointer to variable value type
                     }
 
-                    // store final loop value, converted to control variable type (floats will be truncated if converted to long, without warning)
+                    // store final loop value
                     else if (i == 2) {
-                        if (controlVarIsLong) {                                                            // control variable value type is long
-                            (((blockTestData*)_pFlowCtrlStackTop)->finalValue.longConst = (valueType == value_isLong) ? operand.longConst : (long)operand.floatConst);
-                        }
-                        else {                                                                              // control variable value type is float
-                            (((blockTestData*)_pFlowCtrlStackTop)->finalValue.floatConst = (valueType == value_isLong) ? (float)operand.longConst : operand.floatConst);
-                        }
+                        finalValueIsLong = (valueType == value_isLong);         // remember
+                        ((blockTestData*)_pFlowCtrlStackTop)->finalValue = operand;
                     }
 
-                    // store loop step, converted to control variable type (floats will be truncated if converted to long, without warning)
+                    // store loop step
                     else {      // third parameter
-                        if (controlVarIsLong) {                                                             // control variable value type is long
-                            (((blockTestData*)_pFlowCtrlStackTop)->step.longConst = (valueType == value_isLong) ? operand.longConst : (long)operand.floatConst);
-                        }
-                        else {                                                                              // control variable value type is float
-                            (((blockTestData*)_pFlowCtrlStackTop)->step.floatConst = (valueType == value_isLong) ? (float)operand.longConst : operand.floatConst);
-                        }
+                        stepIsLong = (valueType == value_isLong);         // remember
+                        ((blockTestData*)_pFlowCtrlStackTop)->step = operand;
                     }                         // store loop increment / decrement 
 
                     pstackLvl = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
                 }
 
-                if (cmdParamCount < 3) {        // step not specified: init with default (1) with value type of control variable 
-                    if (controlVarIsLong) { ((blockTestData*)_pFlowCtrlStackTop)->step.longConst = 1; }
-                    else { ((blockTestData*)_pFlowCtrlStackTop)->step.floatConst = 1.; }
+                if (cmdParamCount < 3) {        // step not specified: init with default (1.)  
+                    stepIsLong = false;
+                    ((blockTestData*)_pFlowCtrlStackTop)->step.floatConst = 1.;     // init as float
                 }
 
-                // prepare initial control variable value and final value for first loop 
-                if (controlVarIsLong) {                                                            // control variable value type is long
-                    *((blockTestData*)_pFlowCtrlStackTop)->pControlVar.pLongConst -= ((blockTestData*)_pFlowCtrlStackTop)->step.longConst;
-                    ((blockTestData*)_pFlowCtrlStackTop)->finalValue.longConst -= ((blockTestData*)_pFlowCtrlStackTop)->step.longConst;
+                // determine value type to use for loop tests, promote final value and step to float if value type to use for loop tests is float
+                // the initial value type of the control variable and the value type of (constant) final value and step define the loop test value type
+                ((blockTestData*)_pFlowCtrlStackTop)->testValueType = (controlVarIsLong && finalValueIsLong && stepIsLong ? value_isLong : value_isFloat);
+                if (((blockTestData*)_pFlowCtrlStackTop)->testValueType == value_isFloat) {
+                    if (finalValueIsLong) { ((blockTestData*)_pFlowCtrlStackTop)->finalValue.floatConst = (float)((blockTestData*)_pFlowCtrlStackTop)->finalValue.longConst; }
+                    if (stepIsLong) { ((blockTestData*)_pFlowCtrlStackTop)->step.floatConst = (float)((blockTestData*)_pFlowCtrlStackTop)->step.longConst; }
                 }
-                else {
-                    *((blockTestData*)_pFlowCtrlStackTop)->pControlVar.pFloatConst -= ((blockTestData*)_pFlowCtrlStackTop)->step.floatConst;
-                    ((blockTestData*)_pFlowCtrlStackTop)->finalValue.floatConst -= ((blockTestData*)_pFlowCtrlStackTop)->step.floatConst;
-                }
+
+                ((blockTestData*)_pFlowCtrlStackTop)->loopControl |= forLoopInit;           // init at the start of initial FOR loop iteration
             }
 
-            ((blockTestData*)_pFlowCtrlStackTop)->loopControl &= ~breakFromLoop;        // init
+            ((blockTestData*)_pFlowCtrlStackTop)->loopControl &= ~breakFromLoop;            // init at the start of initial iteration for any loop
         }
 
-        ((blockTestData*)_pFlowCtrlStackTop)->loopControl |= withinIteration;     // at the start of an iteration
+        ((blockTestData*)_pFlowCtrlStackTop)->loopControl |= withinIteration;               // init at the start of an iteration for any loop
     }
 
     // no break here: from here on, subsequent execution is common for 'if', 'elseif', 'else' and 'while'
@@ -775,7 +765,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                 else if (blockType == MyParser::block_while) { exitLoop = (((blockTestData*)_pFlowCtrlStackTop)->loopControl & testFail); } // false: test passed
             }
 
-            if (!exitLoop) {
+            if (!exitLoop) {        // flag still not set ?
                 if (blockType == MyParser::block_for) {
                     _activeFunctionData.pNextStep = ((blockTestData*)_pFlowCtrlStackTop)->nextTokenAddress;
                 }
@@ -831,43 +821,43 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
 Interpreter::execResult_type Interpreter::testForLoopCondition(bool& testFails) {
 
-    char testTypeIsLong = (((blockTestData*)_pFlowCtrlStackTop)->initialValueType == value_isLong);    // loop final value and step have the initial control variable value type
+    char testTypeIsLong = (((blockTestData*)_pFlowCtrlStackTop)->testValueType == value_isLong);    // loop final value and step have the initial control variable value type
     bool ctrlVarIsLong = ((*(uint8_t*)((blockTestData*)_pFlowCtrlStackTop)->pControlValueType & value_typeMask) == value_isLong);
     bool ctrlVarIsFloat = ((*(uint8_t*)((blockTestData*)_pFlowCtrlStackTop)->pControlValueType & value_typeMask) == value_isFloat);
     if (!ctrlVarIsLong && !ctrlVarIsFloat) { return result_testexpr_numberExpected; }                       // value type changed to string within loop: error
 
-    Val pCtrlVar = ((blockTestData*)_pFlowCtrlStackTop)->pControlVar;                                       // pointer to control variable
-    Val finalValue = ((blockTestData*)_pFlowCtrlStackTop)->finalValue;                              
-    Val step = ((blockTestData*)_pFlowCtrlStackTop)->step;
+    Val& pCtrlVar = ((blockTestData*)_pFlowCtrlStackTop)->pControlVar;                                       // pointer to control variable
+    Val& finalValue = ((blockTestData*)_pFlowCtrlStackTop)->finalValue;
+    Val& step = ((blockTestData*)_pFlowCtrlStackTop)->step;
+    char& loopControl = ((blockTestData*)_pFlowCtrlStackTop)->loopControl;
 
-    // if the value type of the control variable is changed from within the loop (which is not a good idea anyway), then
-    // all long values (value of either the current loop control variable or the final and step values) are promoted to float before test and change
-    // the new control variable value (with step added) is converted back to long before it is stored, if the current value type is long and the calculation result is float 
 
     if (ctrlVarIsLong) {                                                                                    // current control variable value type is long
         if (testTypeIsLong) {                                                                               // loop final value and step are long
+            if (!(loopControl & forLoopInit)) { *pCtrlVar.pLongConst = *pCtrlVar.pLongConst + step.longConst; }
             if (step.longConst > 0) { testFails = (*pCtrlVar.pLongConst > finalValue.longConst); }
             else { testFails = (*pCtrlVar.pLongConst < finalValue.longConst); }
-            *pCtrlVar.pLongConst = *pCtrlVar.pLongConst + step.longConst;
         }
         else {                                                                                              // loop final value and step are float: promote long values to float
+            if (!(loopControl & forLoopInit)) { *pCtrlVar.pLongConst = (long)((float)*pCtrlVar.pLongConst + step.floatConst); }  // store result back as LONG (do not change control variable value type)
             if (step.floatConst > 0.) { testFails = ((float)*pCtrlVar.pLongConst > finalValue.floatConst); }
             else { testFails = ((float)*pCtrlVar.pLongConst < finalValue.floatConst); }
-            *pCtrlVar.pLongConst = (long)((float)*pCtrlVar.pLongConst + step.floatConst);
         }
     }
     else {                                                                                                  // current control variable value type is float
         if (testTypeIsLong) {                                                                               // loop final value and step are long: promote long values to float
+            if (!(loopControl & forLoopInit)) { *pCtrlVar.pFloatConst = (*pCtrlVar.pFloatConst + (float)step.longConst); }
             if ((float)step.longConst > 0.) { testFails = (*pCtrlVar.pFloatConst > (float)finalValue.longConst); }
             else { testFails = (*pCtrlVar.pFloatConst < (float)finalValue.longConst); }
-            *pCtrlVar.pFloatConst = (*pCtrlVar.pFloatConst + (float)step.longConst);
         }
         else {                                                                                              // loop final value and step are float
+            if (!(loopControl & forLoopInit)) { *pCtrlVar.pFloatConst = *pCtrlVar.pFloatConst + step.floatConst; }
             if (step.floatConst > 0.) { testFails = (*pCtrlVar.pFloatConst > finalValue.floatConst); }
             else { testFails = (*pCtrlVar.pFloatConst < finalValue.floatConst); }
-            *pCtrlVar.pFloatConst = *pCtrlVar.pFloatConst + step.floatConst;
         }
     }
+
+    loopControl &= ~forLoopInit;             // reset 'FOR loop init' flag
     return result_execOK;
 };
 
@@ -1002,7 +992,7 @@ void Interpreter::saveLastValue(bool& overWritePrevious) {
                 // note: this is always an intermediate string
                 delete[] lastResultValueFiFo[itemToRemove].pStringConst;
                 lastValuesStringObjectCount--;
-        }
+            }
     }
 }
     else {
@@ -1051,7 +1041,7 @@ void Interpreter::saveLastValue(bool& overWritePrevious) {
 #endif
             delete[] lastvalue.value.pStringConst;
             intermediateStringObjectCount--;
-    }
+        }
     }
 
     // store new last value type
@@ -1729,8 +1719,8 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
                     delete[] pUnclippedResultString;
                     intermediateStringObjectCount--;
                 }
+            }
         }
-    }
 
         // store value in variable and adapt variable value type - line is valid for long integers as well
         if (opResultLong || opResultFloat) { *_pEvalStackMinus2->varOrConst.value.pFloatConst = opResult.floatConst; }
@@ -1746,7 +1736,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) |
                 (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
         }
-}
+    }
 
 
     // (7) post process
@@ -2120,7 +2110,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
     _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
 
     return result_execOK;
-    }
+}
 
 
 // -----------------------

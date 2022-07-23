@@ -297,7 +297,7 @@ public:
     struct blockTestData {
         char blockType;                 // command block: will identify stack level as an if...end, for...end, ... block
         char loopControl;               // flags: within iteration, request break from loop, test failed
-        char initialValueType;          // initial control variable value type for 'for' loop tests (can be changed within loop if scalar)
+        char testValueType;             // 'for' loop tests: value type used for loop tests
         char spare;                     // boundary alignment
 
         // FOR...END loop only
@@ -371,8 +371,9 @@ public:
 
     // block statements
     static constexpr uint8_t withinIteration = 0x01;        // flag is set at the start of each iteration and cleared at the end
-    static constexpr uint8_t breakFromLoop = 0x02;          // flag: break statement encountered
-    static constexpr uint8_t testFail = 0x04;                   // flag: loop test failed
+    static constexpr uint8_t forLoopInit = 0x02;            // flag signals start of first iteration of a FOR loop
+    static constexpr uint8_t breakFromLoop = 0x04;          // flag: break statement encountered
+    static constexpr uint8_t testFail = 0x08;               // flag: loop test failed
 
 
     static const int _userCBarrayDepth = 10;
