@@ -7,6 +7,12 @@
 #include <stdlib.h>
 #include <memory>
 
+#define ProductName "Justina: JUst an INterpreter for Arduino"
+#define LegalCopyright "Copyright (C) Herwig Taveirne, 2022"
+#define ProductVersion "1.0.0.1"
+#define BuildDate "July 25, 2022"
+
+
 /***********************************************************
 *                    class LinkedList                   *
 *    append and remove list elements from linked list      *
@@ -143,10 +149,12 @@ public:
         result_stringTooLong
     };
 
-
     // printing (to string, to stream)
     const int _defaultPrintWidth = 30, _defaultNumPrecision = 3, _defaultCharsToPrint = 30, _defaultPrintFlags = 0x00;       // at start up
     const int _maxPrintFieldWidth = 200, _maxNumPrecision = 7, _maxCharsToPrint = 200, _printFlagMask = 0x1F;
+
+    // version
+    static constexpr char version[80] = "Justina Interpreter For Arduino Version 1.0.0 (July 25, 2022)";////
 
     static constexpr uint8_t extFunctionBit{ B00000001 };
     static constexpr uint8_t extFunctionPrevDefinedBit{ B00000010 };
@@ -178,10 +186,10 @@ public:
         char pStringConst[4];                                 // pointer to string object
     };
 
-    struct TokenIsResWord {                                     // reserved word token (command): length 4 (if not a block command, token step is not stored and length will be 2)
+    struct TokenIsResWord {                                     // reserved word token (command): length 2 or 4 (if not a block command, token step is not stored and length will be 2)
         char tokenType;                                         // will be set to specific token type
         char tokenIndex;                                        // index into list of tokens of a specific type
-        char toTokenStep[2];                                     // tokens for block commands (IF, FOR, BREAK, END, ...): step n� of block start token or next block token (uint16_t)
+        char toTokenStep[2];                                    // tokens for block commands (IF, FOR, BREAK, END, ...): step n� of block start token or next block token (uint16_t)
     };
 
     struct TokenIsConstant {                                    // token storage for a numeric constant token: length 5
@@ -228,12 +236,12 @@ public:
         long longConst;                                        // long
         float floatConst;                                        // float
         char* pStringConst;                                     // pointer to a character string
-        float* pArray;                                          // pointer to memory block reserved for array
+        void* pArray;                                          // pointer to memory block reserved for array
 
         long* pLongConst;
         float* pFloatConst;
         char** ppStringConst;
-        float** ppArray;
+        void** ppArray;
     };
 
 
@@ -359,7 +367,7 @@ public:
     static constexpr uint8_t value_isFloat = 2 << 0;
     static constexpr uint8_t value_isStringPointer = 3 << 0;
 private:
-    static constexpr uint8_t value_isVarRef = 4 << 0;
+    static constexpr uint8_t value_isVarRef = 4 << 0;                   
 public:
 
     // constants used during execution, only stored within the stack for value tokens
@@ -446,6 +454,8 @@ public:
     char* _programCounter{ nullptr };                                // pointer to token memory address (not token step n�)
 
     uint16_t _paramIsArrayPattern{ 0 };
+
+    char _programName [_maxIdentifierNameLen + 1] ;
 
     Stream* _pConsole{ nullptr };
     Stream** _pTerminal{ nullptr };

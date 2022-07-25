@@ -13,7 +13,6 @@
 
 int LinkedList::_listIDcounter = 0;
 
-
 // -------------------
 // *   constructor   *
 // -------------------
@@ -195,6 +194,7 @@ Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
     _isPrompt = false;
 
     // init 'machine' (not a complete reset, because this clears heap objects for this Interpreter object, and there are none)
+    _programName[0] = '\0';
     _programVarNameCount = 0;
     _staticVarCount = 0;
     _localVarCountInFunction = 0;
@@ -253,6 +253,14 @@ Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
 
     *_programStorage = '\0';                                    //  current end of program 
     *_programStart = '\0';                                      //  current end of program (immediate mode)
+
+    _pConsole->println();
+    for (int i = 0; i <48; i++) {_pConsole->print("*"); }_pConsole->println(); 
+    _pConsole->print("    "); _pConsole->println(ProductName);
+ ////   _pConsole->println("             --      --              -");
+    _pConsole->print("    "); _pConsole->println(LegalCopyright);
+    _pConsole->print("    Version: ") ; _pConsole->print(ProductVersion); _pConsole->print( " ("); _pConsole->print(BuildDate);_pConsole->println(")");
+    for (int i = 0; i < 48; i++) { _pConsole->print("*"); } _pConsole->println();
 };
 
 

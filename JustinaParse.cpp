@@ -366,6 +366,7 @@ void MyParser::resetMachine(bool withUserVariables) {
     _extFunctionBlockOpen = false;
 
     // init interpreter variables: AFTER deleting heap objects
+    _pInterpreter->_programName[0]= '\0';
     _pInterpreter->_programVarNameCount = 0;
     _pInterpreter->_staticVarCount = 0;
     _pInterpreter->_localVarCountInFunction = 0;
@@ -2403,7 +2404,7 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
 
         // if existing array: retrieve dimension count against existing definition, for testing against definition afterwards
         if (existingArray) {
-            float* pArray = nullptr;
+            void* pArray = nullptr;
             if (isStaticVar) { pArray = _pInterpreter->staticVarValues[valueIndex].pArray; }
             else if (isGlobalOrUserVar) { pArray = varValues[activeNameRange][valueIndex].pArray; }
             else if (isLocalVar) { pArray = (float*)_pInterpreter->localVarDims[valueIndex]; }   // dimensions and count are stored in a float
@@ -2502,8 +2503,11 @@ bool MyParser::parseAsIdentifierName(char*& pNext, parseTokenResult_type& result
     strncpy(pIdentifierName, pch, pNext - pch);                            // store identifier name in newly created character array
     pIdentifierName[pNext - pch] = '\0';                                                 // string terminating '\0'
 
-    // Declaring aliases ? Store alias
-    if (_isDecCBprocCmd) {
+    // Declaring program name or aliases ? Store 
+    if (_isProgramCmd) {
+        strcpy(_pInterpreter->_programName, pIdentifierName);                           // maximum 10 user functions                                   
+    }
+    else if (_isDecCBprocCmd) {
         if (_pInterpreter->_userCBprocAliasSet_count >= _pInterpreter->_userCBprocStartSet_count) { pNext = pch; result = result_allUserCBAliasesSet;  return false; }
         for (int i = 0; i < _pInterpreter->_userCBprocAliasSet_count; i++) {
             if (strcmp(_pInterpreter->_callbackUserProcAlias[i], pIdentifierName) == 0) { pNext = pch; result = result_userCBAliasRedeclared;  return false; }
@@ -2520,7 +2524,7 @@ bool MyParser::parseAsIdentifierName(char*& pNext, parseTokenResult_type& result
     _lastTokenType = Interpreter::tok_isGenericName;
     _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
-    _pInterpreter->_programCounter += sizeof(Interpreter::TokenIsConstant);
+    _pInterpreter->_programCounter += sizeof(Interpreter::TokenIsConstant); 
     *_pInterpreter->_programCounter = '\0';                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
