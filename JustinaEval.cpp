@@ -304,18 +304,12 @@ Interpreter::execResult_type  Interpreter::exec() {
         bool isFloat = (lastResultTypeFiFo[0] == value_isFloat);
         int charsPrinted{ 0 };        // not used
         Val toPrint;
-        char* fmtString = isFloat ? _dispNumberFmtString : _dispStringFmtString;
+        char* fmtString = (isLong || isFloat) ? _dispNumberFmtString : _dispStringFmtString;
 
-        /*      //// tijdelijk weg
-        printToString(_dispWidth, isFloat ? _dispNumPrecision : _dispWidth == 0 ? _maxCharsToPrint : _dispCharsToPrint, //// long: precision argument is not relevant
-            !isFloat, _dispIsHexFmt, lastResultValueFiFo, fmtString, toPrint, charsPrinted);
-
+        printToString(_dispWidth, (isLong || isFloat) ? _dispNumPrecision : _dispWidth == 0 ? _maxCharsToPrint : _dispCharsToPrint,
+            (!isLong && !isFloat), _dispIsIntFmt, lastResultTypeFiFo, lastResultValueFiFo, fmtString, toPrint, charsPrinted);
         _pConsole->println(toPrint.pStringConst);
-        */
 
-        if (isLong) { Serial.println(lastResultValueFiFo[0].longConst); }
-        else if (isFloat) { Serial.println(lastResultValueFiFo[0].floatConst); }
-        else { Serial.println(lastResultValueFiFo[0].pStringConst); }
 
 #if printCreateDeleteHeapObjects
         Serial.print("----- (Intermd str) "); Serial.println((uint32_t)toPrint.pStringConst - RAMSTART);
@@ -363,6 +357,9 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     // print all arguments (longs, floats and strings) in succession. Floats are printed in compact format with maximum 3 digits / decimals and an optional exponent
     // -------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+    // note: the print command does not take into account the display format set to print the last calculation result
+    // to format output produced with the print command, use the formatting function provided (function code: fnccod_format) 
+
     case MyParser::cmdcod_print:
     {
         for (int i = 1; i <= cmdParamCount; i++) {
@@ -401,29 +398,34 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     }
     break;
 
-    // -------------------------------------------
-    // //// beschrijf functie 'set display format'
-    // -------------------------------------------
+    // -------------------------------------------------------
+    // Set display format for printing last calculation result
+    // -------------------------------------------------------
 
-    //// implement LONG
-
-    case MyParser::cmdcod_dispfmt:      // takes two arguments: width & flags
+    case MyParser::cmdcod_dispfmt:
     {
-        // mandatory argument 1: width
-        // optional arguments 2-3 (relevant for numbers only): precision (# decimals, specifier (F:fixed, E:scientific, G:general, X:hex)]
+        // mandatory argument 1: width (used for both numbers and strings) 
+        // optional arguments 2-4 (relevant for printing numbers only): [precision, [specifier (F:fixed, E:scientific, G:general, D: decimal, X:hex), ] flags]
+        // note that specifier argument can be left out, flags argument taking its place
 
-        bool argIsVar[3];
-        char valueType[3];
-        Val args[3];
+        bool argIsVar[4];
+        char valueType[4];
+        Val args[4];
 
+        if (cmdParamCount > 4) { execResult = result_arg_tooManyArgs; return execResult; }
         copyValueArgsFromStack(pstackLvl, cmdParamCount, argIsVar, valueType, args);
 
+        // set format for numbers and strings
+
         execResult_type execResult = checkFmtSpecifiers(true, false, cmdParamCount, valueType, args, _dispNumSpecifier[0],
-            _dispIsHexFmt, _dispWidth, _dispNumPrecision, _dispFmtFlags); if (execResult != result_execOK) { return execResult; }
-        makeFormatString(_dispFmtFlags, _dispIsHexFmt, _dispNumSpecifier, _dispNumberFmtString);       // for numbers
+            _dispWidth, _dispNumPrecision, _dispFmtFlags);
+        if (execResult != result_execOK) { return execResult; }
+        
+        _dispIsIntFmt = (_dispNumSpecifier[0] == 'X') || (_dispNumSpecifier[0] == 'x') || (_dispNumSpecifier[0] == 'd') || (_dispNumSpecifier[0] == 'D');
+        makeFormatString(_dispFmtFlags, _dispIsIntFmt, _dispNumSpecifier, _dispNumberFmtString);       // for numbers
 
         _dispCharsToPrint = _dispWidth;
-        strcpy(_dispStringFmtString, "%*.*s%n");                                                           // for strings
+        strcpy(_dispStringFmtString, "%*.*s%n");                                                           // strings: set characters to print to display width
 
         clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings
 
@@ -1919,7 +1921,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
     case MyParser::fnccod_millis:
     {
         fcnResultIsLong = true;
-        fcnResult.longConst = millis();     
+        fcnResult.longConst = millis();
     }
     break;
 
@@ -1951,9 +1953,9 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
 
     case MyParser::fnccod_char:     // convert ASCII code to 1-character string
     {
-        if (!argIsLong [0] && !argIsFloat[0]) { return result_arg_integerExpected; }
+        if (!argIsLong[0] && !argIsFloat[0]) { return result_arg_integerExpected; }
         int asciiCode = argIsLong[0] ? args[0].longConst : int(args[0].floatConst);
-        if(argIsFloat[0]){ if (args[0].floatConst != asciiCode) { return result_arg_integerExpected;} }
+        if (argIsFloat[0]) { if (args[0].floatConst != asciiCode) { return result_arg_integerExpected; } }
         if ((asciiCode < 1) || (asciiCode > 0xFF)) { return result_arg_outsideRange; }        // do not allow \0
 
         // result is string
@@ -1989,35 +1991,33 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
     // format a number or a string into a destination string
     // -----------------------------------------------------
 
-    case MyParser::fnccod_fmtNum:
-    case MyParser::fnccod_fmtStr:
+    case MyParser::fnccod_format:
     {
-        // mandatory argument 1: numeric value to be converted to string
-        // optional arguments 2-5: width, precision, [ONLY if fnccod_fmtNum: specifier (F:fixed, E:scientific, G:general, X:hex)], flags, characters printed (return value)
-        // note that behaviour is as with c++ printf, sprintf, ... 
-
+        // mandatory argument 1: value to be formatted
+        // optional arguments 2-5: width, precision, [specifier (F:fixed, E:scientific, G:general, D: long integer, X:hex)], flags, characters printed (return value)
+        // behaviour corresponds to c++ printf, sprintf, ..., result is a formatted string
+        // note that specifier argument can be left out, flags argument taking its place
+        // width, precision, specifier and flags are used as defaults for next calls to this function, if they are not provided again
+        // if the value to be formatted is a string, the precision argument is interpreted as 'maximum characters to print', otherwise it indicates numeric precision (both values retained seperately)
+        // specifier is only relevant for formatting numbers (ignored for formatting strings), but can be set while formatting a string
+        
         const int leftJustify = 0b1, forceSign = 0b10, blankIfNoSign = 0b100, addDecPoint = 0b1000, padWithZeros = 0b10000;     // flags
-        char* specifier;
-        bool isHexFmt{ false };
-        bool isFmtString = (functionCode == MyParser::fnccod_fmtStr);
+        bool isIntFmt{ false };
         int charsPrinted{ 0 };
 
-        // init print, precision, flags
-        int& width = _printWidth, & precision = (isFmtString ? _printCharsToPrint : _printNumPrecision), & flags = _printFmtFlags;
-        if (isFmtString) { specifier = "s"; }
-        else { specifier = _printNumSpecifier; }
+        // INIT print width, precision, specifier, flags
+        int& width = _printWidth, & precision = ((argIsLong[0] || argIsFloat[0]) ? _printNumPrecision : _printCharsToPrint), & flags = _printFmtFlags;
 
-        // test arguments
-        // --------------
+        // test arguments and ADAPT print width, precision, specifier, flags
+        // -----------------------------------------------------------------
 
-        // value to format is the correct type for the function ?
-        if (isFmtString == argIsFloat[0]) { return isFmtString ? result_arg_stringExpected : result_arg_numValueExpected; }
-
-        execResult_type execResult = checkFmtSpecifiers(false, isFmtString, suppliedArgCount, argValueType, args, specifier[0], isHexFmt, width, precision, flags); if (execResult != result_execOK) { return execResult; }
-        if (!isFmtString) { _printNumSpecifier[0] = specifier[0]; }
+        execResult_type execResult = checkFmtSpecifiers(false, (!argIsLong[0] && !argIsFloat[0]), suppliedArgCount, argValueType, args, _printNumSpecifier[0], width, precision, flags);
+        if (execResult != result_execOK) { return execResult; }
 
         // optional argument returning #chars that were printed is present ?  Variable expected
-        if (suppliedArgCount == (isFmtString ? 5 : 6)) {
+        bool hasSpecifierArg = false; // init
+        if (suppliedArgCount >= 3) { hasSpecifierArg = (!argIsLong[3] && !argIsFloat[3]); }       // third argument is either a specifier (string) or set of flags (number)
+        if (suppliedArgCount == (hasSpecifierArg ? 6 : 5)) {
             if (!argIsVar[suppliedArgCount - 1]) { return result_arg_varExpected; }          // it should be a variable
         }
 
@@ -2025,14 +2025,19 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
         // ------------------------------------------
 
         char  fmtString[20];        // long enough to contain all format specifier parts
-        makeFormatString(flags, isHexFmt, specifier, fmtString);
-        printToString(width, precision, isFmtString, isHexFmt, args, fmtString, fcnResult, charsPrinted);
+        char* specifier = "s";
+        if (argIsLong[0] || argIsFloat[0]) {
+            specifier = _printNumSpecifier;
+            isIntFmt = (specifier[0] == 'X') || (specifier[0] == 'x') || (specifier[0] == 'd') || (specifier[0] == 'D');
+        }
+        makeFormatString(flags, isIntFmt, specifier, fmtString);
+        printToString(width, precision, (!argIsLong[0] && !argIsFloat[0]), isIntFmt, argValueType, args, fmtString, fcnResult, charsPrinted);
 
         // return number of characters printed into (variable) argument if it was supplied
         // -------------------------------------------------------------------------------
 
         // note: NO errors should occur beyond this point, OR the intermediate string containing the function result should be deleted
-        if (suppliedArgCount == (isFmtString ? 5 : 6)) {      // optional argument returning #chars that were printed is present
+        if (suppliedArgCount == (hasSpecifierArg ? 6 : 5)) {      // optional argument returning #chars that were printed is present
             // if  variable currently holds a non-empty string (indicated by a nullptr), delete char string object
             execResult_type execResult = deleteVarStringObject(_pEvalStackTop); if (execResult != result_execOK) { return execResult; }
 
@@ -2052,7 +2057,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
     {
         if (!argIsLong[0] && !argIsFloat[0]) { return result_arg_integerExpected; }
         int sysVar = argIsLong[0] ? args[0].longConst : int(args[0].floatConst);
-        if(argIsFloat[0]) { if (args[0].floatConst != sysVar) { return result_arg_integerExpected; } }
+        if (argIsFloat[0]) { if (args[0].floatConst != sysVar) { return result_arg_integerExpected; } }
 
         fcnResultIsLong = true;  //init
 
@@ -2085,7 +2090,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
         case 11: fcnResult.longConst = _printLastResult; break;
         case 12: fcnResult.longConst = _userCBprocStartSet_count; break;
         case 13: fcnResult.longConst = _userCBprocAliasSet_count; break;
-        
+
         case 14:
         {
             fcnResultIsLong = false;   // is string
@@ -2103,20 +2108,20 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
         case 17:
         case 18:
             fcnResultIsLong = false;   // is string
-            fcnResult.pStringConst = new char[((sysVar == 15) ? strlen(ProductName) : (sysVar == 16) ? strlen(LegalCopyright) : (sysVar == 17) ? strlen(ProductVersion) : strlen(BuildDate))+1];
+            fcnResult.pStringConst = new char[((sysVar == 15) ? strlen(ProductName) : (sysVar == 16) ? strlen(LegalCopyright) : (sysVar == 17) ? strlen(ProductVersion) : strlen(BuildDate)) + 1];
             intermediateStringObjectCount++;
             strcpy(fcnResult.pStringConst, (sysVar == 15) ? ProductName : (sysVar == 16) ? LegalCopyright : (sysVar == 17) ? ProductVersion : BuildDate);
 #if printCreateDeleteHeapObjects
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
 #endif
 
-        break;
+            break;
 
         default:return result_arg_invalid; break;
         }       // switch (sysVar)
         break;
     }
-    
+
 
     }       // end switch
 
@@ -2140,44 +2145,48 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
     _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
 
     return result_execOK;
-    }
+}
 
 
 // -----------------------
 // check format specifiers
 // -----------------------
 
-Interpreter::execResult_type Interpreter::checkFmtSpecifiers(bool isDispFmt, bool isFmtString, int suppliedArgCount, char* valueType, Val* operands, char& numSpecifier,
-    bool& isHexFmt, int& width, int& precision, int& flags) {
+Interpreter::execResult_type Interpreter::checkFmtSpecifiers(bool isDispFmt, bool valueIsString, int suppliedArgCount, char* valueType, Val* operands, char& numSpecifier,
+    int& width, int& precision, int& flags) {
+
+    // format a value: third argument is either a specifier (string) or set of flags (number)
+    bool hasSpecifierArg = false; // init
+    if (suppliedArgCount >= (isDispFmt ? 3 : 4)) { hasSpecifierArg = ((valueType[isDispFmt ? 2 : 3] != value_isLong) && (valueType[isDispFmt ? 2 : 3] != value_isFloat)); }
+
     for (int argNo = (isDispFmt ? 1 : 2); argNo <= suppliedArgCount; argNo++) {
-        // Specifier argument ? Single character specifier (FfEeGgXx) expected
-        if (!isFmtString && (argNo == (isDispFmt ? 3 : 4))) {     // position of specifier in arg list varies
+
+        // Specifier argument ? Single character specifier (FfEeGgXxDd) expected
+        if (hasSpecifierArg && (argNo == (isDispFmt ? 3 : 4))) {     // position of specifier in arg list varies
             if (valueType[argNo - 1] != value_isStringPointer) { return result_arg_stringExpected; }
             if (operands[argNo - 1].pStringConst == nullptr) { return result_arg_invalid; }
             if (strlen(operands[argNo - 1].pStringConst) != 1) { return result_arg_invalid; }
             numSpecifier = operands[argNo - 1].pStringConst[0];
-            char* pChar(strchr("FfGgEeXx", numSpecifier));
-            if (pChar == nullptr) { return result_arg_invalid; }
-            isHexFmt = (numSpecifier == 'X') || (numSpecifier == 'x');
+            char* pChar(strchr("FfGgEeXxDd", numSpecifier));
+            if (pChar == nullptr) { Serial.println("*** error"); ; return result_arg_invalid; }
         }
 
         // Width, precision flags ? Numeric arguments expected
-        else if (argNo != (isFmtString ? 5 : 6)) {      // (exclude optional argument returning #chars printed from tests)
-
-            if (valueType[argNo - 1] != value_isFloat) { return result_arg_numValueExpected; }                                               // numeric ?
-            if (operands[argNo - 1].floatConst < 0) { return result_arg_outsideRange; }                                           // positive ?
-            ((argNo == (isDispFmt ? 1 : 2)) ? width : (argNo == (isDispFmt ? 2 : 3)) ? precision : flags) = operands[argNo - 1].floatConst;                             // set with, precision, flags to respective argument
-            if (operands[argNo - 1].floatConst != ((argNo == (isDispFmt ? 1 : 2)) ? width : (argNo == (isDispFmt ? 2 : 3)) ? precision : flags)) { return result_arg_invalid; }    // integer ?
+        else if (argNo != (hasSpecifierArg ? 6 : 5)) {      // (exclude optional argument returning #chars printed from tests)
+            if ((valueType[argNo - 1] != value_isLong) && (valueType[argNo - 1] != value_isFloat)) { return result_arg_numValueExpected; }                                               // numeric ?
+            if ((valueType[argNo - 1] == value_isLong) ? operands[argNo - 1].longConst < 0 : operands[argNo - 1].floatConst < 0.) { return result_arg_outsideRange; }                                           // positive ?
+            int argValue = (valueType[argNo - 1] == value_isLong) ? operands[argNo - 1].longConst : (long)operands[argNo - 1].floatConst;
+            ((argNo == (isDispFmt ? 1 : 2)) ? width : (argNo == (isDispFmt ? 2 : 3)) ? precision : flags) = argValue;                             // set with, precision, flags to respective argument
+            if (argValue != ((argNo == (isDispFmt ? 1 : 2)) ? width : (argNo == (isDispFmt ? 2 : 3)) ? precision : flags)) { return result_arg_invalid; }    // integer ?
         }
     }
-    // process STRING format precision argument NOT specified: init precision to width. Note that for strings, precision specifies MAXIMUM no of characters that will be printed
+    // format STRING: precision argument NOT specified: init precision to width. Note that for strings, precision specifies MAXIMUM no of characters that will be printed
 
-    if (isFmtString && (suppliedArgCount == 2)) { precision = width; }        // fstr() with explicit change of width and without explicit change of precision: init precision to width
+    if (valueIsString && (suppliedArgCount == 2)) { precision = width; }        // fstr() with explicit change of width and without explicit change of precision: init precision to width
 
     width = min(width, _maxPrintFieldWidth);            // limit width to _maxPrintFieldWidth
-    precision = min(precision, isFmtString ? _maxCharsToPrint : _maxNumPrecision);
-    flags &= 0b11111;
-
+    precision = min(precision, valueIsString ? _maxCharsToPrint : _maxNumPrecision);
+    flags &= 0b11111;       // apply mask
     return result_execOK;
 }
 
@@ -2187,7 +2196,7 @@ Interpreter::execResult_type Interpreter::checkFmtSpecifiers(bool isDispFmt, boo
 // ----------------------
 
 
-Interpreter::execResult_type  Interpreter::makeFormatString(int flags, bool isHexFmt, char* numFmt, char* fmtString) {
+void  Interpreter::makeFormatString(int flags, bool isIntFmt, char* numFmt, char* fmtString) {
 
     // prepare format string
     // ---------------------
@@ -2198,19 +2207,19 @@ Interpreter::execResult_type  Interpreter::makeFormatString(int flags, bool isHe
         if (flags & 0b1) { fmtString[strPos] = ((i == 1) ? '-' : (i == 2) ? '+' : (i == 3) ? ' ' : (i == 4) ? '#' : '0'); ++strPos; }
     }
     fmtString[strPos] = '*'; ++strPos; fmtString[strPos] = '.'; ++strPos; fmtString[strPos] = '*'; ++strPos;             // width and precision specified with additional arguments
-    if (isHexFmt) { fmtString[strPos] = 'l'; ++strPos; fmtString[strPos] = numFmt[0]; ++strPos; }
+    if (isIntFmt) { fmtString[strPos] = 'l'; ++strPos; fmtString[strPos] = numFmt[0]; ++strPos; }
     else { fmtString[strPos] = numFmt[0]; ++strPos; }
     fmtString[strPos] = '%'; ++strPos; fmtString[strPos] = 'n'; ++strPos; fmtString[strPos] = '\0'; ++strPos;            // %n specifier (return characters printed)
 
-    return result_execOK;
+    return;
 }
 
 
-// ----------------------------------------------------------------------
-// format numbr or string according to format string (result is a string)
-// ----------------------------------------------------------------------
+// -----------------------------------------------------------------------
+// format number or string according to format string (result is a string)
+// -----------------------------------------------------------------------
 
-Interpreter::execResult_type  Interpreter::printToString(int width, int precision, bool inputIsString, bool isHexFmt, Val* operands, char* fmtString,
+void  Interpreter::printToString(int width, int precision, bool inputIsString, bool isIntFmt, char* valueType, Val* operands, char* fmtString,
     Val& fcnResult, int& charsPrinted) {
 
     int opStrLen{ 0 }, resultStrLen{ 0 };
@@ -2222,7 +2231,7 @@ Interpreter::execResult_type  Interpreter::printToString(int width, int precisio
         resultStrLen = max(width + 10, opStrLen + 10);  // allow for a few extra formatting characters, if any
     }
     else {
-        resultStrLen = max(width + 10, 30);         // 30: minimum required ro print a formatted nummber
+        resultStrLen = max(width + 10, 30);         // 30: ensure length is sufficient to print a formatted nummber
     }
 
     fcnResult.pStringConst = new char[resultStrLen];
@@ -2232,12 +2241,11 @@ Interpreter::execResult_type  Interpreter::printToString(int width, int precisio
     Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
 #endif
 
-
     if (inputIsString) { sprintf(fcnResult.pStringConst, fmtString, width, precision, (operands[0].pStringConst == nullptr) ? "" : operands[0].pStringConst, &charsPrinted); }
-    else if (isHexFmt) { sprintf(fcnResult.pStringConst, fmtString, width, precision, (long)operands[0].floatConst, &charsPrinted); }     // hex output for floating point numbers not provided (Arduino)
-    else { sprintf(fcnResult.pStringConst, fmtString, width, precision, operands[0].floatConst, &charsPrinted); }
+    else if (isIntFmt) { sprintf(fcnResult.pStringConst, fmtString, width, precision, (valueType[0] == value_isLong) ? operands[0].longConst : (long)operands[0].floatConst, &charsPrinted); }     // hex output for floating point numbers not provided (Arduino)
+    else { sprintf(fcnResult.pStringConst, fmtString, width, precision, (valueType[0] == value_isLong) ? (float)operands[0].longConst : operands[0].floatConst, &charsPrinted); }
 
-    return result_execOK;
+    return;
 }
 
 

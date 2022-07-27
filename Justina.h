@@ -9,7 +9,7 @@
 
 #define ProductName "Justina: JUst an INterpreter for Arduino"
 #define LegalCopyright "Copyright (C) Herwig Taveirne, 2022"
-#define ProductVersion "1.0.0.1"
+#define ProductVersion "1.0.1"
 #define BuildDate "July 25, 2022"
 
 
@@ -127,6 +127,8 @@ public:
         result_arg_dimNumberInvalid,
         result_arg_stringExpected,
         result_arg_numValueExpected,
+        result_arg_tooManyArgs,
+
         result_array_dimNumberNonInteger,
         result_array_dimNumberInvalid,
         result_arg_varExpected,
@@ -417,13 +419,13 @@ public:
 
     // calculation result print
     int _dispWidth = _defaultPrintWidth, _dispNumPrecision = _defaultNumPrecision, _dispCharsToPrint = _defaultCharsToPrint, _dispFmtFlags = _defaultPrintFlags;
-    char _dispNumSpecifier[2] = "G";      // room for 1 character and an extra terminating \0 (space voor length sub-specifier) (initialized during reset)
-    bool _dispIsHexFmt{ false };              // initialized during reset          
+    char _dispNumSpecifier[2] = "G";      // room for 1 character and an extra terminating \0 
+    bool _dispIsIntFmt{ false };              // initialized during reset          
     char  _dispNumberFmtString[20] = "", _dispStringFmtString[20] = "%*.*s%n";        // long enough to contain all format specifier parts; initialized during reset
 
      // for print command
     int _printWidth = _defaultPrintWidth, _printNumPrecision = _defaultNumPrecision, _printCharsToPrint = _defaultCharsToPrint, _printFmtFlags = _defaultPrintFlags;
-    char _printNumSpecifier[2] = "G";      // room for 2 characters and an extra terminating \0 (space voor length sub-specifier) (initialized during reset)
+    char _printNumSpecifier[2] = "G";      // room for 1 character and an extra terminating \0 (initialized during reset)
 
     // display output settings
     int _promptAndEcho{ 2 };              // output prompt and echo of input
@@ -573,10 +575,10 @@ public:
     execResult_type execProcessedCommand(bool& isFunctionReturn);
     execResult_type testForLoopCondition(bool& fail);
 
-    execResult_type checkFmtSpecifiers(bool isDispFmt, bool isFmtString, int suppliedArgCount, char* valueType, Val* operands, char& numSpecifier,
-        bool& isHexFmt, int& width, int& precision, int& flags);
-    execResult_type makeFormatString(int flags, bool isHexFmt, char* numFmt, char* fmtString);
-    execResult_type printToString(int width, int precision, bool isFmtString, bool isHexFmt, Val* operands, char* fmtString,
+    execResult_type checkFmtSpecifiers(bool isDispFmt, bool valueIsString, int suppliedArgCount, char* valueType, Val* operands, char& numSpecifier,
+        int& width, int& precision, int& flags);
+    void makeFormatString(int flags, bool isIntFmt, char* numFmt, char* fmtString);
+    void printToString(int width, int precision, bool isFmtString, bool isIntFmt, char* valueType, Val* operands, char* fmtString,
         Val& fcnResult, int& charsPrinted);
 
     void initFunctionDefaultParamVariables(char*& calledFunctionTokenStep, int suppliedArgCount, int paramCount);
@@ -702,7 +704,7 @@ public:
         fnccod_asc,
         fnccod_char,
         fnccod_nl,
-        fnccod_fmtNum,
+        fnccod_format,
         fnccod_fmtStr,
         fnccod_sysVar
     };

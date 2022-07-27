@@ -240,7 +240,7 @@ Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
     // calculation result print
     _dispWidth = _defaultPrintWidth, _dispNumPrecision = _defaultNumPrecision, _dispCharsToPrint = _defaultCharsToPrint, _dispFmtFlags = _defaultPrintFlags;
     _dispNumSpecifier[0] = 'G'; _dispNumSpecifier[1] = '\0';
-    _dispIsHexFmt = false;
+    _dispIsIntFmt = false;
     makeFormatString(_dispFmtFlags, false, _dispNumSpecifier, _dispNumberFmtString);       // for numbers
     strcpy(_dispStringFmtString, "%*.*s%n");                                                           // for strings
 

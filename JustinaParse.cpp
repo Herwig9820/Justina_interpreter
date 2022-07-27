@@ -29,7 +29,7 @@ MyParser::cmdPar_F[4]{ cmdPar_extFunction,                              cmdPar_n
 MyParser::cmdPar_AEE[4]{ cmdPar_varOptAssignment,                       cmdPar_expression,                              cmdPar_expression | cmdPar_optionalFlag ,       cmdPar_none },
 MyParser::cmdPar_I_mult[4]{ cmdPar_ident,                               cmdPar_ident | cmdPar_multipleFlag,             cmdPar_none,                                    cmdPar_none },
 MyParser::cmdPar_AA_mult[4]{ cmdPar_varOptAssignment,                   cmdPar_varOptAssignment | cmdPar_multipleFlag,  cmdPar_none,                                    cmdPar_none },
-MyParser::cmdPar_E_3[4]{ cmdPar_expression,                             cmdPar_expression | cmdPar_optionalFlag,        cmdPar_expression | cmdPar_optionalFlag,        cmdPar_none };
+MyParser::cmdPar_E_3[4]{ cmdPar_expression,                             cmdPar_expression | cmdPar_multipleFlag,        cmdPar_none,                                    cmdPar_none };
 
 // commands: reserved words
 
@@ -93,8 +93,7 @@ const MyParser::FuncDef MyParser::_functions[]{
     {"asc",         fnccod_asc,         1,2,    0b0},
     {"char",        fnccod_char,        1,1,    0b0},
     {"nl",          fnccod_nl,          0,0,    0b0},
-    {"fnum",        fnccod_fmtNum,      1,6,    0b0},
-    {"fstr",        fnccod_fmtStr,      1,5,    0b0},
+    {"f",           fnccod_format,      1,6,    0b0},               // short label
     {"sysvar",      fnccod_sysVar,      1,1,    0b0}
 };
 
@@ -388,7 +387,7 @@ void MyParser::resetMachine(bool withUserVariables) {
     _pInterpreter->_dispWidth = _pInterpreter->_defaultPrintWidth, _pInterpreter->_dispNumPrecision = _pInterpreter->_defaultNumPrecision;
     _pInterpreter->_dispCharsToPrint = _pInterpreter->_defaultCharsToPrint; _pInterpreter->_dispFmtFlags = _pInterpreter->_defaultPrintFlags;
     _pInterpreter->_dispNumSpecifier[0] = 'G'; _pInterpreter->_dispNumSpecifier[1] = '\0';
-    _pInterpreter->_dispIsHexFmt = false;
+    _pInterpreter->_dispIsIntFmt = false;
     _pInterpreter->makeFormatString(_pInterpreter->_dispFmtFlags, false, _pInterpreter->_dispNumSpecifier, _pInterpreter->_dispNumberFmtString);       // for numbers
     strcpy(_pInterpreter->_dispStringFmtString, "%*.*s%n");                                                           // for strings
 
