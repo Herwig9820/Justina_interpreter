@@ -12,62 +12,71 @@
 // *   // initialisation of static class members   *
 // -------------------------------------------------
 
-// commands (FUNCTION, FOR, ...): allowed command parameters
 
+// commands (FUNCTION, FOR, ...): allowed command parameter keys
+// -------------------------------------------------------------
+
+const char
 // command parameter spec name      param type and flags                param type and flags                            param type and flags                        param type and flags
 // ---------------------------      --------------------                --------------------                            --------------------                        --------------------
-const char
-MyParser::cmdPar_N[4]{ cmdPar_none,                                     cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
-MyParser::cmdPar_P[4]{ cmdPar_ident,                                    cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
 MyParser::cmdPar_100[4]{ cmdPar_ident | cmdPar_multipleFlag,            cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
 MyParser::cmdPar_101[4]{ cmdPar_ident,                                  cmdPar_expression | cmdPar_optionalFlag,        cmdPar_expression | cmdPar_optionalFlag,        cmdPar_expression | cmdPar_optionalFlag, },
-MyParser::cmdPar_E[4]{ cmdPar_expression,                               cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
-MyParser::cmdPar_E_2[4]{ cmdPar_expression,                             cmdPar_expression,                              cmdPar_none,                                    cmdPar_none },
-MyParser::cmdPar_E_opt[4]{ cmdPar_expression | cmdPar_optionalFlag,     cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
-MyParser::cmdPar_E_optMult[4]{ cmdPar_expression | cmdPar_multipleFlag, cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
-MyParser::cmdPar_F[4]{ cmdPar_extFunction,                              cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
-MyParser::cmdPar_AEE[4]{ cmdPar_varOptAssignment,                       cmdPar_expression,                              cmdPar_expression | cmdPar_optionalFlag ,       cmdPar_none },
-MyParser::cmdPar_I_mult[4]{ cmdPar_ident,                               cmdPar_ident | cmdPar_multipleFlag,             cmdPar_none,                                    cmdPar_none },
-MyParser::cmdPar_AA_mult[4]{ cmdPar_varOptAssignment,                   cmdPar_varOptAssignment | cmdPar_multipleFlag,  cmdPar_none,                                    cmdPar_none },
-MyParser::cmdPar_E_3[4]{ cmdPar_expression,                             cmdPar_expression | cmdPar_multipleFlag,        cmdPar_none,                                    cmdPar_none };
+MyParser::cmdPar_102[4]{ cmdPar_none,                                   cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
+MyParser::cmdPar_103[4]{ cmdPar_ident,                                  cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
+MyParser::cmdPar_104[4]{ cmdPar_expression,                             cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
+MyParser::cmdPar_105[4]{ cmdPar_expression,                             cmdPar_expression,                              cmdPar_none,                                    cmdPar_none },
+MyParser::cmdPar_106[4]{ cmdPar_expression | cmdPar_optionalFlag,       cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
+MyParser::cmdPar_107[4]{ cmdPar_expression | cmdPar_multipleFlag,       cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
+MyParser::cmdPar_108[4]{ cmdPar_extFunction,                            cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
+MyParser::cmdPar_109[4]{ cmdPar_varOptAssignment,                       cmdPar_expression,                              cmdPar_expression | cmdPar_optionalFlag,        cmdPar_none },
+MyParser::cmdPar_110[4]{ cmdPar_ident,                                  cmdPar_ident | cmdPar_multipleFlag,             cmdPar_none,                                    cmdPar_none },
+MyParser::cmdPar_111[4]{ cmdPar_varOptAssignment,                       cmdPar_varOptAssignment | cmdPar_multipleFlag,  cmdPar_none,                                    cmdPar_none },
+MyParser::cmdPar_112[4]{ cmdPar_expression,                             cmdPar_expression | cmdPar_multipleFlag,        cmdPar_none,                                    cmdPar_none },
+MyParser::cmdPar_113[4]{ cmdPar_expression,                             cmdPar_varOptAssignment,                        cmdPar_expression | cmdPar_optionalFlag,        cmdPar_none };
 
-// commands: reserved words
+
+// commands: keywords with attributes
+// ----------------------------------
 
 const MyParser::ResWordDef MyParser::_resWords[]{
-    //  name            id code             where allowed               padding (boundary alignment)    param spec      control info
-    //  ----            -------             -------------               ----------------------------    ----------      ------------   
-    {"Program",         cmdcod_program,     cmd_onlyProgramTop | cmd_skipDuringExec,            0,0,    cmdPar_P,       cmdProgram},
-    {"Function",        cmdcod_function,    cmd_onlyInProgram | cmd_skipDuringExec,             0,0,    cmdPar_F,       cmdBlockExtFunction},
+    //  name            id code             where allowed               padding (boundary alignment)    param key       control info
+    //  ----            -------             -------------               ----------------------------    ---------      ------------   
+    {"Program",         cmdcod_program,     cmd_onlyProgramTop | cmd_skipDuringExec,            0,0,    cmdPar_103,     cmdProgram},
+    {"Function",        cmdcod_function,    cmd_onlyInProgram | cmd_skipDuringExec,             0,0,    cmdPar_108,     cmdBlockExtFunction},
 
-    {"Var",             cmdcod_var,         cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_AA_mult, cmdGlobalVar},
-    {"Static",          cmdcod_static,      cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_AA_mult, cmdStaticVar},
-    {"Local",           cmdcod_local,       cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_AA_mult, cmdLocalVar},
+    {"Var",             cmdcod_var,         cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_111,     cmdGlobalVar},
+    {"Static",          cmdcod_static,      cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_111,     cmdStaticVar},
+    {"Local",           cmdcod_local,       cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_111,     cmdLocalVar},
 
-    {"For",             cmdcod_for,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_AEE,     cmdBlockFor},
-    {"While",           cmdcod_while,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E,       cmdBlockWhile},
-    {"If",              cmdcod_if,          cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E,       cmdBlockIf},
-    {"Elseif",          cmdcod_elseif,      cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E,       cmdBlockIf_elseIf},
-    {"Else",            cmdcod_else,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_N,       cmdBlockIf_else},
+    {"For",             cmdcod_for,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_109,     cmdBlockFor},
+    {"While",           cmdcod_while,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockWhile},
+    {"If",              cmdcod_if,          cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockIf},
+    {"Elseif",          cmdcod_elseif,      cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockIf_elseIf},
+    {"Else",            cmdcod_else,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockIf_else},
 
-    {"Break",           cmdcod_break,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_N,       cmdBlockOpenBlock_loop},        // allowed if at least one open loop block (any level) 
-    {"Continue",        cmdcod_continue,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_N,       cmdBlockOpenBlock_loop },       // allowed if at least one open loop block (any level) 
-    {"Return",          cmdcod_return,      cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E_opt,   cmdBlockOpenBlock_function},    // allowed if currently an open function definition block 
+    {"Break",           cmdcod_break,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockOpenBlock_loop},        // allowed if at least one open loop block (any level) 
+    {"Continue",        cmdcod_continue,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockOpenBlock_loop },       // allowed if at least one open loop block (any level) 
+    {"Return",          cmdcod_return,      cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockOpenBlock_function},    // allowed if currently an open function definition block 
 
-    {"Print",           cmdcod_print,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E_optMult, cmdBlockOther},
-    {"Dispfmt",         cmdcod_dispfmt,     cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E_3,     cmdBlockOther},
-    {"Dispmod",         cmdcod_dispmod,     cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_E_2,     cmdBlockOther},
+    {"Input",           cmdcod_input,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_113,     cmdBlockOther},
+    {"Print",           cmdcod_print,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockOther},
+    {"Dispfmt",         cmdcod_dispfmt,     cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockOther},
+    {"Dispmod",         cmdcod_dispmod,     cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_105,     cmdBlockOther},
 
-    {"End",             cmdcod_end,         cmd_noRestrictions,                                 0,0,    cmdPar_N,       cmdBlockGenEnd},                // closes inner open command block
+    {"End",             cmdcod_end,         cmd_noRestrictions,                                 0,0,    cmdPar_102,     cmdBlockGenEnd},                // closes inner open command block
 
-    {"Delvar",          cmdcod_delete,      cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_I_mult,  cmdDeleteVar},
-    {"Clearvars",       cmdcod_clear,       cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_N,       cmdBlockOther},
-    {"Vars",            cmdcod_vars,        cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_N,       cmdBlockOther},
+    {"Delvar",          cmdcod_delete,      cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_110,     cmdDeleteVar},
+    {"Clearvars",       cmdcod_clear,       cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockOther},
+    {"Vars",            cmdcod_vars,        cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockOther},
 
     {"DeclareCB",       cmdcod_decCBproc,   cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_100,     cmdBlockOther},
     {"Callback",        cmdcod_callback,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_101,     cmdBlockOther},
 };
 
+
 // internal (intrinsic) functions
+// ------------------------------
+
 // the 8 array pattern bits indicate the order of arrays and scalars; bit b0 to bit b7 refer to parameter 1 to 8, if a bit is set, an array is expected as argument
 // maximum number of parameters should be no more than 8
 
@@ -98,7 +107,9 @@ const MyParser::FuncDef MyParser::_functions[]{
 };
 
 
-// terminal tokens  
+// terminal tokens 
+// ---------------
+
 // priority: bits b43210 define priority if used as prefix, infix, postfix operator, respectively (0x1 = lowest, 0x1F = highest) 
 // priority 0 means operator not available for use as use as postfix, prefix, infix operator
 // bit b7 defines associativity for infix operators (bit set indicates 'right-to-left').
@@ -365,7 +376,7 @@ void MyParser::resetMachine(bool withUserVariables) {
     _extFunctionBlockOpen = false;
 
     // init interpreter variables: AFTER deleting heap objects
-    _pInterpreter->_programName[0]= '\0';
+    _pInterpreter->_programName[0] = '\0';
     _pInterpreter->_programVarNameCount = 0;
     _pInterpreter->_staticVarCount = 0;
     _pInterpreter->_localVarCountInFunction = 0;
@@ -649,8 +660,8 @@ MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
             isLeftPar ? lastTokenGroup_5 : lastTokenGroup_6;     // token group 5: scalar or array variable name
 
 
-        // a space may be required between last token and next token (not yet known), if one of them is a reserved word
-        // and the other token is either a reserved word, an alphanumeric constant or a parenthesis
+        // a space may be required between last token and next token (not yet known), if one of them is a keyword
+        // and the other token is either a keyword, an alphanumeric constant or a parenthesis
         // space check result is OK if a check is not required or if a space is present anyway
         _leadingSpaceCheck = ((t == Interpreter::tok_isReservedWord) || isStringConst || isRightPar) && (pNext[0] != ' ');
 
@@ -698,7 +709,7 @@ MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
 
 
 // --------------------------------------------------------------------------------------------
-// *   if instruction is a command (starting with a reserved word): apply additional checks   *
+// *   if instruction is a command (starting with a keyword): apply additional checks   *
 // *   this check is applied AFTER parsing each token and checking its syntax                 *
 // --------------------------------------------------------------------------------------------
 
@@ -715,7 +726,7 @@ bool MyParser::checkCommandSyntax(parseTokenResult_type& result) {              
     bool isInstructionStart = (_lastTokenType_hold == Interpreter::tok_no_token) || (_lastTokenIsTerminal_hold ? (_lastTermCode_hold == termcod_semicolon) : false);
 
     if (isInstructionStart) {
-        _isCommand = (_lastTokenType == Interpreter::tok_isReservedWord);                            // reserved word at start of instruction ? is a command
+        _isCommand = (_lastTokenType == Interpreter::tok_isReservedWord);                            // keyword at start of instruction ? is a command
         _varDefAssignmentFound = false;
 
         // start of a command ?
@@ -873,7 +884,7 @@ bool MyParser::checkCommandSyntax(parseTokenResult_type& result) {              
     // is this token part of an expression ? 
     withinExpression = !(isResWord || isGenIdent || isLvl0CommaSep || isSemiColonSep);
 
-    // start of expression: if within expression, AND the preceding token was a level 0 comma separator, reserved word or generic name
+    // start of expression: if within expression, AND the preceding token was a level 0 comma separator, keyword or generic name
     bool isExpressionFirstToken = withinExpression &&
         ((cmdSecondLastTokenType == Interpreter::tok_isReservedWord) || (cmdSecondLastTokenType == Interpreter::tok_isGenericName) || (cmdSecondLastIsLvl0CommaSep));
 
@@ -946,7 +957,7 @@ bool MyParser::checkCommandSyntax(parseTokenResult_type& result) {              
             }
         }
 
-        else if (allowedParType == cmdPar_varNameOnly) {
+        else if (allowedParType == cmdPar_varNoAssignment) {
             if (!expressionStartsWithVarRef) {                                      // variable can be array as well
                 result = result_variableExpectedAsCmdPar; return false;
             }
@@ -975,7 +986,7 @@ bool MyParser::checkCommandSyntax(parseTokenResult_type& result) {              
     if (isExprMainLvlElement2or3 && isOperator) {     // this means this is a main level array, optionally preceded by a valid prefix operator 
         // If assignment operator, check that assignment is allowed in the context
         if (isAssignmentOp) {
-            if (allowedParType == cmdPar_varNameOnly) { result = (parseTokenResult_type)result_varWithoutAssignmentExpectedAsCmdPar; return false; }
+            if (allowedParType == cmdPar_varNoAssignment) { result = (parseTokenResult_type)result_varWithoutAssignmentExpectedAsCmdPar; return false; }
             if (_isAnyVarCmd) { _varDefAssignmentFound = true; }
         }
 
@@ -997,7 +1008,7 @@ bool MyParser::checkCommandSyntax(parseTokenResult_type& result) {              
 
 
 // -------------------------------------------------------
-// *   try to parse next characters as a reserved word   *
+// *   try to parse next characters as a keyword   *
 // -------------------------------------------------------
 
 bool MyParser::parseAsResWord(char*& pNext, parseTokenResult_type& result) {
@@ -1005,14 +1016,14 @@ bool MyParser::parseAsResWord(char*& pNext, parseTokenResult_type& result) {
     char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
     int resWordIndex;
 
-    if (!isalpha(pNext[0])) { return true; }                                       // first character is not a letter ? Then it's not a reserved word (it can still be something else)
+    if (!isalpha(pNext[0])) { return true; }                                       // first character is not a letter ? Then it's not a keyword (it can still be something else)
     while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                   // do until first character after alphanumeric token (can be anything, including '\0')
 
-    for (resWordIndex = _resWordCount - 1; resWordIndex >= 0; resWordIndex--) {          // for all defined reserved words: check against alphanumeric token (NOT ending by '\0')
+    for (resWordIndex = _resWordCount - 1; resWordIndex >= 0; resWordIndex--) {          // for all defined keywords: check against alphanumeric token (NOT ending by '\0')
         if (strlen(_resWords[resWordIndex]._resWordName) != pNext - pch) { continue; }          // token has correct length ? If not, skip remainder of loop ('continue')                            
-        if (strncmp(_resWords[resWordIndex]._resWordName, pch, pNext - pch) != 0) { continue; } // token corresponds to reserved word ? If not, skip remainder of loop ('continue') 
+        if (strncmp(_resWords[resWordIndex]._resWordName, pch, pNext - pch) != 0) { continue; } // token corresponds to keyword ? If not, skip remainder of loop ('continue') 
 
-        // token is reserved word, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
+        // token is keyword, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
         if (_parenthesisLevel > 0) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
         if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2_0)) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
         if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
@@ -1020,14 +1031,14 @@ bool MyParser::parseAsResWord(char*& pNext, parseTokenResult_type& result) {
         if (!_isCommand) {                                                             // already within a command: do not test here
             bool lastIsSemiColon = _lastTokenIsTerminal ? (_lastTermCode == termcod_semicolon) : false;
             if (!lastIsSemiColon && (_lastTokenType != Interpreter::tok_no_token)) {
-                pNext = pch; result = result_resWordNotAllowedHere; return false;       // reserved word only at start of a statement (not within an expression)
+                pNext = pch; result = result_resWordNotAllowedHere; return false;       // keyword only at start of a statement (not within an expression)
             }
         }
         if (_leadingSpaceCheck) { pNext = pch; result = result_spaceMissing; return false; }
 
         _tokenIndex = resWordIndex;                                                     // needed in case it's the start of a command (to determine parameters)
 
-        // token is a reserved word, and it's allowed here
+        // token is a keyword, and it's allowed here
 
         // if NOT a block command, bytes for token step are not needed 
         bool hasTokenStep = (_resWords[resWordIndex].cmdBlockDef.blockType != block_none);
@@ -1048,7 +1059,7 @@ bool MyParser::parseAsResWord(char*& pNext, parseTokenResult_type& result) {
     }
 
     pNext = pch;                                                                        // reset pointer to first character to parse (because no token was found)
-    return true;                                                                        // token is not a reserved word (but can still be something else)
+    return true;                                                                        // token is not a keyword (but can still be something else)
 }
 
 
@@ -2415,7 +2426,7 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
         // if FOR loop control variable, check it is not in use by a FOR outer loop of same function  
         if ((_lastTokenType == Interpreter::tok_isReservedWord) && (_blockLevel > 1)) {     // minimum 1 other (outer) open block
             Interpreter::TokenPointer prgmCnt;
-            prgmCnt.pTokenChars = _pInterpreter->_programStorage + _lastTokenStep;  // address of reserved word
+            prgmCnt.pTokenChars = _pInterpreter->_programStorage + _lastTokenStep;  // address of keyword
             int tokenIndex = prgmCnt.pResW->tokenIndex;
             CmdBlockDef cmdBlockDef = _resWords[tokenIndex].cmdBlockDef;
 
@@ -2523,7 +2534,7 @@ bool MyParser::parseAsIdentifierName(char*& pNext, parseTokenResult_type& result
     _lastTokenType = Interpreter::tok_isGenericName;
     _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
-    _pInterpreter->_programCounter += sizeof(Interpreter::TokenIsConstant); 
+    _pInterpreter->_programCounter += sizeof(Interpreter::TokenIsConstant);
     *_pInterpreter->_programCounter = '\0';                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;

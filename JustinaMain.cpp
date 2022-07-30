@@ -335,6 +335,7 @@ bool Interpreter::run(Stream* const pConsole, Stream** const pTerminal, int defi
 // ----------------------------------
 
 bool Interpreter::processCharacter(char c) {
+
     // process character
     static MyParser::parseTokenResult_type result{};
     static bool requestMachineReset{ false };
@@ -517,8 +518,6 @@ bool Interpreter::processCharacter(char c) {
         }
         else { _pConsole->println(); }                                       // empty line: advance to next line only
         if (_promptAndEcho != 0) { _pConsole->print("Justina> "); _isPrompt = true; }                 // print new prompt
-
-
 
         bool wasReset = false;      // init
         if (_programMode) {               //// waarschijnlijk aan te passen als LOADPROG cmd implemented (-> steeds vanuit immediate mode)

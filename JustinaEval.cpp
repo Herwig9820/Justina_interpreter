@@ -59,7 +59,7 @@ Interpreter::execResult_type  Interpreter::exec() {
 
         case tok_isReservedWord:
             // ---------------------------------
-            // Case: process reserved word token
+            // Case: process keyword token
             // ---------------------------------
 
             // compile time statements (program, function, var, local, static, ...): skip for execution
@@ -277,7 +277,7 @@ Interpreter::execResult_type  Interpreter::exec() {
 
 
         // finalize token processing
-         // -------------------------
+        // -------------------------
 
         if (nextIsNewInstructionStart) {
             if (!isFunctionReturn) {   // if returning from user function, error statement pointers retrieved from flow control stack 
@@ -353,6 +353,79 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
     switch (_activeFunctionData.activeCmd_ResWordCode) {                                                                      // command code 
 
+    // --------------
+    // Input a string
+    // --------------
+
+    // note: a DEFAULT value can not be displayed to be overtyped (command line only shows user input)
+
+    case MyParser::cmdcod_input:
+    {
+        bool argIsVar[3];
+        bool argIsArray[3];
+        char valueType[3];
+        Val args[3];
+
+        bool allowCancel = true; // init
+        copyValueArgsFromStack(pstackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
+        if (valueType[0] != value_isStringPointer) { return result_arg_stringExpected; }       // prompt 
+        if ((argIsArray[1]) && (valueType[1] != value_isStringPointer)) { return result_array_valueTypeIsFixed; }       // an array cannot change type: it needs to be string
+        if (cmdParamCount == 3) {
+            if (((uint8_t)(valueType[2]) != value_isLong) && ((uint8_t)(valueType[2]) != value_isFloat)) { return result_arg_numValueExpected; }       // flag: allow Cancel 
+            allowCancel = (((uint8_t)(valueType[2]) == value_isLong) ? args[2].longConst != 0 : args[2].floatConst != 0.);
+        }
+        _pConsole->println(allowCancel ? "***** Input (enter Escape character '1B' to cancel) *****" : "***** Input *****");
+        _pConsole->print(args[0].pStringConst); _pConsole->print(" ");
+
+        bool doCancel{ false };
+        bool dummy{ false };
+        char c;
+        int length{ 0 };
+        char input[_maxCharsToInput + 1] = "";     // init: empty string
+
+        do {
+            if (_callbackFcn != nullptr) { _callbackFcn(dummy); }
+            if (_pConsole->available() > 0) {     // if terminal character available for reading
+                c = _pConsole->read();
+                if ((c == 0x1B) && allowCancel) { doCancel = true; }        // no break yet, we must still read new line character here
+                if (c == '\n') { break; }               // read until new line characters
+                if (c < ' ') { continue; }              // skip control-chars except new line (ESC is skipped here as well - flag already set)
+                if (length > _maxCharsToInput) { continue; }       // max. input length exceeded: drop character
+                input[length] = c; input[++length] = '\0';
+            }
+        } while (true);
+
+        if (doCancel) {
+            _pConsole->println("(Input canceled)");
+        }
+        else {// save in variable
+            _pConsole->println(input);      // echo input
+
+            //// save 
+        }
+
+        if (cmdParamCount == 3) {       // optional third (and last) argument serves a dual purpose: allow cancel (always) and signal 'canceled' (if variable)
+            if (argIsVar[2]) {
+                // store 'canceled' flag  in variable and adapt variable value type
+                *_pEvalStackTop->varOrConst.value.pLongConst = doCancel;  // variable is already numeric: no variable string to delete
+                *_pEvalStackTop->varOrConst.varTypeAddress = (*_pEvalStackTop->varOrConst.varTypeAddress & ~value_typeMask) | value_isLong;
+
+                // if variable REFERENCE, then value type on the stack indicates 'variable reference', so don't overwrite it
+                bool isVarRef = (_pEvalStackTop->varOrConst.valueType == value_isVarRef);
+                if (!isVarRef) { // if reference, then value type on the stack indicates 'variable reference', so don't overwrite it
+                    _pEvalStackTop->varOrConst.valueType = (_pEvalStackTop->varOrConst.valueType & ~value_typeMask) | value_isLong;
+                }
+            }
+        }
+
+        clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings
+
+        _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // command execution ended
+        _activeFunctionData.activeCmd_tokenAddress = nullptr;
+    }
+    break;
+
+
     // -------------------------------------------------------------------------------------------------------------------------------------------------------------
     // print all arguments (longs, floats and strings) in succession. Floats are printed in compact format with maximum 3 digits / decimals and an optional exponent
     // -------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -398,6 +471,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     }
     break;
 
+
     // -------------------------------------------------------
     // Set display format for printing last calculation result
     // -------------------------------------------------------
@@ -409,18 +483,19 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         // note that specifier argument can be left out, flags argument taking its place
 
         bool argIsVar[4];
+        bool argIsArray[4];
         char valueType[4];
         Val args[4];
 
         if (cmdParamCount > 4) { execResult = result_arg_tooManyArgs; return execResult; }
-        copyValueArgsFromStack(pstackLvl, cmdParamCount, argIsVar, valueType, args);
+        copyValueArgsFromStack(pstackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
 
         // set format for numbers and strings
 
         execResult_type execResult = checkFmtSpecifiers(true, false, cmdParamCount, valueType, args, _dispNumSpecifier[0],
             _dispWidth, _dispNumPrecision, _dispFmtFlags);
         if (execResult != result_execOK) { return execResult; }
-        
+
         _dispIsIntFmt = (_dispNumSpecifier[0] == 'X') || (_dispNumSpecifier[0] == 'x') || (_dispNumSpecifier[0] == 'd') || (_dispNumSpecifier[0] == 'D');
         makeFormatString(_dispFmtFlags, _dispIsIntFmt, _dispNumSpecifier, _dispNumberFmtString);       // for numbers
 
@@ -445,10 +520,11 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         // mandatory argument 2: 0 = do not print last result; 1 = print last result
 
         bool argIsVar[2];
+        bool argIsArray[2];
         char valueType[2];               // 2 arguments
         Val args[2];
 
-        copyValueArgsFromStack(pstackLvl, cmdParamCount, argIsVar, valueType, args);
+        copyValueArgsFromStack(pstackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
 
         for (int i = 0; i < cmdParamCount; i++) {           // always 2 parameters
             bool argIsLong = (valueType[i] == value_isLong);
@@ -499,13 +575,14 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         Val args[3]{  };                                                                            // values to be passed to user routine
         char valueType[3]{ value_noValue,value_noValue,value_noValue };                             // value types (long, float, char string)
         char varScope[3]{};                                                                         // if variable: variable scope (user, program global, static, local)
-        bool argIsVar[3]{};                                                                         // flag: is variable
+        bool argIsVar[3]{};                                                                         // flag: is variable (scalar or aray)
+        bool argIsArray[3]{};                                                                       // flag: is array element
 
         const void* values[3]{};                                                                    // to keep it simple for the c++ user writing the user routine, we simply pass const void pointers
 
         // any data to pass ? (optional arguments 2 to 4)
         if (cmdParamCount >= 2) {                                                                   // first argument (callback procedure) processed (but still on the stack)
-            copyValueArgsFromStack(pstackLvl, cmdParamCount - 1, argIsVar, valueType, args, true);  // creates a NEW temporary string object if empty string OR or constant (non-variable) string 
+            copyValueArgsFromStack(pstackLvl, cmdParamCount - 1, argIsVar, argIsArray, valueType, args, true);  // creates a NEW temporary string object if empty string OR or constant (non-variable) string 
             pstackLvl = pStackLvlFirstValueArg;     // set stack level again to first value argument
             for (int i = 0; i < cmdParamCount - 1; i++) {
                 if (argIsVar[i]) {                                                                  // is this a variable ? (not a constant)
@@ -865,7 +942,7 @@ Interpreter::execResult_type Interpreter::testForLoopCondition(bool& testFails) 
 
 
 // -----------------------------------------------------------------------------------------------
-// *   jump n token steps, return token type and (for terminals and reserved words) token code   *
+// *   jump n token steps, return token type and (for terminals and keywords) token code   *
 // -----------------------------------------------------------------------------------------------
 
 // optional parameter not allowed with reference parameter: create separate entry
@@ -1094,7 +1171,7 @@ void Interpreter::clearEvalStackLevels(int n) {
 
     for (int i = 1; i <= n; i++) {
         // if intermediate constant string, then delete char string object (test op non-empty intermediate string object in called routine)  
-        if (pstackLvl->genericToken.tokenType == tok_isConstant) { deleteIntermStringObject(pstackLvl); }    // exclude non-constant tokens (terminals, reserved words, functions, ...)
+        if (pstackLvl->genericToken.tokenType == tok_isConstant) { deleteIntermStringObject(pstackLvl); }    // exclude non-constant tokens (terminals, keywords, functions, ...)
 
         // delete evaluation stack level
         pPrecedingStackLvl = (LE_evalStack*)evalStack.getPrevListElement(pstackLvl);
@@ -2000,7 +2077,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
         // width, precision, specifier and flags are used as defaults for next calls to this function, if they are not provided again
         // if the value to be formatted is a string, the precision argument is interpreted as 'maximum characters to print', otherwise it indicates numeric precision (both values retained seperately)
         // specifier is only relevant for formatting numbers (ignored for formatting strings), but can be set while formatting a string
-        
+
         const int leftJustify = 0b1, forceSign = 0b10, blankIfNoSign = 0b100, addDecPoint = 0b1000, padWithZeros = 0b10000;     // flags
         bool isIntFmt{ false };
         int charsPrinted{ 0 };
@@ -2298,12 +2375,14 @@ Interpreter::execResult_type Interpreter::deleteIntermStringObject(LE_evalStack*
 // copy command arguments or internal function arguments from evaluation stack
 // ---------------------------------------------------------------------------
 
-Interpreter::execResult_type Interpreter::copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, char* valueType, Val* args, bool prepareForCallback) {
+Interpreter::execResult_type Interpreter::copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, bool* argIsArray, char* valueType, Val* args, bool prepareForCallback) {
     execResult_type execResult;
 
-    for (int i = 0; i < argCount; i++) {               // 2 arguments
+    for (int i = 0; i < argCount; i++) {
         argIsVar[i] = (pStackLvl->varOrConst.tokenType == tok_isVariable);
+        argIsArray[i] = argIsVar[i] ? (pStackLvl->varOrConst.variableAttributes & var_isArray) : false;
         valueType[i] = argIsVar[i] ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
+
         if (prepareForCallback && ((valueType[i] & value_typeMask) == value_noValue)) { continue; }
 
         // argument is long or float: if preparing for callback, return pointer to value. Otherwise, return value itself

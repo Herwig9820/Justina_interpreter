@@ -41,7 +41,7 @@
 // Global constants, variables and objects
 // ---------------------------------------
 
-constexpr pin_size_t HEARTBEAT_PIN{ 9 };                                               // indicator leds
+constexpr pin_size_t HEARTBEAT_PIN{ 13 }; ////                                               // indicator leds
 
 #if withTCP
 constexpr pin_size_t WiFi_CONNECTED_PIN{ 10 };
@@ -81,6 +81,7 @@ void switchConsole();
 void onConnStateChange(connectionState_type  connectionState);
 #endif
 
+unsigned long heartbeatPeriod {500};
 void heartbeat();
 
 
@@ -224,17 +225,20 @@ void loop() {
 
             // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
             // this callback function will be called regularly, e.g. every time the interpreter reads a character
+            heartbeatPeriod =250;
             pcalculator->setMainLoopCallback((&housekeeping));                    // set callback function to housekeeping routine in this .ino file (pass 'housekeeping' routine address to Interpreter library)
 
             pcalculator->setUserFcnCallback((&userFcn_readPort));                // pass user function addresses to Interpreter library (return value 'true' indicates success)
             pcalculator->setUserFcnCallback((&userFcn_writePort));
             pcalculator->setUserFcnCallback((&userFcn_togglePort));
+
             interpreterInMemory = pcalculator->run(pConsole, pTerminal, terminalCount);                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
-            if (!interpreterInMemory) {                                               // interpreter not running anymore ?
+            if (!interpreterInMemory) {                                               // return from interpreter: remove from memory as well ?
                 delete pcalculator;                                                     // cleanup and delete calculator object itself
                 pcalculator = nullptr;                                                  // only to indicate memory is released
             }
 
+            heartbeatPeriod = 500;
             withinApplication = false;                                                  // return from application
             break;
 
@@ -355,7 +359,7 @@ void heartbeat() {
     static unsigned long lastHeartbeat{ 0 };                                           // last heartbeat time in ms
 
     uint32_t currentTime = millis();
-    if (lastHeartbeat + 500UL < currentTime) {                                       // time passed: switch led state
+    if (lastHeartbeat + heartbeatPeriod < currentTime) {                                       // time passed: switch led state
         ledOn = !ledOn;
         digitalWrite(HEARTBEAT_PIN, ledOn);
         lastHeartbeat = currentTime;

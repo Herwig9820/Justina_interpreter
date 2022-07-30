@@ -155,9 +155,10 @@ public:
     const int _defaultPrintWidth = 30, _defaultNumPrecision = 3, _defaultCharsToPrint = 30, _defaultPrintFlags = 0x00;       // at start up
     const int _maxPrintFieldWidth = 200, _maxNumPrecision = 7, _maxCharsToPrint = 200, _printFlagMask = 0x1F;
 
-    // version
-    static constexpr char version[80] = "Justina Interpreter For Arduino Version 1.0.0 (July 25, 2022)";////
+    // input
+    const int _maxCharsToInput = 100;
 
+    // version
     static constexpr uint8_t extFunctionBit{ B00000001 };
     static constexpr uint8_t extFunctionPrevDefinedBit{ B00000010 };
     static constexpr uint8_t intFunctionBit{ B00000100 };
@@ -188,7 +189,7 @@ public:
         char pStringConst[4];                                 // pointer to string object
     };
 
-    struct TokenIsResWord {                                     // reserved word token (command): length 2 or 4 (if not a block command, token step is not stored and length will be 2)
+    struct TokenIsResWord {                                     // keyword token (command): length 2 or 4 (if not a block command, token step is not stored and length will be 2)
         char tokenType;                                         // will be set to specific token type
         char tokenIndex;                                        // index into list of tokens of a specific type
         char toTokenStep[2];                                    // tokens for block commands (IF, FOR, BREAK, END, ...): step n� of block start token or next block token (uint16_t)
@@ -323,10 +324,10 @@ public:
         char functionIndex;             // for error messages only
         char callerEvalStackLevels;     // evaluation stack levels in use by caller(s) and main (call stack)
         // within a function, as in immediate mode, only one (block) command can be active at a time (ended by semicolon), in contrast to command blocks, which can be nested, so command data can be stored here:
-        // data is stored when a reserved word is processed and it is cleared when the ending semicolon (ending the command) is processed
-        char activeCmd_ResWordCode;     // reserved word code (set to 'cmdcod_none' again when semicolon is processed)
+        // data is stored when a keyword is processed and it is cleared when the ending semicolon (ending the command) is processed
+        char activeCmd_ResWordCode;     // keyword code (set to 'cmdcod_none' again when semicolon is processed)
 
-        char* activeCmd_tokenAddress;   // address of parsed reserved word token                                
+        char* activeCmd_tokenAddress;   // address of parsed keyword token                                
 
         Val* pLocalVarValues;           // local variable value: real, pointer to string or array, or (if reference): pointer to 'source' (referenced) variable
         char** ppSourceVarTypes;        // only if local variable is reference to variable or array element: pointer to 'source' variable value type  
@@ -342,7 +343,7 @@ public:
 
     // bit b7: program variable name has a global program variable associated with it. Only used during parsing, not stored in token
     //         user variables: user variable is used by program. Not stored in token 
-    static constexpr uint8_t var_nameHasGlobalValue = 0x80;          // flag: global program variable attached to this variable name (note that meaning is different from 'var_isGlobal' constant)
+    static constexpr uint8_t var_nameHasGlobalValue = 0x80;          // flag: global program variable attached to this variable NAME (note that meaning is different from 'var_isGlobal' constant)
     static constexpr uint8_t var_userVarUsedByProgram = 0x80;        // flag: user variable is used by program
 
     // bits b654: variable scope. Use: (1) during parsing: temporarily store the variable type associated with a particular reference of a variable name 
@@ -359,7 +360,7 @@ public:
     static constexpr uint8_t var_isArray = 0x08;                     // stored with variable attributes and in 'variable' token. Can not be changed at runtime
 
     // bits b210: value type 
-    // - PARSED constants: these constants have a different 'constant' token type, so value type bits are NOT maintained
+    // - PARSED constants: value type bits are maintained in the 'constant' token (but not in same bit positions)
     // - INTERMEDIATE constants (execution only) and variables: value type is maintained together with variable / intermediate constant data (per variable, array or constant) 
     // Note: because the value type is not fixed for scalar variables (type can dynamically change at runtime), this info is not maintained in the parsed 'variable' token 
 
@@ -389,9 +390,6 @@ public:
     static const int _userCBarrayDepth = 10;
 
     static constexpr  int _maxInstructionChars{ 300 };
-    static constexpr char promptText[10] = "Justina> ";
-    static constexpr int _promptLength = sizeof(promptText) - 1;////
-
 
     // counting of heap objects (note: linked list element count is maintained within the linked list objects)
 
@@ -597,7 +595,7 @@ public:
     execResult_type deleteVarStringObject(LE_evalStack* pStackLvl);
     execResult_type deleteIntermStringObject(LE_evalStack* pStackLvl);
 
-    execResult_type copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, char* valueType, Val* args, bool passVarRefOrConst = false);
+    execResult_type copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, bool* argIsArray, char* valueType, Val* args, bool passVarRefOrConst = false);
 
     int findTokenStep(int tokenTypeToFind, char tokenCodeToFind, char*& pStep);
     int jumpTokens(int n, char*& pStep, int& tokenCode);
@@ -648,6 +646,7 @@ public:
         cmdcod_continue,
         cmdcod_return,
         cmdcod_end,
+        cmdcod_input,
         cmdcod_print,
         cmdcod_dispfmt,
         cmdcod_dispmod,
@@ -880,12 +879,12 @@ public:
 
     struct CmdBlockDef {                                        // block commands
         char blockType;                                         // block type ('for' block, 'if' block,...)
-        char blockPosOrAction;                                     // position of command (reserved word) in block (0=start, 1, 2 = mid, 3=end)
-        char blockMinPredecessor;                               // minimum position of previous command (reserved word) for open block
+        char blockPosOrAction;                                     // position of command (keyword) in block (0=start, 1, 2 = mid, 3=end)
+        char blockMinPredecessor;                               // minimum position of previous command (keyword) for open block
         char blockMaxPredecessor;                               // maximum position
     };
 
-    struct ResWordDef {                                         // reserved words with pattern for parameters (if reserved word is used as command, starting an instruction)
+    struct ResWordDef {                                         // keywords with pattern for parameters (if keyword is used as command, starting an instruction)
         const char* _resWordName;
         const char resWordCode;
         const char restrictions;                                // specifies where he use of a keyword is allowed (in a program, in a function, ...)
@@ -954,7 +953,7 @@ public:
     // these constants are used to check to which token group (or group of token groups) a parsed token belongs
     static constexpr uint8_t lastTokenGroup_0 = 1 << 0;          // operator
     static constexpr uint8_t lastTokenGroup_1 = 1 << 1;          // comma
-    static constexpr uint8_t lastTokenGroup_2 = 1 << 2;          // (line start), semicolon, reserved word, generic identifier
+    static constexpr uint8_t lastTokenGroup_2 = 1 << 2;          // (line start), semicolon, keyword, generic identifier
     static constexpr uint8_t lastTokenGroup_3 = 1 << 3;          // number, alphanumeric constant, right bracket
     static constexpr uint8_t lastTokenGroup_4 = 1 << 4;          // internal or external function name
     static constexpr uint8_t lastTokenGroup_5 = 1 << 5;          // left parenthesis
@@ -978,8 +977,8 @@ public:
 
     // commands parameters: types allowed
     static constexpr uint8_t cmdPar_none = 0;
-    static constexpr uint8_t cmdPar_resWord = 1;            // !!! note: reserved words as parameters: not implemented
-    static constexpr uint8_t cmdPar_varNameOnly = 2;
+    static constexpr uint8_t cmdPar_resWord = 1;            // !!! note: keywords as parameters: not implemented
+    static constexpr uint8_t cmdPar_varNoAssignment = 2;
     static constexpr uint8_t cmdPar_varOptAssignment = 3;
     static constexpr uint8_t cmdPar_expression = 4;
     static constexpr uint8_t cmdPar_extFunction = 5;
@@ -1007,22 +1006,21 @@ public:
     static constexpr char cmd_skipDuringExec = 0x80;
 
 
-    // commands (FUNCTION, FOR, ...): allowed command parameters (naming: cmdPar_<n[nnn]> with A'=variable with (optional) assignment, 'E'=expression, 'E'=expression, 'R'=reserved word
-    static const char cmdPar_N[4];                             // command takes no parameters
-    static const char cmdPar_P[4];
+    // commands (FUNCTION, FOR, ...): allowed command parameters (naming: cmdPar_<n[nnn]> with A'=variable with (optional) assignment, 'E'=expression, 'E'=expression, 'R'=keyword
     static const char cmdPar_100[4];
     static const char cmdPar_101[4];
     static const char cmdPar_102[4];
-    static const char cmdPar_E[4];
-    static const char cmdPar_E_2[4];
-    static const char cmdPar_E_3[4];
-    static const char cmdPar_E_opt[4];
-    static const char cmdPar_E_optMult[4];
-    static const char cmdPar_V[4];
-    static const char cmdPar_F[4];
-    static const char cmdPar_AEE[4];
-    static const char cmdPar_I_mult[4];
-    static const char cmdPar_AA_mult[4];
+    static const char cmdPar_103[4];
+    static const char cmdPar_104[4];
+    static const char cmdPar_105[4];
+    static const char cmdPar_106[4];
+    static const char cmdPar_107[4];
+    static const char cmdPar_108[4];
+    static const char cmdPar_109[4];
+    static const char cmdPar_110[4];
+    static const char cmdPar_111[4];
+    static const char cmdPar_112[4];
+    static const char cmdPar_113[4];
 
 
 private:
@@ -1103,7 +1101,7 @@ public:
 
 
 
-    static const ResWordDef _resWords[];                       // reserved word names
+    static const ResWordDef _resWords[];                       // keyword names
     static const FuncDef _functions[];                         // function names with min & max arguments allowed
     static const TerminalDef _terminals[];
     static const uint8_t _maxAlphaCstLen{ 60 };                 // max length of character strings, excluding terminating '\0' (also if stored in variables)
@@ -1138,13 +1136,13 @@ private:
     bool _arrayElemPostfixIncrDecrAllowed{ false };
 
     int _tokenIndex{ 0 };
-    int _resWordCount;                                          // index into list of reserved words
+    int _resWordCount;                                          // index into list of keywords
     int _functionCount;                                         // index into list of internal (intrinsic) functions
     int _terminalCount;
 
 
     uint16_t _lastTokenStep, _lastVariableTokenStep;
-    uint16_t _blockCmdTokenStep, _blockStartCmdTokenStep;   // pointers to reserved words used as block commands                           
+    uint16_t _blockCmdTokenStep, _blockStartCmdTokenStep;   // pointers to keywords used as block commands                           
     LE_parsingStack* _pParsingStack;
     LE_parsingStack* _pFunctionDefStack;
 
@@ -1171,7 +1169,7 @@ public:
     int _cmdParSpecColumn{ 0 };
     int _cmdArgNo{ 0 };
     int _cmdExprArgTokenNo{ 0 };
-    bool _isCommand = false;                                    // a command is being parsed (instruction starting with a reserved word)
+    bool _isCommand = false;                                    // a command is being parsed (instruction starting with a keyword)
     int _parenthesisLevel = 0;                               // current number of open parentheses
     uint8_t _lastTokenGroup_sequenceCheck_bit = 0;                   // bits indicate which token group the last token parsed belongs to          
     bool _extFunctionBlockOpen = false;                         // commands within FUNCTION...END block are being parsed (excluding END command)
