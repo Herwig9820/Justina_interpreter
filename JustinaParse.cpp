@@ -13,8 +13,8 @@
 // -------------------------------------------------
 
 
-// commands (FUNCTION, FOR, ...): allowed command parameter keys
-// -------------------------------------------------------------
+// commands (FUNCTION, FOR, ...): 'allowed command parameter' keys
+// ---------------------------------------------------------------
 
 const char
 // command parameter spec name      param type and flags                param type and flags                            param type and flags                        param type and flags

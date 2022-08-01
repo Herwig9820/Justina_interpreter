@@ -306,7 +306,7 @@ Interpreter::execResult_type  Interpreter::exec() {
         Val toPrint;
         char* fmtString = (isLong || isFloat) ? _dispNumberFmtString : _dispStringFmtString;
 
-        printToString(_dispWidth, (isLong || isFloat) ? _dispNumPrecision : _dispWidth == 0 ? _maxCharsToPrint : _dispCharsToPrint,
+        printToString(_dispWidth, (isLong || isFloat) ? _dispNumPrecision : _maxCharsToPrint,
             (!isLong && !isFloat), _dispIsIntFmt, lastResultTypeFiFo, lastResultValueFiFo, fmtString, toPrint, charsPrinted);
         _pConsole->println(toPrint.pStringConst);
 
@@ -390,7 +390,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                 if ((c == 0x1B) && allowCancel) { doCancel = true; }        // no break yet, we must still read new line character here
                 if (c == '\n') { break; }               // read until new line characters
                 if (c < ' ') { continue; }              // skip control-chars except new line (ESC is skipped here as well - flag already set)
-                if (length > _maxCharsToInput) { continue; }       // max. input length exceeded: drop character
+                if (length >= _maxCharsToInput) { continue; }       // max. input length exceeded: drop character
                 input[length] = c; input[++length] = '\0';
             }
         } while (true);
@@ -401,7 +401,31 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         else {// save in variable
             _pConsole->println(input);      // echo input
 
-            //// save 
+            LE_evalStack* pStackLvl = (cmdParamCount == 3) ? _pEvalStackMinus1 : _pEvalStackTop;
+            // if  variable currently holds a non-empty string (indicated by a nullptr), delete char string object
+            execResult_type execResult = deleteVarStringObject(pStackLvl); if (execResult != result_execOK) { return execResult; }
+
+            if (strlen(input) == 0) { args[1].pStringConst = nullptr; }         
+            else {
+                // note that for reference variables, the variable type fetched is the SOURCE variable type
+                int varScope = pStackLvl->varOrConst.variableAttributes & var_scopeMask;
+                int stringlen = min(strlen(input), MyParser::_maxAlphaCstLen);
+                (varScope == var_isUser) ? userVarStringObjectCount++ : ((varScope==var_isGlobal) || (varScope==var_isStaticInFunc)) ? globalStaticVarStringObjectCount++ : localVarStringObjectCount++;
+
+                args[1].pStringConst =new char [stringlen+1];
+                memcpy(args[1].pStringConst,input, stringlen);        // copy the actual string (not the pointer); do not use strcpy
+                args[1].pStringConst[stringlen]='\0';
+
+#if printCreateDeleteHeapObjects
+                Serial.print((varScope == var_isUser) ? "+++++ (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "+++++ (var string ) " : "+++++ (loc var str) ");
+                Serial.println((uint32_t)args[1].pStringConst - RAMSTART);
+#endif
+            }
+            *pStackLvl->varOrConst.value.ppStringConst = args[1].pStringConst;
+            *pStackLvl->varOrConst.varTypeAddress = (*pStackLvl->varOrConst.varTypeAddress & ~value_typeMask) | value_isStringPointer;
+        
+            // if NOT a variable REFERENCE, then value type on the stack indicates the real value type and NOT 'variable reference' ...
+            // but it does not need to be changed, because in the next step, the respective stack level will be deleted 
         }
 
         if (cmdParamCount == 3) {       // optional third (and last) argument serves a dual purpose: allow cancel (always) and signal 'canceled' (if variable)
@@ -410,11 +434,8 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                 *_pEvalStackTop->varOrConst.value.pLongConst = doCancel;  // variable is already numeric: no variable string to delete
                 *_pEvalStackTop->varOrConst.varTypeAddress = (*_pEvalStackTop->varOrConst.varTypeAddress & ~value_typeMask) | value_isLong;
 
-                // if variable REFERENCE, then value type on the stack indicates 'variable reference', so don't overwrite it
-                bool isVarRef = (_pEvalStackTop->varOrConst.valueType == value_isVarRef);
-                if (!isVarRef) { // if reference, then value type on the stack indicates 'variable reference', so don't overwrite it
-                    _pEvalStackTop->varOrConst.valueType = (_pEvalStackTop->varOrConst.valueType & ~value_typeMask) | value_isLong;
-                }
+                // if NOT a variable REFERENCE, then value type on the stack indicates the real value type and NOT 'variable reference' ...
+                // but it does not need to be changed, because in the next step, the respective stack level will be deleted 
             }
         }
 
@@ -941,9 +962,9 @@ Interpreter::execResult_type Interpreter::testForLoopCondition(bool& testFails) 
 };
 
 
-// -----------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------
 // *   jump n token steps, return token type and (for terminals and keywords) token code   *
-// -----------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------
 
 // optional parameter not allowed with reference parameter: create separate entry
 int Interpreter::jumpTokens(int n) {
@@ -1644,7 +1665,6 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
                 if (!op1emptyString) { strcpy(opResult.pStringConst, operand1.pStringConst); }
                 if (!op2emptyString) { strcat(opResult.pStringConst, operand2.pStringConst); }
 
-                Serial.print("result: "); Serial.println(opResult.pStringConst);
 #if printCreateDeleteHeapObjects
                 Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)opResult.pStringConst - RAMSTART);
 #endif
@@ -1779,25 +1799,23 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         }
         else {  // non-empty string
             // note that for reference variables, the variable type fetched is the SOURCE variable type
-            bool isUserVar = ((_pEvalStackMinus2->varOrConst.variableAttributes & var_scopeMask) == var_isUser);
-            bool isGlobalVar = ((_pEvalStackMinus2->varOrConst.variableAttributes & var_scopeMask) == var_isGlobal);
-            bool isStaticVar = ((_pEvalStackMinus2->varOrConst.variableAttributes & var_scopeMask) == var_isStaticInFunc);
+            int varScope = _pEvalStackMinus2->varOrConst.variableAttributes & var_scopeMask;
 
             // make a copy of the character string and store a pointer to this copy as result (even if operand string is already an intermediate constant)
             // because the value will be stored in a variable, limit to the maximum allowed string length
             char* pUnclippedResultString = opResult.pStringConst;
             int stringlen = min(strlen(pUnclippedResultString), MyParser::_maxAlphaCstLen);
             opResult.pStringConst = new char[stringlen + 1];
-            isUserVar ? userVarStringObjectCount++ : (isGlobalVar || isStaticVar) ? globalStaticVarStringObjectCount++ : localVarStringObjectCount++;
+            (varScope == var_isUser) ? userVarStringObjectCount++ : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? globalStaticVarStringObjectCount++ : localVarStringObjectCount++;
             memcpy(opResult.pStringConst, pUnclippedResultString, stringlen);        // copy the actual string (not the pointer); do not use strcpy
             opResult.pStringConst[stringlen] = '\0';                                         // add terminating \0
 #if printCreateDeleteHeapObjects
-            Serial.print(isUserVar ? "+++++ (usr var str) " : (isGlobalVar || isStaticVar) ? "+++++ (var string ) " : "+++++ (loc var str) ");
+            Serial.print((varScope == var_isUser) ? "+++++ (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "+++++ (var string ) " : "+++++ (loc var str) ");
             Serial.println((uint32_t)opResult.pStringConst - RAMSTART);
 #endif
             if (operatorCode != _pmyParser->termcod_assign) {           // compound statement
 #if printCreateDeleteHeapObjects
-                Serial.print("----- (Intermd str) "); Serial.println((uint32_t)toPrint.pStringConst - RAMSTART);
+                Serial.print("----- (Intermd str) "); Serial.println("????"); //// CORRIGEER FOUT: Serial.println((uint32_t)toPrint.pStringConst - RAMSTART);
 #endif
                 if (pUnclippedResultString != nullptr) {     // pure assignment: is in fact pointing to operand 2 
                     delete[] pUnclippedResultString;
@@ -1806,11 +1824,9 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
             }
         }
 
-        // store value in variable and adapt variable value type - line is valid for long integers as well
+        // store value in variable and adapt variable value type - next line is valid for long integers as well
         if (opResultLong || opResultFloat) { *_pEvalStackMinus2->varOrConst.value.pFloatConst = opResult.floatConst; }
         else { *_pEvalStackMinus2->varOrConst.value.ppStringConst = opResult.pStringConst; }
-
-        // save resulting variable value type 
         *_pEvalStackMinus2->varOrConst.varTypeAddress = (*_pEvalStackMinus2->varOrConst.varTypeAddress & ~value_typeMask) |
             (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
 
