@@ -185,7 +185,7 @@ int LinkedList::getElementCount() {
 
 Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
     _pConsole->println("Justina: starting...");
-    _callbackFcn = nullptr;
+    _housekeepingCallback = nullptr;
     for (int i=0; i< _userCBarrayDepth; i++) { _callbackUserProcStart[i] = nullptr;}    
     _userCBprocStartSet_count = 0;
 
@@ -272,7 +272,7 @@ Interpreter::~Interpreter() {
     _pConsole->println("Justina: quitting...");
     if (!_keepInMemory) {
         delete _pmyParser;
-        _callbackFcn = nullptr;
+        _housekeepingCallback = nullptr;
     }
     _pConsole->println("Justina: bye\r\n");
 };
@@ -287,7 +287,7 @@ bool Interpreter::setMainLoopCallback(void (*func)(bool& requestQuit)) {
     // a call from the user program initializes the address of a 'user callback' function.
     // Justina will call this user routine repeatedly and automatically, allowing  the user...
     // ...to execute a specific routine regularly (e.g. to maintain a TCP connection, to implement a heartbeat, ...)
-    _callbackFcn = func;
+    _housekeepingCallback = func;
     return true;
 }
 
@@ -316,7 +316,7 @@ bool Interpreter::run(Stream* const pConsole, Stream** const pTerminal, int defi
     _definedTerminals = definedTerms;
 
     do {
-        if (_callbackFcn != nullptr) { _callbackFcn(quitNow); }
+        if (_housekeepingCallback != nullptr) { _housekeepingCallback(quitNow); }
         if (quitNow) { _pConsole->println("\r\nAbort request received"); break; }
         if (_pConsole->available() > 0) {     // if terminal character available for reading
             c = _pConsole->read();

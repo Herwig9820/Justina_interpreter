@@ -538,7 +538,7 @@ public:
 
     // callback functions and storage
 
-    void (*_callbackFcn)(bool& requestQuit);                                         // pointer to callback function for heartbeat
+    void (*_housekeepingCallback)(bool& requestQuit);                                         // pointer to callback function for heartbeat
 
     void (*_callbackUserProcStart[_userCBarrayDepth])(const void** pdata, const char* valueType);             // user functions: pointers to c++ procedures                                   
 
@@ -646,6 +646,7 @@ public:
         cmdcod_continue,
         cmdcod_return,
         cmdcod_end,
+        cmdcod_info,
         cmdcod_input,
         cmdcod_print,
         cmdcod_dispfmt,
@@ -702,6 +703,7 @@ public:
         fnccod_last,
         fnccod_asc,
         fnccod_char,
+        fnccod_len,
         fnccod_nl,
         fnccod_format,
         fnccod_fmtStr,

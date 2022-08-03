@@ -41,7 +41,7 @@
 // Global constants, variables and objects
 // ---------------------------------------
 
-constexpr pin_size_t HEARTBEAT_PIN{ 13 }; ////                                               // indicator leds
+constexpr pin_size_t HEARTBEAT_PIN{ 9 }; ////                                               // indicator leds
 
 #if withTCP
 constexpr pin_size_t WiFi_CONNECTED_PIN{ 10 };

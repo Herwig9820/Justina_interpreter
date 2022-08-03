@@ -58,6 +58,7 @@ const MyParser::ResWordDef MyParser::_resWords[]{
     {"Continue",        cmdcod_continue,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockOpenBlock_loop },       // allowed if at least one open loop block (any level) 
     {"Return",          cmdcod_return,      cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockOpenBlock_function},    // allowed if currently an open function definition block 
 
+    {"Info",            cmdcod_info,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockOther},
     {"Input",           cmdcod_input,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_113,     cmdBlockOther},
     {"Print",           cmdcod_print,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockOther},
     {"Dispfmt",         cmdcod_dispfmt,     cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockOther},
@@ -101,6 +102,7 @@ const MyParser::FuncDef MyParser::_functions[]{
     {"last",        fnccod_last,        0,1,    0b0},
     {"asc",         fnccod_asc,         1,2,    0b0},
     {"char",        fnccod_char,        1,1,    0b0},
+    {"len",         fnccod_len,         1,1,    0b0},
     {"nl",          fnccod_nl,          0,0,    0b0},
     {"f",           fnccod_format,      1,6,    0b0},               // short label
     {"sysvar",      fnccod_sysVar,      1,1,    0b0}
