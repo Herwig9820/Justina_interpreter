@@ -1023,6 +1023,7 @@ public:
     static const char cmdPar_111[4];
     static const char cmdPar_112[4];
     static const char cmdPar_113[4];
+    static const char cmdPar_114[4];
 
 
 private:

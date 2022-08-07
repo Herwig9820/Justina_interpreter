@@ -257,7 +257,6 @@ Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
     _pConsole->println();
     for (int i = 0; i <48; i++) {_pConsole->print("*"); }_pConsole->println(); 
     _pConsole->print("    "); _pConsole->println(ProductName);
- ////   _pConsole->println("             --      --              -");
     _pConsole->print("    "); _pConsole->println(LegalCopyright);
     _pConsole->print("    Version: ") ; _pConsole->print(ProductVersion); _pConsole->print( " ("); _pConsole->print(BuildDate);_pConsole->println(")");
     for (int i = 0; i < 48; i++) { _pConsole->print("*"); } _pConsole->println();

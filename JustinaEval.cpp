@@ -340,7 +340,7 @@ Interpreter::execResult_type  Interpreter::exec() {
 
 Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionReturn) {
 
-    // this function is called when the END of the command is encountered during execution, and all arguments are on the stack already
+    // this function is called when the END of the command (semicolon) is encountered during execution, and all arguments are on the stack already
 
     isFunctionReturn = false;  // init
     execResult_type execResult = result_execOK;
@@ -348,24 +348,47 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
     // note supplied argument count and go to first argument (if any)
     LE_evalStack* pstackLvl = _pEvalStackTop;
-    for (int i = 1; i < cmdParamCount; i++) {        // skipped if no arguments, or if one argument
-        pstackLvl = (LE_evalStack*)evalStack.getPrevListElement(pstackLvl);      // go to first argument
+    for (int i = 1; i < cmdParamCount; i++) {                                                                               // skipped if no arguments, or if one argument
+        pstackLvl = (LE_evalStack*)evalStack.getPrevListElement(pstackLvl);                                                 // iterate to first argument
     }
 
     _activeFunctionData.errorProgramCounter = _activeFunctionData.activeCmd_tokenAddress;
 
-    switch (_activeFunctionData.activeCmd_ResWordCode) {                                                                      // command code 
+    switch (_activeFunctionData.activeCmd_ResWordCode) {                                                                    // command code 
 
-    // --------------
-    // Input a string
-    // --------------
-
-    // note: a DEFAULT value can not be displayed to be overtyped (command line only shows user input)
+        // --------------------------------------------------------------------
+        // Print information or question, requiring user confirmation or answer
+        // --------------------------------------------------------------------
 
     case MyParser::cmdcod_info:
-        // no break here
+
+        // mandatory argument 1: prompt (string expression)
+        // optional argument 2: numeric variable
+        // - on entry: value is 0 or argument not present: confirmation required by pressing ENTER (any preceding characters are skipped)
+        //             value is 1: idem, but if '\c' encountered in input stream the operation is canceled by user 
+        //             value is 2: only positive or negative answer allowed, by pressing 'y' or 'n' followed by ENTER   
+        //             value is 3: idem, but if '\c' encountered in input stream the operation is canceled by user 
+        // - on exit:  value is 0: operation was canceled by user, 1 if operation confirmed by user
+
+        // no break here: continue with Input command code
+
 
     case MyParser::cmdcod_input:
+
+        // -------------------------------
+        // Requests user to input a string
+        // -------------------------------
+
+        // mandatory argument 1: prompt (character string expression)
+        // mandatory argument 2: variable
+        // - on entry: if it contains a default value (see further) OR it's an array element, then it must contain a string value
+        // - on exit:  string value entered by the user
+        // mandatory argument 3: numeric variable
+        // - on entry: value is 0: if '\c' is encountered in the input stream, the operation is canceled by the user
+        //             value is 1 or argument not present: idem, but in addition, if \d is encountered in the input stream, argument 2 is not changed (default value provided on entry)
+        // - on exit:  value is 0: operation was canceled by user, value is 1: value was entered by the user
+        // note: if \c and \d are encountered in the input, \c (cancel operation) takes precedence over \d (use default)
+
     {
         bool argIsVar[3];
         bool argIsArray[3];
@@ -374,115 +397,147 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
         copyValueArgsFromStack(pstackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
 
-        if (valueType[0] != value_isStringPointer) { return result_arg_stringExpected; }       // prompt 
+        if (valueType[0] != value_isStringPointer) { return result_arg_stringExpected; }                                    // prompt 
 
-        bool isInput = (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_input);       // init
-        bool isInputWithDefault = isInput;                                                          // init
+        bool isInput = (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_input);                               // init
+        bool isInfoWithYesNo = false;                                                               
+        bool isInputWithDefault = isInput;                                                          
+        bool isInfoWithCancel = false;                                                              
 
-        if (isInput) {     // multiple arguments: input command only
-            if (isInputWithDefault && (valueType[1] != value_isStringPointer)) { return result_arg_stringExpected; }       // an array cannot change type: it needs to be string
-            if ((argIsArray[1]) && (valueType[1] != value_isStringPointer)) { return result_array_valueTypeIsFixed; }       // an array cannot change type: it needs to be string
+        bool answerValid{ false };
+        do {                                                                                                                // until valid answer typed
+            if (isInput) {                                                                                                  // input command
+                if (isInputWithDefault && (valueType[1] != value_isStringPointer)) { return result_arg_stringExpected; }    // default supplied: it needs to be string
+                if ((argIsArray[1]) && (valueType[1] != value_isStringPointer)) { return result_array_valueTypeIsFixed; }   // an array cannot change type: it needs to be string
 
-            if (cmdParamCount == 3) {
-                if (((uint8_t)(valueType[2]) != value_isLong) && ((uint8_t)(valueType[2]) != value_isFloat)) { return result_arg_numValueExpected; }       // flag: with default 
-                isInputWithDefault = (((uint8_t)(valueType[2]) == value_isLong) ? args[2].longConst != 0 : args[2].floatConst != 0.);
-            }
-            char s[100] = "*****Input (\\c to cancel";//// lengte
-            _pConsole->println(strcat(s, isInputWithDefault ? ", \\d for default): *****" : "): *****"));
-        }
-        else { _pConsole->println("***** Information (please confirm by pressing ENTER): *****"); }
-
-        _pConsole->print(args[0].pStringConst); _pConsole->print("\r\n");
-
-        bool doCancel{ false }, doDefault{ false }, backslashFound{ false };
-        bool dummy{ false };
-        char c;
-        int length{ 0 };
-        char input[_maxCharsToInput + 1] = "";     // init: empty string
-
-        do {
-            if (_housekeepingCallback != nullptr) { _housekeepingCallback(dummy); }
-            if (_pConsole->available() > 0) {     // if terminal character available for reading
-                c = _pConsole->read();
-
-                if (c == '\n') { break; }               // read until new line characters
-
-                // Check for terminal ESCAPE sequences (control characters - if terminal has CSharp Escape sequence support) and cancel input, or use default value, if indicated
-                else if (c == 0x1B) { doCancel = isInput; continue; }      // 'ESC': cancel  (in case terminal allows ESCAPE sequences)
-                else if (c == 0x06) { doDefault = isInputWithDefault;  continue; }      // 'ACK': default (in case terminal allows ESCAPE sequences)
-                else if (c < ' ') { continue; }              // skip control-chars except new line (ESC is skipped here as well - flag already set)
-
-                // Check for Justina ESCAPE sequence (sent by terminal as individual characters) and cancel input, or use default value, if indicated
-                // Note: if Justina ESCAPE sequence is not recognized, then backslash character is simply discarded
-                if (c == '\\') {                                // backslash character found
-                    backslashFound = !backslashFound;
-                    if (backslashFound) { continue; }         // first backslash in a sequence: note and do nothing
+                if (cmdParamCount == 3) {                                                                                   // 'allow default' if not zero 
+                    if (((uint8_t)(valueType[2]) != value_isLong) && ((uint8_t)(valueType[2]) != value_isFloat)) { return result_arg_numValueExpected; }    // flag: with default 
+                    isInputWithDefault = (((uint8_t)(valueType[2]) == value_isLong) ? args[2].longConst != 0 : args[2].floatConst != 0.);
                 }
-                else if ((c == 'c') || (c == 'C')) {          // part of a Justina ESCAPE sequence ? Cancel if allowed 
-                    if (backslashFound && isInput) { backslashFound = false;  doCancel = true;  continue; }
+                char s[100] = "*****Input (\\c to cancel";//// lengte string checken
+                _pConsole->println(strcat(s, isInputWithDefault ? ", \\d for default): *****" : "): *****"));
+            }
+
+            else {                                                                                                          // info command
+                if (cmdParamCount == 2) {          
+                    if (((uint8_t)(valueType[1]) != value_isLong) && ((uint8_t)(valueType[1]) != value_isFloat)) { return result_arg_numValueExpected; }     
+                    if ((uint8_t)(valueType[1]) == value_isFloat) { args[1].longConst = (int)args[1].floatConst; }
+                    if ((args[1].longConst < 0) || (args[1].longConst > 3)) { execResult = result_arg_invalid; return execResult; };
+
+                    isInfoWithYesNo = args[1].longConst & 0x02;
+                    isInfoWithCancel = args[1].longConst & 0x01;
                 }
+                char s[100] = "*****Information ";      //// lengte string checken
+                strcat(s, isInfoWithYesNo ? "(please answer Y or N" : "(please confirm by pressing ENTER");
+                _pConsole->println(strcat(s, isInfoWithCancel ? ", \\c to cancel): *****" : "): *****"));
+            }
 
-                else if ((c == 'd') || (c == 'D')) {            // part of a Justina ESCAPE sequence ? Use default value if provided
-                    if (backslashFound && isInputWithDefault) { backslashFound = false; doDefault = true;  continue; }
+            _pConsole->print(args[0].pStringConst);
+            if (isInputWithDefault) { _pConsole->print(" Default: "); _pConsole->print(args[1].pStringConst); }
+            _pConsole->println();
+
+            answerValid = true;                                                                                             // init
+            bool doCancel{ false }, doDefault{ false }, backslashFound{ false }, answerIsNo{ false };
+            bool dummy{ false };
+            char c;
+            int length{ 0 };
+            char input[_maxCharsToInput + 1] = "";                                                                          // init: empty string
+
+            do {                                                                                                            // until new line character encountered
+                if (_housekeepingCallback != nullptr) { _housekeepingCallback(dummy); }
+                if (_pConsole->available() > 0) {                                                                           // if terminal character available for reading
+                    c = _pConsole->read();
+
+                    if (c == '\n') { break; }                                                                               // read until new line characters
+
+                    // Check for terminal ESCAPE sequences (control characters - if terminal has CSharp Escape sequence support) and cancel input, or use default value, if indicated
+                    else if (c == 0x1B) { doCancel = isInput || isInfoWithCancel; continue; }                               // 'ESC': cancel  (in case terminal allows ESCAPE sequences)
+                    else if (c == 0x06) { doDefault = isInputWithDefault;  continue; }                                      // 'ACK': default (in case terminal allows ESCAPE sequences)
+                    else if (c < ' ') { continue; }                                                                         // skip control-chars except new line (ESC is skipped here as well - flag already set)
+
+                    // Check for Justina ESCAPE sequence (sent by terminal as individual characters) and cancel input, or use default value, if indicated
+                    // Note: if Justina ESCAPE sequence is not recognized, then backslash character is simply discarded
+                    if (c == '\\') {                                                                                        // backslash character found
+                        backslashFound = !backslashFound;
+                        if (backslashFound) { continue; }                                                                   // first backslash in a sequence: note and do nothing
+                    }
+                    else if ((c == 'c') || (c == 'C')) {                                                                    // part of a Justina ESCAPE sequence ? Cancel if allowed 
+                        if (backslashFound && (isInput || isInfoWithCancel)) { backslashFound = false;  doCancel = true;  continue; }
+                    }
+
+                    else if ((c == 'd') || (c == 'D')) {                                                                    // part of a Justina ESCAPE sequence ? Use default value if provided
+                        if (backslashFound && isInputWithDefault) { backslashFound = false; doDefault = true;  continue; }
+                    }
+
+                    if (length >= _maxCharsToInput) { continue; }                                                           // max. input length exceeded: drop character
+                    input[length] = c; input[++length] = '\0';
                 }
+            } while (true);
 
-                if (length >= _maxCharsToInput) { continue; }       // max. input length exceeded: drop character
-                input[length] = c; input[++length] = '\0';
+
+            if (doCancel) {                                                                                                 // cancel (if cancel is allowed only) - has priority over doDefault
+                _pConsole->println("(Input canceled)");
             }
-        } while (true);
-
-        if (isInput) {
-            if (doCancel) {
-                _pConsole->println("(Input canceled)");     // has priority over doDefault
+            else if (doDefault) {                                                                                           // default value (input command only)
+                _pConsole->println(args[1].pStringConst);                                                                   // print unchanged value
             }
-            else if (doDefault) {          // if not default: // save in variable
-                _pConsole->println(args[1].pStringConst);      // echo input
-            }
-            else {
-                _pConsole->println(input);      // echo input
+            else {                                                                                                          // answer given
+                if (isInfoWithYesNo) {                                                                                      // check validity of answer ('y' or 'n')
+                    if (length != 1) { answerValid = false; }
+                    if (answerValid) {
+                        if ((input[0] != 'n') && (input[0] != 'N') && (input[0] != 'y') && (input[0] != 'Y')) { answerValid = false; }
+                        answerIsNo = (input[0] == 'n') || (input[0] == 'N');
+                    }
+                    if (!answerValid) { _pConsole->println("!!!!!Answer is not valid.Please try again !!!!!"); }
+                    else { _pConsole->println((char)(toupper(input[0]))); }
+                }
+                else  if (isInput) {
 
-                LE_evalStack* pStackLvl = (cmdParamCount == 3) ? _pEvalStackMinus1 : _pEvalStackTop;
-                // if  variable currently holds a non-empty string (indicated by a nullptr), delete char string object
-                execResult_type execResult = deleteVarStringObject(pStackLvl); if (execResult != result_execOK) { return execResult; }
+                    LE_evalStack* pStackLvl = (cmdParamCount == 3) ? _pEvalStackMinus1 : _pEvalStackTop;
+                    // if  variable currently holds a non-empty string (indicated by a nullptr), delete char string object
+                    execResult_type execResult = deleteVarStringObject(pStackLvl); if (execResult != result_execOK) { return execResult; }
 
-                if (strlen(input) == 0) { args[1].pStringConst = nullptr; }
-                else {
-                    // note that for reference variables, the variable type fetched is the SOURCE variable type
-                    int varScope = pStackLvl->varOrConst.variableAttributes & var_scopeMask;
-                    int stringlen = min(strlen(input), MyParser::_maxAlphaCstLen);
-                    (varScope == var_isUser) ? userVarStringObjectCount++ : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? globalStaticVarStringObjectCount++ : localVarStringObjectCount++;
+                    if (strlen(input) == 0) { args[1].pStringConst = nullptr; }
+                    else {
+                        // note that for reference variables, the variable type fetched is the SOURCE variable type
+                        int varScope = pStackLvl->varOrConst.variableAttributes & var_scopeMask;
+                        int stringlen = min(strlen(input), MyParser::_maxAlphaCstLen);
+                        (varScope == var_isUser) ? userVarStringObjectCount++ : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? globalStaticVarStringObjectCount++ : localVarStringObjectCount++;
 
-                    args[1].pStringConst = new char[stringlen + 1];
-                    memcpy(args[1].pStringConst, input, stringlen);        // copy the actual string (not the pointer); do not use strcpy
-                    args[1].pStringConst[stringlen] = '\0';
+                        args[1].pStringConst = new char[stringlen + 1];
+                        memcpy(args[1].pStringConst, input, stringlen);                                                     // copy the actual string (not the pointer); do not use strcpy
+                        args[1].pStringConst[stringlen] = '\0';
 
 #if printCreateDeleteHeapObjects
-                    Serial.print((varScope == var_isUser) ? "+++++ (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "+++++ (var string ) " : "+++++ (loc var str) ");
-                    Serial.println((uint32_t)args[1].pStringConst - RAMSTART);
+                        Serial.print((varScope == var_isUser) ? "+++++ (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "+++++ (var string ) " : "+++++ (loc var str) ");
+                        Serial.println((uint32_t)args[1].pStringConst - RAMSTART);
 #endif
+                    }
+                    *pStackLvl->varOrConst.value.ppStringConst = args[1].pStringConst;
+                    *pStackLvl->varOrConst.varTypeAddress = (*pStackLvl->varOrConst.varTypeAddress & ~value_typeMask) | value_isStringPointer;
+
+                    // if NOT a variable REFERENCE, then value type on the stack indicates the real value type and NOT 'variable reference' ...
+                    // but it does not need to be changed, because in the next step, the respective stack level will be deleted 
+
+                    _pConsole->println(input);      // echo input
                 }
-                *pStackLvl->varOrConst.value.ppStringConst = args[1].pStringConst;
-                *pStackLvl->varOrConst.varTypeAddress = (*pStackLvl->varOrConst.varTypeAddress & ~value_typeMask) | value_isStringPointer;
+            }
+
+
+            if (cmdParamCount == (isInput ? 3 : 2)) {       // last argument (optional second if Info, third if Input statement) serves a dual purpose: allow cancel (on entry) and signal 'canceled' (on exit)
+                    // store result in variable and adapt variable value type
+                    // 0 if canceled, 1 if 'OK' or 'Yes',  -1 if 'No' (variable is already numeric: no variable string to delete)
+                *_pEvalStackTop->varOrConst.value.pLongConst = doCancel ? 0 : answerIsNo ? -1 : 1;                          // 1: 'OK' or 'Yes' (yes / no question) answer                       
+                *_pEvalStackTop->varOrConst.varTypeAddress = (*_pEvalStackTop->varOrConst.varTypeAddress & ~value_typeMask) | value_isLong;
 
                 // if NOT a variable REFERENCE, then value type on the stack indicates the real value type and NOT 'variable reference' ...
                 // but it does not need to be changed, because in the next step, the respective stack level will be deleted 
             }
+        } while (!answerValid);
 
-            if (cmdParamCount == 3) {       // optional third (and last) argument serves a dual purpose: allow cancel (always) and signal 'canceled' (if variable)
-                if (argIsVar[2]) {
-                    // store 'canceled' flag  in variable and adapt variable value type
-                    *_pEvalStackTop->varOrConst.value.pLongConst = doCancel;  // variable is already numeric: no variable string to delete
-                    *_pEvalStackTop->varOrConst.varTypeAddress = (*_pEvalStackTop->varOrConst.varTypeAddress & ~value_typeMask) | value_isLong;
+        clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
 
-                    // if NOT a variable REFERENCE, then value type on the stack indicates the real value type and NOT 'variable reference' ...
-                    // but it does not need to be changed, because in the next step, the respective stack level will be deleted 
-                }
-            }
-        }
-
-        clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings
-
-        _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // command execution ended
+        _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;                                                  // command execution ended
         _activeFunctionData.activeCmd_tokenAddress = nullptr;
     }
     break;
@@ -692,9 +747,9 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                     // set variable string pointer to null pointer
                     *pstackLvl->varOrConst.value.ppStringConst = nullptr;                           // change pointer to string (in variable) to null pointer
                 }
-            }
+                }
             pstackLvl = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
-        }
+    }
 
 
         // finalize
@@ -950,7 +1005,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     }
     break;
 
-    }
+}
 
     return result_execOK;
 }
@@ -1140,7 +1195,7 @@ void Interpreter::saveLastValue(bool& overWritePrevious) {
                 lastValuesStringObjectCount--;
             }
         }
-    }
+}
     else {
         _lastResultCount++;     // only adding an item, without removing previous one
     }
@@ -1414,13 +1469,13 @@ void Interpreter::makeIntermediateConstant(LE_evalStack* pEvalStackLvl) {
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)result.pStringConst - RAMSTART);
 
 #endif
-        }
+    }
         pEvalStackLvl->varOrConst.value = result;                        // float or pointer to string (type: no change)
         pEvalStackLvl->varOrConst.valueType = valueType;
         pEvalStackLvl->varOrConst.tokenType = tok_isConstant;              // use generic constant type
         pEvalStackLvl->varOrConst.valueAttributes = constIsIntermediate;             // is an intermediate result (intermediate constant strings must be deleted when not needed any more)
         pEvalStackLvl->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
-    }
+}
 }
 
 
@@ -2244,7 +2299,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
 #if printCreateDeleteHeapObjects
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
 #endif
-        }
+    }
         break;
 
         case 15:
@@ -2262,9 +2317,9 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
             break;
 
         default:return result_arg_invalid; break;
-        }       // switch (sysVar)
+    }       // switch (sysVar)
         break;
-    }
+}
 
 
     }       // end switch
@@ -2390,7 +2445,7 @@ void  Interpreter::printToString(int width, int precision, bool inputIsString, b
     else { sprintf(fcnResult.pStringConst, fmtString, width, precision, (valueType[0] == value_isLong) ? (float)operands[0].longConst : operands[0].floatConst, &charsPrinted); }
 
     return;
-}
+    }
 
 
 // -------------------------------
@@ -2557,15 +2612,15 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction(LE_evalStack*&
 #if printCreateDeleteHeapObjects
                             Serial.print("+++++ (loc var str) ");   Serial.println((uint32_t)_activeFunctionData.pLocalVarValues[i].pStringConst - RAMSTART);
 #endif
-                        }
-                    };
-                }
+                    }
+                };
+            }
 
                 deleteIntermStringObject(pStackLvl);                                              // if intermediate constant string, then delete char string object (tested within called routine)
                 pStackLvl = (LE_evalStack*)evalStack.deleteListElement(pStackLvl);        // argument saved: remove argument from stack and point to next argument
-            }
         }
     }
+}
 
     // also delete function name token from evaluation stack
     _pEvalStackTop = (LE_evalStack*)evalStack.getPrevListElement(pFunctionStackLvl);
@@ -2641,11 +2696,11 @@ void Interpreter::initFunctionDefaultParamVariables(char*& pStep, int suppliedAr
 #if printCreateDeleteHeapObjects
                     Serial.print("+++++ (loc var str) ");   Serial.println((uint32_t)_activeFunctionData.pLocalVarValues[count].pStringConst - RAMSTART);
 #endif
-                }
             }
-            count++;
         }
+            count++;
     }
+}
 
     // skip (remainder of) function definition
     findTokenStep(tok_isTerminalGroup1, MyParser::termcod_semicolon, pStep);
@@ -2713,7 +2768,7 @@ void Interpreter::initFunctionLocalNonParamVariables(char* pStep, int paramCount
                 ((char*)pArray)[3] = dimCount;        // (note: for param arrays, set to max dimension count during parsing)
 
                 tokenType = jumpTokens(1, pStep, terminalCode);       // assignment, comma or semicolon
-            }
+                }
 
 
             // handle initialisation (if initializer provided)
@@ -2777,10 +2832,10 @@ void Interpreter::initFunctionLocalNonParamVariables(char* pStep, int paramCount
             }
             count++;
 
-        } while (terminalCode == MyParser::termcod_comma);
+            } while (terminalCode == MyParser::termcod_comma);
 
-    }
-};
+        }
+    };
 
 
 // -----------------------------------
