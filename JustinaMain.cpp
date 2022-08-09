@@ -186,11 +186,11 @@ int LinkedList::getElementCount() {
 Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
     _pConsole->println("Justina: starting...");
     _housekeepingCallback = nullptr;
-    for (int i=0; i< _userCBarrayDepth; i++) { _callbackUserProcStart[i] = nullptr;}    
+    for (int i = 0; i < _userCBarrayDepth; i++) { _callbackUserProcStart[i] = nullptr; }
     _userCBprocStartSet_count = 0;
 
     _pmyParser = new MyParser(this);              // pass the address of this Interpreter object to the MyParser constructor
-    _quitCalcAtEOF = false;
+    _quitJustineAtEOF = false;
     _isPrompt = false;
 
     // init 'machine' (not a complete reset, because this clears heap objects for this Interpreter object, and there are none)
@@ -254,11 +254,15 @@ Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
     *_programStorage = '\0';                                    //  current end of program 
     *_programStart = '\0';                                      //  current end of program (immediate mode)
 
+    _currenttime = millis();
+    _previousTime = _currenttime;
+    _lastCallBackTime = _currenttime;
+
     _pConsole->println();
-    for (int i = 0; i <48; i++) {_pConsole->print("*"); }_pConsole->println(); 
+    for (int i = 0; i < 48; i++) { _pConsole->print("*"); }_pConsole->println();
     _pConsole->print("    "); _pConsole->println(ProductName);
     _pConsole->print("    "); _pConsole->println(LegalCopyright);
-    _pConsole->print("    Version: ") ; _pConsole->print(ProductVersion); _pConsole->print( " ("); _pConsole->print(BuildDate);_pConsole->println(")");
+    _pConsole->print("    Version: "); _pConsole->print(ProductVersion); _pConsole->print(" ("); _pConsole->print(BuildDate); _pConsole->println(")");
     for (int i = 0; i < 48; i++) { _pConsole->print("*"); } _pConsole->println();
 };
 
@@ -293,7 +297,7 @@ bool Interpreter::setMainLoopCallback(void (*func)(bool& requestQuit)) {
 bool Interpreter::setUserFcnCallback(void(*func) (const void** data, const char* valueType)) {
 
     // each call from the user program initializes a next 'user callback' function address in an array of function addresses 
-    if (_userCBprocStartSet_count >+ _userCBarrayDepth) { return false;}      // throw away if callback array full
+    if (_userCBprocStartSet_count > +_userCBarrayDepth) { return false; }      // throw away if callback array full
     _callbackUserProcStart[_userCBprocStartSet_count++] = func;
     return true; // success
 }
@@ -315,17 +319,25 @@ bool Interpreter::run(Stream* const pConsole, Stream** const pTerminal, int defi
     _definedTerminals = definedTerms;
 
     do {
-        if (_housekeepingCallback != nullptr) { _housekeepingCallback(quitNow); }
-        if (quitNow) { _pConsole->println("\r\nAbort request received"); break; }
+        // while waiting for characters, continuously do a housekeeping callback (if function defined)
+        if (_housekeepingCallback != nullptr) {
+            _currenttime = millis();                                                        // while reading from console, continuously call housekeeping callback routine
+            _previousTime = _currenttime;                                                   // keep up to date (needed during parsing and evaluation)
+            _lastCallBackTime = _currenttime;
+            _housekeepingCallback(quitNow);
+            if (quitNow) { break; }
+        }
+
         if (_pConsole->available() > 0) {     // if terminal character available for reading
             c = _pConsole->read();
             quitNow = processCharacter(c);        // process one character
-            if (quitNow) { _pConsole->println(); break; }                        // user gave quit command
+            if (quitNow) { ; break; }                        // user gave quit command
         }
     } while (true);
 
-    if (_keepInMemory) { _pConsole->println("Justina: bye\r\n"); }        // if remove from memory: message given in destructor
-    _quitCalcAtEOF = false;         // if interpreter stays in memory: re-init
+    _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<");
+    if (_keepInMemory) { _pConsole->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
+    _quitJustineAtEOF = false;         // if interpreter stays in memory: re-init
     return _keepInMemory;
 }
 
@@ -422,7 +434,7 @@ bool Interpreter::processCharacter(char c) {
         if (!_programMode && !isLeadingSpace && !(c == '\n') && (_StarCmdCharCount >= 0)) {
             if (c == quitCalc[_StarCmdCharCount]) {
                 _StarCmdCharCount++;
-                if (quitCalc[_StarCmdCharCount] == '\0') { _flushAllUntilEOF = true; _quitCalcAtEOF = true; return false; }         // perfect match: set flag to exit interpreter
+                if (quitCalc[_StarCmdCharCount] == '\0') { _flushAllUntilEOF = true; _quitJustineAtEOF = true; return false; }         // perfect match: set flag to exit interpreter
                 else  if (_StarCmdCharCount == strlen(quitCalc)) { _StarCmdCharCount = -1; }  // -1: no match: no further checking for now
             }
             else { _StarCmdCharCount = -1; };     // -1: no match: no further checking for now
@@ -475,7 +487,7 @@ bool Interpreter::processCharacter(char c) {
     isInstructionSeparator = isInstructionSeparator || (withinString && (c == '\n'));  // new line sent to parser as well
     bool instructionComplete = isInstructionSeparator || (isEndOfFile && (_instructionCharCount > 0));
 
-    if (instructionComplete && !_quitCalcAtEOF) {                                                // terminated by a semicolon if not end of input
+    if (instructionComplete && !_quitJustineAtEOF) {                                                // terminated by a semicolon if not end of input
         _instruction[_instructionCharCount] = '\0';                            // add string terminator
 
         if (requestMachineReset) {
@@ -487,9 +499,10 @@ bool Interpreter::processCharacter(char c) {
         result = _pmyParser->parseInstruction(pInstruction);                                 // parse one instruction (ending with ';' character, if found)
         pErrorPos = pInstruction;                                                      // in case of error
         if (result != MyParser::result_tokenFound) { _flushAllUntilEOF = true; }
+        if (result == _pmyParser->result_parse_kill) { _quitJustineAtEOF = true; }     // _flushAllUntilEOF is true already (flush buffer before quitting)
+        
         _instructionCharCount = 0;
         withinString = false; withinStringEscSequence = false;
-
         instructionsParsed = true;                                  // instructions found
     }
 
@@ -508,8 +521,10 @@ bool Interpreter::processCharacter(char c) {
                     // evaluation comes here
                     if (_promptAndEcho == 2) { _pmyParser->prettyPrintInstructions(false); }                    // immediate mode and result OK: pretty print input line
                     else if (_promptAndEcho == 1) { _pConsole->println(); _isPrompt = false; }
-                    exec();                                 // execute parsed user statements
-
+                    execResult_type execResult = exec();                                 // execute parsed user statements
+                    if (execResult == result_eval_kill) {
+                         _quitJustineAtEOF = true; 
+                    }
                 }
             }
             // parsing OK message (program mode only - no message in immediate mode) or error message 
@@ -560,7 +575,9 @@ bool Interpreter::processCharacter(char c) {
         _flushAllUntilEOF = false;
 
         withinComment = false;
+
+        return _quitJustineAtEOF;
     }
 
-    return _quitCalcAtEOF;  // and wait for next character
+    return false;  // and wait for next character
 }

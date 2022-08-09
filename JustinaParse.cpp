@@ -59,20 +59,22 @@ const MyParser::ResWordDef MyParser::_resWords[]{
     {"Continue",        cmdcod_continue,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockOpenBlock_loop },       // allowed if at least one open loop block (any level) 
     {"Return",          cmdcod_return,      cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockOpenBlock_function},    // allowed if currently an open function definition block 
 
-    {"Info",            cmdcod_info,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_114,     cmdBlockOther},
-    {"Input",           cmdcod_input,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_113,     cmdBlockOther},
-    {"Print",           cmdcod_print,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockOther},
-    {"Dispfmt",         cmdcod_dispfmt,     cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockOther},
-    {"Dispmod",         cmdcod_dispmod,     cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_105,     cmdBlockOther},
+    {"Info",            cmdcod_info,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_114,     cmdBlockNone},
+    {"Input",           cmdcod_input,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_113,     cmdBlockNone},
+    {"Print",           cmdcod_print,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},
+    {"Dispfmt",         cmdcod_dispfmt,     cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"Dispmod",         cmdcod_dispmod,     cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_105,     cmdBlockNone},
 
     {"End",             cmdcod_end,         cmd_noRestrictions,                                 0,0,    cmdPar_102,     cmdBlockGenEnd},                // closes inner open command block
+    
+    {"Quit",            cmdcod_quit,        cmd_onlyImmediate,                                  0,0,    cmdPar_104,     cmdBlockNone},                // closes inner open command block
 
     {"Delvar",          cmdcod_delete,      cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_110,     cmdDeleteVar},
-    {"Clearvars",       cmdcod_clear,       cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockOther},
-    {"Vars",            cmdcod_vars,        cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockOther},
+    {"Clearvars",       cmdcod_clear,       cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockNone},
+    {"Vars",            cmdcod_vars,        cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockNone},
 
-    {"DeclareCB",       cmdcod_decCBproc,   cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_100,     cmdBlockOther},
-    {"Callback",        cmdcod_callback,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_101,     cmdBlockOther},
+    {"DeclareCB",       cmdcod_decCBproc,   cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_100,     cmdBlockNone},
+    {"Callback",        cmdcod_callback,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_101,     cmdBlockNone},
 };
 
 
@@ -431,7 +433,7 @@ void MyParser::resetMachine(bool withUserVariables) {
 
     // string and array heap objects: any objects left ?
     if (_pInterpreter->identifierNameStringObjectCount != 0) {
-        Serial.print("*** Variable / function name objects cleanup error. Remaining: "); Serial.println(_pInterpreter->identifierNameStringObjectCount);
+        Serial.print("*** Variable / function name objects cleanup error. Remaining: "); Serial.println(_pInterpreter->identifierNameStringObjectCount); //// _pConsole ???
         _pInterpreter->identifierNameStringObjectCount = 0;
     }
 
@@ -705,7 +707,24 @@ MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
 
     } while (true);
 
-    // one instruction parsed (or error: no token found OR command syntax error OR semicolon encountered): quit
+    // one instruction parsed (or error: no token found OR command syntax error OR semicolon encountered)
+
+
+    // while parsing, periodically do a housekeeping callback (if function defined)
+    // ----------------------------------------------------------------------------
+
+    if (_pInterpreter->_housekeepingCallback != nullptr) {
+        bool quitNow{ false };
+        _pInterpreter->_currenttime = millis();
+        _pInterpreter->_previousTime = _pInterpreter->_currenttime;                                                                           // keep up to date (needed during parsing and evaluation)
+        // also handle millis() overflow after about 47 days
+        if ((_pInterpreter->_lastCallBackTime + Interpreter::callbackPeriod < _pInterpreter->_currenttime) || (_pInterpreter->_currenttime < _pInterpreter->_previousTime)) {     // while parsing, limit calls to housekeeping callback routine 
+            _pInterpreter->_lastCallBackTime = _pInterpreter->_currenttime;
+            _pInterpreter->_housekeepingCallback(quitNow);
+            if (quitNow) { pNext = pNext_hold; result = result_parse_kill; }
+        }
+    }
+
     pInputStart = pNext;                                                                // set to next character (if error: indicates error position)
     return result;
 }

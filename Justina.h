@@ -148,7 +148,12 @@ public:
         result_underflow,
         result_divByZero,
         result_testexpr_numberExpected,
-        result_stringTooLong
+        result_stringTooLong,
+
+        // abort
+        result_eval_abort,
+        result_eval_kill
+
     };
 
     // printing (to string, to stream)
@@ -391,6 +396,8 @@ public:
 
     static constexpr  int _maxInstructionChars{ 300 };
 
+    static const unsigned long callbackPeriod = 10;      // in ms; should be considerably less than any heartbeat period defined in main program
+    
     // counting of heap objects (note: linked list element count is maintained within the linked list objects)
 
     // name strings for variables and functions
@@ -433,7 +440,7 @@ public:
     int _instructionCharCount{ 0 };
     bool _programMode{ false };
     bool _flushAllUntilEOF{ false };
-    bool _quitCalcAtEOF{ false };
+    bool _quitJustineAtEOF{ false };
     bool _keepInMemory{ true };                        //// maak afhankelijk van command parameter
     bool _isPrompt{ false };
 
@@ -537,6 +544,8 @@ public:
 
 
     // callback functions and storage
+
+    unsigned long _lastCallBackTime {0}, _currenttime{0}, _previousTime{0};
 
     void (*_housekeepingCallback)(bool& requestQuit);                                         // pointer to callback function for heartbeat
 
@@ -646,6 +655,7 @@ public:
         cmdcod_continue,
         cmdcod_return,
         cmdcod_end,
+        cmdcod_quit,
         cmdcod_info,
         cmdcod_input,
         cmdcod_print,
@@ -869,7 +879,9 @@ public:
         result_wrongBlockSequence,
 
         // other program errors
-        result_progMemoryFull = 1000
+        result_progMemoryFull = 2100,
+        result_parse_kill
+
     };
 
 
@@ -1046,7 +1058,7 @@ private:
     static constexpr CmdBlockDef cmdLocalVar{ block_none, cmd_localVar , block_na , block_na };
     static constexpr CmdBlockDef cmdStaticVar{ block_none, cmd_staticVar , block_na , block_na };
     static constexpr CmdBlockDef cmdDeleteVar{ block_none, cmd_deleteVar , block_na , block_na };
-    static constexpr CmdBlockDef cmdBlockOther{ block_none, block_na,block_na,block_na };                                   // not a 'block' command
+    static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na,block_na,block_na };                                   // not a 'block' command
 
     // used to close any type of currently open inner block
     static constexpr CmdBlockDef cmdBlockGenEnd{ block_genericEnd,block_endPos,block_na,block_endPos };            // all block types: block end 

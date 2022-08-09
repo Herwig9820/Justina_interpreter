@@ -38,6 +38,11 @@
 #endif
 
 
+//// test
+uint32_t startTime = millis();
+bool quitRequested = false;
+
+
 // Global constants, variables and objects
 // ---------------------------------------
 
@@ -81,7 +86,7 @@ void switchConsole();
 void onConnStateChange(connectionState_type  connectionState);
 #endif
 
-unsigned long heartbeatPeriod {500};
+unsigned long heartbeatPeriod{ 500 };
 void heartbeat();
 
 
@@ -219,13 +224,17 @@ void loop() {
             break;
 #endif
         case '8':
+            //// test
+            startTime = millis();
+            quitRequested = false;
+
             // start interpreter: control will not return to here until the user quits, because it has its own 'main loop'
             withinApplication = true;                                                   // flag that control will be transferred to an 'application'
             if (!interpreterInMemory) { pcalculator = new  Interpreter(pConsole); }  // if interpreter not running: create an interpreter object on the heap
 
             // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
             // this callback function will be called regularly, e.g. every time the interpreter reads a character
-            heartbeatPeriod =250;
+            heartbeatPeriod = 250;
             pcalculator->setMainLoopCallback((&housekeeping));                    // set callback function to housekeeping routine in this .ino file (pass 'housekeeping' routine address to Interpreter library)
 
             pcalculator->setUserFcnCallback((&userFcn_readPort));                // pass user function addresses to Interpreter library (return value 'true' indicates success)
@@ -278,7 +287,7 @@ void switchConsole() {
 // ----------------------------------------------------------------------------
 
 // this routine is called from within myTCPconnection.maintainConnection() at every change in connection state
-// it allows the main program to take specific custom actions (in this case: printing messages an controlling a led)
+// it allows the main program to take specific custom actions (in this case: printing messages and controlling a led)
 
 void onConnStateChange(connectionState_type  connectionState) {
     static bool WiFiConnected{ false };
@@ -301,7 +310,7 @@ void onConnStateChange(connectionState_type  connectionState) {
         if (console_isRemoteTerm) {                                                   // but still in remote mode: so probably a timeout (or a wifi issue, ...)
             Serial.println("Console connection lost or timed out");                   // inform local terminal about it 
             Serial.println("On the remote terminal, press ENTER to reconnect");
-        }
+}
     }
 }
 #endif
@@ -324,6 +333,11 @@ void housekeeping(bool& requestQuit) {
 
     heartbeat();                                                                        // blink a led to show program is running
 
+
+    //// test
+    if (!quitRequested && ((startTime + 20000) < millis())) { quitRequested = true; forceLocal = true;  }
+
+
 #if withTCP
     myTCPconnection.maintainConnection();                                               // maintain TCP connection
 
@@ -340,7 +354,7 @@ void housekeeping(bool& requestQuit) {
             if (forceLocal) {
                 pConsole->println("Disconnecting remote terminal...");                // inform remote user, in case he's still there
                 switchConsole();                                                        // set console to local
-            }
+}
         }
     }
 #endif
@@ -356,14 +370,17 @@ void heartbeat() {
     // but the passing of minimum time intervals (the millis() function itself is a clock)
 
     static bool ledOn{ false };
-    static unsigned long lastHeartbeat{ 0 };                                           // last heartbeat time in ms
+    static uint32_t lastHeartbeat{ 0 };                                           // last heartbeat time in ms
+    static uint32_t previousTime{ 0 };
 
     uint32_t currentTime = millis();
-    if (lastHeartbeat + heartbeatPeriod < currentTime) {                                       // time passed: switch led state
+    // also handle millis() overflow after about 47 days
+    if ((lastHeartbeat + heartbeatPeriod < currentTime) || (currentTime < previousTime)) {               // time passed OR millis() overflow: switch led state
+        lastHeartbeat = currentTime;
         ledOn = !ledOn;
         digitalWrite(HEARTBEAT_PIN, ledOn);
-        lastHeartbeat = currentTime;
     }
+    previousTime = currentTime;
 }
 
 
@@ -447,7 +464,7 @@ void userFcn_readPort(const void** pdata, const char* valueType) {     // data: 
         }
 
         // print a value
-        pConsole->print("*** value "); Serial.print(i); Serial.print(" returned: "); 
+        pConsole->print("*** value "); pConsole->print(i); pConsole->print(" returned: ");
         if (isLong) { pConsole->println(*pLong); }
         else if (isFloat) { pConsole->println(*pFloat); }
         else { pConsole->println(pText); }

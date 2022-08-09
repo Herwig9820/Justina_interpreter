@@ -230,6 +230,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                 nextIsNewInstructionStart = true;         // for pretty print only   
                 if (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_none) {       // currently not executing a command, but a simple expression
                     if (evalStack.getElementCount() > (_activeFunctionData.callerEvalStackLevels + 1)) {
+                        //// _pConsole ???
                         Serial.print("*** Evaluation stack error. Remaining stack levels for current program level: "); Serial.println(evalStack.getElementCount() - (_activeFunctionData.callerEvalStackLevels + 1));
                     }
 
@@ -243,58 +244,106 @@ Interpreter::execResult_type  Interpreter::exec() {
                 // command with optional expression(s) processed ? Execute command
                 else {
                     execResult = execProcessedCommand(isFunctionReturn);
-                    if (execResult != result_execOK) { break; }
+                    if (execResult != result_execOK) { break; }                     // other error: break (case label) immediately
                 }
             }
 
-            break;
+            break;  // (case label)
 
         }   // end 'switch (tokenType)'
 
 
         // advance to next token
+        // ---------------------
+
         _programCounter = _activeFunctionData.pNextStep;         // note: will be altered when calling an external function and upon return of a called function
         tokenType = *_activeFunctionData.pNextStep & 0x0F;                                                               // next token type (could be token within caller, if returning now)
         precedingIsComma = isComma;
+
+
+        // ***********************////
+        // -----------------------
+
+        if (nextIsNewInstructionStart) {
+            if (execResult == result_execOK) {          // no error 
+                if (!isFunctionReturn) {   // if returning from user function, error statement pointers retrieved from flow control stack 
+                    _activeFunctionData.errorStatementStartStep = _programCounter;
+                    _activeFunctionData.errorProgramCounter = _programCounter;
+                }
+
+                isFunctionReturn = false;
+                nextIsNewInstructionStart = false;
+            }
+
+
+            // empty console character buffer and check for '\a' (abort) character sequence (in case program keeps running, e.g. in an endless loop)
+            // -------------------------------------------------------------------------------------------------------------------------------------
+
+            bool charsFound = false, backslashFound = false, doAbort = false;
+            do {
+                // if no characters in buffer skip, otherwise keep reading until new line character found
+                if (_pConsole->available() > 0) {                                                                           // if terminal character available for reading
+                    charsFound = true;
+                    char c = _pConsole->read();
+
+                    if (c == '\n') { break; }                                                                                 // read until new line character
+
+                    // Check for Justina ESCAPE sequence (sent by terminal as individual characters) and cancel input, or use default value, if indicated
+                    // Note: if Justina ESCAPE sequence is not recognized, then backslash character is simply discarded
+                    if (c == '\\') {                                                                                        // backslash character found
+                        backslashFound = !backslashFound;
+                        if (backslashFound) { continue; }                                                                   // first backslash in a sequence: note and do nothing
+                    }
+                    else if ((c == 'a') || (c == 'A')) {                                                                    // part of a Justina ESCAPE sequence ? Cancel if allowed 
+                        if (backslashFound) { backslashFound = false;  doAbort = true;  continue; }
+                    }
+                }
+            } while (charsFound);
+            if (doAbort) { execResult = result_eval_abort; }
+        }
+
+
+        // while evaluating, periodically do a housekeeping callback (if function defined)
+        // -------------------------------------------------------------------------------
+
+        if (_housekeepingCallback != nullptr) {
+            bool quitNow{ false };
+            _currenttime = millis();
+            _previousTime = _currenttime;                                                                           // keep up to date (needed during parsing and evaluation)
+            // also handle millis() overflow after about 47 days
+            if ((_lastCallBackTime + callbackPeriod < _currenttime) || (_currenttime < _previousTime)) {            // while evaluating, limit calls to housekeeping callback routine 
+                _lastCallBackTime = _currenttime;
+                if (!quitNow) {                                                                                     // quit could already be set by a processed command
+                    _housekeepingCallback(quitNow);
+                    if (quitNow) { execResult = result_eval_kill; }                                                     // quit Justina interpreter: higher priority then abort 
+                }
+            }
+        }
+
 
         // if execution error: print current instruction being executed, signal error and exit
         // -----------------------------------------------------------------------------------
 
         if (execResult != result_execOK) {
-            int sourceErrorPos{ 0 };
-            if (!_atLineStart) { _pConsole->println(); _atLineStart = true; }
-            _pConsole->print("\r\n  ");
+            {      // execution error
+                int sourceErrorPos{ 0 };
+                if (!_atLineStart) { _pConsole->println(); _atLineStart = true; }
+                _pConsole->print("\r\n  ");
 
-            _pmyParser->prettyPrintInstructions(true, _activeFunctionData.errorStatementStartStep, _activeFunctionData.errorProgramCounter, &sourceErrorPos);
-            _pConsole->print("  "); for (int i = 1; i <= sourceErrorPos; i++) { _pConsole->print(" "); }
-            char execInfo[100];
-            if (_programCounter >= _programStart) { sprintf(execInfo, "^ Exec error %d\r\n", execResult); }     // in main program level 
-            else { sprintf(execInfo, "^ Exec error %d in user function %s\r\n", execResult, extFunctionNames[_activeFunctionData.functionIndex]); }
-            _pConsole->print(execInfo);
-            _lastValueIsStored = false;              // prevent printing last result (if any)
-            break;
-        }
-
-
-        // finalize token processing
-        // -------------------------
-
-        if (nextIsNewInstructionStart) {
-            if (!isFunctionReturn) {   // if returning from user function, error statement pointers retrieved from flow control stack 
-                _activeFunctionData.errorStatementStartStep = _programCounter;
-                _activeFunctionData.errorProgramCounter = _programCounter;
+                _pmyParser->prettyPrintInstructions(true, _activeFunctionData.errorStatementStartStep, _activeFunctionData.errorProgramCounter, &sourceErrorPos);
+                _pConsole->print("  "); for (int i = 1; i <= sourceErrorPos; i++) { _pConsole->print(" "); }
+                char execInfo[100];
+                if (_programCounter >= _programStart) { sprintf(execInfo, "^ Exec error %d\r\n", execResult); }     // in main program level 
+                else { sprintf(execInfo, "^ Exec error %d in user function %s\r\n", execResult, extFunctionNames[_activeFunctionData.functionIndex]); }
+                _pConsole->print(execInfo);
+                _lastValueIsStored = false;              // prevent printing last result (if any)
+                break;
             }
-
-            isFunctionReturn = false;
-            nextIsNewInstructionStart = false;
-
-            bool dummy{ false };
-            if (_housekeepingCallback != nullptr) { _housekeepingCallback(dummy); }
         }
-
     }   // end 'while ( tokenType != tok_no_token )'                                                                                       // end 'while ( tokenType != tok_no_token )'
 
 
+    // ------------------------------
     // All tokens processed: finalize
     // ------------------------------
 
@@ -385,9 +434,10 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         // - on exit:  string value entered by the user
         // mandatory argument 3: numeric variable
         // - on entry: value is 0: if '\c' is encountered in the input stream, the operation is canceled by the user
-        //             value is 1 or argument not present: idem, but in addition, if \d is encountered in the input stream, argument 2 is not changed (default value provided on entry)
-        // - on exit:  value is 0: operation was canceled by user, value is 1: value was entered by the user
-        // note: if \c and \d are encountered in the input, \c (cancel operation) takes precedence over \d (use default)
+        //             value is 1: idem, but in addition, if '\d' is encountered in the input stream, argument 2 is not changed (default value provided on entry)
+        // - on exit:  value is 0: operation was canceled by user, value is 1: a value was entered by the user
+        // notes: if both '\c' and '\d' are encountered in the input, '\c' (cancel operation) takes precedence over '\d' (use default)
+        //        if a '\' character is followed by a character other then 'c' or 'd', the backslash character is discarded
 
     {
         bool argIsVar[3];
@@ -400,9 +450,9 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         if (valueType[0] != value_isStringPointer) { return result_arg_stringExpected; }                                    // prompt 
 
         bool isInput = (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_input);                               // init
-        bool isInfoWithYesNo = false;                                                               
-        bool isInputWithDefault = isInput;                                                          
-        bool isInfoWithCancel = false;                                                              
+        bool isInfoWithYesNo = false;
+        bool isInputWithDefault = isInput;
+        bool isInfoWithCancel = false;
 
         bool answerValid{ false };
         do {                                                                                                                // until valid answer typed
@@ -419,8 +469,8 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
             }
 
             else {                                                                                                          // info command
-                if (cmdParamCount == 2) {          
-                    if (((uint8_t)(valueType[1]) != value_isLong) && ((uint8_t)(valueType[1]) != value_isFloat)) { return result_arg_numValueExpected; }     
+                if (cmdParamCount == 2) {
+                    if (((uint8_t)(valueType[1]) != value_isLong) && ((uint8_t)(valueType[1]) != value_isFloat)) { return result_arg_numValueExpected; }
                     if ((uint8_t)(valueType[1]) == value_isFloat) { args[1].longConst = (int)args[1].floatConst; }
                     if ((args[1].longConst < 0) || (args[1].longConst > 3)) { execResult = result_arg_invalid; return execResult; };
 
@@ -437,18 +487,29 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
             _pConsole->println();
 
             answerValid = true;                                                                                             // init
-            bool doCancel{ false }, doDefault{ false }, backslashFound{ false }, answerIsNo{ false };
-            bool dummy{ false };
+            bool doAbort{ false }, doCancel{ false }, doDefault{ false }, backslashFound{ false }, answerIsNo{ false };
+            bool quitNow{ false };
             char c;
             int length{ 0 };
             char input[_maxCharsToInput + 1] = "";                                                                          // init: empty string
 
             do {                                                                                                            // until new line character encountered
-                if (_housekeepingCallback != nullptr) { _housekeepingCallback(dummy); }
+                // while waiting for characters, continuously do a housekeeping callback (if function defined)
+                if (_housekeepingCallback != nullptr) {
+                    _currenttime = millis();                                                                                // while reading from console, continuously call housekeeping callback routine
+                    _previousTime = _currenttime;                                                                           // keep up to date (needed during parsing and evaluation)
+                    if (!quitNow) {                                                                                         // skip if flag set already; allow flushing buffer now before quitting
+                        _lastCallBackTime = _currenttime;
+                        _housekeepingCallback(quitNow);                                                                     // execute housekeeping callback
+                        // do not quit yet; first flush input buffer until new line character
+                    }
+                }
+
+                // read a character, if available in buffer
                 if (_pConsole->available() > 0) {                                                                           // if terminal character available for reading
                     c = _pConsole->read();
 
-                    if (c == '\n') { break; }                                                                               // read until new line characters
+                    if (c == '\n') { break; }                                                                               // read until new line character
 
                     // Check for terminal ESCAPE sequences (control characters - if terminal has CSharp Escape sequence support) and cancel input, or use default value, if indicated
                     else if (c == 0x1B) { doCancel = isInput || isInfoWithCancel; continue; }                               // 'ESC': cancel  (in case terminal allows ESCAPE sequences)
@@ -461,6 +522,11 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                         backslashFound = !backslashFound;
                         if (backslashFound) { continue; }                                                                   // first backslash in a sequence: note and do nothing
                     }
+
+                    else if ((c == 'a') || (c == 'A')) {                                                                    // part of a Justina ESCAPE sequence ? Abort evaluation phase 
+                        if (backslashFound) { backslashFound = false;  doAbort = true;  continue; }
+                    }
+
                     else if ((c == 'c') || (c == 'C')) {                                                                    // part of a Justina ESCAPE sequence ? Cancel if allowed 
                         if (backslashFound && (isInput || isInfoWithCancel)) { backslashFound = false;  doCancel = true;  continue; }
                     }
@@ -472,15 +538,23 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                     if (length >= _maxCharsToInput) { continue; }                                                           // max. input length exceeded: drop character
                     input[length] = c; input[++length] = '\0';
                 }
-            } while (true);
+            } while (!quitNow);
 
+            if (doAbort) {
+                execResult = result_eval_abort; return execResult;                                                          // stop a running Justina program (buffer is now flushed until nex line character) 
+            }
 
-            if (doCancel) {                                                                                                 // cancel (if cancel is allowed only) - has priority over doDefault
+            else if (quitNow) {
+                execResult = result_eval_kill; return execResult;                                                            // kill Justina interpreter (buffer is now flushed until nex line character)
+            }
+
+            else if (doCancel) {                                                                                                 // cancel (if cancel is allowed only) - has priority over doDefault
                 _pConsole->println("(Input canceled)");
             }
             else if (doDefault) {                                                                                           // default value (input command only)
                 _pConsole->println(args[1].pStringConst);                                                                   // print unchanged value
             }
+
             else {                                                                                                          // answer given
                 if (isInfoWithYesNo) {                                                                                      // check validity of answer ('y' or 'n')
                     if (length != 1) { answerValid = false; }
@@ -747,9 +821,9 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                     // set variable string pointer to null pointer
                     *pstackLvl->varOrConst.value.ppStringConst = nullptr;                           // change pointer to string (in variable) to null pointer
                 }
-                }
+            }
             pstackLvl = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
-    }
+        }
 
 
         // finalize
@@ -1005,7 +1079,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     }
     break;
 
-}
+    }
 
     return result_execOK;
 }
@@ -1195,7 +1269,7 @@ void Interpreter::saveLastValue(bool& overWritePrevious) {
                 lastValuesStringObjectCount--;
             }
         }
-}
+    }
     else {
         _lastResultCount++;     // only adding an item, without removing previous one
     }
@@ -1270,6 +1344,7 @@ void Interpreter::clearEvalStack() {
 
     // error if not all intermediate string objects deleted (points to an internal Justina issue)
     if (intermediateStringObjectCount != 0) {
+        //// _pConsole ???
         Serial.print("*** Intermediate string cleanup error. Remaining: "); Serial.println(intermediateStringObjectCount);
     }
     return;
@@ -1469,13 +1544,13 @@ void Interpreter::makeIntermediateConstant(LE_evalStack* pEvalStackLvl) {
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)result.pStringConst - RAMSTART);
 
 #endif
-    }
+        }
         pEvalStackLvl->varOrConst.value = result;                        // float or pointer to string (type: no change)
         pEvalStackLvl->varOrConst.valueType = valueType;
         pEvalStackLvl->varOrConst.tokenType = tok_isConstant;              // use generic constant type
         pEvalStackLvl->varOrConst.valueAttributes = constIsIntermediate;             // is an intermediate result (intermediate constant strings must be deleted when not needed any more)
         pEvalStackLvl->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
-}
+    }
 }
 
 
@@ -2299,7 +2374,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
 #if printCreateDeleteHeapObjects
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
 #endif
-    }
+        }
         break;
 
         case 15:
@@ -2317,9 +2392,9 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
             break;
 
         default:return result_arg_invalid; break;
-    }       // switch (sysVar)
+        }       // switch (sysVar)
         break;
-}
+    }
 
 
     }       // end switch
@@ -2367,7 +2442,7 @@ Interpreter::execResult_type Interpreter::checkFmtSpecifiers(bool isDispFmt, boo
             if (strlen(operands[argNo - 1].pStringConst) != 1) { return result_arg_invalid; }
             numSpecifier = operands[argNo - 1].pStringConst[0];
             char* pChar(strchr("FfGgEeXxDd", numSpecifier));
-            if (pChar == nullptr) { Serial.println("*** error"); ; return result_arg_invalid; }
+            if (pChar == nullptr) { return result_arg_invalid; }
         }
 
         // Width, precision flags ? Numeric arguments expected
@@ -2445,7 +2520,7 @@ void  Interpreter::printToString(int width, int precision, bool inputIsString, b
     else { sprintf(fcnResult.pStringConst, fmtString, width, precision, (valueType[0] == value_isLong) ? (float)operands[0].longConst : operands[0].floatConst, &charsPrinted); }
 
     return;
-    }
+}
 
 
 // -------------------------------
@@ -2612,15 +2687,15 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction(LE_evalStack*&
 #if printCreateDeleteHeapObjects
                             Serial.print("+++++ (loc var str) ");   Serial.println((uint32_t)_activeFunctionData.pLocalVarValues[i].pStringConst - RAMSTART);
 #endif
-                    }
-                };
-            }
+                        }
+                    };
+                }
 
                 deleteIntermStringObject(pStackLvl);                                              // if intermediate constant string, then delete char string object (tested within called routine)
                 pStackLvl = (LE_evalStack*)evalStack.deleteListElement(pStackLvl);        // argument saved: remove argument from stack and point to next argument
+            }
         }
     }
-}
 
     // also delete function name token from evaluation stack
     _pEvalStackTop = (LE_evalStack*)evalStack.getPrevListElement(pFunctionStackLvl);
@@ -2696,11 +2771,11 @@ void Interpreter::initFunctionDefaultParamVariables(char*& pStep, int suppliedAr
 #if printCreateDeleteHeapObjects
                     Serial.print("+++++ (loc var str) ");   Serial.println((uint32_t)_activeFunctionData.pLocalVarValues[count].pStringConst - RAMSTART);
 #endif
+                }
             }
-        }
             count++;
+        }
     }
-}
 
     // skip (remainder of) function definition
     findTokenStep(tok_isTerminalGroup1, MyParser::termcod_semicolon, pStep);
@@ -2768,7 +2843,7 @@ void Interpreter::initFunctionLocalNonParamVariables(char* pStep, int paramCount
                 ((char*)pArray)[3] = dimCount;        // (note: for param arrays, set to max dimension count during parsing)
 
                 tokenType = jumpTokens(1, pStep, terminalCode);       // assignment, comma or semicolon
-                }
+            }
 
 
             // handle initialisation (if initializer provided)
@@ -2832,10 +2907,10 @@ void Interpreter::initFunctionLocalNonParamVariables(char* pStep, int paramCount
             }
             count++;
 
-            } while (terminalCode == MyParser::termcod_comma);
+        } while (terminalCode == MyParser::termcod_comma);
 
-        }
-    };
+    }
+};
 
 
 // -----------------------------------
@@ -2888,11 +2963,13 @@ Interpreter::execResult_type Interpreter::terminateExternalFunction(bool addZero
 
     if (_activeFunctionData.pNextStep >= _programStart) {   // not within a function        
         if (localVarStringObjectCount != 0) {
+            //// _pConsole ???
             Serial.print("*** Local variable string objects cleanup error. Remaining: "); Serial.println(localVarStringObjectCount);
             localVarStringObjectCount = 0;
         }
 
         if (localArrayObjectCount != 0) {
+            //// _pConsole ???
             Serial.print("*** Local array objects cleanup error. Remaining: "); Serial.println(localArrayObjectCount);
             localArrayObjectCount = 0;
         }
