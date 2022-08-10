@@ -152,7 +152,8 @@ public:
 
         // abort
         result_eval_abort,
-        result_eval_kill
+        result_eval_kill,
+        result_eval_quit
 
     };
 
@@ -562,7 +563,7 @@ public:
     Interpreter(Stream* const pConsole);               // constructor
     ~Interpreter();               // deconstructor
     bool run(Stream* const pConsole, Stream** const pTerminal, int definedTerms);
-    bool processCharacter(char c);
+    bool processCharacter(char c, bool &kill);
 
     bool setMainLoopCallback(void (*func)(bool& requistQuit));                   // set callback functions
     bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType));

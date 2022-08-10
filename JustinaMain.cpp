@@ -1,6 +1,6 @@
 #include "Justina.h"
 
-#define printCreateDeleteHeapObjects 0
+#define printCreateDeleteHeapObjects 1
 
 /***********************************************************
 *                    class LinkedList                   *
@@ -272,12 +272,11 @@ Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
 // ---------------------
 
 Interpreter::~Interpreter() {
-    _pConsole->println("Justina: quitting...");
     if (!_keepInMemory) {
         delete _pmyParser;
         _housekeepingCallback = nullptr;
     }
-    _pConsole->println("Justina: bye\r\n");
+    _pConsole->println("\r\nJustina: bye\r\n");
 };
 
 
@@ -309,6 +308,7 @@ bool Interpreter::setUserFcnCallback(void(*func) (const void** data, const char*
 // ----------------------------
 
 bool Interpreter::run(Stream* const pConsole, Stream** const pTerminal, int definedTerms) {
+    bool kill{false};                                       // kill is true: request from caller, kill is false: quit command executed
     bool quitNow{ false };
     char c;
 
@@ -325,17 +325,17 @@ bool Interpreter::run(Stream* const pConsole, Stream** const pTerminal, int defi
             _previousTime = _currenttime;                                                   // keep up to date (needed during parsing and evaluation)
             _lastCallBackTime = _currenttime;
             _housekeepingCallback(quitNow);
-            if (quitNow) { break; }
+            if (quitNow) { kill = true; break; }
         }
 
         if (_pConsole->available() > 0) {     // if terminal character available for reading
             c = _pConsole->read();
-            quitNow = processCharacter(c);        // process one character
+            quitNow = processCharacter(c, kill);        // process one character
             if (quitNow) { ; break; }                        // user gave quit command
         }
     } while (true);
 
-    _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<");
+    if (kill) {_pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<");}
     if (_keepInMemory) { _pConsole->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
     _quitJustineAtEOF = false;         // if interpreter stays in memory: re-init
     return _keepInMemory;
@@ -345,7 +345,7 @@ bool Interpreter::run(Stream* const pConsole, Stream** const pTerminal, int defi
 // *   process an input character   *
 // ----------------------------------
 
-bool Interpreter::processCharacter(char c) {
+bool Interpreter::processCharacter(char c, bool &kill) {
 
     // process character
     static MyParser::parseTokenResult_type result{};
@@ -500,7 +500,7 @@ bool Interpreter::processCharacter(char c) {
         pErrorPos = pInstruction;                                                      // in case of error
         if (result != MyParser::result_tokenFound) { _flushAllUntilEOF = true; }
         if (result == _pmyParser->result_parse_kill) { _quitJustineAtEOF = true; }     // _flushAllUntilEOF is true already (flush buffer before quitting)
-        
+
         _instructionCharCount = 0;
         withinString = false; withinStringEscSequence = false;
         instructionsParsed = true;                                  // instructions found
@@ -522,9 +522,7 @@ bool Interpreter::processCharacter(char c) {
                     if (_promptAndEcho == 2) { _pmyParser->prettyPrintInstructions(false); }                    // immediate mode and result OK: pretty print input line
                     else if (_promptAndEcho == 1) { _pConsole->println(); _isPrompt = false; }
                     execResult_type execResult = exec();                                 // execute parsed user statements
-                    if (execResult == result_eval_kill) {
-                         _quitJustineAtEOF = true; 
-                    }
+                    if ((execResult == result_eval_kill) || (execResult == result_eval_quit)) { _quitJustineAtEOF = true; }
                 }
             }
             // parsing OK message (program mode only - no message in immediate mode) or error message 
@@ -575,6 +573,22 @@ bool Interpreter::processCharacter(char c) {
         _flushAllUntilEOF = false;
 
         withinComment = false;
+
+        Serial.print("\r\n** stats:  ident name strings "); Serial.print(identifierNameStringObjectCount);
+        Serial.print(", user var names "); Serial.print(userVarNameStringObjectCount);
+
+        Serial.print(", parsed strings "); Serial.print(parsedStringConstObjectCount);
+        Serial.print(", interm strings "); Serial.print(intermediateStringObjectCount);
+        Serial.print(", last value strings "); Serial.print(lastValuesStringObjectCount);
+
+        Serial.print(", prog var strings "); Serial.print(globalStaticVarStringObjectCount);
+        Serial.print(", user var strings "); Serial.print(userVarStringObjectCount);
+        Serial.print(", local var strings "); Serial.print(localVarStringObjectCount);
+
+        Serial.print(", prog arrays "); Serial.print(globalStaticArrayObjectCount);
+        Serial.print(", user arrays "); Serial.print(userArrayObjectCount);
+        Serial.print(", local arrays "); Serial.println(localArrayObjectCount);
+
 
         return _quitJustineAtEOF;
     }

@@ -1,6 +1,6 @@
 #include "Justina.h"
 
-#define printCreateDeleteHeapObjects 0
+#define printCreateDeleteHeapObjects 1
 #define debugPrint 0
 
 const char passCopyToCallback = 0x40;       // flag: string is an empty string 
@@ -253,19 +253,26 @@ Interpreter::execResult_type  Interpreter::exec() {
         }   // end 'switch (tokenType)'
 
 
-        // advance to next token
-        // ---------------------
+        // -------------------------------------------------
+        // a token has been processed: advance to next token
+        // -------------------------------------------------
 
         _programCounter = _activeFunctionData.pNextStep;         // note: will be altered when calling an external function and upon return of a called function
         tokenType = *_activeFunctionData.pNextStep & 0x0F;                                                               // next token type (could be token within caller, if returning now)
         precedingIsComma = isComma;
 
 
-        // ***********************////
-        // -----------------------
+        // ---------------------------------------------------
+        // statement has been processed and executed: finalise
+        // ---------------------------------------------------
 
         if (nextIsNewInstructionStart) {
+
             if (execResult == result_execOK) {          // no error 
+
+                // returning from function ? correct additional pointers to program memory (tokens)
+                // --------------------------------------------------------------------------------
+
                 if (!isFunctionReturn) {   // if returning from user function, error statement pointers retrieved from flow control stack 
                     _activeFunctionData.errorStatementStartStep = _programCounter;
                     _activeFunctionData.errorProgramCounter = _programCounter;
@@ -300,27 +307,28 @@ Interpreter::execResult_type  Interpreter::exec() {
                 }
             } while (charsFound);
             if (doAbort) { execResult = result_eval_abort; }
-        }
 
 
-        // while evaluating, periodically do a housekeeping callback (if function defined)
-        // -------------------------------------------------------------------------------
+            // while evaluating, periodically do a housekeeping callback (if function defined)
+            // -------------------------------------------------------------------------------
 
-        if (_housekeepingCallback != nullptr) {
-            bool quitNow{ false };
-            _currenttime = millis();
-            _previousTime = _currenttime;                                                                           // keep up to date (needed during parsing and evaluation)
-            // also handle millis() overflow after about 47 days
-            if ((_lastCallBackTime + callbackPeriod < _currenttime) || (_currenttime < _previousTime)) {            // while evaluating, limit calls to housekeeping callback routine 
-                _lastCallBackTime = _currenttime;
-                if (!quitNow) {                                                                                     // quit could already be set by a processed command
-                    _housekeepingCallback(quitNow);
-                    if (quitNow) { execResult = result_eval_kill; }                                                     // quit Justina interpreter: higher priority then abort 
+            if (_housekeepingCallback != nullptr) {
+                bool quitNow{ false };
+                _currenttime = millis();
+                _previousTime = _currenttime;                                                                           // keep up to date (needed during parsing and evaluation)
+                // also handle millis() overflow after about 47 days
+                if ((_lastCallBackTime + callbackPeriod < _currenttime) || (_currenttime < _previousTime)) {            // while evaluating, limit calls to housekeeping callback routine 
+                    _lastCallBackTime = _currenttime;
+                    if (!quitNow) {                                                                                     // quit could already be set by a processed command
+                        _housekeepingCallback(quitNow);
+                        if (quitNow) { execResult = result_eval_kill; }                                                     // quit Justina interpreter: higher priority then abort 
+                    }
                 }
             }
         }
 
 
+        // -----------------------------------------------------------------------------------
         // if execution error: print current instruction being executed, signal error and exit
         // -----------------------------------------------------------------------------------
 
@@ -330,22 +338,34 @@ Interpreter::execResult_type  Interpreter::exec() {
                 if (!_atLineStart) { _pConsole->println(); _atLineStart = true; }
                 _pConsole->print("\r\n  ");
 
-                _pmyParser->prettyPrintInstructions(true, _activeFunctionData.errorStatementStartStep, _activeFunctionData.errorProgramCounter, &sourceErrorPos);
-                _pConsole->print("  "); for (int i = 1; i <= sourceErrorPos; i++) { _pConsole->print(" "); }
                 char execInfo[100];
-                if (_programCounter >= _programStart) { sprintf(execInfo, "^ Exec error %d\r\n", execResult); }     // in main program level 
-                else { sprintf(execInfo, "^ Exec error %d in user function %s\r\n", execResult, extFunctionNames[_activeFunctionData.functionIndex]); }
+                bool quitting = (execResult == result_eval_quit);
+                if (quitting) {
+                    strcpy(execInfo, "\r\nExecuting 'quit' command, ");
+                    _pConsole->print(strcat(execInfo, _keepInMemory ? "data retained" : "memory released"));
+                    if (_programCounter >= _programStart) { sprintf(execInfo, "\r\n"); }
+                    else { sprintf(execInfo, " - user function %s\r\n", extFunctionNames[_activeFunctionData.functionIndex]); }
+                }
+                else {
+                    _pmyParser->prettyPrintInstructions(true, _activeFunctionData.errorStatementStartStep, _activeFunctionData.errorProgramCounter, &sourceErrorPos);
+                    _pConsole->print("  "); for (int i = 1; i <= sourceErrorPos; i++) { _pConsole->print(" "); }
+                    if (_programCounter >= _programStart) { sprintf(execInfo, "^ Exec error %d\r\n", execResult); }     // in main program level 
+                    else { sprintf(execInfo, "^ Exec error %d in user function %s\r\n", execResult, extFunctionNames[_activeFunctionData.functionIndex]); }
+                }
                 _pConsole->print(execInfo);
+
                 _lastValueIsStored = false;              // prevent printing last result (if any)
                 break;
             }
         }
+
     }   // end 'while ( tokenType != tok_no_token )'                                                                                       // end 'while ( tokenType != tok_no_token )'
 
 
-    // ------------------------------
-    // All tokens processed: finalize
-    // ------------------------------
+
+    // ----------------------------------
+    // All statements processed: finalize
+    // ----------------------------------
 
     if (!_atLineStart) { _pConsole->println(); _atLineStart = true; }
 
@@ -370,14 +390,14 @@ Interpreter::execResult_type  Interpreter::exec() {
             delete[] toPrint.pStringConst;
             intermediateStringObjectCount--;
         }
-
     }
 
+    // ----------------------------------------------------------------------------------------------------------------
     // Delete any intermediate result string objects used as arguments, delete remaining evaluation stack level objects 
+    // ----------------------------------------------------------------------------------------------------------------
 
     clearEvalStack();               // and intermediate strings
     clearFlowCtrlStack();           // and remaining local storage + local variable string and array values
-
 
     return execResult;   // return result, in case it's needed by caller
 };
@@ -405,15 +425,46 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
     switch (_activeFunctionData.activeCmd_ResWordCode) {                                                                    // command code 
 
+    case MyParser::cmdcod_quit:
+
+        // ------------------------
+        // Quit Justina interpreter
+        // ------------------------
+
+        // optional argument 1 clear all
+        // - value is 0: keep interpreter in memory on quitting, value is 1: clear all and exit Justina 
+        // - if argument not supplied: ask user confirmation (keep in memory, clear all, cancel quitting)
+
+    {
+        bool argIsVar[1];
+        bool argIsArray[1];
+        char valueType[1];
+        Val args[1];
+
+        if (cmdParamCount == 0) {
+        }
+
+        else {
+            copyValueArgsFromStack(pstackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
+            if (((uint8_t)(valueType[0]) != value_isLong) && ((uint8_t)(valueType[0]) != value_isFloat)) { return result_arg_numValueExpected; }
+            if ((uint8_t)(valueType[0]) == value_isFloat) { args[1].longConst = (int)args[1].floatConst; }
+            _keepInMemory = (args[0].longConst == 0);
+        }
+
+        execResult = result_eval_quit; return execResult;
+    }
+    break;
+
+
+    case MyParser::cmdcod_info:
+
         // --------------------------------------------------------------------
         // Print information or question, requiring user confirmation or answer
         // --------------------------------------------------------------------
 
-    case MyParser::cmdcod_info:
-
         // mandatory argument 1: prompt (string expression)
         // optional argument 2: numeric variable
-        // - on entry: value is 0 or argument not present: confirmation required by pressing ENTER (any preceding characters are skipped)
+        // - on entry: value is 0 or argument not supplied: confirmation required by pressing ENTER (any preceding characters are skipped)
         //             value is 1: idem, but if '\c' encountered in input stream the operation is canceled by user 
         //             value is 2: only positive or negative answer allowed, by pressing 'y' or 'n' followed by ENTER   
         //             value is 3: idem, but if '\c' encountered in input stream the operation is canceled by user 
@@ -540,12 +591,12 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                 }
             } while (!quitNow);
 
-            if (doAbort) {
-                execResult = result_eval_abort; return execResult;                                                          // stop a running Justina program (buffer is now flushed until nex line character) 
+            if (quitNow) {
+                execResult = result_eval_kill; return execResult;                                                            // kill Justina interpreter (buffer is now flushed until nex line character)
             }
 
-            else if (quitNow) {
-                execResult = result_eval_kill; return execResult;                                                            // kill Justina interpreter (buffer is now flushed until nex line character)
+            else if (doAbort) {
+                execResult = result_eval_abort; return execResult;                                                          // stop a running Justina program (buffer is now flushed until nex line character) 
             }
 
             else if (doCancel) {                                                                                                 // cancel (if cancel is allowed only) - has priority over doDefault
@@ -1383,17 +1434,22 @@ void Interpreter::clearEvalStackLevels(int n) {
 
 void Interpreter::clearFlowCtrlStack() {                // and remaining local storage + local variable string and array values for open functions
 
-    void* pMainLvl = flowCtrlStack.getFirstListElement();        // main level or null pointer
+    Serial.println("**** clear flow control stack *** 1");////
 
-    if (flowCtrlStack.getElementCount() > 1) {                // exclude main level
-        void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;
+    if (flowCtrlStack.getElementCount() > 0) {                // exclude main level
+        Serial.print("**** flow control stacklevels: "); Serial.println(flowCtrlStack.getElementCount());////
 
-        while (pFlowCtrlStackLvl != pMainLvl) {
-            char blockType = *(char*)_pFlowCtrlStackTop;
+        void* pMainLvl = flowCtrlStack.getFirstListElement();        // first function or other block level, if any
+        void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;               // deepest function level or other block, if any
 
+        do {
+            char blockType = *(char*)pFlowCtrlStackLvl;
+
+            Serial.print("*** block type: "); Serial.println((int)blockType); ////
             if (blockType == MyParser::block_extFunction) {               // open function
                 int localVarCount = extFunctionData[_activeFunctionData.functionIndex].localVarCountInFunction;
 
+                Serial.print("is ext function level, local vars: "); Serial.println(localVarCount); ////
                 if (localVarCount > 0) {
                     _pmyParser->deleteArrayElementStringObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, false, false, true);
                     _pmyParser->deleteVariableValueObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, false, false, true);
@@ -1402,16 +1458,21 @@ void Interpreter::clearFlowCtrlStack() {                // and remaining local s
                     delete[] _activeFunctionData.pLocalVarValues;
                     delete[] _activeFunctionData.pVariableAttributes;
                     delete[] _activeFunctionData.ppSourceVarTypes;
+
+                    Serial.println("**** clear flow control stack executed");////
                 }
 
                 pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                 if (pFlowCtrlStackLvl == nullptr) { break; }         // all done
 
                 // load local storage pointers again for deepest CALLER function and restore pending step & active function information for caller function
-                _activeFunctionData = *(FunctionData*)_pFlowCtrlStackTop;
+                _activeFunctionData = *(FunctionData*)pFlowCtrlStackLvl;
             }
-            else { pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl); }
-        }
+            else {
+                pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
+                if (pFlowCtrlStackLvl == nullptr) { break; }         // all done
+            }
+        } while (true);
     }
 
     flowCtrlStack.deleteList();

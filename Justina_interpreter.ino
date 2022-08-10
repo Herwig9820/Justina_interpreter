@@ -335,7 +335,7 @@ void housekeeping(bool& requestQuit) {
 
 
     //// test
-    if (!quitRequested && ((startTime + 20000) < millis())) { quitRequested = true; forceLocal = true;  }
+    ////if (!quitRequested && ((startTime + 20000) < millis())) { quitRequested = true; forceLocal = true;  }
 
 
 #if withTCP
@@ -382,14 +382,6 @@ void heartbeat() {
     }
     previousTime = currentTime;
 }
-
-
-//// test ----------------------------
-
-struct Values {
-    float* pNum;
-    char* pText;
-};
 
 
 // -----------------------------

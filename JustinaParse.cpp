@@ -1,6 +1,6 @@
 #include "Justina.h"
 
-#define printCreateDeleteHeapObjects 0
+#define printCreateDeleteHeapObjects 1
 
 
 /***********************************************************
@@ -67,7 +67,7 @@ const MyParser::ResWordDef MyParser::_resWords[]{
 
     {"End",             cmdcod_end,         cmd_noRestrictions,                                 0,0,    cmdPar_102,     cmdBlockGenEnd},                // closes inner open command block
     
-    {"Quit",            cmdcod_quit,        cmd_onlyImmediate,                                  0,0,    cmdPar_104,     cmdBlockNone},                // closes inner open command block
+    {"Quit",            cmdcod_quit,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockNone},                // closes inner open command block
 
     {"Delvar",          cmdcod_delete,      cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_110,     cmdDeleteVar},
     {"Clearvars",       cmdcod_clear,       cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockNone},
@@ -2530,7 +2530,7 @@ bool MyParser::parseAsIdentifierName(char*& pNext, parseTokenResult_type& result
     char* pIdentifierName = new char[pNext - pch + 1];                    // create char array on the heap to store identifier name, including terminating '\0'
     _pInterpreter->parsedStringConstObjectCount++;
 #if printCreateDeleteHeapObjects
-    Serial.print("+++++ (parsed str ) "); Serial.println((uint32_t)pProgramName - RAMSTART);
+    Serial.print("+++++ (parsed str ) "); Serial.println((uint32_t)pIdentifierName - RAMSTART);
 #endif
     strncpy(pIdentifierName, pch, pNext - pch);                            // store identifier name in newly created character array
     pIdentifierName[pNext - pch] = '\0';                                                 // string terminating '\0'
