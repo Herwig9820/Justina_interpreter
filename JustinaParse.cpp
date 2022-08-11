@@ -66,7 +66,7 @@ const MyParser::ResWordDef MyParser::_resWords[]{
     {"Dispmod",         cmdcod_dispmod,     cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_105,     cmdBlockNone},
 
     {"End",             cmdcod_end,         cmd_noRestrictions,                                 0,0,    cmdPar_102,     cmdBlockGenEnd},                // closes inner open command block
-    
+
     {"Quit",            cmdcod_quit,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockNone},                // closes inner open command block
 
     {"Delvar",          cmdcod_delete,      cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_110,     cmdDeleteVar},
@@ -434,45 +434,62 @@ void MyParser::resetMachine(bool withUserVariables) {
     // string and array heap objects: any objects left ?
     if (_pInterpreter->identifierNameStringObjectCount != 0) {
         Serial.print("*** Variable / function name objects cleanup error. Remaining: "); Serial.println(_pInterpreter->identifierNameStringObjectCount); //// _pConsole ???
-        _pInterpreter->identifierNameStringObjectCount = 0;
     }
 
     if (_pInterpreter->parsedStringConstObjectCount != 0) {
         Serial.print("*** Parsed constant string objects cleanup error. Remaining: "); Serial.println(_pInterpreter->parsedStringConstObjectCount);
-        _pInterpreter->parsedStringConstObjectCount = 0;
     }
 
     if (_pInterpreter->globalStaticVarStringObjectCount != 0) {
         Serial.print("*** Variable string objects cleanup error. Remaining: "); Serial.println(_pInterpreter->globalStaticVarStringObjectCount);
-        _pInterpreter->globalStaticVarStringObjectCount = 0;
     }
 
     if (_pInterpreter->globalStaticArrayObjectCount != 0) {
         Serial.print("*** Array objects cleanup error. Remaining: "); Serial.println(_pInterpreter->globalStaticArrayObjectCount);
-        _pInterpreter->globalStaticArrayObjectCount = 0;
     }
+
+    Serial.print("\r\n** Reset stats:  parsed strings "); Serial.print(_pInterpreter->parsedStringConstObjectCount);
+
+    Serial.print(", prog name strings "); Serial.print(_pInterpreter->identifierNameStringObjectCount);
+    Serial.print(", prog var strings "); Serial.print(_pInterpreter->globalStaticVarStringObjectCount);
+    Serial.print(", prog arrays "); Serial.print(_pInterpreter->globalStaticArrayObjectCount);
+
+    _pInterpreter->parsedStringConstObjectCount = 0;
+    
+    _pInterpreter->identifierNameStringObjectCount = 0;
+    _pInterpreter->globalStaticVarStringObjectCount = 0;
+    _pInterpreter->globalStaticArrayObjectCount = 0;
 
     if (withUserVariables) {
         if (_pInterpreter->userVarNameStringObjectCount != 0) {
             Serial.print("*** User variable name objects cleanup error. Remaining: "); Serial.println(_pInterpreter->userVarNameStringObjectCount);
-            _pInterpreter->userVarNameStringObjectCount = 0;
         }
 
         if (_pInterpreter->userVarStringObjectCount != 0) {
             Serial.print("*** User variable string objects cleanup error. Remaining: "); Serial.println(_pInterpreter->userVarStringObjectCount);
-            _pInterpreter->userVarStringObjectCount = 0;
         }
 
         if (_pInterpreter->userArrayObjectCount != 0) {
             Serial.print("*** User array objects cleanup error. Remaining: "); Serial.println(_pInterpreter->userArrayObjectCount);
-            _pInterpreter->userArrayObjectCount = 0;
         }
 
         if (_pInterpreter->lastValuesStringObjectCount != 0) {
-            Serial.print("*** Last value FiFo string objects cleanup error. Remaining: "); Serial.println(_pInterpreter->lastValuesStringObjectCount);
-            _pInterpreter->lastValuesStringObjectCount = 0;
+            Serial.print("*** Last value FiFo string objects cleanup error. Remaining: "); Serial.print(_pInterpreter->lastValuesStringObjectCount);
         }
+
+        Serial.print(", user var names "); Serial.print(_pInterpreter->userVarNameStringObjectCount);
+        Serial.print(", user var strings "); Serial.print(_pInterpreter->userVarStringObjectCount);
+        Serial.print(", user arrays "); Serial.print(_pInterpreter->userArrayObjectCount);
+
+        Serial.print(", last value strings "); Serial.print(_pInterpreter->lastValuesStringObjectCount);
+
+        _pInterpreter->userVarNameStringObjectCount = 0;
+        _pInterpreter->userVarStringObjectCount = 0;
+        _pInterpreter->userArrayObjectCount = 0;
+        
+        _pInterpreter->lastValuesStringObjectCount = 0;
     }
+    Serial.println();
 
     // intermediateStringObjectCount, localVarStringObjectCount, localArrayObjectCount ...
     // ... is not tested, neither is it reset, here. It is a purely execution related object, tested at the end of execution

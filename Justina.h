@@ -311,7 +311,7 @@ public:
 
 
 
-    struct blockTestData {
+    struct BlockTestData {
         char blockType;                 // command block: will identify stack level as an if...end, for...end, ... block
         char loopControl;               // flags: within iteration, request break from loop, test failed
         char testValueType;             // 'for' loop tests: value type used for loop tests
@@ -335,7 +335,7 @@ public:
 
         char* activeCmd_tokenAddress;   // address of parsed keyword token                                
 
-        Val* pLocalVarValues;           // local variable value: real, pointer to string or array, or (if reference): pointer to 'source' (referenced) variable
+        Val* pLocalVarValues;           // points to local variables (values: real, pointer to string or array, or (if reference): pointer to 'source' (referenced) variable)
         char** ppSourceVarTypes;        // only if local variable is reference to variable or array element: pointer to 'source' variable value type  
         char* pVariableAttributes;      // local variable: value type (float, local string or reference); 'source' (if reference) or local variable scope (user, global, static; local, param) 
 
@@ -457,6 +457,8 @@ public:
     int _lastResultCount{ 0 };
     int _userCBprocStartSet_count = 0;
     int _userCBprocAliasSet_count = 0;
+
+    int _callStackDepth = 0;                                        // external function calls
 
     char _arrayDimCount{ 0 };
     char* _programCounter{ nullptr };                                // pointer to token memory address (not token step n�)

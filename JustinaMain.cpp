@@ -574,21 +574,26 @@ bool Interpreter::processCharacter(char c, bool &kill) {
 
         withinComment = false;
 
-        Serial.print("\r\n** stats:  ident name strings "); Serial.print(identifierNameStringObjectCount);
-        Serial.print(", user var names "); Serial.print(userVarNameStringObjectCount);
 
-        Serial.print(", parsed strings "); Serial.print(parsedStringConstObjectCount);
-        Serial.print(", interm strings "); Serial.print(intermediateStringObjectCount);
+        Serial.print("\r\n** EOF stats:  parsed strings "); Serial.print(parsedStringConstObjectCount);
+
+        Serial.print(", prog name strings "); Serial.print(identifierNameStringObjectCount);
+        Serial.print(", prog var strings "); Serial.print(globalStaticVarStringObjectCount);
+        Serial.print(", prog arrays "); Serial.print(globalStaticArrayObjectCount);
+
+        Serial.print(", user var names "); Serial.print(userVarNameStringObjectCount);
+        Serial.print(", user var strings "); Serial.print(userVarStringObjectCount);
+        Serial.print(", user arrays "); Serial.print(userArrayObjectCount);
+
         Serial.print(", last value strings "); Serial.print(lastValuesStringObjectCount);
 
-        Serial.print(", prog var strings "); Serial.print(globalStaticVarStringObjectCount);
-        Serial.print(", user var strings "); Serial.print(userVarStringObjectCount);
-        Serial.print(", local var strings "); Serial.print(localVarStringObjectCount);
 
-        Serial.print(", prog arrays "); Serial.print(globalStaticArrayObjectCount);
-        Serial.print(", user arrays "); Serial.print(userArrayObjectCount);
+        Serial.print("\r\n   eval stats : interim strings "); Serial.print(intermediateStringObjectCount);
+
+        Serial.print(", local var strings "); Serial.print(localVarStringObjectCount);
         Serial.print(", local arrays "); Serial.println(localArrayObjectCount);
 
+        Serial.println();
 
         return _quitJustineAtEOF;
     }
