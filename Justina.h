@@ -153,7 +153,8 @@ public:
         // abort
         result_eval_abort,
         result_eval_kill,
-        result_eval_quit
+        result_eval_quit, 
+        result_insideProgramOnly
 
     };
 
@@ -420,6 +421,10 @@ public:
     int userArrayObjectCount = 0;
     int localArrayObjectCount = 0;
 
+    // local variable storage area
+    int localVarValueAreaCount = 0;
+
+
     bool _atLineStart = true;
     bool _lastValueIsStored = false;
 
@@ -658,6 +663,8 @@ public:
         cmdcod_continue,
         cmdcod_return,
         cmdcod_end,
+        cmdcod_pause,
+        cmdcod_stop,
         cmdcod_quit,
         cmdcod_info,
         cmdcod_input,

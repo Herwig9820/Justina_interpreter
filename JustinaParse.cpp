@@ -1,6 +1,7 @@
 #include "Justina.h"
 
-#define printCreateDeleteHeapObjects 1
+#define printCreateDeleteHeapObjects 0
+#define debugPrint 0
 
 
 /***********************************************************
@@ -67,6 +68,8 @@ const MyParser::ResWordDef MyParser::_resWords[]{
 
     {"End",             cmdcod_end,         cmd_noRestrictions,                                 0,0,    cmdPar_102,     cmdBlockGenEnd},                // closes inner open command block
 
+    {"Pause",           cmdcod_pause,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockNone},                // closes inner open command block
+    {"Stop",            cmdcod_stop,        cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},                // closes inner open command block
     {"Quit",            cmdcod_quit,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockNone},                // closes inner open command block
 
     {"Delvar",          cmdcod_delete,      cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_110,     cmdDeleteVar},
@@ -396,8 +399,8 @@ void MyParser::resetMachine(bool withUserVariables) {
     }
 
     _pInterpreter->_lastResultCount = 0;                                       // current last result FiFo depth (values currently stored)
-    int _userCBprocStartSet_count = 0;
-    int _userCBprocAliasSet_count = 0;
+    _pInterpreter->_userCBprocStartSet_count = 0;
+    _pInterpreter->_userCBprocAliasSet_count = 0;
 
     // calculation result print
     _pInterpreter->_dispWidth = _pInterpreter->_defaultPrintWidth, _pInterpreter->_dispNumPrecision = _pInterpreter->_defaultNumPrecision;
@@ -448,11 +451,13 @@ void MyParser::resetMachine(bool withUserVariables) {
         Serial.print("*** Array objects cleanup error. Remaining: "); Serial.println(_pInterpreter->globalStaticArrayObjectCount);
     }
 
-    Serial.print("\r\n** Reset stats:  parsed strings "); Serial.print(_pInterpreter->parsedStringConstObjectCount);
+#if debugPrint
+    Serial.print("\r\n** Reset stats\r\n    parsed strings "); Serial.print(_pInterpreter->parsedStringConstObjectCount);
 
     Serial.print(", prog name strings "); Serial.print(_pInterpreter->identifierNameStringObjectCount);
     Serial.print(", prog var strings "); Serial.print(_pInterpreter->globalStaticVarStringObjectCount);
     Serial.print(", prog arrays "); Serial.print(_pInterpreter->globalStaticArrayObjectCount);
+#endif
 
     _pInterpreter->parsedStringConstObjectCount = 0;
     
@@ -477,11 +482,13 @@ void MyParser::resetMachine(bool withUserVariables) {
             Serial.print("*** Last value FiFo string objects cleanup error. Remaining: "); Serial.print(_pInterpreter->lastValuesStringObjectCount);
         }
 
+#if debugPrint
         Serial.print(", user var names "); Serial.print(_pInterpreter->userVarNameStringObjectCount);
         Serial.print(", user var strings "); Serial.print(_pInterpreter->userVarStringObjectCount);
         Serial.print(", user arrays "); Serial.print(_pInterpreter->userArrayObjectCount);
 
         Serial.print(", last value strings "); Serial.print(_pInterpreter->lastValuesStringObjectCount);
+#endif
 
         _pInterpreter->userVarNameStringObjectCount = 0;
         _pInterpreter->userVarStringObjectCount = 0;

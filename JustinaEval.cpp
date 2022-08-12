@@ -1,6 +1,6 @@
 #include "Justina.h"
 
-#define printCreateDeleteHeapObjects 1
+#define printCreateDeleteHeapObjects 0
 #define debugPrint 0
 
 const char passCopyToCallback = 0x40;       // flag: string is an empty string 
@@ -532,7 +532,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                     isInfoWithYesNo = args[1].longConst & 0x02;
                     isInfoWithCancel = args[1].longConst & 0x01;
                 }
-                char s[100] = "*****Information ";      //// lengte string checken
+                char s[100] = "***** Information ";      //// lengte string checken
                 strcat(s, isInfoWithYesNo ? "(please answer Y or N" : "(please confirm by pressing ENTER");
                 _pConsole->println(strcat(s, isInfoWithCancel ? ", \\c to cancel): *****" : "): *****"));
             }
@@ -542,9 +542,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
             _pConsole->println();
 
             answerValid = true;                                                                                             // init
-            bool doAbort{ false }, doCancel{ false }, doDefault{ false }, backslashFound{ false }, answerIsNo{ false };
-            bool quitNow{ false };
-            char c;
+            bool doAbort{ false }, doCancel{ false }, doDefault{ false }, backslashFound{ false }, answerIsNo{ false }, quitNow{ false };
             int length{ 0 };
             char input[_maxCharsToInput + 1] = "";                                                                          // init: empty string
 
@@ -562,13 +560,9 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
                 // read a character, if available in buffer
                 if (_pConsole->available() > 0) {                                                                           // if terminal character available for reading
-                    c = _pConsole->read();
+                    char c = _pConsole->read();
 
                     if (c == '\n') { break; }                                                                               // read until new line character
-
-                    // Check for terminal ESCAPE sequences (control characters - if terminal has CSharp Escape sequence support) and cancel input, or use default value, if indicated
-                    else if (c == 0x1B) { doCancel = isInput || isInfoWithCancel; continue; }                               // 'ESC': cancel  (in case terminal allows ESCAPE sequences)
-                    else if (c == 0x06) { doDefault = isInputWithDefault;  continue; }                                      // 'ACK': default (in case terminal allows ESCAPE sequences)
                     else if (c < ' ') { continue; }                                                                         // skip control-chars except new line (ESC is skipped here as well - flag already set)
 
                     // Check for Justina ESCAPE sequence (sent by terminal as individual characters) and cancel input, or use default value, if indicated
@@ -654,8 +648,8 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
 
             if (cmdParamCount == (isInput ? 3 : 2)) {       // last argument (optional second if Info, third if Input statement) serves a dual purpose: allow cancel (on entry) and signal 'canceled' (on exit)
-                    // store result in variable and adapt variable value type
-                    // 0 if canceled, 1 if 'OK' or 'Yes',  -1 if 'No' (variable is already numeric: no variable string to delete)
+                // store result in variable and adapt variable value type
+                // 0 if canceled, 1 if 'OK' or 'Yes',  -1 if 'No' (variable is already numeric: no variable string to delete)
                 *_pEvalStackTop->varOrConst.value.pLongConst = doCancel ? 0 : answerIsNo ? -1 : 1;                          // 1: 'OK' or 'Yes' (yes / no question) answer                       
                 *_pEvalStackTop->varOrConst.varTypeAddress = (*_pEvalStackTop->varOrConst.varTypeAddress & ~value_typeMask) | value_isLong;
 
@@ -663,6 +657,78 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                 // but it does not need to be changed, because in the next step, the respective stack level will be deleted 
             }
         } while (!answerValid);
+
+        clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
+
+        _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;                                                  // command execution ended
+        _activeFunctionData.activeCmd_tokenAddress = nullptr;
+    }
+    break;
+
+
+    // --------------------------------------------------------
+    // stop a running program and wait for the user to continue
+    //---------------------------------------------------------
+
+    case MyParser::cmdcod_pause:
+    case MyParser::cmdcod_stop:
+    {
+        char s[100];
+        sprintf(s, "***** Program %s in user function %s%s", (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_stop) ? "stopped" : "paused",
+            extFunctionNames[_activeFunctionData.functionIndex], (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_stop) ? ": press ENTER to continue *****" : " *****");
+        _pConsole->println(s);
+
+        bool doAbort{ false }, backslashFound{ false }, quitNow{ false };
+
+        long startPauseAt = millis();                                                                                   // if pause, not stop;
+        do {                                                                                                            // until new line character encountered
+            // while waiting for characters, continuously do a housekeeping callback (if function defined)
+            if (_housekeepingCallback != nullptr) {
+                _currenttime = millis();                                                                                // while reading from console, continuously call housekeeping callback routine
+                _previousTime = _currenttime;                                                                           // keep up to date (needed during parsing and evaluation)
+                if (!quitNow) {                                                                                         // skip if flag set already; allow flushing buffer now before quitting
+                    _lastCallBackTime = _currenttime;
+                    _housekeepingCallback(quitNow);                                                                     // execute housekeeping callback
+                    // do not quit yet; first flush input buffer until new line character
+                }
+            }
+
+            // read a character, if available in buffer
+            if (_pConsole->available() > 0) {                                                                           // if terminal character available for reading
+                char c = _pConsole->read();
+
+                if (c == '\n') {
+                    if (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_stop) { break; }
+                }
+
+                // Check for Justina ESCAPE sequence (sent by terminal as individual characters) and cancel input, or use default value, if indicated
+                // Note: if Justina ESCAPE sequence is not recognized, then backslash character is simply discarded
+                else if (c == '\\') {                                                                                        // backslash character found
+                    backslashFound = !backslashFound;
+                }
+
+                else if ((c == 'a') || (c == 'A')) {                                                                    // part of a Justina ESCAPE sequence ? Abort evaluation phase 
+                    if (backslashFound) {
+                        backslashFound = false;  doAbort = true;
+                        if (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_pause) {break;}
+                    }
+                }
+            }
+
+            if (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_pause) {
+                if (startPauseAt + 10000 < millis()) { break; }                                                           // if still characters in buffer, buffer will be flushed when processng of statement finalised
+            }
+
+
+        } while (!quitNow);
+
+        if (quitNow) {
+            execResult = result_eval_kill; return execResult;                                                            // kill Justina interpreter (buffer is now flushed until nex line character)
+        }
+
+        else if (doAbort) {
+            execResult = result_eval_abort; return execResult;                                                          // stop a running Justina program (buffer is now flushed until nex line character) 
+        }
 
         clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
 
@@ -861,7 +927,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 #endif
                     delete[] args[i].pStringConst;                                                  // delete temporary string
                     intermediateStringObjectCount--;
-                }
+            }
 
                 // callback routine changed non-empty VARIABLE string into empty variable string ("\0") ?
                 else if (strlen(args[i].pStringConst) == 0) {
@@ -876,9 +942,9 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                     // set variable string pointer to null pointer
                     *pstackLvl->varOrConst.value.ppStringConst = nullptr;                           // change pointer to string (in variable) to null pointer
                 }
-            }
-            pstackLvl = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
         }
+            pstackLvl = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
+    }
 
 
         // finalize
@@ -1134,10 +1200,10 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     }
     break;
 
-    }
+}
 
     return result_execOK;
-}
+    }
 
 
 // -------------------------------
@@ -1322,9 +1388,9 @@ void Interpreter::saveLastValue(bool& overWritePrevious) {
                 // note: this is always an intermediate string
                 delete[] lastResultValueFiFo[itemToRemove].pStringConst;
                 lastValuesStringObjectCount--;
-            }
         }
     }
+}
     else {
         _lastResultCount++;     // only adding an item, without removing previous one
     }
@@ -1371,8 +1437,8 @@ void Interpreter::saveLastValue(bool& overWritePrevious) {
 #endif
             delete[] lastvalue.value.pStringConst;
             intermediateStringObjectCount--;
-        }
     }
+}
 
     // store new last value type
     lastResultTypeFiFo[0] = _pEvalStackTop->varOrConst.valueType;               // value type
@@ -1436,77 +1502,48 @@ void Interpreter::clearEvalStackLevels(int n) {
 // Clear flow control stack  
 // ------------------------
 
+
 void Interpreter::clearFlowCtrlStack() {                // and remaining local storage + local variable string and array values for open functions
 
-    Serial.print("**** clear flow control stack, levels: "); Serial.println(flowCtrlStack.getElementCount());////
     if (flowCtrlStack.getElementCount() > 0) {                // exclude main level
 
         void* pMainLvl = flowCtrlStack.getFirstListElement();           // highest blocklevel, if any
         void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                   // deepest caller, loop ..., if any
 
-        Serial.print("*** block type: "); Serial.println((int)_activeFunctionData.blockType); ////
+        bool isInitialLoop{ true };
+        do {
+            char blockType = isInitialLoop ? _activeFunctionData.blockType : *(char*)pFlowCtrlStackLvl;
 
-        if (_activeFunctionData.blockType == MyParser::block_extFunction) {               // block type: function (is current function) - NOT a loop or other block type
+            if (blockType == MyParser::block_extFunction) {               // block type: function (is current function) - NOT a loop or other block type
+                if (!isInitialLoop) { _activeFunctionData = *((FunctionData*)pFlowCtrlStackLvl); }
+                if (_callStackDepth > 0) {                    // not main program level
+                    --_callStackDepth;
 
-            if (_callStackDepth > 0) {                    // not main program level
-                --_callStackDepth;
-                int localVarCount = extFunctionData[_activeFunctionData.functionIndex].localVarCountInFunction;
+                    int functionIndex = _activeFunctionData.functionIndex;
+                    int localVarCount = extFunctionData[functionIndex].localVarCountInFunction;
 
-                Serial.print("is ext function level, local vars: "); Serial.println(localVarCount); ////
-                if (localVarCount > 0) {
+                    if (localVarCount > 0) {
 #if printCreateDeleteHeapObjects
-                    Serial.print("----- (LOCAL STORAGE) ");   Serial.println((uint32_t)_activeFunctionData.pLocalVarValues - RAMSTART);
+                        Serial.print("----- (LOCAL STORAGE) ");   Serial.println((uint32_t)(_activeFunctionData.pLocalVarValues) - RAMSTART);
 #endif
-                    _pmyParser->deleteArrayElementStringObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, false, false, true);
-                    _pmyParser->deleteVariableValueObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, false, false, true);
+                        _pmyParser->deleteArrayElementStringObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, false, false, true);
+                        _pmyParser->deleteVariableValueObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, false, false, true);
 
-                    // release local variable storage for function that has been called
-                    delete[] _activeFunctionData.pLocalVarValues;
-                    delete[] _activeFunctionData.pVariableAttributes;
-                    delete[] _activeFunctionData.ppSourceVarTypes;
-
-                    Serial.println("**** clear flow control stack executed");////
+                        // release local variable storage for function that has been called
+                        delete[] _activeFunctionData.pLocalVarValues;
+                        delete[] _activeFunctionData.pVariableAttributes;
+                        delete[] _activeFunctionData.ppSourceVarTypes;
+                        localVarValueAreaCount--;
                 }
             }
         }
 
+            if (!isInitialLoop) { pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl); }
+            if (pFlowCtrlStackLvl == nullptr) { break; }       // all done
 
-
-
-        do {
-            char blockType = *(char*)pFlowCtrlStackLvl;
-
-            Serial.print("*** block type: "); Serial.println((int)blockType); ////
-
-            if (blockType == MyParser::block_extFunction) {               // block type: function (is current function) - NOT a loop or other block type
-                if (_callStackDepth > 0) {                    // not main program level
-                    --_callStackDepth;
-
-                    int functionIndex = ((FunctionData*)pFlowCtrlStackLvl)->functionIndex;
-                    int localVarCount = extFunctionData[functionIndex].localVarCountInFunction;
-
-                    Serial.print("is ext function level, local vars: "); Serial.println(localVarCount); ////
-                    if (localVarCount > 0) {
-#if printCreateDeleteHeapObjects
-                        Serial.print("----- (LOCAL STORAGE) ");   Serial.println((uint32_t)((FunctionData*)pFlowCtrlStackLvl)->pLocalVarValues - RAMSTART);
-#endif
-                        _pmyParser->deleteArrayElementStringObjects(((FunctionData*)pFlowCtrlStackLvl)->pLocalVarValues, ((FunctionData*)pFlowCtrlStackLvl)->pVariableAttributes, localVarCount, false, false, true);
-                        _pmyParser->deleteVariableValueObjects(((FunctionData*)pFlowCtrlStackLvl)->pLocalVarValues, ((FunctionData*)pFlowCtrlStackLvl)->pVariableAttributes, localVarCount, false, false, true);
-
-                        // release local variable storage for function that has been called
-                        delete[]((FunctionData*)pFlowCtrlStackLvl)->pLocalVarValues;
-                        delete[]((FunctionData*)pFlowCtrlStackLvl)->pVariableAttributes;
-                        delete[]((FunctionData*)pFlowCtrlStackLvl)->ppSourceVarTypes;
-
-                        Serial.println("**** clear flow control stack executed");////
-                    }
-                }
-            }
-
-            pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
-            if (pFlowCtrlStackLvl == nullptr) { break; }         // all done
-        } while (true);
-    }
+            isInitialLoop = false;
+    } while (true);
+}
 
     flowCtrlStack.deleteList();
     _pFlowCtrlStackTop = nullptr;   _pFlowCtrlStackMinus2 = nullptr; _pFlowCtrlStackMinus1 = nullptr;
@@ -2086,8 +2123,8 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
                     delete[] pUnclippedResultString;
                     intermediateStringObjectCount--;
                 }
-            }
         }
+    }
 
         // store value in variable and adapt variable value type - next line is valid for long integers as well
         if (opResultLong || opResultFloat) { *_pEvalStackMinus2->varOrConst.value.pFloatConst = opResult.floatConst; }
@@ -2101,7 +2138,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) |
                 (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
         }
-    }
+}
 
 
     // (7) post process
@@ -2485,9 +2522,10 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
 
             break;
 
-        default:return result_arg_invalid; break;
+        case 19:fcnResult.longConst = _callStackDepth; break;
+
+        default: return result_arg_invalid; break;
         }       // switch (sysVar)
-        break;
     }
 
 
@@ -2513,7 +2551,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
     _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
 
     return result_execOK;
-}
+    }
 
 
 // -----------------------
@@ -2749,6 +2787,7 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction(LE_evalStack*&
         _activeFunctionData.pLocalVarValues = new Val[localVarCount];              // local variable value: real, pointer to string or array, or (if reference): pointer to 'source' (referenced) variable
         _activeFunctionData.ppSourceVarTypes = new char* [localVarCount];           // only if local variable is reference to variable or array element: pointer to 'source' variable value type  
         _activeFunctionData.pVariableAttributes = new char[localVarCount];         // local variable: value type (float, local string or reference); 'source' (if reference) or local variable scope (user, global, static; local, param) 
+        localVarValueAreaCount++;
 
 #if printCreateDeleteHeapObjects
         Serial.print("+++++ (LOCAL STORAGE) ");   Serial.println((uint32_t)_activeFunctionData.pLocalVarValues - RAMSTART);
@@ -3044,6 +3083,7 @@ Interpreter::execResult_type Interpreter::terminateExternalFunction(bool addZero
         delete[] _activeFunctionData.pLocalVarValues;
         delete[] _activeFunctionData.pVariableAttributes;
         delete[] _activeFunctionData.ppSourceVarTypes;
+        localVarValueAreaCount--;
     }
 
     char blockType = MyParser::block_none;
@@ -3065,6 +3105,12 @@ Interpreter::execResult_type Interpreter::terminateExternalFunction(bool addZero
 
 
     if (_activeFunctionData.pNextStep >= _programStart) {   // not within a function        
+        if (localVarValueAreaCount != 0) {
+            //// _pConsole ???
+            Serial.print("*** Local variable storage area objects cleanup error. Remaining: "); Serial.println(localVarStringObjectCount);
+            localVarValueAreaCount = 0;
+        }
+
         if (localVarStringObjectCount != 0) {
             //// _pConsole ???
             Serial.print("*** Local variable string objects cleanup error. Remaining: "); Serial.println(localVarStringObjectCount);

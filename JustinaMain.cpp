@@ -1,6 +1,7 @@
 #include "Justina.h"
 
-#define printCreateDeleteHeapObjects 1
+#define printCreateDeleteHeapObjects 0
+#define debugPrint 0
 
 /***********************************************************
 *                    class LinkedList                   *
@@ -230,12 +231,15 @@ Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
     userArrayObjectCount = 0;
     localArrayObjectCount = 0;
 
+    // local variable storage area
+    localVarValueAreaCount = 0;
+    
     // current last result FiFo depth (values currently stored)
     _lastResultCount = 0;
 
     // user call back alias storage
-    int _userCBprocStartSet_count = 0;
-    int _userCBprocAliasSet_count = 0;
+    _userCBprocStartSet_count = 0;
+    _userCBprocAliasSet_count = 0;
 
     // calculation result print
     _dispWidth = _defaultPrintWidth, _dispNumPrecision = _defaultNumPrecision, _dispCharsToPrint = _defaultCharsToPrint, _dispFmtFlags = _defaultPrintFlags;
@@ -259,7 +263,14 @@ Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
     _lastCallBackTime = _currenttime;
 
     _pConsole->println();
-    for (int i = 0; i < 48; i++) { _pConsole->print("*"); }_pConsole->println();
+    for (int i = 0; i < 13; i++) { _pConsole->print("*"); }_pConsole->println();
+    _pConsole->print("__"); _pConsole->println();
+    for (int i = 0; i < 6; i++) { _pConsole->print("*"); }_pConsole->println();
+    _pConsole->print("__"); _pConsole->println();
+    for (int i = 0; i < 14; i++) { _pConsole->print("*"); }_pConsole->println();
+    _pConsole->print("_"); _pConsole->println();
+    for (int i = 0; i < 10; i++) { _pConsole->print("*"); }_pConsole->println();
+
     _pConsole->print("    "); _pConsole->println(ProductName);
     _pConsole->print("    "); _pConsole->println(LegalCopyright);
     _pConsole->print("    Version: "); _pConsole->print(ProductVersion); _pConsole->print(" ("); _pConsole->print(BuildDate); _pConsole->println(")");
@@ -574,8 +585,8 @@ bool Interpreter::processCharacter(char c, bool &kill) {
 
         withinComment = false;
 
-
-        Serial.print("\r\n** EOF stats:  parsed strings "); Serial.print(parsedStringConstObjectCount);
+#if debugPrint
+        Serial.print("\r\n** EOF stats:\r\n    parsed strings "); Serial.print(parsedStringConstObjectCount);
 
         Serial.print(", prog name strings "); Serial.print(identifierNameStringObjectCount);
         Serial.print(", prog var strings "); Serial.print(globalStaticVarStringObjectCount);
@@ -588,13 +599,14 @@ bool Interpreter::processCharacter(char c, bool &kill) {
         Serial.print(", last value strings "); Serial.print(lastValuesStringObjectCount);
 
 
-        Serial.print("\r\n   eval stats : interim strings "); Serial.print(intermediateStringObjectCount);
+        Serial.print("\r\n    interim strings "); Serial.print(intermediateStringObjectCount);
 
+        Serial.print(", local var storage "); Serial.print(localVarValueAreaCount);
         Serial.print(", local var strings "); Serial.print(localVarStringObjectCount);
         Serial.print(", local arrays "); Serial.println(localArrayObjectCount);
 
         Serial.println();
-
+#endif
         return _quitJustineAtEOF;
     }
 
