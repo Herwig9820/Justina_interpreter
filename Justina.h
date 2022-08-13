@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <memory>
 
-#define ProductName "Justina: JUst an INterpreter for Arduino"
+#define ProductName "Justina: JUST an INterpreter for Arduino"
 #define LegalCopyright "Copyright (C) Herwig Taveirne, 2022"
 #define ProductVersion "1.0.1"
 #define BuildDate "July 25, 2022"
@@ -312,6 +312,20 @@ public:
 
 
 
+    // flow control data
+    // -----------------
+    // 
+    // each function called, EXCEPT the currently ACTIVE function (deepest call stack level), and all other block commands (e.g. while...end, etc.), use a flow control stack level
+    // flow control data for the currently active function - or the main program level if no function is currently active - is stored in structure '_activeFunctionData' (NOT on the flow control stack)
+    // -> if executing a command in immediate mode, and not within a called function or open block, the control flow stack has no elements
+    // -> if executing a 'start block' command (like 'while', ...), a structure of type 'BlockTestData' containing flow control data for that open block is pushed to the flow control stack,
+    //    and structure '_activeFunctionData' still contains flow control data for the currently active function.
+    //    if a block is ended, the corresponding flow control data will be popped from the stack
+    // -> if calling a function, flow control data for what is now becoming the caller (stored in structure _activeFunctionData) is pushed to the flow control stack,
+    //    and flow control data for the CALLED function will now be stored in structure '_activeFunctionData'  
+    //    if a function is ended, the corresponding flow control data will be COPIED to structure '_activeFunctionData' again before it is popped from the stack
+
+    
     struct BlockTestData {
         char blockType;                 // command block: will identify stack level as an if...end, for...end, ... block
         char loopControl;               // flags: within iteration, request break from loop, test failed
@@ -328,13 +342,13 @@ public:
 
     struct FunctionData {
         char blockType;                 // command block: will identify stack level as a function block
-        char functionIndex;             // for error messages only
+        char functionIndex;             // user function index 
         char callerEvalStackLevels;     // evaluation stack levels in use by caller(s) and main (call stack)
         // within a function, as in immediate mode, only one (block) command can be active at a time (ended by semicolon), in contrast to command blocks, which can be nested, so command data can be stored here:
         // data is stored when a keyword is processed and it is cleared when the ending semicolon (ending the command) is processed
         char activeCmd_ResWordCode;     // keyword code (set to 'cmdcod_none' again when semicolon is processed)
 
-        char* activeCmd_tokenAddress;   // address of parsed keyword token                                
+        char* activeCmd_tokenAddress;   // address in program memory of parsed keyword token                                
 
         Val* pLocalVarValues;           // points to local variables (values: real, pointer to string or array, or (if reference): pointer to 'source' (referenced) variable)
         char** ppSourceVarTypes;        // only if local variable is reference to variable or array element: pointer to 'source' variable value type  

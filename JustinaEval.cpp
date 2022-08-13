@@ -403,9 +403,9 @@ Interpreter::execResult_type  Interpreter::exec() {
 };
 
 
-// -----------------------------------
-// *   execute a processed command   *
-// -----------------------------------
+// -----------------------------------------------------------------------
+// *   execute a processed command   (statement starting with a keyword) *
+// -----------------------------------------------------------------------
 
 Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionReturn) {
 
@@ -442,15 +442,15 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         char valueType[1];
         Val args[1];
 
-        _keepInMemory = true;       // true;
-        if (cmdParamCount != 0) {
+        _keepInMemory = true;                                                                                               // init;
+        if (cmdParamCount != 0) {                                                                                           // copy arguments from stack
             copyValueArgsFromStack(pstackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
             if (((uint8_t)(valueType[0]) != value_isLong) && ((uint8_t)(valueType[0]) != value_isFloat)) { return result_arg_numValueExpected; }
             if ((uint8_t)(valueType[0]) == value_isFloat) { args[1].longConst = (int)args[1].floatConst; }
             _keepInMemory = (args[0].longConst == 0);
         }
 
-        execResult = result_eval_quit; return execResult;
+        execResult = result_eval_quit; return execResult;                                                                   // 'quit' follows same flow as error (ir halts a program) and subsequently quits
 
         clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
 
@@ -666,14 +666,26 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     break;
 
 
-    // --------------------------------------------------------
-    // stop a running program and wait for the user to continue
-    //---------------------------------------------------------
+    // -----------------------------------------------------------------
+    // stop or pause a running program and wait for the user to continue
+    //------------------------------------------------------------------
 
     case MyParser::cmdcod_pause:
     case MyParser::cmdcod_stop:
     {
+        long pauseTime = 1000;      // default: 1 second
         char s[100];
+        if (cmdParamCount == 1) {       // copy pause delay, in seconds, from stack, if provided
+            bool operandIsVar = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable);
+            char valueType = operandIsVar ? (*_pEvalStackTop->varOrConst.varTypeAddress & value_typeMask) : pstackLvl->varOrConst.valueType;
+            bool argIsLong = ((uint8_t)valueType == value_isLong);
+            bool argIsFloat = ((uint8_t)valueType == value_isFloat);
+            if (!argIsLong && !argIsFloat) { return result_arg_numValueExpected; }
+            pauseTime = (argIsLong) ? _pEvalStackTop->varOrConst.value.longConst : (int)_pEvalStackTop->varOrConst.value.floatConst;    // in seconds
+            if (pauseTime < 1) { pauseTime = 1; }
+            else if (pauseTime > 10) { pauseTime = 10; };
+            pauseTime *= 1000; // to milliseconds
+        }
         sprintf(s, "***** Program %s in user function %s%s", (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_stop) ? "stopped" : "paused",
             extFunctionNames[_activeFunctionData.functionIndex], (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_stop) ? ": press ENTER to continue *****" : " *****");
         _pConsole->println(s);
@@ -710,13 +722,13 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                 else if ((c == 'a') || (c == 'A')) {                                                                    // part of a Justina ESCAPE sequence ? Abort evaluation phase 
                     if (backslashFound) {
                         backslashFound = false;  doAbort = true;
-                        if (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_pause) {break;}
+                        if (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_pause) { break; }
                     }
                 }
             }
 
             if (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_pause) {
-                if (startPauseAt + 10000 < millis()) { break; }                                                           // if still characters in buffer, buffer will be flushed when processng of statement finalised
+                if (startPauseAt + pauseTime < millis()) { break; }                                                           // if still characters in buffer, buffer will be flushed when processng of statement finalised
             }
 
 
@@ -927,7 +939,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 #endif
                     delete[] args[i].pStringConst;                                                  // delete temporary string
                     intermediateStringObjectCount--;
-            }
+                }
 
                 // callback routine changed non-empty VARIABLE string into empty variable string ("\0") ?
                 else if (strlen(args[i].pStringConst) == 0) {
@@ -942,9 +954,9 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                     // set variable string pointer to null pointer
                     *pstackLvl->varOrConst.value.ppStringConst = nullptr;                           // change pointer to string (in variable) to null pointer
                 }
-        }
+            }
             pstackLvl = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
-    }
+        }
 
 
         // finalize
@@ -1200,10 +1212,10 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     }
     break;
 
-}
+    }
 
     return result_execOK;
-    }
+}
 
 
 // -------------------------------
@@ -1388,9 +1400,9 @@ void Interpreter::saveLastValue(bool& overWritePrevious) {
                 // note: this is always an intermediate string
                 delete[] lastResultValueFiFo[itemToRemove].pStringConst;
                 lastValuesStringObjectCount--;
+            }
         }
     }
-}
     else {
         _lastResultCount++;     // only adding an item, without removing previous one
     }
@@ -1437,8 +1449,8 @@ void Interpreter::saveLastValue(bool& overWritePrevious) {
 #endif
             delete[] lastvalue.value.pStringConst;
             intermediateStringObjectCount--;
+        }
     }
-}
 
     // store new last value type
     lastResultTypeFiFo[0] = _pEvalStackTop->varOrConst.valueType;               // value type
@@ -1534,16 +1546,16 @@ void Interpreter::clearFlowCtrlStack() {                // and remaining local s
                         delete[] _activeFunctionData.pVariableAttributes;
                         delete[] _activeFunctionData.ppSourceVarTypes;
                         localVarValueAreaCount--;
+                    }
                 }
             }
-        }
 
             if (!isInitialLoop) { pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl); }
             if (pFlowCtrlStackLvl == nullptr) { break; }       // all done
 
             isInitialLoop = false;
-    } while (true);
-}
+        } while (true);
+    }
 
     flowCtrlStack.deleteList();
     _pFlowCtrlStackTop = nullptr;   _pFlowCtrlStackMinus2 = nullptr; _pFlowCtrlStackMinus1 = nullptr;
@@ -2123,8 +2135,8 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
                     delete[] pUnclippedResultString;
                     intermediateStringObjectCount--;
                 }
+            }
         }
-    }
 
         // store value in variable and adapt variable value type - next line is valid for long integers as well
         if (opResultLong || opResultFloat) { *_pEvalStackMinus2->varOrConst.value.pFloatConst = opResult.floatConst; }
@@ -2138,7 +2150,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) |
                 (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
         }
-}
+    }
 
 
     // (7) post process
@@ -2196,7 +2208,6 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
 
     // preprocess: retrieve argument(s) info: variable or constant, value type
     // -----------------------------------------------------------------------
-
 
     if (suppliedArgCount > 0) {
         LE_evalStack* pStackLvl = pFirstArgStackLvl;         // pointing to first argument on stack
@@ -2551,7 +2562,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
     _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
 
     return result_execOK;
-    }
+}
 
 
 // -----------------------

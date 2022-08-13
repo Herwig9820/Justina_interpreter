@@ -233,7 +233,7 @@ Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
 
     // local variable storage area
     localVarValueAreaCount = 0;
-    
+
     // current last result FiFo depth (values currently stored)
     _lastResultCount = 0;
 
@@ -248,7 +248,7 @@ Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
     makeFormatString(_dispFmtFlags, false, _dispNumSpecifier, _dispNumberFmtString);       // for numbers
     strcpy(_dispStringFmtString, "%*.*s%n");                                                           // for strings
 
-     // for print command
+    // for print command
     _printWidth = _defaultPrintWidth, _printNumPrecision = _defaultNumPrecision, _printCharsToPrint = _defaultCharsToPrint, _printFmtFlags = _defaultPrintFlags;
     _printNumSpecifier[0] = 'G'; _printNumSpecifier[1] = '\0';
 
@@ -263,12 +263,9 @@ Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
     _lastCallBackTime = _currenttime;
 
     _pConsole->println();
-    for (int i = 0; i < 13; i++) { _pConsole->print("*"); }_pConsole->println();
-    _pConsole->print("__"); _pConsole->println();
-    for (int i = 0; i < 6; i++) { _pConsole->print("*"); }_pConsole->println();
-    _pConsole->print("__"); _pConsole->println();
-    for (int i = 0; i < 14; i++) { _pConsole->print("*"); }_pConsole->println();
-    _pConsole->print("_"); _pConsole->println();
+    for (int i = 0; i < 13; i++) { _pConsole->print("*"); } _pConsole->print("____");
+    for (int i = 0; i < 4; i++) { _pConsole->print("*"); } _pConsole->print("__");
+    for (int i = 0; i < 14; i++) { _pConsole->print("*"); } _pConsole->print("_");
     for (int i = 0; i < 10; i++) { _pConsole->print("*"); }_pConsole->println();
 
     _pConsole->print("    "); _pConsole->println(ProductName);
@@ -319,7 +316,7 @@ bool Interpreter::setUserFcnCallback(void(*func) (const void** data, const char*
 // ----------------------------
 
 bool Interpreter::run(Stream* const pConsole, Stream** const pTerminal, int definedTerms) {
-    bool kill{false};                                       // kill is true: request from caller, kill is false: quit command executed
+    bool kill{ false };                                       // kill is true: request from caller, kill is false: quit command executed
     bool quitNow{ false };
     char c;
 
@@ -346,7 +343,7 @@ bool Interpreter::run(Stream* const pConsole, Stream** const pTerminal, int defi
         }
     } while (true);
 
-    if (kill) {_pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<");}
+    if (kill) { _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
     if (_keepInMemory) { _pConsole->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
     _quitJustineAtEOF = false;         // if interpreter stays in memory: re-init
     return _keepInMemory;
@@ -356,7 +353,7 @@ bool Interpreter::run(Stream* const pConsole, Stream** const pTerminal, int defi
 // *   process an input character   *
 // ----------------------------------
 
-bool Interpreter::processCharacter(char c, bool &kill) {
+bool Interpreter::processCharacter(char c, bool& kill) {
 
     // process character
     static MyParser::parseTokenResult_type result{};
@@ -611,4 +608,4 @@ bool Interpreter::processCharacter(char c, bool &kill) {
     }
 
     return false;  // and wait for next character
-}
+    }
