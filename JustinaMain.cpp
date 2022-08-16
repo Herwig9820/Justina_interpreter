@@ -195,11 +195,14 @@ Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
     _isPrompt = false;
 
     // init 'machine' (not a complete reset, because this clears heap objects for this Interpreter object, and there are none)
+    _inStopForDebugMode = false;
     _programName[0] = '\0';
     _programVarNameCount = 0;
-    _staticVarCount = 0;
+    _localVarCount=0;
     _localVarCountInFunction = 0;
     _paramOnlyCountInFunction = 0;
+    _staticVarCount = 0;
+    _staticVarCountInFunction =0;
     _extFunctionCount = 0;
 
     _instructionCharCount = 0;
@@ -499,7 +502,7 @@ bool Interpreter::processCharacter(char c, bool& kill) {
         _instruction[_instructionCharCount] = '\0';                            // add string terminator
 
         if (requestMachineReset) {
-            _pmyParser->resetMachine(false);                                // prepare for parsing next program( stay in current mode )
+            _pmyParser->resetMachine(false);                                // prepare for parsing next program (stay in current mode )
             requestMachineReset = false;
         }
 
@@ -537,6 +540,7 @@ bool Interpreter::processCharacter(char c, bool& kill) {
             _pmyParser->printParsingResult(result, funcNotDefIndex, _instruction, _lineCount, pErrorPos);
         }
         else { _pConsole->println(); }                                       // empty line: advance to next line only
+        
         if (_promptAndEcho != 0) { _pConsole->print("Justina> "); _isPrompt = true; }                 // print new prompt
 
         bool wasReset = false;      // init

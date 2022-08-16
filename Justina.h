@@ -120,7 +120,7 @@ public:
         result_array_valueTypeIsFixed,
 
         // internal functions
-        result_arg_outsideRange,
+        result_arg_outsideRange = 3100,
         result_arg_integerExpected,
         result_arg_invalid,
         result_arg_dimNumberIntegerExpected,
@@ -129,14 +129,14 @@ public:
         result_arg_numValueExpected,
         result_arg_tooManyArgs,
 
-        result_array_dimNumberNonInteger,
+        result_array_dimNumberNonInteger = 3200,
         result_array_dimNumberInvalid,
         result_arg_varExpected,
         result_numericVariableExpected,
         result_aliasNotDeclared,
 
         // numbers and strings
-        result_outsideRange,
+        result_outsideRange = 3300,
         result_numberOutsideRange,
         result_numberNonInteger,
         result_numberExpected,
@@ -150,12 +150,14 @@ public:
         result_testexpr_numberExpected,
         result_stringTooLong,
 
-        // abort
-        result_eval_abort,
-        result_eval_kill,
-        result_eval_quit, 
-        result_insideProgramOnly
+        // abort, kill, quit, debug
+        result_eval_stopForDebug = 3400,           // 'Stop' command executed (from inside a program only): this enters debug mode
+        result_eval_abort,                  // abort running program (return to Justina prompt)
 
+        result_eval_kill,                   // caller requested to exit Justina interpreter
+        result_eval_quit,                   // 'Quit' command executed (exit Justina interpreter)
+
+        result_eval_noProgramStopped        // 'Go' command not allowed because not in debug mode
     };
 
     // printing (to string, to stream)
@@ -178,7 +180,8 @@ public:
     static constexpr int IMM_MEM_SIZE{ 300 };
     static constexpr int MAX_USERVARNAMES{ 32 };                       // max. vars (all types: global, static, local, parameter). Absolute limit: 255
     static constexpr int MAX_PROGVARNAMES{ 64 };                       // max. vars (all types: global, static, local, parameter). Absolute limit: 255
-    static constexpr int MAX_STAT_VARS{ 32 };                      // max. static vars (only). Absolute limit: 255
+    static constexpr int MAX_STAT_VARS{ 64 };                      // max. static vars (only). Absolute limit: 255
+    static constexpr int MAX_LOCAL_VARS{ 64 };                      // max. local vars, including function parameters (only). Absolute limit: 255
     static constexpr int MAX_LOC_VARS_IN_FUNC{ 32 };               // max. local and parameter vars (only) in an INDIVIDUAL function. Absolute limit: 255 
     static constexpr int MAX_EXT_FUNCS{ 16 };                      // max. external functions. Absolute limit: 255
     static constexpr int MAX_ARRAY_DIMS{ 3 };                        // 1, 2 or 3 is allwed: must fit in 3 bytes
@@ -257,9 +260,15 @@ public:
 
     struct ExtFunctionData {
         char* pExtFunctionStartToken;                           // ext. function: pointer to start of function (token)
+
         char paramOnlyCountInFunction;
-        char localVarCountInFunction;                             // needed to reserve run time storage for local variables 
-        char paramIsArrayPattern[2];                         // parameter pattern: b15 flag set when parsing function definition or first function call; b14-b0 flags set when corresponding parameter or argument is array      
+        char localVarCountInFunction;                           // needed to reserve run time storage for local variables 
+        char staticVarCountInFunction;                          // needed when in debugging mode only
+        char spare;                                             // boundary alignment
+
+        char localVarNameRefs_startIndex;                       // not in function, but overall, needed when in debugging mode only
+        char staticVarStartIndex;                               // needed when in debugging mode only
+        char paramIsArrayPattern[2];                            // parameter pattern: b15 flag set when parsing function definition or first function call; b14-b0 flags set when corresponding parameter or argument is array      
     };
 
 
@@ -318,15 +327,15 @@ public:
     // each function called, EXCEPT the currently ACTIVE function (deepest call stack level), and all other block commands (e.g. while...end, etc.), use a flow control stack level
     // flow control data for the currently active function - or the main program level if no function is currently active - is stored in structure '_activeFunctionData' (NOT on the flow control stack)
     // -> if executing a command in immediate mode, and not within a called function or open block, the control flow stack has no elements
-    // -> if executing a 'start block' command (like 'while', ...), a structure of type 'BlockTestData' containing flow control data for that open block is pushed to the flow control stack,
+    // -> if executing a 'start block' command (like 'while', ...), a structure of type 'OpenBlockTestData' containing flow control data for that open block is pushed to the flow control stack,
     //    and structure '_activeFunctionData' still contains flow control data for the currently active function.
     //    if a block is ended, the corresponding flow control data will be popped from the stack
     // -> if calling a function, flow control data for what is now becoming the caller (stored in structure _activeFunctionData) is pushed to the flow control stack,
     //    and flow control data for the CALLED function will now be stored in structure '_activeFunctionData'  
     //    if a function is ended, the corresponding flow control data will be COPIED to structure '_activeFunctionData' again before it is popped from the stack
 
-    
-    struct BlockTestData {
+
+    struct OpenBlockTestData {
         char blockType;                 // command block: will identify stack level as an if...end, for...end, ... block
         char loopControl;               // flags: within iteration, request break from loop, test failed
         char testValueType;             // 'for' loop tests: value type used for loop tests
@@ -340,7 +349,7 @@ public:
         char* nextTokenAddress;         // address of token directly following 'FOR...; statement
     };
 
-    struct FunctionData {
+    struct OpenFunctionData {
         char blockType;                 // command block: will identify stack level as a function block
         char functionIndex;             // user function index 
         char callerEvalStackLevels;     // evaluation stack levels in use by caller(s) and main (call stack)
@@ -350,7 +359,8 @@ public:
 
         char* activeCmd_tokenAddress;   // address in program memory of parsed keyword token                                
 
-        Val* pLocalVarValues;           // points to local variables (values: real, pointer to string or array, or (if reference): pointer to 'source' (referenced) variable)
+        // value area pointers (note: a value is a long, a float or a pointer to a string or array, or (if reference): pointer to 'source' (referenced) variable))
+        Val* pLocalVarValues;           // points to local variable value storage area
         char** ppSourceVarTypes;        // only if local variable is reference to variable or array element: pointer to 'source' variable value type  
         char* pVariableAttributes;      // local variable: value type (float, local string or reference); 'source' (if reference) or local variable scope (user, global, static; local, param) 
 
@@ -391,7 +401,7 @@ public:
     static constexpr uint8_t value_isFloat = 2 << 0;
     static constexpr uint8_t value_isStringPointer = 3 << 0;
 private:
-    static constexpr uint8_t value_isVarRef = 4 << 0;                   
+    static constexpr uint8_t value_isVarRef = 4 << 0;
 public:
 
     // constants used during execution, only stored within the stack for value tokens
@@ -413,7 +423,7 @@ public:
     static constexpr  int _maxInstructionChars{ 300 };
 
     static const unsigned long callbackPeriod = 10;      // in ms; should be considerably less than any heartbeat period defined in main program
-    
+
     // counting of heap objects (note: linked list element count is maintained within the linked list objects)
 
     // name strings for variables and functions
@@ -448,7 +458,7 @@ public:
     bool _dispIsIntFmt{ false };              // initialized during reset          
     char  _dispNumberFmtString[20] = "", _dispStringFmtString[20] = "%*.*s%n";        // long enough to contain all format specifier parts; initialized during reset
 
-     // for print command
+    // for print command
     int _printWidth = _defaultPrintWidth, _printNumPrecision = _defaultNumPrecision, _printCharsToPrint = _defaultCharsToPrint, _printFmtFlags = _defaultPrintFlags;
     char _printNumSpecifier[2] = "G";      // room for 1 character and an extra terminating \0 (initialized during reset)
 
@@ -471,6 +481,8 @@ public:
     int _programVarNameCount{ 0 };                                        // counts number of variable names (global variables: also stores values) 
     int _localVarCountInFunction{ 0 };                             // counts number of local variables in a specific function (names only, values not used)
     int _paramOnlyCountInFunction{ 0 };
+    int _localVarCount{ 0 };                                      // local variable count (across all functions)
+    int _staticVarCountInFunction{ 0 };
     int _staticVarCount{ 0 };                                      // static variable count (across all functions)
     int _extFunctionCount{ 0 };                                    // external function count
     int _lastResultCount{ 0 };
@@ -484,7 +496,7 @@ public:
 
     uint16_t _paramIsArrayPattern{ 0 };
 
-    char _programName [_maxIdentifierNameLen + 1] ;
+    char _programName[_maxIdentifierNameLen + 1];
 
     Stream* _pConsole{ nullptr };
     Stream** _pTerminal{ nullptr };
@@ -493,7 +505,9 @@ public:
     // program storage
     char _programStorage[PROG_MEM_SIZE + IMM_MEM_SIZE];
     char* _programStart;
-    int  _programSize;
+    int  _programSize{ false };
+
+    bool _inStopForDebugMode;
 
     MyParser* _pmyParser;
 
@@ -541,9 +555,14 @@ public:
     // static variable value storage
     Val staticVarValues[MAX_STAT_VARS];                                 // store static variable values (float, pointer to string, pointer to array of floats) 
     char staticVarType[MAX_STAT_VARS]{ 0 };                             // stores value type (float, pointer to string) and 'is array' flag
+    char staticVarNameRef[MAX_STAT_VARS]{ 0 };                            // used while in DEBUGGING mode only: index of static variable NAME
 
     // local variable value storage
-    FunctionData _activeFunctionData;
+    OpenFunctionData _activeFunctionData;
+
+    // local variable value storage
+    char localVarNameRef[MAX_LOCAL_VARS]{ 0 };                           // used while in DEBUGGING mode only: index of local variable NAME
+
 
     // temporary local variable stoarage during function parsing (without values)
     char localVarType[MAX_LOC_VARS_IN_FUNC]{ 0 };                 // parameter, local variables: temporarily maintains array flag during function parsing (storage reused by functions during parsing)
@@ -567,7 +586,7 @@ public:
 
     // callback functions and storage
 
-    unsigned long _lastCallBackTime {0}, _currenttime{0}, _previousTime{0};
+    unsigned long _lastCallBackTime{ 0 }, _currenttime{ 0 }, _previousTime{ 0 };
 
     void (*_housekeepingCallback)(bool& requestQuit);                                         // pointer to callback function for heartbeat
 
@@ -584,7 +603,7 @@ public:
     Interpreter(Stream* const pConsole);               // constructor
     ~Interpreter();               // deconstructor
     bool run(Stream* const pConsole, Stream** const pTerminal, int definedTerms);
-    bool processCharacter(char c, bool &kill);
+    bool processCharacter(char c, bool& kill);
 
     bool setMainLoopCallback(void (*func)(bool& requistQuit));                   // set callback functions
     bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType));
@@ -633,7 +652,7 @@ public:
     int jumpTokens(int n, char*& pStep);
     int jumpTokens(int n);
 
-    void PushTerminalToken(int& tokenType);
+    void pushTerminalToken(int& tokenType);
     void pushResWord(int& tokenType);
     void pushFunctionName(int& tokenType);
     void pushGenericName(int& tokenType);
@@ -678,7 +697,9 @@ public:
         cmdcod_return,
         cmdcod_end,
         cmdcod_pause,
+        cmdcod_halt,
         cmdcod_stop,
+        cmdcod_go,
         cmdcod_quit,
         cmdcod_info,
         cmdcod_input,
@@ -753,11 +774,11 @@ public:
         termcod_divAssign,
         termcod_modAssign,
         termcod_bitAndAssign,
-        termcod_bitOrAssign, 
+        termcod_bitOrAssign,
         termcod_bitXorAssign,
         termcod_bitShLeftAssign,
         termcod_bitShRightAssign,
-        
+
         termcod_lt,
         termcod_gt,
         termcod_ltoe,
@@ -1112,25 +1133,25 @@ public:
 
     static constexpr char* term_incr = "++";
     static constexpr char* term_decr = "--";
-    
+
     static constexpr char* term_lt = "<";
     static constexpr char* term_gt = ">";
     static constexpr char* term_ltoe = "<=";
     static constexpr char* term_gtoe = ">=";
     static constexpr char* term_neq = "!=";
     static constexpr char* term_eq = "==";
-    
+
     static constexpr char* term_plus = "+";
     static constexpr char* term_minus = "-";
     static constexpr char* term_mult = "*";
     static constexpr char* term_div = "/";
     static constexpr char* term_mod = "%";
     static constexpr char* term_pow = "**";
-    
+
     static constexpr char* term_and = "&&";
     static constexpr char* term_or = "||";
     static constexpr char* term_not = "!";
-    
+
     static constexpr char* term_bitShLeft = "<<";
     static constexpr char* term_bitShRight = ">>";
     static constexpr char* term_bitAnd = "&";

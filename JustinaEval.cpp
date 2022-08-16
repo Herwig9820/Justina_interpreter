@@ -19,8 +19,14 @@ Interpreter::execResult_type  Interpreter::exec() {
     bool nextIsNewInstructionStart = false;                     // false, because this is already the start of a new instruction
     execResult_type execResult = result_execOK;
 
-    _pEvalStackTop = nullptr;   _pEvalStackMinus2 = nullptr; _pEvalStackMinus1 = nullptr;
-    _pFlowCtrlStackTop = nullptr;   _pFlowCtrlStackMinus2 = nullptr; _pFlowCtrlStackMinus1 = nullptr;
+    if (!_inStopForDebugMode) {
+        _pEvalStackTop = nullptr;   _pEvalStackMinus2 = nullptr; _pEvalStackMinus1 = nullptr;
+        _pFlowCtrlStackTop = nullptr;   _pFlowCtrlStackMinus2 = nullptr; _pFlowCtrlStackMinus1 = nullptr;
+
+        intermediateStringObjectCount = 0;      // reset at the start of execution
+        localVarStringObjectCount = 0;
+        localArrayObjectCount = 0;
+    }
 
     _programCounter = _programStart;
     _activeFunctionData.functionIndex = 0;                  // main program level: not relevant
@@ -32,10 +38,6 @@ Interpreter::execResult_type  Interpreter::exec() {
     _activeFunctionData.blockType = MyParser::block_extFunction;  // consider main as an 'external' function      
 
     _lastValueIsStored = false;
-
-    intermediateStringObjectCount = 0;      // reset at the start of execution
-    localVarStringObjectCount = 0;
-    localArrayObjectCount = 0;
 
     while (tokenType != tok_no_token) {                                                                    // for all tokens in token list
         // if terminal token, determine which terminal type
@@ -153,7 +155,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                 Serial.print(tok_isOperator ? "\r\n** operator: stack level " : "\r\n** left parenthesis: stack level "); Serial.println(evalStack.getElementCount());
 #endif
                 // terminal tokens: only operators and left parentheses are pushed on the stack
-                PushTerminalToken(tokenType);
+                pushTerminalToken(tokenType);
 
                 if (precedingIsComma) { _pEvalStackTop->terminal.index |= 0x80;   break; }      // flag that preceding token is comma separator 
 
@@ -261,10 +263,14 @@ Interpreter::execResult_type  Interpreter::exec() {
         tokenType = *_activeFunctionData.pNextStep & 0x0F;                                                               // next token type (could be token within caller, if returning now)
         precedingIsComma = isComma;
 
+        ////Serial.print("next step: "); Serial.println(_programCounter - _programStorage);
+
 
         // ---------------------------------------------------
         // statement has been processed and executed: finalise
         // ---------------------------------------------------
+
+        ////Serial.print("is new instruction ? "); Serial.println(nextIsNewInstructionStart);
 
         if (nextIsNewInstructionStart) {
 
@@ -286,7 +292,7 @@ Interpreter::execResult_type  Interpreter::exec() {
             // empty console character buffer and check for '\a' (abort) character sequence (in case program keeps running, e.g. in an endless loop)
             // -------------------------------------------------------------------------------------------------------------------------------------
 
-            bool charsFound = false, backslashFound = false, doAbort = false;
+            bool charsFound = false, backslashFound = false, doAbort = false, doStopForDebug = false;
             do {
                 // if no characters in buffer skip, otherwise keep reading until new line character found
                 if (_pConsole->available() > 0) {                                                                           // if terminal character available for reading
@@ -304,9 +310,13 @@ Interpreter::execResult_type  Interpreter::exec() {
                     else if ((c == 'a') || (c == 'A')) {                                                                    // part of a Justina ESCAPE sequence ? Cancel if allowed 
                         if (backslashFound) { backslashFound = false;  doAbort = true;  continue; }
                     }
+                    else if ((c == 's') || (c == 'S')) {                                                                    // part of a Justina ESCAPE sequence ? Cancel if allowed 
+                        if (backslashFound) { backslashFound = false;  doStopForDebug = true;  continue; }
+                    }
                 }
             } while (charsFound);
             if (doAbort) { execResult = result_eval_abort; }
+            if (doStopForDebug) { execResult = result_eval_stopForDebug; }
 
 
             // while evaluating, periodically do a housekeeping callback (if function defined)
@@ -327,36 +337,35 @@ Interpreter::execResult_type  Interpreter::exec() {
             }
         }
 
+        ////Serial.println("almost there");
 
         // -----------------------------------------------------------------------------------
         // if execution error: print current instruction being executed, signal error and exit
         // -----------------------------------------------------------------------------------
 
-        if (execResult != result_execOK) {
-            {      // execution error
-                int sourceErrorPos{ 0 };
-                if (!_atLineStart) { _pConsole->println(); _atLineStart = true; }
-                _pConsole->print("\r\n  ");
+        if (execResult != result_execOK) {          // execution error
+            int sourceErrorPos{ 0 };
+            if (!_atLineStart) { _pConsole->println(); _atLineStart = true; }
+            _pConsole->print("\r\n  ");
 
-                char execInfo[100];
-                bool quitting = (execResult == result_eval_quit);
-                if (quitting) {
-                    strcpy(execInfo, "\r\nExecuting 'quit' command, ");
-                    _pConsole->print(strcat(execInfo, _keepInMemory ? "data retained" : "memory released"));
-                    if (_programCounter >= _programStart) { sprintf(execInfo, "\r\n"); }
-                    else { sprintf(execInfo, " - user function %s\r\n", extFunctionNames[_activeFunctionData.functionIndex]); }
-                }
-                else {
-                    _pmyParser->prettyPrintInstructions(true, _activeFunctionData.errorStatementStartStep, _activeFunctionData.errorProgramCounter, &sourceErrorPos);
-                    _pConsole->print("  "); for (int i = 1; i <= sourceErrorPos; i++) { _pConsole->print(" "); }
-                    if (_programCounter >= _programStart) { sprintf(execInfo, "^ Exec error %d\r\n", execResult); }     // in main program level 
-                    else { sprintf(execInfo, "^ Exec error %d in user function %s\r\n", execResult, extFunctionNames[_activeFunctionData.functionIndex]); }
-                }
-                _pConsole->print(execInfo);
-
-                _lastValueIsStored = false;              // prevent printing last result (if any)
-                break;
+            char execInfo[100];
+            bool quitting = (execResult == result_eval_quit);
+            if (quitting) {
+                strcpy(execInfo, "\r\nExecuting 'quit' command, ");
+                _pConsole->print(strcat(execInfo, _keepInMemory ? "data retained" : "memory released"));
+                if (_programCounter >= _programStart) { sprintf(execInfo, "\r\n"); }
+                else { sprintf(execInfo, " - user function %s\r\n", extFunctionNames[_activeFunctionData.functionIndex]); }
             }
+            else {
+                _pmyParser->prettyPrintInstructions(true, _activeFunctionData.errorStatementStartStep, _activeFunctionData.errorProgramCounter, &sourceErrorPos);
+                _pConsole->print("  "); for (int i = 1; i <= sourceErrorPos; i++) { _pConsole->print(" "); }
+                if (_programCounter >= _programStart) { sprintf(execInfo, "^ Exec error %d\r\n", execResult); }     // in main program level 
+                else { sprintf(execInfo, "^ Exec error %d in user function %s\r\n", execResult, extFunctionNames[_activeFunctionData.functionIndex]); }
+            }
+            _pConsole->print(execInfo);
+
+            _lastValueIsStored = false;              // prevent printing last result (if any)
+            break;
         }
 
     }   // end 'while ( tokenType != tok_no_token )'                                                                                       // end 'while ( tokenType != tok_no_token )'
@@ -397,7 +406,32 @@ Interpreter::execResult_type  Interpreter::exec() {
     // ----------------------------------------------------------------------------------------------------------------
 
     clearEvalStack();               // and intermediate strings
-    clearFlowCtrlStack();           // and remaining local storage + local variable string and array values
+
+
+    
+    
+    // ----------------------------------------------------------------------------------------------------------------
+    // 
+    // ----------------------------------------------------------------------------------------------------------------
+
+    if (execResult == result_eval_stopForDebug) {              // stopping for debug now
+
+        // push caller function data (or main = user entry level in immediate mode) on FLOW CONTROL stack 
+        _pFlowCtrlStackMinus2 = _pFlowCtrlStackMinus1; _pFlowCtrlStackMinus1 = _pFlowCtrlStackTop;
+        _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
+        *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                // push caller function data to stack
+        ++_callStackDepth;
+
+        _inStopForDebugMode = true;
+
+        ////Serial.print("*** stopping: next step after Go will be "); Serial.println(_activeFunctionData.pNextStep - _programStorage);
+        ////Serial.println("pushed block type: "); Serial.println((int)((OpenFunctionData*)_pFlowCtrlStackTop)->blockType);
+    }
+
+    else if (!_inStopForDebugMode || (execResult == result_eval_quit) || (execResult == result_eval_kill))  {             // do not clear flow control stack while in debug mode
+        clearFlowCtrlStack();           // and remaining local storage + local variable string and array values
+    }
+
 
     return execResult;   // return result, in case it's needed by caller
 };
@@ -425,7 +459,17 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
     switch (_activeFunctionData.activeCmd_ResWordCode) {                                                                    // command code 
 
-    case MyParser::cmdcod_quit:
+    case MyParser::cmdcod_stop:
+
+        // ----------------------------------------
+        // Stop Justina interpreter (for debugging)
+        // ----------------------------------------
+
+        // 'stop' behaves as if an error occured, in order to follow the same processing logic  
+
+        return result_eval_stopForDebug;
+        break;
+
 
         // ------------------------
         // Quit Justina interpreter
@@ -433,31 +477,66 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
         // optional argument 1 clear all
         // - value is 0: keep interpreter in memory on quitting, value is 1: clear all and exit Justina 
+        // 'quit' behaves as if an error occured, in order to follow the same processing logic  
 
-        // quitting behaves as if it were an error, so it follows the same logic (including clearing all heap objects as required) 
+
+    case MyParser::cmdcod_go:
+    {
+        Serial.print("initial call stack depth: "); Serial.println(_callStackDepth);
+        if (_callStackDepth == 0) { return result_eval_noProgramStopped; }
+
+        char blockType = MyParser::block_none;
+        Serial.println("GO: block type on stack: "); Serial.println((int)((OpenFunctionData*)_pFlowCtrlStackTop)->blockType);
+
+        do {
+            blockType = *(char*)_pFlowCtrlStackTop;            // always at least one open function (because returning to caller from it)
+            Serial.println("remove flow ctrl stack level - popped block type: "); Serial.println((int)blockType);
+
+            // load local storage pointers again for caller function and restore pending step & active function information for caller function
+            if (blockType == MyParser::block_extFunction) {
+                _activeFunctionData = *(OpenFunctionData*)_pFlowCtrlStackTop;
+                Serial.print("step from flow ctrl stack: "); Serial.println(_activeFunctionData.pNextStep - _programStorage);
+                --_callStackDepth;
+                if (_callStackDepth == 0) { _inStopForDebugMode = false; }
+            }
+
+            // delete FLOW CONTROL stack level that contained caller function storage pointers and return address (all just retrieved to _activeFunctionData)
+            flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);
+            _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
+            _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackTop);
+            _pFlowCtrlStackMinus2 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackMinus1);
+
+        } while (blockType != MyParser::block_extFunction);
+        Serial.print("call stack depth: "); Serial.println(_callStackDepth);
+    }
+    break;
+
+
+
+    case MyParser::cmdcod_quit:
 
     {
-        bool argIsVar[1];
-        bool argIsArray[1];
-        char valueType[1];
-        Val args[1];
-
         _keepInMemory = true;                                                                                               // init;
-        if (cmdParamCount != 0) {                                                                                           // copy arguments from stack
-            copyValueArgsFromStack(pstackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
+        if (cmdParamCount != 0) {                                                                                           // 'Quit' command only                                                                                      
+            bool argIsVar[1];
+            bool argIsArray[1];
+            char valueType[1];
+            Val args[1];
+
+            copyValueArgsFromStack(pstackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);            // copy arguments from stack
             if (((uint8_t)(valueType[0]) != value_isLong) && ((uint8_t)(valueType[0]) != value_isFloat)) { return result_arg_numValueExpected; }
             if ((uint8_t)(valueType[0]) == value_isFloat) { args[1].longConst = (int)args[1].floatConst; }
             _keepInMemory = (args[0].longConst == 0);
         }
 
-        execResult = result_eval_quit; return execResult;                                                                   // 'quit' follows same flow as error (ir halts a program) and subsequently quits
-
-        clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
-
-        _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;                                                  // command execution ended
-        _activeFunctionData.activeCmd_tokenAddress = nullptr;
+        execResult = result_eval_quit;
+        return execResult;
     }
     break;
+
+
+
+
 
 
     case MyParser::cmdcod_info:
@@ -671,23 +750,26 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     //------------------------------------------------------------------
 
     case MyParser::cmdcod_pause:
-    case MyParser::cmdcod_stop:
+    case MyParser::cmdcod_halt:
     {
+
         long pauseTime = 1000;      // default: 1 second
         char s[100];
         if (cmdParamCount == 1) {       // copy pause delay, in seconds, from stack, if provided
-            bool operandIsVar = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable);
-            char valueType = operandIsVar ? (*_pEvalStackTop->varOrConst.varTypeAddress & value_typeMask) : pstackLvl->varOrConst.valueType;
-            bool argIsLong = ((uint8_t)valueType == value_isLong);
-            bool argIsFloat = ((uint8_t)valueType == value_isFloat);
-            if (!argIsLong && !argIsFloat) { return result_arg_numValueExpected; }
-            pauseTime = (argIsLong) ? _pEvalStackTop->varOrConst.value.longConst : (int)_pEvalStackTop->varOrConst.value.floatConst;    // in seconds
+            bool argIsVar[1];
+            bool argIsArray[1];
+            char valueType[1];
+            Val args[1];
+            copyValueArgsFromStack(pstackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
+
+            if ((valueType[0] != value_isLong) && (valueType[0] != value_isFloat)) { return result_arg_numValueExpected; }
+            pauseTime = (valueType[0] == value_isLong) ? args[0].longConst : (int)args[0].floatConst;    // in seconds
             if (pauseTime < 1) { pauseTime = 1; }
             else if (pauseTime > 10) { pauseTime = 10; };
             pauseTime *= 1000; // to milliseconds
         }
-        sprintf(s, "***** Program %s in user function %s%s", (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_stop) ? "stopped" : "paused",
-            extFunctionNames[_activeFunctionData.functionIndex], (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_stop) ? ": press ENTER to continue *****" : " *****");
+        sprintf(s, "***** Program %s in user function %s%s", (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_halt) ? "stopped" : "paused",
+            extFunctionNames[_activeFunctionData.functionIndex], (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_halt) ? ": press ENTER to continue *****" : " *****");
         _pConsole->println(s);
 
         bool doAbort{ false }, backslashFound{ false }, quitNow{ false };
@@ -710,7 +792,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                 char c = _pConsole->read();
 
                 if (c == '\n') {
-                    if (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_stop) { break; }
+                    if (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_halt) { break; }
                 }
 
                 // Check for Justina ESCAPE sequence (sent by terminal as individual characters) and cancel input, or use default value, if indicated
@@ -939,7 +1021,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 #endif
                     delete[] args[i].pStringConst;                                                  // delete temporary string
                     intermediateStringObjectCount--;
-                }
+            }
 
                 // callback routine changed non-empty VARIABLE string into empty variable string ("\0") ?
                 else if (strlen(args[i].pStringConst) == 0) {
@@ -953,10 +1035,10 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
                     // set variable string pointer to null pointer
                     *pstackLvl->varOrConst.value.ppStringConst = nullptr;                           // change pointer to string (in variable) to null pointer
-                }
-            }
-            pstackLvl = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
         }
+    }
+            pstackLvl = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
+    }
 
 
         // finalize
@@ -966,7 +1048,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
         _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;                          // command execution ended
         _activeFunctionData.activeCmd_tokenAddress = nullptr;
-    }
+}
     break;
 
 
@@ -986,15 +1068,15 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                 if ((blockType == MyParser::block_for) || (blockType == MyParser::block_if)) { initNew = true; }
                 else if (blockType == MyParser::block_while) {
                     // currently executing an iteration of an outer 'if', 'while' or 'for' loop ? Then this is the start of the first iteration of a new (inner) 'if' or 'while' loop
-                    initNew = ((BlockTestData*)_pFlowCtrlStackTop)->loopControl & withinIteration;      // 'within iteration' flag set ?
+                    initNew = ((OpenBlockTestData*)_pFlowCtrlStackTop)->loopControl & withinIteration;      // 'within iteration' flag set ?
                 }
             }
         }
 
         if (initNew) {
             _pFlowCtrlStackMinus2 = _pFlowCtrlStackMinus1; _pFlowCtrlStackMinus1 = _pFlowCtrlStackTop;
-            _pFlowCtrlStackTop = (BlockTestData*)flowCtrlStack.appendListElement(sizeof(BlockTestData));
-            ((BlockTestData*)_pFlowCtrlStackTop)->blockType =
+            _pFlowCtrlStackTop = (OpenBlockTestData*)flowCtrlStack.appendListElement(sizeof(OpenBlockTestData));
+            ((OpenBlockTestData*)_pFlowCtrlStackTop)->blockType =
                 (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_if) ? MyParser::block_if :
                 (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_while) ? MyParser::block_while :
                 MyParser::block_for;       // start of 'if...end' or 'while...end' block
@@ -1003,7 +1085,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
             if (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_for) {
 
                 // store variable reference, upper limit, optional increment / decrement (only once), address of token directly following 'FOR...; statement
-                ((BlockTestData*)_pFlowCtrlStackTop)->nextTokenAddress = _activeFunctionData.pNextStep;
+                ((OpenBlockTestData*)_pFlowCtrlStackTop)->nextTokenAddress = _activeFunctionData.pNextStep;
 
                 bool controlVarIsLong{ false }, finalValueIsLong{ false }, stepIsLong{ false };
                 for (int i = 1; i <= cmdParamCount; i++) {        // skipped if no arguments
@@ -1016,20 +1098,20 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                     // store references to control variable and its value type
                     if (i == 1) {
                         controlVarIsLong = (valueType == value_isLong);         // remember
-                        ((BlockTestData*)_pFlowCtrlStackTop)->pControlVar = pstackLvl->varOrConst.value;      // pointer to variable (containing a long or float constant)
-                        ((BlockTestData*)_pFlowCtrlStackTop)->pControlValueType = pstackLvl->varOrConst.varTypeAddress;        // pointer to variable value type
+                        ((OpenBlockTestData*)_pFlowCtrlStackTop)->pControlVar = pstackLvl->varOrConst.value;      // pointer to variable (containing a long or float constant)
+                        ((OpenBlockTestData*)_pFlowCtrlStackTop)->pControlValueType = pstackLvl->varOrConst.varTypeAddress;        // pointer to variable value type
                     }
 
                     // store final loop value
                     else if (i == 2) {
                         finalValueIsLong = (valueType == value_isLong);         // remember
-                        ((BlockTestData*)_pFlowCtrlStackTop)->finalValue = operand;
+                        ((OpenBlockTestData*)_pFlowCtrlStackTop)->finalValue = operand;
                     }
 
                     // store loop step
                     else {      // third parameter
                         stepIsLong = (valueType == value_isLong);         // remember
-                        ((BlockTestData*)_pFlowCtrlStackTop)->step = operand;
+                        ((OpenBlockTestData*)_pFlowCtrlStackTop)->step = operand;
                     }                         // store loop increment / decrement 
 
                     pstackLvl = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
@@ -1037,24 +1119,24 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
                 if (cmdParamCount < 3) {        // step not specified: init with default (1.)  
                     stepIsLong = false;
-                    ((BlockTestData*)_pFlowCtrlStackTop)->step.floatConst = 1.;     // init as float
+                    ((OpenBlockTestData*)_pFlowCtrlStackTop)->step.floatConst = 1.;     // init as float
                 }
 
                 // determine value type to use for loop tests, promote final value and step to float if value type to use for loop tests is float
                 // the initial value type of the control variable and the value type of (constant) final value and step define the loop test value type
-                ((BlockTestData*)_pFlowCtrlStackTop)->testValueType = (controlVarIsLong && finalValueIsLong && stepIsLong ? value_isLong : value_isFloat);
-                if (((BlockTestData*)_pFlowCtrlStackTop)->testValueType == value_isFloat) {
-                    if (finalValueIsLong) { ((BlockTestData*)_pFlowCtrlStackTop)->finalValue.floatConst = (float)((BlockTestData*)_pFlowCtrlStackTop)->finalValue.longConst; }
-                    if (stepIsLong) { ((BlockTestData*)_pFlowCtrlStackTop)->step.floatConst = (float)((BlockTestData*)_pFlowCtrlStackTop)->step.longConst; }
+                ((OpenBlockTestData*)_pFlowCtrlStackTop)->testValueType = (controlVarIsLong && finalValueIsLong && stepIsLong ? value_isLong : value_isFloat);
+                if (((OpenBlockTestData*)_pFlowCtrlStackTop)->testValueType == value_isFloat) {
+                    if (finalValueIsLong) { ((OpenBlockTestData*)_pFlowCtrlStackTop)->finalValue.floatConst = (float)((OpenBlockTestData*)_pFlowCtrlStackTop)->finalValue.longConst; }
+                    if (stepIsLong) { ((OpenBlockTestData*)_pFlowCtrlStackTop)->step.floatConst = (float)((OpenBlockTestData*)_pFlowCtrlStackTop)->step.longConst; }
                 }
 
-                ((BlockTestData*)_pFlowCtrlStackTop)->loopControl |= forLoopInit;           // init at the start of initial FOR loop iteration
+                ((OpenBlockTestData*)_pFlowCtrlStackTop)->loopControl |= forLoopInit;           // init at the start of initial FOR loop iteration
             }
 
-            ((BlockTestData*)_pFlowCtrlStackTop)->loopControl &= ~breakFromLoop;            // init at the start of initial iteration for any loop
+            ((OpenBlockTestData*)_pFlowCtrlStackTop)->loopControl &= ~breakFromLoop;            // init at the start of initial iteration for any loop
         }
 
-        ((BlockTestData*)_pFlowCtrlStackTop)->loopControl |= withinIteration;               // init at the start of an iteration for any loop
+        ((OpenBlockTestData*)_pFlowCtrlStackTop)->loopControl |= withinIteration;               // init at the start of an iteration for any loop
     }
 
     // no break here: from here on, subsequent execution is common for 'if', 'elseif', 'else' and 'while'
@@ -1074,7 +1156,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         // 'else, 'elseif': if result of previous test (in preceding 'if' or 'elseif' clause) FAILED (fail = false), then CLEAR flag to test condition of current command (not relevant for 'else') 
         if ((_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_else) ||
             (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_elseif)) {
-            precedingTestFailOrNone = (bool)(((BlockTestData*)_pFlowCtrlStackTop)->loopControl & testFail);
+            precedingTestFailOrNone = (bool)(((OpenBlockTestData*)_pFlowCtrlStackTop)->loopControl & testFail);
         }
         testClauseCondition = precedingTestFailOrNone && (_activeFunctionData.activeCmd_ResWordCode != MyParser::cmdcod_for) && (_activeFunctionData.activeCmd_ResWordCode != MyParser::cmdcod_else);
 
@@ -1088,7 +1170,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
             operand.floatConst = operandIsVar ? *_pEvalStackTop->varOrConst.value.pFloatConst : _pEvalStackTop->varOrConst.value.floatConst;        // valid for long values as well (same memory locations are copied)
 
             fail = (valueType == value_isFloat) ? (operand.floatConst == 0.) : (operand.longConst == 0);                                                                        // current test (elseif clause)
-            ((BlockTestData*)_pFlowCtrlStackTop)->loopControl = fail ? ((BlockTestData*)_pFlowCtrlStackTop)->loopControl | testFail : ((BlockTestData*)_pFlowCtrlStackTop)->loopControl & ~testFail;                                          // remember test result (true -> 0x1)
+            ((OpenBlockTestData*)_pFlowCtrlStackTop)->loopControl = fail ? ((OpenBlockTestData*)_pFlowCtrlStackTop)->loopControl | testFail : ((OpenBlockTestData*)_pFlowCtrlStackTop)->loopControl & ~testFail;                                          // remember test result (true -> 0x1)
         }
 
         bool setNextToken = fail || (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_for);
@@ -1139,7 +1221,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
             }
         } while (!isLoop);
 
-        if (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_break) { ((BlockTestData*)_pFlowCtrlStackTop)->loopControl |= breakFromLoop; }
+        if (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_break) { ((OpenBlockTestData*)_pFlowCtrlStackTop)->loopControl |= breakFromLoop; }
 
         _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // command execution ended
         _activeFunctionData.activeCmd_tokenAddress = nullptr;
@@ -1160,17 +1242,17 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
             bool exitLoop{ true };
 
             if ((blockType == MyParser::block_for) || (blockType == MyParser::block_while)) {
-                exitLoop = ((BlockTestData*)_pFlowCtrlStackTop)->loopControl & breakFromLoop;  // BREAK command encountered
+                exitLoop = ((OpenBlockTestData*)_pFlowCtrlStackTop)->loopControl & breakFromLoop;  // BREAK command encountered
             }
 
             if (!exitLoop) {      // no BREAK encountered: loop terminated anyway ?
                 if (blockType == MyParser::block_for) { execResult = testForLoopCondition(exitLoop); if (execResult != result_execOK) { return execResult; } }
-                else if (blockType == MyParser::block_while) { exitLoop = (((BlockTestData*)_pFlowCtrlStackTop)->loopControl & testFail); } // false: test passed
+                else if (blockType == MyParser::block_while) { exitLoop = (((OpenBlockTestData*)_pFlowCtrlStackTop)->loopControl & testFail); } // false: test passed
             }
 
             if (!exitLoop) {        // flag still not set ?
                 if (blockType == MyParser::block_for) {
-                    _activeFunctionData.pNextStep = ((BlockTestData*)_pFlowCtrlStackTop)->nextTokenAddress;
+                    _activeFunctionData.pNextStep = ((OpenBlockTestData*)_pFlowCtrlStackTop)->nextTokenAddress;
                 }
                 else {      // WHILE...END block
                     Interpreter::TokenIsResWord* pToToken;
@@ -1182,7 +1264,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                 }
             }
 
-            ((BlockTestData*)_pFlowCtrlStackTop)->loopControl &= ~withinIteration;          // at the end of an iteration
+            ((OpenBlockTestData*)_pFlowCtrlStackTop)->loopControl &= ~withinIteration;          // at the end of an iteration
             _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // command execution ended
             _activeFunctionData.activeCmd_tokenAddress = nullptr;
 
@@ -1212,7 +1294,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     }
     break;
 
-    }
+}
 
     return result_execOK;
 }
@@ -1224,15 +1306,15 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
 Interpreter::execResult_type Interpreter::testForLoopCondition(bool& testFails) {
 
-    char testTypeIsLong = (((BlockTestData*)_pFlowCtrlStackTop)->testValueType == value_isLong);    // loop final value and step have the initial control variable value type
-    bool ctrlVarIsLong = ((*(uint8_t*)((BlockTestData*)_pFlowCtrlStackTop)->pControlValueType & value_typeMask) == value_isLong);
-    bool ctrlVarIsFloat = ((*(uint8_t*)((BlockTestData*)_pFlowCtrlStackTop)->pControlValueType & value_typeMask) == value_isFloat);
+    char testTypeIsLong = (((OpenBlockTestData*)_pFlowCtrlStackTop)->testValueType == value_isLong);    // loop final value and step have the initial control variable value type
+    bool ctrlVarIsLong = ((*(uint8_t*)((OpenBlockTestData*)_pFlowCtrlStackTop)->pControlValueType & value_typeMask) == value_isLong);
+    bool ctrlVarIsFloat = ((*(uint8_t*)((OpenBlockTestData*)_pFlowCtrlStackTop)->pControlValueType & value_typeMask) == value_isFloat);
     if (!ctrlVarIsLong && !ctrlVarIsFloat) { return result_testexpr_numberExpected; }                       // value type changed to string within loop: error
 
-    Val& pCtrlVar = ((BlockTestData*)_pFlowCtrlStackTop)->pControlVar;                                       // pointer to control variable
-    Val& finalValue = ((BlockTestData*)_pFlowCtrlStackTop)->finalValue;
-    Val& step = ((BlockTestData*)_pFlowCtrlStackTop)->step;
-    char& loopControl = ((BlockTestData*)_pFlowCtrlStackTop)->loopControl;
+    Val& pCtrlVar = ((OpenBlockTestData*)_pFlowCtrlStackTop)->pControlVar;                                       // pointer to control variable
+    Val& finalValue = ((OpenBlockTestData*)_pFlowCtrlStackTop)->finalValue;
+    Val& step = ((OpenBlockTestData*)_pFlowCtrlStackTop)->step;
+    char& loopControl = ((OpenBlockTestData*)_pFlowCtrlStackTop)->loopControl;
 
 
     if (ctrlVarIsLong) {                                                                                    // current control variable value type is long
@@ -1400,9 +1482,9 @@ void Interpreter::saveLastValue(bool& overWritePrevious) {
                 // note: this is always an intermediate string
                 delete[] lastResultValueFiFo[itemToRemove].pStringConst;
                 lastValuesStringObjectCount--;
-            }
         }
     }
+}
     else {
         _lastResultCount++;     // only adding an item, without removing previous one
     }
@@ -1449,7 +1531,7 @@ void Interpreter::saveLastValue(bool& overWritePrevious) {
 #endif
             delete[] lastvalue.value.pStringConst;
             intermediateStringObjectCount--;
-        }
+    }
     }
 
     // store new last value type
@@ -1527,7 +1609,7 @@ void Interpreter::clearFlowCtrlStack() {                // and remaining local s
             char blockType = isInitialLoop ? _activeFunctionData.blockType : *(char*)pFlowCtrlStackLvl;
 
             if (blockType == MyParser::block_extFunction) {               // block type: function (is current function) - NOT a loop or other block type
-                if (!isInitialLoop) { _activeFunctionData = *((FunctionData*)pFlowCtrlStackLvl); }
+                if (!isInitialLoop) { _activeFunctionData = *((OpenFunctionData*)pFlowCtrlStackLvl); }
                 if (_callStackDepth > 0) {                    // not main program level
                     --_callStackDepth;
 
@@ -1546,16 +1628,16 @@ void Interpreter::clearFlowCtrlStack() {                // and remaining local s
                         delete[] _activeFunctionData.pVariableAttributes;
                         delete[] _activeFunctionData.ppSourceVarTypes;
                         localVarValueAreaCount--;
-                    }
                 }
             }
+        }
 
             if (!isInitialLoop) { pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl); }
             if (pFlowCtrlStackLvl == nullptr) { break; }       // all done
 
             isInitialLoop = false;
-        } while (true);
-    }
+    } while (true);
+}
 
     flowCtrlStack.deleteList();
     _pFlowCtrlStackTop = nullptr;   _pFlowCtrlStackMinus2 = nullptr; _pFlowCtrlStackMinus1 = nullptr;
@@ -2135,8 +2217,8 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
                     delete[] pUnclippedResultString;
                     intermediateStringObjectCount--;
                 }
-            }
         }
+    }
 
         // store value in variable and adapt variable value type - next line is valid for long integers as well
         if (opResultLong || opResultFloat) { *_pEvalStackMinus2->varOrConst.value.pFloatConst = opResult.floatConst; }
@@ -2150,7 +2232,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) |
                 (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
         }
-    }
+}
 
 
     // (7) post process
@@ -2562,7 +2644,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
     _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
 
     return result_execOK;
-}
+    }
 
 
 // -----------------------
@@ -2777,8 +2859,8 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction(LE_evalStack*&
     // ----------------------------------------------------------------------------------------------
 
     _pFlowCtrlStackMinus2 = _pFlowCtrlStackMinus1; _pFlowCtrlStackMinus1 = _pFlowCtrlStackTop;
-    _pFlowCtrlStackTop = (FunctionData*)flowCtrlStack.appendListElement(sizeof(FunctionData));
-    *((FunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                // push caller function data to stack
+    _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
+    *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                // push caller function data to stack
     ++_callStackDepth;
 
 
@@ -3103,7 +3185,7 @@ Interpreter::execResult_type Interpreter::terminateExternalFunction(bool addZero
         blockType = *(char*)_pFlowCtrlStackTop;            // always at least one open function (because returning to caller from it)
 
         // load local storage pointers again for caller function and restore pending step & active function information for caller function
-        if (blockType == MyParser::block_extFunction) { _activeFunctionData = *(FunctionData*)_pFlowCtrlStackTop; }
+        if (blockType == MyParser::block_extFunction) { _activeFunctionData = *(OpenFunctionData*)_pFlowCtrlStackTop; }
 
         // delete FLOW CONTROL stack level that contained caller function storage pointers and return address (all just retrieved to _activeFunctionData)
         flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);
@@ -3115,7 +3197,7 @@ Interpreter::execResult_type Interpreter::terminateExternalFunction(bool addZero
     } while (blockType != MyParser::block_extFunction);
 
 
-    if (_activeFunctionData.pNextStep >= _programStart) {   // not within a function        
+    if ((_activeFunctionData.pNextStep >= _programStart) && !_inStopForDebugMode) {   // not within a function        
         if (localVarValueAreaCount != 0) {
             //// _pConsole ???
             Serial.print("*** Local variable storage area objects cleanup error. Remaining: "); Serial.println(localVarStringObjectCount);
@@ -3164,7 +3246,7 @@ void* Interpreter::fetchVarBaseAddress(TokenIsVariable* pVarToken, char*& source
     // init source variable scope (if the current variable is a reference variable, this will be changed to the source variable scope later)
     valueAttributes = 0;                                                                                // not an intermediate constant                                         
 
-    int valueIndex = (isUserVar || isGlobalVar) ? varNameIndex : programVarValueIndex[varNameIndex];   // value index in allocated Justina data memory for this variable
+    int valueIndex = pVarToken->identValueIndex;
 
     if (isUserVar) {
         localValueType = userVarType[valueIndex] & value_typeMask;                                     // value type (indicating float or string)
@@ -3244,7 +3326,7 @@ void* Interpreter::arrayElemAddress(void* varBaseAddress, int* elemSpec) {
 // *   push terminal token to evaluation stack   *
 // -----------------------------------------------
 
-void Interpreter::PushTerminalToken(int& tokenType) {                                 // terminal token is assumed
+void Interpreter::pushTerminalToken(int& tokenType) {                                 // terminal token is assumed
 
     // push internal or external function index to stack
 

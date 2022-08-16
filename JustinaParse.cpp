@@ -69,7 +69,11 @@ const MyParser::ResWordDef MyParser::_resWords[]{
     {"End",             cmdcod_end,         cmd_noRestrictions,                                 0,0,    cmdPar_102,     cmdBlockGenEnd},                // closes inner open command block
 
     {"Pause",           cmdcod_pause,       cmd_onlyInFunctionBlock,                            0,0,    cmdPar_104,     cmdBlockNone},                // closes inner open command block
+    {"Halt",            cmdcod_halt,        cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},                // closes inner open command block
+
     {"Stop",            cmdcod_stop,        cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},                // closes inner open command block
+    {"Go",              cmdcod_go,          cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},                // closes inner open command block
+
     {"Quit",            cmdcod_quit,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockNone},                // closes inner open command block
 
     {"Delvar",          cmdcod_delete,      cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_110,     cmdDeleteVar},
@@ -384,11 +388,14 @@ void MyParser::resetMachine(bool withUserVariables) {
     _extFunctionBlockOpen = false;
 
     // init interpreter variables: AFTER deleting heap objects
+    _pInterpreter->_inStopForDebugMode = false;
     _pInterpreter->_programName[0] = '\0';
     _pInterpreter->_programVarNameCount = 0;
-    _pInterpreter->_staticVarCount = 0;
     _pInterpreter->_localVarCountInFunction = 0;
     _pInterpreter->_paramOnlyCountInFunction = 0;
+    _pInterpreter->_localVarCount = 0;
+    _pInterpreter->_staticVarCountInFunction = 0;
+    _pInterpreter->_staticVarCount = 0;
     _pInterpreter->_extFunctionCount = 0;
     if (withUserVariables) { _pInterpreter->_userVarCount = 0; }
     else {
@@ -410,7 +417,7 @@ void MyParser::resetMachine(bool withUserVariables) {
     _pInterpreter->makeFormatString(_pInterpreter->_dispFmtFlags, false, _pInterpreter->_dispNumSpecifier, _pInterpreter->_dispNumberFmtString);       // for numbers
     strcpy(_pInterpreter->_dispStringFmtString, "%*.*s%n");                                                           // for strings
 
-     // for print command
+    // for print command
     _pInterpreter->_printWidth = _pInterpreter->_defaultPrintWidth, _pInterpreter->_printNumPrecision = _pInterpreter->_defaultNumPrecision;
     _pInterpreter->_printCharsToPrint = _pInterpreter->_defaultCharsToPrint, _pInterpreter->_printFmtFlags = _pInterpreter->_defaultPrintFlags;
     _pInterpreter->_printNumSpecifier[0] = 'G'; _pInterpreter->_printNumSpecifier[1] = '\0';
@@ -460,7 +467,7 @@ void MyParser::resetMachine(bool withUserVariables) {
 #endif
 
     _pInterpreter->parsedStringConstObjectCount = 0;
-    
+
     _pInterpreter->identifierNameStringObjectCount = 0;
     _pInterpreter->globalStaticVarStringObjectCount = 0;
     _pInterpreter->globalStaticArrayObjectCount = 0;
@@ -493,10 +500,10 @@ void MyParser::resetMachine(bool withUserVariables) {
         _pInterpreter->userVarNameStringObjectCount = 0;
         _pInterpreter->userVarStringObjectCount = 0;
         _pInterpreter->userArrayObjectCount = 0;
-        
+
         _pInterpreter->lastValuesStringObjectCount = 0;
     }
-    Serial.println();
+    Serial.println();       //// _pConsole ???
 
     // intermediateStringObjectCount, localVarStringObjectCount, localArrayObjectCount ...
     // ... is not tested, neither is it reset, here. It is a purely execution related object, tested at the end of execution
@@ -636,6 +643,7 @@ bool MyParser::allExternalFunctionsDefined(int& index) {
 // ----------------------------------------------------------------------------------------------------------------------
 
 MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
+    Serial.println("**** parse an instruction");////
     _lastTokenType_hold = Interpreter::tok_no_token;
     _lastTokenType = Interpreter::tok_no_token;                                                      // no token yet
     _lastTokenIsTerminal = false;
@@ -1259,7 +1267,7 @@ bool MyParser::parseAsStringConstant(char*& pNext, parseTokenResult_type& result
     char* pStringCst = nullptr;                 // init: is empty string (prevent creating a string object to conserve memory)
     if (pNext - (pch + 1) - escChars > 0) {    // not an empty string: create string object 
 
-    // token is an alphanumeric constant, and it's allowed here
+        // token is an alphanumeric constant, and it's allowed here
         pStringCst = new char[pNext - (pch + 1) - escChars + 1];                                // create char array on the heap to store alphanumeric constant, including terminating '\0'
         _pInterpreter->parsedStringConstObjectCount++;
 #if printCreateDeleteHeapObjects
@@ -2161,10 +2169,18 @@ bool MyParser::parseAsExternFunction(char*& pNext, parseTokenResult_type& result
         // variable name usage array: reset in-procedure reference flags to be able to keep track of in-procedure variable value types used
         // KEEP all other settings
         for (int i = 0; i < _pInterpreter->_programVarNameCount; i++) { _pInterpreter->globalVarType[i] = (_pInterpreter->globalVarType[i] & ~_pInterpreter->var_scopeMask) | _pInterpreter->var_scopeToSpecify; }
+        _pInterpreter->_paramOnlyCountInFunction = 0;             // reset local and parameter variable count in function 
         _pInterpreter->_localVarCountInFunction = 0;             // reset local and parameter variable count in function
-        _pInterpreter->_paramOnlyCountInFunction = 0;             // reset local and parameter variable count in function
-        _pInterpreter->extFunctionData[index].localVarCountInFunction = 0;
+        _pInterpreter->_staticVarCountInFunction = 0;             // reset static variable count in function
         _pInterpreter->extFunctionData[index].paramOnlyCountInFunction = 0;
+        _pInterpreter->extFunctionData[index].localVarCountInFunction = 0;
+        _pInterpreter->extFunctionData[index].staticVarCountInFunction = 0;
+
+        // if function will define static variables, then storage area will start right after stoarage area for previously defined user function's static variable area (this is needed while in debugging only)
+        _pInterpreter->extFunctionData[index].staticVarStartIndex = _pInterpreter->_staticVarCount;
+
+        // if function will define local variables, although storage area is dynamic, this is needed while in debugging (only)
+        _pInterpreter->extFunctionData[index].localVarNameRefs_startIndex = _pInterpreter->_localVarCount;
 
         _pFunctionDefStack = _pParsingStack;               // stack level for FUNCTION definition block
         _pFunctionDefStack->openBlock.fcnBlock_functionIndex = index;  // store in BLOCK stack level: only if function def
@@ -2202,6 +2218,9 @@ bool MyParser::parseAsExternFunction(char*& pNext, parseTokenResult_type& result
 // --------------------------------------------------
 
 bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
+
+    Serial.println("**** parse variable");////
+
 
     if (_isProgramCmd || _isDeleteVarCmd || _isDecCBprocCmd) { return true; }                             // looking for an UNQUALIFIED identifier name; prevent it's mistaken for a variable name (same format)
     if (_isCallbackCmd && (_cmdArgNo == 0)) { return true; }
@@ -2320,10 +2339,12 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
 
 
     // 4. The variable NAME exists now, but we still need to check whether storage space for the variable itself has been created / allocated
-    //    Note: local variable storage is created at runtime
+    //    Note: LOCAL variable storage is created at runtime
     // --------------------------------------------------------------------------------------------------------------------------------------
 
     bool variableNotYetKnown = false;                                                                             // init
+    bool isOpenFunctionStaticVariable{ false }, isOpenFunctionLocalVariable{ false };
+    int openFunctionVar_valueIndex{};
 
     // 4.1 Currently parsing a FUNCTION...END block ? 
     // ----------------------------------------------
@@ -2343,23 +2364,48 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
             if (_isStaticVarCmd) {                                             // definition of NEW static variable for function
                 variableNotYetKnown = true;
                 if (_pInterpreter->_staticVarCount == _pInterpreter->MAX_STAT_VARS) { pNext = pch; result = result_maxStaticVariablesReached; return false; }
+
+
+
                 _pInterpreter->programVarValueIndex[varNameIndex] = _pInterpreter->_staticVarCount;
                 if (!isArray) { _pInterpreter->staticVarValues[_pInterpreter->_staticVarCount].floatConst = 0.; }           // initialize variable (if initializer and/or array: will be overwritten)
+
                 _pInterpreter->staticVarType[_pInterpreter->_staticVarCount] = _pInterpreter->value_isFloat;                                         // init as float (for array or scalar)
                 _pInterpreter->staticVarType[_pInterpreter->_staticVarCount] = (_pInterpreter->staticVarType[_pInterpreter->_staticVarCount] & ~_pInterpreter->var_isArray); // init (array flag will be added when storage is created)    
+
+
+
+                // will only be used while in DEBUGGING mode: index of static variable name
+                _pInterpreter->staticVarNameRef[_pInterpreter->_staticVarCount] = varNameIndex;
+
+                _pInterpreter->_staticVarCountInFunction++;
                 _pInterpreter->_staticVarCount++;
+
+                // ext. function index: in parsing stack level for FUNCTION definition command
+                int fcnIndex = _pFunctionDefStack->openBlock.fcnBlock_functionIndex;
+                _pInterpreter->extFunctionData[fcnIndex].staticVarCountInFunction = _pInterpreter->_staticVarCountInFunction;
             }
 
             else if (_isExtFunctionCmd || _isLocalVarCmd) {               // definition of NEW parameter (in function definition) or NEW local variable for function
                 variableNotYetKnown = true;
                 if (_pInterpreter->_localVarCountInFunction == _pInterpreter->MAX_LOC_VARS_IN_FUNC) { pNext = pch; result = result_maxLocalVariablesReached; return false; }
+
+
+
                 _pInterpreter->programVarValueIndex[varNameIndex] = _pInterpreter->_localVarCountInFunction;
                 // param and local variables: array flag temporarily stored during function parsing       
                 // storage space creation and initialisation will occur when function is called durig execution 
                 _pInterpreter->localVarType[_pInterpreter->_localVarCountInFunction] = (_pInterpreter->localVarType[_pInterpreter->_localVarCountInFunction] & ~_pInterpreter->var_isArray) |
                     (isArray ? _pInterpreter->var_isArray : 0); // init (no storage needs to be created: set array flag here) 
+
+
+
+                // will only be used while in DEBUGGING mode: index of local variable name
+                _pInterpreter->localVarNameRef[_pInterpreter->_localVarCount] = varNameIndex;
+
                 _pInterpreter->_localVarCountInFunction++;
                 if (_isExtFunctionCmd) { _pInterpreter->_paramOnlyCountInFunction++; }
+                _pInterpreter->_localVarCount++;
 
                 // ext. function index: in stack level for FUNCTION definition command
                 int fcnIndex = _pFunctionDefStack->openBlock.fcnBlock_functionIndex;
@@ -2394,21 +2440,71 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
 
     // note: while parsing program instructions AND while parsing instructions entered in immediate mode
     else {
+        // is global or user variable declared already ?
         variableNotYetKnown = !(varType[activeNameRange][varNameIndex] & (isProgramVar ? _pInterpreter->var_nameHasGlobalValue : _pInterpreter->var_isUser));
         // qualifier 'var_isGlobal' (program variables): set, because could be cleared by previously parsed function (will be stored in token)
         varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~_pInterpreter->var_scopeMask) | (isProgramVar ? _pInterpreter->var_isGlobal : _pInterpreter->var_isUser);
 
+        // variable not yet declared as global or user variable
         if (variableNotYetKnown) {
-            if (!_isGlobalOrUserVarCmd) {                           // all variable must be defined before parsing a reference to it 
-                pNext = pch; result = result_varNotDeclared; return false;
+            // but this can still be a global or user variable declaration 
+            if (_isGlobalOrUserVarCmd) {                           // no, it's is a variable reference 
+                // is a declaration of a new program global variable (in program mode), or a new user user variable (in immediate mode) 
+                // variable qualifier : don't care for now (global varables: reset at start of next external function parsing)
+                if (!isArray) { varValues[activeNameRange][varNameIndex].floatConst = 0.; }                  // initialize variable (if initializer and/or array: will be overwritten)
+                varType[activeNameRange][varNameIndex] = varType[activeNameRange][varNameIndex] | _pInterpreter->value_isFloat;         // init as float (for scalar and array)
+                varType[activeNameRange][varNameIndex] = varType[activeNameRange][varNameIndex] | (isProgramVar ? _pInterpreter->var_nameHasGlobalValue : _pInterpreter->var_isUser);   // set 'has global value' or 'user var' bit
+                varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~_pInterpreter->var_isArray); // init (array flag may only be added when storage is created) 
+            }
+            else {
+                // it's neither a global or user variable declaration, nor a global or user variable reference. But the variable name exists,
+                // so local or static function variables using this name have been defined already. 
+                // in debug mode (program stopped), the name could refer to a local or static variable of a function in the call stack (open function) 
+                // in debug mode now ?
+                if (_pInterpreter->_inStopForDebugMode) {
+                    // check whether this is a local or static function variable reference of the deepest open function in the call stack
+
+                    int openFunctionIndex{};
+                    void* pFlowCtrlStackLvl = _pInterpreter->_pFlowCtrlStackTop;                    int blockType = block_none;
+                    do {
+                        blockType = *(char*)pFlowCtrlStackLvl;
+                        if (blockType != block_extFunction) {
+                            pFlowCtrlStackLvl = _pInterpreter->flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
+                            continue;
+                        };          // there is at least one open function in the call stack
+                        openFunctionIndex = ((Interpreter::OpenFunctionData*)pFlowCtrlStackLvl)->functionIndex;    // function index of deepest function in call stack
+                        break;
+                    } while (true);
+
+                    // is variable defined in this function, and is it local or static ?
+                    int staticVarStartIndex = _pInterpreter->extFunctionData[openFunctionIndex].staticVarStartIndex;
+                    int staticVarCountInFunction = _pInterpreter->extFunctionData[openFunctionIndex].staticVarCountInFunction;
+
+                    //   is variable defined in this function as a static variable ?
+                    int i{};
+
+                    for (i = staticVarStartIndex; i <= staticVarStartIndex + staticVarCountInFunction - 1; ++i) {        // skip if count is zero
+                        if (_pInterpreter->staticVarNameRef[i] == varNameIndex) { isOpenFunctionStaticVariable = true; openFunctionVar_valueIndex = i; break; }     // is a static variable of function and its value index is known
+                    }
+                    if (!isOpenFunctionStaticVariable) {
+                        int localVarNameRefs_startIndex = _pInterpreter->extFunctionData[openFunctionIndex].localVarNameRefs_startIndex;
+                        int localVarCountInFunction = _pInterpreter->extFunctionData[openFunctionIndex].localVarCountInFunction;
+
+                        //   is variable defined in this function as a local variable ?
+                        for (i = localVarNameRefs_startIndex; i <= localVarNameRefs_startIndex + localVarCountInFunction - 1; ++i) {        // skip if count is zero
+                            if (_pInterpreter->localVarNameRef[i] == varNameIndex) { isOpenFunctionLocalVariable = true; openFunctionVar_valueIndex = i; break; }     // is a local variable of function and its value index is known
+                        }
+                    }
+                    if (!isOpenFunctionStaticVariable && !isOpenFunctionLocalVariable) {
+                        pNext = pch; result = result_varNotDeclared; return false;
+                    }
+                }
+
+                else {
+                    pNext = pch; result = result_varNotDeclared; return false;
+                }
             }
 
-            // is a declaration of a new program global variable (in program mode), or a new user user variable (in immediate mode) 
-            // variable qualifier : don't care for now (global varables: reset at start of next external function parsing)
-            if (!isArray) { varValues[activeNameRange][varNameIndex].floatConst = 0.; }                  // initialize variable (if initializer and/or array: will be overwritten)
-            varType[activeNameRange][varNameIndex] = varType[activeNameRange][varNameIndex] | _pInterpreter->value_isFloat;         // init as float (for scalar and array)
-            varType[activeNameRange][varNameIndex] = varType[activeNameRange][varNameIndex] | (isProgramVar ? _pInterpreter->var_nameHasGlobalValue : _pInterpreter->var_isUser);   // set 'has global value' or 'user var' bit
-            varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~_pInterpreter->var_isArray); // init (array flag may only be added when storage is created) 
         }
 
         else {  // the global or user variable exists already: check for double definition
@@ -2423,16 +2519,22 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
     //    If it is a FOR loop control variable, check that it is not in use by a FOR outer loop (in same function)
     // --------------------------------------------------------------------------------------------------------------------------------------------
 
-    uint8_t varScope = varType[activeNameRange][varNameIndex] & _pInterpreter->var_scopeMask;  // may only contain variable scope info (parameter, local, static, global, user)
-    bool isGlobalOrUserVar = isProgramVar ?
+    uint8_t varScope = isOpenFunctionStaticVariable ? _pInterpreter->var_isStaticInFunc :
+        isOpenFunctionLocalVariable ? _pInterpreter->var_isLocalInFunc :
+        varType[activeNameRange][varNameIndex] & _pInterpreter->var_scopeMask;  // may only contain variable scope info (parameter, local, static, global, user)
+
+    bool isGlobalOrUserVar = (isOpenFunctionStaticVariable || isOpenFunctionLocalVariable) ? false :
+        isProgramVar ?
         ((_extFunctionBlockOpen && (varScope == _pInterpreter->var_isGlobal)) ||                             // NOTE: outside a function, test against 'var_nameHasGlobalValue'
             (!_extFunctionBlockOpen && (varType[activeNameRange][varNameIndex] & _pInterpreter->var_nameHasGlobalValue))) :
         varType[activeNameRange][varNameIndex] & _pInterpreter->var_isUser;
-    bool isStaticVar = (_extFunctionBlockOpen && (varScope == _pInterpreter->var_isStaticInFunc));
-    bool isLocalVar = (_extFunctionBlockOpen && (varScope == _pInterpreter->var_isLocalInFunc));
-    bool isParam = (_extFunctionBlockOpen && (varScope == _pInterpreter->var_isParamInFunc));
-    int valueIndex = isGlobalOrUserVar ? varNameIndex : _pInterpreter->programVarValueIndex[varNameIndex];
 
+    bool isStaticVar = isOpenFunctionStaticVariable ? true : (_extFunctionBlockOpen && (varScope == _pInterpreter->var_isStaticInFunc));
+    bool isLocalVar = isOpenFunctionLocalVariable ? true : (_extFunctionBlockOpen && (varScope == _pInterpreter->var_isLocalInFunc));
+    bool isParam = isOpenFunctionLocalVariable ? false : (_extFunctionBlockOpen && (varScope == _pInterpreter->var_isParamInFunc));    //// isOpenFunctionLocalVariable -> isOpenFunctionParamVariable, false -> true
+
+    int valueIndex = (isOpenFunctionStaticVariable || isOpenFunctionLocalVariable) ? openFunctionVar_valueIndex   :
+        isGlobalOrUserVar ? varNameIndex : _pInterpreter->programVarValueIndex[varNameIndex];
 
     if (!variableNotYetKnown) {  // not a variable definition but a variable use
         bool existingArray = false;
@@ -2524,6 +2626,9 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
     _pInterpreter->_programCounter += sizeof(Interpreter::TokenIsVariable);
     *_pInterpreter->_programCounter = '\0';                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
+    
+    
+    Serial.println("**** Var token stored");////
     return true;
 }
 
