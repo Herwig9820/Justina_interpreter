@@ -17,9 +17,13 @@ Interpreter::execResult_type  Interpreter::exec() {
     bool isFunctionReturn = false;
     bool precedingIsComma = false;                                      // used to detect prefix operators following a comma separator
     bool nextIsNewInstructionStart = false;                     // false, because this is already the start of a new instruction
+    bool doStopForDebug = false;
+    bool cmdLineRequestsProgramStop = false;
+    bool stopAfterNextInstruction = false;
     execResult_type execResult = result_execOK;
+    char* holdProgramCnt_StatementStart{ nullptr }, * programCnt_previousStatement{ nullptr };
 
-    if (!_inStopForDebugMode) {
+    if (_programsInDebug == 0) {
         _pEvalStackTop = nullptr;   _pEvalStackMinus2 = nullptr; _pEvalStackMinus1 = nullptr;
         _pFlowCtrlStackTop = nullptr;   _pFlowCtrlStackMinus2 = nullptr; _pFlowCtrlStackMinus1 = nullptr;
 
@@ -29,6 +33,9 @@ Interpreter::execResult_type  Interpreter::exec() {
     }
 
     _programCounter = _programStart;
+    holdProgramCnt_StatementStart = _programCounter;
+    programCnt_previousStatement = _programCounter;
+
     _activeFunctionData.functionIndex = 0;                  // main program level: not relevant
     _activeFunctionData.callerEvalStackLevels = 0;          // this is the highest program level
     _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // no command is being executed
@@ -57,7 +64,9 @@ Interpreter::execResult_type  Interpreter::exec() {
         int tokenLength = (tokenType >= Interpreter::tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == Interpreter::tok_isConstant) ? sizeof(TokenIsConstant) : (*_programCounter >> 4) & 0x0F;
         _activeFunctionData.pNextStep = _programCounter + tokenLength;                                  // look ahead
 
+        ////Serial.print("\r\nexec token: token type is "); Serial.println(tokenType, HEX);
         switch (tokenType) {
+
 
         case tok_isReservedWord:
             // ---------------------------------
@@ -78,6 +87,7 @@ Interpreter::execResult_type  Interpreter::exec() {
             // commands are executed when processing final semicolon statement (note: activeCmd_ResWordCode identifies individual commands; not command blocks)
             _activeFunctionData.activeCmd_ResWordCode = _pmyParser->_resWords[tokenIndex].resWordCode;       // store command for now
             _activeFunctionData.activeCmd_tokenAddress = _programCounter;
+
         }
 
         break;
@@ -106,6 +116,8 @@ Interpreter::execResult_type  Interpreter::exec() {
 #if debugPrint
             Serial.print("operand: stack level "); Serial.println(evalStack.getElementCount());
 #endif
+            ////Serial.print("\r\n  is value "); Serial.println();
+
             {   // start block (required for variable definitions inside)
                 _activeFunctionData.errorProgramCounter = _programCounter;
 
@@ -229,6 +241,9 @@ Interpreter::execResult_type  Interpreter::exec() {
                 // Process separator
                 // -----------------
 
+                ////Serial.print("\r\n  is semicolon "); Serial.println();
+
+
                 nextIsNewInstructionStart = true;         // for pretty print only   
                 if (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_none) {       // currently not executing a command, but a simple expression
                     if (evalStack.getElementCount() > (_activeFunctionData.callerEvalStackLevels + 1)) {
@@ -245,7 +260,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                 }
                 // command with optional expression(s) processed ? Execute command
                 else {
-                    execResult = execProcessedCommand(isFunctionReturn);
+                    execResult = execProcessedCommand(isFunctionReturn, cmdLineRequestsProgramStop);
                     if (execResult != result_execOK) { break; }                     // other error: break (case label) immediately
                 }
             }
@@ -263,16 +278,14 @@ Interpreter::execResult_type  Interpreter::exec() {
         tokenType = *_activeFunctionData.pNextStep & 0x0F;                                                               // next token type (could be token within caller, if returning now)
         precedingIsComma = isComma;
 
-        ////Serial.print("next step: "); Serial.println(_programCounter - _programStorage);
-
 
         // ---------------------------------------------------
         // statement has been processed and executed: finalise
         // ---------------------------------------------------
 
-        ////Serial.print("is new instruction ? "); Serial.println(nextIsNewInstructionStart);
-
         if (nextIsNewInstructionStart) {
+            programCnt_previousStatement = holdProgramCnt_StatementStart;
+            holdProgramCnt_StatementStart = _programCounter;
 
             if (execResult == result_execOK) {          // no error 
 
@@ -315,8 +328,12 @@ Interpreter::execResult_type  Interpreter::exec() {
                     }
                 }
             } while (charsFound);
+
+            doStopForDebug = doStopForDebug || cmdLineRequestsProgramStop || stopAfterNextInstruction;
+            stopAfterNextInstruction = _singleStepMode;
+
             if (doAbort) { execResult = result_eval_abort; }
-            if (doStopForDebug) { execResult = result_eval_stopForDebug; }
+            else if (doStopForDebug) { execResult = result_eval_stopForDebug; }
 
 
             // while evaluating, periodically do a housekeeping callback (if function defined)
@@ -346,19 +363,30 @@ Interpreter::execResult_type  Interpreter::exec() {
         if (execResult != result_execOK) {          // execution error
             int sourceErrorPos{ 0 };
             if (!_atLineStart) { _pConsole->println(); _atLineStart = true; }
+
             _pConsole->print("\r\n  ");
 
-            char execInfo[100];
-            bool quitting = (execResult == result_eval_quit);
-            if (quitting) {
-                strcpy(execInfo, "\r\nExecuting 'quit' command, ");
+            bool isEvent = (execResult >= result_eval_startOfEvents);
+            if (isEvent) {  //// opkuisen
+                _pmyParser->prettyPrintInstructions(true, programCnt_previousStatement, _activeFunctionData.errorProgramCounter, &sourceErrorPos);
+            }
+            else {
+                _pmyParser->prettyPrintInstructions(true, _activeFunctionData.errorStatementStartStep, _activeFunctionData.errorProgramCounter, &sourceErrorPos);
+            }
+            _pConsole->print("  "); for (int i = 1; i <= sourceErrorPos; i++) { _pConsole->print(" "); }
+
+            char execInfo[150] = "";
+            if (execResult == result_eval_quit) {
+                strcpy(execInfo, "^ Executing 'quit' command, ");
                 _pConsole->print(strcat(execInfo, _keepInMemory ? "data retained" : "memory released"));
                 if (_programCounter >= _programStart) { sprintf(execInfo, "\r\n"); }
                 else { sprintf(execInfo, " - user function %s\r\n", extFunctionNames[_activeFunctionData.functionIndex]); }
             }
+            else if (execResult == result_eval_stopForDebug) {
+                sprintf(execInfo, "^ Last statement executed. Program stopped in user function %s\r\n", extFunctionNames[_activeFunctionData.functionIndex]);
+            }
+
             else {
-                _pmyParser->prettyPrintInstructions(true, _activeFunctionData.errorStatementStartStep, _activeFunctionData.errorProgramCounter, &sourceErrorPos);
-                _pConsole->print("  "); for (int i = 1; i <= sourceErrorPos; i++) { _pConsole->print(" "); }
                 if (_programCounter >= _programStart) { sprintf(execInfo, "^ Exec error %d\r\n", execResult); }     // in main program level 
                 else { sprintf(execInfo, "^ Exec error %d in user function %s\r\n", execResult, extFunctionNames[_activeFunctionData.functionIndex]); }
             }
@@ -408,44 +436,43 @@ Interpreter::execResult_type  Interpreter::exec() {
     clearEvalStack();               // and intermediate strings
 
 
-    
-    
+
+
     // ----------------------------------------------------------------------------------------------------------------
     // 
     // ----------------------------------------------------------------------------------------------------------------
 
     if (execResult == result_eval_stopForDebug) {              // stopping for debug now
-
         // push caller function data (or main = user entry level in immediate mode) on FLOW CONTROL stack 
         _pFlowCtrlStackMinus2 = _pFlowCtrlStackMinus1; _pFlowCtrlStackMinus1 = _pFlowCtrlStackTop;
         _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
         *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                // push caller function data to stack
-        ++_callStackDepth;
-
-        _inStopForDebugMode = true;
+        ++_callStackDepth;      // user function level added to flow control stack
+        ++_programsInDebug;     // a program enters debug mode; previously started programs might be suspended as well
 
         ////Serial.print("*** stopping: next step after Go will be "); Serial.println(_activeFunctionData.pNextStep - _programStorage);
         ////Serial.println("pushed block type: "); Serial.println((int)((OpenFunctionData*)_pFlowCtrlStackTop)->blockType);
+
     }
 
-    else if (!_inStopForDebugMode || (execResult == result_eval_quit) || (execResult == result_eval_kill))  {             // do not clear flow control stack while in debug mode
+    else if ((_programsInDebug == 0) || (execResult == result_eval_quit) || (execResult == result_eval_kill)) {             // do not clear flow control stack while in debug mode
         clearFlowCtrlStack();           // and remaining local storage + local variable string and array values
     }
-
 
     return execResult;   // return result, in case it's needed by caller
 };
 
 
-// -----------------------------------------------------------------------
-// *   execute a processed command   (statement starting with a keyword) *
-// -----------------------------------------------------------------------
+// ----------------------------------------------------------------------
+// *   execute a processed command  (statement starting with a keyword) *
+// ----------------------------------------------------------------------
 
-Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionReturn) {
+Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionReturn, bool& cmdLineRequestsProgramStop) {
 
     // this function is called when the END of the command (semicolon) is encountered during execution, and all arguments are on the stack already
 
     isFunctionReturn = false;  // init
+    cmdLineRequestsProgramStop = false;
     execResult_type execResult = result_execOK;
     int cmdParamCount = evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels;
 
@@ -467,6 +494,9 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
         // 'stop' behaves as if an error occured, in order to follow the same processing logic  
 
+        ////Serial.println("STOP command <<<<<<<<<<");
+        _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // command execution ended
+        _activeFunctionData.activeCmd_tokenAddress = nullptr;
         return result_eval_stopForDebug;
         break;
 
@@ -480,24 +510,26 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         // 'quit' behaves as if an error occured, in order to follow the same processing logic  
 
 
+    case MyParser::cmdcod_step:
     case MyParser::cmdcod_go:
     {
-        Serial.print("initial call stack depth: "); Serial.println(_callStackDepth);
-        if (_callStackDepth == 0) { return result_eval_noProgramStopped; }
+        ////Serial.print("===== Go: initial call stack depth: "); Serial.println(_callStackDepth);
+        ////Serial.print("===== Go:  programs in debug: "); Serial.println(_programsInDebug);
+        if (_programsInDebug == 0) { return result_eval_noProgramStopped; }
 
+        _singleStepMode = (_activeFunctionData.activeCmd_ResWordCode == _pmyParser->cmdcod_step);
+        // currently, at least one program is stopped: restart the last program that was stopped
         char blockType = MyParser::block_none;
-        Serial.println("GO: block type on stack: "); Serial.println((int)((OpenFunctionData*)_pFlowCtrlStackTop)->blockType);
+        ////Serial.println("GO: block type on stack: "); Serial.println((int)((OpenFunctionData*)_pFlowCtrlStackTop)->blockType);
 
         do {
             blockType = *(char*)_pFlowCtrlStackTop;            // always at least one open function (because returning to caller from it)
-            Serial.println("remove flow ctrl stack level - popped block type: "); Serial.println((int)blockType);
+            ////Serial.println("remove flow ctrl stack level - popped block type: "); Serial.println((int)blockType);
 
-            // load local storage pointers again for caller function and restore pending step & active function information for caller function
+            // load local storage pointers again for interrupted function and restore pending step & active function information for interrupted function
             if (blockType == MyParser::block_extFunction) {
                 _activeFunctionData = *(OpenFunctionData*)_pFlowCtrlStackTop;
-                Serial.print("step from flow ctrl stack: "); Serial.println(_activeFunctionData.pNextStep - _programStorage);
-                --_callStackDepth;
-                if (_callStackDepth == 0) { _inStopForDebugMode = false; }
+                ////Serial.print("***** step from flow ctrl stack: "); Serial.println(_activeFunctionData.pNextStep - _programStorage);
             }
 
             // delete FLOW CONTROL stack level that contained caller function storage pointers and return address (all just retrieved to _activeFunctionData)
@@ -505,10 +537,18 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
             _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
             _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackTop);
             _pFlowCtrlStackMinus2 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackMinus1);
+            --_callStackDepth;
 
         } while (blockType != MyParser::block_extFunction);
-        Serial.print("call stack depth: "); Serial.println(_callStackDepth);
+
+        ////Serial.print("----- Go: call stack depth: "); Serial.println(_callStackDepth);
+        --_programsInDebug;
+        ////Serial.print("----- Go: programs in debug: "); Serial.println(_programsInDebug);
     }
+
+    ////Serial.print(">>>>>>>>> GO command: stop flag: "); Serial.print(cmdLineRequestsProgramStop); Serial.print(" "); Serial.println(execResult);
+    _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // command execution ended
+    _activeFunctionData.activeCmd_tokenAddress = nullptr;
     break;
 
 
@@ -621,7 +661,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
             _pConsole->println();
 
             answerValid = true;                                                                                             // init
-            bool doAbort{ false }, doCancel{ false }, doDefault{ false }, backslashFound{ false }, answerIsNo{ false }, quitNow{ false };
+            bool doAbort{ false }, doStop{ false }, doCancel{ false }, doDefault{ false }, backslashFound{ false }, answerIsNo{ false }, quitNow{ false };
             int length{ 0 };
             char input[_maxCharsToInput + 1] = "";                                                                          // init: empty string
 
@@ -655,6 +695,10 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
                         if (backslashFound) { backslashFound = false;  doAbort = true;  continue; }
                     }
 
+                    else if ((c == 's') || (c == 'S')) {                                                                    // part of a Justina ESCAPE sequence ? Abort evaluation phase 
+                        if (backslashFound) { backslashFound = false;  doStop = true;  continue; }
+                    }
+
                     else if ((c == 'c') || (c == 'C')) {                                                                    // part of a Justina ESCAPE sequence ? Cancel if allowed 
                         if (backslashFound && (isInput || isInfoWithCancel)) { backslashFound = false;  doCancel = true;  continue; }
                     }
@@ -675,7 +719,9 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
             else if (doAbort) {
                 execResult = result_eval_abort; return execResult;                                                          // stop a running Justina program (buffer is now flushed until nex line character) 
             }
-
+            else if (doStop) {                      // can only occur from within a program
+                cmdLineRequestsProgramStop = true;              // do not produce stop event yet, wait until statement executed
+            }
             else if (doCancel) {                                                                                                 // cancel (if cancel is allowed only) - has priority over doDefault
                 _pConsole->println("(Input canceled)");
             }
@@ -1021,7 +1067,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 #endif
                     delete[] args[i].pStringConst;                                                  // delete temporary string
                     intermediateStringObjectCount--;
-            }
+                }
 
                 // callback routine changed non-empty VARIABLE string into empty variable string ("\0") ?
                 else if (strlen(args[i].pStringConst) == 0) {
@@ -1035,8 +1081,8 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
                     // set variable string pointer to null pointer
                     *pstackLvl->varOrConst.value.ppStringConst = nullptr;                           // change pointer to string (in variable) to null pointer
+            }
         }
-    }
             pstackLvl = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
     }
 
@@ -1048,7 +1094,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
         _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;                          // command execution ended
         _activeFunctionData.activeCmd_tokenAddress = nullptr;
-}
+    }
     break;
 
 
@@ -1290,6 +1336,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         isFunctionReturn = true;
         bool returnWithZero = (cmdParamCount == 0);                    // RETURN statement without expression, or END statement: return a zero
         execResult = terminateExternalFunction(returnWithZero);
+        jumpTokens(1, _activeFunctionData.pNextStep);              // move past semicolon
         if (execResult != result_execOK) { return execResult; }
     }
     break;
@@ -1482,7 +1529,7 @@ void Interpreter::saveLastValue(bool& overWritePrevious) {
                 // note: this is always an intermediate string
                 delete[] lastResultValueFiFo[itemToRemove].pStringConst;
                 lastValuesStringObjectCount--;
-        }
+            }
     }
 }
     else {
@@ -1531,7 +1578,7 @@ void Interpreter::saveLastValue(bool& overWritePrevious) {
 #endif
             delete[] lastvalue.value.pStringConst;
             intermediateStringObjectCount--;
-    }
+        }
     }
 
     // store new last value type
@@ -1611,7 +1658,6 @@ void Interpreter::clearFlowCtrlStack() {                // and remaining local s
             if (blockType == MyParser::block_extFunction) {               // block type: function (is current function) - NOT a loop or other block type
                 if (!isInitialLoop) { _activeFunctionData = *((OpenFunctionData*)pFlowCtrlStackLvl); }
                 if (_callStackDepth > 0) {                    // not main program level
-                    --_callStackDepth;
 
                     int functionIndex = _activeFunctionData.functionIndex;
                     int localVarCount = extFunctionData[functionIndex].localVarCountInFunction;
@@ -1628,17 +1674,18 @@ void Interpreter::clearFlowCtrlStack() {                // and remaining local s
                         delete[] _activeFunctionData.pVariableAttributes;
                         delete[] _activeFunctionData.ppSourceVarTypes;
                         localVarValueAreaCount--;
+                    }
                 }
             }
-        }
 
             if (!isInitialLoop) { pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl); }
             if (pFlowCtrlStackLvl == nullptr) { break; }       // all done
 
             isInitialLoop = false;
-    } while (true);
-}
+        } while (true);
+    }
 
+    _callStackDepth = 0;
     flowCtrlStack.deleteList();
     _pFlowCtrlStackTop = nullptr;   _pFlowCtrlStackMinus2 = nullptr; _pFlowCtrlStackMinus1 = nullptr;
 }
@@ -2217,8 +2264,8 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
                     delete[] pUnclippedResultString;
                     intermediateStringObjectCount--;
                 }
+            }
         }
-    }
 
         // store value in variable and adapt variable value type - next line is valid for long integers as well
         if (opResultLong || opResultFloat) { *_pEvalStackMinus2->varOrConst.value.pFloatConst = opResult.floatConst; }
@@ -2232,7 +2279,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) |
                 (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
         }
-}
+    }
 
 
     // (7) post process
@@ -2615,7 +2662,8 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
 
             break;
 
-        case 19:fcnResult.longConst = _callStackDepth; break;
+        case 19:fcnResult.longConst = _callStackDepth; break;       // this excludes stack levels used by loops (while, if, ...)
+        case 20:fcnResult.longConst = _programsInDebug; break;
 
         default: return result_arg_invalid; break;
         }       // switch (sysVar)
@@ -2644,7 +2692,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
     _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
 
     return result_execOK;
-    }
+}
 
 
 // -----------------------
@@ -3197,7 +3245,7 @@ Interpreter::execResult_type Interpreter::terminateExternalFunction(bool addZero
     } while (blockType != MyParser::block_extFunction);
 
 
-    if ((_activeFunctionData.pNextStep >= _programStart) && !_inStopForDebugMode) {   // not within a function        
+    if ((_activeFunctionData.pNextStep >= _programStart) && (_programsInDebug == 0)) {   // not within a function and not in debug mode       
         if (localVarValueAreaCount != 0) {
             //// _pConsole ???
             Serial.print("*** Local variable storage area objects cleanup error. Remaining: "); Serial.println(localVarStringObjectCount);

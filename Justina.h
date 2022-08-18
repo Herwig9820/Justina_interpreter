@@ -151,13 +151,17 @@ public:
         result_stringTooLong,
 
         // abort, kill, quit, debug
-        result_eval_stopForDebug = 3400,           // 'Stop' command executed (from inside a program only): this enters debug mode
-        result_eval_abort,                  // abort running program (return to Justina prompt)
+        result_eval_noProgramStopped=3400,        // 'Go' command not allowed because not in debug mode
 
-        result_eval_kill,                   // caller requested to exit Justina interpreter
-        result_eval_quit,                   // 'Quit' command executed (exit Justina interpreter)
+        // MANDATORY LAST range of errors: events
+        result_eval_startOfEvents = 3500,
+        
+        // abort, kill, quit, debug: EVENTS (first handled as errors - which they are not - initially following the same flow)
+        result_eval_stopForDebug = result_eval_startOfEvents,    // 'Stop' command executed (from inside a program only): this enters debug mode
+        result_eval_abort,                                  // abort running program (return to Justina prompt)
+        result_eval_kill,                                   // caller requested to exit Justina interpreter
+        result_eval_quit,                                   // 'Quit' command executed (exit Justina interpreter)
 
-        result_eval_noProgramStopped        // 'Go' command not allowed because not in debug mode
     };
 
     // printing (to string, to stream)
@@ -490,6 +494,8 @@ public:
     int _userCBprocAliasSet_count = 0;
 
     int _callStackDepth = 0;                                        // external function calls
+    int _programsInDebug{0};
+    bool _singleStepMode{false};
 
     char _arrayDimCount{ 0 };
     char* _programCounter{ nullptr };                                // pointer to token memory address (not token step n�)
@@ -504,10 +510,9 @@ public:
 
     // program storage
     char _programStorage[PROG_MEM_SIZE + IMM_MEM_SIZE];
-    char* _programStart;
+    char* _programStart{};
     int  _programSize{ false };
 
-    bool _inStopForDebugMode;
 
     MyParser* _pmyParser;
 
@@ -620,7 +625,7 @@ public:
     execResult_type  execInternalFunction(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount);
     execResult_type  launchExternalFunction(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount);
     execResult_type  terminateExternalFunction(bool addZeroReturnValue = false);
-    execResult_type execProcessedCommand(bool& isFunctionReturn);
+    execResult_type execProcessedCommand(bool& isFunctionReturn, bool& cmdLineRequestsProgramStop);
     execResult_type testForLoopCondition(bool& fail);
 
     execResult_type checkFmtSpecifiers(bool isDispFmt, bool valueIsString, int suppliedArgCount, char* valueType, Val* operands, char& numSpecifier,
@@ -700,6 +705,7 @@ public:
         cmdcod_halt,
         cmdcod_stop,
         cmdcod_go,
+        cmdcod_step,
         cmdcod_quit,
         cmdcod_info,
         cmdcod_input,

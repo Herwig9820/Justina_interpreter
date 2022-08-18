@@ -195,14 +195,13 @@ Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
     _isPrompt = false;
 
     // init 'machine' (not a complete reset, because this clears heap objects for this Interpreter object, and there are none)
-    _inStopForDebugMode = false;
     _programName[0] = '\0';
     _programVarNameCount = 0;
-    _localVarCount=0;
+    _localVarCount = 0;
     _localVarCountInFunction = 0;
     _paramOnlyCountInFunction = 0;
     _staticVarCount = 0;
-    _staticVarCountInFunction =0;
+    _staticVarCountInFunction = 0;
     _extFunctionCount = 0;
 
     _instructionCharCount = 0;
@@ -260,6 +259,10 @@ Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
 
     *_programStorage = '\0';                                    //  current end of program 
     *_programStart = '\0';                                      //  current end of program (immediate mode)
+
+    _callStackDepth = 0;
+    _programsInDebug = 0;
+    _singleStepMode=false;
 
     _currenttime = millis();
     _previousTime = _currenttime;
@@ -540,7 +543,20 @@ bool Interpreter::processCharacter(char c, bool& kill) {
             _pmyParser->printParsingResult(result, funcNotDefIndex, _instruction, _lineCount, pErrorPos);
         }
         else { _pConsole->println(); }                                       // empty line: advance to next line only
-        
+
+        if (_programsInDebug>0) {
+            for (int i = 1; i <= 50; i++) { _pConsole->print("-"); }
+            char msg[150]="";
+            sprintf(msg, "\r\n***** DEBUG mode. Active function: %s, call stack depth: %d, open programs: %d\r\n***** NEXT-> ", extFunctionNames[_activeFunctionData.functionIndex], _callStackDepth, _programsInDebug);
+            _pConsole->print(msg);
+            _pmyParser->prettyPrintInstructions(true, _programCounter);
+            ////Serial.print("next: prog counter: "); Serial.println(_programCounter - _programStorage);
+        }
+
+
+
+
+
         if (_promptAndEcho != 0) { _pConsole->print("Justina> "); _isPrompt = true; }                 // print new prompt
 
         bool wasReset = false;      // init
@@ -612,4 +628,4 @@ bool Interpreter::processCharacter(char c, bool& kill) {
     }
 
     return false;  // and wait for next character
-    }
+}
