@@ -1,6 +1,7 @@
 #include "Justina.h"
 
 #define printCreateDeleteHeapObjects 0
+#define printParsedTokens 0
 #define debugPrint 0
 
 
@@ -68,14 +69,14 @@ const MyParser::ResWordDef MyParser::_resWords[]{
 
     {"End",             cmdcod_end,         cmd_noRestrictions,                                 0,0,    cmdPar_102,     cmdBlockGenEnd},                // closes inner open command block
 
-    {"Pause",           cmdcod_pause,       cmd_onlyInFunctionBlock,                            0,0,    cmdPar_104,     cmdBlockNone},                
-    {"Halt",            cmdcod_halt,        cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},                
+    {"Pause",           cmdcod_pause,       cmd_onlyInFunctionBlock,                            0,0,    cmdPar_104,     cmdBlockNone},
+    {"Halt",            cmdcod_halt,        cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},
 
-    {"Stop",            cmdcod_stop,        cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},                
-    {"Go",              cmdcod_go,          cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},                
-    {"Step",            cmdcod_step,        cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},                
+    {"Stop",            cmdcod_stop,        cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},
+    {"Go",              cmdcod_go,          cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"Step",            cmdcod_step,        cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
 
-    {"Quit",            cmdcod_quit,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockNone},                
+    {"Quit",            cmdcod_quit,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockNone},
 
     {"Delvar",          cmdcod_delete,      cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_110,     cmdDeleteVar},
     {"Clearvars",       cmdcod_clear,       cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockNone},
@@ -398,7 +399,7 @@ void MyParser::resetMachine(bool withUserVariables) {
     _pInterpreter->_staticVarCountInFunction = 0;
     _pInterpreter->_staticVarCount = 0;
     _pInterpreter->_extFunctionCount = 0;
-    
+
     if (withUserVariables) { _pInterpreter->_userVarCount = 0; }
     else {
         int index = 0;          // clear user variable flag 'variable is used by program'
@@ -408,8 +409,8 @@ void MyParser::resetMachine(bool withUserVariables) {
     }
 
     _pInterpreter->_lastResultCount = 0;                                       // current last result FiFo depth (values currently stored)
-    _pInterpreter->_userCBprocStartSet_count = 0;
-    _pInterpreter->_userCBprocAliasSet_count = 0;
+
+    _pInterpreter->_userCBprocAliasSet_count = 0;   // note: _userCBprocStartSet_count: only reset when starting interpreter
 
     // calculation result print
     _pInterpreter->_dispWidth = _pInterpreter->_defaultPrintWidth, _pInterpreter->_dispNumPrecision = _pInterpreter->_defaultNumPrecision;
@@ -678,6 +679,10 @@ MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
     Interpreter::tokenType_type& t = _lastTokenType;
     char* pNext = pInputStart;                                                          // set to first character in instruction
     char* pNext_hold = pNext;
+
+#if printParsedTokens
+    Serial.println(); ////
+#endif
 
     do {                                                                                // parse ONE token in an instruction
         bool isLeftPar = _lastTokenIsTerminal ? (_lastTermCode == termcod_leftPar) : false;
@@ -1110,8 +1115,8 @@ bool MyParser::parseAsResWord(char*& pNext, parseTokenResult_type& result) {
         _lastTokenType = Interpreter::tok_isReservedWord;
         _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
-#if debugPrint
-        Serial.print("parsing keyword: address is "); Serial.println(_lastTokenStep);
+#if printParsedTokens
+        Serial.print("parsing keyword: address is "); Serial.print(_lastTokenStep); Serial.print(" ["); Serial.print(_resWords[resWordIndex]._resWordName);  Serial.println("]");
 #endif
 
         _pInterpreter->_programCounter += sizeof(Interpreter::TokenIsResWord) - (hasTokenStep ? 0 : 2);
@@ -1212,8 +1217,9 @@ bool MyParser::parseAsNumber(char*& pNext, parseTokenResult_type& result) {
     _lastTokenType = Interpreter::tok_isConstant;
     _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
-#if debugPrint
-    Serial.print("parsing number : address is "); Serial.println(_lastTokenStep);
+#if printParsedTokens
+    Serial.print("parsing number : address is "); Serial.print(_lastTokenStep); Serial.print(" ["); if (isLong) { Serial.print(l); }
+    else { Serial.print(f); }  Serial.println("]");
 #endif
 
     if (doNonLocalVarInit) { initVariable(_lastVariableTokenStep, _lastTokenStep); }     // initialisation of global / static variable ? (operator: is always assignment)
@@ -1255,7 +1261,6 @@ bool MyParser::parseAsStringConstant(char*& pNext, parseTokenResult_type& result
     // is a variable required instead of a constant ?
     bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_incr) || (_lastTermCode == termcod_decr)) : false;
     if (varRequired) { pNext = pch; result = result_variableNameExpected; return false; }
-
     // array declaration: dimensions must be number constants (global, static, local arrays)
     bool isArrayDimSpec = (_isAnyVarCmd) && (_parenthesisLevel > 0);
     if (isArrayDimSpec) { pNext = pch; result = result_arrayDimNotValid; return false; }
@@ -1311,8 +1316,8 @@ bool MyParser::parseAsStringConstant(char*& pNext, parseTokenResult_type& result
     _lastTokenType = Interpreter::tok_isConstant;
     _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
-#if debugPrint
-    Serial.print("parsing alphan : address is "); Serial.println(_lastTokenStep);
+#if printParsedTokens
+    Serial.print("parsing alphan : address is "); Serial.print(_lastTokenStep); Serial.print(" ['"); Serial.print(pStringCst);  Serial.println("']");
 #endif
 
     if (doNonLocalVarInit) {                                     // initialisation of global / static variable ? 
@@ -2032,8 +2037,8 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
     _lastTokenIsTerminal = true;
     _lastTermCode = (termin_code)_terminals[termIndex].terminalCode;
 
-#if debugPrint
-    Serial.print("parsing termin : address is "); Serial.println(_lastTokenStep);
+#if printParsedTokens
+    Serial.print("parsing termin : address is "); Serial.print(_lastTokenStep); Serial.print(" [ "); Serial.print(_terminals[termIndex].terminalName);  Serial.println(" ]");
 #endif
 
     _pInterpreter->_programCounter += sizeof(Interpreter::TokenIsTerminal);
@@ -2089,8 +2094,8 @@ bool MyParser::parseAsInternFunction(char*& pNext, parseTokenResult_type& result
         _lastTokenType = Interpreter::tok_isInternFunction;
         _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
-#if debugPrint
-        Serial.print("parsing int fcn: address is "); Serial.println(_lastTokenStep);
+#if printParsedTokens
+        Serial.print("parsing int fcn: address is "); Serial.print(_lastTokenStep); Serial.print(" ["); Serial.print(_functions[funcIndex].funcName);  Serial.println("]");
 #endif
 
         _pInterpreter->_programCounter += sizeof(Interpreter::TokenIsIntFunction);
@@ -2230,8 +2235,8 @@ bool MyParser::parseAsExternFunction(char*& pNext, parseTokenResult_type& result
     _lastTokenType = Interpreter::tok_isExternFunction;
     _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
-#if debugPrint
-    Serial.print("parsing ext fcn: address is "); Serial.println(_lastTokenStep);
+#if printParsedTokens
+    Serial.print("parsing ext fcn: address is "); Serial.print(_lastTokenStep); Serial.print(" ["); Serial.print(_pInterpreter->extFunctionNames[_functionIndex]);  Serial.println("]");
 #endif
 
     _pInterpreter->_programCounter += sizeof(Interpreter::TokenIsExtFunction);
@@ -2472,10 +2477,10 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
 
         // variable not yet declared as global or user variable
         if (variableNotYetKnown) {
-            Serial.println("\r\n*** 4.2 - var not yet known");
+            ////Serial.println("\r\n*** 4.2 - var not yet known");
             // but this can still be a global or user variable declaration 
             if (_isGlobalOrUserVarCmd) {                           // no, it's is a variable reference 
-                Serial.println("*** 4.2 - is global");
+                ////Serial.println("*** 4.2 - is global");
                 // is a declaration of a new program global variable (in program mode), or a new user user variable (in immediate mode) 
                 // variable qualifier : don't care for now (global varables: reset at start of next external function parsing)
                 if (!isArray) { varValues[activeNameRange][varNameIndex].floatConst = 0.; }                  // initialize variable (if initializer and/or array: will be overwritten)
@@ -2484,15 +2489,15 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
                 varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~_pInterpreter->var_isArray); // init (array flag may only be added when storage is created) 
             }
             else {
-                Serial.println("*** 4.2 - is not global");
+                ////Serial.println("*** 4.2 - is not global");
                 // it's neither a global or user variable declaration, nor a global or user variable reference. But the variable name exists,
                 // so local or static function variables using this name have been defined already. 
                 // in debug mode (program stopped), the name could refer to a local or static variable of a function in the call stack (open function) 
                 // in debug mode now ? (if multiple programs in debug mode, only the last one stopped will be considered here
-                if (_pInterpreter->_programsInDebug>0) {
+                if (_pInterpreter->_programsInDebug > 0) {
                     // check whether this is a local or static function variable reference of the deepest open function in the call stack
 
-                    Serial.println("*** 4.2 - in debug mode");
+                    ////Serial.println("*** 4.2 - in debug mode");
                     int openFunctionIndex{};
                     void* pFlowCtrlStackLvl = _pInterpreter->_pFlowCtrlStackTop;                    int blockType = block_none;
                     do {
@@ -2537,7 +2542,7 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
         }
 
         else {  // the global or user variable exists already: check for double definition
-            Serial.println("*** 4.2 - var IS known");
+            ////Serial.println("*** 4.2 - var IS known");
             if (_isGlobalOrUserVarCmd) {
                 if (!(_pInterpreter->_programMode ^ isProgramVar)) { pNext = pch; result = result_varRedeclared; return false; }
             }
@@ -2545,7 +2550,7 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
     }
 
 
-    Serial.println("*** 5");
+    ////Serial.println("*** 5");
     // 5. If NOT a new variable, check if it corresponds to the variable definition (scalar or array) and retrieve array dimension count (if array)
     //    If it is a FOR loop control variable, check that it is not in use by a FOR outer loop (in same function)
     // --------------------------------------------------------------------------------------------------------------------------------------------
@@ -2564,7 +2569,7 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
     bool isLocalVar = isOpenFunctionLocalVariable ? true : (_extFunctionBlockOpen && (varScope == _pInterpreter->var_isLocalInFunc));
     bool isParam = isOpenFunctionLocalVariable ? false : (_extFunctionBlockOpen && (varScope == _pInterpreter->var_isParamInFunc));    //// isOpenFunctionLocalVariable -> isOpenFunctionParamVariable, false -> true
 
-    int valueIndex = (isOpenFunctionStaticVariable || isOpenFunctionLocalVariable) ? openFunctionVar_valueIndex   :
+    int valueIndex = (isOpenFunctionStaticVariable || isOpenFunctionLocalVariable) ? openFunctionVar_valueIndex :
         isGlobalOrUserVar ? varNameIndex : _pInterpreter->programVarValueIndex[varNameIndex];
 
     if (!variableNotYetKnown) {  // not a variable definition but a variable use
@@ -2639,7 +2644,7 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
     _variableScope = varScope;
 
 
-    Serial.println("*** 6");
+    ////Serial.println("*** 6");
     // 6. Store token in program memory
     // --------------------------------
 
@@ -2655,16 +2660,16 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
     _lastTokenType = Interpreter::tok_isVariable;
     _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
-#if debugPrint
-    Serial.print("parsing var    : address is "); Serial.println(_lastTokenStep);
+#if printParsedTokens
+    Serial.print("parsing var nam: address is "); Serial.print(_lastTokenStep); Serial.print(" ["); Serial.print(pvarNames[activeNameRange][varNameIndex]);  Serial.println("]");
 #endif
 
     _pInterpreter->_programCounter += sizeof(Interpreter::TokenIsVariable);
     *_pInterpreter->_programCounter = '\0';                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
-    
-    
-    Serial.println("**** Var token stored");////
+
+
+    ////Serial.println("**** Var token stored");////
     return true;
 }
 
@@ -2702,9 +2707,9 @@ bool MyParser::parseAsIdentifierName(char*& pNext, parseTokenResult_type& result
 
     // Declaring program name or aliases ? Store 
     if (_isProgramCmd) {
-        strcpy(_pInterpreter->_programName, pIdentifierName);                           // maximum 10 user functions                                   
+        strcpy(_pInterpreter->_programName, pIdentifierName);
     }
-    else if (_isDecCBprocCmd) {
+    else if (_isDecCBprocCmd) {                                             // maximum 10 user functions     
         if (_pInterpreter->_userCBprocAliasSet_count >= _pInterpreter->_userCBprocStartSet_count) { pNext = pch; result = result_allUserCBAliasesSet;  return false; }
         for (int i = 0; i < _pInterpreter->_userCBprocAliasSet_count; i++) {
             if (strcmp(_pInterpreter->_callbackUserProcAlias[i], pIdentifierName) == 0) { pNext = pch; result = result_userCBAliasRedeclared;  return false; }
@@ -2721,8 +2726,8 @@ bool MyParser::parseAsIdentifierName(char*& pNext, parseTokenResult_type& result
     _lastTokenType = Interpreter::tok_isGenericName;
     _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
-#if debugPrint
-    Serial.print("parsing identif: address is "); Serial.println(_lastTokenStep);
+#if printParsedTokens
+    Serial.print("parsing identif: address is "); Serial.print(_lastTokenStep); Serial.print(" ["); Serial.print(pIdentifierName);  Serial.println("]");
 #endif
 
     _pInterpreter->_programCounter += sizeof(Interpreter::TokenIsConstant);
@@ -2735,7 +2740,7 @@ bool MyParser::parseAsIdentifierName(char*& pNext, parseTokenResult_type& result
 // -----------------------------------------
 // *   pretty print a parsed instruction   *
 // -----------------------------------------
-void MyParser::prettyPrintInstructions(bool printOneInstruction, char* startToken, char* errorProgCounter, int* sourceErrorPos) {
+void MyParser::prettyPrintInstructions(int instructionCount, char* startToken, char* errorProgCounter, int* sourceErrorPos) {
 
     // input: stored tokens
     Interpreter::TokenPointer progCnt;
@@ -2744,6 +2749,8 @@ void MyParser::prettyPrintInstructions(bool printOneInstruction, char* startToke
     int lastTokenType = Interpreter::tok_no_token;
     bool lastHasTrailingSpace = false, testForPostfix = false, testForPrefix = false;
     bool lastWasPostfixOperator = false, lastWasInfixOperator = false;
+    bool allInstructions = (instructionCount == 0);
+    bool isFirstInstruction = true;
 
     // output: printable token (text)
     const int maxCharsPretty{ 100 };           // must be long enough to hold one token in text (e.g. a variable name)
@@ -2893,16 +2900,20 @@ void MyParser::prettyPrintInstructions(bool printOneInstruction, char* startToke
 
         int tokenSourceLength = strlen(prettyToken);
         if (isSemicolon) {
-            if ((nextTokenType != Interpreter::tok_no_token) && !printOneInstruction) { _pInterpreter->_pConsole->print(prettyToken); }
+            if ((nextTokenType != Interpreter::tok_no_token) && allInstructions) { _pInterpreter->_pConsole->print(prettyToken); }
         }
-        else { _pInterpreter->_pConsole->print(prettyToken); }
+
+        else { _pInterpreter->_pConsole->print(prettyToken); }              // not a semicolon
 
         // if printing one instruction, return output error position based on token where execution error was produced
-        if (printOneInstruction) {
+        if (!allInstructions) {
             if (errorProgCounter == progCnt.pTokenChars) {
                 *sourceErrorPos = outputLength + (tokenHasLeadingSpace ? 1 : 0);
             }
-            else if (isSemicolon) { break; }
+            if (isSemicolon) {
+                if (--instructionCount == 0) { break; }     // all statements printed
+                else if (! isFirstInstruction) {_pInterpreter->_pConsole->print("; ");}
+            }
             outputLength += tokenSourceLength;
         }
 
@@ -2917,6 +2928,8 @@ void MyParser::prettyPrintInstructions(bool printOneInstruction, char* startToke
         lastHasTrailingSpace = hasTrailingSpace;
         lastWasInfixOperator = isInfixOperator;
         lastWasPostfixOperator = isPostfixOperator;
+
+        isFirstInstruction = false;
     }
 
     // exit

@@ -560,7 +560,7 @@ public:
     // static variable value storage
     Val staticVarValues[MAX_STAT_VARS];                                 // store static variable values (float, pointer to string, pointer to array of floats) 
     char staticVarType[MAX_STAT_VARS]{ 0 };                             // stores value type (float, pointer to string) and 'is array' flag
-    char staticVarNameRef[MAX_STAT_VARS]{ 0 };                            // used while in DEBUGGING mode only: index of static variable NAME
+    char staticVarNameRef[MAX_STAT_VARS]{ 0 };                          // used while in DEBUGGING mode only: index of static variable NAME
 
     // local variable value storage
     OpenFunctionData _activeFunctionData;
@@ -1278,7 +1278,7 @@ public:
     parseTokenResult_type  parseInstruction(char*& pInputLine);
     void deleteParsedData();
     bool allExternalFunctionsDefined(int& index);
-    void prettyPrintInstructions(bool oneInstruction, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
+    void prettyPrintInstructions(int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
     void printParsingResult(parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* const pErrorPos);
 
 

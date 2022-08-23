@@ -240,8 +240,8 @@ Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
     _lastResultCount = 0;
 
     // user call back alias storage
-    _userCBprocStartSet_count = 0;
-    _userCBprocAliasSet_count = 0;
+    
+    _userCBprocAliasSet_count = 0;    // note: _userCBprocStartSet_count: only reset when starting interpreter
 
     // calculation result print
     _dispWidth = _defaultPrintWidth, _dispNumPrecision = _defaultNumPrecision, _dispCharsToPrint = _defaultCharsToPrint, _dispFmtFlags = _defaultPrintFlags;
@@ -533,7 +533,7 @@ bool Interpreter::processCharacter(char c, bool& kill) {
                 if (!_programMode) {
 
                     // evaluation comes here
-                    if (_promptAndEcho == 2) { _pmyParser->prettyPrintInstructions(false); }                    // immediate mode and result OK: pretty print input line
+                    if (_promptAndEcho == 2) { _pmyParser->prettyPrintInstructions(0); }                    // immediate mode and result OK: pretty print input line
                     else if (_promptAndEcho == 1) { _pConsole->println(); _isPrompt = false; }
                     execResult_type execResult = exec();                                 // execute parsed user statements
                     if ((execResult == result_eval_kill) || (execResult == result_eval_quit)) { _quitJustineAtEOF = true; }
@@ -545,12 +545,13 @@ bool Interpreter::processCharacter(char c, bool& kill) {
         else { _pConsole->println(); }                                       // empty line: advance to next line only
 
         if (_programsInDebug>0) {
-            for (int i = 1; i <= 50; i++) { _pConsole->print("-"); }
+            ////for (int i = 1; i <= 50; i++) { _pConsole->print("-"); }
             char msg[150]="";
-            sprintf(msg, "\r\n***** DEBUG mode. Active function: %s, call stack depth: %d, open programs: %d\r\n***** NEXT-> ", extFunctionNames[_activeFunctionData.functionIndex], _callStackDepth, _programsInDebug);
+            sprintf(msg, "\r\n<< ** DEBUG ** >> Program stopped in user function %s, call stack depth: %d, open programs: %d. NEXT->  ", extFunctionNames[_activeFunctionData.functionIndex], _callStackDepth, _programsInDebug);
             _pConsole->print(msg);
-            _pmyParser->prettyPrintInstructions(true, _programCounter);
-            ////Serial.print("next: prog counter: "); Serial.println(_programCounter - _programStorage);
+            _pmyParser->prettyPrintInstructions(5, _programCounter);
+            ////Serial.print("    next: prog counter: "); Serial.println(_programCounter - _programStorage);
+            ////_pConsole->print("<< ** DEBUG ** >> ");
         }
 
 
