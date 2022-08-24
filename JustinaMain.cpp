@@ -240,7 +240,7 @@ Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
     _lastResultCount = 0;
 
     // user call back alias storage
-    
+
     _userCBprocAliasSet_count = 0;    // note: _userCBprocStartSet_count: only reset when starting interpreter
 
     // calculation result print
@@ -262,7 +262,7 @@ Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
 
     _callStackDepth = 0;
     _programsInDebug = 0;
-    _singleStepMode=false;
+    _singleStepMode = false;
 
     _currenttime = millis();
     _previousTime = _currenttime;
@@ -544,14 +544,17 @@ bool Interpreter::processCharacter(char c, bool& kill) {
         }
         else { _pConsole->println(); }                                       // empty line: advance to next line only
 
-        if (_programsInDebug>0) {
+        if (_programsInDebug > 0) {
             ////for (int i = 1; i <= 50; i++) { _pConsole->print("-"); }
-            char msg[150]="";
-            sprintf(msg, "\r\n<< ** DEBUG ** >> Program stopped in user function %s, call stack depth: %d, open programs: %d. NEXT->  ", extFunctionNames[_activeFunctionData.functionIndex], _callStackDepth, _programsInDebug);
+            char msg[150] = "";
+            sprintf(msg, "\r\n*** DEBUG *** NEXT=> [%s] ", extFunctionNames[_activeFunctionData.functionIndex]);
             _pConsole->print(msg);
             _pmyParser->prettyPrintInstructions(5, _programCounter);
             ////Serial.print("    next: prog counter: "); Serial.println(_programCounter - _programStorage);
-            ////_pConsole->print("<< ** DEBUG ** >> ");
+            if (_programsInDebug > 1) {
+                sprintf(msg, "*** %d open programs ***", _programsInDebug);
+                _pConsole->println(msg);
+            }
         }
 
 

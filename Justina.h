@@ -706,6 +706,7 @@ public:
         cmdcod_stop,
         cmdcod_go,
         cmdcod_step,
+        cmdcod_nop,
         cmdcod_quit,
         cmdcod_info,
         cmdcod_input,

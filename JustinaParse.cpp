@@ -75,6 +75,7 @@ const MyParser::ResWordDef MyParser::_resWords[]{
     {"Stop",            cmdcod_stop,        cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},
     {"Go",              cmdcod_go,          cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
     {"Step",            cmdcod_step,        cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"Nop",             cmdcod_nop,         cmd_onlyImmOrInsideFuncBlock | cmd_skipDuringExec,  0,0,    cmdPar_102,     cmdBlockNone},                  // insert two bytes in program, do nothing
 
     {"Quit",            cmdcod_quit,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockNone},
 
@@ -2912,7 +2913,7 @@ void MyParser::prettyPrintInstructions(int instructionCount, char* startToken, c
             }
             if (isSemicolon) {
                 if (--instructionCount == 0) { break; }     // all statements printed
-                else if (! isFirstInstruction) {_pInterpreter->_pConsole->print("; ");}
+                /*else if (!isFirstInstruction)*/ { _pInterpreter->_pConsole->print("; "); }     // do not print if first instruction to print (when returning from function in single step mode) 
             }
             outputLength += tokenSourceLength;
         }

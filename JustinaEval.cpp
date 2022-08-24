@@ -235,16 +235,21 @@ Interpreter::execResult_type  Interpreter::exec() {
 
                 if (precedingIsComma) { _pEvalStackTop->terminal.index |= 0x80;   doCaseBreak = true; }      // flag that preceding token is comma separator 
 
-                if (evalStack.getElementCount() < _activeFunctionData.callerEvalStackLevels + 2) { doCaseBreak = true;; }         // no preceding token exist on the stack               
-                if (!(_pEvalStackMinus1->genericToken.tokenType == tok_isConstant) && !(_pEvalStackMinus1->genericToken.tokenType == tok_isVariable)) { doCaseBreak = true;; };
-
-                // previous token is constant or variable: check if current token is an infix or a postfix operator (it cannot be a prefix operator)
-                // if postfix operation, execute it first (it always has highest priority)
-                bool isPostfixOperator = (_pmyParser->_terminals[_pEvalStackTop->terminal.index & 0x7F].postfix_priority != 0);
-                if (isPostfixOperator) {
-                    execUnaryOperation(false);        // flag postfix operation
-                    execResult = execAllProcessedOperators();
-                    if (execResult != result_execOK) { doCaseBreak = true;; }
+                if (!doCaseBreak) {
+                    if (evalStack.getElementCount() < _activeFunctionData.callerEvalStackLevels + 2) { doCaseBreak = true;; }         // no preceding token exist on the stack      
+                }
+                if (!doCaseBreak) {
+                    if (!(_pEvalStackMinus1->genericToken.tokenType == tok_isConstant) && !(_pEvalStackMinus1->genericToken.tokenType == tok_isVariable)) { doCaseBreak = true;; };
+                }
+                if (!doCaseBreak) {
+                    // previous token is constant or variable: check if current token is an infix or a postfix operator (it cannot be a prefix operator)
+                    // if postfix operation, execute it first (it always has highest priority)
+                    bool isPostfixOperator = (_pmyParser->_terminals[_pEvalStackTop->terminal.index & 0x7F].postfix_priority != 0);
+                    if (isPostfixOperator) {
+                        execUnaryOperation(false);        // flag postfix operation
+                        execResult = execAllProcessedOperators();
+                        if (execResult != result_execOK) { doCaseBreak = true;; }
+                    }
                 }
 
 #if printProcessedTokens        // after evaluation stack has been updated and before breaking 
@@ -281,7 +286,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                 while (true) {
                     bool isTerminalLvl = ((pstackLvl->genericToken.tokenType == tok_isTerminalGroup1) || (pstackLvl->genericToken.tokenType == tok_isTerminalGroup2) || (pstackLvl->genericToken.tokenType == tok_isTerminalGroup3));
                     bool isLeftParLvl = isTerminalLvl ? (MyParser::_terminals[pstackLvl->terminal.index & 0x7F].terminalCode == MyParser::termcod_leftPar) : false;
-                    if (isLeftParLvl) { break; }   // break if left parenthesis found
+                    if (isLeftParLvl) { break; }   // break if left parenthesis found 
                     pstackLvl = (LE_evalStack*)evalStack.getPrevListElement(pstackLvl);
                     argCount++;
                 }
@@ -304,15 +309,16 @@ Interpreter::execResult_type  Interpreter::exec() {
                 // the left parenthesis and the argument(s) are now removed and replaced by a single scalar (function result, array element, single argument)
                 // check if additional operators preceding the left parenthesis can now be executed.
                 // when an operation is executed, check whether lower priority operations can now be executed as well (example: 3+5*7: first execute 5*7 yielding 35, then execute 3+35)
-                execResult = execAllProcessedOperators();
+                if (!doCaseBreak) {
+                    execResult = execAllProcessedOperators(); if (execResult != result_execOK) { doCaseBreak = true; }
+                }
 
-                if (execResult != result_execOK) { doCaseBreak = true; }
+
 
 #if printProcessedTokens        // after evaluation stack has been updated and before breaking because of error
                 Serial.print("process termin : address "); Serial.print(_programCounter - _programStorage);  Serial.print(", eval stack depth "); Serial.print(evalStack.getElementCount()); Serial.print(" [ ");
                 Serial.print(MyParser::_terminals[tokenIndex].terminalName);   Serial.println(" ]");
 #endif
-
                 if (doCaseBreak) { break; }
             }
 
@@ -360,7 +366,6 @@ Interpreter::execResult_type  Interpreter::exec() {
         // -------------------------------------------------
         // a token has been processed: advance to next token
         // -------------------------------------------------
-
         _programCounter = _activeFunctionData.pNextStep;         // note: will be altered when calling an external function and upon return of a called function
         tokenType = *_activeFunctionData.pNextStep & 0x0F;                                                               // next token type (could be token within caller, if returning now)
         precedingIsComma = isComma;
@@ -371,7 +376,7 @@ Interpreter::execResult_type  Interpreter::exec() {
         // ---------------------------------------------------
 
         if (isEndOfStatementSeparator) {
-            ////Serial.print("**statement processed - eval stack levels: "); Serial.print(evalStack.getElementCount()); 
+            ////Serial.print("**statement processed - eval stack levels: "); Serial.print(evalStack.getElementCount());
 #if printProcessedTokens        // after evaluation stack has been updated and before breaking 
             Serial.println("\r\n");
 #endif
@@ -425,16 +430,19 @@ Interpreter::execResult_type  Interpreter::exec() {
 
 
             // if current statement was 'Step' (given while program was stopped), the program must be stopped after the NEXT instruction (not after the STEP instruction)  
-            // exception: if a call to an external function is followed immediately by the end of statement separator, there should be no program stop after that statement is executed  
+            // exceptions: (1) if a call to an external function is followed immediately by a semicolon, there should be no program stop when returning from the called function...
+            //                 ...because only the terminating semicolon still needs to be executed, which is transparent to the user
+            //             (2) the next step to execute is not within a function (returning to immediate mode)
             char tokenType = ((TokenIsTerminal*)_programCounter)->tokenTypeAndIndex & 0x0F;             // program counter advanced to next step already
             bool isTerminal = ((tokenType == Interpreter::tok_isTerminalGroup1) || (tokenType == Interpreter::tok_isTerminalGroup2) || (tokenType == Interpreter::tok_isTerminalGroup3));
             if (isTerminal) {
                 tokenIndex = ((((TokenIsTerminal*)_programCounter)->tokenTypeAndIndex >> 4) & 0x0F);
                 tokenIndex += ((tokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (tokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
             }
-            // next statement is just a semicolon ? Do execute, but do not stop (if in single step mode) 
             bool isSemicolon = (isTerminal ? (MyParser::_terminals[tokenIndex].terminalCode == MyParser::termcod_semicolon) : false);
-            doSingleStep = _singleStepMode && !isSemicolon;
+            bool nextStepIsImmediateMode = _programCounter >= _programStart;//// check
+            // next statement is just a semicolon ? Do execute, but do not stop (if in single step mode) 
+            doSingleStep = _singleStepMode && !isSemicolon && !nextStepIsImmediateMode;             // after next statement is executed //// check
 
 
             if (doAbort) { execResult = result_eval_abort; }
@@ -459,7 +467,6 @@ Interpreter::execResult_type  Interpreter::exec() {
             }
         }
 
-        ////Serial.println("almost there");
 
         // -----------------------------------------------------------------------------------
         // if execution error: print current instruction being executed, signal error and exit
@@ -471,11 +478,11 @@ Interpreter::execResult_type  Interpreter::exec() {
 
 
             bool isEvent = (execResult >= result_eval_startOfEvents);
-            if (isEvent) {  
+            if (isEvent) {
                 ////_pmyParser->prettyPrintInstructions(1, programCnt_previousStatement, _activeFunctionData.errorProgramCounter, &sourceErrorPos);
             }
             else {
-            _pConsole->print("\r\n  ");
+                _pConsole->print("\r\n  ");
                 _pmyParser->prettyPrintInstructions(1, _activeFunctionData.errorStatementStartStep, _activeFunctionData.errorProgramCounter, &sourceErrorPos);
                 _pConsole->print("  "); for (int i = 1; i <= sourceErrorPos; i++) { _pConsole->print(" "); }
             }
@@ -535,14 +542,6 @@ Interpreter::execResult_type  Interpreter::exec() {
         }
     }
 
-    // ----------------------------------------------------------------------------------------------------------------
-    // Delete any intermediate result string objects used as arguments, delete remaining evaluation stack level objects 
-    // ----------------------------------------------------------------------------------------------------------------
-
-    ////Serial.print("*** ALL statements processed - before clear eval stack levels: "); Serial.println(evalStack.getElementCount());////
-    clearEvalStack();               // and intermediate strings
-
-
 
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -566,6 +565,18 @@ Interpreter::execResult_type  Interpreter::exec() {
         clearFlowCtrlStack();           // and remaining local storage + local variable string and array values
     }
 
+
+    // ----------------------------------------------------------------------------------------------------------------
+    // Delete any intermediate result string objects used as arguments, delete remaining evaluation stack level objects 
+    // ----------------------------------------------------------------------------------------------------------------
+
+    ////Serial.print("*** ALL statements processed - before clear eval stack levels: "); Serial.println(evalStack.getElementCount());////
+    
+    
+    if(_programsInDebug==0) { Serial.println("***** clear eval stack"); clearEvalStack();    }           // and intermediate strings
+
+    
+    
     return execResult;   // return result, in case it's needed by caller
 };
 
@@ -1623,7 +1634,6 @@ int Interpreter::findTokenStep(int tokenTypeToFind, char tokenCodeToFind, char*&
 
 void Interpreter::saveLastValue(bool& overWritePrevious) {
     if (!(evalStack.getElementCount() > _activeFunctionData.callerEvalStackLevels)) { return; }           // safety: data available ?
-
     // if overwrite 'previous' last result, then replace first item (if there is one); otherwise replace last item if FiFo full (-1 if nothing to replace)
     int itemToRemove = overWritePrevious ? ((_lastResultCount >= 1) ? 0 : -1) :
         ((_lastResultCount == MAX_LAST_RESULT_DEPTH) ? MAX_LAST_RESULT_DEPTH - 1 : -1);
@@ -2166,6 +2176,9 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     if (op2isLong || op2isFloat) { operand2.floatConst = (operand2IsVar ? (*_pEvalStackTop->varOrConst.value.pFloatConst) : _pEvalStackTop->varOrConst.value.floatConst); }
     else { operand2.pStringConst = (operand2IsVar ? (*_pEvalStackTop->varOrConst.value.ppStringConst) : _pEvalStackTop->varOrConst.value.pStringConst); }
 
+    //// onderstel long
+    ////Serial.print(op1isLong); Serial.print(" ++ operand 1: "); if (op1isLong) Serial.println(operand1.longConst); else Serial.println();
+    ////Serial.print(op2isLong); Serial.print(" ++ operand 2: "); if (op2isLong) Serial.println(operand2.longConst); else Serial.println();
 
     // (4) if required, promote an OPERAND to float (after rules as per (1) have been applied)
     // ---------------------------------------------------------------------------------------
@@ -2541,8 +2554,8 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
             if ((FiFoElement < 1) || (FiFoElement > MAX_LAST_RESULT_DEPTH)) { return result_arg_outsideRange; }
         }
         if (FiFoElement > _lastResultCount) { return result_arg_invalid; }
-
         --FiFoElement;
+
         fcnResultIsLong = (lastResultTypeFiFo[FiFoElement] == value_isLong);
         fcnResultIsFloat = (lastResultTypeFiFo[FiFoElement] == value_isFloat);
         if (fcnResultIsLong || fcnResultIsFloat || (!fcnResultIsLong && !fcnResultIsFloat && (lastResultValueFiFo[FiFoElement].pStringConst == nullptr))) {
