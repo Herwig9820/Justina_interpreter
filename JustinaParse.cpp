@@ -439,7 +439,7 @@ void MyParser::resetMachine(bool withUserVariables) {
 
     _pInterpreter->_callStackDepth = 0;
     _pInterpreter->_programsInDebug = 0;
-    _pInterpreter->_singleStepMode = false;
+    _pInterpreter->_doOneProgramStep = false;
 
     // perform consistency checks: verify that all objects created are destroyed again
     // note: intermediate string objects, function local storage, and function local variable strings and arrays exist solely during execution.
@@ -2913,7 +2913,7 @@ void MyParser::prettyPrintInstructions(int instructionCount, char* startToken, c
             }
             if (isSemicolon) {
                 if (--instructionCount == 0) { break; }     // all statements printed
-                /*else if (!isFirstInstruction)*/ { _pInterpreter->_pConsole->print("; "); }     // do not print if first instruction to print (when returning from function in single step mode) 
+                else if (!isFirstInstruction) { _pInterpreter->_pConsole->print("; "); }     
             }
             outputLength += tokenSourceLength;
         }

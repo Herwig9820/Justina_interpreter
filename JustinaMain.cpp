@@ -262,7 +262,7 @@ Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
 
     _callStackDepth = 0;
     _programsInDebug = 0;
-    _singleStepMode = false;
+    _doOneProgramStep = false;
 
     _currenttime = millis();
     _previousTime = _currenttime;

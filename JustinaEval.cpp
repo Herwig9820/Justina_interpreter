@@ -31,10 +31,12 @@ Interpreter::execResult_type  Interpreter::exec() {
     if (_programsInDebug == 0) {
         _pEvalStackTop = nullptr;   _pEvalStackMinus2 = nullptr; _pEvalStackMinus1 = nullptr;
         _pFlowCtrlStackTop = nullptr;   _pFlowCtrlStackMinus2 = nullptr; _pFlowCtrlStackMinus1 = nullptr;
-
+        _pImmediateCmdStackTop = nullptr;
         intermediateStringObjectCount = 0;      // reset at the start of execution
         localVarStringObjectCount = 0;
         localArrayObjectCount = 0;
+        _activeFunctionData.callerEvalStackLevels = 0;          // this is the highest program level
+        _doOneProgramStep = false;
     }
 
     _programCounter = _programStart;
@@ -42,7 +44,6 @@ Interpreter::execResult_type  Interpreter::exec() {
     programCnt_previousStatement = _programCounter;
 
     _activeFunctionData.functionIndex = 0;                  // main program level: not relevant
-    _activeFunctionData.callerEvalStackLevels = 0;          // this is the highest program level
     _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // no command is being executed
     _activeFunctionData.activeCmd_tokenAddress = nullptr;
     _activeFunctionData.errorStatementStartStep = _programCounter;
@@ -332,6 +333,7 @@ Interpreter::execResult_type  Interpreter::exec() {
                 lastTokenIsSemicolon = true;
                 isEndOfStatementSeparator = true;         // for pretty print only   
                 if (_activeFunctionData.activeCmd_ResWordCode == MyParser::cmdcod_none) {       // currently not executing a command, but a simple expression
+                    ////Serial.print("-----------------------------> total: "); Serial.print(evalStack.getElementCount()); Serial.print(" , callers: "); Serial.println((int)_activeFunctionData.callerEvalStackLevels);
                     if (evalStack.getElementCount() > (_activeFunctionData.callerEvalStackLevels + 1)) {
                         //// _pConsole ???
                         Serial.print("*** Evaluation stack error. Remaining stack levels for current program level: "); Serial.println(evalStack.getElementCount() - (_activeFunctionData.callerEvalStackLevels + 1));
@@ -425,9 +427,15 @@ Interpreter::execResult_type  Interpreter::exec() {
                 }
             } while (charsFound);
 
-            userRequestsStop = userRequestsStop || doStop;                              // 'backslash S' received from command line, either here or while a command is waiting for user input (e.g. Input)
+            userRequestsStop = userRequestsStop || doStop;                              // 'backslash S' received from command line, either here ('doStop') or while a command is waiting for user input (e.g. Input)
             doStopForDebug = userRequestsStop || doSingleStep;                          // program could also be in single step mode
 
+
+            // single step:
+            // STEP command: 
+            // stop after executed PROGRAM (not immediate mode) statement (enter debug mod) if:
+            // - next statement is also a PROGRAM statement, AND
+            // - previous command was 'STEP' command, OR, 
 
             // if current statement was 'Step' (given while program was stopped), the program must be stopped after the NEXT instruction (not after the STEP instruction)  
             // exceptions: (1) if a call to an external function is followed immediately by a semicolon, there should be no program stop when returning from the called function...
@@ -439,11 +447,17 @@ Interpreter::execResult_type  Interpreter::exec() {
                 tokenIndex = ((((TokenIsTerminal*)_programCounter)->tokenTypeAndIndex >> 4) & 0x0F);
                 tokenIndex += ((tokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (tokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
             }
-            bool isSemicolon = (isTerminal ? (MyParser::_terminals[tokenIndex].terminalCode == MyParser::termcod_semicolon) : false);
-            bool nextStepIsImmediateMode = _programCounter >= _programStart;//// check
             // next statement is just a semicolon ? Do execute, but do not stop (if in single step mode) 
-            doSingleStep = _singleStepMode && !isSemicolon && !nextStepIsImmediateMode;             // after next statement is executed //// check
-
+            bool isSemicolon = (isTerminal ? (MyParser::_terminals[tokenIndex].terminalCode == MyParser::termcod_semicolon) : false);
+            bool executedStepIsprogram = programCnt_previousStatement < _programStart;//// check
+            bool nextStepIsprogram = _programCounter < _programStart;//// check
+            doStopForDebug = _doOneProgramStep && !isSemicolon && executedStepIsprogram && nextStepIsprogram;             // after next statement is executed //// check
+            /*
+            Serial.print("*** executed step is program if program counter < 2000:  "); Serial.println(programCnt_previousStatement - _programStorage);
+            Serial.print("***     next step is program if program counter < 2000:  "); Serial.println(_programCounter - _programStorage);
+            Serial.print("*** single step mode On ? "); Serial.println(_doOneProgramStep);
+            Serial.print("*** next step: stop for debug ? "); Serial.println(doStopForDebug);
+            */
 
             if (doAbort) { execResult = result_eval_abort; }
             else if (doStopForDebug) { execResult = result_eval_stopForDebug; }
@@ -548,17 +562,25 @@ Interpreter::execResult_type  Interpreter::exec() {
     // 
     // ----------------------------------------------------------------------------------------------------------------
 
-    if (execResult == result_eval_stopForDebug) {              // stopping for debug now
+    if (execResult == result_eval_stopForDebug) {              // stopping for debug now ('STOP' command or single step)
         // push caller function data (or main = user entry level in immediate mode) on FLOW CONTROL stack 
         _pFlowCtrlStackMinus2 = _pFlowCtrlStackMinus1; _pFlowCtrlStackMinus1 = _pFlowCtrlStackTop;
         _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
         *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                // push caller function data to stack
+
+        ////Serial.print("\r\n++++++++++ ENTER debug: caller eval stack levels: "); Serial.print((int)_activeFunctionData.callerEvalStackLevels);
+        ////Serial.print(" , total eval stack levels: "); Serial.println(evalStack.getElementCount());
+        ////_activeFunctionData.callerEvalStackLevels = evalStack.getElementCount();                          // store evaluation stack levels in use by callers (call stack)//// nodig ???
+
         ++_callStackDepth;      // user function level added to flow control stack
         ++_programsInDebug;     // a program enters debug mode; previously started programs might be suspended as well
 
         ////Serial.print("*** stopping: next step after Go will be "); Serial.println(_activeFunctionData.pNextStep - _programStorage);
         ////Serial.println("pushed block type: "); Serial.println((int)((OpenFunctionData*)_pFlowCtrlStackTop)->blockType);
 
+        // push current command line storage to command line stack, to make room for debug commands
+        _pImmediateCmdStackTop = (char*)immModeCommandStack.appendListElement(IMM_MEM_SIZE);//// aanpassen
+        memcpy(_pImmediateCmdStackTop, _programStart, IMM_MEM_SIZE);
     }
 
     else if ((_programsInDebug == 0) || (execResult == result_eval_quit) || (execResult == result_eval_kill)) {             // do not clear flow control stack while in debug mode
@@ -571,12 +593,12 @@ Interpreter::execResult_type  Interpreter::exec() {
     // ----------------------------------------------------------------------------------------------------------------
 
     ////Serial.print("*** ALL statements processed - before clear eval stack levels: "); Serial.println(evalStack.getElementCount());////
-    
-    
-    if(_programsInDebug==0) { Serial.println("***** clear eval stack"); clearEvalStack();    }           // and intermediate strings
 
-    
-    
+
+    if (_programsInDebug == 0) { Serial.println("*** CLEAR eval stack ***");  clearEvalStack(); }           // and intermediate strings //// nodig ?
+
+
+
     return execResult;   // return result, in case it's needed by caller
 };
 
@@ -636,7 +658,12 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         ////Serial.print("===== Go:  programs in debug: "); Serial.println(_programsInDebug);
         if (_programsInDebug == 0) { return result_eval_noProgramStopped; }
 
-        _singleStepMode = (_activeFunctionData.activeCmd_ResWordCode == _pmyParser->cmdcod_step);
+        // copy command line stack top to command line program storage and pop command line stack top
+        memcpy(_programStart, _pImmediateCmdStackTop, IMM_MEM_SIZE);
+        immModeCommandStack.deleteListElement(_pImmediateCmdStackTop);
+        _pImmediateCmdStackTop = (char*)immModeCommandStack.getLastListElement();  //// size aanpassen
+
+        _doOneProgramStep = (_activeFunctionData.activeCmd_ResWordCode == _pmyParser->cmdcod_step);
         // currently, at least one program is stopped: restart the last program that was stopped
         char blockType = MyParser::block_none;
         ////Serial.println("GO: block type on stack: "); Serial.println((int)((OpenFunctionData*)_pFlowCtrlStackTop)->blockType);
@@ -1204,10 +1231,10 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
                     // set variable string pointer to null pointer
                     *pstackLvl->varOrConst.value.ppStringConst = nullptr;                           // change pointer to string (in variable) to null pointer
-                }
             }
-            pstackLvl = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
         }
+            pstackLvl = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
+    }
 
 
         // finalize
@@ -1463,7 +1490,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     }
     break;
 
-    }
+}
 
     return result_execOK;
 }
@@ -1651,8 +1678,8 @@ void Interpreter::saveLastValue(bool& overWritePrevious) {
                 delete[] lastResultValueFiFo[itemToRemove].pStringConst;
                 lastValuesStringObjectCount--;
             }
-        }
     }
+}
     else {
         _lastResultCount++;     // only adding an item, without removing previous one
     }
@@ -3036,14 +3063,14 @@ Interpreter::execResult_type  Interpreter::launchExternalFunction(LE_evalStack*&
     ++_callStackDepth;
 
 
-    // function to be called: create storage and init local variables with supplied arguments (populate _activeFunctionData)
-    // --------------------------------------------------------------------------------------------------------------------
-
     _activeFunctionData.functionIndex = pFunctionStackLvl->function.index;     // index of external function to call
     _activeFunctionData.blockType = MyParser::block_extFunction;
     _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // no command is being executed
     _activeFunctionData.activeCmd_tokenAddress = nullptr;
 
+
+    // function to be called: create storage and init local variables with supplied arguments (populate _activeFunctionData)
+    // --------------------------------------------------------------------------------------------------------------------
 
     //// aparte routine maken
     // create local variable storage for external function to be called

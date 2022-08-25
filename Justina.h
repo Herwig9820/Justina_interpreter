@@ -151,11 +151,11 @@ public:
         result_stringTooLong,
 
         // abort, kill, quit, debug
-        result_eval_noProgramStopped=3400,        // 'Go' command not allowed because not in debug mode
+        result_eval_noProgramStopped = 3400,        // 'Go' command not allowed because not in debug mode
 
         // MANDATORY LAST range of errors: events
         result_eval_startOfEvents = 3500,
-        
+
         // abort, kill, quit, debug: EVENTS (first handled as errors - which they are not - initially following the same flow)
         result_eval_stopForDebug = result_eval_startOfEvents,    // 'Stop' command executed (from inside a program only): this enters debug mode
         result_eval_abort,                                  // abort running program (return to Justina prompt)
@@ -494,8 +494,8 @@ public:
     int _userCBprocAliasSet_count = 0;
 
     int _callStackDepth = 0;                                        // external function calls
-    int _programsInDebug{0};
-    bool _singleStepMode{false};
+    int _programsInDebug{ 0 };
+    bool _doOneProgramStep{ false };
 
     char _arrayDimCount{ 0 };
     char* _programCounter{ nullptr };                                // pointer to token memory address (not token step n�)
@@ -581,13 +581,14 @@ public:
 
     LE_evalStack* _pEvalStackTop{ nullptr }, * _pEvalStackMinus1{ nullptr }, * _pEvalStackMinus2{ nullptr };
     void* _pFlowCtrlStackTop{ nullptr }, * _pFlowCtrlStackMinus1{ nullptr }, * _pFlowCtrlStackMinus2{ nullptr };
+    char* _pImmediateCmdStackTop{ nullptr };
 
     Val lastResultValueFiFo[MAX_LAST_RESULT_DEPTH];                // keep last evaluation results
     char lastResultTypeFiFo[MAX_LAST_RESULT_DEPTH]{ value_noValue };
 
     LinkedList evalStack;
     LinkedList flowCtrlStack;
-
+    LinkedList immModeCommandStack;
 
     // callback functions and storage
 
