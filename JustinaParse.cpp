@@ -44,12 +44,29 @@ MyParser::cmdPar_114[4]{ cmdPar_expression,                             cmdPar_v
 const MyParser::ResWordDef MyParser::_resWords[]{
     //  name            id code             where allowed               padding (boundary alignment)    param key       control info
     //  ----            -------             -------------               ----------------------------    ---------      ------------   
+
+    /* programs and functions */
+    /* ---------------------- */
+
     {"Program",         cmdcod_program,     cmd_onlyProgramTop | cmd_skipDuringExec,            0,0,    cmdPar_103,     cmdProgram},
     {"Function",        cmdcod_function,    cmd_onlyInProgram | cmd_skipDuringExec,             0,0,    cmdPar_108,     cmdBlockExtFunction},
+
+
+    /* variables */
+    /* --------- */
 
     {"Var",             cmdcod_var,         cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_111,     cmdGlobalVar},
     {"Static",          cmdcod_static,      cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_111,     cmdStaticVar},
     {"Local",           cmdcod_local,       cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_111,     cmdLocalVar},
+
+    //// to do
+    {"Delvar",          cmdcod_delete,      cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_110,     cmdDeleteVar},
+    {"Clearvars",       cmdcod_clear,       cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockNone},
+    {"Vars",            cmdcod_vars,        cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockNone},
+
+
+    /* flow control commands */
+    /* --------------------- */
 
     {"For",             cmdcod_for,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_109,     cmdBlockFor},
     {"While",           cmdcod_while,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockWhile},
@@ -61,27 +78,35 @@ const MyParser::ResWordDef MyParser::_resWords[]{
     {"Continue",        cmdcod_continue,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockOpenBlock_loop },       // allowed if at least one open loop block (any level) 
     {"Return",          cmdcod_return,      cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockOpenBlock_function},    // allowed if currently an open function definition block 
 
+    {"End",             cmdcod_end,         cmd_noRestrictions,                                 0,0,    cmdPar_102,     cmdBlockGenEnd},                // closes inner open command block
+
+    {"Quit",            cmdcod_quit,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockNone},
+
+
+    /* input and output commands */
+    /* ------------------------- */
+
     {"Info",            cmdcod_info,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_114,     cmdBlockNone},
     {"Input",           cmdcod_input,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_113,     cmdBlockNone},
     {"Print",           cmdcod_print,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},
     {"Dispfmt",         cmdcod_dispfmt,     cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
     {"Dispmod",         cmdcod_dispmod,     cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_105,     cmdBlockNone},
-
-    {"End",             cmdcod_end,         cmd_noRestrictions,                                 0,0,    cmdPar_102,     cmdBlockGenEnd},                // closes inner open command block
-
     {"Pause",           cmdcod_pause,       cmd_onlyInFunctionBlock,                            0,0,    cmdPar_104,     cmdBlockNone},
     {"Halt",            cmdcod_halt,        cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},
+
+
+    /* debugging commands */
+    /* ------------------ */
 
     {"Stop",            cmdcod_stop,        cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},
     {"Go",              cmdcod_go,          cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
     {"Step",            cmdcod_step,        cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"Debug",           cmdcod_debug,       cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
     {"Nop",             cmdcod_nop,         cmd_onlyImmOrInsideFuncBlock | cmd_skipDuringExec,  0,0,    cmdPar_102,     cmdBlockNone},                  // insert two bytes in program, do nothing
 
-    {"Quit",            cmdcod_quit,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockNone},
 
-    {"Delvar",          cmdcod_delete,      cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_110,     cmdDeleteVar},
-    {"Clearvars",       cmdcod_clear,       cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockNone},
-    {"Vars",            cmdcod_vars,        cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockNone},
+    /* user callback functions */
+    /* ----------------------- */
 
     {"DeclareCB",       cmdcod_decCBproc,   cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_100,     cmdBlockNone},
     {"Callback",        cmdcod_callback,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_101,     cmdBlockNone},
@@ -139,10 +164,10 @@ const MyParser::TerminalDef MyParser::_terminals[]{
 
     // non-operator terminals
 
-    {term_comma,            termcod_comma,              0x00,               0x00,               0x00},
-    {term_semicolon,        termcod_semicolon,          0x00,               0x00,               0x00},
-    {term_rightPar,         termcod_rightPar,           0x00,               0x00,               0x00},
-    {term_leftPar,          termcod_leftPar,            0x00,               0x10,               0x00},
+    {term_comma,            termcod_comma,              0x00,               0x00,                       0x00},
+    {term_semicolon,        termcod_semicolon,          0x00,               0x00,                       0x00},
+    {term_rightPar,         termcod_rightPar,           0x00,               0x00,                       0x00},
+    {term_leftPar,          termcod_leftPar,            0x00,               0x10,                       0x00},
 
     // operators (0x00 -> operator not available, 0x01 -> pure or compound assignment)
     // op_long: operands must be long, a long is returned (e.g. 'bitand' operator)
@@ -1981,12 +2006,21 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
         if (operatorContainsAssignment) {
             // token before an assignment operator is always a scalar variable OR a right parenthesis (behind the last array element subscript) 
             bool lastWasRightPar = _lastTokenIsTerminal ? (_lastTermCode == termcod_rightPar) : false;     // array element
+            
             if (lastWasRightPar) {
+                /*
+                // *** include next line yto produce error if assignments may only occur at the start of a (sub-) expression. Sub-expression: expression between parentheses) ***
+
                 if (!_arrayElemAssignmentAllowed) { pNext = pch; result = result_assignmNotAllowedHere; return false; }  // not compatible with prefix increment / decrement
+                */
             }
 
             else if (_lastTokenType == Interpreter::tok_isVariable) {  // last token was a scalar variable
                 // (sub-)expression STARTS with this variable, or with prefix incr/decr operator followed by this variable ? Assignment is allowed 
+
+                /*
+                // *** include next lines to produce error if assignments may only occur at the start of a (sub-) expression. Sub-expression: expression between parentheses) ***
+
                 bool assignmentIsSecondToken = (_previousTokenIsTerminal ?
                     ((_previousTermCode == termcod_semicolon) || (_previousTermCode == termcod_leftPar) || (_previousTermCode == termcod_comma)) : false);
                 assignmentIsSecondToken = assignmentIsSecondToken || (_previousTokenType == Interpreter::tok_no_token) || (_previousTokenType == Interpreter::tok_isReservedWord)
@@ -1994,6 +2028,7 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
                 bool previousIsPrefixIncDecr = _previousTokenIsTerminal ? (_previousTermCode == termcod_incr) || (_previousTermCode == termcod_decr) : false;
                 bool assignmentOK = assignmentIsSecondToken || (previousIsPrefixIncDecr && _prefixIncrDecrIsExpressionStart);
                 if (!assignmentOK) { pNext = pch; result = result_assignmNotAllowedHere; return false; }
+                */
             }
 
             else { pNext = pch; result = result_assignmNotAllowedHere; return false; }   // not a variable or array element
@@ -2913,7 +2948,7 @@ void MyParser::prettyPrintInstructions(int instructionCount, char* startToken, c
             }
             if (isSemicolon) {
                 if (--instructionCount == 0) { break; }     // all statements printed
-                else if (!isFirstInstruction) { _pInterpreter->_pConsole->print("; "); }     
+                else if (!isFirstInstruction) { _pInterpreter->_pConsole->print("; "); }
             }
             outputLength += tokenSourceLength;
         }

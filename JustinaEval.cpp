@@ -1,7 +1,7 @@
 #include "Justina.h"
 
 #define printCreateDeleteHeapObjects 0
-#define printProcessedTokens 0
+#define printProcessedTokens 1
 #define debugPrint 0
 
 const char passCopyToCallback = 0x40;       // flag: string is an empty string 
@@ -36,8 +36,9 @@ Interpreter::execResult_type  Interpreter::exec() {
         localVarStringObjectCount = 0;
         localArrayObjectCount = 0;
         _activeFunctionData.callerEvalStackLevels = 0;          // this is the highest program level
-        _doOneProgramStep = false;
     }
+
+    _doOneProgramStep = false;      // switch single step mode OFF before starting to execute command line (even in debug mode). Step and Debug commands will switch it on again (to execute one step).
 
     _programCounter = _programStart;
     holdProgramCnt_StatementStart = _programCounter;
@@ -595,7 +596,7 @@ Interpreter::execResult_type  Interpreter::exec() {
     ////Serial.print("*** ALL statements processed - before clear eval stack levels: "); Serial.println(evalStack.getElementCount());////
 
 
-    if (_programsInDebug == 0) { Serial.println("*** CLEAR eval stack ***");  clearEvalStack(); }           // and intermediate strings //// nodig ?
+    if (_programsInDebug == 0) { clearEvalStack(); }           // and intermediate strings //// nodig ?
 
 
 
@@ -641,9 +642,21 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         break;
     }
 
-    // ---------------------------
-    // Start stopped program again
-    // ---------------------------
+    // ---------------------------------------------------------------------------------------------------------
+    // Switch on single step mode (use to debug a program without Stop command programmed, right from the start)
+    // ---------------------------------------------------------------------------------------------------------
+    
+    case MyParser::cmdcod_debug:
+        _doOneProgramStep = true;
+
+        _activeFunctionData.activeCmd_ResWordCode = MyParser::cmdcod_none;        // command execution ended
+        _activeFunctionData.activeCmd_tokenAddress = nullptr;
+        break;
+
+
+        // ---------------------------
+        // Start stopped program again
+        // ---------------------------
 
     case MyParser::cmdcod_step:
     case MyParser::cmdcod_go:
@@ -664,11 +677,12 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         _pImmediateCmdStackTop = (char*)immModeCommandStack.getLastListElement();  //// size aanpassen
 
         _doOneProgramStep = (_activeFunctionData.activeCmd_ResWordCode == _pmyParser->cmdcod_step);
+        
         // currently, at least one program is stopped: restart the last program that was stopped
         char blockType = MyParser::block_none;
         ////Serial.println("GO: block type on stack: "); Serial.println((int)((OpenFunctionData*)_pFlowCtrlStackTop)->blockType);
 
-        // find the flow control stack entry for the stopped function and make it the active functin again (remove the flow control stack level for the debugging commands)
+        // find the flow control stack entry for the stopped function and make it the active function again (remove the flow control stack level for the debugging commands)
         do {
             blockType = *(char*)_pFlowCtrlStackTop;            // always at least one open function (because returning to caller from it)
             ////Serial.println("remove flow ctrl stack level - popped block type: "); Serial.println((int)blockType);
@@ -724,7 +738,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         }
 
         execResult = result_eval_quit;
-        return execResult;
+        return execResult;      // produce quit event
         break;
     }
 
@@ -1231,10 +1245,10 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
 
                     // set variable string pointer to null pointer
                     *pstackLvl->varOrConst.value.ppStringConst = nullptr;                           // change pointer to string (in variable) to null pointer
+                }
             }
-        }
             pstackLvl = (LE_evalStack*)evalStack.getNextListElement(pstackLvl);
-    }
+        }
 
 
         // finalize
@@ -1425,9 +1439,9 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     break;
 
 
-    // -----------------
-    //
-    // -----------------
+    // ----------------------------------------------
+    // end block command (While, For, If) or Function
+    // ----------------------------------------------
 
     case MyParser::cmdcod_end:
     {
@@ -1477,9 +1491,9 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     // no break here: from here on, subsequent execution is the same for 'end' (function) and for 'return'
 
 
-    // -----------------
-    //
-    // -----------------
+    // --------------------
+    // return from function
+    // --------------------
 
     case MyParser::cmdcod_return:
     {
@@ -1490,7 +1504,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     }
     break;
 
-}
+    }
 
     return result_execOK;
 }
@@ -1678,8 +1692,8 @@ void Interpreter::saveLastValue(bool& overWritePrevious) {
                 delete[] lastResultValueFiFo[itemToRemove].pStringConst;
                 lastValuesStringObjectCount--;
             }
+        }
     }
-}
     else {
         _lastResultCount++;     // only adding an item, without removing previous one
     }
@@ -2005,38 +2019,38 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
             terminalIndex = _pEvalStackMinus1->terminal.index & 0x7F;
             minus1IsOperator = (MyParser::_terminals[terminalIndex].terminalCode <= MyParser::termcod_opRangeEnd);  // preceding entry is operator ?
         }
-        if (minus1IsOperator) {
-            // check pending (not yet processed) token (always present and always a terminal token after a variable or constant token)
-            // pending token can be any terminal token: infix operator, left or right parenthesis, comma or semicolon 
-            // it can not be a prefix operator because it follows an operand (on top of stack)
-            pendingTokenType = *_activeFunctionData.pNextStep & 0x0F;                                    // there's always minimum one token pending (even if it is a semicolon)
-            pendingTokenIndex = (*_activeFunctionData.pNextStep >> 4) & 0x0F;                            // terminal token only: index stored in high 4 bits of token type 
-            pendingTokenIndex += ((pendingTokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (pendingTokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
-
-            // infix operation ?
-            bool isPrefixOperator = true;             // init as prefix operation
+        if (minus1IsOperator) {     // operator before current token
+            bool isPrefixOperator = true;             // prefix or infix operator ?
             if (evalStack.getElementCount() >= _activeFunctionData.callerEvalStackLevels + 3) {         // TWO preceding tokens exist on the stack               
                 isPrefixOperator = (!(_pEvalStackMinus2->genericToken.tokenType == tok_isConstant) && !(_pEvalStackMinus2->genericToken.tokenType == tok_isVariable));
                 // comma separators are not pushed to the evaluation stack, but if it is followed by a (prefix) operator, a flag is set in order not to mistake a token sequence as two operands and an infix operation
                 if (_pEvalStackMinus1->terminal.index & 0x80) { isPrefixOperator = true; }            // e.g. print 5, -6 : prefix operation on second expression ('-6') and not '5-6' as infix operation
             }
 
-            // check priority and associativity (prefix or infix)
+            // check operator priority
             int priority{ 0 };
             if (isPrefixOperator) { priority = _pmyParser->_terminals[terminalIndex].prefix_priority & 0x1F; }       // bits v43210 = priority
             else { priority = _pmyParser->_terminals[terminalIndex].infix_priority & 0x1F; }
 
-            bool RtoLassociativity = isPrefixOperator ? true : _pmyParser->_terminals[terminalIndex].infix_priority & MyParser::op_RtoL;
+            
+            // pending (not yet processed) token (always present and always a terminal token after a variable or constant token)
+            // pending token can be any terminal token: infix operator, left or right parenthesis, comma or semicolon 
+            // it can not be a prefix operator because it follows an operand (on top of stack)
+            pendingTokenType = *_activeFunctionData.pNextStep & 0x0F;                                    // there's always minimum one token pending (even if it is a semicolon)
+            pendingTokenIndex = (*_activeFunctionData.pNextStep >> 4) & 0x0F;                            // terminal token only: index stored in high 4 bits of token type 
+            pendingTokenIndex += ((pendingTokenType == Interpreter::tok_isTerminalGroup2) ? 0x10 : (pendingTokenType == Interpreter::tok_isTerminalGroup3) ? 0x20 : 0);
+            bool pendingIsPostfixOperator = (_pmyParser->_terminals[pendingTokenIndex].postfix_priority != 0);        // postfix or infix operator ?
 
-            // is pending token a postfix operator ? (it can not be a prefix operator)
-            bool isPostfixOperator = (_pmyParser->_terminals[pendingTokenIndex].postfix_priority != 0);
-
-            // if a pending operator has higher priority, or, it has equal priority and operator is right-to-left associative, do not execute operator yet 
-            // note that a PENDING LEFT PARENTHESIS also has priority over the preceding operator
-            pendingTokenPriorityLvl = (isPostfixOperator ? (_pmyParser->_terminals[pendingTokenIndex].postfix_priority & 0x1F) :        // bits v43210 = priority
+            // check pending operator priority and associtivity
+            pendingTokenPriorityLvl = (pendingIsPostfixOperator ? (_pmyParser->_terminals[pendingTokenIndex].postfix_priority & 0x1F) :        // bits v43210 = priority
                 (_pmyParser->_terminals[pendingTokenIndex].infix_priority) & 0x1F);  // pending terminal is either an infix or a postfix operator
-            currentOpHasPriority = (priority >= pendingTokenPriorityLvl);
-            if (RtoLassociativity && (priority == pendingTokenPriorityLvl)) { currentOpHasPriority = false; }
+            bool pendingRtoLassociativity = pendingIsPostfixOperator ? false : _pmyParser->_terminals[pendingTokenIndex].infix_priority & MyParser::op_RtoL;
+            
+            
+             // if a pending operator has higher priority, or, it is right-to-left associative, do not execute operator yet 
+            // note that a PENDING LEFT PARENTHESIS also has priority over the preceding operator
+           currentOpHasPriority = (priority >= pendingTokenPriorityLvl);
+            if (pendingRtoLassociativity /* && (priority == pendingTokenPriorityLvl)*/ ) { currentOpHasPriority = false; }//// clean up
             if (!currentOpHasPriority) { break; }   // exit while() loop
 
             // execute operator
@@ -2202,7 +2216,11 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     else { operand1.pStringConst = (operand1IsVar ? (*_pEvalStackMinus2->varOrConst.value.ppStringConst) : _pEvalStackMinus2->varOrConst.value.pStringConst); }
     if (op2isLong || op2isFloat) { operand2.floatConst = (operand2IsVar ? (*_pEvalStackTop->varOrConst.value.pFloatConst) : _pEvalStackTop->varOrConst.value.floatConst); }
     else { operand2.pStringConst = (operand2IsVar ? (*_pEvalStackTop->varOrConst.value.ppStringConst) : _pEvalStackTop->varOrConst.value.pStringConst); }
-
+    /* //// test
+    Serial.print("-- infix operator: "); Serial.println(_pmyParser->_terminals[_pEvalStackMinus1->terminal.index & 0x7F].terminalName);////
+    Serial.print("--           op 1: "); Serial.println(operand1.longConst);
+    Serial.print("--           op 2: "); Serial.println(operand2.longConst);
+    */
     //// onderstel long
     ////Serial.print(op1isLong); Serial.print(" ++ operand 1: "); if (op1isLong) Serial.println(operand1.longConst); else Serial.println();
     ////Serial.print(op2isLong); Serial.print(" ++ operand 2: "); if (op2isLong) Serial.println(operand2.longConst); else Serial.println();
@@ -2463,6 +2481,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
         _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
     }
+
     return result_execOK;
 }
 

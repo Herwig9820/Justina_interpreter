@@ -545,14 +545,14 @@ bool Interpreter::processCharacter(char c, bool& kill) {
         else { _pConsole->println(); }                                       // empty line: advance to next line only
 
         if (_programsInDebug > 0) {
-            ////for (int i = 1; i <= 50; i++) { _pConsole->print("-"); }
+            for (int i = 1; i <= _dispWidth; i++) { _pConsole->print("-"); }
             char msg[150] = "";
             sprintf(msg, "\r\n*** DEBUG *** NEXT=> [%s] ", extFunctionNames[_activeFunctionData.functionIndex]);
             _pConsole->print(msg);
             _pmyParser->prettyPrintInstructions(5, _programCounter);
             ////Serial.print("    next: prog counter: "); Serial.println(_programCounter - _programStorage);
             if (_programsInDebug > 1) {
-                sprintf(msg, "*** %d open programs ***", _programsInDebug);
+                sprintf(msg, "*** this + %d other programs STOPPED ***", _programsInDebug-1);
                 _pConsole->println(msg);
             }
         }
