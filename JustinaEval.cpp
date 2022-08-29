@@ -645,7 +645,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
     // ---------------------------------------------------------------------------------------------------------
     // Switch on single step mode (use to debug a program without Stop command programmed, right from the start)
     // ---------------------------------------------------------------------------------------------------------
-    
+
     case MyParser::cmdcod_debug:
         _doOneProgramStep = true;
 
@@ -677,7 +677,7 @@ Interpreter::execResult_type Interpreter::execProcessedCommand(bool& isFunctionR
         _pImmediateCmdStackTop = (char*)immModeCommandStack.getLastListElement();  //// size aanpassen
 
         _doOneProgramStep = (_activeFunctionData.activeCmd_ResWordCode == _pmyParser->cmdcod_step);
-        
+
         // currently, at least one program is stopped: restart the last program that was stopped
         char blockType = MyParser::block_none;
         ////Serial.println("GO: block type on stack: "); Serial.println((int)((OpenFunctionData*)_pFlowCtrlStackTop)->blockType);
@@ -1997,7 +1997,7 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
     // _pEvalStackTop should point to an operand on entry (parsed constant, variable, expression result)
 
     int pendingTokenIndex{ 0 };
-    int pendingTokenType{ tok_no_token }, pendingTokenPriorityLvl{};
+    int pendingTokenType{ tok_no_token }, pendingTokenPriority{};
     bool currentOpHasPriority{ false };
 
 #if debugPrint
@@ -2012,7 +2012,7 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
         // the current entry could also be preceded by a generic name on the evaluation stack: check
         ////  kan generic name zijn !!! adapt comment 
 
-        int terminalIndex{};
+        int terminalIndex{}; 
         bool minus1IsOperator{ false };       // init
         bool minus1IsTerminal = ((_pEvalStackMinus1->genericToken.tokenType == tok_isTerminalGroup1) || (_pEvalStackMinus1->genericToken.tokenType == tok_isTerminalGroup2) || (_pEvalStackMinus1->genericToken.tokenType == tok_isTerminalGroup3));
         if (minus1IsTerminal) {
@@ -2031,8 +2031,9 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
             int priority{ 0 };
             if (isPrefixOperator) { priority = _pmyParser->_terminals[terminalIndex].prefix_priority & 0x1F; }       // bits v43210 = priority
             else { priority = _pmyParser->_terminals[terminalIndex].infix_priority & 0x1F; }
+            bool RtoLassociativity = isPrefixOperator ? true : _pmyParser->_terminals[terminalIndex].infix_priority & MyParser::op_RtoL;
 
-            
+
             // pending (not yet processed) token (always present and always a terminal token after a variable or constant token)
             // pending token can be any terminal token: infix operator, left or right parenthesis, comma or semicolon 
             // it can not be a prefix operator because it follows an operand (on top of stack)
@@ -2042,15 +2043,14 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
             bool pendingIsPostfixOperator = (_pmyParser->_terminals[pendingTokenIndex].postfix_priority != 0);        // postfix or infix operator ?
 
             // check pending operator priority and associtivity
-            pendingTokenPriorityLvl = (pendingIsPostfixOperator ? (_pmyParser->_terminals[pendingTokenIndex].postfix_priority & 0x1F) :        // bits v43210 = priority
+            pendingTokenPriority = (pendingIsPostfixOperator ? (_pmyParser->_terminals[pendingTokenIndex].postfix_priority & 0x1F) :        // bits v43210 = priority
                 (_pmyParser->_terminals[pendingTokenIndex].infix_priority) & 0x1F);  // pending terminal is either an infix or a postfix operator
-            bool pendingRtoLassociativity = pendingIsPostfixOperator ? false : _pmyParser->_terminals[pendingTokenIndex].infix_priority & MyParser::op_RtoL;
+
+
+            // determine final priority
+            currentOpHasPriority = (priority > pendingTokenPriority);
+            if ((priority == pendingTokenPriority) && (RtoLassociativity)) { currentOpHasPriority = false; }
             
-            
-             // if a pending operator has higher priority, or, it is right-to-left associative, do not execute operator yet 
-            // note that a PENDING LEFT PARENTHESIS also has priority over the preceding operator
-           currentOpHasPriority = (priority >= pendingTokenPriorityLvl);
-            if (pendingRtoLassociativity /* && (priority == pendingTokenPriorityLvl)*/ ) { currentOpHasPriority = false; }//// clean up
             if (!currentOpHasPriority) { break; }   // exit while() loop
 
             // execute operator
@@ -2106,6 +2106,8 @@ Interpreter::execResult_type  Interpreter::execUnaryOperation(bool isPrefix) {
     // ---------------------------------------------------------------------
     operand.floatConst = operandIsVar ? *pOperandStackLvl->varOrConst.value.pFloatConst : pOperandStackLvl->varOrConst.value.floatConst;
 
+    Serial.print(isPrefix ? "-- EVAL prefix operator : " : "-- EVAL postfix operator: "); Serial.println(_pmyParser->_terminals[_pEvalStackMinus1->terminal.index & 0x7F].terminalName);////
+    Serial.print("--                    op: "); Serial.println(operand.longConst);
 
     // (4) execute (prefix or postfix) operator
     // ----------------------------------------
@@ -2149,6 +2151,7 @@ Interpreter::execResult_type  Interpreter::execUnaryOperation(bool isPrefix) {
         pOperandStackLvl->varOrConst.variableAttributes = 0x00;                     // not an array, not an array element (it's a constant) 
     }
 
+    Serial.print("--                result: "); Serial.println((isIncrDecr && isPrefix) ? *pOperandStackLvl->varOrConst.value.pLongConst : pOperandStackLvl->varOrConst.value.longConst);
 
     //  clean up stack (drop operator)
 
@@ -2216,11 +2219,11 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     else { operand1.pStringConst = (operand1IsVar ? (*_pEvalStackMinus2->varOrConst.value.ppStringConst) : _pEvalStackMinus2->varOrConst.value.pStringConst); }
     if (op2isLong || op2isFloat) { operand2.floatConst = (operand2IsVar ? (*_pEvalStackTop->varOrConst.value.pFloatConst) : _pEvalStackTop->varOrConst.value.floatConst); }
     else { operand2.pStringConst = (operand2IsVar ? (*_pEvalStackTop->varOrConst.value.ppStringConst) : _pEvalStackTop->varOrConst.value.pStringConst); }
-    /* //// test
-    Serial.print("-- infix operator: "); Serial.println(_pmyParser->_terminals[_pEvalStackMinus1->terminal.index & 0x7F].terminalName);////
-    Serial.print("--           op 1: "); Serial.println(operand1.longConst);
-    Serial.print("--           op 2: "); Serial.println(operand2.longConst);
-    */
+
+    Serial.print("-- EVAL infix operator: "); Serial.println(_pmyParser->_terminals[_pEvalStackMinus1->terminal.index & 0x7F].terminalName);////
+    Serial.print("--                op 1: "); Serial.println(operand1.longConst);
+    Serial.print("--                op 2: "); Serial.println(operand2.longConst);
+
     //// onderstel long
     ////Serial.print(op1isLong); Serial.print(" ++ operand 1: "); if (op1isLong) Serial.println(operand1.longConst); else Serial.println();
     ////Serial.print(op2isLong); Serial.print(" ++ operand 2: "); if (op2isLong) Serial.println(operand2.longConst); else Serial.println();
@@ -2433,8 +2436,8 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
                     delete[] pUnclippedResultString;
                     intermediateStringObjectCount--;
                 }
-            }
         }
+    }
 
         // store value in variable and adapt variable value type - next line is valid for long integers as well
         if (opResultLong || opResultFloat) { *_pEvalStackMinus2->varOrConst.value.pFloatConst = opResult.floatConst; }
@@ -2448,7 +2451,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) |
                 (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
         }
-    }
+}
 
 
     // (7) post process
@@ -2481,6 +2484,8 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
         _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
     }
+
+    Serial.print("--              result: "); Serial.println(operationIncludesAssignment ? *_pEvalStackTop->varOrConst.value.pLongConst : _pEvalStackTop->varOrConst.value.longConst);
 
     return result_execOK;
 }
@@ -2862,7 +2867,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
     _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
 
     return result_execOK;
-}
+    }
 
 
 // -----------------------

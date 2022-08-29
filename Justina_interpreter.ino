@@ -125,6 +125,14 @@ void setup() {
 
     // print sample / simple main menu for the user
     pConsole->println(menu);
+
+    //// test
+    long a,b,c,d,e;
+    e=10;
+    ++a += ++b += ++c += ++d += ++e;
+    ++b = ++c = ++d;
+
+    Serial.print("a: "); Serial.println(a);
 }
 
 

@@ -173,6 +173,7 @@ const MyParser::TerminalDef MyParser::_terminals[]{
     // op_long: operands must be long, a long is returned (e.g. 'bitand' operator)
     // res_long: operands can be float or long, a long is returned (e.g. 'and' operator)
     // op_RtoL: operator has right-to-left associativity
+    // prefix operators: always right-to-left associativity; not added to the operator definition table below
 
     {term_assign,           termcod_assign,             0x00,               0x01 | op_RtoL,             0x00},
 
@@ -1954,7 +1955,7 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
             if (_terminals[termIndex].prefix_priority == 0) { pNext = pch; result = result_invalidOperator; return false; }
             tokenIsPrefixOp = true; tokenIsPostfixOp = false;
             // if previous token was a prefix incr/decr operator, then a next prefix operator is not allowed
-            if (_lastTokenIsPrefixIncrDecr) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+            //// if (_lastTokenIsPrefixIncrDecr) { pNext = pch; result = result_operatorNotAllowedHere; return false; } //// incrdecr
         }
 
 
@@ -2003,13 +2004,14 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
             || (_terminals[termIndex].terminalCode == termcod_plusAssign) || (_terminals[termIndex].terminalCode == termcod_minusAssign)
             || (_terminals[termIndex].terminalCode == termcod_multAssign) || (_terminals[termIndex].terminalCode == termcod_divAssign));
 
+        Serial.print("operator is (compound) assignment: "); Serial.println(operatorContainsAssignment);////
         if (operatorContainsAssignment) {
             // token before an assignment operator is always a scalar variable OR a right parenthesis (behind the last array element subscript) 
             bool lastWasRightPar = _lastTokenIsTerminal ? (_lastTermCode == termcod_rightPar) : false;     // array element
-            
+
             if (lastWasRightPar) {
                 /*
-                // *** include next line yto produce error if assignments may only occur at the start of a (sub-) expression. Sub-expression: expression between parentheses) ***
+                // *** include next line to produce error if assignments may only occur at the start of a (sub-) expression. Sub-expression: expression between parentheses) ***
 
                 if (!_arrayElemAssignmentAllowed) { pNext = pch; result = result_assignmNotAllowedHere; return false; }  // not compatible with prefix increment / decrement
                 */
@@ -2018,17 +2020,19 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
             else if (_lastTokenType == Interpreter::tok_isVariable) {  // last token was a scalar variable
                 // (sub-)expression STARTS with this variable, or with prefix incr/decr operator followed by this variable ? Assignment is allowed 
 
-                /*
                 // *** include next lines to produce error if assignments may only occur at the start of a (sub-) expression. Sub-expression: expression between parentheses) ***
+                bool varCanAcceptAssignmentOp = _previousTokenIsTerminal ?
+                    ((_previousTermCode == termcod_semicolon) || (_previousTermCode == termcod_leftPar) || (_previousTermCode == termcod_comma) ||
+                        (_previousTermCode == termcod_assign) ||
+                        (_previousTermCode == termcod_plusAssign) || (_previousTermCode == termcod_minusAssign) ||
+                        (_previousTermCode == termcod_multAssign) || (_previousTermCode == termcod_divAssign)) : false;
 
-                bool assignmentIsSecondToken = (_previousTokenIsTerminal ?
-                    ((_previousTermCode == termcod_semicolon) || (_previousTermCode == termcod_leftPar) || (_previousTermCode == termcod_comma)) : false);
-                assignmentIsSecondToken = assignmentIsSecondToken || (_previousTokenType == Interpreter::tok_no_token) || (_previousTokenType == Interpreter::tok_isReservedWord)
+                varCanAcceptAssignmentOp = varCanAcceptAssignmentOp || (_previousTokenType == Interpreter::tok_no_token) || (_previousTokenType == Interpreter::tok_isReservedWord)
                     || (_previousTokenType == Interpreter::tok_isGenericName);
                 bool previousIsPrefixIncDecr = _previousTokenIsTerminal ? (_previousTermCode == termcod_incr) || (_previousTermCode == termcod_decr) : false;
-                bool assignmentOK = assignmentIsSecondToken || (previousIsPrefixIncDecr && _prefixIncrDecrIsExpressionStart);
+                bool assignmentOK = varCanAcceptAssignmentOp || (previousIsPrefixIncDecr && _prefixIncrDecrIsExpressionStart);
                 if (!assignmentOK) { pNext = pch; result = result_assignmNotAllowedHere; return false; }
-                */
+
             }
 
             else { pNext = pch; result = result_assignmNotAllowedHere; return false; }   // not a variable or array element
