@@ -1,7 +1,7 @@
 #include "Justina.h"
 
 #define printCreateDeleteHeapObjects 0
-#define printProcessedTokens 1
+#define printProcessedTokens 0
 #define debugPrint 0
 
 const char passCopyToCallback = 0x40;       // flag: string is an empty string 

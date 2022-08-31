@@ -171,14 +171,16 @@ public:
     // input
     const int _maxCharsToInput = 100;
 
-    // version
+    // type of parenthesis level
     static constexpr uint8_t extFunctionBit{ B00000001 };
     static constexpr uint8_t extFunctionPrevDefinedBit{ B00000010 };
     static constexpr uint8_t intFunctionBit{ B00000100 };
     static constexpr uint8_t openParenthesisBit{ B00001000 };                                  // not a function
     static constexpr uint8_t arrayBit{ B00010000 };
-    static constexpr uint8_t arrayElemAssignmentAllowedBit{ B00100000 };
-    static constexpr uint8_t arrayElemPostfixIncrDecrAllowedBit{ B01000000 };
+
+    static constexpr uint8_t varAssignmentAllowedBit{ B00100000 };
+    static constexpr uint8_t varHasPrefixIncrDecrBit{ B01000000 };
+
 
     static constexpr int PROG_MEM_SIZE{ 2000 };
     static constexpr int IMM_MEM_SIZE{ 300 };
@@ -717,7 +719,7 @@ public:
         cmdcod_dispmod,
         cmdcod_decCBproc,
         cmdcod_callback,
-        cmdcod_test
+        cmdcod_test //// test
     };
 
     // these values are grouped in a CmdBlockDef structure and are shared between multiple commands
@@ -905,6 +907,7 @@ public:
         result_resWordExpectedAsCmdPar = 1800,
         result_expressionExpectedAsCmdPar,
         result_varWithoutAssignmentExpectedAsCmdPar,
+        result_varWithOptionalAssignmentExpectedAsCmdPar,
         result_variableExpectedAsCmdPar,
         result_varRefExpectedAsCmdPar,
         result_identExpectedAsCmdPar,
@@ -1046,7 +1049,7 @@ public:
     // commands parameters: types allowed
     static constexpr uint8_t cmdPar_none = 0;
     static constexpr uint8_t cmdPar_resWord = 1;            // !!! note: keywords as parameters: not implemented
-    static constexpr uint8_t cmdPar_varNoAssignment = 2;
+    static constexpr uint8_t cmdPar_varNoAssignment = 2;    // and no operators
     static constexpr uint8_t cmdPar_varOptAssignment = 3;
     static constexpr uint8_t cmdPar_expression = 4;
     static constexpr uint8_t cmdPar_extFunction = 5;
@@ -1090,6 +1093,7 @@ public:
     static const char cmdPar_112[4];
     static const char cmdPar_113[4];
     static const char cmdPar_114[4];
+    static const char cmdPar_999[4];////test
 
 
 private:
@@ -1201,8 +1205,6 @@ private:
     int _functionIndex{ 0 };
     int _variableNameIndex{ 0 };
     int _variableScope{ 0 };
-    bool _arrayElemAssignmentAllowed{ false };                    // value returned: assignment to array element is allowed next
-    bool _arrayElemPostfixIncrDecrAllowed{ false };
 
     int _tokenIndex{ 0 };
     int _resWordCount;                                          // index into list of keywords
@@ -1229,7 +1231,16 @@ private:
 
     bool _lastTokenIsPrefixOp, _lastTokenIsPostfixOp;
     bool _lastTokenIsPrefixIncrDecr;
-    bool _prefixIncrDecrIsExpressionStart;
+
+    // used for expression syntax checking (parsing)
+    bool _thisLvl_lastIsVariable;                               // variable name, array name with 
+    bool _thisLvl_assignmentStillPossible;
+    bool _thisLvl_lastOpIsIncrDecr;
+
+    // used to check command argument constraints
+    bool _lvl0_withinExpression;
+    bool _lvl0_isPureVariable;
+    bool _lvl0_isVarWithAssignment;
 
     Interpreter* _pInterpreter;
 
