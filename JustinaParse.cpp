@@ -690,8 +690,10 @@ MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
     _thisLvl_assignmentStillPossible = true;                             // assume for now
     _thisLvl_lastOpIsIncrDecr = false;                                  // assume for now
 
-    // command argument constraints check
+    // command argument constraints check: reset 
+    _lvl0_initVarWithUnaryOp = 0;   // no prefix plus or minus;
     _lvl0_withinExpression = false;
+    _lvl0_isPurePrefixIncrDecr = false;
     _lvl0_isPureVariable = false;
     _lvl0_isVarWithAssignment = false;
 
@@ -703,11 +705,12 @@ MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
     _isCallbackCmd = false;
 
     _isExtFunctionCmd = false;
+    _isAnyVarCmd = false;
     _isGlobalOrUserVarCmd = false;
     _isLocalVarCmd = false;
     _isStaticVarCmd = false;
-    _isAnyVarCmd = false;
     _isDeleteVarCmd = false;
+
     _isCommand = false;
 
     parseTokenResult_type result = result_tokenFound;                                   // possible error will be determined during parsing 
@@ -825,7 +828,6 @@ bool MyParser::checkCommandSyntax(parseTokenResult_type& result) {              
 
     if (isInstructionStart) {
         _isCommand = (_lastTokenType == Interpreter::tok_isReservedWord);                            // keyword at start of instruction ? is a command
-        _varDefAssignmentFound = false;
 
         // start of a command ?
         // --------------------
@@ -974,8 +976,6 @@ bool MyParser::checkCommandSyntax(parseTokenResult_type& result) {              
     bool isAssignmentOp = _lastTokenIsTerminal ? ((_terminals[_tokenIndex].terminalCode == termcod_assign)
         || (_terminals[_tokenIndex].terminalCode == termcod_plusAssign) || (_terminals[_tokenIndex].terminalCode == termcod_minusAssign)
         || (_terminals[_tokenIndex].terminalCode == termcod_multAssign) || (_terminals[_tokenIndex].terminalCode == termcod_divAssign)) : false;
-    bool isNonAssignmentOp = _lastTokenIsTerminal ? (((_terminals[_tokenIndex].terminalCode <= termcod_opRangeEnd)) && !isAssignmentOp) : false;
-    bool isOperator = isAssignmentOp || isNonAssignmentOp;
     bool isIncrDecrOp = _lastTokenIsTerminal ? (_terminals[_tokenIndex].terminalCode == termcod_incr) || (_terminals[_tokenIndex].terminalCode == termcod_decr) : false;
 
     // is this token part of an expression ? 
@@ -984,12 +984,6 @@ bool MyParser::checkCommandSyntax(parseTokenResult_type& result) {              
     // start of expression: if within expression, AND the preceding token was a level 0 comma separator, keyword or generic name
     bool isExpressionFirstToken = withinExpression &&
         ((cmdSecondLastTokenType == Interpreter::tok_isReservedWord) || (cmdSecondLastTokenType == Interpreter::tok_isGenericName) || (cmdSecondLastIsLvl0CommaSep));
-
-    // does this expression start with a variable reference ? (either a variable or a prefix increment / decrement operator, which returns a variable reference)
-    if (isExpressionFirstToken) {
-        expressionStartsWithVarRef = (_lastTokenType == Interpreter::tok_isVariable);
-        expressionStartsWithPrefixOp = isIncrDecrOp;
-    }
 
     // keep track of token index within expression (base 0)
     if (!withinExpression || isExpressionFirstToken) { _cmdExprArgTokenNo = 0; }
@@ -1035,20 +1029,17 @@ bool MyParser::checkCommandSyntax(parseTokenResult_type& result) {              
     // ------------------------------------------------------------------------------------------
 
     if ((_parenthesisLevel == 0) && (!isLvl0CommaSep)) {     // a comma resets variables used for command argument constraint checks
-        if (allowedParType == cmdPar_none) { result = result_cmdHasTooManyParameters; return false; }                                                                           
+        if (allowedParType == cmdPar_none) { result = result_cmdHasTooManyParameters; return false; }
         if (allowedParType == cmdPar_resWord && !isResWord) { result = result_resWordExpectedAsCmdPar; return false; }                              // does not occur, but keep for completeness
-        if (allowedParType == cmdPar_ident && !isGenIdent) { result = result_identExpectedAsCmdPar; return false; }                                                                
+        if (allowedParType == cmdPar_ident && !isGenIdent) { result = result_identExpectedAsCmdPar; return false; }
         if ((allowedParType == cmdPar_expression) && !_lvl0_withinExpression) { result = result_expressionExpectedAsCmdPar; return false; }         // does not occur, but keep for completeness
         if ((allowedParType == cmdPar_varNoAssignment) && (!_lvl0_isPureVariable)) {
             result = isAssignmentOp ? (parseTokenResult_type)result_varWithoutAssignmentExpectedAsCmdPar : (parseTokenResult_type)result_variableExpectedAsCmdPar; return false;
         }
-        if ((allowedParType == cmdPar_varOptAssignment) && (!_lvl0_isPureVariable && !_lvl0_isVarWithAssignment)) {
+        if ((allowedParType == cmdPar_varOptAssignment) && (!_lvl0_isPurePrefixIncrDecr && !_lvl0_isPureVariable && !_lvl0_isVarWithAssignment)) {
             result = (parseTokenResult_type)result_varWithOptionalAssignmentExpectedAsCmdPar; return false;
         }
     }
-
-    _varDefAssignmentFound = false;                     // to enable check for assignment to non-constants
-    if (_isAnyVarCmd && isAssignmentOp) { _varDefAssignmentFound = true; }
 
 
     // remember past values
@@ -1098,8 +1089,10 @@ bool MyParser::parseAsResWord(char*& pNext, parseTokenResult_type& result) {
         _thisLvl_lastIsVariable = false;
         _thisLvl_assignmentStillPossible = true;                                                 // reset (expression may follow)                          
 
-        // command argument constraints check
-        _lvl0_withinExpression = false;                                                         // reset for next command parameter
+        // command argument constraints check: reset for next command parameter
+        _lvl0_initVarWithUnaryOp = 0;                                                                   // no prefix plus or minus;
+        _lvl0_withinExpression = false;
+        _lvl0_isPurePrefixIncrDecr = false;
         _lvl0_isPureVariable = false;
         _lvl0_isVarWithAssignment = false;
 
@@ -1137,6 +1130,7 @@ bool MyParser::parseAsResWord(char*& pNext, parseTokenResult_type& result) {
 bool MyParser::parseAsNumber(char*& pNext, parseTokenResult_type& result) {
     result = result_tokenNotFound;                                                      // init: flag 'no token found'
     char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
+    Serial.println("**** start parse number ****"); ////
 
     // all numbers will be positive, because leading '-' or '+' characters are parsed separately as prefix operators
     // this is important if next infix operator (power) has higher priority then this prefix operator: -2^4 <==> -(2^4) <==> -16, AND NOT (-2)^4 <==> 16 
@@ -1146,11 +1140,8 @@ bool MyParser::parseAsNumber(char*& pNext, parseTokenResult_type& result) {
 
     char* pNumStart = pNext;
     float f{ 0 }; long l{ 0 };
-    bool isLong{ false }, negate{ false };
+    bool isLong{ false };
     int i{ 0 };
-
-    if (pNumStart[0] == '-') { negate = true; }
-    if ((pNumStart[0] == '+') || (pNumStart[0] == '-')) { pNumStart++; };  // start with a plus or minus sign ? start looking for digits at next position 
 
     int base = ((pNumStart[0] == '0') && ((pNumStart[1] == 'x') || (pNumStart[1] == 'X'))) ? 16 : ((pNumStart[0] == '0') && ((pNumStart[1] == 'b') || (pNumStart[1] == 'B'))) ? 2 : 10;
 
@@ -1168,9 +1159,12 @@ bool MyParser::parseAsNumber(char*& pNext, parseTokenResult_type& result) {
 
     if (isLong) {                                                       // token can be parsed as long ?
         l = strtoul(pNumStart, &pNext, base);                       // string to UNSIGNED long before assigning to (signed) long -> 0xFFFFFFFF will be stored as -1, as it should (all bits set)
-        if (negate) { l = -l; }
+        if (_lvl0_initVarWithUnaryOp == -1) { l = -l; }
     }
-    else { f = strtof(pNumStart, &pNext); }                                                    // token can be parsed as float ?
+    else {
+        f = strtof(pNumStart, &pNext);
+        if (_lvl0_initVarWithUnaryOp == -1) { f = -f; }
+    }                                                    // token can be parsed as float ?
 
     if (pNumStart == pNext) { return true; }                                                // token is not a number if pointer pNext was not moved
 
@@ -1190,9 +1184,8 @@ bool MyParser::parseAsNumber(char*& pNext, parseTokenResult_type& result) {
     if (!tokenAllowed) { pNext = pch; result = result_numConstNotAllowedHere; return false; ; }
 
     // Note: in a (variable or parameter) declaration statement, operators other than assignment operators are not allowed, which is detected in terminal token parsing
-    bool isParamDecl = (_isExtFunctionCmd);                                          // parameter declarations :  constant can ONLY FOLLOW an assignment operator
-    bool isPureAssignmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
-    if (isParamDecl && !isPureAssignmentOp) {  pNext = pch; result = result_numConstNotAllowedHere; return false; }
+    bool lastIsPureAssignmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
+    if (_isExtFunctionCmd && !lastIsPureAssignmentOp) { pNext = pch; result = result_numConstNotAllowedHere; return false; }
 
     // is a variable required instead of a constant ?
     bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_incr) || (_lastTermCode == termcod_decr)) : false;
@@ -1211,6 +1204,7 @@ bool MyParser::parseAsNumber(char*& pNext, parseTokenResult_type& result) {
     _thisLvl_lastIsVariable = false;
 
     // command argument constraints check
+    _lvl0_initVarWithUnaryOp = 0;   // no prefix plus or minus;                     // reset
     _lvl0_withinExpression = true;
 
     Interpreter::TokenIsConstant* pToken = (Interpreter::TokenIsConstant*)_pInterpreter->_programCounter;
@@ -1218,7 +1212,7 @@ bool MyParser::parseAsNumber(char*& pNext, parseTokenResult_type& result) {
     if (isLong) { memcpy(pToken->cstValue.longConst, &l, sizeof(l)); }
     else { memcpy(pToken->cstValue.floatConst, &f, sizeof(f)); }                                           // float not necessarily aligned with word size: copy memory instead
 
-    bool doNonLocalVarInit = ((_isGlobalOrUserVarCmd || _isStaticVarCmd) && isPureAssignmentOp);
+    bool doNonLocalVarInit = ((_isGlobalOrUserVarCmd || _isStaticVarCmd) && lastIsPureAssignmentOp);
 
     _lastTokenStep = _pInterpreter->_programCounter - _pInterpreter->_programStorage;
     _lastTokenType = Interpreter::tok_isConstant;
@@ -1247,8 +1241,12 @@ bool MyParser::parseAsStringConstant(char*& pNext, parseTokenResult_type& result
     char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
     int escChars = 0;
 
+    Serial.println("**** start parse alphanum ****"); ////
+
     if ((pNext[0] != '\"')) { return true; }                                         // no opening quote ? Is not an alphanumeric cst (it can still be something else)
     pNext++;                                                                            // skip opening quote
+
+    Serial.println("**** cont parse alphanum ****"); ////
 
     if (_pInterpreter->_programCounter == _pInterpreter->_programStorage) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
@@ -1257,8 +1255,9 @@ bool MyParser::parseAsStringConstant(char*& pNext, parseTokenResult_type& result
     if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
 
     // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
+    if (_lvl0_initVarWithUnaryOp != 0) { Serial.println("*** 1 ***"); pNext = pch; result = result_alphaConstNotAllowedHere; return false; } // can only happen with only with initialiser, if constant string is preceded by unary plus or minus operator
     bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
-    if (!tokenAllowed) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; ; }
+    if (!tokenAllowed) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
 
     // Note: in a (variable or parameter) declaration statement, operators other than assignment operators are not allowed, which is detected in terminal token parsing
     bool isParamDecl = (_isExtFunctionCmd);                                             // parameter declarations :  constant can ONLY FOLLOW an assignment operator
@@ -1311,6 +1310,7 @@ bool MyParser::parseAsStringConstant(char*& pNext, parseTokenResult_type& result
     _thisLvl_lastIsVariable = false;
 
     // command argument constraints check
+    _lvl0_initVarWithUnaryOp = 0;   // no prefix plus or minus;
     _lvl0_withinExpression = true;
 
 
@@ -1541,12 +1541,17 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
         _thisLvl_lastOpIsIncrDecr = false;                                                                   // array subscripts: reset assignment allowed flag 
 
         // command argument constraints check
+        _lvl0_initVarWithUnaryOp = 0;   // no prefix plus or minus;
         _lvl0_withinExpression = true;
 
         // if function DEFINITION: initialize variables for counting of allowed mandatory and optional arguments (not an array parameter, would be parenthesis level 1)
         if (_isExtFunctionCmd && (_parenthesisLevel == 0)) {      // not an array parameter (would be parenthesis level 1)
             extFunctionDef_minArgCounter = 0;
             extFunctionDef_maxArgCounter = 0;            // init count; range from 0 to a hardcoded maximum 
+        }
+
+        if (_isExtFunctionCmd && (_parenthesisLevel == 1)) {      // array parameter (would be parenthesis level 1)
+            if (peek[0] != ')') { pNext = pch; result = result_arrayParamMustHaveEmptyDims; return false; }
         }
 
         // if LOCAL, STATIC or GLOBAL array DEFINITION or USE (NOT: parameter array): initialize variables for reading dimensions 
@@ -1597,9 +1602,12 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
         flags = _pParsingStack->openPar.flags;
 
         // expression syntax check 
-        _thisLvl_lastIsVariable = (flags & _pInterpreter->arrayBit);
+        _thisLvl_lastIsVariable = (flags & _pInterpreter->arrayBit);                            // note: parameter array (empty parenthesis): array bit noet set
         _thisLvl_assignmentStillPossible = (flags & _pInterpreter->varAssignmentAllowedBit);                                                            // array subscripts: reset assignment allowed flag 
         _thisLvl_lastOpIsIncrDecr = (flags & _pInterpreter->varHasPrefixIncrDecrBit);
+
+        // command argument constraints check
+        _lvl0_initVarWithUnaryOp = 0;   // no prefix plus or minus;
 
 
         // 2.1 External function definition (not a call), OR array parameter definition, closing parenthesis ?
@@ -1812,9 +1820,11 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
         _thisLvl_assignmentStillPossible = true;            // init (start of (sub-)expression)
         _thisLvl_lastOpIsIncrDecr = false;
 
-        // command argument constraints check
+        // command argument constraints check: reset for next command argument (if within a command)
         if (_parenthesisLevel == 0) {
-            _lvl0_withinExpression = false;                                                         // reset for next command argument (if within a command)
+            _lvl0_initVarWithUnaryOp = 0;                                                                           // no prefix plus or minus;
+            _lvl0_withinExpression = false;
+            _lvl0_isPurePrefixIncrDecr = false;
             _lvl0_isPureVariable = false;
             _lvl0_isVarWithAssignment = false;
         }
@@ -1911,8 +1921,10 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
         _thisLvl_assignmentStillPossible = true;
         _thisLvl_lastOpIsIncrDecr = false;
 
-        // command argument constraints check
-        _lvl0_withinExpression = false;                                                         // reset for next command argument
+        // command argument constraints check: reset for next command argument
+        _lvl0_initVarWithUnaryOp = 0;                                                       // no prefix plus or minus;
+        _lvl0_withinExpression = false;
+        _lvl0_isPurePrefixIncrDecr = false;
         _lvl0_isPureVariable = false;
         _lvl0_isVarWithAssignment = false;
 
@@ -1959,9 +1971,10 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
         }
 
 
-        // if current token is a prefix variable increment / decrement operator: note if subsequent assignment is allowed
-        // ---------------------------------------------------------------------------------------------------------------
+        // expression syntax check
+        // -----------------------
 
+        // if current token is a prefix variable increment / decrement operator: note if subsequent assignment is allowed
         bool isPrefixIncrDecr = (tokenIsPrefixOp && (_terminals[termIndex].terminalCode == termcod_incr) || (_terminals[termIndex].terminalCode == termcod_decr));
         bool isPostfixIncrDecr = (tokenIsPostfixOp && (_terminals[termIndex].terminalCode == termcod_incr) || (_terminals[termIndex].terminalCode == termcod_decr));
 
@@ -1978,8 +1991,6 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
 
 
         // if current token is an assignment operator, check whether it's allowed here
-        // ---------------------------------------------------------------------------
-
         bool operatorContainsAssignment = ((_terminals[termIndex].terminalCode == termcod_assign)
             || (_terminals[termIndex].terminalCode == termcod_plusAssign) || (_terminals[termIndex].terminalCode == termcod_minusAssign)
             || (_terminals[termIndex].terminalCode == termcod_multAssign) || (_terminals[termIndex].terminalCode == termcod_divAssign));
@@ -1993,39 +2004,29 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
         if (!(operatorContainsAssignment || isPrefixIncrDecr)) { _thisLvl_assignmentStillPossible = false; }   // further assignments at this expression level not possible any more
 
 
-
-
-
-
         // command argument constraints check
+        // ----------------------------------
+
         if (_parenthesisLevel == 0) {
+            if (!_lvl0_withinExpression || _lvl0_isPurePrefixIncrDecr) { _lvl0_isPurePrefixIncrDecr = (isPrefixIncrDecr || isPostfixIncrDecr); }
             if (_lvl0_isPureVariable) { _lvl0_isVarWithAssignment = operatorContainsAssignment; }
             _lvl0_isPureVariable = false;
         }
         _lvl0_withinExpression = true;
 
-
-        // numeric initializer with + or minus prefix: handle as part of number
-        // --------------------------------------------------------------------
-        /* weg
-        if (_isExtFunctionCmd || _isAnyVarCmd) {
-            if ((_terminals[termIndex].terminalCode == termcod_plus) || (_terminals[termIndex].terminalCode == termcod_minus)) {
-                // normally, a prefix operator needs its own token (example: expression -2^2 evaluates as -(2^2) yielding -4, whereas a number -2 (stored as one token) ^2 would yield 4, which is incorrect
-                // but initializers are pure constants: no prefix operators are allowed here, because this would create a constant expression
-                // however negative numbers are legal as initialiser: discard the prefix operator, to make it part of the number token
-                if (nextTermIndex >= 0) { pNext = pch; result = result_operatorNotAllowedHere; return false; } // next token is terminal as well. It risks to be another prefix operator
-                else { pNext = pch; return true; }         // do not move input pointer
+        // numeric initializer with + or minus prefix
+        _lvl0_initVarWithUnaryOp = 0;   // no prefix plus or minus;
+        if ((_isExtFunctionCmd && (_parenthesisLevel == 1)) || (_isAnyVarCmd && (_parenthesisLevel == 0))) {
+            bool lastWasAssignment = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
+            if (lastWasAssignment) {
+                if ((_terminals[termIndex].terminalCode != termcod_plus) && (_terminals[termIndex].terminalCode != termcod_minus)) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+                _lvl0_initVarWithUnaryOp = (_terminals[termIndex].terminalCode == termcod_minus) ? -1 : 1;      // -1 if minus, 1 if plus prefix operator
+                Serial.println("**** UNARY + - ****"); ////
+                while (pNext[0] == ' ') { pNext++; }                                         // skip leading spaces
+                if (pNext[0] == '\0') { break; }                                              // safety: instruction was not ended by a semicolon (should never happen) 
+                return true;            // consider unary plus or minus operator as processed, but remember which of the two was found
             }
-            else if (_terminals[termIndex].terminalCode != termcod_assign) { pNext = pch; result = result_operatorNotAllowedHere; return false; }       // not a plus or minus prefix
-        }
-        */
-
-        if (_isExtFunctionCmd || _isAnyVarCmd) {
-            if  ((_terminals[termIndex].terminalCode == termcod_plus) || (_terminals[termIndex].terminalCode == termcod_minus)) {
-                bool lastIsAssignment = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
-                if (!lastIsAssignment) { pNext = pch; result = result_operatorNotAllowedHere; return false; } // next token is terminal as well. It risks to be another prefix operator
-                else { pNext = pch; return true; }         // do not move input pointer
-            }
+            if (_lastTokenType == Interpreter::tok_isConstant) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
         }
 
 
@@ -2103,6 +2104,7 @@ bool MyParser::parseAsInternFunction(char*& pNext, parseTokenResult_type& result
         _thisLvl_lastIsVariable = false;
 
         // command argument constraints check
+        _lvl0_initVarWithUnaryOp = 0;   // no prefix plus or minus;
         _lvl0_withinExpression = true;
 
 
@@ -2247,6 +2249,7 @@ bool MyParser::parseAsExternFunction(char*& pNext, parseTokenResult_type& result
     _thisLvl_lastIsVariable = false;
 
     // command argument constraints check
+    _lvl0_initVarWithUnaryOp = 0;   // no prefix plus or minus;
     _lvl0_withinExpression = true;
 
 
@@ -2309,25 +2312,25 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
     char* peek1 = pNext; while (peek1[0] == ' ') { peek1++; }                                                // peek next character: is it a left parenthesis ?
     char* peek2; if (peek1[0] == term_leftPar[0]) { peek2 = peek1 + 1; while (peek2[0] == ' ') { peek2++; } }         // also find the subsequent character
     bool isArray = (peek1[0] == term_leftPar[0]);
+
+
+    // Function parameter definition: check for proper function name, proper array definition (empty parentheses) and proper initialiser (must be constant) 
+    // Variable definition: 
+
     if (_isExtFunctionCmd) {                                     // only (array) parameter allowed now
-        if (_parenthesisLevel == 0) { pNext = pch; result = result_functionDefExpected; return false; }           // is not an array parameter declaration
-        if (isArray && (_parenthesisLevel == 1) && (peek2[0] != term_rightPar[0])) { pNext = pch; result = result_arrayParamExpected; return false; }           // is not an array parameter declaration
+        ////if (_parenthesisLevel == 0) { pNext = pch; result = result_functionDefExpected; return false; }           // is not an array parameter declaration
+        ////if (isArray && (_parenthesisLevel == 1) && (peek2[0] != term_rightPar[0])) { pNext = pch; result = result_arrayParamExpected; return false; }           // is not an array parameter declaration
     }
 
-    if (_isAnyVarCmd) {
-        if (_varDefAssignmentFound) { pNext = pch; result = result_constantValueExpected; return false; }
-    }
+    // an initialiser can only be a constant and not a variable: produce error now, before variable is created (if it doesn't exist yet)
+    bool lastIsPureAssgnmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
+    if ((_isExtFunctionCmd || _isAnyVarCmd) && lastIsPureAssgnmentOp) { pNext = pch; result = result_constantValueExpected; return false; }
 
-    // Note: in a (variable or parameter) declaration statement, operators other than assignment operators are not allowed, which is detected in terminal token parsing
-    bool isParamDecl = (_isExtFunctionCmd);                                          // parameter declarations: initialising ONLY with a constant, not with a variable
-    bool isPureAssgnmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
-    if (isParamDecl && isPureAssgnmentOp)                                                    // if operator: it is an assignment
-    {
-        pNext = pch; result = result_variableNotAllowedHere; return false;
-    }
+    // array declaration: dimensions must be number constants (global, static, local arrays)
+    if (_isAnyVarCmd && (_parenthesisLevel > 0)) { pNext = pch; result = result_variableNotAllowedHere; return false; }
 
-    bool isArrayDimSpec = (_isAnyVarCmd) && (_parenthesisLevel > 0);                    // array declaration: dimensions must be number constants (global, static, local arrays)
-    if (isArrayDimSpec) { pNext = pch; result = result_variableNotAllowedHere; return false; }
+
+
 
     // if variable name is too long, reset pointer to first character to parse, indicate error and return
     if (pNext - pch > Interpreter::_maxIdentifierNameLen) { pNext = pch; result = result_identifierTooLong;  return false; }
@@ -2673,7 +2676,8 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
     _thisLvl_lastIsVariable = true;
 
     // command argument constraints check
-    if (!_lvl0_withinExpression) { _lvl0_isPureVariable = true; }
+    _lvl0_initVarWithUnaryOp = 0;   // no prefix plus or minus;
+    if (!_lvl0_withinExpression || _lvl0_isPurePrefixIncrDecr) { _lvl0_isPureVariable = true; _lvl0_isPurePrefixIncrDecr = false;}
     _lvl0_withinExpression = true;                                                         // reset for next command parameter
 
 
@@ -2754,8 +2758,10 @@ bool MyParser::parseAsIdentifierName(char*& pNext, parseTokenResult_type& result
     // expression syntax check 
     _thisLvl_lastIsVariable = false;
 
-    // command argument constraints check
-    _lvl0_withinExpression = false;                                                         // reset for next command parameter
+    // command argument constraints check : reset for next command parameter
+    _lvl0_initVarWithUnaryOp = 0;   // no prefix plus or minus;
+    _lvl0_withinExpression = false;                                                         
+    _lvl0_isPurePrefixIncrDecr = false;
     _lvl0_isPureVariable = false;
     _lvl0_isVarWithAssignment = false;
 

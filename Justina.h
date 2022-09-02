@@ -883,6 +883,7 @@ public:
         result_arrayArgExpected,
         result_redefiningIntFunctionNotAllowed,
         result_undefinedFunctionOrArray,
+        result_arrayParamMustHaveEmptyDims,
 
         // variable errors
         result_varNameInUseForFunction = 1600,
@@ -1196,7 +1197,6 @@ private:
     bool _isDecCBprocCmd = false;
     bool _isCallbackCmd = false;
 
-    bool _varDefAssignmentFound = false;
     bool _leadingSpaceCheck{ false };
 
     // parsing stack: value supplied when pushing data to stack OR value returned when stack drops 
@@ -1225,9 +1225,10 @@ private:
     termin_code _lastTermCode_hold;
     termin_code _previousTermCode;
 
-    int _lastTokenIsTerminal;
-    int _lastTokenIsTerminal_hold;
-    int _previousTokenIsTerminal;
+
+    bool _lastTokenIsTerminal;
+    bool _lastTokenIsTerminal_hold;
+    bool _previousTokenIsTerminal;
 
     bool _lastTokenIsPrefixOp, _lastTokenIsPostfixOp;
     bool _lastTokenIsPrefixIncrDecr;
@@ -1238,7 +1239,10 @@ private:
     bool _thisLvl_lastOpIsIncrDecr;
 
     // used to check command argument constraints
+    int _lvl0_initVarWithUnaryOp;                    // variable definition only -1 = minus, 1 = plus, 0 = no unary op //// lvl 0 ??? binnen functie defs = level 1 ??? rename en test voor functie defs ook
+
     bool _lvl0_withinExpression;
+    bool _lvl0_isPurePrefixIncrDecr;
     bool _lvl0_isPureVariable;
     bool _lvl0_isVarWithAssignment;
 
