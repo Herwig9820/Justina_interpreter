@@ -1635,6 +1635,7 @@ int Interpreter::findTokenStep(int tokenTypeToFind, char tokenCodeToFind, char*&
         tokenType = *pStep & 0x0F;
 
         bool tokenTypeMatch = (tokenTypeToFind == tokenType);
+
         if (tokenTypeToFind == tok_isTerminalGroup1) { tokenTypeMatch = tokenTypeMatch || (tokenType == tok_isTerminalGroup2) || (tokenType == tok_isTerminalGroup3); }
         if (tokenTypeMatch) {
             bool tokenCodeMatch{ false };
@@ -1652,11 +1653,8 @@ int Interpreter::findTokenStep(int tokenTypeToFind, char tokenCodeToFind, char*&
                 tokenCodeMatch = MyParser::_terminals[tokenIndex].terminalCode == tokenCodeToFind;
                 break;
 
-            case tok_no_token:
-                return tokenType;       // token not found
-                break;
-
             default:
+                return tokenType;      
                 break;
             }
             if (tokenCodeMatch) { return tokenType; }      // if terminal, then return exact group (entry: use terminalGroup1) 
@@ -1692,8 +1690,8 @@ void Interpreter::saveLastValue(bool& overWritePrevious) {
                 delete[] lastResultValueFiFo[itemToRemove].pStringConst;
                 lastValuesStringObjectCount--;
             }
-        }
     }
+}
     else {
         _lastResultCount++;     // only adding an item, without removing previous one
     }
@@ -2012,7 +2010,7 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
         // the current entry could also be preceded by a generic name on the evaluation stack: check
         ////  kan generic name zijn !!! adapt comment 
 
-        int terminalIndex{}; 
+        int terminalIndex{};
         bool minus1IsOperator{ false };       // init
         bool minus1IsTerminal = ((_pEvalStackMinus1->genericToken.tokenType == tok_isTerminalGroup1) || (_pEvalStackMinus1->genericToken.tokenType == tok_isTerminalGroup2) || (_pEvalStackMinus1->genericToken.tokenType == tok_isTerminalGroup3));
         if (minus1IsTerminal) {
@@ -2050,7 +2048,7 @@ Interpreter::execResult_type  Interpreter::execAllProcessedOperators() {        
             // determine final priority
             currentOpHasPriority = (priority > pendingTokenPriority);
             if ((priority == pendingTokenPriority) && (RtoLassociativity)) { currentOpHasPriority = false; }
-            
+
             if (!currentOpHasPriority) { break; }   // exit while() loop
 
             // execute operator
@@ -2436,8 +2434,8 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
                     delete[] pUnclippedResultString;
                     intermediateStringObjectCount--;
                 }
+            }
         }
-    }
 
         // store value in variable and adapt variable value type - next line is valid for long integers as well
         if (opResultLong || opResultFloat) { *_pEvalStackMinus2->varOrConst.value.pFloatConst = opResult.floatConst; }
@@ -2451,7 +2449,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) |
                 (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
         }
-}
+    }
 
 
     // (7) post process
@@ -2619,7 +2617,7 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
 #if printCreateDeleteHeapObjects
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
 #endif            
-        }
+    }
 
     }
     break;
@@ -2845,11 +2843,11 @@ Interpreter::execResult_type Interpreter::execInternalFunction(LE_evalStack*& pF
     }
 
 
-    }       // end switch
+}       // end switch
 
 
-    // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
-    // -------------------------------------------------------------------------------------------------------------------
+// postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
+// -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
@@ -3402,7 +3400,7 @@ Interpreter::execResult_type Interpreter::terminateExternalFunction(bool addZero
         delete[] _activeFunctionData.pVariableAttributes;
         delete[] _activeFunctionData.ppSourceVarTypes;
         localVarValueAreaCount--;
-    }
+}
 
     char blockType = MyParser::block_none;
 

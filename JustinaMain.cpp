@@ -530,11 +530,15 @@ bool Interpreter::processCharacter(char c, bool& kill) {
                 // checks at the end of parsing: any undefined functions (program mode only) ?  any open blocks ?
                 if (_programMode && (!_pmyParser->allExternalFunctionsDefined(funcNotDefIndex))) { result = MyParser::result_undefinedFunctionOrArray; }
                 if (_pmyParser->_blockLevel > 0) { result = MyParser::result_noBlockEnd; }
+            }
+
+            if (result == MyParser::result_tokenFound) {            // result could be altered in the meantime
                 if (!_programMode) {
 
                     // evaluation comes here
                     if (_promptAndEcho == 2) { _pmyParser->prettyPrintInstructions(0); }                    // immediate mode and result OK: pretty print input line
                     else if (_promptAndEcho == 1) { _pConsole->println(); _isPrompt = false; }
+
                     execResult_type execResult = exec();                                 // execute parsed user statements
                     if ((execResult == result_eval_kill) || (execResult == result_eval_quit)) { _quitJustineAtEOF = true; }
                 }
@@ -552,7 +556,7 @@ bool Interpreter::processCharacter(char c, bool& kill) {
             _pmyParser->prettyPrintInstructions(5, _programCounter);
             ////Serial.print("    next: prog counter: "); Serial.println(_programCounter - _programStorage);
             if (_programsInDebug > 1) {
-                sprintf(msg, "*** this + %d other programs STOPPED ***", _programsInDebug-1);
+                sprintf(msg, "*** this + %d other programs STOPPED ***", _programsInDebug - 1);
                 _pConsole->println(msg);
             }
         }

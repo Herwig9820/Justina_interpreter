@@ -1193,6 +1193,7 @@ private:
     bool _isStaticVarCmd = false;                               // STATIC command is being parsed
     bool _isAnyVarCmd = false;                                     // VAR, LOCAL or STATIC command is being parsed
     bool _isDeleteVarCmd = false;
+    bool _isForCommand = false;
 
     bool _isDecCBprocCmd = false;
     bool _isCallbackCmd = false;
@@ -1239,12 +1240,12 @@ private:
     bool _thisLvl_lastOpIsIncrDecr;
 
     // used to check command argument constraints
-    int _lvl0_initVarWithUnaryOp;                    // variable definition only -1 = minus, 1 = plus, 0 = no unary op //// lvl 0 ??? binnen functie defs = level 1 ??? rename en test voor functie defs ook
-
     bool _lvl0_withinExpression;
     bool _lvl0_isPurePrefixIncrDecr;
     bool _lvl0_isPureVariable;
     bool _lvl0_isVarWithAssignment;
+
+    int initVarOrParWithUnaryOp;                    // initialiser unary operators only: -1 = minus, 1 = plus, 0 = no unary op 
 
     Interpreter* _pInterpreter;
 
@@ -1252,7 +1253,6 @@ public:
     const char* _pCmdAllowedParTypes;
     int _cmdParSpecColumn{ 0 };
     int _cmdArgNo{ 0 };
-    int _cmdExprArgTokenNo{ 0 };
     bool _isCommand = false;                                    // a command is being parsed (instruction starting with a keyword)
     int _parenthesisLevel = 0;                               // current number of open parentheses
     uint8_t _lastTokenGroup_sequenceCheck_bit = 0;                   // bits indicate which token group the last token parsed belongs to          
@@ -1275,7 +1275,8 @@ public:
     bool parseAsVariable(char*& pNext, parseTokenResult_type& result);
     bool parseAsIdentifierName(char*& pNext, parseTokenResult_type& result);
 
-    bool checkCommandSyntax(parseTokenResult_type& result);
+    bool checkCommandKeyword(parseTokenResult_type& result);
+    bool checkCommandArgToken(parseTokenResult_type& result);
     bool checkExtFunctionArguments(parseTokenResult_type& result, int& minArgCnt, int& maxArgCnt);
     bool checkArrayDimCountAndSize(parseTokenResult_type& result, int* arrayDef_dims, int& dimCnt);
     int getIdentifier(char** pIdentArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNew, bool isUserVar = false);

@@ -36,7 +36,7 @@ MyParser::cmdPar_111[4]{ cmdPar_varOptAssignment,                       cmdPar_v
 MyParser::cmdPar_112[4]{ cmdPar_expression,                             cmdPar_expression | cmdPar_multipleFlag,        cmdPar_none,                                    cmdPar_none },
 MyParser::cmdPar_113[4]{ cmdPar_expression,                             cmdPar_varOptAssignment,                        cmdPar_varOptAssignment,                        cmdPar_none },
 MyParser::cmdPar_114[4]{ cmdPar_expression,                             cmdPar_varOptAssignment | cmdPar_optionalFlag,  cmdPar_none,                                    cmdPar_none },
-MyParser::cmdPar_999[4]{ cmdPar_varNoAssignment,                        cmdPar_none,                                    cmdPar_none,                                    cmdPar_none }////test
+MyParser::cmdPar_999[4]{ cmdPar_varNoAssignment,                        cmdPar_none,                                    cmdPar_none,                                    cmdPar_none }////test var no assignment
 ;
 
 // commands: keywords with attributes
@@ -64,7 +64,7 @@ const MyParser::ResWordDef MyParser::_resWords[]{
     {"Delvar",          cmdcod_delete,      cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_110,     cmdDeleteVar},
     {"Clearvars",       cmdcod_clear,       cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockNone},
     {"Vars",            cmdcod_vars,        cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockNone},
-    {"Test",            cmdcod_test,        cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_999,     cmdBlockNone},//// test
+    {"Test",            cmdcod_test,        cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_999,     cmdBlockNone},//// test var no assignment
 
 
     /* flow control commands */
@@ -690,26 +690,17 @@ MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
     _thisLvl_assignmentStillPossible = true;                             // assume for now
     _thisLvl_lastOpIsIncrDecr = false;                                  // assume for now
 
-    // command argument constraints check: reset 
-    _lvl0_initVarWithUnaryOp = 0;   // no prefix plus or minus;
+    // command argument constraints check: reset before starting to parse an instruction
     _lvl0_withinExpression = false;
     _lvl0_isPurePrefixIncrDecr = false;
     _lvl0_isPureVariable = false;
     _lvl0_isVarWithAssignment = false;
 
+    // initialiser unary operators
+    initVarOrParWithUnaryOp = 0;   // no prefix, plus or minus
+
     _parenthesisLevel = 0;
 
-    _isProgramCmd = false;
-
-    _isDecCBprocCmd = false;
-    _isCallbackCmd = false;
-
-    _isExtFunctionCmd = false;
-    _isAnyVarCmd = false;
-    _isGlobalOrUserVarCmd = false;
-    _isLocalVarCmd = false;
-    _isStaticVarCmd = false;
-    _isDeleteVarCmd = false;
 
     _isCommand = false;
 
@@ -729,7 +720,15 @@ MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
         bool isSemicolon = _lastTokenIsTerminal ? (_lastTermCode == termcod_semicolon) : false;
         bool isOperator = _lastTokenIsTerminal ? (_lastTermCode <= termcod_opRangeEnd) : false;
 
-        bool isLongConst = false, isFloatConst = false, isStringConst = false;
+        if ((_lastTokenType == Interpreter::tok_no_token) || isSemicolon) {
+            _isProgramCmd = false;
+            _isDecCBprocCmd = false;  _isCallbackCmd = false;
+            _isExtFunctionCmd = false; _isGlobalOrUserVarCmd = false; _isLocalVarCmd = false; _isStaticVarCmd = false; _isAnyVarCmd = false;
+            _isForCommand = false;
+            _isDeleteVarCmd = false;
+        }
+
+        bool isStringConst = false;
         if (t == Interpreter::tok_isConstant) {
             char valueType = (((Interpreter::TokenIsConstant*)(_pInterpreter->_programStorage + _lastTokenStep))->tokenType >> 4) & Interpreter::value_typeMask;
             isStringConst = (valueType == Interpreter::value_isStringPointer);
@@ -743,7 +742,6 @@ MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
             ((t == Interpreter::tok_isInternFunction) || (t == Interpreter::tok_isExternFunction)) ? lastTokenGroup_4 :
             isLeftPar ? lastTokenGroup_5 : lastTokenGroup_6;     // token group 5: scalar or array variable name
 
-
         // a space may be required between last token and next token (not yet known), if one of them is a keyword
         // and the other token is either a keyword, an alphanumeric constant or a parenthesis
         // space check result is OK if a check is not required or if a space is present anyway
@@ -751,15 +749,7 @@ MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
 
         // move to the first character of next token (within one instruction)
         while (pNext[0] == ' ') { pNext++; }                                         // skip leading spaces
-        if (pNext[0] == '\0') { break; }                                              // safety: instruction was not ended by a semicolon (should never happen) 
-
-        // parsing routines below try to parse characters as a token of a specific type
-        // if a function returns true, then either proceed OR skip reminder of loop ('continue') if 'result' indicates a token has been found
-        // if a function returns false, then break with 'result' containing the error
-
-        _previousTokenType = _lastTokenType_hold;                                   // remember the second last parsed token during parsing of a next token
-        _previousTermCode = _lastTermCode_hold;                                     // only relevant for certain tokens
-        _previousTokenIsTerminal = _lastTokenIsTerminal_hold;
+        if (pNext[0] == '\0') { break; }                                             // end of instruction  
 
         _lastTokenType_hold = _lastTokenType;                                       // remember the last parsed token during parsing of a next token
         _lastTermCode_hold = _lastTermCode;                                         // only relevant for certain tokens
@@ -767,7 +757,14 @@ MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
 
         pNext_hold = pNext;
 
+
+        // try to parse a token
+        // --------------------
         do {                                                                                                                // one loop only
+            // parsing routines below try to parse characters as a token of a specific type
+            // if a function returns true, then either proceed OR skip reminder of loop ('continue') if 'result' indicates a token has been found
+            // if a function returns false, then break with 'result' containing the error
+
             if ((_pInterpreter->_programCounter + sizeof(Interpreter::TokenIsConstant) + 1) > (_pInterpreter->_programStart + _pInterpreter->_programSize)) { result = result_progMemoryFull; break; };
             if (!parseAsResWord(pNext, result)) { break; } if (result == result_tokenFound) { continue; }             // check before checking for identifier  
             if (!parseTerminalToken(pNext, result)) { break; }  if (result == result_tokenFound) { continue; }       // check before checking for number
@@ -782,8 +779,21 @@ MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
 
         // one token parsed (or error)
         if (result != result_tokenFound) { break; }                                   // exit loop if token error (syntax, ...). Checked before checking command syntax
-        if (!checkCommandSyntax(result)) { pNext = pNext_hold; break; }             // exit loop if command syntax error (pNext altered: set correctly again)
 
+
+        // command ? Perform additional syntax checks 
+        // ------------------------------------------
+
+        bool isStatementStart = (_lastTokenType_hold == Interpreter::tok_no_token) || (_lastTokenIsTerminal_hold ? (_lastTermCode_hold == termcod_semicolon) : false);
+        bool isCommandStart = false;
+        if (isStatementStart) {
+            isCommandStart = (_lastTokenType == Interpreter::tok_isReservedWord);                       // keyword at start of statement ? is start of a command 
+            _isCommand = isCommandStart;                                                                // is start of a command ? then within a command now. Otherwise, it's an 'expression only' statement
+            if (_isCommand) { if (!checkCommandKeyword(result)) { pNext = pNext_hold; break; } }         // start of a command: keyword
+        }
+
+        bool isCommandArgToken = (!isCommandStart && _isCommand);
+        if (!isCommandStart && _isCommand) { if (!checkCommandArgToken(result)) { pNext = pNext_hold; break; } }
     } while (true);
 
     // one instruction parsed (or error: no token found OR command syntax error OR semicolon encountered)
@@ -809,187 +819,170 @@ MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
 }
 
 
-// --------------------------------------------------------------------------------------------
-// *   if instruction is a command (starting with a keyword): apply additional checks   *
-// *   this check is applied AFTER parsing each token and checking its syntax                 *
-// --------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------
+// * Check a command keyword token (apply additional command syntax rules) *
+// -------------------------------------------------------------------------
 
-bool MyParser::checkCommandSyntax(parseTokenResult_type& result) {                    // command syntax checks
-    static Interpreter::tokenType_type cmdSecondLastTokenType = Interpreter::tok_no_token;                           // type of last token parsed
-    static int cmdSecondLastTokenIndex = 0;
-    static bool cmdSecondLastIsLvl0CommaSep = false;
-    static bool expressionStartsWithVarRef = false;
-    static bool expressionStartsWithPrefixOp = false;
-    static bool withinExpression = false;
-    static uint8_t allowedParType = cmdPar_none;                                         // init
+bool MyParser::checkCommandKeyword(parseTokenResult_type& result) {                    // command syntax checks
 
-    // is the start of a new command ? Check token preceding the last parsed token 
-    bool isInstructionStart = (_lastTokenType_hold == Interpreter::tok_no_token) || (_lastTokenIsTerminal_hold ? (_lastTermCode_hold == termcod_semicolon) : false);
+    _pCmdAllowedParTypes = _resWords[_tokenIndex].pCmdAllowedParTypes;         // remember allowed parameter types
+    _cmdParSpecColumn = 0;                                                          // reset actual command parameter counter
+    _cmdArgNo = 0;
 
-    if (isInstructionStart) {
-        _isCommand = (_lastTokenType == Interpreter::tok_isReservedWord);                            // keyword at start of instruction ? is a command
+    CmdBlockDef cmdBlockDef = _resWords[_tokenIndex].cmdBlockDef;
 
-        // start of a command ?
-        // --------------------
+    _isExtFunctionCmd = _resWords[_tokenIndex].resWordCode == cmdcod_function;
+    _isProgramCmd = _resWords[_tokenIndex].resWordCode == cmdcod_program;
+    _isDecCBprocCmd = _resWords[_tokenIndex].resWordCode == cmdcod_decCBproc;
+    _isCallbackCmd = _resWords[_tokenIndex].resWordCode == cmdcod_callback;
+    _isGlobalOrUserVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_var;
+    _isLocalVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_local;
+    _isStaticVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_static;
+    _isForCommand = _resWords[_tokenIndex].resWordCode == cmdcod_for;
+    _isDeleteVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_delete;
 
-        if (_isCommand) {
-            _pCmdAllowedParTypes = _resWords[_tokenIndex].pCmdAllowedParTypes;         // remember allowed parameter types
-            _cmdParSpecColumn = 0;                                                          // reset actual command parameter counter
-            _cmdArgNo = 0;
-            _cmdExprArgTokenNo = 0;
-
-            withinExpression = false;
-            expressionStartsWithVarRef = false;                                               // scalar or array
-            expressionStartsWithPrefixOp = false;
-
-            cmdSecondLastTokenType = Interpreter::tok_isReservedWord;                              // ini: token sequence within current command (command parameters)
-            cmdSecondLastTokenIndex = 0;
-            cmdSecondLastIsLvl0CommaSep = false;
-
-            // determine command and where allowed
-            CmdBlockDef cmdBlockDef = _resWords[_tokenIndex].cmdBlockDef;
-
-            _isExtFunctionCmd = _resWords[_tokenIndex].resWordCode == cmdcod_function;
-            _isProgramCmd = _resWords[_tokenIndex].resWordCode == cmdcod_program;
-            _isDecCBprocCmd = _resWords[_tokenIndex].resWordCode == cmdcod_decCBproc;
-            _isCallbackCmd = _resWords[_tokenIndex].resWordCode == cmdcod_callback;
-            _isGlobalOrUserVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_var;
-            _isLocalVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_local;
-            _isStaticVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_static;
-            _isDeleteVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_delete;
-
-            _isAnyVarCmd = _isGlobalOrUserVarCmd || _isLocalVarCmd || _isStaticVarCmd;      //  VAR, LOCAL, STATIC
-
-            // is command allowed here ? Check restrictions
-            char cmdRestriction = _resWords[_tokenIndex].restrictions & cmd_usageRestrictionMask;
-            if (cmdRestriction == cmd_onlyProgramTop) {
-                if (_lastTokenStep != 0) { result = result_onlyProgramStart; return false; }
-            }
-            else {
-                if (_lastTokenStep == 0) { result = result_programCmdMissing; return false; }
-            }
-            if (_pInterpreter->_programMode && (cmdRestriction == cmd_onlyImmediate)) { result = result_onlyImmediateMode; return false; }
-            if (!_pInterpreter->_programMode && (cmdRestriction == cmd_onlyInProgram)) { result = result_onlyInsideProgram; return false; }
-            if (!_extFunctionBlockOpen && (cmdRestriction == cmd_onlyInFunctionBlock)) { result = result_onlyInsideFunction; return false; }
-            if (_extFunctionBlockOpen && (cmdRestriction == cmd_onlyOutsideFunctionBlock)) { result = result_onlyOutsideFunction; return false; }
-            if (((!_pInterpreter->_programMode) || _extFunctionBlockOpen) && (cmdRestriction == cmd_onlyInProgramOutsideFunctionBlock)) { result = result_onlyInProgOutsideFunction; return false; };
-            if ((_pInterpreter->_programMode && !_extFunctionBlockOpen) && (cmdRestriction == cmd_onlyImmOrInsideFuncBlock)) { result = result_onlyImmediateOrInFunction; return false; };
-
-            if (_extFunctionBlockOpen && _isExtFunctionCmd) { result = result_functionDefsCannotBeNested; return false; } // separate message to indicate 'no nesting'
-
-            // not a block command: nothing more to do here 
-            if (cmdBlockDef.blockType == block_none) { return true; }
-
-            if (cmdBlockDef.blockPosOrAction == block_startPos) {                        // is a block start command ?                          
-                _blockLevel++;                                                          // increment stack counter and create corresponding list element
-                _pParsingStack = (LE_parsingStack*)parsingStack.appendListElement(sizeof(LE_parsingStack));
-                _pParsingStack->openBlock.cmdBlockDef = cmdBlockDef;                // store in stack: block type, block position (start), n/a, n/a
-                memcpy(_pParsingStack->openBlock.tokenStep, &_lastTokenStep, sizeof(char[2]));                      // store in stack: pointer to block start command token of open block
-                _blockStartCmdTokenStep = _lastTokenStep;                                     // remember pointer to block start command token of open block
-                _blockCmdTokenStep = _lastTokenStep;                                          // remember pointer to last block command token of open block
-                _extFunctionBlockOpen = _extFunctionBlockOpen || _isExtFunctionCmd;    // open until block closing END command     
-                return true;                                                         // nothing more to do
-            }
-
-            if (_blockLevel == 0) { result = result_noOpenBlock; return false; }      // not a block start and no open block: error
-
-            if ((cmdBlockDef.blockType == block_alterFlow) && (_blockLevel > 0)) {
-                // check for a compatible open block (e.g. a BREAK command can only occur if at least one open loop block exists)
-                // parenthesis level is zero, because this is a block start command -> all stack levels are block levels
-                LE_parsingStack* pStackLvl = _pParsingStack;                                   // start with current open block level
-                while (pStackLvl != nullptr) {
-                    if ((pStackLvl->openBlock.cmdBlockDef.blockType == block_extFunction) &&   // an open external function block has been found (call or definition)
-                        (cmdBlockDef.blockPosOrAction == block_inOpenFunctionBlock)) {                // and current flow altering command is allowed in open function block
-                        // store pointer from 'alter flow' token (command) to block start command token of compatible open block (from RETURN to FUNCTION token)
-                        memcpy(((Interpreter::TokenIsResWord*)(_pInterpreter->_programStorage + _lastTokenStep))->toTokenStep, pStackLvl->openBlock.tokenStep, sizeof(char[2]));
-                        break;                                                                      // -> applicable open block level found
-                    }
-                    if (((pStackLvl->openBlock.cmdBlockDef.blockType == block_for) ||
-                        (pStackLvl->openBlock.cmdBlockDef.blockType == block_while)) &&         // an open loop block has been found (e.g. FOR ... END block)
-                        (cmdBlockDef.blockPosOrAction == block_inOpenLoopBlock)) {                    // and current flow altering command is allowed in open loop block
-                        // store pointer from 'alter flow' token (command) to block start command token of compatible open block (e.g. from BREAK to FOR token)
-                        memcpy(((Interpreter::TokenIsResWord*)(_pInterpreter->_programStorage + _lastTokenStep))->toTokenStep, pStackLvl->openBlock.tokenStep, sizeof(char[2]));
-                        break;                                                                      // -> applicable open block level found
-                    }
-                    pStackLvl = (LE_parsingStack*)parsingStack.getPrevListElement(pStackLvl);
-                }
-                if (pStackLvl == nullptr) { result = (cmdBlockDef.blockPosOrAction == block_inOpenLoopBlock) ? result_noOpenLoop : result_noOpenFunction; }
-                return (pStackLvl != nullptr);
-            }
-
-            if ((cmdBlockDef.blockType != _pParsingStack->openBlock.cmdBlockDef.blockType) &&    // same block type as open block (or block type is generic block end) ?
-                (cmdBlockDef.blockType != block_genericEnd)) {
-                result = result_notAllowedInThisOpenBlock; return false;                // wrong block type: error
-            }
-
-            bool withinRange = (_pParsingStack->openBlock.cmdBlockDef.blockPosOrAction >= cmdBlockDef.blockMinPredecessor) &&     // sequence of block commands OK ?
-                (_pParsingStack->openBlock.cmdBlockDef.blockPosOrAction <= cmdBlockDef.blockMaxPredecessor);
-            if (!withinRange) { result = result_wrongBlockSequence; return false; }   // sequence of block commands (for current stack level) is not OK: error
-
-            // pointer from previous open block token to this open block token (e.g. pointer from IF token to ELSEIF or ELSE token)
-            memcpy(((Interpreter::TokenIsResWord*)(_pInterpreter->_programStorage + _blockCmdTokenStep))->toTokenStep, &_lastTokenStep, sizeof(char[2]));
-            _blockCmdTokenStep = _lastTokenStep;                                              // remember pointer to last block command token of open block
+    _isAnyVarCmd = _isGlobalOrUserVarCmd || _isLocalVarCmd || _isStaticVarCmd;      //  VAR, LOCAL, STATIC
 
 
-            if (cmdBlockDef.blockPosOrAction == block_endPos) {                          // is this a block END command token ? 
-                if (_pParsingStack->openBlock.cmdBlockDef.blockType == block_extFunction) { _extFunctionBlockOpen = false; }       // FUNCTON definition blocks cannot be nested
-                memcpy(((Interpreter::TokenIsResWord*)(_pInterpreter->_programStorage + _lastTokenStep))->toTokenStep, &_blockStartCmdTokenStep, sizeof(char[2]));
-                parsingStack.deleteListElement(nullptr);                                   // decrement stack counter and delete corresponding list element
-                _blockLevel--;                                                          // also set pointer to currently last element in stack (if it exists)
+    // is this command allowed here ? Check restrictions
+    // -------------------------------------------------
+    char cmdRestriction = _resWords[_tokenIndex].restrictions & cmd_usageRestrictionMask;
+    if (cmdRestriction == cmd_onlyProgramTop) {
+        if (_lastTokenStep != 0) { result = result_onlyProgramStart; return false; }
+    }
+    else {
+        if (_lastTokenStep == 0) { result = result_programCmdMissing; return false; }
+    }
+    if (_pInterpreter->_programMode && (cmdRestriction == cmd_onlyImmediate)) { result = result_onlyImmediateMode; return false; }
+    if (!_pInterpreter->_programMode && (cmdRestriction == cmd_onlyInProgram)) { result = result_onlyInsideProgram; return false; }
+    if (!_extFunctionBlockOpen && (cmdRestriction == cmd_onlyInFunctionBlock)) { result = result_onlyInsideFunction; return false; }
+    if (_extFunctionBlockOpen && (cmdRestriction == cmd_onlyOutsideFunctionBlock)) { result = result_onlyOutsideFunction; return false; }
+    if (((!_pInterpreter->_programMode) || _extFunctionBlockOpen) && (cmdRestriction == cmd_onlyInProgramOutsideFunctionBlock)) { result = result_onlyInProgOutsideFunction; return false; };
+    if ((_pInterpreter->_programMode && !_extFunctionBlockOpen) && (cmdRestriction == cmd_onlyImmOrInsideFuncBlock)) { result = result_onlyImmediateOrInFunction; return false; };
 
-                if (_blockLevel + _parenthesisLevel > 0) { _pParsingStack = (LE_parsingStack*)parsingStack.getLastListElement(); }
-                if (_blockLevel > 0) {
-                    // retrieve pointer to block start command token and last block command token of open block
-                    memcpy(&_blockStartCmdTokenStep, _pParsingStack->openBlock.tokenStep, sizeof(char[2]));         // pointer to block start command token of open block       
-                    uint16_t tokenStep = _blockStartCmdTokenStep;                            // init pointer to last block command token of open block
-                    uint16_t tokenStepPointedTo;
-                    memcpy(&tokenStepPointedTo, ((Interpreter::TokenIsResWord*)(_pInterpreter->_programStorage + tokenStep))->toTokenStep, sizeof(char[2]));
-                    while (tokenStepPointedTo != 0xFFFF)
-                    {
-                        tokenStep = tokenStepPointedTo;
-                        memcpy(&tokenStepPointedTo, ((Interpreter::TokenIsResWord*)(_pInterpreter->_programStorage + tokenStep))->toTokenStep, sizeof(char[2]));
-                    }
+    if (_extFunctionBlockOpen && _isExtFunctionCmd) { result = result_functionDefsCannotBeNested; return false; } // separate message to indicate 'no nesting'
 
-                    _blockCmdTokenStep = tokenStep;                                        // pointer to last block command token of open block                       
-                }
-            }
-            else { _pParsingStack->openBlock.cmdBlockDef = cmdBlockDef; }           // overwrite (block type (same or generic end), position, min & max predecessor)
+    // not a block command: nothing more to do here 
+    if (cmdBlockDef.blockType == block_none) { return true; }
 
-            return true;
-        };
+
+    // perform specific checks related to block commands
+    // -------------------------------------------------
+
+    if (cmdBlockDef.blockPosOrAction == block_startPos) {                        // is a block start command ?                          
+        _blockLevel++;                                                          // increment stack counter and create corresponding list element
+        _pParsingStack = (LE_parsingStack*)parsingStack.appendListElement(sizeof(LE_parsingStack));
+        _pParsingStack->openBlock.cmdBlockDef = cmdBlockDef;                // store in stack: block type, block position (start), n/a, n/a
+
+        memcpy(_pParsingStack->openBlock.tokenStep, &_lastTokenStep, sizeof(char[2]));                      // store in stack: pointer to block start command token of open block
+        _blockStartCmdTokenStep = _lastTokenStep;                                     // remember pointer to block start command token of open block
+        _blockCmdTokenStep = _lastTokenStep;                                          // remember pointer to last block command token of open block
+        _extFunctionBlockOpen = _extFunctionBlockOpen || _isExtFunctionCmd;    // open until block closing END command     
+        return true;                                                         // nothing more to do
     }
 
+    if (_blockLevel == 0) { result = result_noOpenBlock; return false; }      // not a block start and no open block: error
 
-    // parsing a command parameter right now ? Apply additional command syntax rules
-    // -----------------------------------------------------------------------------
+    if ((cmdBlockDef.blockType == block_alterFlow) && (_blockLevel > 0)) {
+        // check for a compatible open block (e.g. a BREAK command can only occur if at least one open loop block exists)
+        // parenthesis level is zero, because this is a block start command -> all stack levels are block levels
+        LE_parsingStack* pStackLvl = _pParsingStack;                                   // start with current open block level
+        while (pStackLvl != nullptr) {
+            if ((pStackLvl->openBlock.cmdBlockDef.blockType == block_extFunction) &&   // an open external function block has been found (call or definition)
+                (cmdBlockDef.blockPosOrAction == block_inOpenFunctionBlock)) {                // and current flow altering command is allowed in open function block
+                // store pointer from 'alter flow' token (command) to block start command token of compatible open block (from RETURN to FUNCTION token)
+                memcpy(((Interpreter::TokenIsResWord*)(_pInterpreter->_programStorage + _lastTokenStep))->toTokenStep, pStackLvl->openBlock.tokenStep, sizeof(char[2]));
+                break;                                                                      // -> applicable open block level found
+            }
+            if (((pStackLvl->openBlock.cmdBlockDef.blockType == block_for) ||
+                (pStackLvl->openBlock.cmdBlockDef.blockType == block_while)) &&         // an open loop block has been found (e.g. FOR ... END block)
+                (cmdBlockDef.blockPosOrAction == block_inOpenLoopBlock)) {                    // and current flow altering command is allowed in open loop block
+                // store pointer from 'alter flow' token (command) to block start command token of compatible open block (e.g. from BREAK to FOR token)
+                memcpy(((Interpreter::TokenIsResWord*)(_pInterpreter->_programStorage + _lastTokenStep))->toTokenStep, pStackLvl->openBlock.tokenStep, sizeof(char[2]));
+                break;                                                                      // -> applicable open block level found
+            }
+            pStackLvl = (LE_parsingStack*)parsingStack.getPrevListElement(pStackLvl);
+        }
+        if (pStackLvl == nullptr) { result = (cmdBlockDef.blockPosOrAction == block_inOpenLoopBlock) ? result_noOpenLoop : result_noOpenFunction; }
+        return (pStackLvl != nullptr);
+    }
 
-    if (!_isCommand) { return true; }                                                 // not within a command                                                
+    if ((cmdBlockDef.blockType != _pParsingStack->openBlock.cmdBlockDef.blockType) &&    // same block type as open block (or block type is generic block end) ?
+        (cmdBlockDef.blockType != block_genericEnd)) {
+        result = result_notAllowedInThisOpenBlock; return false;                // wrong block type: error
+    }
+
+    bool withinRange = (_pParsingStack->openBlock.cmdBlockDef.blockPosOrAction >= cmdBlockDef.blockMinPredecessor) &&     // sequence of block commands OK ?
+        (_pParsingStack->openBlock.cmdBlockDef.blockPosOrAction <= cmdBlockDef.blockMaxPredecessor);
+    if (!withinRange) { result = result_wrongBlockSequence; return false; }   // sequence of block commands (for current stack level) is not OK: error
+
+    // pointer from previous open block token to this open block token (e.g. pointer from IF token to ELSEIF or ELSE token)
+    memcpy(((Interpreter::TokenIsResWord*)(_pInterpreter->_programStorage + _blockCmdTokenStep))->toTokenStep, &_lastTokenStep, sizeof(char[2]));
+    _blockCmdTokenStep = _lastTokenStep;                                              // remember pointer to last block command token of open block
+
+
+    if (cmdBlockDef.blockPosOrAction == block_endPos) {                          // is this a block END command token ? 
+        if (_pParsingStack->openBlock.cmdBlockDef.blockType == block_extFunction) { _extFunctionBlockOpen = false; }       // FUNCTON definition blocks cannot be nested
+        memcpy(((Interpreter::TokenIsResWord*)(_pInterpreter->_programStorage + _lastTokenStep))->toTokenStep, &_blockStartCmdTokenStep, sizeof(char[2]));
+        parsingStack.deleteListElement(nullptr);                                   // decrement stack counter and delete corresponding list element
+        _blockLevel--;                                                          // also set pointer to currently last element in stack (if it exists)
+
+        if (_blockLevel + _parenthesisLevel > 0) { _pParsingStack = (LE_parsingStack*)parsingStack.getLastListElement(); }
+        if (_blockLevel > 0) {
+            // retrieve pointer to block start command token and last block command token of open block
+            memcpy(&_blockStartCmdTokenStep, _pParsingStack->openBlock.tokenStep, sizeof(char[2]));         // pointer to block start command token of open block       
+            uint16_t tokenStep = _blockStartCmdTokenStep;                            // init pointer to last block command token of open block
+            uint16_t tokenStepPointedTo;
+            memcpy(&tokenStepPointedTo, ((Interpreter::TokenIsResWord*)(_pInterpreter->_programStorage + tokenStep))->toTokenStep, sizeof(char[2]));
+            while (tokenStepPointedTo != 0xFFFF)
+            {
+                tokenStep = tokenStepPointedTo;
+                memcpy(&tokenStepPointedTo, ((Interpreter::TokenIsResWord*)(_pInterpreter->_programStorage + tokenStep))->toTokenStep, sizeof(char[2]));
+            }
+
+            _blockCmdTokenStep = tokenStep;                                        // pointer to last block command token of open block                       
+        }
+    }
+    else { _pParsingStack->openBlock.cmdBlockDef = cmdBlockDef; }           // overwrite (block type (same or generic end), position, min & max predecessor)
+
+    return true;
+}
+
+
+// --------------------------------------------------------------------------
+// * Check a command argument token (apply additional command syntax rules) *
+// --------------------------------------------------------------------------
+
+bool MyParser::checkCommandArgToken(parseTokenResult_type& result) {
 
     // init and adapt variables
     // ------------------------
 
+    static uint8_t allowedParType = cmdPar_none;                                         // init
+
     bool isResWord = (_lastTokenType == Interpreter::tok_isReservedWord);
     bool isGenIdent = (_lastTokenType == Interpreter::tok_isGenericName);
     bool isSemiColonSep = _lastTokenIsTerminal ? (_terminals[_tokenIndex].terminalCode == termcod_semicolon) : false;
-    bool isLeftParenthesis = _lastTokenIsTerminal ? (_terminals[_tokenIndex].terminalCode == termcod_leftPar) : false;
-    bool isLvl0CommaSep = _lastTokenIsTerminal ? ((_terminals[_tokenIndex].terminalCode == termcod_comma) && (_parenthesisLevel == 0)) : false;
+    bool isLeftPar = _lastTokenIsTerminal ? (_terminals[_tokenIndex].terminalCode == termcod_leftPar) : false;
+    bool isCommaSep = _lastTokenIsTerminal ? (_terminals[_tokenIndex].terminalCode == termcod_comma) : false;
+    bool isLvl0CommaSep = isCommaSep && (_parenthesisLevel == 0);
     bool isAssignmentOp = _lastTokenIsTerminal ? ((_terminals[_tokenIndex].terminalCode == termcod_assign)
         || (_terminals[_tokenIndex].terminalCode == termcod_plusAssign) || (_terminals[_tokenIndex].terminalCode == termcod_minusAssign)
         || (_terminals[_tokenIndex].terminalCode == termcod_multAssign) || (_terminals[_tokenIndex].terminalCode == termcod_divAssign)) : false;
-    bool isIncrDecrOp = _lastTokenIsTerminal ? (_terminals[_tokenIndex].terminalCode == termcod_incr) || (_terminals[_tokenIndex].terminalCode == termcod_decr) : false;
 
     // is this token part of an expression ? 
-    withinExpression = !(isResWord || isGenIdent || isLvl0CommaSep || isSemiColonSep);
+    _lvl0_withinExpression = !(isResWord || isGenIdent || isLvl0CommaSep || isSemiColonSep);
 
     // start of expression: if within expression, AND the preceding token was a level 0 comma separator, keyword or generic name
-    bool isExpressionFirstToken = withinExpression &&
-        ((cmdSecondLastTokenType == Interpreter::tok_isReservedWord) || (cmdSecondLastTokenType == Interpreter::tok_isGenericName) || (cmdSecondLastIsLvl0CommaSep));
+    bool previousTokenWasCmdArgSep = false;
+    previousTokenWasCmdArgSep = (_lastTokenIsTerminal_hold ? (_lastTermCode_hold == termcod_comma) : false) && (_parenthesisLevel == isLeftPar ? 1 : 0);
+    bool isExpressionFirstToken = _lvl0_withinExpression &&
+        (_lastTokenType_hold == Interpreter::tok_isReservedWord) || (_lastTokenType_hold == Interpreter::tok_isGenericName) || previousTokenWasCmdArgSep;    //// moet level 0 comma zijn
 
-    // keep track of token index within expression (base 0)
-    if (!withinExpression || isExpressionFirstToken) { _cmdExprArgTokenNo = 0; }
-    else { _cmdExprArgTokenNo++; }
 
     // keep track of argument index within command
+    // -------------------------------------------
+
     if (isResWord || isGenIdent || isExpressionFirstToken) { _cmdArgNo++; }
 
     // if first token of a command parameter or a semicolon: check allowed argument types with respect to command definition (ecpression, identifier, ...) 
@@ -1004,6 +997,8 @@ bool MyParser::checkCommandSyntax(parseTokenResult_type& result) {              
 
 
     // if end of command, test for missing parameters and exit
+    // -------------------------------------------------------
+
     if (isSemiColonSep) {                                                             // semicolon: end of command                                                    
         if ((allowedParType != cmdPar_none) && !multipleParameter && !optionalParameter) {    // missing parameters ?
             result = result_cmdParameterMissing; return false;
@@ -1011,43 +1006,29 @@ bool MyParser::checkCommandSyntax(parseTokenResult_type& result) {              
 
         if (_isDecCBprocCmd && (_cmdArgNo == 0)) { _pInterpreter->_userCBprocAliasSet_count = 0; }
 
-        _isProgramCmd = false;
-        _isDecCBprocCmd = false;
-        _isCallbackCmd = false;
-        _isExtFunctionCmd = false;
-        _isAnyVarCmd = false;
-        _isGlobalOrUserVarCmd = false;
-        _isLocalVarCmd = false;
-        _isStaticVarCmd = false;
-        _isDeleteVarCmd = false;
-
         return true;                                                                    // nothing more to do for this command
     }
 
 
-    // if command argument first token: check parameter validity (skip block if not first token) 
-    // ------------------------------------------------------------------------------------------
+    // check command argument validity
+    // -------------------------------
+
+    // check each token, but skip tokens within open parenthesis (whatever is in there has no relevance for argument checking) ...
+    // ... and skip commas separating arguments (because these commas have just reset variables used for command argument constraints checking, preparing for next command argument (if any))
 
     if ((_parenthesisLevel == 0) && (!isLvl0CommaSep)) {     // a comma resets variables used for command argument constraint checks
         if (allowedParType == cmdPar_none) { result = result_cmdHasTooManyParameters; return false; }
         if (allowedParType == cmdPar_resWord && !isResWord) { result = result_resWordExpectedAsCmdPar; return false; }                              // does not occur, but keep for completeness
         if (allowedParType == cmdPar_ident && !isGenIdent) { result = result_identExpectedAsCmdPar; return false; }
         if ((allowedParType == cmdPar_expression) && !_lvl0_withinExpression) { result = result_expressionExpectedAsCmdPar; return false; }         // does not occur, but keep for completeness
-        if ((allowedParType == cmdPar_varNoAssignment) && (!_lvl0_isPureVariable)) {
-            result = isAssignmentOp ? (parseTokenResult_type)result_varWithoutAssignmentExpectedAsCmdPar : (parseTokenResult_type)result_variableExpectedAsCmdPar; return false;
-        }
         if ((allowedParType == cmdPar_varOptAssignment) && (!_lvl0_isPurePrefixIncrDecr && !_lvl0_isPureVariable && !_lvl0_isVarWithAssignment)) {
             result = (parseTokenResult_type)result_varWithOptionalAssignmentExpectedAsCmdPar; return false;
         }
+        if ((allowedParType == cmdPar_varNoAssignment) && (!_lvl0_isPureVariable)) {
+            result = isAssignmentOp ? (parseTokenResult_type)result_varWithoutAssignmentExpectedAsCmdPar : (parseTokenResult_type)result_variableExpectedAsCmdPar; return false;
+        }
     }
 
-
-    // remember past values
-    // --------------------
-
-    cmdSecondLastTokenType = _lastTokenType;                                               // within current command
-    cmdSecondLastTokenIndex = _tokenIndex;
-    cmdSecondLastIsLvl0CommaSep = isLvl0CommaSep;
     return true;
 }
 
@@ -1090,11 +1071,12 @@ bool MyParser::parseAsResWord(char*& pNext, parseTokenResult_type& result) {
         _thisLvl_assignmentStillPossible = true;                                                 // reset (expression may follow)                          
 
         // command argument constraints check: reset for next command parameter
-        _lvl0_initVarWithUnaryOp = 0;                                                                   // no prefix plus or minus;
         _lvl0_withinExpression = false;
         _lvl0_isPurePrefixIncrDecr = false;
         _lvl0_isPureVariable = false;
         _lvl0_isVarWithAssignment = false;
+
+        initVarOrParWithUnaryOp = 0;                                                                   // no prefix plus or minus;
 
         // if NOT a block command, bytes for token step are not needed 
         bool hasTokenStep = (_resWords[resWordIndex].cmdBlockDef.blockType != block_none);
@@ -1130,7 +1112,6 @@ bool MyParser::parseAsResWord(char*& pNext, parseTokenResult_type& result) {
 bool MyParser::parseAsNumber(char*& pNext, parseTokenResult_type& result) {
     result = result_tokenNotFound;                                                      // init: flag 'no token found'
     char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
-    Serial.println("**** start parse number ****"); ////
 
     // all numbers will be positive, because leading '-' or '+' characters are parsed separately as prefix operators
     // this is important if next infix operator (power) has higher priority then this prefix operator: -2^4 <==> -(2^4) <==> -16, AND NOT (-2)^4 <==> 16 
@@ -1159,11 +1140,11 @@ bool MyParser::parseAsNumber(char*& pNext, parseTokenResult_type& result) {
 
     if (isLong) {                                                       // token can be parsed as long ?
         l = strtoul(pNumStart, &pNext, base);                       // string to UNSIGNED long before assigning to (signed) long -> 0xFFFFFFFF will be stored as -1, as it should (all bits set)
-        if (_lvl0_initVarWithUnaryOp == -1) { l = -l; }
+        if (initVarOrParWithUnaryOp == -1) { l = -l; }
     }
     else {
         f = strtof(pNumStart, &pNext);
-        if (_lvl0_initVarWithUnaryOp == -1) { f = -f; }
+        if (initVarOrParWithUnaryOp == -1) { f = -f; }
     }                                                    // token can be parsed as float ?
 
     if (pNumStart == pNext) { return true; }                                                // token is not a number if pointer pNext was not moved
@@ -1204,8 +1185,9 @@ bool MyParser::parseAsNumber(char*& pNext, parseTokenResult_type& result) {
     _thisLvl_lastIsVariable = false;
 
     // command argument constraints check
-    _lvl0_initVarWithUnaryOp = 0;   // no prefix plus or minus;                     // reset
     _lvl0_withinExpression = true;
+
+    initVarOrParWithUnaryOp = 0;   // no prefix plus or minus;                     // reset
 
     Interpreter::TokenIsConstant* pToken = (Interpreter::TokenIsConstant*)_pInterpreter->_programCounter;
     pToken->tokenType = Interpreter::tok_isConstant | ((isLong ? Interpreter::value_isLong : Interpreter::value_isFloat) << 4);
@@ -1241,12 +1223,8 @@ bool MyParser::parseAsStringConstant(char*& pNext, parseTokenResult_type& result
     char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
     int escChars = 0;
 
-    Serial.println("**** start parse alphanum ****"); ////
-
     if ((pNext[0] != '\"')) { return true; }                                         // no opening quote ? Is not an alphanumeric cst (it can still be something else)
     pNext++;                                                                            // skip opening quote
-
-    Serial.println("**** cont parse alphanum ****"); ////
 
     if (_pInterpreter->_programCounter == _pInterpreter->_programStorage) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
@@ -1255,7 +1233,7 @@ bool MyParser::parseAsStringConstant(char*& pNext, parseTokenResult_type& result
     if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
 
     // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
-    if (_lvl0_initVarWithUnaryOp != 0) { Serial.println("*** 1 ***"); pNext = pch; result = result_alphaConstNotAllowedHere; return false; } // can only happen with only with initialiser, if constant string is preceded by unary plus or minus operator
+    if (initVarOrParWithUnaryOp != 0) { Serial.println("*** 1 ***"); pNext = pch; result = result_alphaConstNotAllowedHere; return false; } // can only happen with only with initialiser, if constant string is preceded by unary plus or minus operator
     bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
     if (!tokenAllowed) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
 
@@ -1310,9 +1288,9 @@ bool MyParser::parseAsStringConstant(char*& pNext, parseTokenResult_type& result
     _thisLvl_lastIsVariable = false;
 
     // command argument constraints check
-    _lvl0_initVarWithUnaryOp = 0;   // no prefix plus or minus;
     _lvl0_withinExpression = true;
 
+    initVarOrParWithUnaryOp = 0;   // no prefix plus or minus;
 
     Interpreter::TokenIsConstant* pToken = (Interpreter::TokenIsConstant*)_pInterpreter->_programCounter;
     pToken->tokenType = Interpreter::tok_isConstant | (Interpreter::value_isStringPointer << 4);
@@ -1541,8 +1519,9 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
         _thisLvl_lastOpIsIncrDecr = false;                                                                   // array subscripts: reset assignment allowed flag 
 
         // command argument constraints check
-        _lvl0_initVarWithUnaryOp = 0;   // no prefix plus or minus;
         _lvl0_withinExpression = true;
+
+        initVarOrParWithUnaryOp = 0;   // no prefix plus or minus;
 
         // if function DEFINITION: initialize variables for counting of allowed mandatory and optional arguments (not an array parameter, would be parenthesis level 1)
         if (_isExtFunctionCmd && (_parenthesisLevel == 0)) {      // not an array parameter (would be parenthesis level 1)
@@ -1607,7 +1586,7 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
         _thisLvl_lastOpIsIncrDecr = (flags & _pInterpreter->varHasPrefixIncrDecrBit);
 
         // command argument constraints check
-        _lvl0_initVarWithUnaryOp = 0;   // no prefix plus or minus;
+        initVarOrParWithUnaryOp = 0;   // no prefix plus or minus;
 
 
         // 2.1 External function definition (not a call), OR array parameter definition, closing parenthesis ?
@@ -1822,11 +1801,12 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
 
         // command argument constraints check: reset for next command argument (if within a command)
         if (_parenthesisLevel == 0) {
-            _lvl0_initVarWithUnaryOp = 0;                                                                           // no prefix plus or minus;
             _lvl0_withinExpression = false;
             _lvl0_isPurePrefixIncrDecr = false;
             _lvl0_isPureVariable = false;
             _lvl0_isVarWithAssignment = false;
+
+            initVarOrParWithUnaryOp = 0;                                                                           // no prefix plus or minus;
         }
 
 
@@ -1922,11 +1902,12 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
         _thisLvl_lastOpIsIncrDecr = false;
 
         // command argument constraints check: reset for next command argument
-        _lvl0_initVarWithUnaryOp = 0;                                                       // no prefix plus or minus;
         _lvl0_withinExpression = false;
         _lvl0_isPurePrefixIncrDecr = false;
         _lvl0_isPureVariable = false;
         _lvl0_isVarWithAssignment = false;
+
+        initVarOrParWithUnaryOp = 0;                                                       // no prefix plus or minus;
 
         break; }
 
@@ -1961,6 +1942,7 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
             // infix and postfix operators are allowed: test that current operator is infix or postfix
             if ((_terminals[termIndex].infix_priority == 0) && (_terminals[termIndex].postfix_priority == 0)) { pNext = pch; result = result_prefixOperatorNotAllowedhere; return false; }
             tokenIsPrefixOp = false; tokenIsPostfixOp = (_terminals[termIndex].postfix_priority != 0);    // token is either infix or postfix
+
         }
 
         // prefix operators only are allowed
@@ -2011,16 +1993,16 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
             if (!_lvl0_withinExpression || _lvl0_isPurePrefixIncrDecr) { _lvl0_isPurePrefixIncrDecr = (isPrefixIncrDecr || isPostfixIncrDecr); }
             if (_lvl0_isPureVariable) { _lvl0_isVarWithAssignment = operatorContainsAssignment; }
             _lvl0_isPureVariable = false;
+            _lvl0_withinExpression = true;
         }
-        _lvl0_withinExpression = true;
 
         // numeric initializer with + or minus prefix
-        _lvl0_initVarWithUnaryOp = 0;   // no prefix plus or minus;
+        initVarOrParWithUnaryOp = 0;   // no prefix plus or minus;
         if ((_isExtFunctionCmd && (_parenthesisLevel == 1)) || (_isAnyVarCmd && (_parenthesisLevel == 0))) {
             bool lastWasAssignment = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
             if (lastWasAssignment) {
                 if ((_terminals[termIndex].terminalCode != termcod_plus) && (_terminals[termIndex].terminalCode != termcod_minus)) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
-                _lvl0_initVarWithUnaryOp = (_terminals[termIndex].terminalCode == termcod_minus) ? -1 : 1;      // -1 if minus, 1 if plus prefix operator
+                initVarOrParWithUnaryOp = (_terminals[termIndex].terminalCode == termcod_minus) ? -1 : 1;      // -1 if minus, 1 if plus prefix operator
                 Serial.println("**** UNARY + - ****"); ////
                 while (pNext[0] == ' ') { pNext++; }                                         // skip leading spaces
                 if (pNext[0] == '\0') { break; }                                              // safety: instruction was not ended by a semicolon (should never happen) 
@@ -2104,9 +2086,9 @@ bool MyParser::parseAsInternFunction(char*& pNext, parseTokenResult_type& result
         _thisLvl_lastIsVariable = false;
 
         // command argument constraints check
-        _lvl0_initVarWithUnaryOp = 0;   // no prefix plus or minus;
         _lvl0_withinExpression = true;
 
+        initVarOrParWithUnaryOp = 0;   // no prefix plus or minus;
 
         Interpreter::TokenIsIntFunction* pToken = (Interpreter::TokenIsIntFunction*)_pInterpreter->_programCounter;
         pToken->tokenType = Interpreter::tok_isInternFunction | (sizeof(Interpreter::TokenIsIntFunction) << 4);
@@ -2249,9 +2231,9 @@ bool MyParser::parseAsExternFunction(char*& pNext, parseTokenResult_type& result
     _thisLvl_lastIsVariable = false;
 
     // command argument constraints check
-    _lvl0_initVarWithUnaryOp = 0;   // no prefix plus or minus;
     _lvl0_withinExpression = true;
 
+    initVarOrParWithUnaryOp = 0;   // no prefix plus or minus;
 
     // 4. Store token in program memory
     // --------------------------------
@@ -2636,36 +2618,33 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
         }
 
 
-        // if FOR loop control variable, check it is not in use by a FOR outer loop of same function  
-        if ((_lastTokenType == Interpreter::tok_isReservedWord) && (_blockLevel > 1)) {     // minimum 1 other (outer) open block
+        // if FOR loop control variable, check it is not in use by a FOR outer loop of SAME function  
+        // -----------------------------------------------------------------------------------------
+
+        if (_isForCommand && (_blockLevel > 1)) {     // minimum 1 other (outer) open block
             Interpreter::TokenPointer prgmCnt;
             prgmCnt.pTokenChars = _pInterpreter->_programStorage + _lastTokenStep;  // address of keyword
             int tokenIndex = prgmCnt.pResW->tokenIndex;
-            CmdBlockDef cmdBlockDef = _resWords[tokenIndex].cmdBlockDef;
 
-            // variable is a control variable of a FOR loop ?
-            if (cmdBlockDef.blockType == block_for) {
+            // check if control variable is in use by a FOR outer loop
+            LE_parsingStack* pStackLvl = (LE_parsingStack*)parsingStack.getLastListElement();        // current open block level
+            do {
+                pStackLvl = (LE_parsingStack*)parsingStack.getPrevListElement(pStackLvl);    // an outer block stack level
+                if (pStackLvl == nullptr) { break; }
+                if (pStackLvl->openBlock.cmdBlockDef.blockType == block_for) {    // outer block is FOR loop as well (could be while, if, ... block)
+                    // find token for control variable for this outer loop
+                    uint16_t tokenStep{ 0 };
+                    memcpy(&tokenStep, pStackLvl->openBlock.tokenStep, sizeof(char[2]));
+                    prgmCnt.pTokenChars = _pInterpreter->_programStorage + tokenStep;
+                    _pInterpreter->findTokenStep(_pInterpreter->tok_isVariable, 0, prgmCnt.pTokenChars);          // always match
 
-                // check if control variable is in use by a FOR outer loop
-                LE_parsingStack* pStackLvl = (LE_parsingStack*)parsingStack.getLastListElement();        // current open block level
-                do {
-                    pStackLvl = (LE_parsingStack*)parsingStack.getPrevListElement(pStackLvl);    // an outer block stack level
-                    if (pStackLvl == nullptr) { break; }
-                    if (pStackLvl->openBlock.cmdBlockDef.blockType == block_for) {    // outer block is FOR loop as well
-                        // find token for control variable for this outer loop
-                        uint16_t tokenStep{ 0 };
-                        memcpy(&tokenStep, pStackLvl->openBlock.tokenStep, sizeof(char[2]));
-                        tokenStep = tokenStep + sizeof(Interpreter::TokenIsResWord);  // now pointing to control variable of outer loop
-
-                        // compare variable qualifier, name index and value index of outer and inner loop control variable
-                        prgmCnt.pTokenChars = _pInterpreter->_programStorage + tokenStep;  // address of outer loop control variable
-                        bool isSameControlVariable = ((varScope == uint8_t(prgmCnt.pVar->identInfo & _pInterpreter->var_scopeMask))
-                            && ((int)prgmCnt.pVar->identNameIndex == varNameIndex)
-                            && ((int)prgmCnt.pVar->identValueIndex == valueIndex));
-                        if (isSameControlVariable) { pNext = pch; result = result_varControlVarInUse; return false; }
-                    }
-                } while (true);
-            }
+                    // compare variable qualifier, name index and value index of outer and inner loop control variable
+                    bool isSameControlVariable = ((varScope == uint8_t(prgmCnt.pVar->identInfo & _pInterpreter->var_scopeMask))
+                        && ((int)prgmCnt.pVar->identNameIndex == varNameIndex)
+                        && ((int)prgmCnt.pVar->identValueIndex == valueIndex));
+                    if (isSameControlVariable) { pNext = pch; result = result_varControlVarInUse; return false; }
+                }
+            } while (true);
         }
     }
 
@@ -2676,9 +2655,10 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
     _thisLvl_lastIsVariable = true;
 
     // command argument constraints check
-    _lvl0_initVarWithUnaryOp = 0;   // no prefix plus or minus;
-    if (!_lvl0_withinExpression || _lvl0_isPurePrefixIncrDecr) { _lvl0_isPureVariable = true; _lvl0_isPurePrefixIncrDecr = false;}
+    if (!_lvl0_withinExpression || _lvl0_isPurePrefixIncrDecr) { _lvl0_isPureVariable = true; _lvl0_isPurePrefixIncrDecr = false; }
     _lvl0_withinExpression = true;                                                         // reset for next command parameter
+
+    initVarOrParWithUnaryOp = 0;   // no prefix plus or minus;
 
 
     ////Serial.println("*** 6");
@@ -2759,12 +2739,12 @@ bool MyParser::parseAsIdentifierName(char*& pNext, parseTokenResult_type& result
     _thisLvl_lastIsVariable = false;
 
     // command argument constraints check : reset for next command parameter
-    _lvl0_initVarWithUnaryOp = 0;   // no prefix plus or minus;
-    _lvl0_withinExpression = false;                                                         
+    _lvl0_withinExpression = false;
     _lvl0_isPurePrefixIncrDecr = false;
     _lvl0_isPureVariable = false;
     _lvl0_isVarWithAssignment = false;
 
+    initVarOrParWithUnaryOp = 0;   // no prefix plus or minus;
 
     Interpreter::TokenIsConstant* pToken = (Interpreter::TokenIsConstant*)_pInterpreter->_programCounter;
     pToken->tokenType = Interpreter::tok_isGenericName | (sizeof(Interpreter::TokenIsConstant) << 4);
