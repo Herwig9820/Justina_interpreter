@@ -2104,8 +2104,8 @@ Interpreter::execResult_type  Interpreter::execUnaryOperation(bool isPrefix) {
     // ---------------------------------------------------------------------
     operand.floatConst = operandIsVar ? *pOperandStackLvl->varOrConst.value.pFloatConst : pOperandStackLvl->varOrConst.value.floatConst;
 
-    Serial.print(isPrefix ? "-- EVAL prefix operator : " : "-- EVAL postfix operator: "); Serial.println(_pmyParser->_terminals[_pEvalStackMinus1->terminal.index & 0x7F].terminalName);////
-    Serial.print("--                    op: "); Serial.println(operand.longConst);
+    ////Serial.print(isPrefix ? "-- EVAL prefix operator : " : "-- EVAL postfix operator: "); Serial.println(_pmyParser->_terminals[_pEvalStackMinus1->terminal.index & 0x7F].terminalName);////
+    ////Serial.print("--                    op: "); Serial.println(operand.longConst);
 
     // (4) execute (prefix or postfix) operator
     // ----------------------------------------
@@ -2149,7 +2149,7 @@ Interpreter::execResult_type  Interpreter::execUnaryOperation(bool isPrefix) {
         pOperandStackLvl->varOrConst.variableAttributes = 0x00;                     // not an array, not an array element (it's a constant) 
     }
 
-    Serial.print("--                result: "); Serial.println((isIncrDecr && isPrefix) ? *pOperandStackLvl->varOrConst.value.pLongConst : pOperandStackLvl->varOrConst.value.longConst);
+    ////Serial.print("--                result: "); Serial.println((isIncrDecr && isPrefix) ? *pOperandStackLvl->varOrConst.value.pLongConst : pOperandStackLvl->varOrConst.value.longConst);
 
     //  clean up stack (drop operator)
 
@@ -2218,9 +2218,9 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
     if (op2isLong || op2isFloat) { operand2.floatConst = (operand2IsVar ? (*_pEvalStackTop->varOrConst.value.pFloatConst) : _pEvalStackTop->varOrConst.value.floatConst); }
     else { operand2.pStringConst = (operand2IsVar ? (*_pEvalStackTop->varOrConst.value.ppStringConst) : _pEvalStackTop->varOrConst.value.pStringConst); }
 
-    Serial.print("-- EVAL infix operator: "); Serial.println(_pmyParser->_terminals[_pEvalStackMinus1->terminal.index & 0x7F].terminalName);////
-    Serial.print("--                op 1: "); Serial.println(operand1.longConst);
-    Serial.print("--                op 2: "); Serial.println(operand2.longConst);
+    ////Serial.print("-- EVAL infix operator: "); Serial.println(_pmyParser->_terminals[_pEvalStackMinus1->terminal.index & 0x7F].terminalName);////
+    ////Serial.print("--                op 1: "); Serial.println(operand1.longConst);
+    ////Serial.print("--                op 2: "); Serial.println(operand2.longConst);
 
     //// onderstel long
     ////Serial.print(op1isLong); Serial.print(" ++ operand 1: "); if (op1isLong) Serial.println(operand1.longConst); else Serial.println();
@@ -2483,7 +2483,7 @@ Interpreter::execResult_type  Interpreter::execInfixOperation() {
         _pEvalStackTop->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
     }
 
-    Serial.print("--              result: "); Serial.println(operationIncludesAssignment ? *_pEvalStackTop->varOrConst.value.pLongConst : _pEvalStackTop->varOrConst.value.longConst);
+    ////Serial.print("--              result: "); Serial.println(operationIncludesAssignment ? *_pEvalStackTop->varOrConst.value.pLongConst : _pEvalStackTop->varOrConst.value.longConst);
 
     return result_execOK;
 }

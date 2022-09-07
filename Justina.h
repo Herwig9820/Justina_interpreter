@@ -884,6 +884,7 @@ public:
         result_redefiningIntFunctionNotAllowed,
         result_undefinedFunctionOrArray,
         result_arrayParamMustHaveEmptyDims,
+        result_functionNeedsParentheses,
 
         // variable errors
         result_varNameInUseForFunction = 1600,
@@ -1245,7 +1246,7 @@ private:
     bool _lvl0_isPureVariable;
     bool _lvl0_isVarWithAssignment;
 
-    int initVarOrParWithUnaryOp;                    // initialiser unary operators only: -1 = minus, 1 = plus, 0 = no unary op 
+    int _initVarOrParWithUnaryOp;                    // initialiser unary operators only: -1 = minus, 1 = plus, 0 = no unary op 
 
     Interpreter* _pInterpreter;
 
