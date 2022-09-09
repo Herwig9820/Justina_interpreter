@@ -298,7 +298,7 @@ Interpreter::~Interpreter() {
 // *   set call back functons   *
 // ------------------------------
 
-bool Interpreter::setMainLoopCallback(void (*func)(bool& requestQuit)) {
+bool Interpreter::setMainLoopCallback(void (*func)(bool& requestQuit, long& appFlags)) {
 
     // a call from the user program initializes the address of a 'user callback' function.
     // Justina will call this user routine repeatedly and automatically, allowing  the user...
@@ -338,7 +338,7 @@ bool Interpreter::run(Stream* const pConsole, Stream** const pTerminal, int defi
             _currenttime = millis();                                                        // while reading from console, continuously call housekeeping callback routine
             _previousTime = _currenttime;                                                   // keep up to date (needed during parsing and evaluation)
             _lastCallBackTime = _currenttime;
-            _housekeepingCallback(quitNow);
+            _housekeepingCallback(quitNow, _appFlags);
             if (quitNow) { kill = true; break; }
         }
 
@@ -522,7 +522,6 @@ bool Interpreter::processCharacter(char c, bool& kill) {
 
 
 
-
     if (isEndOfFile) {
         if (instructionsParsed) {
             int funcNotDefIndex;
@@ -530,6 +529,8 @@ bool Interpreter::processCharacter(char c, bool& kill) {
                 // checks at the end of parsing: any undefined functions (program mode only) ?  any open blocks ?
                 if (_programMode && (!_pmyParser->allExternalFunctionsDefined(funcNotDefIndex))) { result = MyParser::result_undefinedFunctionOrArray; }
                 if (_pmyParser->_blockLevel > 0) { result = MyParser::result_noBlockEnd; }
+
+                if (result != MyParser::result_tokenFound) { _appFlags |= 0x0001L; }              // if parsing error only occurs here, error condition flag can still be set here
             }
 
             if (result == MyParser::result_tokenFound) {            // result could be altered in the meantime
@@ -540,13 +541,18 @@ bool Interpreter::processCharacter(char c, bool& kill) {
                     else if (_promptAndEcho == 1) { _pConsole->println(); _isPrompt = false; }
 
                     execResult_type execResult = exec();                                 // execute parsed user statements
+
                     if ((execResult == result_eval_kill) || (execResult == result_eval_quit)) { _quitJustineAtEOF = true; }
                 }
             }
+
             // parsing OK message (program mode only - no message in immediate mode) or error message 
             _pmyParser->printParsingResult(result, funcNotDefIndex, _instruction, _lineCount, pErrorPos);
+            (_programsInDebug) ? ( _appFlags |= 0x0030L) : (_appFlags &= ~0x0030L);
         }
-        else { _pConsole->println(); }                                       // empty line: advance to next line only
+        else {
+            _pConsole->println();
+        }
 
         if (_programsInDebug > 0) {
             for (int i = 1; i <= _dispWidth; i++) { _pConsole->print("-"); }
@@ -562,10 +568,7 @@ bool Interpreter::processCharacter(char c, bool& kill) {
         }
 
 
-
-
-
-        if (_promptAndEcho != 0) { _pConsole->print("Justina> "); _isPrompt = true; }                 // print new prompt
+        if (!_programMode && (_promptAndEcho != 0)) { _pConsole->print("Justina> "); _isPrompt = true; }                 // print new prompt
 
         bool wasReset = false;      // init
         if (_programMode) {               //// waarschijnlijk aan te passen als LOADPROG cmd implemented (-> steeds vanuit immediate mode)
@@ -633,7 +636,9 @@ bool Interpreter::processCharacter(char c, bool& kill) {
         Serial.println();
 #endif
         return _quitJustineAtEOF;
+
+
     }
 
     return false;  // and wait for next character
-}
+    }

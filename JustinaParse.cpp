@@ -53,18 +53,22 @@ const MyParser::ResWordDef MyParser::_resWords[]{
     {"Function",        cmdcod_function,    cmd_onlyInProgram | cmd_skipDuringExec,             0,0,    cmdPar_108,     cmdBlockExtFunction},
 
 
-    /* variables */
-    /* --------- */
+    /* declare variables */
+    /* ----------------- */
 
     {"Var",             cmdcod_var,         cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_111,     cmdGlobalVar},
     {"Static",          cmdcod_static,      cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_111,     cmdStaticVar},
     {"Local",           cmdcod_local,       cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_111,     cmdLocalVar},
 
     //// to do
+    //// -----
     {"Delvar",          cmdcod_delete,      cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_110,     cmdDeleteVar},
     {"Clearvars",       cmdcod_clear,       cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockNone},
-    {"Vars",            cmdcod_vars,        cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockNone},
     {"Test",            cmdcod_test,        cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_999,     cmdBlockNone},//// test var no assignment
+    
+    {"Printvars",       cmdcod_vars,        cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
+    {"PrintCBs",        cmdcod_printCB,     cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
+    {"Printprog",       cmdcod_prog,        cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
 
 
     /* flow control commands */
@@ -110,7 +114,8 @@ const MyParser::ResWordDef MyParser::_resWords[]{
     /* user callback functions */
     /* ----------------------- */
 
-    {"DeclareCB",       cmdcod_decCBproc,   cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_100,     cmdBlockNone},
+    {"DeclareCB",       cmdcod_declCB,      cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_110,     cmdBlockNone},
+    {"ClearCB",         cmdcod_clearCB,     cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_102,     cmdBlockNone},
     {"Callback",        cmdcod_callback,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_101,     cmdBlockNone},
 };
 
@@ -440,7 +445,7 @@ void MyParser::resetMachine(bool withUserVariables) {
     _pInterpreter->_lastResultCount = 0;                                       // current last result FiFo depth (values currently stored)
 
     _pInterpreter->_userCBprocAliasSet_count = 0;   // note: _userCBprocStartSet_count: only reset when starting interpreter
-
+    
     // calculation result print
     _pInterpreter->_dispWidth = _pInterpreter->_defaultPrintWidth, _pInterpreter->_dispNumPrecision = _pInterpreter->_defaultNumPrecision;
     _pInterpreter->_dispCharsToPrint = _pInterpreter->_defaultCharsToPrint; _pInterpreter->_dispFmtFlags = _pInterpreter->_defaultPrintFlags;
@@ -678,6 +683,10 @@ bool MyParser::allExternalFunctionsDefined(int& index) {
 // ----------------------------------------------------------------------------------------------------------------------
 
 MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
+    
+    _pInterpreter->_appFlags &= ~0x0001L ;              // clear error condition flag 
+    _pInterpreter->_appFlags = (_pInterpreter->_appFlags & ~0x0030L) | 0x0010L;     // set bits b54 to 01: parsing
+
     _lastTokenType_hold = Interpreter::tok_no_token;
     _lastTokenType = Interpreter::tok_no_token;                                                      // no token yet
     _lastTokenIsTerminal = false;
@@ -722,8 +731,8 @@ MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
 
         if ((_lastTokenType == Interpreter::tok_no_token) || isSemicolon) {
             _isProgramCmd = false;
-            _isDecCBprocCmd = false;  _isCallbackCmd = false;
-            _isExtFunctionCmd = false; _isGlobalOrUserVarCmd = false; _isLocalVarCmd = false; _isStaticVarCmd = false; _isAnyVarCmd = false;
+            _isDeclCBcmd = false; _isClearCBcmd = false; _isCallbackCmd = false;
+            _isAnyExtFunctionCmd = false; _isGlobalOrUserVarCmd = false; _isLocalVarCmd = false; _isStaticVarCmd = false; _isAnyVarCmd = false;
             _isForCommand = false;
             _isDeleteVarCmd = false;
         }
@@ -766,14 +775,14 @@ MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
             // if a function returns false, then break with 'result' containing the error
 
             if ((_pInterpreter->_programCounter + sizeof(Interpreter::TokenIsConstant) + 1) > (_pInterpreter->_programStart + _pInterpreter->_programSize)) { result = result_progMemoryFull; break; };
-            if (!parseAsResWord(pNext, result)) { break; } if (result == result_tokenFound) { continue; }             // check before checking for identifier  
-            if (!parseTerminalToken(pNext, result)) { break; }  if (result == result_tokenFound) { continue; }       // check before checking for number
-            if (!parseAsNumber(pNext, result)) { break; }  if (result == result_tokenFound) { continue; }
-            if (!parseAsStringConstant(pNext, result)) { break; }  if (result == result_tokenFound) { continue; }
-            if (!parseAsInternFunction(pNext, result)) { break; }  if (result == result_tokenFound) { continue; }     // check before checking for identifier (ext. function / variable) 
-            if (!parseAsExternFunction(pNext, result)) { break; }  if (result == result_tokenFound) { continue; }     // check before checking for variable
-            if (!parseAsVariable(pNext, result)) { break; }  if (result == result_tokenFound) { continue; }
-            if (!parseAsIdentifierName(pNext, result)) { break; }  if (result == result_tokenFound) { continue; }     // at the end
+            if (!parseAsResWord(pNext, result)) { break; } if (result == result_tokenFound) { break; }             // check before checking for identifier  
+            if (!parseTerminalToken(pNext, result)) { break; }  if (result == result_tokenFound) { break; }       // check before checking for number
+            if (!parseAsNumber(pNext, result)) { break; }  if (result == result_tokenFound) { break; }
+            if (!parseAsStringConstant(pNext, result)) { break; }  if (result == result_tokenFound) { break; }
+            if (!parseAsInternFunction(pNext, result)) { break; }  if (result == result_tokenFound) { break; }     // check before checking for identifier (ext. function / variable) 
+            if (!parseAsExternFunction(pNext, result)) { break; }  if (result == result_tokenFound) { break; }     // check before checking for variable
+            if (!parseAsVariable(pNext, result)) { break; }  if (result == result_tokenFound) { break; }
+            if (!parseAsIdentifierName(pNext, result)) { break; }  if (result == result_tokenFound) { break; }     // at the end
             result = result_token_not_recognised;
         } while (false);
 
@@ -809,12 +818,13 @@ MyParser::parseTokenResult_type MyParser::parseInstruction(char*& pInputStart) {
         // also handle millis() overflow after about 47 days
         if ((_pInterpreter->_lastCallBackTime + Interpreter::callbackPeriod < _pInterpreter->_currenttime) || (_pInterpreter->_currenttime < _pInterpreter->_previousTime)) {     // while parsing, limit calls to housekeeping callback routine 
             _pInterpreter->_lastCallBackTime = _pInterpreter->_currenttime;
-            _pInterpreter->_housekeepingCallback(quitNow);
+            _pInterpreter->_housekeepingCallback(quitNow, _pInterpreter->_appFlags);
             if (quitNow) { pNext = pNext_hold; result = result_parse_kill; }
         }
     }
 
     pInputStart = pNext;                                                                // set to next character (if error: indicates error position)
+    (result == result_tokenFound) ? _pInterpreter->_appFlags &= ~0x0001L : _pInterpreter->_appFlags |= 0x0001L;              // clear or set error condition flag 
     return result;
 }
 
@@ -831,9 +841,10 @@ bool MyParser::checkCommandKeyword(parseTokenResult_type& result) {             
 
     CmdBlockDef cmdBlockDef = _resWords[_tokenIndex].cmdBlockDef;
 
-    _isExtFunctionCmd = _resWords[_tokenIndex].resWordCode == cmdcod_function;
+    _isAnyExtFunctionCmd = _resWords[_tokenIndex].resWordCode == cmdcod_function;
     _isProgramCmd = _resWords[_tokenIndex].resWordCode == cmdcod_program;
-    _isDecCBprocCmd = _resWords[_tokenIndex].resWordCode == cmdcod_decCBproc;
+    _isDeclCBcmd = _resWords[_tokenIndex].resWordCode == cmdcod_declCB;
+    _isClearCBcmd = _resWords[_tokenIndex].resWordCode == cmdcod_clearCB;
     _isCallbackCmd = _resWords[_tokenIndex].resWordCode == cmdcod_callback;
     _isGlobalOrUserVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_var;
     _isLocalVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_local;
@@ -860,7 +871,7 @@ bool MyParser::checkCommandKeyword(parseTokenResult_type& result) {             
     if (((!_pInterpreter->_programMode) || _extFunctionBlockOpen) && (cmdRestriction == cmd_onlyInProgramOutsideFunctionBlock)) { result = result_onlyInProgOutsideFunction; return false; };
     if ((_pInterpreter->_programMode && !_extFunctionBlockOpen) && (cmdRestriction == cmd_onlyImmOrInsideFuncBlock)) { result = result_onlyImmediateOrInFunction; return false; };
 
-    if (_extFunctionBlockOpen && _isExtFunctionCmd) { result = result_functionDefsCannotBeNested; return false; } // separate message to indicate 'no nesting'
+    if (_extFunctionBlockOpen && _isAnyExtFunctionCmd) { result = result_functionDefsCannotBeNested; return false; } // separate message to indicate 'no nesting'
 
     // not a block command: nothing more to do here 
     if (cmdBlockDef.blockType == block_none) { return true; }
@@ -877,7 +888,7 @@ bool MyParser::checkCommandKeyword(parseTokenResult_type& result) {             
         memcpy(_pParsingStack->openBlock.tokenStep, &_lastTokenStep, sizeof(char[2]));                      // store in stack: pointer to block start command token of open block
         _blockStartCmdTokenStep = _lastTokenStep;                                     // remember pointer to block start command token of open block
         _blockCmdTokenStep = _lastTokenStep;                                          // remember pointer to last block command token of open block
-        _extFunctionBlockOpen = _extFunctionBlockOpen || _isExtFunctionCmd;    // open until block closing END command     
+        _extFunctionBlockOpen = _extFunctionBlockOpen || _isAnyExtFunctionCmd;    // open until block closing END command     
         return true;                                                         // nothing more to do
     }
 
@@ -968,7 +979,10 @@ bool MyParser::checkCommandArgToken(parseTokenResult_type& result) {
     bool isLvl0CommaSep = isCommaSep && (_parenthesisLevel == 0);
     bool isAssignmentOp = _lastTokenIsTerminal ? ((_terminals[_tokenIndex].terminalCode == termcod_assign)
         || (_terminals[_tokenIndex].terminalCode == termcod_plusAssign) || (_terminals[_tokenIndex].terminalCode == termcod_minusAssign)
-        || (_terminals[_tokenIndex].terminalCode == termcod_multAssign) || (_terminals[_tokenIndex].terminalCode == termcod_divAssign)) : false;
+        || (_terminals[_tokenIndex].terminalCode == termcod_multAssign) || (_terminals[_tokenIndex].terminalCode == termcod_divAssign)
+        || (_terminals[_tokenIndex].terminalCode == termcod_modAssign) || (_terminals[_tokenIndex].terminalCode == termcod_bitAndAssign)
+        || (_terminals[_tokenIndex].terminalCode == termcod_bitOrAssign) || (_terminals[_tokenIndex].terminalCode == termcod_bitXorAssign)
+        || (_terminals[_tokenIndex].terminalCode == termcod_bitShLeftAssign) || (_terminals[_tokenIndex].terminalCode == termcod_bitShRightAssign)): false;
 
     // is this token part of an expression ? 
     _lvl0_withinExpression = !(isResWord || isGenIdent || isLvl0CommaSep || isSemiColonSep);
@@ -1003,8 +1017,7 @@ bool MyParser::checkCommandArgToken(parseTokenResult_type& result) {
         if ((allowedParType != cmdPar_none) && !multipleParameter && !optionalParameter) {    // missing parameters ?
             result = result_cmdParameterMissing; return false;
         }
-
-        if (_isDecCBprocCmd && (_cmdArgNo == 0)) { _pInterpreter->_userCBprocAliasSet_count = 0; }
+        if (_isClearCBcmd) { _pInterpreter->_userCBprocAliasSet_count = 0; }
 
         return true;                                                                    // nothing more to do for this command
     }
@@ -1162,13 +1175,15 @@ bool MyParser::parseAsNumber(char*& pNext, parseTokenResult_type& result) {
     bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
     if (!tokenAllowed) { pNext = pch; result = result_numConstNotAllowedHere; return false; ; }
 
-    // Note: in a (variable or parameter) declaration statement, operators other than assignment operators are not allowed, which is detected in terminal token parsing
-    bool lastIsPureAssignmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
-    if (_isExtFunctionCmd && !lastIsPureAssignmentOp) { pNext = pch; result = result_numConstNotAllowedHere; return false; }
-
     // is a variable required instead of a constant ?
     bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_incr) || (_lastTermCode == termcod_decr)) : false;
     if (varRequired) { pNext = pch; result = result_variableNameExpected; return false; }
+
+    // Function command: check that constant can only appear after an equal sign
+    // (in a variable declaration statement (VAR,...), this is handled by the keyword 'allowed command parameter' key)
+    // Note: in a (variable or parameter) declaration statement, operators other than assignment operators are not allowed, which is detected in terminal token parsing
+    bool lastIsPureAssignmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;     // not a compound assignment
+    if (_isAnyExtFunctionCmd && !lastIsPureAssignmentOp) { pNext = pch; result = result_numConstNotAllowedHere; return false; }
 
     // array declaration: dimensions must be number constants (global, static, local arrays)
     bool isArrayDimSpec = _isAnyVarCmd && (_parenthesisLevel > 0);
@@ -1229,18 +1244,20 @@ bool MyParser::parseAsStringConstant(char*& pNext, parseTokenResult_type& result
     if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
 
     // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
-    if (_initVarOrParWithUnaryOp != 0) { Serial.println("*** 1 ***"); pNext = pch; result = result_alphaConstNotAllowedHere; return false; } // can only happen with only with initialiser, if constant string is preceded by unary plus or minus operator
+    if (_initVarOrParWithUnaryOp != 0) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; } // can only happen with only with initialiser, if constant string is preceded by unary plus or minus operator
     bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
     if (!tokenAllowed) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
-
-    // Note: in a (variable or parameter) declaration statement, operators other than assignment operators are not allowed, which is detected in terminal token parsing
-    bool isParamDecl = (_isExtFunctionCmd);                                             // parameter declarations :  constant can ONLY FOLLOW an assignment operator
-    bool isPureAssignmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
-    if (isParamDecl && !isPureAssignmentOp) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
 
     // is a variable required instead of a constant ?
     bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_incr) || (_lastTermCode == termcod_decr)) : false;
     if (varRequired) { pNext = pch; result = result_variableNameExpected; return false; }
+
+    // Function command: check that constant can only appear after an equal sign
+    // (in a variable declaration statement (VAR,...), this is handled by the keyword 'allowed command parameter' key)
+    // Note: in a (variable or parameter) declaration statement, operators other than assignment operators are not allowed, which is detected in terminal token parsing
+    bool isPureAssignmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;          // not a compound assignment
+    if (_isAnyExtFunctionCmd && !isPureAssignmentOp) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
+
     // array declaration: dimensions must be number constants (global, static, local arrays)
     bool isArrayDimSpec = _isAnyVarCmd && (_parenthesisLevel > 0);
     if (isArrayDimSpec) { pNext = pch; result = result_arrayDimNotValid; return false; }
@@ -1405,7 +1422,7 @@ bool MyParser::checkExternFuncArgArrayPattern(parseTokenResult_type& result, boo
         bool isArray = false;
         bool lastIsRightPar = _lastTokenIsTerminal ? (_lastTermCode == termcod_rightPar) : false;
 
-        if (_isExtFunctionCmd) { isArray = lastIsRightPar; }  // function definition: if variable name followed by empty parameter list ' () ': array parameter
+        if (_isAnyExtFunctionCmd) { isArray = lastIsRightPar; }  // function definition: if variable name followed by empty parameter list ' () ': array parameter
         else if (_lastTokenType == Interpreter::tok_isVariable) {                                      // function call and last token is variable name ? Could be an array name                                                                                      // function call
             // check if variable is defined as array (then it will NOT be part of an expression )
             isArray = (((Interpreter::TokenIsVariable*)(_pInterpreter->_programStorage + _lastTokenStep))->identInfo) & _pInterpreter->var_isArray;
@@ -1484,8 +1501,8 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
 
         if (_isAnyVarCmd && (_parenthesisLevel > 0)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }     // no parenthesis nesting in array declarations
         // parenthesis nesting in function definitions, only to declare an array parameter AND only if followed by a closing parenthesis 
-        if ((_isExtFunctionCmd) && (_parenthesisLevel > 0) && (_lastTokenType != Interpreter::tok_isVariable)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
-        if (_isProgramCmd || _isDeleteVarCmd || _isDecCBprocCmd) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
+        if ((_isAnyExtFunctionCmd) && (_parenthesisLevel > 0) && (_lastTokenType != Interpreter::tok_isVariable)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
+        if (_isProgramCmd || _isDeleteVarCmd || _isDeclCBcmd) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
         if (_isCallbackCmd && (_cmdArgNo == 0)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
 
         bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_incr) || (_lastTermCode == termcod_decr)) : false;
@@ -1516,12 +1533,12 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
         _lvl0_withinExpression = true;
 
         // if function DEFINITION: initialize variables for counting of allowed mandatory and optional arguments (not an array parameter, would be parenthesis level 1)
-        if (_isExtFunctionCmd && (_parenthesisLevel == 0)) {      // not an array parameter (would be parenthesis level 1)
+        if (_isAnyExtFunctionCmd && (_parenthesisLevel == 0)) {      // not an array parameter (would be parenthesis level 1)
             extFunctionDef_minArgCounter = 0;
             extFunctionDef_maxArgCounter = 0;            // init count; range from 0 to a hardcoded maximum 
         }
 
-        if (_isExtFunctionCmd && (_parenthesisLevel == 1)) {      // array parameter (would be parenthesis level 1)
+        if (_isAnyExtFunctionCmd && (_parenthesisLevel == 1)) {      // array parameter (would be parenthesis level 1)
             if (peek[0] != ')') { pNext = pch; result = result_arrayParamMustHaveEmptyDims; return false; }
         }
 
@@ -1578,10 +1595,10 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
         _thisLvl_lastOpIsIncrDecr = (flags & _pInterpreter->varHasPrefixIncrDecrBit);
 
 
-        // 2.1 External function definition (not a call), OR array parameter definition, closing parenthesis ?
-        // -------------------------------------------------------------------
+        // 2.1 External function definition (not a call), OR array parameter definition closing parenthesis ?
+        // --------------------------------------------------------------------------------------------------
 
-        if (_isExtFunctionCmd) {
+        if (_isAnyExtFunctionCmd) {
             if (_parenthesisLevel == 1) {          // function definition closing parenthesis
                 // stack level will not change until closing parenthesis (because within definition, no nesting of parenthesis is possible)
                 // stack min & max values: current range of args counts that occured in previous calls (not initialized if no earlier calls occured)
@@ -1796,11 +1813,13 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
             _lvl0_isVarWithAssignment = false;
         }
 
+        _initVarOrParWithUnaryOp = 0;   // reset (needed for Function definitions with multiple parameters)
+
 
         // 3.1 External function definition (not a call) parameter separator ? 
         // -------------------------------------------------------------------
 
-        if (_isExtFunctionCmd) {
+        if (_isAnyExtFunctionCmd) {
             if (_parenthesisLevel == 1) {          // not an array parameter (would be parenthesis level 2)
                 _pParsingStack->openPar.actualArgsOrDims++;
                 // check order of mandatory and optional arguments, check if max. n� not exceeded
@@ -1904,9 +1923,10 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
         // Case 5: token is an operator
         // ----------------------------
 
-        if (_pInterpreter->_programCounter == _pInterpreter->_programStorage) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
+        // 1. Is an operator allowed here ? 
+        // --------------------------------
 
-        // token is an operator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
+        if (_pInterpreter->_programCounter == _pInterpreter->_programStorage) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
         // does last token type allow an operator as current token ?
         if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_5_3_2_1_0)) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
@@ -1915,19 +1935,48 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
         bool tokenAllowed = (_isCommand || (!_pInterpreter->_programMode) || _extFunctionBlockOpen);
         if (!tokenAllowed) { pNext = pch; result = result_operatorNotAllowedHere; return false; ; }
 
+        
+        // 1.a Check additional constraints within specific commands
+        // ---------------------------------------------------------
+
+        bool lastWasAssignment = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
+
         if (_isAnyVarCmd) {
             if (_parenthesisLevel > 0) { pNext = pch; result = result_operatorNotAllowedHere; return false; }     // no operators in array dimensions (must be constants)
             // prefix increment operators before variable to be declared are not detected in command argument checking: test here
             else if (!_lvl0_withinExpression) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+            // initialiser is constant only: not followed by any operators
             else if (_lastTokenType == Interpreter::tok_isConstant) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
         }
 
-        if (_isProgramCmd || _isDeleteVarCmd || _isDecCBprocCmd) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+        if (_isAnyExtFunctionCmd) {
+            // only a scalar variable or an assignment can be followed by an operator (an assignment and a prefix plus or minus, respectively)
+            if ((_lastTokenType != Interpreter::tok_isVariable) && !lastWasAssignment) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+            // initialiser is a scalar variable: can not be followed by any other operator than assignment
+            if ((_lastTokenType == Interpreter::tok_isVariable) && (_terminals[termIndex].terminalCode != termcod_assign)) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+        }
+
+        // numeric initializer with plus or minus prefix
+        if ((_isAnyExtFunctionCmd && (_parenthesisLevel == 1)) || (_isAnyVarCmd && (_parenthesisLevel == 0))) {
+            bool isPrefixPlusOrMinus = ((_terminals[termIndex].terminalCode == termcod_plus) || (_terminals[termIndex].terminalCode == termcod_minus));
+            if (isPrefixPlusOrMinus) {
+                if (_initVarOrParWithUnaryOp != 0) { pNext = pch; result = result_operatorNotAllowedHere; return false; }       // already a prefix operator found (only one allowed in initialiser)
+                else {
+                    _initVarOrParWithUnaryOp = (_terminals[termIndex].terminalCode == termcod_minus) ? -1 : 1;      // -1 if minus, 1 if plus prefix operator
+                    while (pNext[0] == ' ') { pNext++; }                                         // find start of next token
+                    if (pNext[0] == '\0') { break; }                                              // safety: instruction was not ended by a semicolon (should never happen) 
+                    result = result_tokenFound;
+                    return true;            // consider unary plus or minus operator as processed, but do not create token; remember which of the two was found
+                }
+            }
+        }
+
+        if (_isProgramCmd || _isDeleteVarCmd || _isDeclCBcmd) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
         if (_isCallbackCmd && (_cmdArgNo == 0)) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
 
 
-        // find out if the provided operator type (prefix, infix or postfix) is allowed 
-        // ----------------------------------------------------------------------------
+        // 1.b Find out if the provided operator type (prefix, infix or postfix) is allowed 
+        // --------------------------------------------------------------------------------
 
         // does last token type limit allowable operators to infix and postfix ?
         bool tokenIsPrefixOp{ false }, tokenIsPostfixOp{ false };
@@ -1938,50 +1987,47 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
             tokenIsPrefixOp = false; tokenIsPostfixOp = (_terminals[termIndex].postfix_priority != 0);    // token is either infix or postfix
 
         }
-
-        // prefix operators only are allowed
-        else {
-            //test that current operator is prefix
+        else {        // prefix operators only are allowed
             if (_terminals[termIndex].prefix_priority == 0) { pNext = pch; result = result_invalidOperator; return false; }
             tokenIsPrefixOp = true; tokenIsPostfixOp = false;
         }
 
-
-        // expression syntax check
-        // -----------------------
-
-        // if current token is a prefix variable increment / decrement operator: note if subsequent assignment is allowed
         bool isPrefixIncrDecr = (tokenIsPrefixOp && (_terminals[termIndex].terminalCode == termcod_incr) || (_terminals[termIndex].terminalCode == termcod_decr));
         bool isPostfixIncrDecr = (tokenIsPostfixOp && (_terminals[termIndex].terminalCode == termcod_incr) || (_terminals[termIndex].terminalCode == termcod_decr));
 
         if (isPostfixIncrDecr) {
-            if (!_thisLvl_lastIsVariable) { Serial.println("*** 1"); pNext = pch; result = result_operatorNotAllowedHere; return false; }   // not a variable or array element
-            if (_thisLvl_lastOpIsIncrDecr) { Serial.println("*** 2"); pNext = pch; result = result_operatorNotAllowedHere; return false; }
+            if (!_thisLvl_lastIsVariable) { pNext = pch; result = result_operatorNotAllowedHere; return false; }   // not a variable or array element
+            if (_thisLvl_lastOpIsIncrDecr) {  pNext = pch; result = result_operatorNotAllowedHere; return false; }
         }
 
         if (tokenIsPrefixOp && !isPrefixIncrDecr) {
-            if (_thisLvl_lastOpIsIncrDecr) { Serial.println("*** 0"); pNext = pch; result = result_operatorNotAllowedHere; return false; }
+            if (_thisLvl_lastOpIsIncrDecr) {  pNext = pch; result = result_operatorNotAllowedHere; return false; }
         }
 
         _thisLvl_lastOpIsIncrDecr = (isPrefixIncrDecr || isPostfixIncrDecr);      // remember, because not allowed with postfix increment / decrement (has higher priority and does not return a variable reference)
 
 
-        // if current token is an assignment operator, check whether it's allowed here
+        // 1.c If current token is an assignment operator, check whether it's allowed here
+        // -------------------------------------------------------------------------------
+        
         bool operatorContainsAssignment = ((_terminals[termIndex].terminalCode == termcod_assign)
             || (_terminals[termIndex].terminalCode == termcod_plusAssign) || (_terminals[termIndex].terminalCode == termcod_minusAssign)
-            || (_terminals[termIndex].terminalCode == termcod_multAssign) || (_terminals[termIndex].terminalCode == termcod_divAssign));
+            || (_terminals[termIndex].terminalCode == termcod_multAssign) || (_terminals[termIndex].terminalCode == termcod_divAssign)
+            || (_terminals[termIndex].terminalCode == termcod_modAssign) || (_terminals[termIndex].terminalCode == termcod_bitAndAssign)
+            || (_terminals[termIndex].terminalCode == termcod_bitOrAssign) || (_terminals[termIndex].terminalCode == termcod_bitXorAssign)
+            || (_terminals[termIndex].terminalCode == termcod_bitShLeftAssign) || (_terminals[termIndex].terminalCode == termcod_bitShRightAssign));
 
 
         if (operatorContainsAssignment) {
-            if (!_thisLvl_lastIsVariable) { Serial.println("*** 3"); pNext = pch; result = result_assignmNotAllowedHere; return false; }   // not a variable or array element
-            if (!_thisLvl_assignmentStillPossible) { Serial.println("*** 4"); pNext = pch; result = result_assignmNotAllowedHere; return false; }
+            if (!_thisLvl_lastIsVariable) {  pNext = pch; result = result_assignmNotAllowedHere; return false; }   // not a variable or array element
+            if (!_thisLvl_assignmentStillPossible) {  pNext = pch; result = result_assignmNotAllowedHere; return false; }
         }
 
         if (!(operatorContainsAssignment || isPrefixIncrDecr)) { _thisLvl_assignmentStillPossible = false; }   // further assignments at this expression level not possible any more
 
 
-        // command argument constraints check
-        // ----------------------------------
+        // 1.d Command argument constraints check
+        // --------------------------------------
 
         if (_parenthesisLevel == 0) {
             if (!_lvl0_withinExpression || _lvl0_isPurePrefixIncrDecr) { _lvl0_isPurePrefixIncrDecr = (isPrefixIncrDecr || isPostfixIncrDecr); }
@@ -1990,23 +2036,9 @@ bool MyParser::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
             _lvl0_withinExpression = true;
         }
 
-        // numeric initializer with plus or minus prefix
-        if ((_isExtFunctionCmd && (_parenthesisLevel == 1)) || (_isAnyVarCmd && (_parenthesisLevel == 0))) {
-            if(_initVarOrParWithUnaryOp !=0) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
-            _initVarOrParWithUnaryOp = 0;   // no prefix plus or minus;
-            bool lastWasAssignment = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
-            if (lastWasAssignment) {
-                if ((_terminals[termIndex].terminalCode != termcod_plus) && (_terminals[termIndex].terminalCode != termcod_minus)) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
-                _initVarOrParWithUnaryOp = (_terminals[termIndex].terminalCode == termcod_minus) ? -1 : 1;      // -1 if minus, 1 if plus prefix operator
-                while (pNext[0] == ' ') { pNext++; }                                         // skip leading spaces
-                if (pNext[0] == '\0') { break; }                                              // safety: instruction was not ended by a semicolon (should never happen) 
+        // 1.e Token is an operator, and it's allowed here
+        // -----------------------------------------------
 
-                return true;            // consider unary plus or minus operator as processed, but remember which of the two was found
-            }
-        }
-
-
-        // token is an operator, and it's allowed here
         _lastTokenIsPrefixOp = tokenIsPrefixOp;
         _lastTokenIsPostfixOp = tokenIsPostfixOp;
         _lastTokenIsPrefixIncrDecr = isPrefixIncrDecr;
@@ -2068,7 +2100,7 @@ bool MyParser::parseAsInternFunction(char*& pNext, parseTokenResult_type& result
         bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_incr) || (_lastTermCode == termcod_decr)) : false;
         if (varRequired) { pNext = pch; result = result_variableNameExpected; return false; }
 
-        if (_isExtFunctionCmd) { pNext = pch; result = result_redefiningIntFunctionNotAllowed; return false; }
+        if (_isAnyExtFunctionCmd) { pNext = pch; result = result_redefiningIntFunctionNotAllowed; return false; }
         if (_isAnyVarCmd) { pNext = pch; result = result_functionNotAllowedHere; return false; }        // is a variable declaration: internal function name not allowed
 
         // token is an internal function, and it's allowed here
@@ -2113,7 +2145,7 @@ bool MyParser::parseAsInternFunction(char*& pNext, parseTokenResult_type& result
 bool MyParser::parseAsExternFunction(char*& pNext, parseTokenResult_type& result) {
 
     if (_isProgramCmd || _isDeleteVarCmd) { return true; }                             // looking for an UNQUALIFIED identifier name; prevent it's mistaken for a variable name (same format)
-    if (_isDecCBprocCmd || _isCallbackCmd) { return true; }
+    if (_isDeclCBcmd || _isCallbackCmd) { return true; }
 
     // 1. Is this token a function name ? 
     // ----------------------------------
@@ -2131,7 +2163,7 @@ bool MyParser::parseAsExternFunction(char*& pNext, parseTokenResult_type& result
     index = getIdentifier(_pInterpreter->userVarNames, _pInterpreter->_userVarCount, _pInterpreter->MAX_USERVARNAMES, pch, pNext - pch, createNewName);
     if (index != -1) { pNext = pch; return true; }                // is a user variable
 
-    if ((_isExtFunctionCmd) && (_parenthesisLevel > 0)) { pNext = pch; return true; }        // only array parameter allowed now
+    if ((_isAnyExtFunctionCmd) && (_parenthesisLevel > 0)) { pNext = pch; return true; }        // only array parameter allowed now
 
 
     // 2. Is a function name allowed here ? 
@@ -2185,13 +2217,13 @@ bool MyParser::parseAsExternFunction(char*& pNext, parseTokenResult_type& result
     }
 
     // if function storage was created already: check for double function definition
-    else if (_isExtFunctionCmd) {                                                     // this is a function definition (not a call)
+    else if (_isAnyExtFunctionCmd) {                                                     // this is a function definition (not a call)
         // pointer to function starting token already defined: this is a double definition
         if (_pInterpreter->extFunctionData[index].pExtFunctionStartToken != nullptr) { pNext = pch; result = result_functionAlreadyDefinedBefore; return false; }
     }
 
     // Is this an external function definition( not a function call ) ?
-    if (_isExtFunctionCmd) {
+    if (_isAnyExtFunctionCmd) {
         _pInterpreter->extFunctionData[index].pExtFunctionStartToken = _pInterpreter->_programCounter;            // store pointer to function start token 
         // variable name usage array: reset in-procedure reference flags to be able to keep track of in-procedure variable value types used
         // KEEP all other settings
@@ -2257,7 +2289,7 @@ bool MyParser::parseAsExternFunction(char*& pNext, parseTokenResult_type& result
 bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
 
 
-    if (_isProgramCmd || _isDeleteVarCmd || _isDecCBprocCmd) { return true; }                             // looking for an UNQUALIFIED identifier name; prevent it's mistaken for a variable name (same format)
+    if (_isProgramCmd || _isDeleteVarCmd || _isDeclCBcmd) { return true; }                             // looking for an UNQUALIFIED identifier name; prevent it's mistaken for a variable name (same format)
     if (_isCallbackCmd && (_cmdArgNo == 0)) { return true; }
 
     // 1. Is this token a variable name ? 
@@ -2292,14 +2324,14 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
     // Function parameter definition: check for proper function name, proper array definition (empty parentheses) and proper initialiser (must be constant) 
     // Variable definition: 
 
-    if (_isExtFunctionCmd) {                                     // only (array) parameter allowed now
+    if (_isAnyExtFunctionCmd) {                                     // only (array) parameter allowed now
         ////if (_parenthesisLevel == 0) { pNext = pch; result = result_functionDefExpected; return false; }           // is not an array parameter declaration
         ////if (isArray && (_parenthesisLevel == 1) && (peek2[0] != term_rightPar[0])) { pNext = pch; result = result_arrayParamExpected; return false; }           // is not an array parameter declaration
     }
 
     // an initialiser can only be a constant and not a variable: produce error now, before variable is created (if it doesn't exist yet)
     bool lastIsPureAssgnmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
-    if ((_isExtFunctionCmd || _isAnyVarCmd) && lastIsPureAssgnmentOp) { pNext = pch; result = result_constantValueExpected; return false; }
+    if ((_isAnyExtFunctionCmd || _isAnyVarCmd) && lastIsPureAssgnmentOp) { pNext = pch; result = result_constantValueExpected; return false; }
 
     // array declaration: dimensions must be number constants (global, static, local arrays)
     if (_isAnyVarCmd && (_parenthesisLevel > 0)) { pNext = pch; result = result_variableNotAllowedHere; return false; }
@@ -2341,11 +2373,11 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
     // check if variable exists already (program mode: as program variable; immediate mode: as user variable)
     // if a variable DEFINITION, then create variable name if it does not exist yet
     // note: this only concerns the NAME, not yet the actual variable (program variables: local, static, param and global variables can all share the same name)
-    createNewName = _isExtFunctionCmd || _isAnyVarCmd;
+    createNewName = _isAnyExtFunctionCmd || _isAnyVarCmd;
     bool isUserVar = !_pInterpreter->_programMode;
     varNameIndex = getIdentifier(pvarNames[primaryNameRange], *varNameCount[primaryNameRange], maxVarNames[primaryNameRange], pch, pNext - pch, createNewName, isUserVar);
 
-    if (_isExtFunctionCmd || _isAnyVarCmd) {               // variable or parameter DEFINITION: if name didn't exist, it should have been created now
+    if (_isAnyExtFunctionCmd || _isAnyVarCmd) {               // variable or parameter DEFINITION: if name didn't exist, it should have been created now
         if (varNameIndex == -1) { pNext = pch; result = result_maxVariableNamesReached; return false; }      // name still does not exist: error
         // name exists (newly created or pre-existing)
         // variable name is new: clear all variable value type flags and indicate 'qualifier not determined yet'
@@ -2392,7 +2424,7 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
             // determine variable qualifier
             // if a variable definition statement: set scope to parameter, local or static (global and usar variable definition: not possible in a function) 
             // if a variable reference: we will determine the qualifier in a moment 
-            uint8_t varScope = _isExtFunctionCmd ? _pInterpreter->var_isParamInFunc : _isLocalVarCmd ? _pInterpreter->var_isLocalInFunc : _isStaticVarCmd ? _pInterpreter->var_isStaticInFunc : _pInterpreter->var_scopeToSpecify;
+            uint8_t varScope = _isAnyExtFunctionCmd ? _pInterpreter->var_isParamInFunc : _isLocalVarCmd ? _pInterpreter->var_isLocalInFunc : _isStaticVarCmd ? _pInterpreter->var_isStaticInFunc : _pInterpreter->var_scopeToSpecify;
             varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~_pInterpreter->var_scopeMask) | varScope;     //set scope bits (will be stored in token AND needed during parsing current procedure)
 
             if (_isStaticVarCmd) {                                             // definition of NEW static variable for function
@@ -2420,7 +2452,7 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
                 _pInterpreter->extFunctionData[fcnIndex].staticVarCountInFunction = _pInterpreter->_staticVarCountInFunction;
             }
 
-            else if (_isExtFunctionCmd || _isLocalVarCmd) {               // definition of NEW parameter (in function definition) or NEW local variable for function
+            else if (_isAnyExtFunctionCmd || _isLocalVarCmd) {               // definition of NEW parameter (in function definition) or NEW local variable for function
                 variableNotYetKnown = true;
                 if (_pInterpreter->_localVarCountInFunction == _pInterpreter->MAX_LOC_VARS_IN_FUNC) { pNext = pch; result = result_maxLocalVariablesReached; return false; }
 
@@ -2438,13 +2470,13 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
                 _pInterpreter->localVarNameRef[_pInterpreter->_localVarCount] = varNameIndex;
 
                 _pInterpreter->_localVarCountInFunction++;
-                if (_isExtFunctionCmd) { _pInterpreter->_paramOnlyCountInFunction++; }
+                if (_isAnyExtFunctionCmd) { _pInterpreter->_paramOnlyCountInFunction++; }
                 _pInterpreter->_localVarCount++;
 
                 // ext. function index: in stack level for FUNCTION definition command
                 int fcnIndex = _pFunctionDefStack->openBlock.fcnBlock_functionIndex;
                 _pInterpreter->extFunctionData[fcnIndex].localVarCountInFunction = _pInterpreter->_localVarCountInFunction;        // after incrementing count
-                if (_isExtFunctionCmd) { _pInterpreter->extFunctionData[fcnIndex].paramOnlyCountInFunction = _pInterpreter->_paramOnlyCountInFunction; }
+                if (_isAnyExtFunctionCmd) { _pInterpreter->extFunctionData[fcnIndex].paramOnlyCountInFunction = _pInterpreter->_paramOnlyCountInFunction; }
             }
 
             else {
@@ -2463,7 +2495,7 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
         }
 
         else {  // if variable name already referenced before in function (global / user variable use OR param, local, static declaration), then it has been defined already
-            bool isLocalDeclaration = (_isExtFunctionCmd || _isLocalVarCmd || _isStaticVarCmd); // local variable declaration ? (parameter, local, static)
+            bool isLocalDeclaration = (_isAnyExtFunctionCmd || _isLocalVarCmd || _isStaticVarCmd); // local variable declaration ? (parameter, local, static)
             if (isLocalDeclaration) { pNext = pch; result = result_varRedeclared; return false; }
         }
     }
@@ -2585,7 +2617,7 @@ bool MyParser::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
             (_pInterpreter->localVarType[valueIndex] & _pInterpreter->var_isArray);           // param or local
 
         // if not a function definition: array name does not have to be followed by a left parenthesis (passing the array and not an array element)
-        if (!_isExtFunctionCmd) {
+        if (!_isAnyExtFunctionCmd) {
             // Is this variable part of a function call argument, without further nesting of parenthesis, and has it been defined as an array ? 
             bool isPartOfFuncCallArgument = (_parenthesisLevel > 0) ? (_pParsingStack->openPar.flags & (_pInterpreter->intFunctionBit | _pInterpreter->extFunctionBit)) : false;
             if (isPartOfFuncCallArgument && existingArray) {
@@ -2690,7 +2722,7 @@ bool MyParser::parseAsIdentifierName(char*& pNext, parseTokenResult_type& result
     result = result_tokenNotFound;                                                      // init: flag 'no token found'
     char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
 
-    bool stay = (_isProgramCmd || _isDeleteVarCmd || _isDecCBprocCmd);
+    bool stay = (_isProgramCmd || _isDeleteVarCmd || _isDeclCBcmd);
     stay = stay || (_isCallbackCmd && (_cmdArgNo == 0));
     if (!stay) { return true; }
 
@@ -2717,7 +2749,7 @@ bool MyParser::parseAsIdentifierName(char*& pNext, parseTokenResult_type& result
     if (_isProgramCmd) {
         strcpy(_pInterpreter->_programName, pIdentifierName);
     }
-    else if (_isDecCBprocCmd) {                                             // maximum 10 user functions     
+    else if (_isDeclCBcmd) {                                             // maximum 10 user functions     
         if (_pInterpreter->_userCBprocAliasSet_count >= _pInterpreter->_userCBprocStartSet_count) { pNext = pch; result = result_allUserCBAliasesSet;  return false; }
         for (int i = 0; i < _pInterpreter->_userCBprocAliasSet_count; i++) {
             if (strcmp(_pInterpreter->_callbackUserProcAlias[i], pIdentifierName) == 0) { pNext = pch; result = result_userCBAliasRedeclared;  return false; }

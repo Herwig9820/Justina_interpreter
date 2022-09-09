@@ -495,6 +495,8 @@ public:
     int _userCBprocStartSet_count = 0;
     int _userCBprocAliasSet_count = 0;
 
+    long _appFlags =0;
+
     int _callStackDepth = 0;                                        // external function calls
     int _programsInDebug{ 0 };
     bool _doOneProgramStep{ false };
@@ -596,7 +598,7 @@ public:
 
     unsigned long _lastCallBackTime{ 0 }, _currenttime{ 0 }, _previousTime{ 0 };
 
-    void (*_housekeepingCallback)(bool& requestQuit);                                         // pointer to callback function for heartbeat
+    void (*_housekeepingCallback)(bool& requestQuit, long &appFlags);                                         // pointer to callback function for heartbeat
 
     void (*_callbackUserProcStart[_userCBarrayDepth])(const void** pdata, const char* valueType);             // user functions: pointers to c++ procedures                                   
 
@@ -613,7 +615,7 @@ public:
     bool run(Stream* const pConsole, Stream** const pTerminal, int definedTerms);
     bool processCharacter(char c, bool& kill);
 
-    bool setMainLoopCallback(void (*func)(bool& requistQuit));                   // set callback functions
+    bool setMainLoopCallback(void (*func)(bool& requistQuit, long& appFlags));                   // set callback functions
     bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType));
 
     void* fetchVarBaseAddress(TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& variableAttributes, char& sourceVarAttributes);
@@ -691,6 +693,8 @@ public:
         cmdcod_delete,
         cmdcod_clear,
         cmdcod_vars,
+        cmdcod_printCB,
+        cmdcod_prog,
         cmdcod_function,
         cmdcod_static,
         cmdcod_local,
@@ -717,7 +721,8 @@ public:
         cmdcod_print,
         cmdcod_dispfmt,
         cmdcod_dispmod,
-        cmdcod_decCBproc,
+        cmdcod_declCB,
+        cmdcod_clearCB,
         cmdcod_callback,
         cmdcod_test //// test
     };
@@ -1188,7 +1193,7 @@ public:
 
 private:
     bool _isProgramCmd = false;
-    bool _isExtFunctionCmd = false;                             // FUNCTION command is being parsed (not the complete function)
+    bool _isAnyExtFunctionCmd = false;                             // FUNCTION command is being parsed (not the complete function)
     bool _isGlobalOrUserVarCmd = false;                                // VAR command is being parsed
     bool _isLocalVarCmd = false;                                // LOCAL command is being parsed
     bool _isStaticVarCmd = false;                               // STATIC command is being parsed
@@ -1196,7 +1201,8 @@ private:
     bool _isDeleteVarCmd = false;
     bool _isForCommand = false;
 
-    bool _isDecCBprocCmd = false;
+    bool _isDeclCBcmd = false;
+    bool _isClearCBcmd = false;
     bool _isCallbackCmd = false;
 
     bool _leadingSpaceCheck{ false };

@@ -47,10 +47,14 @@ bool quitRequested = false;
 // ---------------------------------------
 
 constexpr pin_size_t HEARTBEAT_PIN{ 9 }; ////                                               // indicator leds
+constexpr pin_size_t ERROR_PIN{ 10 };                                              
+constexpr pin_size_t STATUS_A_PIN{ 11 };
+constexpr pin_size_t STATUS_B_PIN{ 12 };
+constexpr pin_size_t WAIT_FOR_USER_PIN{ 13 };
 
 #if withTCP
-constexpr pin_size_t WiFi_CONNECTED_PIN{ 10 };
-constexpr pin_size_t TCP_CONNECTED_PIN{ 11 };
+constexpr pin_size_t WiFi_CONNECTED_PIN{ 11 };
+constexpr pin_size_t TCP_CONNECTED_PIN{ 12 };
 constexpr int terminalCount{ 2 };
 constexpr char SSID[] = SERVER_SSID, PASS[] = SERVER_PASS;                            // WiFi SSID and password                           
 constexpr char menu[] = "+++ Please select:\r\n  '0' (Re-)start WiFi\r\n  '1' Disable WiFi\r\n  '2' Enable TCP\r\n  '3' Disable TCP\r\n  '4' Verbose TCP\r\n  '5' Silent TCP\r\n  '6' Remote console\r\n  '7' Local console\r\n  '8' Start Justina interpreter\r\n";
@@ -60,10 +64,13 @@ constexpr int terminalCount{ 1 };
 constexpr char menu[] = "+++ Please select:\r\n  '8' Start Justina interpreter\r\n";
 #endif
 
+
 bool TCP_enabled{ false };
 bool console_isRemoteTerm{ false };                                                    // init: console is currently local terminal (Serial) 
 bool withinApplication{ false };                                                       // init: currently not within an application
 bool interpreterInMemory{ false };                                                     // init: interpreter is not in memory
+
+bool errorCondition = false, statusA = false, statusB = false, waitingForUser=false;
 
 Stream* pConsole = (Stream*)&Serial;                                                   // init pointer to Serial or TCP terminal
 
@@ -99,6 +106,10 @@ void setup() {
 
     // define output pins
     pinMode(HEARTBEAT_PIN, OUTPUT);                                                   // blinking led for heartbeat
+    pinMode(ERROR_PIN, OUTPUT);                                                         // error
+    pinMode(STATUS_A_PIN, OUTPUT);                                                         // error
+    pinMode(STATUS_B_PIN, OUTPUT);                                                         // error
+    pinMode(WAIT_FOR_USER_PIN, OUTPUT);                                                         // error
 #if withTCP
     pinMode(WiFi_CONNECTED_PIN, OUTPUT);                                              // 'TCP connected' led
     pinMode(TCP_CONNECTED_PIN, OUTPUT);                                               // 'TCP connected' led
@@ -310,7 +321,7 @@ void onConnStateChange(connectionState_type  connectionState) {
         if (console_isRemoteTerm) {                                                   // but still in remote mode: so probably a timeout (or a wifi issue, ...)
             Serial.println("Console connection lost or timed out");                   // inform local terminal about it 
             Serial.println("On the remote terminal, press ENTER to reconnect");
-}
+        }
     }
 }
 #endif
@@ -328,13 +339,18 @@ void onConnStateChange(connectionState_type  connectionState) {
 
 // in this program, this callback function is called at regular intervals from within the interpreter main loop  
 
-void housekeeping(bool& requestQuit) {
+void housekeeping(bool& requestQuit, long& appFlags) {
     bool& forceLocal = requestQuit;                                                     // reference variable
 
     heartbeat();                                                                        // blink a led to show program is running
 
+    if (errorCondition ^ (appFlags & 0x0001L)) {errorCondition = (appFlags & 0x0001L);  digitalWrite(ERROR_PIN, errorCondition); }  // only write if change detected
+    if (statusA ^ (appFlags & 0x0010L)) { statusA = (appFlags & 0x0010L);  digitalWrite(STATUS_A_PIN, statusA); }  // only write if change detected
+    if (statusB ^ (appFlags & 0x0020L)) { statusB = (appFlags & 0x0020L);  digitalWrite(STATUS_B_PIN, statusB); }  // only write if change detected
+    if (waitingForUser ^ (appFlags & 0x0040L)) { waitingForUser = (appFlags & 0x0040L);  digitalWrite(WAIT_FOR_USER_PIN, waitingForUser); }  // only write if change detected
 
-    //// test
+
+    //// test 'force quit' vanuit main: 
     ////if (!quitRequested && ((startTime + 20000) < millis())) { quitRequested = true; forceLocal = true;  }
 
 
@@ -354,7 +370,7 @@ void housekeeping(bool& requestQuit) {
             if (forceLocal) {
                 pConsole->println("Disconnecting remote terminal...");                // inform remote user, in case he's still there
                 switchConsole();                                                        // set console to local
-}
+            }
         }
     }
 #endif
