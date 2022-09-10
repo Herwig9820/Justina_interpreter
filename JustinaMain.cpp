@@ -1,12 +1,40 @@
+/***************************************************************************************
+    Justina interpreter library for Arduino Nano 33 IoT and Arduino RP2040.
+
+    Version:    v1.00 - xx/xx/2022
+    Author:     Herwig Taveirne
+
+    Justina is an interpreter which does NOT require you to use an IDE to write
+    and compile programs. Programs are written on the PC using any text processor
+    and transferred to the Arduino using any serial terminal capable of sending files.
+    Justina can store and retrieve programs and other data on an SD card as well.
+
+    See GitHub for more information and documentation: //// <links>
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+***************************************************************************************/
+
+
 #include "Justina.h"
 
 #define printCreateDeleteHeapObjects 0
 #define debugPrint 0
 
-/***********************************************************
-*                    class LinkedList                   *
-*    append and remove list elements from linked list      *
-***********************************************************/
+
+// ******************************************************************
+// ***         class Justina_interpreter - implemantation           *
+// ******************************************************************
 
 // ---------------------------------------------
 // *   initialisation of static class member   *
@@ -177,24 +205,30 @@ int LinkedList::getElementCount() {
 
 
 /***********************************************************
-*                      class Interpreter                    *
+*                      class Justina_interpreter                    *
 ***********************************************************/
 
 // -------------------
 // *   constructor   *
 // -------------------
 
-Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
+Justina_interpreter::Justina_interpreter(Stream* const pConsole) : _pConsole(pConsole) {
     _pConsole->println("Justina: starting...");
     _housekeepingCallback = nullptr;
     for (int i = 0; i < _userCBarrayDepth; i++) { _callbackUserProcStart[i] = nullptr; }
     _userCBprocStartSet_count = 0;
 
-    _pmyParser = new MyParser(this);              // pass the address of this Interpreter object to the MyParser constructor
+    _resWordCount = (sizeof(_resWords)) / sizeof(_resWords[0]);
+    _functionCount = (sizeof(_functions)) / sizeof(_functions[0]);
+    _terminalCount = (sizeof(_terminals)) / sizeof(_terminals[0]);
+
+    _blockLevel = 0;
+    _extFunctionBlockOpen = false;
+
     _quitJustineAtEOF = false;
     _isPrompt = false;
 
-    // init 'machine' (not a complete reset, because this clears heap objects for this Interpreter object, and there are none)
+    // init 'machine' (not a complete reset, because this clears heap objects for this Justina_interpreter object, and there are none)
     _programName[0] = '\0';
     _programVarNameCount = 0;
     _localVarCount = 0;
@@ -285,9 +319,9 @@ Interpreter::Interpreter(Stream* const pConsole) : _pConsole(pConsole) {
 // *   deconstructor   *
 // ---------------------
 
-Interpreter::~Interpreter() {
+Justina_interpreter::~Justina_interpreter() {
     if (!_keepInMemory) {
-        delete _pmyParser;
+        resetMachine(true);             // delete all objects created on the heap
         _housekeepingCallback = nullptr;
     }
     _pConsole->println("\r\nJustina: bye\r\n");
@@ -298,7 +332,7 @@ Interpreter::~Interpreter() {
 // *   set call back functons   *
 // ------------------------------
 
-bool Interpreter::setMainLoopCallback(void (*func)(bool& requestQuit, long& appFlags)) {
+bool Justina_interpreter::setMainLoopCallback(void (*func)(bool& requestQuit, long& appFlags)) {
 
     // a call from the user program initializes the address of a 'user callback' function.
     // Justina will call this user routine repeatedly and automatically, allowing  the user...
@@ -307,7 +341,7 @@ bool Interpreter::setMainLoopCallback(void (*func)(bool& requestQuit, long& appF
     return true;
 }
 
-bool Interpreter::setUserFcnCallback(void(*func) (const void** data, const char* valueType)) {
+bool Justina_interpreter::setUserFcnCallback(void(*func) (const void** data, const char* valueType)) {
 
     // each call from the user program initializes a next 'user callback' function address in an array of function addresses 
     if (_userCBprocStartSet_count > +_userCBarrayDepth) { return false; }      // throw away if callback array full
@@ -321,7 +355,7 @@ bool Interpreter::setUserFcnCallback(void(*func) (const void** data, const char*
 // *   interpreter main loop   *
 // ----------------------------
 
-bool Interpreter::run(Stream* const pConsole, Stream** const pTerminal, int definedTerms) {
+bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, int definedTerms) {
     bool kill{ false };                                       // kill is true: request from caller, kill is false: quit command executed
     bool quitNow{ false };
     char c;
@@ -359,10 +393,10 @@ bool Interpreter::run(Stream* const pConsole, Stream** const pTerminal, int defi
 // *   process an input character   *
 // ----------------------------------
 
-bool Interpreter::processCharacter(char c, bool& kill) {
+bool Justina_interpreter::processCharacter(char c, bool& kill) {
 
     // process character
-    static MyParser::parseTokenResult_type result{};
+    static parseTokenResult_type result{};
     static bool requestMachineReset{ false };
     static bool withinStringEscSequence{ false };
     static bool instructionsParsed{ false };
@@ -417,7 +451,7 @@ bool Interpreter::processCharacter(char c, bool& kill) {
     }
     else if (isParserReset) {  // temporary
         _programMode = false;
-        _pmyParser->resetMachine(true);
+        resetMachine(true);
 
         instructionsParsed = false;
 
@@ -505,15 +539,15 @@ bool Interpreter::processCharacter(char c, bool& kill) {
         _instruction[_instructionCharCount] = '\0';                            // add string terminator
 
         if (requestMachineReset) {
-            _pmyParser->resetMachine(false);                                // prepare for parsing next program (stay in current mode )
+            resetMachine(false);                                // prepare for parsing next program (stay in current mode )
             requestMachineReset = false;
         }
 
         char* pInstruction = _instruction;                                                 // because passed by reference 
-        result = _pmyParser->parseInstruction(pInstruction);                                 // parse one instruction (ending with ';' character, if found)
+        result = parseInstruction(pInstruction);                                 // parse one instruction (ending with ';' character, if found)
         pErrorPos = pInstruction;                                                      // in case of error
-        if (result != MyParser::result_tokenFound) { _flushAllUntilEOF = true; }
-        if (result == _pmyParser->result_parse_kill) { _quitJustineAtEOF = true; }     // _flushAllUntilEOF is true already (flush buffer before quitting)
+        if (result != result_tokenFound) { _flushAllUntilEOF = true; }
+        if (result == result_parse_kill) { _quitJustineAtEOF = true; }     // _flushAllUntilEOF is true already (flush buffer before quitting)
 
         _instructionCharCount = 0;
         withinString = false; withinStringEscSequence = false;
@@ -525,19 +559,19 @@ bool Interpreter::processCharacter(char c, bool& kill) {
     if (isEndOfFile) {
         if (instructionsParsed) {
             int funcNotDefIndex;
-            if (result == MyParser::result_tokenFound) {
+            if (result == result_tokenFound) {
                 // checks at the end of parsing: any undefined functions (program mode only) ?  any open blocks ?
-                if (_programMode && (!_pmyParser->allExternalFunctionsDefined(funcNotDefIndex))) { result = MyParser::result_undefinedFunctionOrArray; }
-                if (_pmyParser->_blockLevel > 0) { result = MyParser::result_noBlockEnd; }
+                if (_programMode && (!allExternalFunctionsDefined(funcNotDefIndex))) { result = result_undefinedFunctionOrArray; }
+                if (_blockLevel > 0) { result = result_noBlockEnd; }
 
-                if (result != MyParser::result_tokenFound) { _appFlags |= 0x0001L; }              // if parsing error only occurs here, error condition flag can still be set here
+                if (result != result_tokenFound) { _appFlags |= 0x0001L; }              // if parsing error only occurs here, error condition flag can still be set here
             }
 
-            if (result == MyParser::result_tokenFound) {            // result could be altered in the meantime
+            if (result == result_tokenFound) {            // result could be altered in the meantime
                 if (!_programMode) {
 
                     // evaluation comes here
-                    if (_promptAndEcho == 2) { _pmyParser->prettyPrintInstructions(0); }                    // immediate mode and result OK: pretty print input line
+                    if (_promptAndEcho == 2) { prettyPrintInstructions(0); }                    // immediate mode and result OK: pretty print input line
                     else if (_promptAndEcho == 1) { _pConsole->println(); _isPrompt = false; }
 
                     execResult_type execResult = exec();                                 // execute parsed user statements
@@ -547,7 +581,7 @@ bool Interpreter::processCharacter(char c, bool& kill) {
             }
 
             // parsing OK message (program mode only - no message in immediate mode) or error message 
-            _pmyParser->printParsingResult(result, funcNotDefIndex, _instruction, _lineCount, pErrorPos);
+            printParsingResult(result, funcNotDefIndex, _instruction, _lineCount, pErrorPos);
             (_programsInDebug) ? ( _appFlags |= 0x0030L) : (_appFlags &= ~0x0030L);
         }
         else {
@@ -559,7 +593,7 @@ bool Interpreter::processCharacter(char c, bool& kill) {
             char msg[150] = "";
             sprintf(msg, "\r\n*** DEBUG *** NEXT=> [%s] ", extFunctionNames[_activeFunctionData.functionIndex]);
             _pConsole->print(msg);
-            _pmyParser->prettyPrintInstructions(5, _programCounter);
+            prettyPrintInstructions(5, _programCounter);
             ////Serial.print("    next: prog counter: "); Serial.println(_programCounter - _programStorage);
             if (_programsInDebug > 1) {
                 sprintf(msg, "*** this + %d other programs STOPPED ***", _programsInDebug - 1);
@@ -577,8 +611,8 @@ bool Interpreter::processCharacter(char c, bool& kill) {
             _programMode = false;
 
             // if program parsing error: reset machine, because variable storage is not consistent with program 
-            if (result != MyParser::result_tokenFound) {
-                _pmyParser->resetMachine(false);      // message not needed here
+            if (result != result_tokenFound) {
+                resetMachine(false);      // message not needed here
                 wasReset = true;
             }
         }
@@ -587,15 +621,15 @@ bool Interpreter::processCharacter(char c, bool& kill) {
         else if (instructionsParsed) {
 
             // delete alphanumeric constants because they are on the heap. Identifiers must stay avaialble
-            _pmyParser->deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);  // always
+            deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);  // always
             *_programStart = '\0';                                      //  current end of program (immediate mode)
         }
 
 
         if (!wasReset) {
-            _pmyParser->parsingStack.deleteList();                      // safety
-            _pmyParser->_blockLevel = 0;
-            _pmyParser->_extFunctionBlockOpen = false;
+            parsingStack.deleteList();                      // safety
+            _blockLevel = 0;
+            _extFunctionBlockOpen = false;
 
             _programStart = _programStorage + PROG_MEM_SIZE;        // already set immediate mode 
             _programSize = _programSize + IMM_MEM_SIZE;

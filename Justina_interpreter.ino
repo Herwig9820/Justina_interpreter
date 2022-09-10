@@ -74,7 +74,7 @@ bool errorCondition = false, statusA = false, statusB = false, waitingForUser=fa
 
 Stream* pConsole = (Stream*)&Serial;                                                   // init pointer to Serial or TCP terminal
 
-Interpreter* pcalculator{ nullptr };                                                    // pointer to Interpreter object
+Justina_interpreter* pcalculator{ nullptr };                                                    // pointer to Justina_interpreter object
 
 #if withTCP
 // connect as TCP server: create class object myTCPconnection
@@ -241,14 +241,14 @@ void loop() {
 
             // start interpreter: control will not return to here until the user quits, because it has its own 'main loop'
             withinApplication = true;                                                   // flag that control will be transferred to an 'application'
-            if (!interpreterInMemory) { pcalculator = new  Interpreter(pConsole); }  // if interpreter not running: create an interpreter object on the heap
+            if (!interpreterInMemory) { pcalculator = new  Justina_interpreter(pConsole); }  // if interpreter not running: create an interpreter object on the heap
 
             // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
             // this callback function will be called regularly, e.g. every time the interpreter reads a character
             heartbeatPeriod = 250;
-            pcalculator->setMainLoopCallback((&housekeeping));                    // set callback function to housekeeping routine in this .ino file (pass 'housekeeping' routine address to Interpreter library)
+            pcalculator->setMainLoopCallback((&housekeeping));                    // set callback function to housekeeping routine in this .ino file (pass 'housekeeping' routine address to Justina_interpreter library)
 
-            pcalculator->setUserFcnCallback((&userFcn_readPort));                // pass user function addresses to Interpreter library (return value 'true' indicates success)
+            pcalculator->setUserFcnCallback((&userFcn_readPort));                // pass user function addresses to Justina_interpreter library (return value 'true' indicates success)
             pcalculator->setUserFcnCallback((&userFcn_writePort));
             pcalculator->setUserFcnCallback((&userFcn_togglePort));
 
@@ -446,15 +446,15 @@ void userFcn_readPort(const void** pdata, const char* valueType) {     // data: 
 
     for (int i = 0; i < 3; i++) {
         // data available ?
-        if ((valueType[i] & Interpreter::value_typeMask) == Interpreter::value_noValue) { continue; }       // no data
+        if ((valueType[i] & Justina_interpreter::value_typeMask) == Justina_interpreter::value_noValue) { continue; }       // no data
 
         long* pLong{};          // pointer to long
         float* pFloat{};          // pointer to float
         char* pText{};          // character pointer
 
         // get value type and variable / constant info
-        bool isLong = ((valueType[i] & Interpreter::value_typeMask) == Interpreter::value_isLong);
-        bool isFloat = ((valueType[i] & Interpreter::value_typeMask) == Interpreter::value_isFloat);
+        bool isLong = ((valueType[i] & Justina_interpreter::value_typeMask) == Justina_interpreter::value_isLong);
+        bool isFloat = ((valueType[i] & Justina_interpreter::value_typeMask) == Justina_interpreter::value_isFloat);
         bool isVariable = (valueType[i] & isVariableMask);                                                                 // bit b7: '1' indicates 'variable', '0' means 'constant'
 
         // get a (pointer to a) value
