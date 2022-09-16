@@ -99,7 +99,7 @@ public:
     LinkedList();                   // constructor
     ~LinkedList();                   // constructor
     char* appendListElement(int size);
-    char* deleteListElement(void* pPayload);                  // pointer to payload of list element to be removed
+    char* deleteListElement(void* pPayload=nullptr);                  // pointer to payload of list element to be removed
     void deleteList();
     char* getFirstListElement();
     char* getLastListElement();
@@ -900,7 +900,7 @@ public:
     // bit b7: skip command during execution
     static constexpr char cmd_skipDuringExec = 0x80;
 
-    // sizes MUST be specified exactly
+    // sizes MUST be specified AND must be exact
     static const ResWordDef _resWords[36];                          // keyword names
     static const FuncDef _functions[22];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
@@ -1070,7 +1070,7 @@ public:
     int localArrayObjectCount = 0;
 
     // local variable storage area
-    int localVarValueAreaCount = 0;
+    int _localVarValueAreaCount = 0;
 
 
     bool _atLineStart = true;
@@ -1094,7 +1094,7 @@ public:
     int _instructionCharCount{ 0 };
     bool _programMode{ false };
     bool _flushAllUntilEOF{ false };
-    bool _quitJustineAtEOF{ false };
+    bool _quitJustinaAtEOF{ false };
     bool _keepInMemory{ true };                        //// maak afhankelijk van command parameter
     bool _isPrompt{ false };
 
@@ -1299,7 +1299,7 @@ public:
     void saveLastValue(bool& overWritePrevious);
     void clearEvalStack();
     void clearEvalStackLevels(int n);
-    void clearFlowCtrlStack();
+    void clearFlowCtrlStack(bool debugModeError = false);
 
     execResult_type makeFormatString();
     execResult_type deleteVarStringObject(LE_evalStack* pStackLvl);

@@ -225,7 +225,7 @@ Justina_interpreter::Justina_interpreter(Stream* const pConsole) : _pConsole(pCo
     _blockLevel = 0;
     _extFunctionBlockOpen = false;
 
-    _quitJustineAtEOF = false;
+    _quitJustinaAtEOF = false;
     _isPrompt = false;
 
     // init 'machine' (not a complete reset, because this clears heap objects for this Justina_interpreter object, and there are none)
@@ -268,7 +268,7 @@ Justina_interpreter::Justina_interpreter(Stream* const pConsole) : _pConsole(pCo
     localArrayObjectCount = 0;
 
     // local variable storage area
-    localVarValueAreaCount = 0;
+    _localVarValueAreaCount = 0;
 
     // current last result FiFo depth (values currently stored)
     _lastResultCount = 0;
@@ -383,9 +383,9 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
         }
     } while (true);
 
-    if (kill) { _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
+    if (kill ) { _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
     if (_keepInMemory) { _pConsole->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
-    _quitJustineAtEOF = false;         // if interpreter stays in memory: re-init
+    _quitJustinaAtEOF = false;         // if interpreter stays in memory: re-init
     return _keepInMemory;
 }
 
@@ -482,7 +482,7 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
         if (!_programMode && !isLeadingSpace && !(c == '\n') && (_StarCmdCharCount >= 0)) {
             if (c == quitCalc[_StarCmdCharCount]) {
                 _StarCmdCharCount++;
-                if (quitCalc[_StarCmdCharCount] == '\0') { _flushAllUntilEOF = true; _quitJustineAtEOF = true; return false; }         // perfect match: set flag to exit interpreter
+                if (quitCalc[_StarCmdCharCount] == '\0') { _flushAllUntilEOF = true; _quitJustinaAtEOF = true; return false; }         // perfect match: set flag to exit interpreter
                 else  if (_StarCmdCharCount == strlen(quitCalc)) { _StarCmdCharCount = -1; }  // -1: no match: no further checking for now
             }
             else { _StarCmdCharCount = -1; };     // -1: no match: no further checking for now
@@ -535,7 +535,7 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
     isInstructionSeparator = isInstructionSeparator || (withinString && (c == '\n'));  // new line sent to parser as well
     bool instructionComplete = isInstructionSeparator || (isEndOfFile && (_instructionCharCount > 0));
 
-    if (instructionComplete && !_quitJustineAtEOF) {                                                // terminated by a semicolon if not end of input
+    if (instructionComplete && !_quitJustinaAtEOF) {                                                // terminated by a semicolon if not end of input
         _instruction[_instructionCharCount] = '\0';                            // add string terminator
 
         if (requestMachineReset) {
@@ -547,7 +547,7 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
         result = parseInstruction(pInstruction);                                 // parse one instruction (ending with ';' character, if found)
         pErrorPos = pInstruction;                                                      // in case of error
         if (result != result_tokenFound) { _flushAllUntilEOF = true; }
-        if (result == result_parse_kill) { _quitJustineAtEOF = true; }     // _flushAllUntilEOF is true already (flush buffer before quitting)
+        if (result == result_parse_kill) {kill = true; _quitJustinaAtEOF = true; }     // _flushAllUntilEOF is true already (flush buffer before quitting)
 
         _instructionCharCount = 0;
         withinString = false; withinStringEscSequence = false;
@@ -576,20 +576,21 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
 
                     execResult_type execResult = exec();                                 // execute parsed user statements
 
-                    if ((execResult == result_eval_kill) || (execResult == result_eval_quit)) { _quitJustineAtEOF = true; }
+                    if ((execResult == result_eval_kill) || (execResult == result_eval_quit)) { _quitJustinaAtEOF = true; }
+                    if (execResult == result_eval_kill) {kill = true;}
                 }
             }
 
             // parsing OK message (program mode only - no message in immediate mode) or error message 
             printParsingResult(result, funcNotDefIndex, _instruction, _lineCount, pErrorPos);
-            (_programsInDebug) ? ( _appFlags |= 0x0030L) : (_appFlags &= ~0x0030L);
+            (_programsInDebug) ? (_appFlags |= 0x0030L) : (_appFlags &= ~0x0030L);
         }
         else {
             _pConsole->println();
         }
 
         if (_programsInDebug > 0) {
-            for (int i = 1; i <= _dispWidth; i++) { _pConsole->print("-"); }
+            _pConsole->println(); for (int i = 1; i <= _dispWidth; i++) { _pConsole->print("-"); }
             char msg[150] = "";
             sprintf(msg, "\r\n*** DEBUG *** NEXT=> [%s] ", extFunctionNames[_activeFunctionData.functionIndex]);
             _pConsole->print(msg);
@@ -663,16 +664,16 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
 
         Serial.print("\r\n    interim strings "); Serial.print(intermediateStringObjectCount);
 
-        Serial.print(", local var storage "); Serial.print(localVarValueAreaCount);
+        Serial.print(", local var storage "); Serial.print(_localVarValueAreaCount);
         Serial.print(", local var strings "); Serial.print(localVarStringObjectCount);
         Serial.print(", local arrays "); Serial.println(localArrayObjectCount);
 
         Serial.println();
 #endif
-        return _quitJustineAtEOF;
+        return _quitJustinaAtEOF;
 
 
     }
 
     return false;  // and wait for next character
-    }
+}
