@@ -383,7 +383,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
         }
     } while (true);
 
-    if (kill ) { _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
+    if (kill) { _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
     if (_keepInMemory) { _pConsole->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
     _quitJustinaAtEOF = false;         // if interpreter stays in memory: re-init
     return _keepInMemory;
@@ -547,7 +547,7 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
         result = parseInstruction(pInstruction);                                 // parse one instruction (ending with ';' character, if found)
         pErrorPos = pInstruction;                                                      // in case of error
         if (result != result_tokenFound) { _flushAllUntilEOF = true; }
-        if (result == result_parse_kill) {kill = true; _quitJustinaAtEOF = true; }     // _flushAllUntilEOF is true already (flush buffer before quitting)
+        if (result == result_parse_kill) { kill = true; _quitJustinaAtEOF = true; }     // _flushAllUntilEOF is true already (flush buffer before quitting)
 
         _instructionCharCount = 0;
         withinString = false; withinStringEscSequence = false;
@@ -577,7 +577,7 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
                     execResult_type execResult = exec();                                 // execute parsed user statements
 
                     if ((execResult == result_eval_kill) || (execResult == result_eval_quit)) { _quitJustinaAtEOF = true; }
-                    if (execResult == result_eval_kill) {kill = true;}
+                    if (execResult == result_eval_kill) { kill = true; }
                 }
             }
 
@@ -590,12 +590,35 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
         }
 
         if (_programsInDebug > 0) {
+            char* nextInstructionsPointer=_programCounter;
+            OpenFunctionData* pDeepestOpenFunction = &_activeFunctionData;
+            bool immModeStatement = (_activeFunctionData.pNextStep >= _programStart);  
+            if (immModeStatement) {
+                void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                    int blockType = block_none;
+                do {
+                    blockType = *(char*)pFlowCtrlStackLvl;
+                    if (blockType != block_extFunction) {
+                        pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
+                        continue;
+                    };          // there is at least one open function in the call stack
+                    break;
+                } while (true);
+                pDeepestOpenFunction = (OpenFunctionData*)pFlowCtrlStackLvl;        // deepest level of nested functions
+                nextInstructionsPointer = pDeepestOpenFunction->pNextStep;
+            }
+
+
+
+
+
+
             _pConsole->println(); for (int i = 1; i <= _dispWidth; i++) { _pConsole->print("-"); }
             char msg[150] = "";
-            sprintf(msg, "\r\n*** DEBUG *** NEXT=> [%s] ", extFunctionNames[_activeFunctionData.functionIndex]);
+            sprintf(msg, "\r\n*** DEBUG *** NEXT=> [%s] ", extFunctionNames[pDeepestOpenFunction->functionIndex]);
             _pConsole->print(msg);
-            prettyPrintInstructions(5, _programCounter);
+            prettyPrintInstructions(10, nextInstructionsPointer);
             ////Serial.print("    next: prog counter: "); Serial.println(_programCounter - _programStorage);
+
             if (_programsInDebug > 1) {
                 sprintf(msg, "*** this + %d other programs STOPPED ***", _programsInDebug - 1);
                 _pConsole->println(msg);

@@ -46,6 +46,7 @@ const char passCopyToCallback = 0x40;       // flag: string is an empty string
 Justina_interpreter::execResult_type  Justina_interpreter::exec() {
 
     // init
+    Serial.println("*** start eval");////
 
     _appFlags &= ~0x0001L;              // clear error condition flag
     _appFlags = (_appFlags & ~0x0030L) | 0x0020L;     // set bits b54 to 10: evaluation
@@ -64,6 +65,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
 
     execResult_type execResult = result_execOK;
     char* holdProgramCnt_StatementStart{ nullptr }, * programCnt_previousStatement{ nullptr };
+    char* holdErrorProgramCnt_StatementStart{ nullptr }, * errorProgramCnt_previousStatement{ nullptr };
 
     if (_programsInDebug == 0) {
         _pEvalStackTop = nullptr;   _pEvalStackMinus2 = nullptr; _pEvalStackMinus1 = nullptr;
@@ -78,8 +80,9 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
     _doOneProgramStep = false;      // switch single step mode OFF before starting to execute command line (even in debug mode). Step and Debug commands will switch it on again (to execute one step).
 
     _programCounter = _programStart;
-    holdProgramCnt_StatementStart = _programCounter;
-    programCnt_previousStatement = _programCounter;
+    holdProgramCnt_StatementStart = _programCounter; programCnt_previousStatement = _programCounter;
+
+    holdErrorProgramCnt_StatementStart = _programCounter, errorProgramCnt_previousStatement = _programCounter;
 
     _activeFunctionData.functionIndex = 0;                  // main program level: not relevant
     _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // no command is being executed
@@ -132,6 +135,10 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
             // compile time statements (program, function, var, local, static, ...): skip for execution
 
             tokenIndex = ((TokenIsResWord*)_programCounter)->tokenIndex;
+#if debugPrint
+            Serial.print("eval stack depth "); Serial.print(evalStack.getElementCount());  Serial.print(" - keyword: "); Serial.print(_resWords[tokenIndex]._resWordName);  ////
+            Serial.print("   ["); Serial.print(_programCounter - _programStorage); Serial.println("]");
+#endif
 #if printProcessedTokens
             Serial.print("process keyword: address "); Serial.print(_programCounter - _programStorage);  Serial.print(", eval stack depth "); Serial.print(evalStack.getElementCount()); Serial.print(" [");
             Serial.print(_resWords[tokenIndex]._resWordName); Serial.println("]");
@@ -181,6 +188,12 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
             int funcNameIndex = ((TokenIsExtFunction*)_programCounter)->identNameIndex;
             Serial.print(extFunctionNames[funcNameIndex]); Serial.println("]");
 #endif
+#if debugPrint
+            int index = ((TokenIsExtFunction*)_programCounter)->identNameIndex;////
+            Serial.print("eval stack depth "); Serial.print(evalStack.getElementCount());  Serial.print(" - function name: "); Serial.print(extFunctionNames[index]);////
+            Serial.print("   ["); Serial.print(_programCounter - _programStorage); Serial.println("]");
+#endif
+
             break;
         }
 
@@ -209,6 +222,10 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
             _activeFunctionData.errorProgramCounter = _programCounter;
 
             pushConstant(tokenType);
+#if debugPrint
+            Serial.print("eval stack depth "); Serial.print(evalStack.getElementCount());  Serial.print(" - constant"); ////
+            Serial.print("   ["); Serial.print(_programCounter - _programStorage); Serial.println("]");
+#endif
 
 #if printProcessedTokens
             Serial.print("process const  : address "); Serial.print(_programCounter - _programStorage);  Serial.print(", eval stack depth "); Serial.print(evalStack.getElementCount()); Serial.print(" [");
@@ -236,6 +253,10 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
             _activeFunctionData.errorProgramCounter = _programCounter;
 
             pushVariable(tokenType);
+#if debugPrint
+            Serial.print("eval stack depth "); Serial.print(evalStack.getElementCount());  Serial.print(" - variable"); ////
+            Serial.print("   ["); Serial.print(_programCounter - _programStorage); Serial.println("]");
+#endif
 
 #if printProcessedTokens
             Serial.print("process var nam: address "); Serial.print(_programCounter - _programStorage);  Serial.print(", eval stack depth "); Serial.print(evalStack.getElementCount()); Serial.print(" [");
@@ -285,7 +306,10 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
 
                 // terminal tokens: only operators and left parentheses are pushed on the stack
                 pushTerminalToken(tokenType);
-
+#if debugPrint
+                Serial.print("eval stack depth "); Serial.print(evalStack.getElementCount());  Serial.print(" - terminal: "); Serial.print(_terminals[_pEvalStackTop->terminal.index & 0x7F].terminalName);////
+                Serial.print("   ["); Serial.print(_programCounter - _programStorage); Serial.println("]");
+#endif
                 if (precedingIsComma) { _pEvalStackTop->terminal.index |= 0x80;   doCaseBreak = true; }      // flag that preceding token is comma separator 
 
                 if (!doCaseBreak) {
@@ -332,6 +356,10 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
         // -------------------
 
             else if (isRightPar) {
+#if debugPrint
+                Serial.print("eval stack depth "); Serial.print(evalStack.getElementCount());  Serial.print(" - right par"); ////
+                Serial.print("   ["); Serial.print(_programCounter - _programStorage); Serial.println("]");
+#endif
 
                 bool doCaseBreak{ false };
                 int argCount = 0;                                                // init number of supplied arguments (or array subscripts) to 0
@@ -349,7 +377,10 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
                 LE_evalStack* pPrecedingStackLvl = (LE_evalStack*)evalStack.getPrevListElement(pStackLvl);     // stack level PRECEDING left parenthesis (or null pointer)
 
                 // remove left parenthesis stack level
+#if debugPrint
                 pStackLvl = (LE_evalStack*)evalStack.deleteListElement(pStackLvl);                            // pStackLvl now pointing to first function argument or array subscript (or nullptr if none)
+                Serial.print("                 "); Serial.print(evalStack.getElementCount());  Serial.println(" - first argument"); ////
+#endif
 
                 // correct pointers (now wrong, if only one or 2 arguments)
                 _pEvalStackTop = (LE_evalStack*)evalStack.getLastListElement();        // this line needed if no arguments
@@ -382,11 +413,15 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
             // ---------------------
 
             else if (isSemicolon) {
-
+#if debugPrint
+                Serial.print("eval stack depth "); Serial.print(evalStack.getElementCount());  Serial.print(" - semicolon"); ////
+                Serial.print("   ["); Serial.print(_programCounter - _programStorage); Serial.println("]");
+#endif
                 bool doCaseBreak{ false };
 
                 lastTokenIsSemicolon = true;
                 isEndOfStatementSeparator = true;         // for pretty print only   
+
                 if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_none) {       // currently not executing a command, but a simple expression
                     ////Serial.print("-----------------------------> total: "); Serial.print(evalStack.getElementCount()); Serial.print(" , callers: "); Serial.println((int)_activeFunctionData.callerEvalStackLevels);
                     if (evalStack.getElementCount() > (_activeFunctionData.callerEvalStackLevels + 1)) {
@@ -408,6 +443,10 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
                     execResult = execProcessedCommand(isFunctionReturn, userRequestsStop);      // userRequestsStop: '\s' sent while a command (e.g. Input) was waiting for user input
                     if (execResult != result_execOK) { doCaseBreak = true; }                     // other error: break (case label) immediately
                 }
+
+#if debugPrint
+                Serial.print("                 "); Serial.print(evalStack.getElementCount());  Serial.println(" - semicolon processed"); ////
+#endif
 
 #if printProcessedTokens        // after evaluation stack has been updated and before breaking 
                 Serial.print("process termin : address "); Serial.print(_programCounter - _programStorage);  Serial.print(", eval stack depth "); Serial.print(evalStack.getElementCount()); Serial.print(" [ ");
@@ -489,23 +528,27 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
             // STEP command: 
             // stop after executed PROGRAM (not immediate mode) statement (enter debug mod) if:
             // - next statement is also a PROGRAM statement, AND
-            // - previous command was 'STEP' command, OR, 
+            // - previous command was 'STEP' command, OR, ////
 
             // if current statement was 'Step' (given while program was stopped), the program must be stopped after the NEXT instruction (not after the STEP instruction)  
             // exceptions: (1) if a call to an external function is followed immediately by a semicolon, there should be no program stop when returning from the called function...
             //                 ...because only the terminating semicolon still needs to be executed, which is transparent to the user
             //             (2) the next step to execute is not within a function (returning to immediate mode)
             char tokenType = ((TokenIsTerminal*)_programCounter)->tokenTypeAndIndex & 0x0F;             // program counter advanced to next step already
-            bool isTerminal = ((tokenType == tok_isTerminalGroup1) || (tokenType == tok_isTerminalGroup2) || (tokenType == tok_isTerminalGroup3));
-            if (isTerminal) {
+            bool nextIsTerminal = ((tokenType == tok_isTerminalGroup1) || (tokenType == tok_isTerminalGroup2) || (tokenType == tok_isTerminalGroup3));
+            if (nextIsTerminal) {
                 tokenIndex = ((((TokenIsTerminal*)_programCounter)->tokenTypeAndIndex >> 4) & 0x0F);
                 tokenIndex += ((tokenType == tok_isTerminalGroup2) ? 0x10 : (tokenType == tok_isTerminalGroup3) ? 0x20 : 0);
             }
             // next statement is just a semicolon ? Do execute (do not skip!), but do not stop (if in single step mode) 
-            bool isSemicolon = (isTerminal ? (_terminals[tokenIndex].terminalCode == termcod_semicolon) : false);
+            bool nextIsSemicolon = (nextIsTerminal ? (_terminals[tokenIndex].terminalCode == termcod_semicolon) : false);
             bool executedStepIsprogram = programCnt_previousStatement < _programStart;//// check
             bool nextStepIsprogram = _programCounter < _programStart;//// check
-            doStopForDebug = _doOneProgramStep && !isSemicolon && executedStepIsprogram && nextStepIsprogram;             // after next statement is executed //// check
+            doStopForDebug = _doOneProgramStep && !nextIsSemicolon && executedStepIsprogram && nextStepIsprogram;             // after next statement is executed //// check
+
+            ////Serial.print("LAST COMMAND: "); Serial.println((int)lastCommand);//// WEG
+
+
             /*
             Serial.print("*** executed step is program if program counter < 2000:  "); Serial.println(programCnt_previousStatement - _programStorage);
             Serial.print("***     next step is program if program counter < 2000:  "); Serial.println(_programCounter - _programStorage);
@@ -687,6 +730,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
     _activeFunctionData.errorProgramCounter = _activeFunctionData.activeCmd_tokenAddress;
 
+#if debugPrint
+Serial.print("                 process command code: "); Serial.println((int)_activeFunctionData.activeCmd_ResWordCode);
+#endif
+
     switch (_activeFunctionData.activeCmd_ResWordCode) {                                                                    // command code 
 
     case cmdcod_stop:
@@ -708,7 +755,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
     // Switch on single step mode (use to debug a program without Stop command programmed, right from the start)
     // ---------------------------------------------------------------------------------------------------------
 
-    case cmdcod_debug:
+    case cmdcod_debug://// NOK
         _doOneProgramStep = true;
 
         _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
@@ -765,8 +812,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         ////Serial.print("----- Go: programs in debug: "); Serial.println(_programsInDebug);
 
         ////Serial.print(">>>>>>>>> GO command: stop flag: "); Serial.print(userRequestsStop); Serial.print(" "); Serial.println(execResult);
-        _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
-        _activeFunctionData.activeCmd_tokenAddress = nullptr;
+        ////_activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
+        ////_activeFunctionData.activeCmd_tokenAddress = nullptr;
         break;
     }
 
@@ -1566,6 +1613,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
     case cmdcod_return:
     {
+        Serial.println("TERMINATE function");
         isFunctionReturn = true;
         bool returnWithZero = (cmdParamCount == 0);                    // RETURN statement without expression, or END statement: return a zero
         execResult = terminateExternalFunction(returnWithZero);
@@ -2581,6 +2629,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
 
 ////Serial.print("--              result: "); Serial.println(operationIncludesAssignment ? *_pEvalStackTop->varOrConst.value.pLongConst : _pEvalStackTop->varOrConst.value.longConst);
 
+    Serial.print("eval stack depth "); Serial.print(evalStack.getElementCount());  Serial.println(" - infix operation done"); ////
+    Serial.print("                 result = "); Serial.println(_pEvalStackTop->varOrConst.value.longConst);
     return result_execOK;
 }
 
@@ -3248,7 +3298,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchExternalFunctio
         }
     }
 
-// also delete function name token from evaluation stack
+    // also delete function name token from evaluation stack
     _pEvalStackTop = (LE_evalStack*)evalStack.getPrevListElement(pFunctionStackLvl);
     _pEvalStackMinus1 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackTop);
     _pEvalStackMinus2 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackMinus1);
