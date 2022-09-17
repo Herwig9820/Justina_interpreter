@@ -1208,10 +1208,43 @@ public:
     Val lastResultValueFiFo[MAX_LAST_RESULT_DEPTH];                // keep last evaluation results
     char lastResultTypeFiFo[MAX_LAST_RESULT_DEPTH]{ value_noValue };
 
-    LinkedList evalStack;
-    LinkedList flowCtrlStack;
-    LinkedList immModeCommandStack;
+    
+    // evaluation stack
+    // ----------------
 
+    // maintains intermediate results of a calculation (execution phase). Implemented as a linked list
+
+    LinkedList evalStack;
+    
+
+    // flow control stack
+    // ------------------
+
+    // if statements are currently being executed, structure _activeFunctionData maintains data about either the main program level (command line statements) ...
+    // ... or the active function (depends on where code is actually executed)
+    // the flow control stack (linked list flowCtrlStack) on the other hand maintains data about open block commands (loops, ...) and callers (functions or program main level) 
+    // => entries from stack top (newest entries) to bottom: 
+    // - entries for any open block commands in the active function (or main program level, if code is currently executed from there)
+    // - for each caller in the call stack:
+    //    - an entry for the caller (could be another function or the main program level) 
+    //    - entries for any open block commands in the caller
+
+    // - if a program is currently stopped (debug mode), data about the stopped function is also pushed to the flowcontrol stack (it has 'called' debug level, so to speak) ...
+    //   ... and _activeFunctionData now contains data about a 'new' main program level (any command line statements executed for debugging purposes) 
+
+    // if execution of a NEW program is started while in debug mode, the whole process as described above is repeated. So, you can have more than one program being suspended
+    
+    LinkedList flowCtrlStack;
+    
+    
+    // immediate mode command stack
+    // ----------------------------
+
+    // while at least one program is stopped (debug mode), the parsed code of the original command line from where execution started is pushed to a separate stack, and popped again ...
+    // ...when the program resumes. If multiple programs are currently stopped (see: flow control stack), this stack will contain multiple entries
+    LinkedList immModeCommandStack;    
+    
+    
     // callback functions and storage
 
     unsigned long _lastCallBackTime{ 0 }, _currenttime{ 0 }, _previousTime{ 0 };

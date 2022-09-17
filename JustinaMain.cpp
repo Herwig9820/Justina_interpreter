@@ -555,7 +555,6 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
     }
 
 
-
     if (isEndOfFile) {
         if (instructionsParsed) {
             int funcNotDefIndex;
@@ -585,32 +584,26 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
             printParsingResult(result, funcNotDefIndex, _instruction, _lineCount, pErrorPos);
             (_programsInDebug) ? (_appFlags |= 0x0030L) : (_appFlags &= ~0x0030L);
         }
-        else {
-            _pConsole->println();
-        }
+        else { _pConsole->println(); }
 
+        // note that if an error occured in a running program, the number of stopped programs ('in debug mode') is already decreased by one.
+        // if this count was one, then now it's zero and no more programs are stopped 
+        // if an error occured while executing a command line, then this count is not changed
         if (_programsInDebug > 0) {
-            char* nextInstructionsPointer=_programCounter;
+            char* nextInstructionsPointer = _programCounter;
             OpenFunctionData* pDeepestOpenFunction = &_activeFunctionData;
-            bool immModeStatement = (_activeFunctionData.pNextStep >= _programStart);  
-            if (immModeStatement) {
-                void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                    int blockType = block_none;
-                do {
-                    blockType = *(char*)pFlowCtrlStackLvl;
-                    if (blockType != block_extFunction) {
-                        pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
-                        continue;
-                    };          // there is at least one open function in the call stack
-                    break;
-                } while (true);
-                pDeepestOpenFunction = (OpenFunctionData*)pFlowCtrlStackLvl;        // deepest level of nested functions
-                nextInstructionsPointer = pDeepestOpenFunction->pNextStep;
-            }
 
-
-
-
-
+            void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                    int blockType = block_none;
+            do {                                                                // there is at least one open function in the call stack
+                blockType = *(char*)pFlowCtrlStackLvl;
+                if (blockType != block_extFunction) {
+                    pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
+                    continue;
+                };
+                break;
+            } while (true);
+            pDeepestOpenFunction = (OpenFunctionData*)pFlowCtrlStackLvl;        // deepest level of nested functions
+            nextInstructionsPointer = pDeepestOpenFunction->pNextStep;
 
             _pConsole->println(); for (int i = 1; i <= _dispWidth; i++) { _pConsole->print("-"); }
             char msg[150] = "";

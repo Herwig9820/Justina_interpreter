@@ -2812,6 +2812,7 @@ void Justina_interpreter::prettyPrintInstructions(int instructionCount, char* st
 
     // output: printable token (text)
     const int maxCharsPrettyToken{ 100 };           // must be long enough to hold one token in text (e.g. a variable name)
+    const int maxOutputLength{200};
     int outputLength = 0;                       // init: first position
 
     while (tokenType != tok_no_token) {                                                                    // for all tokens in token list
@@ -2957,7 +2958,7 @@ void Justina_interpreter::prettyPrintInstructions(int instructionCount, char* st
         // ------------------
 
         // if not printing all instructions, then limit output, but always print the first instruction in full
-        if (!allInstructions && !isFirstInstruction && (outputLength > 20)) { break; }
+        if (!allInstructions && !isFirstInstruction && (outputLength > maxOutputLength)) { break; }
 
         int tokenSourceLength = strlen(prettyToken);
         if (isSemicolon) {
