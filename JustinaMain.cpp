@@ -85,6 +85,7 @@ char* LinkedList::appendListElement(int size) {
 #if printCreateDeleteHeapObjects
     Serial.print("(LIST) Create elem # "); Serial.print(_listElementCount);
     Serial.print(", list ID "); Serial.print(_listID);
+    Serial.print(", name "); Serial.print(_listName);
     if (p == nullptr) { Serial.println("- list elem adres: nullptr"); }
     else {
         Serial.print(", list elem address: "); Serial.println((uint32_t)p - RAMSTART);
@@ -116,6 +117,7 @@ char* LinkedList::deleteListElement(void* pPayload) {                           
 #if printCreateDeleteHeapObjects
     Serial.print("(LIST) Delete elem # "); Serial.print(_listElementCount);
     Serial.print(", list ID "); Serial.print(_listID);
+    Serial.print(", name "); Serial.print(_listName);
     Serial.print(", list elem address: "); Serial.println((uint32_t)pElem - RAMSTART);
 #endif
     _listElementCount--;
@@ -191,6 +193,26 @@ char* LinkedList::getNextListElement(void* pPayload) {
 
 int LinkedList::getListID() {
     return _listID;
+}
+
+
+//--------------------------
+// *   set the list name   *
+//--------------------------
+
+void LinkedList::setListName(char* listName) {
+    strncpy(_listName, listName, listNameSize-1);
+    _listName[listNameSize-1] = '\0';
+    return;
+}
+
+
+//--------------------------
+// *   get the list name   *
+//--------------------------
+
+char* LinkedList::getListName() {
+    return _listName;
 }
 
 
@@ -296,11 +318,16 @@ Justina_interpreter::Justina_interpreter(Stream* const pConsole) : _pConsole(pCo
 
     _callStackDepth = 0;
     _programsInDebug = 0;
-    _doOneProgramStep = false;
+    _stepCmdExecuted = false;
 
     _currenttime = millis();
     _previousTime = _currenttime;
     _lastCallBackTime = _currenttime;
+
+    parsingStack.setListName("parsing ");
+    evalStack.setListName("eval    ");
+    flowCtrlStack.setListName("flowCtrl");
+    immModeCommandStack.setListName("cmd line");
 
     _pConsole->println();
     for (int i = 0; i < 13; i++) { _pConsole->print("*"); } _pConsole->print("____");
@@ -586,9 +613,14 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
         }
         else { _pConsole->println(); }
 
-        // note that if an error occured in a running program, the number of stopped programs ('in debug mode') is already decreased by one.
-        // if this count was one, then now it's zero and no more programs are stopped 
-        // if an error occured while executing a command line, then this count is not changed
+        // count of programs in debug:
+        // - if an error occured in a RUNNING program, the program is terminated and the number of STOPPED programs ('in debug mode') does not change.
+        // - if an error occured while executing a command line, then this count is not changed either
+        // flow control stack:
+        // - at this point, structure '_activeFunctionData' always contains flow control data for the main program level (command line - in debug mode if the count of open programs is not zero)
+        // - the flow control stack maintains data about open block commands and open functions (call stack)
+        // => skip stack elements for any command line open block commands and fetch the data for the function where control will resume when started again
+
         if (_programsInDebug > 0) {
             char* nextInstructionsPointer = _programCounter;
             OpenFunctionData* pDeepestOpenFunction = &_activeFunctionData;
@@ -610,7 +642,6 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
             sprintf(msg, "\r\n*** DEBUG *** NEXT=> [%s] ", extFunctionNames[pDeepestOpenFunction->functionIndex]);
             _pConsole->print(msg);
             prettyPrintInstructions(10, nextInstructionsPointer);
-            ////Serial.print("    next: prog counter: "); Serial.println(_programCounter - _programStorage);
 
             if (_programsInDebug > 1) {
                 sprintf(msg, "*** this + %d other programs STOPPED ***", _programsInDebug - 1);

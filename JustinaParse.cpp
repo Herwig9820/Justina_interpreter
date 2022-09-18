@@ -477,7 +477,7 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
 
     _callStackDepth = 0;
     _programsInDebug = 0;
-    _doOneProgramStep = false;
+    _stepCmdExecuted = false;
 
     // perform consistency checks: verify that all objects created are destroyed again
     // note: intermediate string objects, function local storage, and function local variable strings and arrays exist solely during execution.

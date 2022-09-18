@@ -51,6 +51,8 @@ class LinkedList {
     // *   enumerations   *
     // --------------------
 
+    static const int listNameSize = 9;             // including terminating '\0'
+
 public:
 
     enum listType_type {                                       // identifier type
@@ -86,6 +88,8 @@ public:
     int _listElementCount{ 0 };                                // list element count (currently not used)
     listType_type _listType{};
 
+private:
+    char _listName[listNameSize]="";                                         // includes terminating '\0'
 public:
     int _listID{ 0 };                                       // list ID (in order of creation) 
 
@@ -107,6 +111,8 @@ public:
     char* getNextListElement(void* pPayload);
     int getElementCount();
     int getListID();
+    void setListName(char* listName);
+    char* getListName();
 };
 
 
@@ -742,7 +748,6 @@ public:
         // within a function, as in immediate mode, only one (block) command can be active at a time (ended by semicolon), in contrast to command blocks, which can be nested, so command data can be stored here:
         // data is stored when a keyword is processed and it is cleared when the ending semicolon (ending the command) is processed
         char activeCmd_ResWordCode;     // keyword code (set to 'cmdcod_none' again when semicolon is processed)
-
         char* activeCmd_tokenAddress;   // address in program memory of parsed keyword token                                
 
         // value area pointers (note: a value is a long, a float or a pointer to a string or array, or (if reference): pointer to 'source' (referenced) variable))
@@ -1117,7 +1122,7 @@ public:
 
     int _callStackDepth = 0;                                        // external function calls
     int _programsInDebug{ 0 };
-    bool _doOneProgramStep{ false };
+    bool _stepCmdExecuted{ false };
 
     char _arrayDimCount{ 0 };
     char* _programCounter{ nullptr };                                // pointer to token memory address (not token step n�)
@@ -1235,7 +1240,6 @@ public:
     // if execution of a NEW program is started while in debug mode, the whole process as described above is repeated. So, you can have more than one program being suspended
     
     LinkedList flowCtrlStack;
-    
     
     // immediate mode command stack
     // ----------------------------
