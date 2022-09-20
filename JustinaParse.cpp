@@ -1941,7 +1941,6 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
         bool tokenAllowed = (_isCommand || (!_programMode) || _extFunctionBlockOpen);
         if (!tokenAllowed) { pNext = pch; result = result_operatorNotAllowedHere; return false; ; }
 
-
         // 1.a Check additional constraints within specific commands
         // ---------------------------------------------------------
 
@@ -1998,8 +1997,8 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             tokenIsPrefixOp = true; tokenIsPostfixOp = false;
         }
 
-        bool isPrefixIncrDecr = (tokenIsPrefixOp && (_terminals[termIndex].terminalCode == termcod_incr) || (_terminals[termIndex].terminalCode == termcod_decr));
-        bool isPostfixIncrDecr = (tokenIsPostfixOp && (_terminals[termIndex].terminalCode == termcod_incr) || (_terminals[termIndex].terminalCode == termcod_decr));
+        bool isPrefixIncrDecr = (tokenIsPrefixOp && ((_terminals[termIndex].terminalCode == termcod_incr) || (_terminals[termIndex].terminalCode == termcod_decr)));
+        bool isPostfixIncrDecr = (tokenIsPostfixOp && ((_terminals[termIndex].terminalCode == termcod_incr) || (_terminals[termIndex].terminalCode == termcod_decr)));
 
         if (isPostfixIncrDecr) {
             if (!_thisLvl_lastIsVariable) { pNext = pch; result = result_operatorNotAllowedHere; return false; }   // not a variable or array element
@@ -2974,7 +2973,6 @@ void Justina_interpreter::prettyPrintInstructions(int instructionCount, char* st
             }
             if (isSemicolon) {
                 if (--instructionCount == 0) { break; }     // all statements printed
-                ////else if (!isFirstInstruction) { _pConsole->print("; "); }
             }
             outputLength += tokenSourceLength;
         }

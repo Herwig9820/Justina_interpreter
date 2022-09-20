@@ -426,10 +426,9 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
                 bool doCaseBreak{ false };
 
                 lastTokenIsSemicolon = true;
-                isEndOfStatementSeparator = true;         // for pretty print only   
+                isEndOfStatementSeparator = true;
 
                 if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_none) {       // currently not executing a command, but a simple expression
-                    ////Serial.print("-----------------------------> total: "); Serial.print(evalStack.getElementCount()); Serial.print(" , callers: "); Serial.println((int)_activeFunctionData.callerEvalStackLevels);
                     if (evalStack.getElementCount() > (_activeFunctionData.callerEvalStackLevels + 1)) {
                         //// _pConsole ???
                         Serial.print("*** Evaluation stack error. Remaining stack levels for current program level: "); Serial.println(evalStack.getElementCount() - (_activeFunctionData.callerEvalStackLevels + 1));
@@ -478,24 +477,21 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
         // 1.3 last token processed was a statement separator ? 
         // ----------------------------------------------------
 
-        if (isEndOfStatementSeparator) {
+        // this code executes after a simple expression and after a command
 
-            ////Serial.print("**statement processed - eval stack levels: "); Serial.print(evalStack.getElementCount());
-#if printProcessedTokens        // after evaluation stack has been updated and before breaking 
+        if (isEndOfStatementSeparator) {
+#if printProcessedTokens        
             Serial.println("\r\n");
 #endif
-
             programCnt_previousStatementStart = holdProgramCnt_StatementStart;
             holdProgramCnt_StatementStart = _programCounter;
 
             if (execResult == result_execOK) {          // no error ? 
-                if (!isFunctionReturn) {             // adapt error program step pointers
+                if (!isFunctionReturn) {            // adapt error program step pointers
                     // note: if returning from user function, error statement pointers retrieved from flow control stack 
                     _activeFunctionData.errorStatementStartStep = _programCounter;
                     _activeFunctionData.errorProgramCounter = _programCounter;
                 }
-
-                isFunctionReturn = false;
             }
 
 
@@ -525,33 +521,20 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
                     }
                 }
             } while (charsFound);
-
             userRequestsStop = userRequestsStop || doStop;                              // 'backslash S' received from command line, either here ('doStop') or while a command is waiting for user input (e.g. Input)
-            ////doStopForDebugNow = userRequestsStop || doSingleStep;                          // program could also be in single step mode
 
+            // stop after executed program statement (not after an immediate mode statement) and enter debug mode, if:
+            // - user issued a 'Step' command while in debug mode, OR user typed "\s" escape sequence while program was running
+            //   - if 'Step' statement: 'one' program statement was executed AFTER the user entered the 'Step' command AND the next statement is also a program statement
+            //   - if user 'stop' request: the request can be recorded while executing debug command line statements and it will be granted as soon as a program is started, while ...
+            //     ... still executing the same debug command line (one can not stop a program that is not running) 
+            // the last statement executed was not a Return or End function statement (to prevent potential stopping in the middle of a caller's statement)
 
-            // single step:
-            // STEP command: 
-            // stop after executed program (not immediate mode) statement (enter debug mod) if:
-            // - next statement is also a program statement, AND
-            // - previous command was 'STEP' command, OR user types "\s" escape sequence
-
-            // if current statement was 'Step' (given while program was stopped), the program must be stopped after the NEXT instruction (not after the STEP instruction)  
-            // exceptions: (1) if a call to an external function is followed immediately by a semicolon, there should be no program stop when returning from the called function...
-            //                 ...because only the terminating semicolon still needs to be executed, which is transparent to the user
-            //             (2) the next step to execute is not within a function (returning to immediate mode)
-            char tokenType = ((TokenIsTerminal*)_programCounter)->tokenTypeAndIndex & 0x0F;             // program counter advanced to next step already
-            bool nextIsTerminal = ((tokenType == tok_isTerminalGroup1) || (tokenType == tok_isTerminalGroup2) || (tokenType == tok_isTerminalGroup3));
-            if (nextIsTerminal) {
-                tokenIndex = ((((TokenIsTerminal*)_programCounter)->tokenTypeAndIndex >> 4) & 0x0F);
-                tokenIndex += ((tokenType == tok_isTerminalGroup2) ? 0x10 : (tokenType == tok_isTerminalGroup3) ? 0x20 : 0);
-            }
-            bool nextIsSemicolon = (nextIsTerminal ? (_terminals[tokenIndex].terminalCode == termcod_semicolon) : false);
-
-            // next statement is just a semicolon ? Do execute (do not skip!), but do not stop (if in single step mode) 
             bool executedStepIsprogram = programCnt_previousStatementStart < _programStart;
             bool nextStepIsprogram = _programCounter < _programStart;
-            doStopForDebugNow = (_stepCmdExecuted || userRequestsStop) && !nextIsSemicolon && executedStepIsprogram && nextStepIsprogram;
+            doStopForDebugNow = (_stepCmdExecuted || userRequestsStop) && executedStepIsprogram && nextStepIsprogram && !isFunctionReturn;
+            if(doStopForDebugNow) {userRequestsStop = false;}           // reset request if stopping
+            isFunctionReturn = false;
 
             /*
             Serial.print("*** executed step is program if program counter < 2000:  "); Serial.println(programCnt_previousStatementStart - _programStorage);
@@ -603,7 +586,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
                 }
 
                 prettyPrintInstructions((execError ? 1 : 5), _activeFunctionData.errorStatementStartStep, _activeFunctionData.errorProgramCounter, &sourceErrorPos);
-                for (int i = 1; i <= (execError ? 2 : 8 + functionNameLength) + sourceErrorPos; i++) { _pConsole->print(" "); }
+                for (int i = 1; i <= sourceErrorPos; ++i) { _pConsole->print(" "); }
             }
 
             char execInfo[150] = "";
@@ -618,6 +601,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
 
             else {
                 sprintf(execInfo, "  ^\r\n  Exec error %d\r\n", execResult);     // in main program level 
+
             }
             _pConsole->print(execInfo);
 
@@ -667,7 +651,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
     // -------------------------------------------------
 
 
-    if (execResult == result_eval_stopForDebug) {              // stopping for debug now ('STOP' command or single step)
+    if (execResult == result_eval_stopForDebug)  {              // stopping for debug now ('STOP' command or single step)
         // push caller function data (or main = user entry level in immediate mode) on FLOW CONTROL stack 
         _pFlowCtrlStackMinus2 = _pFlowCtrlStackMinus1; _pFlowCtrlStackMinus1 = _pFlowCtrlStackTop;
         _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
@@ -686,6 +670,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
         // push current command line storage to command line stack, to make room for debug commands
         _pImmediateCmdStackTop = (char*)immModeCommandStack.appendListElement(IMM_MEM_SIZE);//// aanpassen
         memcpy(_pImmediateCmdStackTop, _programStart, IMM_MEM_SIZE);
+        *_programStart = '\0';
     }
 
     // no programs in debug: always; otherwise: only if error is in fact quit or kill event 
@@ -700,7 +685,14 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
         clearEvalStackLevels(evalStack.getElementCount() - (int)_activeFunctionData.callerEvalStackLevels);
     }
 
+    // adapt application flags
     (execResult == result_execOK) ? _appFlags &= ~0x0001L : _appFlags |= 0x0001L;              // clear or set error condition flag 
+    
+    ////
+    char* conststr; memcpy(&conststr, _programStart + 13, 4);
+    Serial.print("+++ stopping: pointer value: "); Serial.println((uint32_t)conststr);
+    Serial.print("              string: "); Serial.println(conststr);
+
     return execResult;   // return result, in case it's needed by caller
 };
 
@@ -714,7 +706,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
     // this function is called when the END of the command (semicolon) is encountered during execution, and all arguments are on the stack already
 
     isFunctionReturn = false;  // init
-    userRequestsStop = false;           // do not stop a running program for debug
+    ////userRequestsStop = false;           // do not stop a running program for debug
     execResult_type execResult = result_execOK;
     int cmdParamCount = evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels;
 
@@ -886,6 +878,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         char valueType[3];
         Val args[3];
 
+        Serial.print("\r\n+++++ input command - entry stack levels: ");
+        Serial.println(evalStack.getElementCount());
+
         copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
 
         if (valueType[0] != value_isStringPointer) { return result_arg_stringExpected; }                                    // prompt 
@@ -897,6 +892,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
         bool answerValid{ false };
         _appFlags |= 0x0040;    // bit b6 set: waiting for user interaction
+        
+        Serial.print("+++++ input command - entry:");
+        Serial.println(*_pEvalStackMinus1->varOrConst.value.ppStringConst);
+        
+        
         do {                                                                                                                // until valid answer typed
             if (isInput) {                                                                                                  // input command
                 if ((argIsArray[1]) && (valueType[1] != value_isStringPointer)) { return result_array_valueTypeIsFixed; }   // an array cannot change type: it needs to be string
@@ -1054,7 +1054,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         } while (!answerValid);
         _appFlags &= ~0x0040;    // bit b6 reset: NOT waiting for user interaction
 
+        Serial.print("\r\n+++++ input command - exit :");
+        Serial.println(*_pEvalStackMinus1->varOrConst.value.ppStringConst);
+        
         clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
+
+        Serial.print("+++++ input command - exit stack levels: ");
+        Serial.println(evalStack.getElementCount());
 
         _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                  // command execution ended
         _activeFunctionData.activeCmd_tokenAddress = nullptr;
@@ -1167,6 +1173,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             bool opIsLong = ((uint8_t)valueType == value_isLong);
             bool opIsFloat = ((uint8_t)valueType == value_isFloat);
             char* printString = nullptr;
+
+            Serial.print("+++ print command: ");Serial.print(_pEvalStackTop->varOrConst.value.pStringConst);Serial.println(" (end)");
 
             Val operand;
             if (opIsLong || opIsFloat) {
@@ -3774,6 +3782,11 @@ void Justina_interpreter::pushConstant(int& tokenType) {                        
     }
     else {
         memcpy(&_pEvalStackTop->varOrConst.value.pStringConst, ((TokenIsConstant*)_programCounter)->cstValue.pStringConst, sizeof(void*)); // char pointer not necessarily aligned with word size: copy pointer instead
+        Serial.print("+++ push string constant: "); Serial.print(_pEvalStackTop->varOrConst.value.pStringConst); Serial.println(" (end)");
+        Serial.print("    program counter: "); Serial.println(_programCounter - _programStorage);
+        char* conststr; memcpy(&conststr, _programStart+13, 4);
+        Serial.print("    pointer value: "); Serial.println((uint32_t)conststr);
+        Serial.print("    string: "); Serial.println(conststr);
     }
 };
 
