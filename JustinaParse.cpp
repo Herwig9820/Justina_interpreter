@@ -124,7 +124,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"Print",           cmdcod_print,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},
     {"Dispfmt",         cmdcod_dispfmt,     cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
     {"Dispmod",         cmdcod_dispmod,     cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_105,     cmdBlockNone},
-    {"Pause",           cmdcod_pause,       cmd_onlyInFunctionBlock,                            0,0,    cmdPar_104,     cmdBlockNone},
+    {"Pause",           cmdcod_pause,       cmd_onlyInFunctionBlock,                            0,0,    cmdPar_106,     cmdBlockNone},
     {"Halt",            cmdcod_halt,        cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},
 
 
@@ -132,10 +132,11 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     /* ------------------ */
 
     {"Stop",            cmdcod_stop,        cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},
+    {"Nop",             cmdcod_nop,         cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_102,     cmdBlockNone},                  // insert two bytes in program, do nothing
     {"Go",              cmdcod_go,          cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
     {"Step",            cmdcod_step,        cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"Abort",           cmdcod_abort,       cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
     {"Debug",           cmdcod_debug,       cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"Nop",             cmdcod_nop,         cmd_onlyImmOrInsideFuncBlock | cmd_skipDuringExec,  0,0,    cmdPar_102,     cmdBlockNone},                  // insert two bytes in program, do nothing
 
 
     /* user callback functions */
@@ -370,11 +371,11 @@ void Justina_interpreter::deleteLastValueFiFoStringObjects() {
 
 // must be called before deleting tokens (list elements) 
 
-void Justina_interpreter::deleteConstStringObjects(char* programStart) {
+void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
     char* pAnum;
     TokenPointer prgmCnt;
 
-    prgmCnt.pTokenChars = programStart;
+    prgmCnt.pTokenChars = pFirstToken;
     uint8_t tokenType = *prgmCnt.pTokenChars & 0x0F;
     while (tokenType != '\0') {                                                                    // for all tokens in token list
         bool isStringConst = (tokenType == tok_isConstant) ? (((*prgmCnt.pTokenChars >> 4) & value_typeMask) == value_isStringPointer) : false;
@@ -386,12 +387,14 @@ void Justina_interpreter::deleteConstStringObjects(char* programStart) {
 #endif
                 delete[] pAnum;
                 parsedStringConstObjectCount--;
+
             }
         }
         uint8_t tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) :
             (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*prgmCnt.pTokenChars >> 4) & 0x0F;
         prgmCnt.pTokenChars += tokenLength;
         tokenType = *prgmCnt.pTokenChars & 0x0F;
+        ////Serial.print("   checking token type: "); Serial.println(tokenType);
     }
 }
 
@@ -401,6 +404,7 @@ void Justina_interpreter::deleteConstStringObjects(char* programStart) {
 // -------------------------
 
 void Justina_interpreter::resetMachine(bool withUserVariables) {
+    
     // delete identifier name objects on the heap (variable names, external function names) 
     deleteIdentifierNameObjects(programVarNames, _programVarNameCount);
     deleteIdentifierNameObjects(extFunctionNames, _extFunctionCount);
@@ -422,6 +426,15 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
     // delete alphanumeric constants: before clearing program memory and immediate mode user instructon memory
     deleteConstStringObjects(_programStorage);
     deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
+    
+    int i=0;
+    while (immModeCommandStack.getElementCount() !=0){
+        // copy command line stack top to command line program storage and pop command line stack top
+        _pImmediateCmdStackTop = immModeCommandStack.getLastListElement();
+        memcpy(_programStorage+PROG_MEM_SIZE, _pImmediateCmdStackTop, IMM_MEM_SIZE);
+        immModeCommandStack.deleteListElement(_pImmediateCmdStackTop);
+        deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
+    }
 
     parsingStack.deleteList();                                                               // delete list to keep track of open parentheses and open command blocks
     _blockLevel = 0;

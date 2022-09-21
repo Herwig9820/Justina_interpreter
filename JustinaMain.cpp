@@ -201,8 +201,8 @@ int LinkedList::getListID() {
 //--------------------------
 
 void LinkedList::setListName(char* listName) {
-    strncpy(_listName, listName, listNameSize-1);
-    _listName[listNameSize-1] = '\0';
+    strncpy(_listName, listName, listNameSize - 1);
+    _listName[listNameSize - 1] = '\0';
     return;
 }
 
@@ -583,6 +583,8 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
 
 
     if (isEndOfFile) {
+        execResult_type execResult{ result_execOK };
+
         if (instructionsParsed) {
             int funcNotDefIndex;
             if (result == result_tokenFound) {
@@ -600,7 +602,7 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
                     if (_promptAndEcho == 2) { prettyPrintInstructions(0); }                    // immediate mode and result OK: pretty print input line
                     else if (_promptAndEcho == 1) { _pConsole->println(); _isPrompt = false; }
 
-                    execResult_type execResult = exec();                                 // execute parsed user statements
+                    execResult = exec();                                 // execute parsed user statements
 
                     if ((execResult == result_eval_kill) || (execResult == result_eval_quit)) { _quitJustinaAtEOF = true; }
                     if (execResult == result_eval_kill) { kill = true; }
@@ -665,10 +667,13 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
             }
         }
 
-        // was in immediate mode
-        else if (instructionsParsed) {
+        // in immediate mode; if stopping a program for debug, do not delete parsed strings included in the command line, because that command line has now been pushed on  ...
+        // the parsed command line stack and included parsed constants will be deleted later (resetMachine routine)
+        else if (execResult == result_eval_stopForDebug) { *_programStart = '\0'; }  ////
 
-            // delete alphanumeric constants because they are on the heap. Identifiers must stay avaialble
+        // in immediate mode
+        else if (instructionsParsed) {
+            // execution finished: delete parsed strings in imm mode command (they are on the heap and not needed any more). Identifiers must stay avaialble
             deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);  // always
             *_programStart = '\0';                                      //  current end of program (immediate mode)
         }

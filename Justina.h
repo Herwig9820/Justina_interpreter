@@ -154,6 +154,7 @@ public:
         cmdcod_pause,
         cmdcod_halt,
         cmdcod_stop,
+        cmdcod_abort,
         cmdcod_go,
         cmdcod_step,
         cmdcod_debug,
@@ -451,7 +452,7 @@ public:
         result_stringTooLong,
 
         // abort, kill, quit, debug
-        result_eval_noProgramStopped = 3400,        // 'Go' command not allowed because not in debug mode
+        result_noProgramStopped = 3400,        // 'Go' command not allowed because not in debug mode
 
         // MANDATORY LAST range of errors: events
         result_eval_startOfEvents = 3500,
@@ -906,7 +907,7 @@ public:
     static constexpr char cmd_skipDuringExec = 0x80;
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[36];                          // keyword names
+    static const ResWordDef _resWords[37];                          // keyword names
     static const FuncDef _functions[22];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
@@ -1317,7 +1318,7 @@ public:
     execResult_type  execInternalFunction(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount);
     execResult_type  launchExternalFunction(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount);
     execResult_type  terminateExternalFunction(bool addZeroReturnValue = false);
-    execResult_type execProcessedCommand(bool& isFunctionReturn, bool& cmdLineRequestsProgramStop);
+    execResult_type execProcessedCommand(bool& isFunctionReturn, bool& cmdLineRequestsProgramStop, bool& userRequestsAbort);
     execResult_type testForLoopCondition(bool& fail);
 
     execResult_type checkFmtSpecifiers(bool isDispFmt, bool valueIsString, int suppliedArgCount, char* valueType, Val* operands, char& numSpecifier,
@@ -1336,7 +1337,7 @@ public:
     void saveLastValue(bool& overWritePrevious);
     void clearEvalStack();
     void clearEvalStackLevels(int n);
-    void clearFlowCtrlStack(bool debugModeError = false);
+    void clearFlowCtrlStack(execResult_type execResult = result_execOK, bool debugModeError = false);
 
     execResult_type makeFormatString();
     execResult_type deleteVarStringObject(LE_evalStack* pStackLvl);
