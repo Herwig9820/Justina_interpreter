@@ -137,7 +137,8 @@ public:
         cmdcod_clear,
         cmdcod_vars,
         cmdcod_printCB,
-        cmdcod_prog,
+        cmdcod_printprog,
+        cmdcod_printcallst,
         cmdcod_function,
         cmdcod_static,
         cmdcod_local,
@@ -157,6 +158,8 @@ public:
         cmdcod_abort,
         cmdcod_go,
         cmdcod_step,
+        cmdcod_stepover,
+        cmdcod_stepout,
         cmdcod_debug,
         cmdcod_nop,
         cmdcod_quit,
@@ -907,7 +910,7 @@ public:
     static constexpr char cmd_skipDuringExec = 0x80;
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[37];                          // keyword names
+    static const ResWordDef _resWords[40];                          // keyword names
     static const FuncDef _functions[22];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
@@ -1124,6 +1127,10 @@ public:
     int _callStackDepth = 0;                                        // external function calls
     int _programsInDebug{ 0 };
     bool _stepCmdExecuted{ false };
+    bool _stepoverCmdExecuted{ false };
+    bool _stepoutCmdExecuted{ false };
+    int _stepCallStackLevel{0};
+    bool _debugCmdExecuted{false};
 
     char _arrayDimCount{ 0 };
     char* _programCounter{ nullptr };                                // pointer to token memory address (not token step n�)

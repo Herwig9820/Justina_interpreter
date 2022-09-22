@@ -91,11 +91,12 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     //// -----
     {"Delvar",          cmdcod_delete,      cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_110,     cmdDeleteVar},
     {"Clearvars",       cmdcod_clear,       cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockNone},
-    {"Test",            cmdcod_test,        cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_999,     cmdBlockNone},//// test var no assignment
+    {"Test",            cmdcod_test,        cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_999,     cmdBlockNone},//// test var no assignment
 
     {"Printvars",       cmdcod_vars,        cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
     {"PrintCBs",        cmdcod_printCB,     cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
-    {"Printprog",       cmdcod_prog,        cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
+    {"Printprog",       cmdcod_printprog,   cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
+    {"Printcallstack",  cmdcod_printcallst, cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
 
 
     /* flow control commands */
@@ -135,6 +136,8 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"Nop",             cmdcod_nop,         cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_102,     cmdBlockNone},                  // insert two bytes in program, do nothing
     {"Go",              cmdcod_go,          cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
     {"Step",            cmdcod_step,        cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"Stepover",        cmdcod_stepover,    cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"Stepout",         cmdcod_stepout,     cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
     {"Abort",           cmdcod_abort,       cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
     {"Debug",           cmdcod_debug,       cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
 
@@ -491,6 +494,9 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
     _callStackDepth = 0;
     _programsInDebug = 0;
     _stepCmdExecuted = false;
+    _stepoverCmdExecuted = false ;
+    _stepoutCmdExecuted = false ;
+    _debugCmdExecuted = false;
 
     // perform consistency checks: verify that all objects created are destroyed again
     // note: intermediate string objects, function local storage, and function local variable strings and arrays exist solely during execution.

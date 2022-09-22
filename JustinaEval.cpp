@@ -59,6 +59,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
 
     bool doStopForDebugNow = false;
     bool userRequestsStop = false, userRequestsAbort = false;
+    bool isBackslashStop{ false };
     bool doSingleStep = false;
     bool lastTokenIsSemicolon = false;                   // do not stop a program after an 'empty' statement (occurs when returning to caller)
 
@@ -77,6 +78,9 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
     }
 
     _stepCmdExecuted = false;      // switch single step mode OFF before starting to execute command line (even in debug mode). Step and Debug commands will switch it on again (to execute one step).
+    _stepoverCmdExecuted = false;
+    _stepoutCmdExecuted = false;
+    _debugCmdExecuted = false;      // function to debug must be on same comand line as Debug command
 
     _programCounter = _programStart;
     holdProgramCnt_StatementStart = _programCounter; programCnt_previousStatementStart = _programCounter;
@@ -339,11 +343,11 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
 #endif
 
                 if (doCaseBreak) { break; }
-            }
+                }
 
 
-        // comma separator ?
-        // -----------------
+            // comma separator ?
+            // -----------------
 
             else if (isComma) {
 
@@ -459,7 +463,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
 #endif
 
                 if (doCaseBreak) { break; }
-            }
+                }
 
             break;  // (case label)
 
@@ -521,20 +525,26 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
                     }
                 }
             } while (charsFound);
+            if (doStop) { isBackslashStop = true; }                                           // for error message only
+
             userRequestsAbort = userRequestsAbort || doAbort;
-            userRequestsStop = userRequestsStop || doStop;                              // 'backslash S' received from command line, either here ('doStop') or while a command is waiting for user input (e.g. Input)
+            userRequestsStop = userRequestsStop || doStop || _debugCmdExecuted;               // 'backslash S' received from command line, either here ('doStop') or while a command is waiting for user input (e.g. Input)
 
             // stop after executed program statement (not after an immediate mode statement) and enter debug mode, if:
-            // - user issued a 'Step' command while in debug mode, OR user typed "\s" escape sequence while program was running
+            // - user entered Debug command; if followed statements in same comand line include a user function call, execution will stop after first statement
+            // - user issued a 'Step', 'Stepover' 'Stepout' command while in debug mode, OR user typed "\s" escape sequence while program was running
             //   - if 'Step' statement: 'one' program statement was executed AFTER the user entered the 'Step' command AND the next statement is also a program statement
+            //   - 'Stepover' and 'Stepout': additional requirement is call stack depth (see code)
             //   - if user 'stop' request: the request can be recorded while executing debug command line statements and it will be granted as soon as a program is started, while ...
             //     ... still executing the same debug command line (one can not stop a program that is not running) 
-            // the last statement executed was not a Return or End function statement (to prevent potential stopping in the middle of a caller's statement)
+            // in any case: the last statement executed was not a Return or End function statement (to prevent potential stopping in the middle of a caller's statement)
 
             bool executedStepIsprogram = programCnt_previousStatementStart < _programStart;
             bool nextStepIsprogram = _programCounter < _programStart;
-            doStopForDebugNow = (_stepCmdExecuted || userRequestsStop) && executedStepIsprogram && nextStepIsprogram && !isFunctionReturn;
-            if (doStopForDebugNow) { userRequestsStop = false; }           // reset request if stopping
+            doStopForDebugNow = (userRequestsStop || _stepCmdExecuted ||            // userRequestsStop: '\s' while code is executing
+                (_stepoverCmdExecuted && (_callStackDepth <= _stepCallStackLevel)) || (_stepoutCmdExecuted && (_callStackDepth < _stepCallStackLevel)))
+                && executedStepIsprogram && nextStepIsprogram && !isFunctionReturn;
+            if (doStopForDebugNow) { userRequestsStop = false; _debugCmdExecuted = false; }           // reset request to stop program
             isFunctionReturn = false;
 
             /*
@@ -564,11 +574,11 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
                     }
                 }
             }
-        }
+    }
 
 
-        // 1.4 did an execution error occur within token ? signal error
-        // ------------------------------------------------------------
+    // 1.4 did an execution error occur within token ? signal error
+    // ------------------------------------------------------------
 
         if (execResult != result_execOK) {          // execution error
             int sourceErrorPos{ 0 };
@@ -599,7 +609,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
             }
             else if (execResult == result_eval_kill) {}      // do nothing
             else if (execResult == result_eval_abort) { sprintf(execInfo, "\r\n+++ Code execution terminated +++\r\n"); }
-            else if (execResult == result_eval_stopForDebug) { sprintf(execInfo, "\r\n+++ Program stopped +++\r\n"); }
+            else if (execResult == result_eval_stopForDebug) { if (isBackslashStop) { sprintf(execInfo, "\r\n+++ Program stopped +++\r\n"); } }
             else { sprintf(execInfo, "  ^\r\n  Exec error %d\r\n", execResult); }     // in main program level 
             _pConsole->print(execInfo);
 
@@ -607,13 +617,13 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
             break;
         }
 
-    }   // end 'while ( tokenType != tok_no_token )'                                                                                       // end 'while ( tokenType != tok_no_token )'
+}   // end 'while ( tokenType != tok_no_token )'                                                                                       // end 'while ( tokenType != tok_no_token )'
 
 
-    // -----------
-    // 2. finalize
-    // -----------
-    ////Serial.print("*** statements processed - eval stack levels: "); Serial.println(evalStack.getElementCount());////
+// -----------
+// 2. finalize
+// -----------
+////Serial.print("*** statements processed - eval stack levels: "); Serial.println(evalStack.getElementCount());////
 
     if (!_atLineStart) { _pConsole->println(); _atLineStart = true; }
 
@@ -724,22 +734,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         break;
     }
 
-/*  // ------------------
-    // Abort running code
-    // ------------------
-
-    // 'abort' behaves as if an error occured, in order to follow the same processing logic
-    // the command is issued from the command line and it terminates a program stopped for debug
-
-    case cmdcod_abort:
-
-        _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
-        _activeFunctionData.activeCmd_tokenAddress = nullptr;
-        if (_programsInDebug == 0) { return result_noProgramStopped; }
-
-        return result_eval_abort;
-        break;
-*/
 
     // -------------------------------------
     // Retart or abort stopped program again
@@ -749,6 +743,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
     // the commands are issued from the command line and restart a program stopped for debug
 
     case cmdcod_step:   // restart and execute one program step
+    case cmdcod_stepover:
+    case cmdcod_stepout:
     case cmdcod_go:     // restart
     case cmdcod_abort:      // abort stopped program
     {
@@ -765,9 +761,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         _pImmediateCmdStackTop = (char*)immModeCommandStack.getLastListElement();  //// size aanpassen
         --_programsInDebug;     // equal to immModeCommandStack list element count
 
-        _stepCmdExecuted = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_step);
+        // abort: all done
         if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_abort) { return result_eval_abort; }
 
+        // step, stepover, stepout, go
+        _stepCmdExecuted = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_step);
+        _stepoverCmdExecuted = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_stepover);
+        _stepoutCmdExecuted = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_stepout);
+        _stepCallStackLevel = _callStackDepth - 1;                  // at time of first program step to execute after step command
         // currently, at least one program is stopped
         // restart: find the flow control stack entry for the stopped function and make it the active function again (remove the flow control stack level for the debugging command line)
         // abort: find the flow control stack entry for the previous (debug or main) command line and make it the active function again ...
@@ -805,8 +806,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
     // Switch on single step mode (use to debug a program without Stop command programmed, right from the start)
     // ---------------------------------------------------------------------------------------------------------
 
-    case cmdcod_debug://// NOK
-        _stepCmdExecuted = true;
+    case cmdcod_debug:
+        _debugCmdExecuted = true;
 
         _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
         _activeFunctionData.activeCmd_tokenAddress = nullptr;
@@ -843,21 +844,55 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
     }
 
 
+    // ----------------
+    // Print call stack
+    // ----------------
+
+    case cmdcod_printcallst:
+    {
+        if (_callStackDepth > 0) {
+            int indent = 0;
+            void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                    int blockType = block_none;
+            for (int i = 0; i < flowCtrlStack.getElementCount(); ++i) {
+                blockType = *(char*)pFlowCtrlStackLvl;
+                if (blockType == block_extFunction) {
+                    if (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep < _programStart) {
+                        for (int space = 0; space < indent - 4; ++space) { _pConsole->print(" "); }
+                        if (indent > 0) { _pConsole->print("|__ "); }
+                        // print function name
+                        int index = ((OpenFunctionData*)pFlowCtrlStackLvl)->functionIndex;
+                        _pConsole->println(extFunctionNames[index]);
+                        indent += 4;
+                    }
+                    else {
+                        indent = 0;
+                        if (i < flowCtrlStack.getElementCount() - 1) { _pConsole->println(); }      // command ine statements: empty line, except at the end
+                    }
+                }
+                pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
+            }
+        }
+        _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
+        _activeFunctionData.activeCmd_tokenAddress = nullptr;
+    }
+    break;
+
+
     case cmdcod_info:
 
-        // --------------------------------------------------------------------
-        // Print information or question, requiring user confirmation or answer
-        // --------------------------------------------------------------------
+            // --------------------------------------------------------------------
+            // Print information or question, requiring user confirmation or answer
+            // --------------------------------------------------------------------
 
-        // mandatory argument 1: prompt (string expression)
-        // optional argument 2: numeric variable
-        // - on entry: value is 0 or argument not supplied: confirmation required by pressing ENTER (any preceding characters are skipped)
-        //             value is 1: idem, but if '\c' encountered in input stream the operation is canceled by user 
-        //             value is 2: only positive or negative answer allowed, by pressing 'y' or 'n' followed by ENTER   
-        //             value is 3: idem, but if '\c' encountered in input stream the operation is canceled by user 
-        // - on exit:  value is 0: operation was canceled by user, 1 if operation confirmed by user
+            // mandatory argument 1: prompt (string expression)
+            // optional argument 2: numeric variable
+            // - on entry: value is 0 or argument not supplied: confirmation required by pressing ENTER (any preceding characters are skipped)
+            //             value is 1: idem, but if '\c' encountered in input stream the operation is canceled by user 
+            //             value is 2: only positive or negative answer allowed, by pressing 'y' or 'n' followed by ENTER   
+            //             value is 3: idem, but if '\c' encountered in input stream the operation is canceled by user 
+            // - on exit:  value is 0: operation was canceled by user, 1 if operation confirmed by user
 
-        // no break here: continue with Input command code
+            // no break here: continue with Input command code
 
 
     case cmdcod_input:
@@ -1371,20 +1406,20 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
                     // set variable string pointer to null pointer
                     *pStackLvl->varOrConst.value.ppStringConst = nullptr;                           // change pointer to string (in variable) to null pointer
-                }
-            }
-            pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
         }
+    }
+            pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
+    }
 
 
-    // finalize
-    // --------
+// finalize
+// --------
 
         clearEvalStackLevels(cmdParamCount);                                                        // clear evaluation stack and intermediate strings
 
         _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                          // command execution ended
         _activeFunctionData.activeCmd_tokenAddress = nullptr;
-    }
+}
     break;
 
 
@@ -1816,14 +1851,14 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
                 delete[] lastResultValueFiFo[itemToRemove].pStringConst;
                 lastValuesStringObjectCount--;
             }
-        }
     }
+}
     else {
         _lastResultCount++;     // only adding an item, without removing previous one
     }
 
 
-// move older last results one place up in FIFO, except when just overwriting 'previous' last result
+    // move older last results one place up in FIFO, except when just overwriting 'previous' last result
     if (!overWritePrevious && (_lastResultCount > 1)) {       // if 'new' last result count is 1, no old results need to be moved  
         for (int i = _lastResultCount - 1; i > 0; i--) {
             lastResultValueFiFo[i] = lastResultValueFiFo[i - 1];
@@ -2646,12 +2681,12 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
     Serial.print("                 result = "); Serial.println(_pEvalStackTop->varOrConst.value.longConst);
 #endif
     return result_execOK;
-}
+    }
 
 
-// ---------------------------------
-// *   execute internal function   *
-// ---------------------------------
+    // ---------------------------------
+    // *   execute internal function   *
+    // ---------------------------------
 
 Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount) {
 
@@ -2777,7 +2812,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 #if printCreateDeleteHeapObjects
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
 #endif            
-        }
+    }
 
     }
     break;
@@ -3005,11 +3040,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
     }
 
 
-    }       // end switch
+}       // end switch
 
 
-    // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
-    // -------------------------------------------------------------------------------------------------------------------
+// postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
+// -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
@@ -3564,7 +3599,7 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateExternalFunct
         delete[] _activeFunctionData.ppSourceVarTypes;
         _localVarValueAreaCount--;
         ////Serial.print("*** terminate: delete local vars: areas = "); Serial.println(_localVarValueAreaCount);
-    }
+}
 
     char blockType = block_none;
 

@@ -319,6 +319,9 @@ Justina_interpreter::Justina_interpreter(Stream* const pConsole) : _pConsole(pCo
     _callStackDepth = 0;
     _programsInDebug = 0;
     _stepCmdExecuted = false;
+    _stepoverCmdExecuted = false;
+    _stepoutCmdExecuted = false;
+    _debugCmdExecuted = false;
 
     _currenttime = millis();
     _previousTime = _currenttime;
