@@ -89,7 +89,7 @@ public:
     listType_type _listType{};
 
 private:
-    char _listName[listNameSize]="";                                         // includes terminating '\0'
+    char _listName[listNameSize] = "";                                         // includes terminating '\0'
 public:
     int _listID{ 0 };                                       // list ID (in order of creation) 
 
@@ -103,7 +103,7 @@ public:
     LinkedList();                   // constructor
     ~LinkedList();                   // constructor
     char* appendListElement(int size);
-    char* deleteListElement(void* pPayload=nullptr);                  // pointer to payload of list element to be removed
+    char* deleteListElement(void* pPayload = nullptr);                  // pointer to payload of list element to be removed
     void deleteList();
     char* getFirstListElement();
     char* getLastListElement();
@@ -137,8 +137,8 @@ public:
         cmdcod_clear,
         cmdcod_vars,
         cmdcod_printCB,
-        cmdcod_printprog,
-        cmdcod_printcallst,
+        cmdcod_printProg,
+        cmdcod_printCallSt,
         cmdcod_function,
         cmdcod_static,
         cmdcod_local,
@@ -158,8 +158,10 @@ public:
         cmdcod_abort,
         cmdcod_go,
         cmdcod_step,
-        cmdcod_stepover,
-        cmdcod_stepout,
+        cmdcod_stepOut,
+        cmdcod_stepOver,
+        cmdcod_stepOutOfBlock,
+        cmdcod_stepToBlockEnd,
         cmdcod_debug,
         cmdcod_nop,
         cmdcod_quit,
@@ -456,6 +458,7 @@ public:
 
         // abort, kill, quit, debug
         result_noProgramStopped = 3400,        // 'Go' command not allowed because not in debug mode
+        result_notWithinBlock,
 
         // MANDATORY LAST range of errors: events
         result_eval_startOfEvents = 3500,
@@ -466,6 +469,15 @@ public:
         result_eval_kill,                                   // caller requested to exit Justina interpreter
         result_eval_quit,                                   // 'Quit' command executed (exit Justina interpreter)
 
+    };
+
+    enum dbType_type {
+        db_continue = 0,
+        db_singleStep,
+        db_stepOut,
+        db_stepOver,
+        db_stepOutOfBlock,
+        db_stepToBlockEnd
     };
 
 public:
@@ -910,7 +922,7 @@ public:
     static constexpr char cmd_skipDuringExec = 0x80;
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[40];                          // keyword names
+    static const ResWordDef _resWords[42];                          // keyword names
     static const FuncDef _functions[22];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
@@ -971,6 +983,7 @@ public:
     static constexpr  int _maxInstructionChars{ 300 };
 
     static const unsigned long callbackPeriod = 10;      // in ms; should be considerably less than any heartbeat period defined in main program
+
 
     // ---------
     // variables
@@ -1125,12 +1138,12 @@ public:
     long _appFlags = 0;
 
     int _callStackDepth = 0;                                        // external function calls
+    int _stepCallStackLevel{ 0 };                                   // call stack levels at the moment of a step... command
+    int _stepFlowCtrlStackLevels{ 0 };                                // ALL flow control stack levels at the moment of a step... command
+
     int _programsInDebug{ 0 };
-    bool _stepCmdExecuted{ false };
-    bool _stepoverCmdExecuted{ false };
-    bool _stepoutCmdExecuted{ false };
-    int _stepCallStackLevel{0};
-    bool _debugCmdExecuted{false};
+    int _stepCmdExecuted{ db_continue };
+    bool _debugCmdExecuted{ false };
 
     char _arrayDimCount{ 0 };
     char* _programCounter{ nullptr };                                // pointer to token memory address (not token step n�)
@@ -1221,14 +1234,14 @@ public:
     Val lastResultValueFiFo[MAX_LAST_RESULT_DEPTH];                // keep last evaluation results
     char lastResultTypeFiFo[MAX_LAST_RESULT_DEPTH]{ value_noValue };
 
-    
+
     // evaluation stack
     // ----------------
 
     // maintains intermediate results of a calculation (execution phase). Implemented as a linked list
 
     LinkedList evalStack;
-    
+
 
     // flow control stack
     // ------------------
@@ -1246,17 +1259,17 @@ public:
     //   ... and _activeFunctionData now contains data about a 'new' main program level (any command line statements executed for debugging purposes) 
 
     // if execution of a NEW program is started while in debug mode, the whole process as described above is repeated. So, you can have more than one program being suspended
-    
+
     LinkedList flowCtrlStack;
-    
+
     // immediate mode command stack
     // ----------------------------
 
     // while at least one program is stopped (debug mode), the parsed code of the original command line from where execution started is pushed to a separate stack, and popped again ...
     // ...when the program resumes. If multiple programs are currently stopped (see: flow control stack), this stack will contain multiple entries
-    LinkedList immModeCommandStack;    
-    
-    
+    LinkedList immModeCommandStack;
+
+
     // callback functions and storage
 
     unsigned long _lastCallBackTime{ 0 }, _currenttime{ 0 }, _previousTime{ 0 };
@@ -1307,7 +1320,7 @@ public:
     bool allExternalFunctionsDefined(int& index);
     void prettyPrintInstructions(int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
     void printParsingResult(parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* const pErrorPos);
-    bool run(Stream* const pConsole, Stream** const pTerminal, int definedTerms);
+    bool run(Stream* const pConsole, Stream** const pTerminal, int definedTerms, bool coldStart);
     bool processCharacter(char c, bool& kill);
 
     bool setMainLoopCallback(void (*func)(bool& requistQuit, long& appFlags));                   // set callback functions
@@ -1345,6 +1358,7 @@ public:
     void clearEvalStack();
     void clearEvalStackLevels(int n);
     void clearFlowCtrlStack(execResult_type execResult = result_execOK, bool debugModeError = false);
+    void clearImmediateCmdStack();
 
     execResult_type makeFormatString();
     execResult_type deleteVarStringObject(LE_evalStack* pStackLvl);

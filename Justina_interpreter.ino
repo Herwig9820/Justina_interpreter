@@ -74,7 +74,7 @@ bool errorCondition = false, statusA = false, statusB = false, waitingForUser=fa
 
 Stream* pConsole = (Stream*)&Serial;                                                   // init pointer to Serial or TCP terminal
 
-Justina_interpreter* pcalculator{ nullptr };                                                    // pointer to Justina_interpreter object
+Justina_interpreter* pJustina{ nullptr };                                                    // pointer to Justina_interpreter object
 
 #if withTCP
 // connect as TCP server: create class object myTCPconnection
@@ -241,21 +241,21 @@ void loop() {
 
             // start interpreter: control will not return to here until the user quits, because it has its own 'main loop'
             withinApplication = true;                                                   // flag that control will be transferred to an 'application'
-            if (!interpreterInMemory) { pcalculator = new  Justina_interpreter(pConsole); }  // if interpreter not running: create an interpreter object on the heap
+            if (!interpreterInMemory) { pJustina = new  Justina_interpreter(pConsole); }  // if interpreter not running: create an interpreter object on the heap
 
             // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
             // this callback function will be called regularly, e.g. every time the interpreter reads a character
             heartbeatPeriod = 250;
-            pcalculator->setMainLoopCallback((&housekeeping));                    // set callback function to housekeeping routine in this .ino file (pass 'housekeeping' routine address to Justina_interpreter library)
+            pJustina->setMainLoopCallback((&housekeeping));                    // set callback function to housekeeping routine in this .ino file (pass 'housekeeping' routine address to Justina_interpreter library)
 
-            pcalculator->setUserFcnCallback((&userFcn_readPort));                // pass user function addresses to Justina_interpreter library (return value 'true' indicates success)
-            pcalculator->setUserFcnCallback((&userFcn_writePort));
-            pcalculator->setUserFcnCallback((&userFcn_togglePort));
+            pJustina->setUserFcnCallback((&userFcn_readPort));                // pass user function addresses to Justina_interpreter library (return value 'true' indicates success)
+            pJustina->setUserFcnCallback((&userFcn_writePort));
+            pJustina->setUserFcnCallback((&userFcn_togglePort));
 
-            interpreterInMemory = pcalculator->run(pConsole, pTerminal, terminalCount);                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
+            interpreterInMemory = pJustina->run(pConsole, pTerminal, terminalCount, !interpreterInMemory);                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
             if (!interpreterInMemory) {                                               // return from interpreter: remove from memory as well ?
-                delete pcalculator;                                                     // cleanup and delete calculator object itself
-                pcalculator = nullptr;                                                  // only to indicate memory is released
+                delete pJustina;                                                     // cleanup and delete calculator object itself
+                pJustina = nullptr;                                                  // only to indicate memory is released
             }
 
             heartbeatPeriod = 500;

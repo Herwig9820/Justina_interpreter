@@ -227,7 +227,7 @@ int LinkedList::getElementCount() {
 
 
 /***********************************************************
-*                      class Justina_interpreter                    *
+*                 class Justina_interpreter                *
 ***********************************************************/
 
 // -------------------
@@ -250,16 +250,6 @@ Justina_interpreter::Justina_interpreter(Stream* const pConsole) : _pConsole(pCo
     _quitJustinaAtEOF = false;
     _isPrompt = false;
 
-    // init 'machine' (not a complete reset, because this clears heap objects for this Justina_interpreter object, and there are none)
-    _programName[0] = '\0';
-    _programVarNameCount = 0;
-    _localVarCount = 0;
-    _localVarCountInFunction = 0;
-    _paramOnlyCountInFunction = 0;
-    _staticVarCount = 0;
-    _staticVarCountInFunction = 0;
-    _extFunctionCount = 0;
-
     _instructionCharCount = 0;
     _lineCount = 0;                             // taking into account new line after 'load program' command ////
     _flushAllUntilEOF = false;
@@ -270,67 +260,83 @@ Justina_interpreter::Justina_interpreter(Stream* const pConsole) : _pConsole(pCo
     _programSize = IMM_MEM_SIZE;
     _programCounter = _programStart;                          // start of 'immediate mode' program area
 
-    // name strings for variables and functions
-    identifierNameStringObjectCount = 0;
-    userVarNameStringObjectCount = 0;
-
-    // constant strings
-    parsedStringConstObjectCount = 0;
-    intermediateStringObjectCount = 0;
-    lastValuesStringObjectCount = 0;
-
-    // strings as value of variables
-    globalStaticVarStringObjectCount = 0;
-    userVarStringObjectCount = 0;
-    localVarStringObjectCount = 0;
-
-    // array storage 
-    globalStaticArrayObjectCount = 0;
-    userArrayObjectCount = 0;
-    localArrayObjectCount = 0;
-
-    // local variable storage area
-    _localVarValueAreaCount = 0;
-
-    // current last result FiFo depth (values currently stored)
-    _lastResultCount = 0;
-
-    // user call back alias storage
-
-    _userCBprocAliasSet_count = 0;    // note: _userCBprocStartSet_count: only reset when starting interpreter
-
-    // calculation result print
-    _dispWidth = _defaultPrintWidth, _dispNumPrecision = _defaultNumPrecision, _dispCharsToPrint = _defaultCharsToPrint, _dispFmtFlags = _defaultPrintFlags;
-    _dispNumSpecifier[0] = 'G'; _dispNumSpecifier[1] = '\0';
-    _dispIsIntFmt = false;
-    makeFormatString(_dispFmtFlags, false, _dispNumSpecifier, _dispNumberFmtString);       // for numbers
-    strcpy(_dispStringFmtString, "%*.*s%n");                                                           // for strings
-
-    // for print command
-    _printWidth = _defaultPrintWidth, _printNumPrecision = _defaultNumPrecision, _printCharsToPrint = _defaultCharsToPrint, _printFmtFlags = _defaultPrintFlags;
-    _printNumSpecifier[0] = 'G'; _printNumSpecifier[1] = '\0';
-
-    // display output settings
-    _promptAndEcho = 2, _printLastResult = true;
-
-    *_programStorage = '\0';                                    //  current end of program 
-    *_programStart = '\0';                                      //  current end of program (immediate mode)
-
     _callStackDepth = 0;
     _programsInDebug = 0;
-    _stepCmdExecuted = false;
-    _stepoverCmdExecuted = false;
-    _stepoutCmdExecuted = false;
+    _stepCmdExecuted = db_continue;
     _debugCmdExecuted = false;
 
     _currenttime = millis();
     _previousTime = _currenttime;
     _lastCallBackTime = _currenttime;
 
-    parsingStack.setListName("parsing ");
-    evalStack.setListName("eval    ");
-    flowCtrlStack.setListName("flowCtrl");
-    immModeCommandStack.setListName("cmd line");
+
+
+    bool coldStart = true;
+    if (coldStart) {
+    // init 'machine' (not a complete reset, because this clears heap objects for this Justina_interpreter object, and there are none)
+        *_programStorage = '\0';                                    //  current end of program 
+        *_programStart = '\0';                                      //  current end of program (immediate mode)
+        _programName[0] = '\0';
+
+        _programVarNameCount = 0;
+        _localVarCount = 0;
+        _localVarCountInFunction = 0;
+        _paramOnlyCountInFunction = 0;
+        _staticVarCount = 0;
+        _staticVarCountInFunction = 0;
+        _extFunctionCount = 0;
+
+        // name strings for variables and functions
+        identifierNameStringObjectCount = 0;
+        userVarNameStringObjectCount = 0;
+
+        // constant strings
+        parsedStringConstObjectCount = 0;
+        intermediateStringObjectCount = 0;
+        lastValuesStringObjectCount = 0;
+
+        // strings as value of variables
+        globalStaticVarStringObjectCount = 0;
+        userVarStringObjectCount = 0;
+        localVarStringObjectCount = 0;
+
+        // array storage 
+        globalStaticArrayObjectCount = 0;
+        userArrayObjectCount = 0;
+        localArrayObjectCount = 0;
+
+        // local variable storage area
+        _localVarValueAreaCount = 0;
+
+        // current last result FiFo depth (values currently stored)
+        _lastResultCount = 0;
+
+        // user call back alias storage
+
+        _userCBprocAliasSet_count = 0;    // note: _userCBprocStartSet_count: only reset when starting interpreter
+
+        parsingStack.setListName("parsing ");
+        evalStack.setListName("eval    ");
+        flowCtrlStack.setListName("flowCtrl");
+        immModeCommandStack.setListName("cmd line");
+
+        // calculation result print
+        _dispWidth = _defaultPrintWidth, _dispNumPrecision = _defaultNumPrecision, _dispCharsToPrint = _defaultCharsToPrint, _dispFmtFlags = _defaultPrintFlags;
+        _dispNumSpecifier[0] = 'G'; _dispNumSpecifier[1] = '\0';
+        _dispIsIntFmt = false;
+        makeFormatString(_dispFmtFlags, false, _dispNumSpecifier, _dispNumberFmtString);       // for numbers
+        strcpy(_dispStringFmtString, "%*.*s%n");                                                           // for strings
+
+        // for print command
+        _printWidth = _defaultPrintWidth, _printNumPrecision = _defaultNumPrecision, _printCharsToPrint = _defaultCharsToPrint, _printFmtFlags = _defaultPrintFlags;
+        _printNumSpecifier[0] = 'G'; _printNumSpecifier[1] = '\0';
+
+        // display output settings
+        _promptAndEcho = 2, _printLastResult = true;
+
+    }
+
+
 
     _pConsole->println();
     for (int i = 0; i < 13; i++) { _pConsole->print("*"); } _pConsole->print("____");
@@ -385,13 +391,14 @@ bool Justina_interpreter::setUserFcnCallback(void(*func) (const void** data, con
 // *   interpreter main loop   *
 // ----------------------------
 
-bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, int definedTerms) {
+bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, int definedTerms, bool coldStart) {
     bool kill{ false };                                       // kill is true: request from caller, kill is false: quit command executed
     bool quitNow{ false };
     char c;
 
     _programMode = false;                                   //// te checken of er dan nog iets moet gereset worden
-    _pConsole = pConsole;
+    *_programStart = '\0';                                      //  current end of program (immediate mode)
+    _pConsole = pConsole;//// ??? constructor toch ?
     _isPrompt = false;                 // end of parsing
     _pTerminal = pTerminal;
     _definedTerminals = definedTerms;
@@ -403,15 +410,18 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
             _previousTime = _currenttime;                                                   // keep up to date (needed during parsing and evaluation)
             _lastCallBackTime = _currenttime;
             _housekeepingCallback(quitNow, _appFlags);
-            if (quitNow) { kill = true; break; }
+            if (quitNow) { kill = true; break; }                // return true if kill request received from calling program OR Justina Quit command executed 
         }
 
         if (_pConsole->available() > 0) {     // if terminal character available for reading
             c = _pConsole->read();
-            quitNow = processCharacter(c, kill);        // process one character
+            quitNow = processCharacter(c, kill);        // process one character. Kill request from calling program and 
             if (quitNow) { ; break; }                        // user gave quit command
         }
     } while (true);
+
+    _appFlags = 0x0000L;
+    _housekeepingCallback(quitNow, _appFlags);      // only to pass application flags to caller
 
     if (kill) { _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
     if (_keepInMemory) { _pConsole->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
@@ -424,7 +434,6 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 // ----------------------------------
 
 bool Justina_interpreter::processCharacter(char c, bool& kill) {
-
     // process character
     static parseTokenResult_type result{};
     static bool requestMachineReset{ false };
@@ -626,7 +635,7 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
         // - the flow control stack maintains data about open block commands and open functions (call stack)
         // => skip stack elements for any command line open block commands and fetch the data for the function where control will resume when started again
 
-        if (_programsInDebug > 0) {
+        if ((_programsInDebug > 0) && (execResult != result_eval_kill) && (execResult != result_eval_quit)) {
             char* nextInstructionsPointer = _programCounter;
             OpenFunctionData* pDeepestOpenFunction = &_activeFunctionData;
 
@@ -644,7 +653,7 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
 
             _pConsole->println(); for (int i = 1; i <= _dispWidth; i++) { _pConsole->print("-"); }
             char msg[150] = "";
-            sprintf(msg, "\r\n*** DEBUG *** NEXT=> [%s] ", extFunctionNames[pDeepestOpenFunction->functionIndex]);
+            sprintf(msg, "\r\n*** DEBUG *** NEXT [%s] ", extFunctionNames[pDeepestOpenFunction->functionIndex]);
             _pConsole->print(msg);
             prettyPrintInstructions(10, nextInstructionsPointer);
 
