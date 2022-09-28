@@ -107,14 +107,11 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"If",              cmdcod_if,              cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockIf},
     {"Elseif",          cmdcod_elseif,          cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockIf_elseIf},
     {"Else",            cmdcod_else,            cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockIf_else},
+    {"End",             cmdcod_end,             cmd_noRestrictions,                                 0,0,    cmdPar_102,     cmdBlockGenEnd},                // closes inner open command block
 
     {"Break",           cmdcod_break,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockOpenBlock_loop},        // allowed if at least one open loop block (any level) 
     {"Continue",        cmdcod_continue,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockOpenBlock_loop },       // allowed if at least one open loop block (any level) 
     {"Return",          cmdcod_return,          cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockOpenBlock_function},    // allowed if currently an open function definition block 
-
-    {"End",             cmdcod_end,             cmd_noRestrictions,                                 0,0,    cmdPar_102,     cmdBlockGenEnd},                // closes inner open command block
-
-    {"Quit",            cmdcod_quit,            cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockNone},
 
 
     /* input and output commands */
@@ -134,14 +131,18 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
 
     {"Stop",            cmdcod_stop,            cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},
     {"Nop",             cmdcod_nop,             cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_102,     cmdBlockNone},                  // insert two bytes in program, do nothing
+    
     {"Go",              cmdcod_go,              cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
     {"Step",            cmdcod_step,            cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
     {"Stepout",         cmdcod_stepOut,         cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
     {"Stepover",        cmdcod_stepOver,        cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
     {"Blockstepout",    cmdcod_stepOutOfBlock,  cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
     {"Blockstepend",    cmdcod_stepToBlockEnd,  cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"Skip",            cmdcod_skip,            cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    
     {"Abort",           cmdcod_abort,           cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
     {"Debug",           cmdcod_debug,           cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"Quit",            cmdcod_quit,            cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockNone},
 
 
     /* user callback functions */
@@ -409,7 +410,7 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
 // -------------------------
 
 void Justina_interpreter::resetMachine(bool withUserVariables) {
-    
+
     // delete identifier name objects on the heap (variable names, external function names) 
     deleteIdentifierNameObjects(programVarNames, _programVarNameCount);
     deleteIdentifierNameObjects(extFunctionNames, _extFunctionCount);
@@ -432,10 +433,10 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
     deleteConstStringObjects(_programStorage);
     deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
 
-    while (immModeCommandStack.getElementCount() !=0){
+    while (immModeCommandStack.getElementCount() != 0) {
         // copy command line stack top to command line program storage and pop command line stack top
         _pImmediateCmdStackTop = immModeCommandStack.getLastListElement();
-        memcpy(_programStorage+PROG_MEM_SIZE, _pImmediateCmdStackTop, IMM_MEM_SIZE);
+        memcpy(_programStorage + PROG_MEM_SIZE, _pImmediateCmdStackTop, IMM_MEM_SIZE);
         immModeCommandStack.deleteListElement(_pImmediateCmdStackTop);
         deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
     }
@@ -445,7 +446,6 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
     _extFunctionBlockOpen = false;
 
     // init interpreter variables: AFTER deleting heap objects
-    _programsInDebug = 0;
     _programName[0] = '\0';
     _programVarNameCount = 0;
     _localVarCountInFunction = 0;
@@ -463,7 +463,7 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
         }
     }
 
-    _localVarValueAreaCount=0;
+    _localVarValueAreaCount = 0;
     _lastResultCount = 0;                                       // current last result FiFo depth (values currently stored)
 
     _userCBprocAliasSet_count = 0;   // note: _userCBprocStartSet_count: only reset when starting interpreter
@@ -493,7 +493,6 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
     *_programStart = '\0';                                      //  current end of program (immediate mode)
 
     _callStackDepth = 0;
-    _programsInDebug = 0;
     _stepCmdExecuted = db_continue;
     _debugCmdExecuted = false;
 
@@ -2432,7 +2431,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     // --------------------------------------------------------------------------------------------------------------------------------------
 
     bool variableStorageTBD = false;                                                                             // init: assume storage location was known already
-    bool isOpenFunctionStaticVariable{ false }, isOpenFunctionLocalVariable{ false },isOpenFunctionParam{false};
+    bool isOpenFunctionStaticVariable{ false }, isOpenFunctionLocalVariable{ false }, isOpenFunctionParam{ false };
     int openFunctionVar_valueIndex{};
 
     // 4.1 Currently parsing a FUNCTION...END block ? 
@@ -2546,7 +2545,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 // in debug mode (program stopped), the name could refer to a local or static variable of a function in the call stack (open function) 
 
                 // in debug mode now ? (if multiple programs in debug mode, only the last one stopped will be considered here
-                if (_programsInDebug > 0) {
+                if (immModeCommandStack.getElementCount() > 0) {
                     // check whether this is a local or static function variable reference of the deepest open function in the call stack
 
                     ////Serial.println("*** 4.2 - in debug mode");
@@ -2631,7 +2630,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     int valueIndex = (isOpenFunctionStaticVariable || isOpenFunctionLocalVariable || isOpenFunctionParam) ? openFunctionVar_valueIndex :
         isGlobalOrUserVar ? varNameIndex : programVarValueIndex[varNameIndex];
 
-    if (isOpenFunctionStaticVariable || isOpenFunctionLocalVariable || isOpenFunctionParam){variableStorageTBD = false;}       // debug mode: access function variable from the command line 
+    if (isOpenFunctionStaticVariable || isOpenFunctionLocalVariable || isOpenFunctionParam) { variableStorageTBD = false; }       // debug mode: access function variable from the command line 
 
     if (!variableStorageTBD) {  // not a variable definition but a variable use
         bool existingArray = false;
@@ -2769,14 +2768,23 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
     strncpy(pIdentifierName, pch, pNext - pch);                            // store identifier name in newly created character array
     pIdentifierName[pNext - pch] = '\0';                                                 // string terminating '\0'
 
-    // Declaring program name or aliases ? Store 
+// Declaring program name or aliases ? Store 
     if (_isProgramCmd) {
         strcpy(_programName, pIdentifierName);
     }
     else if (_isDeclCBcmd) {                                             // maximum 10 user functions     
-        if (_userCBprocAliasSet_count >= _userCBprocStartSet_count) { pNext = pch; result = result_allUserCBAliasesSet;  return false; }
-        for (int i = 0; i < _userCBprocAliasSet_count; i++) {
-            if (strcmp(_callbackUserProcAlias[i], pIdentifierName) == 0) { pNext = pch; result = result_userCBAliasRedeclared;  return false; }
+        if (_userCBprocAliasSet_count >= _userCBprocStartSet_count) { pNext = pch; result = result_allUserCBAliasesSet; } // still need to delete string object
+        for (int i = 0; i < _userCBprocAliasSet_count; i++) {                               // alias already declared ?
+            if (strcmp(_callbackUserProcAlias[i], pIdentifierName) == 0) { pNext = pch; result = result_userCBAliasRedeclared; }    // still need to delete string object
+        }
+
+        if ((result == result_allUserCBAliasesSet || result == result_userCBAliasRedeclared)) {
+#if printCreateDeleteHeapObjects
+            Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pIdentifierName - RAMSTART);
+#endif
+            delete[] pIdentifierName;
+            parsedStringConstObjectCount--;
+            return false;
         }
         strcpy(_callbackUserProcAlias[_userCBprocAliasSet_count++], pIdentifierName);                           // maximum 10 user functions                                   
     }
@@ -2829,7 +2837,7 @@ void Justina_interpreter::prettyPrintInstructions(int instructionCount, char* st
 
     // output: printable token (text)
     const int maxCharsPrettyToken{ 100 };           // must be long enough to hold one token in text (e.g. a variable name)
-    const int maxOutputLength{200};
+    const int maxOutputLength{ 200 };
     int outputLength = 0;                       // init: first position
 
     while (tokenType != tok_no_token) {                                                                    // for all tokens in token list
@@ -2979,8 +2987,9 @@ void Justina_interpreter::prettyPrintInstructions(int instructionCount, char* st
 
         int tokenSourceLength = strlen(prettyToken);
         if (isSemicolon) {
+            if (multipleInstructions && isFirstInstruction) { prettyToken[1] = '\0'; }  // no space after semicolon
             if ((nextTokenType != tok_no_token) && (allInstructions || (instructionCount > 1))) { _pConsole->print(prettyToken); }
-            if (isFirstInstruction && multipleInstructions){_pConsole->print(" ==>>  "); }
+            if (isFirstInstruction && multipleInstructions) { _pConsole->print("]   ( ==>> "); }
         }
 
         else { _pConsole->print(prettyToken); }              // not a semicolon
@@ -3012,7 +3021,7 @@ void Justina_interpreter::prettyPrintInstructions(int instructionCount, char* st
     }
 
     // exit
-    _pConsole->println(multipleInstructions ? " ..." : ""); _isPrompt = false;
+    _pConsole->println(multipleInstructions ? " ...)" : ""); _isPrompt = false;
 }
 
 

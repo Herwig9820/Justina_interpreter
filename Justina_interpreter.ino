@@ -47,7 +47,7 @@ bool quitRequested = false;
 // ---------------------------------------
 
 constexpr pin_size_t HEARTBEAT_PIN{ 9 }; ////                                               // indicator leds
-constexpr pin_size_t ERROR_PIN{ 10 };                                              
+constexpr pin_size_t ERROR_PIN{ 10 };
 constexpr pin_size_t STATUS_A_PIN{ 11 };
 constexpr pin_size_t STATUS_B_PIN{ 12 };
 constexpr pin_size_t WAIT_FOR_USER_PIN{ 13 };
@@ -70,7 +70,7 @@ bool console_isRemoteTerm{ false };                                             
 bool withinApplication{ false };                                                       // init: currently not within an application
 bool interpreterInMemory{ false };                                                     // init: interpreter is not in memory
 
-bool errorCondition = false, statusA = false, statusB = false, waitingForUser=false;
+bool errorCondition = false, statusA = false, statusB = false, waitingForUser = false;
 
 Stream* pConsole = (Stream*)&Serial;                                                   // init pointer to Serial or TCP terminal
 
@@ -240,19 +240,21 @@ void loop() {
             quitRequested = false;
 
             // start interpreter: control will not return to here until the user quits, because it has its own 'main loop'
-            withinApplication = true;                                                   // flag that control will be transferred to an 'application'
-            if (!interpreterInMemory) { pJustina = new  Justina_interpreter(pConsole); }  // if interpreter not running: create an interpreter object on the heap
-
-            // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
-            // this callback function will be called regularly, e.g. every time the interpreter reads a character
             heartbeatPeriod = 250;
-            pJustina->setMainLoopCallback((&housekeeping));                    // set callback function to housekeeping routine in this .ino file (pass 'housekeeping' routine address to Justina_interpreter library)
+            withinApplication = true;                                                   // flag that control will be transferred to an 'application'
+            if (!interpreterInMemory) {
+                pJustina = new  Justina_interpreter(pConsole);// if interpreter not running: create an interpreter object on the heap
 
-            pJustina->setUserFcnCallback((&userFcn_readPort));                // pass user function addresses to Justina_interpreter library (return value 'true' indicates success)
-            pJustina->setUserFcnCallback((&userFcn_writePort));
-            pJustina->setUserFcnCallback((&userFcn_togglePort));
+                // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
+                // this callback function will be called regularly, e.g. every time the interpreter reads a character
+                pJustina->setMainLoopCallback((&housekeeping));                    // set callback function to housekeeping routine in this .ino file (pass 'housekeeping' routine address to Justina_interpreter library)
 
-            interpreterInMemory = pJustina->run(pConsole, pTerminal, terminalCount, !interpreterInMemory);                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
+                pJustina->setUserFcnCallback((&userFcn_readPort));                // pass user function addresses to Justina_interpreter library (return value 'true' indicates success)
+                pJustina->setUserFcnCallback((&userFcn_writePort));
+                pJustina->setUserFcnCallback((&userFcn_togglePort));
+            }
+            interpreterInMemory = pJustina->run(pConsole, pTerminal, terminalCount);                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
+
             if (!interpreterInMemory) {                                               // return from interpreter: remove from memory as well ?
                 delete pJustina;                                                     // cleanup and delete calculator object itself
                 pJustina = nullptr;                                                  // only to indicate memory is released
@@ -344,7 +346,7 @@ void housekeeping(bool& requestQuit, long& appFlags) {
 
     heartbeat();                                                                        // blink a led to show program is running
 
-    if (errorCondition ^ (appFlags & 0x0001L)) {errorCondition = (appFlags & 0x0001L);  digitalWrite(ERROR_PIN, errorCondition); }  // only write if change detected
+    if (errorCondition ^ (appFlags & 0x0001L)) { errorCondition = (appFlags & 0x0001L);  digitalWrite(ERROR_PIN, errorCondition); }  // only write if change detected
     if (statusA ^ (appFlags & 0x0010L)) { statusA = (appFlags & 0x0010L);  digitalWrite(STATUS_A_PIN, statusA); }  // only write if change detected
     if (statusB ^ (appFlags & 0x0020L)) { statusB = (appFlags & 0x0020L);  digitalWrite(STATUS_B_PIN, statusB); }  // only write if change detected
     if (waitingForUser ^ (appFlags & 0x0040L)) { waitingForUser = (appFlags & 0x0040L);  digitalWrite(WAIT_FOR_USER_PIN, waitingForUser); }  // only write if change detected
@@ -372,7 +374,7 @@ void housekeeping(bool& requestQuit, long& appFlags) {
                 switchConsole();                                                        // set console to local
             }
         }
-    }
+}
 #endif
 }
 

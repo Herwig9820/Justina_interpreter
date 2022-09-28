@@ -235,7 +235,8 @@ int LinkedList::getElementCount() {
 // -------------------
 
 Justina_interpreter::Justina_interpreter(Stream* const pConsole) : _pConsole(pConsole) {
-    _pConsole->println("Justina: starting...");
+    _coldStart = true;
+
     _housekeepingCallback = nullptr;
     for (int i = 0; i < _userCBarrayDepth; i++) { _callbackUserProcStart[i] = nullptr; }
     _userCBprocStartSet_count = 0;
@@ -261,7 +262,6 @@ Justina_interpreter::Justina_interpreter(Stream* const pConsole) : _pConsole(pCo
     _programCounter = _programStart;                          // start of 'immediate mode' program area
 
     _callStackDepth = 0;
-    _programsInDebug = 0;
     _stepCmdExecuted = db_continue;
     _debugCmdExecuted = false;
 
@@ -338,16 +338,6 @@ Justina_interpreter::Justina_interpreter(Stream* const pConsole) : _pConsole(pCo
 
 
 
-    _pConsole->println();
-    for (int i = 0; i < 13; i++) { _pConsole->print("*"); } _pConsole->print("____");
-    for (int i = 0; i < 4; i++) { _pConsole->print("*"); } _pConsole->print("__");
-    for (int i = 0; i < 14; i++) { _pConsole->print("*"); } _pConsole->print("_");
-    for (int i = 0; i < 10; i++) { _pConsole->print("*"); }_pConsole->println();
-
-    _pConsole->print("    "); _pConsole->println(ProductName);
-    _pConsole->print("    "); _pConsole->println(LegalCopyright);
-    _pConsole->print("    Version: "); _pConsole->print(ProductVersion); _pConsole->print(" ("); _pConsole->print(BuildDate); _pConsole->println(")");
-    for (int i = 0; i < 48; i++) { _pConsole->print("*"); } _pConsole->println();
 };
 
 
@@ -391,10 +381,21 @@ bool Justina_interpreter::setUserFcnCallback(void(*func) (const void** data, con
 // *   interpreter main loop   *
 // ----------------------------
 
-bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, int definedTerms, bool coldStart) {
+bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, int definedTerms) {
     bool kill{ false };                                       // kill is true: request from caller, kill is false: quit command executed
     bool quitNow{ false };
     char c;
+
+    _pConsole->println();
+    for (int i = 0; i < 13; i++) { _pConsole->print("*"); } _pConsole->print("____");
+    for (int i = 0; i < 4; i++) { _pConsole->print("*"); } _pConsole->print("__");
+    for (int i = 0; i < 14; i++) { _pConsole->print("*"); } _pConsole->print("_");
+    for (int i = 0; i < 10; i++) { _pConsole->print("*"); }_pConsole->println();
+
+    _pConsole->print("    "); _pConsole->println(ProductName);
+    _pConsole->print("    "); _pConsole->println(LegalCopyright);
+    _pConsole->print("    Version: "); _pConsole->print(ProductVersion); _pConsole->print(" ("); _pConsole->print(BuildDate); _pConsole->println(")");
+    for (int i = 0; i < 48; i++) { _pConsole->print("*"); } _pConsole->println();
 
     _programMode = false;                                   //// te checken of er dan nog iets moet gereset worden
     *_programStart = '\0';                                      //  current end of program (immediate mode)
@@ -402,6 +403,8 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     _isPrompt = false;                 // end of parsing
     _pTerminal = pTerminal;
     _definedTerminals = definedTerms;
+
+    _coldStart = false;             // can be used if needed in this procedure, to determine whether this was a cold or warm start
 
     do {
         // while waiting for characters, continuously do a housekeeping callback (if function defined)
@@ -426,6 +429,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     if (kill) { _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
     if (_keepInMemory) { _pConsole->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
     _quitJustinaAtEOF = false;         // if interpreter stays in memory: re-init
+    
     return _keepInMemory;
 }
 
@@ -623,7 +627,7 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
 
             // parsing OK message (program mode only - no message in immediate mode) or error message 
             printParsingResult(result, funcNotDefIndex, _instruction, _lineCount, pErrorPos);
-            (_programsInDebug) ? (_appFlags |= 0x0030L) : (_appFlags &= ~0x0030L);
+            (immModeCommandStack.getElementCount()>0) ? (_appFlags |= 0x0030L) : (_appFlags &= ~0x0030L);
         }
         else { _pConsole->println(); }
 
@@ -635,7 +639,7 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
         // - the flow control stack maintains data about open block commands and open functions (call stack)
         // => skip stack elements for any command line open block commands and fetch the data for the function where control will resume when started again
 
-        if ((_programsInDebug > 0) && (execResult != result_eval_kill) && (execResult != result_eval_quit)) {
+        if ((immModeCommandStack.getElementCount() > 0) && (execResult != result_eval_kill) && (execResult != result_eval_quit)) {
             char* nextInstructionsPointer = _programCounter;
             OpenFunctionData* pDeepestOpenFunction = &_activeFunctionData;
 
@@ -653,12 +657,12 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
 
             _pConsole->println(); for (int i = 1; i <= _dispWidth; i++) { _pConsole->print("-"); }
             char msg[150] = "";
-            sprintf(msg, "\r\n*** DEBUG *** NEXT [%s] ", extFunctionNames[pDeepestOpenFunction->functionIndex]);
+            sprintf(msg, "\r\n*** DEBUG *** NEXT [%s: ", extFunctionNames[pDeepestOpenFunction->functionIndex]);
             _pConsole->print(msg);
             prettyPrintInstructions(10, nextInstructionsPointer);
 
-            if (_programsInDebug > 1) {
-                sprintf(msg, "*** this + %d other programs STOPPED ***", _programsInDebug - 1);
+            if (immModeCommandStack.getElementCount() > 1) {
+                sprintf(msg, "*** this + %d other programs STOPPED ***", immModeCommandStack.getElementCount() - 1);
                 _pConsole->println(msg);
             }
         }

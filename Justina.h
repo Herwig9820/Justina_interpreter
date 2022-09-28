@@ -162,6 +162,7 @@ public:
         cmdcod_stepOver,
         cmdcod_stepOutOfBlock,
         cmdcod_stepToBlockEnd,
+        cmdcod_skip,
         cmdcod_debug,
         cmdcod_nop,
         cmdcod_quit,
@@ -459,16 +460,16 @@ public:
         // abort, kill, quit, debug
         result_noProgramStopped = 3400,        // 'Go' command not allowed because not in debug mode
         result_notWithinBlock,
+        result_skipNotAllowedHere,
 
         // MANDATORY LAST range of errors: events
         result_eval_startOfEvents = 3500,
 
-        // abort, kill, quit, debug: EVENTS (first handled as errors - which they are not - initially following the same flow)
+        // abort, kill, quit, stop, skip debug: EVENTS (first handled as errors - which they are not - initially following the same flow)
         result_eval_stopForDebug = result_eval_startOfEvents,    // 'Stop' command executed (from inside a program only): this enters debug mode
         result_eval_abort,                                  // abort running program (return to Justina prompt)
         result_eval_kill,                                   // caller requested to exit Justina interpreter
-        result_eval_quit,                                   // 'Quit' command executed (exit Justina interpreter)
-
+        result_eval_quit                                   // 'Quit' command executed (exit Justina interpreter)
     };
 
     enum dbType_type {
@@ -477,7 +478,8 @@ public:
         db_stepOut,
         db_stepOver,
         db_stepOutOfBlock,
-        db_stepToBlockEnd
+        db_stepToBlockEnd,
+        db_skip
     };
 
 public:
@@ -922,7 +924,7 @@ public:
     static constexpr char cmd_skipDuringExec = 0x80;
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[42];                          // keyword names
+    static const ResWordDef _resWords[43];                          // keyword names
     static const FuncDef _functions[22];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
@@ -1054,7 +1056,6 @@ public:
 
     Justina_interpreter* _pInterpreter;
 
-public:
     const char* _pCmdAllowedParTypes;
     int _cmdParSpecColumn{ 0 };
     int _cmdArgNo{ 0 };
@@ -1065,7 +1066,7 @@ public:
     int _blockLevel = 0;                                     // current number of open blocks
     LinkedList parsingStack;                                      // during parsing: linked list keeping track of open parentheses and open blocks
 
-
+    bool _coldStart{};
 
 
 
@@ -1141,7 +1142,6 @@ public:
     int _stepCallStackLevel{ 0 };                                   // call stack levels at the moment of a step... command
     int _stepFlowCtrlStackLevels{ 0 };                                // ALL flow control stack levels at the moment of a step... command
 
-    int _programsInDebug{ 0 };
     int _stepCmdExecuted{ db_continue };
     bool _debugCmdExecuted{ false };
 
@@ -1320,7 +1320,7 @@ public:
     bool allExternalFunctionsDefined(int& index);
     void prettyPrintInstructions(int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
     void printParsingResult(parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* const pErrorPos);
-    bool run(Stream* const pConsole, Stream** const pTerminal, int definedTerms, bool coldStart);
+    bool run(Stream* const pConsole, Stream** const pTerminal, int definedTerms);
     bool processCharacter(char c, bool& kill);
 
     bool setMainLoopCallback(void (*func)(bool& requistQuit, long& appFlags));                   // set callback functions
