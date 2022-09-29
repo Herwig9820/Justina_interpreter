@@ -348,6 +348,9 @@ public:
         result_varDefinedAsArray,
         result_varDefinedAsScalar,
         result_varControlVarInUse,
+        result_illegalInDeclaration,
+        result_illegalInProgram,
+        result_noOpenFunction,
 
         // array errors
         result_arrayDefNoDims = 1700,
@@ -388,7 +391,6 @@ public:
         result_noOpenBlock,
         result_noBlockEnd,
         result_noOpenLoop,
-        result_noOpenFunction,
         result_notAllowedInThisOpenBlock,
         result_wrongBlockSequence,
 
@@ -952,6 +954,9 @@ public:
     // bit b3: variable is an array (and not a scalar)
     static constexpr uint8_t var_isArray = 0x08;                     // stored with variable attributes and in 'variable' token. Can not be changed at runtime
 
+    // bit 0 (maintain in token only): 'forced function variable in debug mode' (for pretty printing only)
+    static constexpr uint8_t var_isForcedFunctionVar = 1;
+
     // bits b210: value type 
     // - PARSED constants: value type bits are maintained in the 'constant' token (but not in same bit positions)
     // - INTERMEDIATE constants (execution only) and variables: value type is maintained together with variable / intermediate constant data (per variable, array or constant) 
@@ -996,7 +1001,7 @@ public:
     int _terminalCount;
 
     bool _isProgramCmd = false;
-    bool _isAnyExtFunctionCmd = false;                             // FUNCTION command is being parsed (not the complete function)
+    bool _isExtFunctionCmd = false;                             // FUNCTION command is being parsed (not the complete function)
     bool _isGlobalOrUserVarCmd = false;                                // VAR command is being parsed
     bool _isLocalVarCmd = false;                                // LOCAL command is being parsed
     bool _isStaticVarCmd = false;                               // STATIC command is being parsed

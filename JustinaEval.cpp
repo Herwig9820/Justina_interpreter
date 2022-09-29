@@ -28,7 +28,7 @@
 
 #include "Justina.h"
 
-#define printCreateDeleteHeapObjects 1
+#define printCreateDeleteHeapObjects 0
 #define printProcessedTokens 0
 #define debugPrint 0
 
