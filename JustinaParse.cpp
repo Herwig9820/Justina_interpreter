@@ -2249,7 +2249,10 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
         extFunctionData[index].pExtFunctionStartToken = _programCounter;            // store pointer to function start token 
         // global program variable name usage array: reset in-procedure reference flags to be able to keep track of in-procedure variable value types used
         // KEEP all other settings
-        for (int i = 0; i < _programVarNameCount; i++) { globalVarType[i] = (globalVarType[i] & ~var_scopeMask) | var_scopeToSpecify; }
+        for (int i = 0; i < _programVarNameCount; i++) { globalVarType[i] = (globalVarType[i] & ~var_scopeMask) | var_scopeToSpecify; }       // indicates 'variable with this name has not been referred to in current procedure'
+        for (int i = 0; i < _userVarCount; i++) { userVarType[i] = (userVarType[i] & ~var_scopeMask) | var_scopeToSpecify; }
+
+
         _paramOnlyCountInFunction = 0;             // reset local and parameter variable count in function 
         _localVarCountInFunction = 0;             // reset local and parameter variable count in function
         _staticVarCountInFunction = 0;             // reset static variable count in function
@@ -2322,7 +2325,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
 
     if (!isalpha(pNext[0]) && (pNext[0] != '#')) { return true; }                                       // first character is not a letter ? Then it's not a variable name (it can still be something else)
     if (pNext[0] == '#') {
-        if (_programMode ) { pNext = pch; result = result_illegalInProgram; return false; }
+        if (_programMode) { pNext = pch; result = result_illegalInProgram; return false; }
         if (_isAnyVarCmd) { pNext = pch; result = result_illegalInDeclaration; return false; }
         else {
             db_functionVarOnly = true; ++pNext;    // record that a 'function variable only' prefix was found 
@@ -2330,7 +2333,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
         }
     }
     while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                   // do until first character after alphanumeric token (can be anything, including '\0')
-    char* pName = pch +(db_functionVarOnly ? 1:0);
+    char* pName = pch + (db_functionVarOnly ? 1 : 0);
 
 
     // 2. Is a variable name allowed here ? 
@@ -2397,14 +2400,13 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
 
     // init: program parsing: assume program variable name for now; immediate mode parsing: assume user variable name
     bool isProgramVar = (_programMode || db_functionVarOnly);
-    bool isUserVar = !isProgramVar;
     int activeNameRange = primaryNameRange;
 
     // check if variable exists already (program mode OR '#' prefix found (debug imm. mode): as program variable; immediate mode: as user variable)
     // if a variable DEFINITION, then create variable name if it does not exist yet
     // note: this only concerns the NAME, not yet the actual variable (program variables: local, static, param and global variables can all share the same name)
     createNewName = _isExtFunctionCmd || _isAnyVarCmd;
-    varNameIndex = getIdentifier(pvarNames[primaryNameRange], *varNameCount[primaryNameRange], maxVarNames[primaryNameRange], pName, pNext - pName, createNewName, isUserVar);
+    varNameIndex = getIdentifier(pvarNames[primaryNameRange], *varNameCount[primaryNameRange], maxVarNames[primaryNameRange], pName, pNext - pName, createNewName, !isProgramVar);
 
     if (_isExtFunctionCmd || _isAnyVarCmd) {               // variable or parameter DEFINITION: if name didn't exist, it should have been created now
         if (varNameIndex == -1) { pNext = pch; result = result_maxVariableNamesReached; return false; }      // name still does not exist: error
@@ -2412,7 +2414,9 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
         // variable name is new: clear all variable value type flags and indicate 'qualifier not determined yet'
         // variable value type (array, float or string) will be set later
         if (createNewName) {
-            varType[primaryNameRange][varNameIndex] = var_scopeToSpecify;      // new name was created now    //// nodig ??? geen mask ???
+            
+            varType[primaryNameRange][varNameIndex] = var_scopeToSpecify;      // new name was created now    
+            
             // NEW user variables only: if array definition, then decrease variable count by 1 for now, and increase by 1 again when array dim spec is validated
             // this ensures that a scalar is not created when an error is encountered later within dim spec parsing
             if (!isProgramVar && isArray) { (*varNameCount[primaryNameRange])--; }    // the variable is not considered 'created' yet
@@ -2451,12 +2455,18 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     if (_extFunctionBlockOpen) {
         // first use of a particular variable NAME in a function ?  (in a variable declaration, or just using the name in an expression)
         bool isFirstVarNameRefInFnc = (((uint8_t)varType[activeNameRange][varNameIndex] & var_scopeMask) == var_scopeToSpecify);
+        
+        Serial.print("\nis first var ref in function ? "); Serial.println(isFirstVarNameRefInFnc);
+        
         if (isFirstVarNameRefInFnc) {                                                                         // variable not yet referenced within currently parsed procedure
 
             // determine variable qualifier
             // if a variable definition statement: set scope to parameter, local or static (global and usar variable definition: not possible in a function) 
             // if a variable reference: we will determine the qualifier in a moment 
+            
+            //// uint8_t varScope = _isExtFunctionCmd ? var_isParamInFunc : _isLocalVarCmd ? var_isLocalInFunc : _isStaticVarCmd ? var_isStaticInFunc : var_scopeToSpecify;
             uint8_t varScope = _isExtFunctionCmd ? var_isParamInFunc : _isLocalVarCmd ? var_isLocalInFunc : _isStaticVarCmd ? var_isStaticInFunc : var_scopeToSpecify;
+            
             varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~var_scopeMask) | varScope;     //set scope bits (will be stored in token AND needed during parsing current procedure)
 
             if (_isStaticVarCmd) {                                              // definition of NEW static variable for function
@@ -2514,6 +2524,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 }
                 // existing global or user variable
                 varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~var_scopeMask) | (isProgramVar ? var_isGlobal : var_isUser);
+                Serial.println("  var type set as global prog or user");
             }                                                                                               // IS the use of an EXISTING global or user variable, within a function
 
         }
@@ -2533,8 +2544,8 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
         // concentrate on global program variables and user variables first (not yet on function variables)
         // global program variable or user variable has been declared already ? (storage exists for it)
         globalVarStorMissingOrIsNotGlobal = !(varType[activeNameRange][varNameIndex] & (isProgramVar ? var_nameHasGlobalValue : var_isUser));
-        if (db_functionVarOnly){ globalVarStorMissingOrIsNotGlobal = true;}                    // because it's not a global variable
-        
+        if (db_functionVarOnly) { globalVarStorMissingOrIsNotGlobal = true; }                    // because it's not a global variable
+
         // qualifier 'var_isGlobal' (program variables): set it now, because could have been cleared by previously parsed function (will ultimately be stored in token)
         varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~var_scopeMask) | (isProgramVar ? var_isGlobal : var_isUser);
 
@@ -2732,7 +2743,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     ////Serial.println("*** 6");
     // 6. Store token in program memory
     // --------------------------------
-    
+
     TokenIsVariable* pToken = (TokenIsVariable*)_programCounter;
     pToken->tokenType = tok_isVariable | (sizeof(TokenIsVariable) << 4);
     // identInfo only contains variable scope info (parameter, local, static, global), 'is array' flag and 'is forced function variable in debug mode' flag (for printing only) 
@@ -2808,10 +2819,10 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
             return false;
         }
         strcpy(_callbackUserProcAlias[_userCBprocAliasSet_count++], pIdentifierName);                           // maximum 10 user functions                                   
-    }
+        }
 
 
-    // expression syntax check 
+        // expression syntax check 
     _thisLvl_lastIsVariable = false;
 
     // command argument constraints check : reset for next command parameter
@@ -2836,12 +2847,12 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
     *_programCounter = '\0';                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
-}
+    }
 
 
-// -----------------------------------------
-// *   pretty print a parsed instruction   *
-// -----------------------------------------
+    // -----------------------------------------
+    // *   pretty print a parsed instruction   *
+    // -----------------------------------------
 void Justina_interpreter::prettyPrintInstructions(int instructionCount, char* startToken, char* errorProgCounter, int* sourceErrorPos) {
 
     // input: stored tokens
