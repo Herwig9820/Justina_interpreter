@@ -2537,6 +2537,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 }
                 // existing global or user variable
                 varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~var_scopeMask) | (isProgramVar ? var_isGlobal : var_isUser);
+                Serial.println("  var type set as global prog or user");
             }                                                                                               // IS the use of an EXISTING global or user variable, within a function
 
         }
@@ -2833,10 +2834,10 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
             return false;
         }
         strcpy(_callbackUserProcAlias[_userCBprocAliasSet_count++], pIdentifierName);                           // maximum 10 user functions                                   
-    }
+        }
 
 
-    // expression syntax check 
+        // expression syntax check 
     _thisLvl_lastIsVariable = false;
 
     // command argument constraints check : reset for next command parameter
@@ -2861,12 +2862,12 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
     *_programCounter = '\0';                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
-}
+    }
 
 
-// -----------------------------------------
-// *   pretty print a parsed instruction   *
-// -----------------------------------------
+    // -----------------------------------------
+    // *   pretty print a parsed instruction   *
+    // -----------------------------------------
 void Justina_interpreter::prettyPrintInstructions(int instructionCount, char* startToken, char* errorProgCounter, int* sourceErrorPos) {
 
     // input: stored tokens
