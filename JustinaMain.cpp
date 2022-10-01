@@ -667,7 +667,6 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
             }
         }
 
-
         if (!_programMode && (_promptAndEcho != 0)) { _pConsole->print("Justina> "); _isPrompt = true; }                 // print new prompt
 
         bool wasReset = false;      // init
@@ -693,7 +692,6 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
             deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);  // always
             *_programStart = '\0';                                      //  current end of program (immediate mode)
         }
-
 
         if (!wasReset) {
             parsingStack.deleteList();                      // safety
@@ -742,6 +740,5 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
 
 
     }
-
     return false;  // and wait for next character
 }
