@@ -307,6 +307,7 @@ public:
         result_constantValueExpected = 1200,
         result_variableNameExpected,
         result_functionDefExpected,
+        result_assignmentOrTerminatorExpected, 
 
         // used memory errors
         result_maxVariableNamesReached = 1300,
@@ -362,6 +363,7 @@ public:
         result_arrayParamExpected,
         result_arrayInit_emptyStringExpected,
         result_arrayDimNotValid,
+        result_noValidInitializer,
 
         // command errors 
         result_resWordExpectedAsCmdPar = 1800,
@@ -1069,6 +1071,7 @@ public:
     uint8_t _lastTokenGroup_sequenceCheck_bit = 0;                   // bits indicate which token group the last token parsed belongs to          
     bool _extFunctionBlockOpen = false;                         // commands within FUNCTION...END block are being parsed (excluding END command)
     int _blockLevel = 0;                                     // current number of open blocks
+    
     LinkedList parsingStack;                                      // during parsing: linked list keeping track of open parentheses and open blocks
 
     bool _coldStart{};
@@ -1079,28 +1082,30 @@ public:
     // counting of heap objects (note: linked list element count is maintained within the linked list objects)
 
     // name strings for variables and functions
-    int identifierNameStringObjectCount = 0;
-    int userVarNameStringObjectCount = 0;
+    int _identifierNameStringObjectCount = 0, _identifierNameStringObjectErrors =0;
+    int _userVarNameStringObjectCount = 0, _userVarNameStringObjectErrors = 0;
 
     // constant strings
-    int parsedStringConstObjectCount = 0;
-    int intermediateStringObjectCount = 0;
-    int lastValuesStringObjectCount = 0;
+    int _parsedStringConstObjectCount = 0, _parsedStringConstObjectErrors=0;
+    int _intermediateStringObjectCount = 0, _intermediateStringObjectErrors=0;
+    int _lastValuesStringObjectCount = 0, _lastValuesStringObjectErrors=0;
 
     // strings as value of variables
-    int globalStaticVarStringObjectCount = 0;
-    int userVarStringObjectCount = 0;
-    int localVarStringObjectCount = 0;
+    int _globalStaticVarStringObjectCount = 0, _globalStaticVarStringObjectErrors=0;
+    int _userVarStringObjectCount = 0, _userVarStringObjectErrors=0;
+    int _localVarStringObjectCount = 0, _localVarStringObjectErrors=0;
 
     // array storage 
-    int globalStaticArrayObjectCount = 0;
-    int userArrayObjectCount = 0;
-    int localArrayObjectCount = 0;
+    int _globalStaticArrayObjectCount = 0, _globalStaticArrayObjectErrors=0;
+    int _userArrayObjectCount = 0, _userArrayObjectErrors=0;
+    int _localArrayObjectCount = 0, _localArrayObjectErrors=0;
 
     // local variable storage area
-    int _localVarValueAreaCount = 0;
+    int _localVarValueAreaCount = 0, _localVarValueAreaErrors=0;
 
 
+    
+    
     bool _atLineStart = true;
     bool _lastValueIsStored = false;
 
@@ -1314,6 +1319,8 @@ public:
 
 
     void resetMachine(bool withUserVariables);
+    void initInterpreterVariables(bool withUserVariables);
+    void danglingPointerCheckAndCount(bool withUserVariables);
     void deleteIdentifierNameObjects(char** pIdentArray, int identifiersInUse, bool isUserVar = false);
     void deleteArrayElementStringObjects(Justina_interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false);
     void deleteVariableValueObjects(Justina_interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false);

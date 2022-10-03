@@ -235,18 +235,19 @@ int LinkedList::getElementCount() {
 // -------------------
 
 Justina_interpreter::Justina_interpreter(Stream* const pConsole) : _pConsole(pConsole) {
-    _coldStart = true;
+    
+    // settings to be initialized when cold starting interpreter only
+    // --------------------------------------------------------------
+   
+   _coldStart = true;
 
     _housekeepingCallback = nullptr;
     for (int i = 0; i < _userCBarrayDepth; i++) { _callbackUserProcStart[i] = nullptr; }
-    _userCBprocStartSet_count = 0;
+    _userCBprocStartSet_count = 0;          
 
     _resWordCount = (sizeof(_resWords)) / sizeof(_resWords[0]);
     _functionCount = (sizeof(_functions)) / sizeof(_functions[0]);
     _terminalCount = (sizeof(_terminals)) / sizeof(_terminals[0]);
-
-    _blockLevel = 0;
-    _extFunctionBlockOpen = false;
 
     _quitJustinaAtEOF = false;
     _isPrompt = false;
@@ -257,87 +258,26 @@ Justina_interpreter::Justina_interpreter(Stream* const pConsole) : _pConsole(pCo
     _StarCmdCharCount = 0;
 
     _programMode = false;
-    _programStart = _programStorage + PROG_MEM_SIZE;            // start in immediate mode
-    _programSize = IMM_MEM_SIZE;
-    _programCounter = _programStart;                          // start of 'immediate mode' program area
-
-    _callStackDepth = 0;
-    _stepCmdExecuted = db_continue;
-    _debugCmdExecuted = false;
-
     _currenttime = millis();
     _previousTime = _currenttime;
     _lastCallBackTime = _currenttime;
 
+    parsingStack.setListName("parsing ");
+    evalStack.setListName("eval    ");
+    flowCtrlStack.setListName("flowCtrl");
+    immModeCommandStack.setListName("cmd line");
+
+    // purely execution related counters
+    _intermediateStringObjectCount = 0;
+    _localVarValueAreaCount = 0;
+    _localVarStringObjectCount = 0;
+    _localArrayObjectCount = 0;
 
 
-    bool coldStart = true;
-    if (coldStart) {
-    // init 'machine' (not a complete reset, because this clears heap objects for this Justina_interpreter object, and there are none)
-        *_programStorage = '\0';                                    //  current end of program 
-        *_programStart = '\0';                                      //  current end of program (immediate mode)
-        _programName[0] = '\0';
-
-        _programVarNameCount = 0;
-        _localVarCount = 0;
-        _localVarCountInFunction = 0;
-        _paramOnlyCountInFunction = 0;
-        _staticVarCount = 0;
-        _staticVarCountInFunction = 0;
-        _extFunctionCount = 0;
-
-        // name strings for variables and functions
-        identifierNameStringObjectCount = 0;
-        userVarNameStringObjectCount = 0;
-
-        // constant strings
-        parsedStringConstObjectCount = 0;
-        intermediateStringObjectCount = 0;
-        lastValuesStringObjectCount = 0;
-
-        // strings as value of variables
-        globalStaticVarStringObjectCount = 0;
-        userVarStringObjectCount = 0;
-        localVarStringObjectCount = 0;
-
-        // array storage 
-        globalStaticArrayObjectCount = 0;
-        userArrayObjectCount = 0;
-        localArrayObjectCount = 0;
-
-        // local variable storage area
-        _localVarValueAreaCount = 0;
-
-        // current last result FiFo depth (values currently stored)
-        _lastResultCount = 0;
-
-        // user call back alias storage
-
-        _userCBprocAliasSet_count = 0;    // note: _userCBprocStartSet_count: only reset when starting interpreter
-
-        parsingStack.setListName("parsing ");
-        evalStack.setListName("eval    ");
-        flowCtrlStack.setListName("flowCtrl");
-        immModeCommandStack.setListName("cmd line");
-
-        // calculation result print
-        _dispWidth = _defaultPrintWidth, _dispNumPrecision = _defaultNumPrecision, _dispCharsToPrint = _defaultCharsToPrint, _dispFmtFlags = _defaultPrintFlags;
-        _dispNumSpecifier[0] = 'G'; _dispNumSpecifier[1] = '\0';
-        _dispIsIntFmt = false;
-        makeFormatString(_dispFmtFlags, false, _dispNumSpecifier, _dispNumberFmtString);       // for numbers
-        strcpy(_dispStringFmtString, "%*.*s%n");                                                           // for strings
-
-        // for print command
-        _printWidth = _defaultPrintWidth, _printNumPrecision = _defaultNumPrecision, _printCharsToPrint = _defaultCharsToPrint, _printFmtFlags = _defaultPrintFlags;
-        _printNumSpecifier[0] = 'G'; _printNumSpecifier[1] = '\0';
-
-        // display output settings
-        _promptAndEcho = 2, _printLastResult = true;
-
-    }
-
-
-
+    // initialize interpreter object fields
+    // ------------------------------------
+    
+    initInterpreterVariables(true);
 };
 
 
@@ -429,9 +369,10 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     if (kill) { _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
     if (_keepInMemory) { _pConsole->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
     _quitJustinaAtEOF = false;         // if interpreter stays in memory: re-init
-    
+
     return _keepInMemory;
 }
+
 
 // ----------------------------------
 // *   process an input character   *
@@ -627,7 +568,7 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
 
             // parsing OK message (program mode only - no message in immediate mode) or error message 
             printParsingResult(result, funcNotDefIndex, _instruction, _lineCount, pErrorPos);
-            (immModeCommandStack.getElementCount()>0) ? (_appFlags |= 0x0030L) : (_appFlags &= ~0x0030L);
+            (immModeCommandStack.getElementCount() > 0) ? (_appFlags |= 0x0030L) : (_appFlags &= ~0x0030L);
         }
         else { _pConsole->println(); }
 
@@ -715,24 +656,24 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
         withinComment = false;
 
 #if debugPrint
-        Serial.print("\r\n** EOF stats:\r\n    parsed strings "); Serial.print(parsedStringConstObjectCount);
+        Serial.print("\r\n** EOF stats:\r\n    parsed strings "); Serial.print(_parsedStringConstObjectCount);
 
-        Serial.print(", prog name strings "); Serial.print(identifierNameStringObjectCount);
-        Serial.print(", prog var strings "); Serial.print(globalStaticVarStringObjectCount);
-        Serial.print(", prog arrays "); Serial.print(globalStaticArrayObjectCount);
+        Serial.print(", prog name strings "); Serial.print(_identifierNameStringObjectCount);
+        Serial.print(", prog var strings "); Serial.print(_globalStaticVarStringObjectCount);
+        Serial.print(", prog arrays "); Serial.print(_globalStaticArrayObjectCount);
 
-        Serial.print(", user var names "); Serial.print(userVarNameStringObjectCount);
-        Serial.print(", user var strings "); Serial.print(userVarStringObjectCount);
-        Serial.print(", user arrays "); Serial.print(userArrayObjectCount);
+        Serial.print(", user var names "); Serial.print(_userVarNameStringObjectCount);
+        Serial.print(", user var strings "); Serial.print(_userVarStringObjectCount);
+        Serial.print(", user arrays "); Serial.print(_userArrayObjectCount);
 
-        Serial.print(", last value strings "); Serial.print(lastValuesStringObjectCount);
+        Serial.print(", last value strings "); Serial.print(_lastValuesStringObjectCount);
 
 
-        Serial.print("\r\n    interim strings "); Serial.print(intermediateStringObjectCount);
+        Serial.print("\r\n    interim strings "); Serial.print(_intermediateStringObjectCount);
 
         Serial.print(", local var storage "); Serial.print(_localVarValueAreaCount);
-        Serial.print(", local var strings "); Serial.print(localVarStringObjectCount);
-        Serial.print(", local arrays "); Serial.println(localArrayObjectCount);
+        Serial.print(", local var strings "); Serial.print(_localVarStringObjectCount);
+        Serial.print(", local arrays "); Serial.println(_localArrayObjectCount);
 
         Serial.println();
 #endif
