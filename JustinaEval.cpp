@@ -1177,9 +1177,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
     break;
 
 
-    // -----------------------------------------------------------------
-    // stop or pause a running program and wait for the user to continue
-    //------------------------------------------------------------------
+    // -----------------------------------------------------------------------------------------------
+    // stop or pause a running program and wait for the user to continue (without entering debug mode)
+    //------------------------------------------------------------------------------------------------
 
     case cmdcod_pause:
     case cmdcod_halt:
@@ -3136,11 +3136,36 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         case 20:fcnResult.longConst = flowCtrlStack.getElementCount(); break;   // flow control stack element count (call stack depth + stack levels used by open blocks)
         case 21:fcnResult.longConst = immModeCommandStack.getElementCount(); break;    // immediate mode parsed programs stack element count
         case 22:fcnResult.longConst = evalStack.getElementCount(); break;       // evaluation stack element count
+        // note:parsing stack element count is always zero during evaluation: no entry provided here
+
+        case 1001:      // current object count
+        case 1002:      // current accumulated object count errors since cold start
+        {
+            fcnResultIsLong = false;   // is string
+            fcnResult.pStringConst = new char[12 * 4];  // includes place for terminating \0
+            _intermediateStringObjectCount++;
+#if printCreateDeleteHeapObjects
+            Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
+#endif
+            if (sysVar == 1001) {
+                sprintf(fcnResult.pStringConst, "%3d-%3d-%3d-%3d-%3d-%3d-%3d-%3d-%3d-%3d-%3d-%3d",
+                    min(999,_identifierNameStringObjectCount), min(999, _userVarNameStringObjectCount), min(999, _parsedStringConstObjectCount), min(999, _lastValuesStringObjectCount),
+                    min(999, _globalStaticVarStringObjectCount), min(999, _globalStaticArrayObjectCount), min(999, _userVarStringObjectCount), min(999, _userArrayObjectCount),
+                    min(999, _localVarStringObjectCount), min(999, _localArrayObjectCount), min(999, _localVarValueAreaCount), min(999, _intermediateStringObjectCount));
+            }
+            else {
+                sprintf(fcnResult.pStringConst, "%3d-%3d-%3d-%3d-%3d-%3d-%3d-%3d-%3d-%3d-%3d-%3d",
+                    min(999, _identifierNameStringObjectErrors), min(999, _userVarNameStringObjectErrors), min(999, _parsedStringConstObjectErrors), min(999, _lastValuesStringObjectErrors),
+                    min(999, _globalStaticVarStringObjectErrors), min(999, _globalStaticArrayObjectErrors), min(999, _userVarStringObjectErrors), min(999, _userArrayObjectErrors),
+                    min(999, _localVarStringObjectErrors), min(999, _localArrayObjectErrors), min(999, _localVarValueAreaErrors), min(999, _intermediateStringObjectErrors));
+            }
+        }
+        break;
 
         default: return result_arg_invalid; break;
         }       // switch (sysVar)
     }
-
+    break;
 
     }       // end switch
 
