@@ -28,7 +28,7 @@
 
 #include "Justina.h"
 
-#define printCreateDeleteHeapObjects 0
+#define printCreateDeleteListHeapObjects 0
 #define debugPrint 0
 
 
@@ -82,7 +82,7 @@ char* LinkedList::appendListElement(int size) {
     p->pNext = nullptr;                                                                 // because p is now last element
     _listElementCount++;
 
-#if printCreateDeleteHeapObjects
+#if printCreateDeleteListHeapObjects
     Serial.print("(LIST) Create elem # "); Serial.print(_listElementCount);
     Serial.print(", list ID "); Serial.print(_listID);
     Serial.print(", name "); Serial.print(_listName);
@@ -114,7 +114,7 @@ char* LinkedList::deleteListElement(void* pPayload) {                           
     ((pElem->pPrev == nullptr) ? _pFirstElement : pElem->pPrev->pNext) = pElem->pNext;
     ((pElem->pNext == nullptr) ? _pLastElement : pElem->pNext->pPrev) = pElem->pPrev;
 
-#if printCreateDeleteHeapObjects
+#if printCreateDeleteListHeapObjects
     Serial.print("(LIST) Delete elem # "); Serial.print(_listElementCount);
     Serial.print(", list ID "); Serial.print(_listID);
     Serial.print(", name "); Serial.print(_listName);
@@ -235,15 +235,15 @@ int LinkedList::getElementCount() {
 // -------------------
 
 Justina_interpreter::Justina_interpreter(Stream* const pConsole) : _pConsole(pConsole) {
-    
+
     // settings to be initialized when cold starting interpreter only
     // --------------------------------------------------------------
-   
-   _coldStart = true;
+
+    _coldStart = true;
 
     _housekeepingCallback = nullptr;
     for (int i = 0; i < _userCBarrayDepth; i++) { _callbackUserProcStart[i] = nullptr; }
-    _userCBprocStartSet_count = 0;          
+    _userCBprocStartSet_count = 0;
 
     _resWordCount = (sizeof(_resWords)) / sizeof(_resWords[0]);
     _functionCount = (sizeof(_functions)) / sizeof(_functions[0]);
@@ -276,7 +276,7 @@ Justina_interpreter::Justina_interpreter(Stream* const pConsole) : _pConsole(pCo
 
     // initialize interpreter object fields
     // ------------------------------------
-    
+
     initInterpreterVariables(true);
 };
 
@@ -412,7 +412,7 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
         // do not touch program memory itself: there could be a program in it 
         _programMode = !_programMode;
         _programStart = _programStorage + (_programMode ? 0 : PROG_MEM_SIZE);
-        _programSize = _programSize + (_programMode ? PROG_MEM_SIZE : IMM_MEM_SIZE);
+        _programSize = (_programMode ? PROG_MEM_SIZE : IMM_MEM_SIZE);
         _programCounter = _programStart;                          // start of 'immediate mode' program area
 
         requestMachineReset = _programMode;                         // reset machine when parsing starts, not earlier (in case there is a program in memory)
@@ -528,7 +528,9 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
         }
 
         char* pInstruction = _instruction;                                                 // because passed by reference 
-        result = parseInstruction(pInstruction);                                 // parse one instruction (ending with ';' character, if found)
+        _withinTrace = false;
+        char* pDummy{};
+        result = parseStatements(pInstruction, pDummy);                                 // parse one instruction (ending with ';' character, if found)
         pErrorPos = pInstruction;                                                      // in case of error
         if (result != result_tokenFound) { _flushAllUntilEOF = true; }
         if (result == result_parse_kill) { kill = true; _quitJustinaAtEOF = true; }     // _flushAllUntilEOF is true already (flush buffer before quitting)
@@ -549,14 +551,14 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
                 if (_programMode && (!allExternalFunctionsDefined(funcNotDefIndex))) { result = result_undefinedFunctionOrArray; }
                 if (_blockLevel > 0) { result = result_noBlockEnd; }
 
-                if (result != result_tokenFound) { _appFlags |= 0x0001L; }              // if parsing error only occurs here, error condition flag can still be set here
+                if (result != result_tokenFound) { _appFlags |= 0x0001L; }              // if parsing error only occurs here, error condition flag can still be set here (signal to caller)
             }
 
             if (result == result_tokenFound) {            // result could be altered in the meantime
                 if (!_programMode) {
 
                     // evaluation comes here
-                    if (_promptAndEcho == 2) { prettyPrintInstructions(0); }                    // immediate mode and result OK: pretty print input line
+                    if (_promptAndEcho == 2) { prettyPrintInstructions(0); _pConsole->println(); }                    // immediate mode and result OK: pretty print input line
                     else if (_promptAndEcho == 1) { _pConsole->println(); _isPrompt = false; }
 
                     execResult = exec();                                 // execute parsed user statements
@@ -568,7 +570,6 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
 
             // parsing OK message (program mode only - no message in immediate mode) or error message 
             printParsingResult(result, funcNotDefIndex, _instruction, _lineCount, pErrorPos);
-            (immModeCommandStack.getElementCount() > 0) ? (_appFlags |= 0x0030L) : (_appFlags &= ~0x0030L);
         }
         else { _pConsole->println(); }
 
@@ -596,9 +597,10 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
             pDeepestOpenFunction = (OpenFunctionData*)pFlowCtrlStackLvl;        // deepest level of nested functions
             nextInstructionsPointer = pDeepestOpenFunction->pNextStep;
 
-            _pConsole->println(); for (int i = 1; i <= _dispWidth; i++) { _pConsole->print("-"); }
+            _pConsole->println(); for (int i = 1; i <= _dispWidth; i++) { _pConsole->print("-"); } _pConsole->println();
+            parseAndExecTraceString();     // trace string may not contain keywords, external functions, generic names
             char msg[150] = "";
-            sprintf(msg, "\r\n*** DEBUG *** NEXT [%s: ", extFunctionNames[pDeepestOpenFunction->functionIndex]);
+            sprintf(msg, "DEBUG ==>> NEXT [%s: ", extFunctionNames[pDeepestOpenFunction->functionIndex]);
             _pConsole->print(msg);
             prettyPrintInstructions(10, nextInstructionsPointer);
 
@@ -607,6 +609,8 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
                 _pConsole->println(msg);
             }
         }
+
+        (immModeCommandStack.getElementCount() > 0) ? (_appFlags |= 0x0030L) : (_appFlags &= ~0x0030L);     // signal 'debug mode' to caller
 
         if (!_programMode && (_promptAndEcho != 0)) { _pConsole->print("Justina> "); _isPrompt = true; }                 // print new prompt
 
@@ -629,7 +633,7 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
 
         // in immediate mode
         else if (instructionsParsed) {
-            // execution finished: delete parsed strings in imm mode command (they are on the heap and not needed any more). Identifiers must stay avaialble
+            // execution finished: delete parsed strings in imm mode command OR in executed trace expressions (they are on the heap and not needed any more). Identifiers must stay avaialble
             deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);  // always
             *_programStart = '\0';                                      //  current end of program (immediate mode)
         }
@@ -640,7 +644,7 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
             _extFunctionBlockOpen = false;
 
             _programStart = _programStorage + PROG_MEM_SIZE;        // already set immediate mode 
-            _programSize = _programSize + IMM_MEM_SIZE;
+            _programSize = IMM_MEM_SIZE;
             _programCounter = _programStart;                        // start of 'immediate mode' program area
 
         }
@@ -655,28 +659,6 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
 
         withinComment = false;
 
-#if debugPrint
-        Serial.print("\r\n** EOF stats:\r\n    parsed strings "); Serial.print(_parsedStringConstObjectCount);
-
-        Serial.print(", prog name strings "); Serial.print(_identifierNameStringObjectCount);
-        Serial.print(", prog var strings "); Serial.print(_globalStaticVarStringObjectCount);
-        Serial.print(", prog arrays "); Serial.print(_globalStaticArrayObjectCount);
-
-        Serial.print(", user var names "); Serial.print(_userVarNameStringObjectCount);
-        Serial.print(", user var strings "); Serial.print(_userVarStringObjectCount);
-        Serial.print(", user arrays "); Serial.print(_userArrayObjectCount);
-
-        Serial.print(", last value strings "); Serial.print(_lastValuesStringObjectCount);
-
-
-        Serial.print("\r\n    interim strings "); Serial.print(_intermediateStringObjectCount);
-
-        Serial.print(", local var storage "); Serial.print(_localVarValueAreaCount);
-        Serial.print(", local var strings "); Serial.print(_localVarStringObjectCount);
-        Serial.print(", local arrays "); Serial.println(_localArrayObjectCount);
-
-        Serial.println();
-#endif
         return _quitJustinaAtEOF;
 
 

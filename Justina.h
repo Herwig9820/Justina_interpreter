@@ -163,6 +163,7 @@ public:
         cmdcod_stepOutOfBlock,
         cmdcod_stepToBlockEnd,
         cmdcod_skip,
+        cmdcod_trace,
         cmdcod_debug,
         cmdcod_nop,
         cmdcod_quit,
@@ -228,7 +229,7 @@ public:
         fnccod_nl,
         fnccod_format,
         fnccod_fmtStr,
-        fnccod_sysVar
+        fnccod_sysVal
     };
 
     enum termin_code {
@@ -302,6 +303,9 @@ public:
         result_numConstNotAllowedHere,
         result_assignmNotAllowedHere,
         result_identifierNotAllowedHere,
+        result_trace_resWordNotAllowed,
+        result_trace_userFunctonOrUndefinedVar,
+        result_trace_genericNameNotAllowed,
 
         // token expected errors
         result_constantValueExpected = 1200,
@@ -763,7 +767,7 @@ public:
         char* nextTokenAddress;         // address of token directly following 'FOR...; statement
     };
 
-    struct OpenFunctionData {
+    struct OpenFunctionData {           // data about all open functions (active + call stack)
         char blockType;                 // command block: will identify stack level as a function block
         char functionIndex;             // user function index 
         char callerEvalStackLevels;     // evaluation stack levels in use by caller(s) and main (call stack)
@@ -928,7 +932,7 @@ public:
     static constexpr char cmd_skipDuringExec = 0x80;
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[43];                          // keyword names
+    static const ResWordDef _resWords[44];                          // keyword names
     static const FuncDef _functions[22];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
@@ -1041,6 +1045,7 @@ public:
     termin_code _previousTermCode;
 
 
+    bool _lastTokenIsString;
     bool _lastTokenIsTerminal;
     bool _lastTokenIsTerminal_hold;
     bool _previousTokenIsTerminal;
@@ -1075,8 +1080,8 @@ public:
     LinkedList parsingStack;                                      // during parsing: linked list keeping track of open parentheses and open blocks
 
     bool _coldStart{};
-
-
+    char* _pTraceString{ nullptr };
+    bool _withinTrace{ false };
 
 
     // counting of heap objects (note: linked list element count is maintained within the linked list objects)
@@ -1094,6 +1099,7 @@ public:
     int _globalStaticVarStringObjectCount = 0, _globalStaticVarStringObjectErrors = 0;
     int _userVarStringObjectCount = 0, _userVarStringObjectErrors = 0;
     int _localVarStringObjectCount = 0, _localVarStringObjectErrors = 0;
+    int _systemVarStringObjectCount = 0, _systemVarStringObjectErrors = 0;
 
     // array storage 
     int _globalStaticArrayObjectCount = 0, _globalStaticArrayObjectErrors = 0;
@@ -1102,8 +1108,6 @@ public:
 
     // local variable storage area
     int _localVarValueAreaCount = 0, _localVarValueAreaErrors = 0;
-
-
 
 
     bool _atLineStart = true;
@@ -1322,12 +1326,12 @@ public:
     void initInterpreterVariables(bool withUserVariables);
     void danglingPointerCheckAndCount(bool withUserVariables);
     void deleteIdentifierNameObjects(char** pIdentArray, int identifiersInUse, bool isUserVar = false);
-    void deleteArrayElementStringObjects(Justina_interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false);
-    void deleteVariableValueObjects(Justina_interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false);
+    void deleteArrayElementStringObjects(Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false);
+    void deleteVariableValueObjects(Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false);
     void deleteLastValueFiFoStringObjects();
     void deleteConstStringObjects(char* pToken);
-    parseTokenResult_type parseSource(char* const inputLine, char*& pErrorPos);
-    parseTokenResult_type  parseInstruction(char*& pInputLine);
+    void parseAndExecTraceString();
+    parseTokenResult_type  parseStatements(char*& pInputLine, char*& pNextParseStatement);
     void deleteParsedData();
     bool allExternalFunctionsDefined(int& index);
     void prettyPrintInstructions(int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
