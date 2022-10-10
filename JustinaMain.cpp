@@ -85,7 +85,7 @@ char* LinkedList::appendListElement(int size) {
 #if printCreateDeleteListHeapObjects
     Serial.print("(LIST) Create elem # "); Serial.print(_listElementCount);
     Serial.print(", list ID "); Serial.print(_listID);
-    Serial.print(", name "); Serial.print(_listName);
+    Serial.print(", name: "); Serial.print(_listName);
     if (p == nullptr) { Serial.println("- list elem adres: nullptr"); }
     else {
         Serial.print(", list elem address: "); Serial.println((uint32_t)p - RAMSTART);
@@ -528,8 +528,8 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
         }
 
         char* pInstruction = _instruction;                                                 // because passed by reference 
-        _withinTrace = false;
         char* pDummy{};
+        _withinTrace = false; _withinEval = false;
         result = parseStatements(pInstruction, pDummy);                                 // parse one instruction (ending with ';' character, if found)
         pErrorPos = pInstruction;                                                      // in case of error
         if (result != result_tokenFound) { _flushAllUntilEOF = true; }
@@ -561,7 +561,7 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
                     if (_promptAndEcho == 2) { prettyPrintInstructions(0); _pConsole->println(); }                    // immediate mode and result OK: pretty print input line
                     else if (_promptAndEcho == 1) { _pConsole->println(); _isPrompt = false; }
 
-                    execResult = exec();                                 // execute parsed user statements
+                    execResult = exec(_programStart);                                 // execute parsed user statements
 
                     if ((execResult == result_eval_kill) || (execResult == result_eval_quit)) { _quitJustinaAtEOF = true; }
                     if (execResult == result_eval_kill) { kill = true; }

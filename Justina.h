@@ -140,6 +140,7 @@ public:
         cmdcod_printProg,
         cmdcod_printCallSt,
         cmdcod_function,
+        cmdcod_eval,
         cmdcod_static,
         cmdcod_local,
         cmdcod_var,
@@ -211,6 +212,7 @@ public:
         fnccod_varIndirect,
         fnccod_varName,
         fnccod_ifte,
+        fnccod_ifs,
         fnccod_and,
         fnccod_or,
         fnccod_not,
@@ -932,8 +934,8 @@ public:
     static constexpr char cmd_skipDuringExec = 0x80;
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[44];                          // keyword names
-    static const FuncDef _functions[22];                            // function names with min & max arguments allowed
+    static const ResWordDef _resWords[45];                          // keyword names
+    static const FuncDef _functions[23];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
     static const uint8_t _maxAlphaCstLen{ 60 };                     // max length of character strings, excluding terminating '\0' (also if stored in variables)
@@ -1081,7 +1083,9 @@ public:
 
     bool _coldStart{};
     char* _pTraceString{ nullptr };
+    char* _pEvalString{ nullptr };
     bool _withinTrace{ false };
+    bool _withinEval{ false };
 
 
     // counting of heap objects (note: linked list element count is maintained within the linked list objects)
@@ -1345,7 +1349,7 @@ public:
     void* fetchVarBaseAddress(TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& variableAttributes, char& sourceVarAttributes);
     void* arrayElemAddress(void* varBaseAddress, int* dims);
 
-    execResult_type  exec();
+    execResult_type  exec(char* startHere );
     execResult_type  execParenthesesPair(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount);
     execResult_type  execAllProcessedOperators();
 

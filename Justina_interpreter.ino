@@ -446,7 +446,7 @@ void userFcn_readPort(const void** pdata, const char* valueType) {     // data: 
 
     char isVariableMask = 0x80;             // as defined in Justina
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 8; i++) {
         // data available ?
         if ((valueType[i] & Justina_interpreter::value_typeMask) == Justina_interpreter::value_noValue) { continue; }       // no data
 
@@ -464,9 +464,9 @@ void userFcn_readPort(const void** pdata, const char* valueType) {     // data: 
         else if (isFloat) { pFloat = (float*)pdata[i]; }                                // copy a pointer to a float argument
         else { pText = (char*)pdata[i]; }                                               // copy a pointer to a character string argument
 
-        // change data (-> after return, will have no effect for constants) - you can always check for variable / constant (see above)
-        if (isLong) { *pLong += 10; }
-        else if (isFloat) { *pFloat += 10.; }
+        // change data (is safe -> after return, will have No effect for constants) - you can always check here for variable / constant (see above)
+        if (isLong) { *pLong += 10+i; }
+        else if (isFloat) { *pFloat += 10.+i; }
         else {
             if (strlen(pText) >= 10) { pText[7] = '\0'; }  // do NOT increase the length of strings
             if (strlen(pText) >= 5) { pText[3] = pText[4]; pText[4] = '>'; }  // do NOT increase the length of strings

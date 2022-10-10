@@ -28,7 +28,7 @@
 
 #include "Justina.h"
 
-#define printCreateDeleteListHeapObjects 0
+#define printCreateDeleteListHeapObjects 1
 #define printProcessedTokens 0
 #define debugPrint 0
 
@@ -43,14 +43,14 @@ const char passCopyToCallback = 0x40;       // flag: string is an empty string
 // *   execute parsed statements   *
 // ---------------------------------
 
-Justina_interpreter::execResult_type  Justina_interpreter::exec() {
+Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere) {
 
     // init
 
     _appFlags &= ~0x0001L;              // clear error condition flag
     _appFlags = (_appFlags & ~0x0030L) | 0x0020L;     // set bits b54 to 10: evaluation
 
-    int tokenType = *_programStart & 0x0F;
+    int tokenType = *startHere & 0x0F;
     int tokenIndex{ 0 };
     bool isFunctionReturn = false;
     bool precedingIsComma = false;                                      // used to detect prefix operators following a comma separator
@@ -82,7 +82,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
     _stepCmdExecuted = db_continue;      // switch single step mode OFF before starting to execute command line (even in debug mode). Step and Debug commands will switch it on again (to execute one step).
     _debugCmdExecuted = false;      // function to debug must be on same comand line as Debug command
 
-    _programCounter = _programStart;
+    _programCounter = startHere;
     holdProgramCnt_StatementStart = _programCounter; programCnt_previousStatementStart = _programCounter;
 
     holdErrorProgramCnt_StatementStart = _programCounter, errorProgramCnt_previousStatement = _programCounter;
@@ -692,13 +692,13 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
         _pFlowCtrlStackMinus2 = _pFlowCtrlStackMinus1; _pFlowCtrlStackMinus1 = _pFlowCtrlStackTop;
         _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
         *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                // push caller function data to stack
+        ++_callStackDepth;      // user function level added to flow control stack
 
         _activeFunctionData.callerEvalStackLevels = evalStack.getElementCount();                          // store evaluation stack levels in use by callers (call stack)
 
         // push current command line storage to command line stack, to make room for debug commands
         _pImmediateCmdStackTop = (char*)immModeCommandStack.appendListElement(IMM_MEM_SIZE);//// aanpassen
         memcpy(_pImmediateCmdStackTop, _programStart, IMM_MEM_SIZE);
-        ++_callStackDepth;      // user function level added to flow control stack
     }
 
     // no programs in debug: always; otherwise: only if error is in fact quit or kill event 
@@ -713,7 +713,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec() {
         int charsPrinted{  };        // needed but not used
         Val toPrint;
         if (execResult == result_execOK) {
-            Val value;              
+            Val value;
             bool isVar = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable);
             char valueType = isVar ? (*_pEvalStackTop->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackTop->varOrConst.valueType;
             bool isLong = (valueType == value_isLong);
@@ -954,11 +954,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
     }
 
 
-    // ------------------------
-    // Define Trace expressions
-    // ------------------------
+    // -------------------------------------------------------------
+    // Define Trace expressions, define and execute Eval expressions
+    // -------------------------------------------------------------
 
     case cmdcod_trace:
+    case cmdcod_eval:
     {
         bool operandIsVar = (pStackLvl->varOrConst.tokenType == tok_isVariable);
         char valueType = operandIsVar ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
@@ -968,22 +969,94 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         bool opIsString = ((uint8_t)valueType == value_isStringPointer);
         if (!opIsString) { return result_arg_stringExpected; }
 
-        if (_pTraceString != nullptr) {
+        char* pString = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_trace ? _pTraceString : _pEvalString);
+        if (pString != nullptr) {
 #if printCreateDeleteListHeapObjects
-            Serial.print("----- (system var str) "); Serial.println((uint32_t)_pTraceString - RAMSTART);
+            Serial.print("----- (system var str) "); Serial.println((uint32_t)pString - RAMSTART);
 #endif
-            delete[] _pTraceString; _pTraceString = nullptr;      // old trace string
-            _globalStaticVarStringObjectCount--;
+            delete[] pString;
+            (_activeFunctionData.activeCmd_ResWordCode == cmdcod_trace ? _pTraceString : _pEvalString) = nullptr;      // old trace or eval string
+            _systemVarStringObjectCount--;
         }
 
         if (value.pStringConst != nullptr) {                           // new trace string
-            _globalStaticVarStringObjectCount++;                // count as a global variable ////
-            _pTraceString = new char[strlen(value.pStringConst) + 1];
-            strcpy(_pTraceString, value.pStringConst);              // copy the actual string
+            _systemVarStringObjectCount++;                // count as a global variable ////
+            pString = new char[strlen(value.pStringConst) + 1];
+            strcpy(pString, value.pStringConst);              // copy the actual string
+            (_activeFunctionData.activeCmd_ResWordCode == cmdcod_trace ? _pTraceString : _pEvalString) = pString;
 #if printCreateDeleteListHeapObjects
-            Serial.print("+++++ (system var str) "); Serial.println((uint32_t)_pTraceString - RAMSTART);
+            Serial.print("+++++ (system var str) "); Serial.println((uint32_t)pString - RAMSTART);
 #endif
 
+        }
+
+        if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_eval) {
+
+            if (_pEvalString != nullptr) {
+                // push current command line storage to command line stack, to make room for debug commands
+                _pImmediateCmdStackTop = (char*)immModeCommandStack.appendListElement(IMM_MEM_SIZE);//// aanpassen
+                memcpy(_pImmediateCmdStackTop, _programStart, IMM_MEM_SIZE);
+
+
+
+
+
+                //// exec wordt recursief aangeroepen => exit exec() vóór eval()
+                //// program counter nadien ?
+                //// _withinEval : waar ?
+                //// \s en \a tijdens eval ?
+                //// last value
+                //// errors
+
+                char* holdProgramStart = _programStart;
+                int holdProgramSize = _programSize;
+                char* holdProgramCounter = _programCounter;
+
+
+
+                // init
+                _programStart = _programStorage + PROG_MEM_SIZE;
+                _programSize = (_programMode ? PROG_MEM_SIZE : IMM_MEM_SIZE);
+                _programCounter = _programStart;                          // start of 'immediate mode' program area
+                *_programStart = '\0';          // in case no valid tokens will be stored
+
+                char* pTraceParsingInput = _pTraceString;  // copy pointer to start of trace string
+                char* pDummy{};
+                _withinTrace = false; _withinEval = true;
+                parseTokenResult_type result = parseStatements(pTraceParsingInput, pDummy);           // parse all instructions
+
+
+
+                execResult_type execResult{ result_execOK };
+                if (result == result_tokenFound) {
+                    ////execResult = exec(_programStart);        // note: value or exec. error is printed from inside exec()
+                }
+
+                _withinTrace = false; _withinEval = false;
+
+
+
+
+
+                // overwrite the parsed 'EVAL' expressions
+                // before removing, delete any parsed strng constants for that command line
+                deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
+                memcpy(_programStart, _pImmediateCmdStackTop, IMM_MEM_SIZE);        // size berekenen
+                immModeCommandStack.deleteListElement(_pImmediateCmdStackTop);
+                _pImmediateCmdStackTop = (char*)immModeCommandStack.getLastListElement();  //// size aanpassen
+
+
+
+
+                _programStart = holdProgramStart;
+                _programSize = holdProgramSize;
+                _programCounter = holdProgramCounter;
+
+
+
+                execResult = exec(_programCounter);        // note: value or exec. error is printed from inside exec()
+
+            }
         }
 
         clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
@@ -1488,10 +1561,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
     case cmdcod_callback:
     {
-    // preprocess
-    // ----------
+        // preprocess
+        // ----------
 
-    // determine callback routine, based upon alias (argument 1) 
+        // determine which callback routine to call, based upon alias (argument 1) 
         LE_evalStack* aliasStackLvl = pStackLvl;
         char* alias = aliasStackLvl->genericName.pStringConst;
         bool isDeclared = false;
@@ -1507,15 +1580,16 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         // variable references to store (arguments 2[..4]) 
         const char isVariable = 0x80;                                                               // mask: is variable (not a constant) 
 
-        Val args[3]{  };                                                                            // values to be passed to user routine
-        char valueType[3]{ value_noValue,value_noValue,value_noValue };                             // value types (long, float, char string)
-        char varScope[3]{};                                                                         // if variable: variable scope (user, program global, static, local)
-        bool argIsVar[3]{};                                                                         // flag: is variable (scalar or aray)
-        bool argIsArray[3]{};                                                                       // flag: is array element
+        // if more than 8 arguments are supplied, excess arguments are discarded
+        Val args[8]{  };                                                                            // values to be passed to user routine
+        char valueType[8]{ value_noValue,value_noValue,value_noValue,value_noValue,value_noValue,value_noValue,value_noValue,value_noValue };                             // value types (long, float, char string)
+        char varScope[8]{};                                                                         // if variable: variable scope (user, program global, static, local)
+        bool argIsVar[8]{};                                                                         // flag: is variable (scalar or aray)
+        bool argIsArray[8]{};                                                                       // flag: is array element
 
-        const void* values[3]{};                                                                    // to keep it simple for the c++ user writing the user routine, we simply pass const void pointers
+        const void* values[8]{};                                                                    // to keep it simple for the c++ user writing the user routine, we simply pass const void pointers
 
-        // any data to pass ? (optional arguments 2 to 4)
+        // any data to pass ? (optional arguments 2 to 9)
         if (cmdParamCount >= 2) {                                                                   // first argument (callback procedure) processed (but still on the stack)
             copyValueArgsFromStack(pStackLvl, cmdParamCount - 1, argIsVar, argIsArray, valueType, args, true);  // creates a NEW temporary string object if empty string OR or constant (non-variable) string 
             pStackLvl = pStackLvlFirstValueArg;     // set stack level again to first value argument
@@ -1530,8 +1604,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         }
 
 
-    // call user routine
-    // -----------------
+        // call user routine
+        // -----------------
 
         _callbackUserProcStart[index](values, valueType);                                           // call back user procedure
 
@@ -1540,7 +1614,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         // -------------------------------------------------------------
 
         pStackLvl = pStackLvlFirstValueArg;                                                         // set stack level again to first value argument
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 8; i++) {
             if ((valueType[i] & value_typeMask) == value_isStringPointer) {
 
                 // string COPY (or newly created empty variable string) passed to user routine ? (only if string passed is empty string OR or constant (non-variable) string)
@@ -2881,9 +2955,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
     int maxArgs = _functions[functionIndex].maxArgs;
     bool fcnResultIsLong = false, fcnResultIsFloat = false;   // init
     Val fcnResult;
-    bool argIsVar[8], argIsLong[8], argIsFloat[8];
-    char argValueType[8];
-    Val args[8];
+    bool argIsVar[16], argIsLong[16], argIsFloat[16];
+    char argValueType[16];
+    Val args[16];
 
 
     // preprocess: retrieve argument(s) info: variable or constant, value type
@@ -2911,6 +2985,18 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 // ---------------------------
 
     switch (functionCode) {
+
+        // square root
+        // -----------
+
+    case fnccod_ifs:
+    {
+        //// test 
+        fcnResultIsFloat = true;
+        fcnResult.floatConst = 1.23;
+    }
+    break;
+
 
         // square root
         // -----------
@@ -3224,7 +3310,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         case 1001:                                                                  // current accumulated object count errors since cold start
         {
             fcnResultIsLong = false;   // is string
-            fcnResult.pStringConst = new char[12 * 4];  // includes place for terminating \0
+            fcnResult.pStringConst = new char[13 * 5];  // includes place for 13 times 5 characters (3 digits max. for each number, max. 2 extra in between) and terminating \0
             _intermediateStringObjectCount++;
 #if printCreateDeleteListHeapObjects
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
@@ -3233,16 +3319,18 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 // (1)program variable and function NAMES-(2)user variable NAMES-(3)parsed string constants-(4)last value strings-
                 // (5)global and static variable strings-(6)global and static array storage areas-(7)user variable strings-(8)user array storage areas-
                 // (9)local variable strings-(10)local array storage areas-(11)local variable base value areas-(12)intermediate string constants
-                sprintf(fcnResult.pStringConst, "%3d-%3d-%3d-%3d-%3d-%3d-%3d-%3d-%3d-%3d-%3d-%3d",
+                sprintf(fcnResult.pStringConst, "%0d-%0d-%0d-%0d / %0d-%0d-%0d-%0d / %0d-%0d-%0d-%0d / %0d",
                     min(999, _identifierNameStringObjectCount), min(999, _userVarNameStringObjectCount), min(999, _parsedStringConstObjectCount), min(999, _lastValuesStringObjectCount),
                     min(999, _globalStaticVarStringObjectCount), min(999, _globalStaticArrayObjectCount), min(999, _userVarStringObjectCount), min(999, _userArrayObjectCount),
-                    min(999, _localVarStringObjectCount), min(999, _localArrayObjectCount), min(999, _localVarValueAreaCount), min(999, _intermediateStringObjectCount));
+                    min(999, _localVarStringObjectCount), min(999, _localArrayObjectCount), min(999, _localVarValueAreaCount), min(999, _intermediateStringObjectCount),
+                    min(999, _systemVarStringObjectCount));
             }
             else {     // print heap object create/delete errors
-                sprintf(fcnResult.pStringConst, "%3d-%3d-%3d-%3d-%3d-%3d-%3d-%3d-%3d-%3d-%3d-%3d",
+                sprintf(fcnResult.pStringConst, "%0d-%0d-%0d-%0d / %0d-%0d-%0d-%0d / %0d-%0d-%0d-%0d / %0d",
                     min(999, _identifierNameStringObjectErrors), min(999, _userVarNameStringObjectErrors), min(999, _parsedStringConstObjectErrors), min(999, _lastValuesStringObjectErrors),
                     min(999, _globalStaticVarStringObjectErrors), min(999, _globalStaticArrayObjectErrors), min(999, _userVarStringObjectErrors), min(999, _userArrayObjectErrors),
-                    min(999, _localVarStringObjectErrors), min(999, _localArrayObjectErrors), min(999, _localVarValueAreaErrors), min(999, _intermediateStringObjectErrors));
+                    min(999, _localVarStringObjectErrors), min(999, _localArrayObjectErrors), min(999, _localVarValueAreaErrors), min(999, _intermediateStringObjectErrors),
+                    min(999, _systemVarStringObjectErrors));
             }
         }
         break;
