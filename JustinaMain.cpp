@@ -85,7 +85,7 @@ char* LinkedList::appendListElement(int size) {
 #if printCreateDeleteListHeapObjects
     Serial.print("(LIST) Create elem # "); Serial.print(_listElementCount);
     Serial.print(", list ID "); Serial.print(_listID);
-    Serial.print(", name: "); Serial.print(_listName);
+    Serial.print(", stack: "); Serial.print(_listName);
     if (p == nullptr) { Serial.println("- list elem adres: nullptr"); }
     else {
         Serial.print(", list elem address: "); Serial.println((uint32_t)p - RAMSTART);
@@ -109,17 +109,25 @@ char* LinkedList::deleteListElement(void* pPayload) {                           
 
     ListElemHead* p = pElem->pNext;                                                     // remember return value
 
+#if printCreateDeleteListHeapObjects
+    // determine list element # by counting from the list start
+    ListElemHead* q = _pFirstElement;
+    int i{};
+    for (i = 1; i <= _listElementCount; ++i) {
+        if (q == pElem) { break; }            // always a match
+        q = q->pNext;
+    }
+
+    Serial.print("(LIST) Delete elem # "); Serial.print(i); Serial.print (" (new # "); Serial.print(_listElementCount - 1);
+    Serial.print("), list ID "); Serial.print(_listID);
+    Serial.print(", stack: "); Serial.print(_listName);
+    Serial.print(", list elem address: "); Serial.println((uint32_t)pElem - RAMSTART);
+#endif
     // before deleting object, remove from list:
     // change pointers from previous element (or _pFirstPointer, if no previous element) and next element (or _pLastPointer, if no next element)
     ((pElem->pPrev == nullptr) ? _pFirstElement : pElem->pPrev->pNext) = pElem->pNext;
     ((pElem->pNext == nullptr) ? _pLastElement : pElem->pNext->pPrev) = pElem->pPrev;
 
-#if printCreateDeleteListHeapObjects
-    Serial.print("(LIST) Delete elem # "); Serial.print(_listElementCount);
-    Serial.print(", list ID "); Serial.print(_listID);
-    Serial.print(", name "); Serial.print(_listName);
-    Serial.print(", list elem address: "); Serial.println((uint32_t)pElem - RAMSTART);
-#endif
     _listElementCount--;
     delete[]pElem;
 

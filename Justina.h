@@ -211,8 +211,9 @@ public:
         fnccod_varAddress,
         fnccod_varIndirect,
         fnccod_varName,
+        fnccod_eval,
         fnccod_ifte,
-        fnccod_ifs,
+        fnccod_switch,
         fnccod_and,
         fnccod_or,
         fnccod_not,
@@ -305,9 +306,6 @@ public:
         result_numConstNotAllowedHere,
         result_assignmNotAllowedHere,
         result_identifierNotAllowedHere,
-        result_trace_resWordNotAllowed,
-        result_trace_userFunctonOrUndefinedVar,
-        result_trace_genericNameNotAllowed,
 
         // token expected errors
         result_constantValueExpected = 1200,
@@ -402,8 +400,13 @@ public:
         result_notAllowedInThisOpenBlock,
         result_wrongBlockSequence,
 
+        // tracing errors
+        result_trace_resWordNotAllowed = 2100,//// eval ???
+        result_trace_userFunctonOrUndefinedVar,
+        result_trace_genericNameNotAllowed,
+
         // other program errors
-        result_progMemoryFull = 2100,
+        result_progMemoryFull = 2200,
         result_parse_kill
 
     };
@@ -472,8 +475,12 @@ public:
         result_notWithinBlock,
         result_skipNotAllowedHere,
 
-        // MANDATORY LAST range of errors: events
-        result_eval_startOfEvents = 3500,
+        // evaluation function errors
+        result_eval_nothingToEvaluate =3500, 
+        result_eval_parsingError,
+
+        // *** MANDATORY =>LAST<= range of errors: events ***
+        result_eval_startOfEvents = 4000,
 
         // abort, kill, quit, stop, skip debug: EVENTS (first handled as errors - which they are not - initially following the same flow)
         result_eval_stopForDebug = result_eval_startOfEvents,    // 'Stop' command executed (from inside a program only): this enters debug mode
@@ -776,6 +783,10 @@ public:
         // within a function, as in immediate mode, only one (block) command can be active at a time (ended by semicolon), in contrast to command blocks, which can be nested, so command data can be stored here:
         // data is stored when a keyword is processed and it is cleared when the ending semicolon (ending the command) is processed
         char activeCmd_ResWordCode;     // keyword code (set to 'cmdcod_none' again when semicolon is processed)
+        
+        char directCallByEval;          // exec() was directly called by eval function
+        char spare [3];                 // boundary alignment
+        
         char* activeCmd_tokenAddress;   // address in program memory of parsed keyword token                                
 
         // value area pointers (note: a value is a long, a float or a pointer to a string or array, or (if reference): pointer to 'source' (referenced) variable))
@@ -935,7 +946,7 @@ public:
 
     // sizes MUST be specified AND must be exact
     static const ResWordDef _resWords[45];                          // keyword names
-    static const FuncDef _functions[23];                            // function names with min & max arguments allowed
+    static const FuncDef _functions[24];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
     static const uint8_t _maxAlphaCstLen{ 60 };                     // max length of character strings, excluding terminating '\0' (also if stored in variables)
@@ -1335,6 +1346,7 @@ public:
     void deleteLastValueFiFoStringObjects();
     void deleteConstStringObjects(char* pToken);
     void parseAndExecTraceString();
+    execResult_type parseAndExecEvalString(char* evalString, Val& resultValue, char& resultValueType);
     parseTokenResult_type  parseStatements(char*& pInputLine, char*& pNextParseStatement);
     void deleteParsedData();
     bool allExternalFunctionsDefined(int& index);
@@ -1349,7 +1361,7 @@ public:
     void* fetchVarBaseAddress(TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& variableAttributes, char& sourceVarAttributes);
     void* arrayElemAddress(void* varBaseAddress, int* dims);
 
-    execResult_type  exec(char* startHere );
+    execResult_type  exec(char* startHere);
     execResult_type  execParenthesesPair(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount);
     execResult_type  execAllProcessedOperators();
 

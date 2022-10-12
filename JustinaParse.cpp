@@ -29,7 +29,7 @@
 #include "Justina.h"
 
 #define printCreateDeleteListHeapObjects 0
-#define printParsedTokens 0
+#define printParsedTokens 1
 #define debugPrint 0
 
 
@@ -49,7 +49,7 @@ const char
 // command parameter spec name      param type and flags                param type and flags                            param type and flags                        param type and flags
 // ---------------------------      --------------------                --------------------                            --------------------                        --------------------
 Justina_interpreter::cmdPar_100[4]{ cmdPar_ident | cmdPar_multipleFlag,            cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
-Justina_interpreter::cmdPar_101[4]{ cmdPar_ident,                                  cmdPar_expression | cmdPar_multipleFlag,        cmdPar_none,                                    cmdPar_none,},
+Justina_interpreter::cmdPar_101[4]{ cmdPar_ident,                                  cmdPar_expression | cmdPar_multipleFlag,        cmdPar_none,                                    cmdPar_none, },
 Justina_interpreter::cmdPar_102[4]{ cmdPar_none,                                   cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
 Justina_interpreter::cmdPar_103[4]{ cmdPar_ident,                                  cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
 Justina_interpreter::cmdPar_104[4]{ cmdPar_expression,                             cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
@@ -171,8 +171,9 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     {"varAddress",  fnccod_varAddress,  1,1,    0b0},
     {"varIndirect", fnccod_varIndirect, 1,1,    0b0},
     {"varName",     fnccod_varName,     1,1,    0b0},
+    {"eval",        fnccod_eval,        1,1,    0b0},
     {"ifte",        fnccod_ifte,        3,3,    0b0},
-    {"ifs",         fnccod_ifs,         3,16,   0b0},
+    {"switch",      fnccod_switch,      2,16,   0b0},
     {"and",         fnccod_and,         1,8,    0b0},
     {"or",          fnccod_or,          1,8,    0b0},
     {"not",         fnccod_not,         1,1,    0b0},
@@ -831,12 +832,96 @@ void Justina_interpreter::parseAndExecTraceString() {
 }
 
 
+// ----------------------------------------------
+// *   parse and evaluate a string expression   *
+// ----------------------------------------------
+
+Justina_interpreter::execResult_type Justina_interpreter::parseAndExecEvalString(char* evalString, Val& resultValue, char& resultValueType) {
+
+    if (evalString == nullptr) { return result_eval_nothingToEvaluate; }
+    execResult_type execResult{ result_execOK };
+
+    // push current command line storage to command line stack, to make room for the evaluation string (to parse) 
+    _pImmediateCmdStackTop = (char*)immModeCommandStack.appendListElement(IMM_MEM_SIZE);//// lengte aanpassen
+    memcpy(_pImmediateCmdStackTop, _programStart, IMM_MEM_SIZE);
+
+    evalStack.deleteListElement();  // just passed as (constant) evalString: delete from stack, it's becoming text input for parsing
+    _pEvalStackTop = (LE_evalStack*)evalStack.getLastListElement();
+    _pEvalStackMinus1 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackTop);
+    _pEvalStackMinus2 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackMinus1);
+
+
+    //// exec wordt recursief aangeroepen => exit exec() vóór eval()
+    //// program counter nadien ?
+    //// _withinEval : waar ?
+    //// \s en \a tijdens eval ?
+    //// last value
+    //// errors
+    //// eval() niet mogelijk tijdens trace
+
+    char* holdProgramStart = _programStart;
+    int holdProgramSize = _programSize;
+    char* holdProgramCounter = _programCounter;
+
+
+    // init
+    _programStart = _programStorage + PROG_MEM_SIZE;
+    _programSize = (_programMode ? PROG_MEM_SIZE : IMM_MEM_SIZE);
+    _programCounter = _programStart;                          // start of 'immediate mode' program area
+    *_programStart = '\0';          // in case no valid tokens will be stored
+
+
+
+
+
+    char* pEvalParsingInput = evalString;  // copy pointer to start of eval string
+    char* pDummy{};
+    _withinTrace = false; _withinEval = true;
+    parseTokenResult_type result = parseStatements(pEvalParsingInput, pDummy);           // parse all instructions
+    Serial.print("MAIN *** eval: parsing result = "); Serial.println(result);
+
+
+    if (result == result_tokenFound) {
+        execResult = exec(_programStart);
+        Serial.print("MAIN *** eval exec done: float result = "); Serial.println(_pEvalStackTop->varOrConst.value.floatConst);////
+    }
+    else {execResult = result_eval_parsingError;    }
+
+    _withinTrace = false; _withinEval = false;  //// eval() nesting: OK ??? 
+
+
+
+
+
+    _programStart = holdProgramStart;
+    _programSize = holdProgramSize;
+    _programCounter = holdProgramCounter;
+
+
+    // overwrite the parsed 'EVAL' expressions
+    // before removing, delete any parsed strng constants for that command line
+    deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
+    memcpy(_programStart, _pImmediateCmdStackTop, IMM_MEM_SIZE);        // size berekenen
+    immModeCommandStack.deleteListElement(_pImmediateCmdStackTop);
+    _pImmediateCmdStackTop = (char*)immModeCommandStack.getLastListElement();  //// size aanpassen
+
+
+
+
+
+    Serial.println("MAIN *** continue with main exec");
+
+
+
+    return execResult;
+}
+
+
 // ----------------------------------------------------------------------------------------------------------------------
 // *   parse ONE instruction in a character string, ended by an optional ';' character and a '\0' mandatary character   *
 // ----------------------------------------------------------------------------------------------------------------------
 
 Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(char*& pInputStart, char*& pNextParseStatement) {
-
     _appFlags &= ~0x0001L;              // clear error condition flag 
     _appFlags = (_appFlags & ~0x0030L) | 0x0010L;     // set bits b54 to 01: parsing
 
@@ -872,7 +957,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(
     char* pNext_hold = pNext;
 
 #if printParsedTokens
-    Serial.println(); ////
+    Serial.println("\r\n*** START parsing 1 statement");
 #endif
 
     do {                                                                                // parse ONE token in an instruction
@@ -1571,8 +1656,8 @@ bool Justina_interpreter::checkInternFuncArgArrayPattern(parseTokenResult_type& 
 
         bool arrayArgumentExpected = false;;
         if (argNumber >= 8) {
-                if(isArray){ result = result_scalarArgExpected; return false; }
-            }
+            if (isArray) { result = result_scalarArgExpected; return false; }
+        }
         else {
             if (((paramIsArrayPattern >> (argNumber - 1)) & 0b1) != isArray) { result = isArray ? result_scalarArgExpected : result_arrayArgExpected; return false; }
         }
