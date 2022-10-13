@@ -277,9 +277,9 @@ const Justina_interpreter::TerminalDef Justina_interpreter::_terminals[]{
 void Justina_interpreter::deleteIdentifierNameObjects(char** pIdentNameArray, int identifiersInUse, bool isUserVar) {
     int index = 0;          // points to last variable in use
     while (index < identifiersInUse) {                       // points to variable in use
-#if printCreateDeleteListHeapObjects
+    #if printCreateDeleteListHeapObjects
         Serial.print(isUserVar ? "----- (usrvar name) " : "----- (ident name ) "); Serial.println((uint32_t) * (pIdentNameArray + index) - RAMSTART);
-#endif
+    #endif
         delete[] * (pIdentNameArray + index);
         isUserVar ? _userVarNameStringObjectCount-- : _identifierNameStringObjectCount--;
         index++;
@@ -308,9 +308,9 @@ void Justina_interpreter::deleteArrayElementStringObjects(Justina_interpreter::V
                     char* pString = ((char**)pArrayStorage)[arrayElem];
                     uint32_t stringPointerAddress = (uint32_t) & (((char**)pArrayStorage)[arrayElem]);
                     if (pString != nullptr) {
-#if printCreateDeleteListHeapObjects
+                    #if printCreateDeleteListHeapObjects
                         Serial.print(isUserVar ? "----- (usr arr str) " : isLocalVar ? "-----(loc arr str)" : "----- (arr string ) "); Serial.println((uint32_t)pString - RAMSTART);     // applicable to string and array (same pointer)
-#endif
+                    #endif
                         delete[]  pString;                                  // applicable to string and array (same pointer)
                         isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
                     }
@@ -335,17 +335,17 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
         if (!checkIfGlobalValue || (varType[index] & (var_nameHasGlobalValue))) { // global value ?
             // check for arrays before checking for strings (if both 'var_isArray' and 'value_isStringPointer' bits are set: array of strings, with strings already deleted)
             if (varType[index] & var_isArray) {       // variable is an array: delete array storage          
-#if printCreateDeleteListHeapObjects
+            #if printCreateDeleteListHeapObjects
                 Serial.print(isUserVar ? "----- (usr ar stor) " : isLocalVar ? "----- (loc ar stor) " : "----- (array stor ) "); Serial.println((uint32_t)varValues[index].pStringConst - RAMSTART);
-#endif
+            #endif
                 delete[]  varValues[index].pArray;
                 isUserVar ? _userArrayObjectCount-- : isLocalVar ? _localArrayObjectCount-- : _globalStaticArrayObjectCount--;
             }
             else if ((varType[index] & value_typeMask) == value_isStringPointer) {       // variable is a scalar containing a string
                 if (varValues[index].pStringConst != nullptr) {
-#if printCreateDeleteListHeapObjects
+                #if printCreateDeleteListHeapObjects
                     Serial.print(isUserVar ? "----- (usr var str) " : isLocalVar ? "----- (loc var str)" : "----- (var string ) "); Serial.println((uint32_t)varValues[index].pStringConst - RAMSTART);
-#endif
+                #endif
                     delete[]  varValues[index].pStringConst;
                     isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
                 }
@@ -367,9 +367,9 @@ void Justina_interpreter::deleteLastValueFiFoStringObjects() {
     for (int i = 0; i < _lastResultCount; i++) {
         bool isNonEmptyString = (lastResultTypeFiFo[i] == value_isStringPointer) ? (lastResultValueFiFo[i].pStringConst != nullptr) : false;
         if (isNonEmptyString) {
-#if printCreateDeleteListHeapObjects
+        #if printCreateDeleteListHeapObjects
             Serial.print("----- (FiFo string) "); Serial.println((uint32_t)lastResultValueFiFo[i].pStringConst - RAMSTART);
-#endif
+        #endif
             delete[] lastResultValueFiFo[i].pStringConst;
             _lastValuesStringObjectCount--;
         }
@@ -399,9 +399,9 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
             ////Serial.print("is string cst: "); Serial.println(isStringConst);
             memcpy(&pAnum, prgmCnt.pCstToken->cstValue.pStringConst, sizeof(pAnum));                         // pointer not necessarily aligned with word size: copy memory instead
             if (pAnum != nullptr) {
-#if printCreateDeleteListHeapObjects
+            #if printCreateDeleteListHeapObjects
                 Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pAnum - RAMSTART);
-#endif
+            #endif
                 delete[] pAnum;
                 _parsedStringConstObjectCount--;
             }
@@ -446,9 +446,9 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
         deleteVariableValueObjects(userVarValues, userVarType, _userVarCount, false, true);
 
         if (_pTraceString != nullptr) {        // internal trace 'variable'
-#if printCreateDeleteListHeapObjects
+        #if printCreateDeleteListHeapObjects
             Serial.print("----- (system var str) "); Serial.println((uint32_t)_pTraceString - RAMSTART);
-#endif
+        #endif
             delete[] _pTraceString; _pTraceString = nullptr;      // old trace string
             _systemVarStringObjectCount--;
         }
@@ -553,13 +553,13 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
             _lastValuesStringObjectErrors += abs(_lastValuesStringObjectCount);
         }
 
-#if debugPrint
+    #if debugPrint
         Serial.print(", user var names "); Serial.print(_userVarNameStringObjectCount);
         Serial.print(", user var strings "); Serial.print(_userVarStringObjectCount);
         Serial.print(", user arrays "); Serial.print(_userArrayObjectCount);
 
         Serial.print(", last value strings "); Serial.print(_lastValuesStringObjectCount);
-#endif
+    #endif
     }
 }
 
@@ -671,9 +671,9 @@ int Justina_interpreter::getIdentifier(char** pIdentNameArray, int& identifiersI
         if (identifiersInUse == maxIdentifiers) { return index; }                // create identifier name failed: return -1 with createNewName = true
         pIdentifierName = new char[_maxIdentifierNameLen + 1 + 1];                      // create standard length char array on the heap, including '\0' and an extra character 
         isUserVar ? _userVarNameStringObjectCount++ : _identifierNameStringObjectCount++;
-#if printCreateDeleteListHeapObjects
+    #if printCreateDeleteListHeapObjects
         Serial.print(isUserVar ? "+++++ (usrvar name) " : "+++++ (ident name ) "); Serial.println((uint32_t)pIdentifierName - RAMSTART);
-#endif
+    #endif
         strncpy(pIdentifierName, pIdentNameToCheck, identLength);                            // store identifier name in newly created character array
         pIdentifierName[identLength] = '\0';                                                 // string terminating '\0'
         pIdentNameArray[identifiersInUse] = pIdentifierName;
@@ -740,9 +740,9 @@ bool Justina_interpreter::initVariable(uint16_t varTokenStep, uint16_t constToke
             else { // create string object and store string
                 char* pVarAlphanumValue = new char[length + 1];          // create char array on the heap to store alphanumeric constant, including terminating '\0'
                 isUserVar ? _userVarStringObjectCount++ : _globalStaticVarStringObjectCount++;
-#if printCreateDeleteListHeapObjects
+            #if printCreateDeleteListHeapObjects
                 Serial.print(isUserVar ? "+++++ (usr var str) " : "+++++ (var string ) "); Serial.println((uint32_t)pVarAlphanumValue - RAMSTART);
-#endif
+            #endif
                 // store alphanumeric constant in newly created character array
                 strcpy(pVarAlphanumValue, pString);              // including terminating \0
                 ((char**)pVarStorage)[varValueIndex] = pVarAlphanumValue;       // store pointer to string
@@ -787,7 +787,7 @@ void Justina_interpreter::parseAndExecTraceString() {
     deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
 
     char* pTraceParsingInput = _pTraceString;  // copy pointer to start of trace string
-    _withinTrace = true; _withinEval = false;
+    _withinTrace = true;
 
     _pConsole->print("TRACE ==>> ");
     do {
@@ -826,6 +826,7 @@ void Justina_interpreter::parseAndExecTraceString() {
         if (*pTraceParsingInput != '\0') { _pConsole->print(", "); }                    // separate values (if more than one)
     } while (*pTraceParsingInput != '\0');                                              // exit loop if all expressions handled
 
+    _withinTrace = false;
     _pConsole->println();       // go to next output line
 
     return;
@@ -841,15 +842,20 @@ Justina_interpreter::execResult_type Justina_interpreter::parseAndExecEvalString
     if (evalString == nullptr) { return result_eval_nothingToEvaluate; }
     execResult_type execResult{ result_execOK };
 
-    // push current command line storage to command line stack, to make room for the evaluation string (to parse) 
-    _pImmediateCmdStackTop = (char*)immModeCommandStack.appendListElement(IMM_MEM_SIZE);//// lengte aanpassen
-    memcpy(_pImmediateCmdStackTop, _programStart, IMM_MEM_SIZE);
+    ////Serial.print("MAIN *** entry: "); Serial.println(evalStack.getElementCount());
 
-    evalStack.deleteListElement();  // just passed as (constant) evalString: delete from stack, it's becoming text input for parsing
+    /*
+    // just passed as (constant) evalString: delete from stack, it's becoming text input for parsing
+    evalStack.deleteListElement();
     _pEvalStackTop = (LE_evalStack*)evalStack.getLastListElement();
     _pEvalStackMinus1 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackTop);
     _pEvalStackMinus2 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackMinus1);
+    */
 
+
+    // push current command line storage to command line stack, to make room for the evaluation string (to parse) 
+    _pImmediateCmdStackTop = (char*)immModeCommandStack.appendListElement(IMM_MEM_SIZE);//// lengte aanpassen
+    memcpy(_pImmediateCmdStackTop, _programStart, IMM_MEM_SIZE);
 
     //// exec wordt recursief aangeroepen => exit exec() vóór eval()
     //// program counter nadien ?
@@ -857,11 +863,15 @@ Justina_interpreter::execResult_type Justina_interpreter::parseAndExecEvalString
     //// \s en \a tijdens eval ?
     //// last value
     //// errors
-    //// eval() niet mogelijk tijdens trace
+    //// eval() niet mogelijk tijdens trace vie eval: user functies, wat niet mag)
+    //// 3 nested evals() ???
 
     char* holdProgramStart = _programStart;
     int holdProgramSize = _programSize;
     char* holdProgramCounter = _programCounter;
+    OpenFunctionData holdActiveFunctionData = _activeFunctionData;
+
+    ++_activeFunctionData.callerEvalStackLevels;
 
 
     // init
@@ -876,18 +886,26 @@ Justina_interpreter::execResult_type Justina_interpreter::parseAndExecEvalString
 
     char* pEvalParsingInput = evalString;  // copy pointer to start of eval string
     char* pDummy{};
-    _withinTrace = false; _withinEval = true;
+    _withinEval = true;
     parseTokenResult_type result = parseStatements(pEvalParsingInput, pDummy);           // parse all instructions
-    Serial.print("MAIN *** eval: parsing result = "); Serial.println(result);
+    ////Serial.print("MAIN *** eval: parsing result = "); Serial.println(result);
 
 
     if (result == result_tokenFound) {
         execResult = exec(_programStart);
-        Serial.print("MAIN *** eval exec done: float result = "); Serial.println(_pEvalStackTop->varOrConst.value.floatConst);////
-    }
-    else {execResult = result_eval_parsingError;    }
+        ////Serial.print("MAIN *** eval exec done: float result = "); Serial.println(_pEvalStackTop->varOrConst.value.floatConst);////
+        resultValue = _pEvalStackTop->varOrConst.value;                           // long, float or pointer to string
+        resultValueType = _pEvalStackTop->varOrConst.valueType;              // value type of second operand  
 
-    _withinTrace = false; _withinEval = false;  //// eval() nesting: OK ??? 
+        evalStack.deleteListElement();
+        _pEvalStackTop = (LE_evalStack*)evalStack.getLastListElement();
+        _pEvalStackMinus1 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackTop);
+        _pEvalStackMinus2 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackMinus1);
+
+    }
+    else { execResult = result_eval_parsingError; }
+
+    _withinEval = false;  //// eval() nesting: OK ??? 
 
 
 
@@ -896,6 +914,9 @@ Justina_interpreter::execResult_type Justina_interpreter::parseAndExecEvalString
     _programStart = holdProgramStart;
     _programSize = holdProgramSize;
     _programCounter = holdProgramCounter;
+    _activeFunctionData = holdActiveFunctionData;
+
+
 
 
     // overwrite the parsed 'EVAL' expressions
@@ -906,12 +927,10 @@ Justina_interpreter::execResult_type Justina_interpreter::parseAndExecEvalString
     _pImmediateCmdStackTop = (char*)immModeCommandStack.getLastListElement();  //// size aanpassen
 
 
+    ////Serial.println("MAIN *** continue with main exec");
 
 
-
-    Serial.println("MAIN *** continue with main exec");
-
-
+    ////Serial.print("MAIN *** exit: "); Serial.println(evalStack.getElementCount());
 
     return execResult;
 }
@@ -990,7 +1009,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(
         // move to the first character of next token (within one instruction)
         while (pNext[0] == ' ') { pNext++; }                                         // skip leading spaces
         if (pNext[0] == '\0') { pNextParseStatement = pNext; break; }                                             // end of instruction  
-        if ((pNext[0] == term_semicolon[0]) && (_withinTrace)) { pNextParseStatement = pNext + 1; break; }        // within trace : only parse one instruction  
+        if ((pNext[0] == term_semicolon[0]) && (_withinTrace)) { pNextParseStatement = pNext + 1; break; }        // within trace : only parse one instruction at a time, then execute it first
 
         _lastTokenType_hold = _lastTokenType;                                       // remember the last parsed token during parsing of a next token
         _lastTermCode_hold = _lastTermCode;                                         // only relevant for certain tokens
@@ -1335,9 +1354,9 @@ bool Justina_interpreter::parseAsResWord(char*& pNext, parseTokenResult_type& re
         _lastTokenType = tok_isReservedWord;
         _lastTokenIsString = false, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
-#if printParsedTokens
+    #if printParsedTokens
         Serial.print("parsing keyword: address is "); Serial.print(_lastTokenStep); Serial.print(" ["); Serial.print(_resWords[resWordIndex]._resWordName);  Serial.println("]");
-#endif
+    #endif
 
         _programCounter += sizeof(TokenIsResWord) - (hasTokenStep ? 0 : 2);
         *_programCounter = '\0';                                                 // indicates end of program
@@ -1517,9 +1536,9 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
         // token is an alphanumeric constant, and it's allowed here
         pStringCst = new char[pNext - (pch + 1) - escChars + 1];                                // create char array on the heap to store alphanumeric constant, including terminating '\0'
         _parsedStringConstObjectCount++;
-#if printCreateDeleteListHeapObjects
+    #if printCreateDeleteListHeapObjects
         Serial.print("+++++ (parsed str ) "); Serial.println((uint32_t)pStringCst - RAMSTART);
-#endif
+    #endif
         // store alphanumeric constant in newly created character array
         pStringCst[pNext - (pch + 1) - escChars] = '\0';                                 // store string terminating '\0' (pch + 1 points to character after opening quote, pNext points to closing quote)
         char* pSource = pch + 1, * pDestin = pStringCst;                                  // pSource points to character after opening quote
@@ -1564,9 +1583,9 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
     }
 
     if (result == result_arrayInit_emptyStringExpected) {
-#if printCreateDeleteListHeapObjects
+    #if printCreateDeleteListHeapObjects
         Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pStringCst - RAMSTART);
-#endif
+    #endif
         delete[] pStringCst;
         _parsedStringConstObjectCount--;
         pToken->tokenType = tok_no_token;       // because already set
@@ -1742,569 +1761,569 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
 
     switch (_terminals[termIndex].terminalCode) {
 
-    case termcod_leftPar: {
-        // -------------------------------------
-        // Case 1: is token a left parenthesis ?
-        // -------------------------------------
+        case termcod_leftPar: {
+            // -------------------------------------
+            // Case 1: is token a left parenthesis ?
+            // -------------------------------------
 
-        if (_programCounter == _programStorage) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
+            if (_programCounter == _programStorage) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
-        // token is left parenthesis, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-        if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_5_4_2_1_0)) { pNext = pch;  result = result_parenthesisNotAllowedHere; return false; }
-        if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
+            // token is left parenthesis, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
+            if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_5_4_2_1_0)) { pNext = pch;  result = result_parenthesisNotAllowedHere; return false; }
+            if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
 
-        // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
-        bool tokenAllowed = (_isCommand || (!_programMode) || _extFunctionBlockOpen);
-        if (!tokenAllowed) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; ; }
+            // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
+            bool tokenAllowed = (_isCommand || (!_programMode) || _extFunctionBlockOpen);
+            if (!tokenAllowed) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; ; }
 
-        if (_isAnyVarCmd && (_parenthesisLevel > 0)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }     // no parenthesis nesting in array declarations
-        // parenthesis nesting in function definitions, only to declare an array parameter AND only if followed by a closing parenthesis 
-        if ((_isExtFunctionCmd) && (_parenthesisLevel > 0) && (_lastTokenType != tok_isVariable)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
-        if (_isProgramCmd || _isDeleteVarCmd || _isDeclCBcmd) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
-        if (_isCallbackCmd && (_cmdArgNo == 0)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
+            if (_isAnyVarCmd && (_parenthesisLevel > 0)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }     // no parenthesis nesting in array declarations
+            // parenthesis nesting in function definitions, only to declare an array parameter AND only if followed by a closing parenthesis 
+            if ((_isExtFunctionCmd) && (_parenthesisLevel > 0) && (_lastTokenType != tok_isVariable)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
+            if (_isProgramCmd || _isDeleteVarCmd || _isDeclCBcmd) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
+            if (_isCallbackCmd && (_cmdArgNo == 0)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
 
-        bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_incr) || (_lastTermCode == termcod_decr)) : false;
-        if (varRequired) { pNext = pch; result = result_variableNameExpected; return false; }
+            bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_incr) || (_lastTermCode == termcod_decr)) : false;
+            if (varRequired) { pNext = pch; result = result_variableNameExpected; return false; }
 
-        if (_leadingSpaceCheck) { pNext = pch; result = result_spaceMissing; return false; }
+            if (_leadingSpaceCheck) { pNext = pch; result = result_spaceMissing; return false; }
 
-        // token is a left parenthesis, and it's allowed here
+            // token is a left parenthesis, and it's allowed here
 
-        // store specific flags in stack, because if nesting functions or parentheses, values will be overwritten
-        flags = (_lastTokenType == tok_isExternFunction) ? extFunctionBit :
-            (_lastTokenType == tok_isInternFunction) ? intFunctionBit :
-            (_lastTokenType == tok_isVariable) ? arrayBit : openParenthesisBit;     // is it following a(n internal or external) function name ?
+            // store specific flags in stack, because if nesting functions or parentheses, values will be overwritten
+            flags = (_lastTokenType == tok_isExternFunction) ? extFunctionBit :
+                (_lastTokenType == tok_isInternFunction) ? intFunctionBit :
+                (_lastTokenType == tok_isVariable) ? arrayBit : openParenthesisBit;     // is it following a(n internal or external) function name ?
 
-        // external function (call or definition) opening parenthesis
-        if (_lastTokenType == tok_isExternFunction) {
-            if (extFunctionData[_functionIndex].pExtFunctionStartToken != nullptr) { flags = flags | extFunctionPrevDefinedBit; }
-        }
+            // external function (call or definition) opening parenthesis
+            if (_lastTokenType == tok_isExternFunction) {
+                if (extFunctionData[_functionIndex].pExtFunctionStartToken != nullptr) { flags = flags | extFunctionPrevDefinedBit; }
+            }
 
-        // expression syntax check 
-        _thisLvl_lastIsVariable = false;       // currently open block
-        if (_thisLvl_assignmentStillPossible) { flags = flags | varAssignmentAllowedBit; }          // remember if array element can be assigned to (after closing parenthesis)
-        _thisLvl_assignmentStillPossible = true;                                                                   // array subscripts: reset assignment allowed flag (init)
-        if (_thisLvl_lastOpIsIncrDecr) { flags = flags | varHasPrefixIncrDecrBit; }          // remember if array element has a prefix incr/decr operator (before opening parenthesis) 
-        _thisLvl_lastOpIsIncrDecr = false;                                                                   // array subscripts: reset assignment allowed flag 
+            // expression syntax check 
+            _thisLvl_lastIsVariable = false;       // currently open block
+            if (_thisLvl_assignmentStillPossible) { flags = flags | varAssignmentAllowedBit; }          // remember if array element can be assigned to (after closing parenthesis)
+            _thisLvl_assignmentStillPossible = true;                                                                   // array subscripts: reset assignment allowed flag (init)
+            if (_thisLvl_lastOpIsIncrDecr) { flags = flags | varHasPrefixIncrDecrBit; }          // remember if array element has a prefix incr/decr operator (before opening parenthesis) 
+            _thisLvl_lastOpIsIncrDecr = false;                                                                   // array subscripts: reset assignment allowed flag 
 
-        // command argument constraints check
-        _lvl0_withinExpression = true;
+            // command argument constraints check
+            _lvl0_withinExpression = true;
 
-        // if function DEFINITION: initialize variables for counting of allowed mandatory and optional arguments (not an array parameter, would be parenthesis level 1)
-        if (_isExtFunctionCmd && (_parenthesisLevel == 0)) {      // not an array parameter (would be parenthesis level 1)
-            extFunctionDef_minArgCounter = 0;
-            extFunctionDef_maxArgCounter = 0;            // init count; range from 0 to a hardcoded maximum 
-        }
+            // if function DEFINITION: initialize variables for counting of allowed mandatory and optional arguments (not an array parameter, would be parenthesis level 1)
+            if (_isExtFunctionCmd && (_parenthesisLevel == 0)) {      // not an array parameter (would be parenthesis level 1)
+                extFunctionDef_minArgCounter = 0;
+                extFunctionDef_maxArgCounter = 0;            // init count; range from 0 to a hardcoded maximum 
+            }
 
-        if (_isExtFunctionCmd && (_parenthesisLevel == 1)) {      // array parameter (would be parenthesis level 1)
-            if (peek[0] != term_rightPar[0]) { pNext = pch; result = result_arrayParamMustHaveEmptyDims; return false; }
-        }
+            if (_isExtFunctionCmd && (_parenthesisLevel == 1)) {      // array parameter (would be parenthesis level 1)
+                if (peek[0] != term_rightPar[0]) { pNext = pch; result = result_arrayParamMustHaveEmptyDims; return false; }
+            }
 
-        // if LOCAL, STATIC or GLOBAL array DEFINITION or USE (NOT: parameter array): initialize variables for reading dimensions 
-        if (flags & arrayBit) {                    // always count, also if not first definition (could happen for global variables)
-            array_dimCounter = 0;
-            for (int i = 0; i < MAX_ARRAY_DIMS; i++) { arrayDef_dims[i] = 0; }        // init dimensions (dimension count will result from dimensions being non-zero
-        }
+            // if LOCAL, STATIC or GLOBAL array DEFINITION or USE (NOT: parameter array): initialize variables for reading dimensions 
+            if (flags & arrayBit) {                    // always count, also if not first definition (could happen for global variables)
+                array_dimCounter = 0;
+                for (int i = 0; i < MAX_ARRAY_DIMS; i++) { arrayDef_dims[i] = 0; }        // init dimensions (dimension count will result from dimensions being non-zero
+            }
 
-        // left parenthesis only ? (not a function or array opening parenthesis): min & max allowed argument count not yet initialised
-        if (_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_5) {
-            _minFunctionArgs = 1;                                    // initialize min & max allowed argument count to 1
-            _maxFunctionArgs = 1;
-        }
+            // left parenthesis only ? (not a function or array opening parenthesis): min & max allowed argument count not yet initialised
+            if (_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_5) {
+                _minFunctionArgs = 1;                                    // initialize min & max allowed argument count to 1
+                _maxFunctionArgs = 1;
+            }
 
-        // min & max argument count: either allowed range (if function previously defined), current range of actual args counts (if previous calls only), or not initialized
-        _parenthesisLevel++;                                                            // increment stack counter and create corresponding list element
-        _pParsingStack = (LE_parsingStack*)parsingStack.appendListElement(sizeof(LE_parsingStack));
-        _pParsingStack->openPar.minArgs = _minFunctionArgs;
-        _pParsingStack->openPar.maxArgs = _maxFunctionArgs;
-        _pParsingStack->openPar.actualArgsOrDims = 0;
-        _pParsingStack->openPar.arrayDimCount = _arrayDimCount;         // dimensions of previously defined array. If zero, then this array did not yet exist, or it's a scalar variable
-        _pParsingStack->openPar.flags = flags;
-        _pParsingStack->openPar.identifierIndex = (_lastTokenType == tok_isInternFunction) ? _functionIndex :
-            (_lastTokenType == tok_isExternFunction) ? _functionIndex :
-            (_lastTokenType == tok_isVariable) ? _variableNameIndex : 0;
-        _pParsingStack->openPar.variableScope = _variableScope;
+            // min & max argument count: either allowed range (if function previously defined), current range of actual args counts (if previous calls only), or not initialized
+            _parenthesisLevel++;                                                            // increment stack counter and create corresponding list element
+            _pParsingStack = (LE_parsingStack*)parsingStack.appendListElement(sizeof(LE_parsingStack));
+            _pParsingStack->openPar.minArgs = _minFunctionArgs;
+            _pParsingStack->openPar.maxArgs = _maxFunctionArgs;
+            _pParsingStack->openPar.actualArgsOrDims = 0;
+            _pParsingStack->openPar.arrayDimCount = _arrayDimCount;         // dimensions of previously defined array. If zero, then this array did not yet exist, or it's a scalar variable
+            _pParsingStack->openPar.flags = flags;
+            _pParsingStack->openPar.identifierIndex = (_lastTokenType == tok_isInternFunction) ? _functionIndex :
+                (_lastTokenType == tok_isExternFunction) ? _functionIndex :
+                (_lastTokenType == tok_isVariable) ? _variableNameIndex : 0;
+            _pParsingStack->openPar.variableScope = _variableScope;
 
-        _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
-        break; }
-
-
-    case termcod_rightPar: {
-        // --------------------------------------
-        // Case 2: is token a right parenthesis ?
-        // --------------------------------------
-
-        if (_programCounter == _programStorage) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
-
-        // token is right parenthesis, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-        if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_5_3_0)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
-        if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
-
-        // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
-        bool tokenAllowed = (_isCommand || (!_programMode) || _extFunctionBlockOpen);
-        if (!tokenAllowed) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; ; }
-        if (_parenthesisLevel == 0) { pNext = pch; result = result_missingLeftParenthesis; return false; }
-
-        flags = _pParsingStack->openPar.flags;
-
-        // expression syntax check 
-        _thisLvl_lastIsVariable = (flags & arrayBit);                            // note: parameter array (empty parenthesis): array bit noet set
-        _thisLvl_assignmentStillPossible = (flags & varAssignmentAllowedBit);                                                            // array subscripts: reset assignment allowed flag 
-        _thisLvl_lastOpIsIncrDecr = (flags & varHasPrefixIncrDecrBit);
+            _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
+            break; }
 
 
-        // 2.1 External function definition (not a call), OR array parameter definition closing parenthesis ?
-        // --------------------------------------------------------------------------------------------------
+        case termcod_rightPar: {
+            // --------------------------------------
+            // Case 2: is token a right parenthesis ?
+            // --------------------------------------
 
-        if (_isExtFunctionCmd) {
-            if (_parenthesisLevel == 1) {          // function definition closing parenthesis
-                // stack level will not change until closing parenthesis (because within definition, no nesting of parenthesis is possible)
-                // stack min & max values: current range of args counts that occured in previous calls (not initialized if no earlier calls occured)
+            if (_programCounter == _programStorage) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
-                // if empty function parameter list, then do not increment parameter count (function taking no parameters)
+            // token is right parenthesis, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
+            if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_5_3_0)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
+            if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
 
-                bool emptyParamList = _lastTokenIsTerminal ? (_lastTermCode == termcod_leftPar) : false;            // ok because no nesting allowed
-                _pParsingStack->openPar.actualArgsOrDims += (emptyParamList ? 0 : 1);
+            // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
+            bool tokenAllowed = (_isCommand || (!_programMode) || _extFunctionBlockOpen);
+            if (!tokenAllowed) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; ; }
+            if (_parenthesisLevel == 0) { pNext = pch; result = result_missingLeftParenthesis; return false; }
 
-                // check order of mandatory and optional arguments, check if max. n� not exceeded
-                if (!emptyParamList) { if (!checkExtFunctionArguments(result, extFunctionDef_minArgCounter, extFunctionDef_maxArgCounter)) { pNext = pch; return false; }; }
+            flags = _pParsingStack->openPar.flags;
 
-                int funcIndex = _pParsingStack->openPar.identifierIndex;            // note: also stored in stack for FUNCTION definition block level; here we can pick one of both
-                // if previous calls, check if range of actual argument counts that occured in previous calls corresponds to mandatory and optional arguments defined now
-                bool previousCalls = (extFunctionNames[funcIndex][_maxIdentifierNameLen + 1]) != c_extFunctionFirstOccurFlag;
-                if (previousCalls) {                                                      // stack contains current range of actual args occured in previous calls
-                    if (((int)_pParsingStack->openPar.minArgs < extFunctionDef_minArgCounter) ||
-                        (int)_pParsingStack->openPar.maxArgs > extFunctionDef_maxArgCounter) {
-                        pNext = pch; result = result_prevCallsWrongArgCount; return false;  // argument count in previous calls to this function does not correspond 
+            // expression syntax check 
+            _thisLvl_lastIsVariable = (flags & arrayBit);                            // note: parameter array (empty parenthesis): array bit noet set
+            _thisLvl_assignmentStillPossible = (flags & varAssignmentAllowedBit);                                                            // array subscripts: reset assignment allowed flag 
+            _thisLvl_lastOpIsIncrDecr = (flags & varHasPrefixIncrDecrBit);
+
+
+            // 2.1 External function definition (not a call), OR array parameter definition closing parenthesis ?
+            // --------------------------------------------------------------------------------------------------
+
+            if (_isExtFunctionCmd) {
+                if (_parenthesisLevel == 1) {          // function definition closing parenthesis
+                    // stack level will not change until closing parenthesis (because within definition, no nesting of parenthesis is possible)
+                    // stack min & max values: current range of args counts that occured in previous calls (not initialized if no earlier calls occured)
+
+                    // if empty function parameter list, then do not increment parameter count (function taking no parameters)
+
+                    bool emptyParamList = _lastTokenIsTerminal ? (_lastTermCode == termcod_leftPar) : false;            // ok because no nesting allowed
+                    _pParsingStack->openPar.actualArgsOrDims += (emptyParamList ? 0 : 1);
+
+                    // check order of mandatory and optional arguments, check if max. n� not exceeded
+                    if (!emptyParamList) { if (!checkExtFunctionArguments(result, extFunctionDef_minArgCounter, extFunctionDef_maxArgCounter)) { pNext = pch; return false; }; }
+
+                    int funcIndex = _pParsingStack->openPar.identifierIndex;            // note: also stored in stack for FUNCTION definition block level; here we can pick one of both
+                    // if previous calls, check if range of actual argument counts that occured in previous calls corresponds to mandatory and optional arguments defined now
+                    bool previousCalls = (extFunctionNames[funcIndex][_maxIdentifierNameLen + 1]) != c_extFunctionFirstOccurFlag;
+                    if (previousCalls) {                                                      // stack contains current range of actual args occured in previous calls
+                        if (((int)_pParsingStack->openPar.minArgs < extFunctionDef_minArgCounter) ||
+                            (int)_pParsingStack->openPar.maxArgs > extFunctionDef_maxArgCounter) {
+                            pNext = pch; result = result_prevCallsWrongArgCount; return false;  // argument count in previous calls to this function does not correspond 
+                        }
+                    }
+
+                    // store min required & max allowed n� of arguments in identifier storage
+                    // this replaces the range of actual argument counts that occured in previous calls (if any)
+                    extFunctionNames[funcIndex][_maxIdentifierNameLen + 1] = (extFunctionDef_minArgCounter << 4) | (extFunctionDef_maxArgCounter);
+
+                    // check that order of arrays and scalar variables is consistent with previous callsand function definition
+                    if (!checkExternFuncArgArrayPattern(result, true)) { pNext = pch; return false; };       // verify that the order of scalar and array parameters is consistent with arguments
+                }
+            }
+
+
+            // 2.2 Array definition dimension spec closing parenthesis ?
+            // ---------------------------------------------------------
+
+            else if (_isAnyVarCmd) {                        // note: parenthesis level is 1 (because no inner parenthesis allowed)
+                if (!checkArrayDimCountAndSize(result, arrayDef_dims, array_dimCounter)) { pNext = pch; return false; }
+
+                int varNameIndex = _pParsingStack->openPar.identifierIndex;
+                uint8_t varQualifier = _pParsingStack->openPar.variableScope;
+
+                bool isUserVar = (varQualifier == var_isUser);
+                bool isGlobalVar = (varQualifier == var_isGlobal);
+                bool isStaticVar = (varQualifier == var_isStaticInFunc);
+                bool isLocalVar = (varQualifier == var_isLocalInFunc);            // but not function parameter definitions
+
+                float* pArray;
+                int arrayElements = 1;              // init
+                int valueIndex = (isUserVar || isGlobalVar) ? varNameIndex : programVarValueIndex[varNameIndex];
+
+                // user, global and static arrays: create array on the heap. Array dimensions will be stored in array element 0
+
+                bool arrayWithAssignmentOp = (nextTermIndex < 0) ? false : _terminals[nextTermIndex].terminalCode == termcod_assign;
+                bool arrayWithoutInitializer = (nextTermIndex < 0) ? false : ((_terminals[nextTermIndex].terminalCode == termcod_comma) || (_terminals[nextTermIndex].terminalCode == termcod_semicolon));
+                if (!arrayWithAssignmentOp && !arrayWithoutInitializer) {
+                    if (isUserVar) { --_userVarCount; } // consider user variable not created (relevant for user variables only, because program variables are destroyed anyway if parsing fails)
+                    pNext = pch; result = result_assignmentOrTerminatorExpected; return false;
+                }  // before array is created
+
+                if (isUserVar || isGlobalVar || isStaticVar) {
+                    for (int dimCnt = 0; dimCnt < array_dimCounter; dimCnt++) { arrayElements *= arrayDef_dims[dimCnt]; }
+                    pArray = new float[arrayElements + 1];
+
+                    if (!arrayWithAssignmentOp) {   // no explicit initializer: initialize now (as real) 
+                        for (int arrayElem = 1; arrayElem <= arrayElements; arrayElem++) { ((float*)pArray)[arrayElem] = 0.; }
+                    }
+                    isUserVar ? _userArrayObjectCount++ : _globalStaticArrayObjectCount++;
+
+                #if printCreateDeleteListHeapObjects
+                    Serial.print(isUserVar ? "+++++ (usr ar stor) " : "+++++ (array stor ) "); Serial.println((uint32_t)pArray - RAMSTART);
+                #endif
+                    // only now, the array flag can be set, because only now the object exists
+                    if (isUserVar) {
+                        userVarValues[valueIndex].pArray = pArray;
+                        userVarType[varNameIndex] |= var_isArray;             // set array bit
+                    }
+                    else if (isGlobalVar) {
+                        globalVarValues[valueIndex].pArray = pArray;
+                        globalVarType[varNameIndex] |= var_isArray;             // set array bit
+                    }
+                    else if (isStaticVar) {
+                        staticVarValues[valueIndex].pArray = pArray;
+                        staticVarType[_staticVarCount - 1] |= var_isArray;             // set array bit
                     }
                 }
 
-                // store min required & max allowed n� of arguments in identifier storage
-                // this replaces the range of actual argument counts that occured in previous calls (if any)
-                extFunctionNames[funcIndex][_maxIdentifierNameLen + 1] = (extFunctionDef_minArgCounter << 4) | (extFunctionDef_maxArgCounter);
+                // local arrays (note: NOT for function parameter arrays): set pointer to dimension storage 
+                // the array flag has been set when local variable was created (including function parameters, which are also local variables)
+                // dimensions are not stored in array value array (because created at runtime) but are temporarily stored here during function parsing  
+                else if (isLocalVar) {
+                    pArray = (float*)localVarDims[_localVarCountInFunction - 1];
+                }
 
-                // check that order of arrays and scalar variables is consistent with previous callsand function definition
-                if (!checkExternFuncArgArrayPattern(result, true)) { pNext = pch; return false; };       // verify that the order of scalar and array parameters is consistent with arguments
+                // global, static and local arrays: store array dimensions (local arrays: temporary storage during parsing only)
+                // store dimensions in element 0: char 0 to 2 is dimensions; char 3 = dimension count 
+                for (int i = 0; i < MAX_ARRAY_DIMS; i++) {
+                    ((char*)pArray)[i] = arrayDef_dims[i];
+                }
+                ((char*)pArray)[3] = array_dimCounter;        // (note: for param arrays, set to max dimension count during parsing)
             }
+
+
+            // 2.3 Internal or external function call, or parenthesis pair, closing parenthesis ?
+            // ----------------------------------------------------------------------------------
+
+            else if (flags & (intFunctionBit | extFunctionBit | openParenthesisBit)) {
+                // if empty function call argument list, then do not increment argument count (function call without arguments)
+                bool emptyArgList = _lastTokenIsTerminal ? (_lastTermCode == termcod_leftPar) : false;            // ok because no nesting allowed
+                _pParsingStack->openPar.actualArgsOrDims += (emptyArgList ? 0 : 1);
+                int actualArgs = (int)_pParsingStack->openPar.actualArgsOrDims;
+
+                // call to not yet defined external function ? (there might be previous calls)
+                bool callToNotYetDefinedFunc = ((flags & (extFunctionBit | extFunctionPrevDefinedBit)) == extFunctionBit);
+                if (callToNotYetDefinedFunc) {
+                    // check that max argument count is not exceeded (number must fit in 4 bits)
+                    if (actualArgs > c_extFunctionMaxArgs) { pNext = pch; result = result_functionDefMaxArgsExceeded; return false; }
+
+                    // if at least one previous call (maybe a nested call) is completely parsed, retrieve current range of actual args that occured in these previous calls
+                    // and update this range with the argument count of the current external function call that is at its closing parenthesis
+                    int funcIndex = _pParsingStack->openPar.identifierIndex;            // of current function call: stored in stack for current PARENTHESIS level
+                    bool prevExtFuncCompletelyParsed = (extFunctionNames[funcIndex][_maxIdentifierNameLen + 1]) != c_extFunctionFirstOccurFlag;
+                    if (prevExtFuncCompletelyParsed) {
+                        _pParsingStack->openPar.minArgs = ((extFunctionNames[funcIndex][_maxIdentifierNameLen + 1]) >> 4) & 0x0F;
+                        _pParsingStack->openPar.maxArgs = (extFunctionNames[funcIndex][_maxIdentifierNameLen + 1]) & 0x0F;
+                        if ((int)_pParsingStack->openPar.minArgs > actualArgs) { _pParsingStack->openPar.minArgs = actualArgs; }
+                        if ((int)_pParsingStack->openPar.maxArgs < actualArgs) { _pParsingStack->openPar.maxArgs = actualArgs; }
+                    }
+                    // no previous call: simply set this range to the argument count of the current external function call that is at its closing parenthesis
+                    else { _pParsingStack->openPar.minArgs = actualArgs; _pParsingStack->openPar.maxArgs = actualArgs; }
+
+                    // store the up to date range of actual argument counts in identifier storage
+                    extFunctionNames[funcIndex][_maxIdentifierNameLen + 1] = (_pParsingStack->openPar.minArgs << 4) | (_pParsingStack->openPar.maxArgs);
+                }
+
+                // if call to previously defined external function, to an internal function, or if open parenthesis, then check argument count 
+                else {
+                    bool isOpenParenthesis = (flags & openParenthesisBit);
+                    if (isOpenParenthesis) { _pParsingStack->openPar.minArgs = 1; _pParsingStack->openPar.maxArgs = 1; }
+                    bool argCountWrong = ((actualArgs < (int)_pParsingStack->openPar.minArgs) ||
+                        (actualArgs > (int) _pParsingStack->openPar.maxArgs));
+                    if (argCountWrong) { pNext = pch; result = result_wrong_arg_count; return false; }
+                }
+
+                // check that order of arrays and scalar variables is consistent with function definition and (external functions only: with previous calls) 
+                if (flags & intFunctionBit) { if (!checkInternFuncArgArrayPattern(result)) { pNext = pch; return false; }; }
+                else if (flags & extFunctionBit) { if (!checkExternFuncArgArrayPattern(result, true)) { pNext = pch; return false; }; }
+            }
+
+
+            // 2.4 Array element spec closing parenthesis ?
+            // --------------------------------------------
+
+            else if (flags & arrayBit) {
+                // check if array dimension count corresponds (individual dimension adherence can only be checked at runtime)
+                // for function parameters, array dimension count can only be checked at runtime as well
+                // if previous token is left parenthesis (' () '), then do not increment argument count
+                bool lastWasLeftPar = _lastTokenIsTerminal ? (_lastTermCode == termcod_leftPar) : false;            // ok because no nesting allowed
+                if (!lastWasLeftPar) { _pParsingStack->openPar.actualArgsOrDims++; }
+
+                int varNameIndex = _pParsingStack->openPar.identifierIndex;
+                uint8_t varScope = _pParsingStack->openPar.variableScope;
+                bool isParam = (varScope == var_isParamInFunc);
+                int actualDimCount = _pParsingStack->openPar.actualArgsOrDims;
+
+                if (actualDimCount == 0) { pNext = pch; result = result_arrayUseNoDims; return false; } // dim count too high: already handled when preceding comma was parsed
+                if (!isParam) {
+                    if (actualDimCount != (int)_pParsingStack->openPar.arrayDimCount) { pNext = pch; result = result_arrayUseWrongDimCount; return false; }
+                }
+            }
+
+            else {}     // for documentation only: all cases handled
+
+
+            // token is a right parenthesis, and it's allowed here
+
+            parsingStack.deleteListElement(nullptr);                                           // decrement open parenthesis stack counter and delete corresponding list element
+            _parenthesisLevel--;
+
+            // set pointer to currently last element in stack
+            if (_blockLevel + _parenthesisLevel > 0) { _pParsingStack = (LE_parsingStack*)parsingStack.getLastListElement(); }
+
+            _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
+            break;
         }
 
 
-        // 2.2 Array definition dimension spec closing parenthesis ?
-        // ---------------------------------------------------------
+        case termcod_comma: {
+            // ------------------------------------
+            // Case 3: is token a comma separator ?
+            // ------------------------------------
 
-        else if (_isAnyVarCmd) {                        // note: parenthesis level is 1 (because no inner parenthesis allowed)
-            if (!checkArrayDimCountAndSize(result, arrayDef_dims, array_dimCounter)) { pNext = pch; return false; }
+            if (_programCounter == _programStorage) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
-            int varNameIndex = _pParsingStack->openPar.identifierIndex;
-            uint8_t varQualifier = _pParsingStack->openPar.variableScope;
+            // token is comma separator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
+            if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_0)) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
+            if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
 
-            bool isUserVar = (varQualifier == var_isUser);
-            bool isGlobalVar = (varQualifier == var_isGlobal);
-            bool isStaticVar = (varQualifier == var_isStaticInFunc);
-            bool isLocalVar = (varQualifier == var_isLocalInFunc);            // but not function parameter definitions
+            // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
+            bool tokenAllowed = (_isCommand || (!_programMode) || _extFunctionBlockOpen);
+            if (!tokenAllowed) { pNext = pch; result = result_separatorNotAllowedHere; return false; ; }
 
-            float* pArray;
-            int arrayElements = 1;              // init
-            int valueIndex = (isUserVar || isGlobalVar) ? varNameIndex : programVarValueIndex[varNameIndex];
+            // if no open parenthesis, a comma can only occur to separate command parameters
+            if ((_parenthesisLevel == 0) && !_isCommand) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
 
-            // user, global and static arrays: create array on the heap. Array dimensions will be stored in array element 0
+            flags = (_parenthesisLevel > 0) ? _pParsingStack->openPar.flags : 0;
 
-            bool arrayWithAssignmentOp = (nextTermIndex < 0) ? false : _terminals[nextTermIndex].terminalCode == termcod_assign;
-            bool arrayWithoutInitializer = (nextTermIndex < 0) ? false : ((_terminals[nextTermIndex].terminalCode == termcod_comma) || (_terminals[nextTermIndex].terminalCode == termcod_semicolon));
-            if (!arrayWithAssignmentOp && !arrayWithoutInitializer) {
-                if (isUserVar) { --_userVarCount; } // consider user variable not created (relevant for user variables only, because program variables are destroyed anyway if parsing fails)
-                pNext = pch; result = result_assignmentOrTerminatorExpected; return false;
-            }  // before array is created
+            // expression syntax check 
+            _thisLvl_lastIsVariable = false;       // currently open block, new expression
+            _thisLvl_assignmentStillPossible = true;            // init (start of (sub-)expression)
+            _thisLvl_lastOpIsIncrDecr = false;
 
-            if (isUserVar || isGlobalVar || isStaticVar) {
-                for (int dimCnt = 0; dimCnt < array_dimCounter; dimCnt++) { arrayElements *= arrayDef_dims[dimCnt]; }
-                pArray = new float[arrayElements + 1];
+            // command argument constraints check: reset for next command argument (if within a command)
+            if (_parenthesisLevel == 0) {
+                _lvl0_withinExpression = false;
+                _lvl0_isPurePrefixIncrDecr = false;
+                _lvl0_isPureVariable = false;
+                _lvl0_isVarWithAssignment = false;
+            }
 
-                if (!arrayWithAssignmentOp) {   // no explicit initializer: initialize now (as real) 
-                    for (int arrayElem = 1; arrayElem <= arrayElements; arrayElem++) { ((float*)pArray)[arrayElem] = 0.; }
-                }
-                isUserVar ? _userArrayObjectCount++ : _globalStaticArrayObjectCount++;
+            _initVarOrParWithUnaryOp = 0;   // reset (needed for Function definitions with multiple parameters)
 
-#if printCreateDeleteListHeapObjects
-                Serial.print(isUserVar ? "+++++ (usr ar stor) " : "+++++ (array stor ) "); Serial.println((uint32_t)pArray - RAMSTART);
-#endif
-                // only now, the array flag can be set, because only now the object exists
-                if (isUserVar) {
-                    userVarValues[valueIndex].pArray = pArray;
-                    userVarType[varNameIndex] |= var_isArray;             // set array bit
-                }
-                else if (isGlobalVar) {
-                    globalVarValues[valueIndex].pArray = pArray;
-                    globalVarType[varNameIndex] |= var_isArray;             // set array bit
-                }
-                else if (isStaticVar) {
-                    staticVarValues[valueIndex].pArray = pArray;
-                    staticVarType[_staticVarCount - 1] |= var_isArray;             // set array bit
+
+            // 3.1 External function definition (not a call) parameter separator ? 
+            // -------------------------------------------------------------------
+
+            if (_isExtFunctionCmd) {
+                if (_parenthesisLevel == 1) {          // not an array parameter (would be parenthesis level 2)
+                    _pParsingStack->openPar.actualArgsOrDims++;
+                    // check order of mandatory and optional arguments, check if max. n� not exceeded
+                    if (!checkExtFunctionArguments(result, extFunctionDef_minArgCounter, extFunctionDef_maxArgCounter)) { pNext = pch; return false; };
+
+                    // Check order of mandatory and optional arguments (function: parenthesis levels > 0)
+                    if (!checkExternFuncArgArrayPattern(result, false)) { pNext = pch; return false; };       // verify that the order of scalar and array parameters is consistent with arguments
                 }
             }
 
-            // local arrays (note: NOT for function parameter arrays): set pointer to dimension storage 
-            // the array flag has been set when local variable was created (including function parameters, which are also local variables)
-            // dimensions are not stored in array value array (because created at runtime) but are temporarily stored here during function parsing  
-            else if (isLocalVar) {
-                pArray = (float*)localVarDims[_localVarCountInFunction - 1];
-            }
 
-            // global, static and local arrays: store array dimensions (local arrays: temporary storage during parsing only)
-            // store dimensions in element 0: char 0 to 2 is dimensions; char 3 = dimension count 
-            for (int i = 0; i < MAX_ARRAY_DIMS; i++) {
-                ((char*)pArray)[i] = arrayDef_dims[i];
-            }
-            ((char*)pArray)[3] = array_dimCounter;        // (note: for param arrays, set to max dimension count during parsing)
-        }
+            // 3.2 Array definition dimension spec separator ? 
+            // -----------------------------------------------
 
-
-        // 2.3 Internal or external function call, or parenthesis pair, closing parenthesis ?
-        // ----------------------------------------------------------------------------------
-
-        else if (flags & (intFunctionBit | extFunctionBit | openParenthesisBit)) {
-            // if empty function call argument list, then do not increment argument count (function call without arguments)
-            bool emptyArgList = _lastTokenIsTerminal ? (_lastTermCode == termcod_leftPar) : false;            // ok because no nesting allowed
-            _pParsingStack->openPar.actualArgsOrDims += (emptyArgList ? 0 : 1);
-            int actualArgs = (int)_pParsingStack->openPar.actualArgsOrDims;
-
-            // call to not yet defined external function ? (there might be previous calls)
-            bool callToNotYetDefinedFunc = ((flags & (extFunctionBit | extFunctionPrevDefinedBit)) == extFunctionBit);
-            if (callToNotYetDefinedFunc) {
-                // check that max argument count is not exceeded (number must fit in 4 bits)
-                if (actualArgs > c_extFunctionMaxArgs) { pNext = pch; result = result_functionDefMaxArgsExceeded; return false; }
-
-                // if at least one previous call (maybe a nested call) is completely parsed, retrieve current range of actual args that occured in these previous calls
-                // and update this range with the argument count of the current external function call that is at its closing parenthesis
-                int funcIndex = _pParsingStack->openPar.identifierIndex;            // of current function call: stored in stack for current PARENTHESIS level
-                bool prevExtFuncCompletelyParsed = (extFunctionNames[funcIndex][_maxIdentifierNameLen + 1]) != c_extFunctionFirstOccurFlag;
-                if (prevExtFuncCompletelyParsed) {
-                    _pParsingStack->openPar.minArgs = ((extFunctionNames[funcIndex][_maxIdentifierNameLen + 1]) >> 4) & 0x0F;
-                    _pParsingStack->openPar.maxArgs = (extFunctionNames[funcIndex][_maxIdentifierNameLen + 1]) & 0x0F;
-                    if ((int)_pParsingStack->openPar.minArgs > actualArgs) { _pParsingStack->openPar.minArgs = actualArgs; }
-                    if ((int)_pParsingStack->openPar.maxArgs < actualArgs) { _pParsingStack->openPar.maxArgs = actualArgs; }
+            else if (_isAnyVarCmd) {
+                if (_parenthesisLevel == 1) {             // parenthesis level 1: separator between array dimension specs (level 0: sep. between variables)             
+                    // Check dimension count and array size 
+                    if (!checkArrayDimCountAndSize(result, arrayDef_dims, array_dimCounter)) { pNext = pch; return false; }
                 }
-                // no previous call: simply set this range to the argument count of the current external function call that is at its closing parenthesis
-                else { _pParsingStack->openPar.minArgs = actualArgs; _pParsingStack->openPar.maxArgs = actualArgs; }
-
-                // store the up to date range of actual argument counts in identifier storage
-                extFunctionNames[funcIndex][_maxIdentifierNameLen + 1] = (_pParsingStack->openPar.minArgs << 4) | (_pParsingStack->openPar.maxArgs);
             }
 
-            // if call to previously defined external function, to an internal function, or if open parenthesis, then check argument count 
-            else {
-                bool isOpenParenthesis = (flags & openParenthesisBit);
-                if (isOpenParenthesis) { _pParsingStack->openPar.minArgs = 1; _pParsingStack->openPar.maxArgs = 1; }
-                bool argCountWrong = ((actualArgs < (int)_pParsingStack->openPar.minArgs) ||
-                    (actualArgs > (int) _pParsingStack->openPar.maxArgs));
-                if (argCountWrong) { pNext = pch; result = result_wrong_arg_count; return false; }
+
+            // 3.3 Internal or external function call argument separator ?
+            // -----------------------------------------------------------
+
+            else if (flags & (intFunctionBit | extFunctionBit | openParenthesisBit)) {
+                // note that actual argument count is at least one more than actual argument count, because at least one more to go (after the comma)
+                _pParsingStack->openPar.actualArgsOrDims++;           // include argument before the comma in argument count     
+                int actualArgs = (int)_pParsingStack->openPar.actualArgsOrDims;
+
+                // call to not yet defined external function ? (because there might be previous calls as well)
+                bool callToNotYetDefinedFunc = ((_pParsingStack->openPar.flags & (extFunctionBit | extFunctionPrevDefinedBit)) == extFunctionBit);
+                if (callToNotYetDefinedFunc) {
+                    // check that max argument count is not exceeded (number must fit in 4 bits)
+                    if (actualArgs > c_extFunctionMaxArgs) { pNext = pch; result = result_functionDefMaxArgsExceeded; return false; }
+                }
+
+                // if call to previously defined external function, to an internal function, or if open parenthesis, then check argument count 
+                else {
+                    bool isOpenParenthesis = (flags & openParenthesisBit);
+                    if (isOpenParenthesis) { _pParsingStack->openPar.minArgs = 1; _pParsingStack->openPar.maxArgs = 1; }
+                    bool argCountWrong = (actualArgs >= (int)_pParsingStack->openPar.maxArgs);       // check against allowed maximum number of arguments for this function
+                    if (argCountWrong) { pNext = pch; result = isOpenParenthesis ? result_missingRightParenthesis : result_wrong_arg_count; return false; }
+                }
+
+                // check that order of arrays and scalar variables is consistent with function definition and (external functions only: with previous calls) 
+                if (flags & intFunctionBit) { if (!checkInternFuncArgArrayPattern(result)) { pNext = pch; return false; }; }
+                else if (flags & extFunctionBit) { if (!checkExternFuncArgArrayPattern(result, false)) { pNext = pch; return false; }; }
             }
 
-            // check that order of arrays and scalar variables is consistent with function definition and (external functions only: with previous calls) 
-            if (flags & intFunctionBit) { if (!checkInternFuncArgArrayPattern(result)) { pNext = pch; return false; }; }
-            else if (flags & extFunctionBit) { if (!checkExternFuncArgArrayPattern(result, true)) { pNext = pch; return false; }; }
-        }
 
+            // 3.4 Array subscript separator ?
+            // ----------------------------------
 
-        // 2.4 Array element spec closing parenthesis ?
-        // --------------------------------------------
-
-        else if (flags & arrayBit) {
-            // check if array dimension count corresponds (individual dimension adherence can only be checked at runtime)
-            // for function parameters, array dimension count can only be checked at runtime as well
-            // if previous token is left parenthesis (' () '), then do not increment argument count
-            bool lastWasLeftPar = _lastTokenIsTerminal ? (_lastTermCode == termcod_leftPar) : false;            // ok because no nesting allowed
-            if (!lastWasLeftPar) { _pParsingStack->openPar.actualArgsOrDims++; }
-
-            int varNameIndex = _pParsingStack->openPar.identifierIndex;
-            uint8_t varScope = _pParsingStack->openPar.variableScope;
-            bool isParam = (varScope == var_isParamInFunc);
-            int actualDimCount = _pParsingStack->openPar.actualArgsOrDims;
-
-            if (actualDimCount == 0) { pNext = pch; result = result_arrayUseNoDims; return false; } // dim count too high: already handled when preceding comma was parsed
-            if (!isParam) {
-                if (actualDimCount != (int)_pParsingStack->openPar.arrayDimCount) { pNext = pch; result = result_arrayUseWrongDimCount; return false; }
+            else if (flags & arrayBit) {
+                // check if array dimension count corresponds (individual boundary adherence can only be checked at runtime)
+                _pParsingStack->openPar.actualArgsOrDims++;
+                if ((int)_pParsingStack->openPar.actualArgsOrDims == (int)_pParsingStack->openPar.arrayDimCount) { pNext = pch; result = result_arrayUseWrongDimCount; return false; }
             }
-        }
 
-        else {}     // for documentation only: all cases handled
+            else {}     // for documentation only: all cases handled
 
-
-        // token is a right parenthesis, and it's allowed here
-
-        parsingStack.deleteListElement(nullptr);                                           // decrement open parenthesis stack counter and delete corresponding list element
-        _parenthesisLevel--;
-
-        // set pointer to currently last element in stack
-        if (_blockLevel + _parenthesisLevel > 0) { _pParsingStack = (LE_parsingStack*)parsingStack.getLastListElement(); }
-
-        _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
-        break;
-    }
+            // token is a comma separator, and it's allowed here
+            _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
+            break; }
 
 
-    case termcod_comma: {
-        // ------------------------------------
-        // Case 3: is token a comma separator ?
-        // ------------------------------------
+        case termcod_semicolon: {
+            // ----------------------------------------
+            // Case 4: is token a semicolon separator ?
+            // ----------------------------------------
 
-        if (_programCounter == _programStorage) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
+            if (_programCounter == _programStorage) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
-        // token is comma separator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-        if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_0)) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
-        if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
+            // token is semicolon separator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
+            if (_parenthesisLevel > 0) { pNext = pch; result = result_missingRightParenthesis; return false; }
+            if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2_0)) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
+            if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
 
-        // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
-        bool tokenAllowed = (_isCommand || (!_programMode) || _extFunctionBlockOpen);
-        if (!tokenAllowed) { pNext = pch; result = result_separatorNotAllowedHere; return false; ; }
+            // token is a semicolon separator, and it's allowed here
+            _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
-        // if no open parenthesis, a comma can only occur to separate command parameters
-        if ((_parenthesisLevel == 0) && !_isCommand) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
+            // expression syntax check 
+            _thisLvl_lastIsVariable = false;       // currently open block
+            _thisLvl_assignmentStillPossible = true;
+            _thisLvl_lastOpIsIncrDecr = false;
 
-        flags = (_parenthesisLevel > 0) ? _pParsingStack->openPar.flags : 0;
-
-        // expression syntax check 
-        _thisLvl_lastIsVariable = false;       // currently open block, new expression
-        _thisLvl_assignmentStillPossible = true;            // init (start of (sub-)expression)
-        _thisLvl_lastOpIsIncrDecr = false;
-
-        // command argument constraints check: reset for next command argument (if within a command)
-        if (_parenthesisLevel == 0) {
+            // command argument constraints check: reset for next command argument
             _lvl0_withinExpression = false;
             _lvl0_isPurePrefixIncrDecr = false;
             _lvl0_isPureVariable = false;
             _lvl0_isVarWithAssignment = false;
-        }
 
-        _initVarOrParWithUnaryOp = 0;   // reset (needed for Function definitions with multiple parameters)
-
-
-        // 3.1 External function definition (not a call) parameter separator ? 
-        // -------------------------------------------------------------------
-
-        if (_isExtFunctionCmd) {
-            if (_parenthesisLevel == 1) {          // not an array parameter (would be parenthesis level 2)
-                _pParsingStack->openPar.actualArgsOrDims++;
-                // check order of mandatory and optional arguments, check if max. n� not exceeded
-                if (!checkExtFunctionArguments(result, extFunctionDef_minArgCounter, extFunctionDef_maxArgCounter)) { pNext = pch; return false; };
-
-                // Check order of mandatory and optional arguments (function: parenthesis levels > 0)
-                if (!checkExternFuncArgArrayPattern(result, false)) { pNext = pch; return false; };       // verify that the order of scalar and array parameters is consistent with arguments
-            }
+            break;
         }
 
 
-        // 3.2 Array definition dimension spec separator ? 
-        // -----------------------------------------------
+        default:
+        {
+            // ----------------------------
+            // Case 5: token is an operator
+            // ----------------------------
 
-        else if (_isAnyVarCmd) {
-            if (_parenthesisLevel == 1) {             // parenthesis level 1: separator between array dimension specs (level 0: sep. between variables)             
-                // Check dimension count and array size 
-                if (!checkArrayDimCountAndSize(result, arrayDef_dims, array_dimCounter)) { pNext = pch; return false; }
-            }
-        }
+            // 1. Is an operator allowed here ? 
+            // --------------------------------
 
+            if (_programCounter == _programStorage) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
-        // 3.3 Internal or external function call argument separator ?
-        // -----------------------------------------------------------
+            // does last token type allow an operator as current token ?
+            if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_5_3_2_1_0)) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
 
-        else if (flags & (intFunctionBit | extFunctionBit | openParenthesisBit)) {
-            // note that actual argument count is at least one more than actual argument count, because at least one more to go (after the comma)
-            _pParsingStack->openPar.actualArgsOrDims++;           // include argument before the comma in argument count     
-            int actualArgs = (int)_pParsingStack->openPar.actualArgsOrDims;
+            // allow token (pending further tests) if within most commands, if in immediate mode and inside a function   
+            bool tokenAllowed = (_isCommand || (!_programMode) || _extFunctionBlockOpen);
+            if (!tokenAllowed) { pNext = pch; result = result_operatorNotAllowedHere; return false; ; }
 
-            // call to not yet defined external function ? (because there might be previous calls as well)
-            bool callToNotYetDefinedFunc = ((_pParsingStack->openPar.flags & (extFunctionBit | extFunctionPrevDefinedBit)) == extFunctionBit);
-            if (callToNotYetDefinedFunc) {
-                // check that max argument count is not exceeded (number must fit in 4 bits)
-                if (actualArgs > c_extFunctionMaxArgs) { pNext = pch; result = result_functionDefMaxArgsExceeded; return false; }
+            // 1.a Check additional constraints within specific commands
+            // ---------------------------------------------------------
+
+            bool lastWasAssignment = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
+
+            if (_isAnyVarCmd) {
+                if (_parenthesisLevel > 0) { pNext = pch; result = result_operatorNotAllowedHere; return false; }     // no operators in array dimensions (must be constants)
+                // prefix increment operators before variable to be declared are not detected in command argument checking: test here
+                else if (!_lvl0_withinExpression) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+                // initialiser is constant only: not followed by any operators
+                else if (_lastTokenType == tok_isConstant) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
             }
 
-            // if call to previously defined external function, to an internal function, or if open parenthesis, then check argument count 
-            else {
-                bool isOpenParenthesis = (flags & openParenthesisBit);
-                if (isOpenParenthesis) { _pParsingStack->openPar.minArgs = 1; _pParsingStack->openPar.maxArgs = 1; }
-                bool argCountWrong = (actualArgs >= (int)_pParsingStack->openPar.maxArgs);       // check against allowed maximum number of arguments for this function
-                if (argCountWrong) { pNext = pch; result = isOpenParenthesis ? result_missingRightParenthesis : result_wrong_arg_count; return false; }
+            if (_isExtFunctionCmd) {
+                // only a scalar variable or an assignment can be followed by an operator (an assignment and a prefix plus or minus, respectively)
+                if ((_lastTokenType != tok_isVariable) && !lastWasAssignment) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+                // initialiser is a scalar variable: can not be followed by any other operator than assignment
+                if ((_lastTokenType == tok_isVariable) && (_terminals[termIndex].terminalCode != termcod_assign)) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
             }
 
-            // check that order of arrays and scalar variables is consistent with function definition and (external functions only: with previous calls) 
-            if (flags & intFunctionBit) { if (!checkInternFuncArgArrayPattern(result)) { pNext = pch; return false; }; }
-            else if (flags & extFunctionBit) { if (!checkExternFuncArgArrayPattern(result, false)) { pNext = pch; return false; }; }
-        }
-
-
-        // 3.4 Array subscript separator ?
-        // ----------------------------------
-
-        else if (flags & arrayBit) {
-            // check if array dimension count corresponds (individual boundary adherence can only be checked at runtime)
-            _pParsingStack->openPar.actualArgsOrDims++;
-            if ((int)_pParsingStack->openPar.actualArgsOrDims == (int)_pParsingStack->openPar.arrayDimCount) { pNext = pch; result = result_arrayUseWrongDimCount; return false; }
-        }
-
-        else {}     // for documentation only: all cases handled
-
-        // token is a comma separator, and it's allowed here
-        _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
-        break; }
-
-
-    case termcod_semicolon: {
-        // ----------------------------------------
-        // Case 4: is token a semicolon separator ?
-        // ----------------------------------------
-
-        if (_programCounter == _programStorage) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
-
-        // token is semicolon separator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-        if (_parenthesisLevel > 0) { pNext = pch; result = result_missingRightParenthesis; return false; }
-        if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2_0)) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
-        if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
-
-        // token is a semicolon separator, and it's allowed here
-        _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
-
-        // expression syntax check 
-        _thisLvl_lastIsVariable = false;       // currently open block
-        _thisLvl_assignmentStillPossible = true;
-        _thisLvl_lastOpIsIncrDecr = false;
-
-        // command argument constraints check: reset for next command argument
-        _lvl0_withinExpression = false;
-        _lvl0_isPurePrefixIncrDecr = false;
-        _lvl0_isPureVariable = false;
-        _lvl0_isVarWithAssignment = false;
-
-        break;
-    }
-
-
-    default:
-    {
-        // ----------------------------
-        // Case 5: token is an operator
-        // ----------------------------
-
-        // 1. Is an operator allowed here ? 
-        // --------------------------------
-
-        if (_programCounter == _programStorage) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
-
-        // does last token type allow an operator as current token ?
-        if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_5_3_2_1_0)) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
-
-        // allow token (pending further tests) if within most commands, if in immediate mode and inside a function   
-        bool tokenAllowed = (_isCommand || (!_programMode) || _extFunctionBlockOpen);
-        if (!tokenAllowed) { pNext = pch; result = result_operatorNotAllowedHere; return false; ; }
-
-        // 1.a Check additional constraints within specific commands
-        // ---------------------------------------------------------
-
-        bool lastWasAssignment = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
-
-        if (_isAnyVarCmd) {
-            if (_parenthesisLevel > 0) { pNext = pch; result = result_operatorNotAllowedHere; return false; }     // no operators in array dimensions (must be constants)
-            // prefix increment operators before variable to be declared are not detected in command argument checking: test here
-            else if (!_lvl0_withinExpression) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
-            // initialiser is constant only: not followed by any operators
-            else if (_lastTokenType == tok_isConstant) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
-        }
-
-        if (_isExtFunctionCmd) {
-            // only a scalar variable or an assignment can be followed by an operator (an assignment and a prefix plus or minus, respectively)
-            if ((_lastTokenType != tok_isVariable) && !lastWasAssignment) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
-            // initialiser is a scalar variable: can not be followed by any other operator than assignment
-            if ((_lastTokenType == tok_isVariable) && (_terminals[termIndex].terminalCode != termcod_assign)) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
-        }
-
-        // numeric initializer with plus or minus prefix
-        if ((_isExtFunctionCmd && (_parenthesisLevel == 1)) || (_isAnyVarCmd && (_parenthesisLevel == 0))) {
-            bool isPrefixPlusOrMinus = ((_terminals[termIndex].terminalCode == termcod_plus) || (_terminals[termIndex].terminalCode == termcod_minus));
-            if (isPrefixPlusOrMinus) {
-                if (_initVarOrParWithUnaryOp != 0) { pNext = pch; result = result_operatorNotAllowedHere; return false; }       // already a prefix operator found (only one allowed in initialiser)
-                else {
-                    _initVarOrParWithUnaryOp = (_terminals[termIndex].terminalCode == termcod_minus) ? -1 : 1;      // -1 if minus, 1 if plus prefix operator
-                    while (pNext[0] == ' ') { pNext++; }                                         // find start of next token
-                    if (pNext[0] == '\0') { break; }                                              // safety: instruction was not ended by a semicolon (should never happen) 
-                    result = result_tokenFound;
-                    return true;            // consider unary plus or minus operator as processed, but do not create token; remember which of the two was found
+            // numeric initializer with plus or minus prefix
+            if ((_isExtFunctionCmd && (_parenthesisLevel == 1)) || (_isAnyVarCmd && (_parenthesisLevel == 0))) {
+                bool isPrefixPlusOrMinus = ((_terminals[termIndex].terminalCode == termcod_plus) || (_terminals[termIndex].terminalCode == termcod_minus));
+                if (isPrefixPlusOrMinus) {
+                    if (_initVarOrParWithUnaryOp != 0) { pNext = pch; result = result_operatorNotAllowedHere; return false; }       // already a prefix operator found (only one allowed in initialiser)
+                    else {
+                        _initVarOrParWithUnaryOp = (_terminals[termIndex].terminalCode == termcod_minus) ? -1 : 1;      // -1 if minus, 1 if plus prefix operator
+                        while (pNext[0] == ' ') { pNext++; }                                         // find start of next token
+                        if (pNext[0] == '\0') { break; }                                              // safety: instruction was not ended by a semicolon (should never happen) 
+                        result = result_tokenFound;
+                        return true;            // consider unary plus or minus operator as processed, but do not create token; remember which of the two was found
+                    }
                 }
             }
+
+            if (_isProgramCmd || _isDeleteVarCmd || _isDeclCBcmd) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+            if (_isCallbackCmd && (_cmdArgNo == 0)) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+
+
+            // 1.b Find out if the provided operator type (prefix, infix or postfix) is allowed 
+            // --------------------------------------------------------------------------------
+
+            // does last token type limit allowable operators to infix and postfix ?
+            bool tokenIsPrefixOp{ false }, tokenIsPostfixOp{ false };
+            if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3) ||
+                ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp)) {
+                // infix and postfix operators are allowed: test that current operator is infix or postfix
+                if ((_terminals[termIndex].infix_priority == 0) && (_terminals[termIndex].postfix_priority == 0)) { pNext = pch; result = result_prefixOperatorNotAllowedhere; return false; }
+                tokenIsPrefixOp = false; tokenIsPostfixOp = (_terminals[termIndex].postfix_priority != 0);    // token is either infix or postfix
+
+            }
+            else {        // prefix operators only are allowed
+                if (_terminals[termIndex].prefix_priority == 0) { pNext = pch; result = result_invalidOperator; return false; }
+                tokenIsPrefixOp = true; tokenIsPostfixOp = false;
+            }
+
+            bool isPrefixIncrDecr = (tokenIsPrefixOp && ((_terminals[termIndex].terminalCode == termcod_incr) || (_terminals[termIndex].terminalCode == termcod_decr)));
+            bool isPostfixIncrDecr = (tokenIsPostfixOp && ((_terminals[termIndex].terminalCode == termcod_incr) || (_terminals[termIndex].terminalCode == termcod_decr)));
+
+            if (isPostfixIncrDecr) {
+                if (!_thisLvl_lastIsVariable) { pNext = pch; result = result_operatorNotAllowedHere; return false; }   // not a variable or array element
+                if (_thisLvl_lastOpIsIncrDecr) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+            }
+
+            if (tokenIsPrefixOp && !isPrefixIncrDecr) {
+                if (_thisLvl_lastOpIsIncrDecr) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+            }
+
+            _thisLvl_lastOpIsIncrDecr = (isPrefixIncrDecr || isPostfixIncrDecr);      // remember, because not allowed with postfix increment / decrement (has higher priority and does not return a variable reference)
+
+
+            // 1.c If current token is an assignment operator, check whether it's allowed here
+            // -------------------------------------------------------------------------------
+
+            bool operatorContainsAssignment = ((_terminals[termIndex].terminalCode == termcod_assign)
+                || (_terminals[termIndex].terminalCode == termcod_plusAssign) || (_terminals[termIndex].terminalCode == termcod_minusAssign)
+                || (_terminals[termIndex].terminalCode == termcod_multAssign) || (_terminals[termIndex].terminalCode == termcod_divAssign)
+                || (_terminals[termIndex].terminalCode == termcod_modAssign) || (_terminals[termIndex].terminalCode == termcod_bitAndAssign)
+                || (_terminals[termIndex].terminalCode == termcod_bitOrAssign) || (_terminals[termIndex].terminalCode == termcod_bitXorAssign)
+                || (_terminals[termIndex].terminalCode == termcod_bitShLeftAssign) || (_terminals[termIndex].terminalCode == termcod_bitShRightAssign));
+
+
+            if (operatorContainsAssignment) {
+                if (!_thisLvl_lastIsVariable) { pNext = pch; result = result_assignmNotAllowedHere; return false; }   // not a variable or array element
+                if (!_thisLvl_assignmentStillPossible) { pNext = pch; result = result_assignmNotAllowedHere; return false; }
+            }
+
+            if (!(operatorContainsAssignment || isPrefixIncrDecr)) { _thisLvl_assignmentStillPossible = false; }   // further assignments at this expression level not possible any more
+
+
+            // 1.d Command argument constraints check
+            // --------------------------------------
+
+            if (_parenthesisLevel == 0) {
+                if (!_lvl0_withinExpression || _lvl0_isPurePrefixIncrDecr) { _lvl0_isPurePrefixIncrDecr = (isPrefixIncrDecr || isPostfixIncrDecr); }
+                if (_lvl0_isPureVariable) { _lvl0_isVarWithAssignment = operatorContainsAssignment; }
+                _lvl0_isPureVariable = false;
+                _lvl0_withinExpression = true;
+            }
+
+            // 1.e Token is an operator, and it's allowed here
+            // -----------------------------------------------
+
+            _lastTokenIsPrefixOp = tokenIsPrefixOp;
+            _lastTokenIsPostfixOp = tokenIsPostfixOp;
+            _lastTokenIsPrefixIncrDecr = isPrefixIncrDecr;
         }
-
-        if (_isProgramCmd || _isDeleteVarCmd || _isDeclCBcmd) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
-        if (_isCallbackCmd && (_cmdArgNo == 0)) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
-
-
-        // 1.b Find out if the provided operator type (prefix, infix or postfix) is allowed 
-        // --------------------------------------------------------------------------------
-
-        // does last token type limit allowable operators to infix and postfix ?
-        bool tokenIsPrefixOp{ false }, tokenIsPostfixOp{ false };
-        if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3) ||
-            ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp)) {
-            // infix and postfix operators are allowed: test that current operator is infix or postfix
-            if ((_terminals[termIndex].infix_priority == 0) && (_terminals[termIndex].postfix_priority == 0)) { pNext = pch; result = result_prefixOperatorNotAllowedhere; return false; }
-            tokenIsPrefixOp = false; tokenIsPostfixOp = (_terminals[termIndex].postfix_priority != 0);    // token is either infix or postfix
-
-        }
-        else {        // prefix operators only are allowed
-            if (_terminals[termIndex].prefix_priority == 0) { pNext = pch; result = result_invalidOperator; return false; }
-            tokenIsPrefixOp = true; tokenIsPostfixOp = false;
-        }
-
-        bool isPrefixIncrDecr = (tokenIsPrefixOp && ((_terminals[termIndex].terminalCode == termcod_incr) || (_terminals[termIndex].terminalCode == termcod_decr)));
-        bool isPostfixIncrDecr = (tokenIsPostfixOp && ((_terminals[termIndex].terminalCode == termcod_incr) || (_terminals[termIndex].terminalCode == termcod_decr)));
-
-        if (isPostfixIncrDecr) {
-            if (!_thisLvl_lastIsVariable) { pNext = pch; result = result_operatorNotAllowedHere; return false; }   // not a variable or array element
-            if (_thisLvl_lastOpIsIncrDecr) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
-        }
-
-        if (tokenIsPrefixOp && !isPrefixIncrDecr) {
-            if (_thisLvl_lastOpIsIncrDecr) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
-        }
-
-        _thisLvl_lastOpIsIncrDecr = (isPrefixIncrDecr || isPostfixIncrDecr);      // remember, because not allowed with postfix increment / decrement (has higher priority and does not return a variable reference)
-
-
-        // 1.c If current token is an assignment operator, check whether it's allowed here
-        // -------------------------------------------------------------------------------
-
-        bool operatorContainsAssignment = ((_terminals[termIndex].terminalCode == termcod_assign)
-            || (_terminals[termIndex].terminalCode == termcod_plusAssign) || (_terminals[termIndex].terminalCode == termcod_minusAssign)
-            || (_terminals[termIndex].terminalCode == termcod_multAssign) || (_terminals[termIndex].terminalCode == termcod_divAssign)
-            || (_terminals[termIndex].terminalCode == termcod_modAssign) || (_terminals[termIndex].terminalCode == termcod_bitAndAssign)
-            || (_terminals[termIndex].terminalCode == termcod_bitOrAssign) || (_terminals[termIndex].terminalCode == termcod_bitXorAssign)
-            || (_terminals[termIndex].terminalCode == termcod_bitShLeftAssign) || (_terminals[termIndex].terminalCode == termcod_bitShRightAssign));
-
-
-        if (operatorContainsAssignment) {
-            if (!_thisLvl_lastIsVariable) { pNext = pch; result = result_assignmNotAllowedHere; return false; }   // not a variable or array element
-            if (!_thisLvl_assignmentStillPossible) { pNext = pch; result = result_assignmNotAllowedHere; return false; }
-        }
-
-        if (!(operatorContainsAssignment || isPrefixIncrDecr)) { _thisLvl_assignmentStillPossible = false; }   // further assignments at this expression level not possible any more
-
-
-        // 1.d Command argument constraints check
-        // --------------------------------------
-
-        if (_parenthesisLevel == 0) {
-            if (!_lvl0_withinExpression || _lvl0_isPurePrefixIncrDecr) { _lvl0_isPurePrefixIncrDecr = (isPrefixIncrDecr || isPostfixIncrDecr); }
-            if (_lvl0_isPureVariable) { _lvl0_isVarWithAssignment = operatorContainsAssignment; }
-            _lvl0_isPureVariable = false;
-            _lvl0_withinExpression = true;
-        }
-
-        // 1.e Token is an operator, and it's allowed here
-        // -----------------------------------------------
-
-        _lastTokenIsPrefixOp = tokenIsPrefixOp;
-        _lastTokenIsPostfixOp = tokenIsPostfixOp;
-        _lastTokenIsPrefixIncrDecr = isPrefixIncrDecr;
-    }
     }
 
     // create token
@@ -2385,9 +2404,9 @@ bool Justina_interpreter::parseAsInternFunction(char*& pNext, parseTokenResult_t
         _lastTokenType = tok_isInternFunction;
         _lastTokenIsString = false, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
-#if printParsedTokens
+    #if printParsedTokens
         Serial.print("parsing int fcn: address is "); Serial.print(_lastTokenStep); Serial.print(" ["); Serial.print(_functions[funcIndex].funcName);  Serial.println("]");
-#endif
+    #endif
 
         _programCounter += sizeof(TokenIsIntFunction);
         *_programCounter = '\0';                                                 // indicates end of program
@@ -2425,7 +2444,7 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
     index = getIdentifier(userVarNames, _userVarCount, MAX_USERVARNAMES, pch, pNext - pch, createNewName, true);
     if (index != -1) { pNext = pch; return true; }                // is a user variable
 
-    if (_withinTrace || _withinEval) { pNext = pch; result = result_trace_userFunctonOrUndefinedVar; return false; }
+    if (_withinTrace) { pNext = pch; result = result_trace_isUserFunctonOrUndefinedVar; return false; }
 
     if ((_isExtFunctionCmd) && (_parenthesisLevel > 0)) { pNext = pch; return true; }        // only array parameter allowed now
 
@@ -2681,7 +2700,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
             else { pNext = pch; result = result_varNotDeclared; return false; }  // if the name doesn't exist, the variable doesn't
         }
 
-       // user variable referenced in program: set flag in user var types array (only; will not be copied in token info)
+        // user variable referenced in program: set flag in user var types array (only; will not be copied in token info)
         if (_programMode && !isProgramVar) { varType[activeNameRange][varNameIndex] = varType[activeNameRange][varNameIndex] | var_userVarUsedByProgram; }
     }
 
@@ -2795,10 +2814,10 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     }
 
 
-   // 4.2 NOT parsing FUNCTION...END block 
-    // ------------------------------------
+    // 4.2 NOT parsing FUNCTION...END block 
+     // ------------------------------------
 
-    // note: while parsing program instructions AND while parsing instructions entered in immediate mode
+     // note: while parsing program instructions AND while parsing instructions entered in immediate mode
     else {
         // concentrate on global program variables and user variables first (not yet on function variables)
         // if program variable: has a GLOBAL program variabe with this name been declared already ? (if user variable, because the name exixts, storage exists)
@@ -2815,9 +2834,9 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
             ////Serial.println("\r\n*** 4.2 - var not yet known");
             // but this can still be a global or user variable declaration 
             if (_isGlobalOrUserVarCmd) {                           // is it a declaration ?  defne storage location now
-                 ////Serial.println("*** 4.2 - is global or user");
-                // is a declaration of a new program global variable (in program mode), or a new user user variable (in immediate mode) 
-                // variable qualifier : don't care for now (global varables: reset at start of next external function parsing)
+                ////Serial.println("*** 4.2 - is global or user");
+               // is a declaration of a new program global variable (in program mode), or a new user user variable (in immediate mode) 
+               // variable qualifier : don't care for now (global varables: reset at start of next external function parsing)
                 if (!isArray) { varValues[activeNameRange][varNameIndex].floatConst = 0.; }                  // initialize variable (if initializer and/or array: will be overwritten)
                 varType[activeNameRange][varNameIndex] = varType[activeNameRange][varNameIndex] | value_isFloat;         // init as float (for scalar and array)
                 if (isProgramVar) { varType[activeNameRange][varNameIndex] = varType[activeNameRange][varNameIndex] | var_nameHasGlobalValue; }   // set 'has global value' or 'user var' bit
@@ -2938,7 +2957,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
         if (existingArray ^ isArray) { pNext = pch; result = isArray ? result_varDefinedAsScalar : result_varDefinedAsArray; return false; }
 
 
-    // if existing array: retrieve dimension count against existing definition, for testing against definition afterwards
+        // if existing array: retrieve dimension count against existing definition, for testing against definition afterwards
         if (existingArray) {
             void* pArray = nullptr;
             if (isStaticVar) { pArray = staticVarValues[valueIndex].pArray; }
@@ -3059,7 +3078,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
     strncpy(pIdentifierName, pch, pNext - pch);                            // store identifier name in newly created character array
     pIdentifierName[pNext - pch] = '\0';                                                 // string terminating '\0'
 
-// Declaring program name or aliases ? Store 
+    // Declaring program name or aliases ? Store 
     if (_isProgramCmd) {
         strcpy(_programName, pIdentifierName);
     }
@@ -3070,9 +3089,9 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
         }
 
         if ((result == result_allUserCBAliasesSet || result == result_userCBAliasRedeclared)) {
-#if printCreateDeleteListHeapObjects
+        #if printCreateDeleteListHeapObjects
             Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pIdentifierName - RAMSTART);
-#endif
+        #endif
             delete[] pIdentifierName;
             _parsedStringConstObjectCount--;
             return false;
@@ -3144,129 +3163,129 @@ void Justina_interpreter::prettyPrintInstructions(int instructionCount, char* st
         char prettyToken[maxCharsPrettyToken] = "";
 
         switch (tokenType) {
-        case tok_isReservedWord:
-        {
-            TokenIsResWord* pToken = (TokenIsResWord*)progCnt.pTokenChars;
-            bool nextIsTerminal = ((nextTokenType == tok_isTerminalGroup1) || (nextTokenType == tok_isTerminalGroup2) || (nextTokenType == tok_isTerminalGroup3));
-            bool nextIsSemicolon = false;
-            if (nextIsTerminal) {
-                int nextTokenIndex = ((nextProgCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F);
-                nextTokenIndex += ((nextTokenType == tok_isTerminalGroup2) ? 0x10 : (nextTokenType == tok_isTerminalGroup3) ? 0x20 : 0);
-                nextIsSemicolon = (_terminals[nextTokenIndex].terminalCode == termcod_semicolon);
-            }
-
-            sprintf(prettyToken, nextIsSemicolon ? "%s" : "%s ", _resWords[progCnt.pResW->tokenIndex]._resWordName);
-            hasTrailingSpace = true;
-            break;
-        }
-
-        case tok_isInternFunction:
-            strcpy(prettyToken, _functions[progCnt.pIntFnc->tokenIndex].funcName);
-            break;
-
-        case tok_isExternFunction:
-        {
-            int identNameIndex = (int)progCnt.pExtFnc->identNameIndex;   // external function list element
-            char* identifierName = extFunctionNames[identNameIndex];
-            strcpy(prettyToken, identifierName);
-            break;
-        }
-
-        case tok_isVariable:
-        {
-            int identNameIndex = (int)(progCnt.pVar->identNameIndex);
-            bool isForcedFunctionVar = (progCnt.pVar->identInfo & var_isForcedFunctionVar) == var_isForcedFunctionVar;
-            bool isUserVar = (progCnt.pVar->identInfo & var_scopeMask) == var_isUser;
-            char* identifierName = isUserVar ? userVarNames[identNameIndex] : programVarNames[identNameIndex];
-            sprintf(prettyToken, "%s%s", (isForcedFunctionVar ? "#" : ""), identifierName);
-            testNextForPostfix = true;
-            break;
-        }
-
-        case tok_isConstant:
-        {
-            char valueType = (*progCnt.pTokenChars >> 4) & value_typeMask;
-            bool isLongConst = (valueType == value_isLong);
-            bool isFloatConst = (valueType == value_isFloat);
-            bool isStringConst = (valueType == value_isStringPointer);
-
-            if (isLongConst) {
-                long  l;
-                memcpy(&l, progCnt.pCstToken->cstValue.longConst, sizeof(l));                         // pointer not necessarily aligned with word size: copy memory instead
-                sprintf(prettyToken, "%ld", l);
-                testNextForPostfix = true;
-                break;   // and quit switch
-            }
-
-            else if (isFloatConst) {
-                float f;
-                memcpy(&f, progCnt.pCstToken->cstValue.floatConst, sizeof(f));                         // pointer not necessarily aligned with word size: copy memory instead
-                sprintf(prettyToken, "%#.3G", f);
-                testNextForPostfix = true;
-                break;   // and quit switch
-            }
-
-            else { testNextForPostfix = true; }     // no break here: fall into generic name handling
-        }
-
-        case tok_isGenericName:
-        {
-            char* pAnum{ nullptr };
-            memcpy(&pAnum, progCnt.pCstToken->cstValue.pStringConst, sizeof(pAnum));                         // pointer not necessarily aligned with word size: copy memory instead
-            sprintf(prettyToken, (testNextForPostfix ? "\"%s\"" : "%s "), (pAnum == nullptr) ? "" : pAnum);
-            hasTrailingSpace = !testNextForPostfix;
-
-            break;
-        }
-
-        default:  // terminal
-        {
-            int index = (progCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F;
-            index += ((tokenType == tok_isTerminalGroup2) ? 0x10 : (tokenType == tok_isTerminalGroup3) ? 0x20 : 0);
-            char trailing[2] = "\0";      // init: empty string
-
-            if (_terminals[index].terminalCode <= termcod_opRangeEnd) {      // operator 
-                isPostfixOperator = testForPostfix ? (_terminals[index].postfix_priority != 0) : false;
-
-                isInfixOperator = lastWasInfixOperator ? false : testForPostfix ? !isPostfixOperator : false;
-
-                if (lastWasPostfixOperator && isPostfixOperator) {             // check if operator is postfix operator 
-                    strcat(prettyToken, " ");          // leading space
-                    tokenHasLeadingSpace = true;
+            case tok_isReservedWord:
+            {
+                TokenIsResWord* pToken = (TokenIsResWord*)progCnt.pTokenChars;
+                bool nextIsTerminal = ((nextTokenType == tok_isTerminalGroup1) || (nextTokenType == tok_isTerminalGroup2) || (nextTokenType == tok_isTerminalGroup3));
+                bool nextIsSemicolon = false;
+                if (nextIsTerminal) {
+                    int nextTokenIndex = ((nextProgCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F);
+                    nextTokenIndex += ((nextTokenType == tok_isTerminalGroup2) ? 0x10 : (nextTokenType == tok_isTerminalGroup3) ? 0x20 : 0);
+                    nextIsSemicolon = (_terminals[nextTokenIndex].terminalCode == termcod_semicolon);
                 }
 
-                if (!isPostfixOperator && !lastHasTrailingSpace) {             // check if operator is postfix operator 
-                    strcat(prettyToken, " ");          // leading space
-                    tokenHasLeadingSpace = true;
+                sprintf(prettyToken, nextIsSemicolon ? "%s" : "%s ", _resWords[progCnt.pResW->tokenIndex]._resWordName);
+                hasTrailingSpace = true;
+                break;
+            }
+
+            case tok_isInternFunction:
+                strcpy(prettyToken, _functions[progCnt.pIntFnc->tokenIndex].funcName);
+                break;
+
+            case tok_isExternFunction:
+            {
+                int identNameIndex = (int)progCnt.pExtFnc->identNameIndex;   // external function list element
+                char* identifierName = extFunctionNames[identNameIndex];
+                strcpy(prettyToken, identifierName);
+                break;
+            }
+
+            case tok_isVariable:
+            {
+                int identNameIndex = (int)(progCnt.pVar->identNameIndex);
+                bool isForcedFunctionVar = (progCnt.pVar->identInfo & var_isForcedFunctionVar) == var_isForcedFunctionVar;
+                bool isUserVar = (progCnt.pVar->identInfo & var_scopeMask) == var_isUser;
+                char* identifierName = isUserVar ? userVarNames[identNameIndex] : programVarNames[identNameIndex];
+                sprintf(prettyToken, "%s%s", (isForcedFunctionVar ? "#" : ""), identifierName);
+                testNextForPostfix = true;
+                break;
+            }
+
+            case tok_isConstant:
+            {
+                char valueType = (*progCnt.pTokenChars >> 4) & value_typeMask;
+                bool isLongConst = (valueType == value_isLong);
+                bool isFloatConst = (valueType == value_isFloat);
+                bool isStringConst = (valueType == value_isStringPointer);
+
+                if (isLongConst) {
+                    long  l;
+                    memcpy(&l, progCnt.pCstToken->cstValue.longConst, sizeof(l));                         // pointer not necessarily aligned with word size: copy memory instead
+                    sprintf(prettyToken, "%ld", l);
+                    testNextForPostfix = true;
+                    break;   // and quit switch
                 }
 
-                if ((isInfixOperator)) {
+                else if (isFloatConst) {
+                    float f;
+                    memcpy(&f, progCnt.pCstToken->cstValue.floatConst, sizeof(f));                         // pointer not necessarily aligned with word size: copy memory instead
+                    sprintf(prettyToken, "%#.3G", f);
+                    testNextForPostfix = true;
+                    break;   // and quit switch
+                }
+
+                else { testNextForPostfix = true; }     // no break here: fall into generic name handling
+            }
+
+            case tok_isGenericName:
+            {
+                char* pAnum{ nullptr };
+                memcpy(&pAnum, progCnt.pCstToken->cstValue.pStringConst, sizeof(pAnum));                         // pointer not necessarily aligned with word size: copy memory instead
+                sprintf(prettyToken, (testNextForPostfix ? "\"%s\"" : "%s "), (pAnum == nullptr) ? "" : pAnum);
+                hasTrailingSpace = !testNextForPostfix;
+
+                break;
+            }
+
+            default:  // terminal
+            {
+                int index = (progCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F;
+                index += ((tokenType == tok_isTerminalGroup2) ? 0x10 : (tokenType == tok_isTerminalGroup3) ? 0x20 : 0);
+                char trailing[2] = "\0";      // init: empty string
+
+                if (_terminals[index].terminalCode <= termcod_opRangeEnd) {      // operator 
+                    isPostfixOperator = testForPostfix ? (_terminals[index].postfix_priority != 0) : false;
+
+                    isInfixOperator = lastWasInfixOperator ? false : testForPostfix ? !isPostfixOperator : false;
+
+                    if (lastWasPostfixOperator && isPostfixOperator) {             // check if operator is postfix operator 
+                        strcat(prettyToken, " ");          // leading space
+                        tokenHasLeadingSpace = true;
+                    }
+
+                    if (!isPostfixOperator && !lastHasTrailingSpace) {             // check if operator is postfix operator 
+                        strcat(prettyToken, " ");          // leading space
+                        tokenHasLeadingSpace = true;
+                    }
+
+                    if ((isInfixOperator)) {
+                        trailing[0] = ' ';      // single space (already terminated by '\0')
+                        hasTrailingSpace = true;
+                    }
+
+                    testNextForPostfix = isPostfixOperator;
+                }
+
+                else if (_terminals[index].terminalCode == termcod_rightPar) {
+                    testNextForPostfix = true;
+                }
+
+                else if (_terminals[index].terminalCode == termcod_leftPar) {
+                    hasTrailingSpace = true;
+                    testNextForPostfix = false;
+                }
+
+                else if ((_terminals[index].terminalCode == termcod_comma) || (_terminals[index].terminalCode == termcod_semicolon)) {
+                    testNextForPostfix = false;
                     trailing[0] = ' ';      // single space (already terminated by '\0')
                     hasTrailingSpace = true;
                 }
 
-                testNextForPostfix = isPostfixOperator;
-            }
-
-            else if (_terminals[index].terminalCode == termcod_rightPar) {
-                testNextForPostfix = true;
-            }
-
-            else if (_terminals[index].terminalCode == termcod_leftPar) {
-                hasTrailingSpace = true;
-                testNextForPostfix = false;
-            }
-
-            else if ((_terminals[index].terminalCode == termcod_comma) || (_terminals[index].terminalCode == termcod_semicolon)) {
-                testNextForPostfix = false;
-                trailing[0] = ' ';      // single space (already terminated by '\0')
-                hasTrailingSpace = true;
-            }
-
-            strcat(prettyToken, _terminals[index].terminalName);         // concatenate with empty string or single-space string
-            strcat(prettyToken, trailing);
-            isSemicolon = (_terminals[index].terminalCode == termcod_semicolon);
-            break; }
+                strcat(prettyToken, _terminals[index].terminalName);         // concatenate with empty string or single-space string
+                strcat(prettyToken, trailing);
+                isSemicolon = (_terminals[index].terminalCode == termcod_semicolon);
+                break; }
         }
 
 

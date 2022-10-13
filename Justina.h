@@ -402,7 +402,7 @@ public:
 
         // tracing errors
         result_trace_resWordNotAllowed = 2100,//// eval ???
-        result_trace_userFunctonOrUndefinedVar,
+        result_trace_isUserFunctonOrUndefinedVar,
         result_trace_genericNameNotAllowed,
 
         // other program errors
