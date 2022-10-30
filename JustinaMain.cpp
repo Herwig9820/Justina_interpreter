@@ -589,6 +589,8 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
         // - the flow control stack maintains data about open block commands and open functions (call stack)
         // => skip stack elements for any command line open block commands and fetch the data for the function where control will resume when started again
 
+        Serial.print("** main: imm mode cmd stack depth = "); Serial.println(immModeCommandStack.getElementCount());
+
         if ((immModeCommandStack.getElementCount() > 0) && (execResult != result_eval_kill) && (execResult != result_eval_quit)) {
             char* nextInstructionsPointer = _programCounter;
             OpenFunctionData* pDeepestOpenFunction = &_activeFunctionData;

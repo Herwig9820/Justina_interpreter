@@ -79,8 +79,6 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"Program",         cmdcod_program,         cmd_onlyProgramTop | cmd_skipDuringExec,            0,0,    cmdPar_103,     cmdProgram},
     {"Function",        cmdcod_function,        cmd_onlyInProgram | cmd_skipDuringExec,             0,0,    cmdPar_108,     cmdBlockExtFunction},
 
-    {"Eval",            cmdcod_eval,            cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockNone},
-
 
     /* declare variables */
     /* ----------------- */

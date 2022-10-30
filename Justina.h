@@ -140,7 +140,6 @@ public:
         cmdcod_printProg,
         cmdcod_printCallSt,
         cmdcod_function,
-        cmdcod_eval,
         cmdcod_static,
         cmdcod_local,
         cmdcod_var,
@@ -189,6 +188,8 @@ public:
         block_if,
         block_alterFlow,                                        // alter flow in specific open block types
         block_genericEnd,                                       // ends anytype of open block
+
+        block_eval,                                             // execution only, signals execution of eval() string 
 
         // value 2, 3, 4: position in open block, min & max position of previous block command within same block level
         block_na,                                               // not applicable
@@ -426,7 +427,9 @@ public:
         // all terminal tokens: at the end of the list ! (occupy only one character in program, combining token type and index)
         tok_isTerminalGroup1,       // if index < 15 -    because too many operators to fit in 4 bits
         tok_isTerminalGroup2,       // if index between 16 and 31
-        tok_isTerminalGroup3        // if index between 32 and 47
+        tok_isTerminalGroup3,       // if index between 32 and 47
+
+        tok_isEvalEnd               // execution only, signals end of parsed eval() statements
     };
 
     enum execResult_type {
@@ -476,7 +479,7 @@ public:
         result_skipNotAllowedHere,
 
         // evaluation function errors
-        result_eval_nothingToEvaluate =3500, 
+        result_eval_nothingToEvaluate = 3500,
         result_eval_parsingError,
 
         // *** MANDATORY =>LAST<= range of errors: events ***
@@ -783,10 +786,10 @@ public:
         // within a function, as in immediate mode, only one (block) command can be active at a time (ended by semicolon), in contrast to command blocks, which can be nested, so command data can be stored here:
         // data is stored when a keyword is processed and it is cleared when the ending semicolon (ending the command) is processed
         char activeCmd_ResWordCode;     // keyword code (set to 'cmdcod_none' again when semicolon is processed)
-        
+
         char directCallByEval;          // exec() was directly called by eval function
-        char spare [3];                 // boundary alignment
-        
+        char spare[3];                 // boundary alignment
+
         char* activeCmd_tokenAddress;   // address in program memory of parsed keyword token                                
 
         // value area pointers (note: a value is a long, a float or a pointer to a string or array, or (if reference): pointer to 'source' (referenced) variable))
@@ -794,7 +797,7 @@ public:
         char** ppSourceVarTypes;        // only if local variable is reference to variable or array element: pointer to 'source' variable value type  
         char* pVariableAttributes;      // local variable: value type (float, local string or reference); 'source' (if reference) or local variable scope (user, global, static; local, param) 
 
-        char* pNextStep;             // next step to execute (look ahead)
+        char* pNextStep;                // next step to execute (look ahead)
         char* errorStatementStartStep;  // first token in statement where execution error occurs (error reporting)
         char* errorProgramCounter;      // token to point to in statement (^) if execution error occurs (error reporting)
     };
@@ -1096,7 +1099,7 @@ public:
     char* _pTraceString{ nullptr };
     char* _pEvalString{ nullptr };
     bool _withinTrace{ false };
-    bool _withinEval{ false };
+    bool _withinEval{ false };//// weg
 
 
     // counting of heap objects (note: linked list element count is maintained within the linked list objects)
@@ -1368,8 +1371,10 @@ public:
     execResult_type  execUnaryOperation(bool isPrefix);
     execResult_type  execInfixOperation();
     execResult_type  execInternalFunction(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount);
-    execResult_type  launchExternalFunction(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount);
+    execResult_type  launchExternalFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount);
+    execResult_type  launchEval(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl);
     execResult_type  terminateExternalFunction(bool addZeroReturnValue = false);
+    execResult_type  terminateEval();
     execResult_type execProcessedCommand(bool& isFunctionReturn, bool& cmdLineRequestsProgramStop, bool& userRequestsAbort);
     execResult_type testForLoopCondition(bool& fail);
 
