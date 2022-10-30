@@ -591,7 +591,7 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
 
         Serial.print("** main: imm mode cmd stack depth = "); Serial.println(immModeCommandStack.getElementCount());
 
-        if ((immModeCommandStack.getElementCount() > 0) && (execResult != result_eval_kill) && (execResult != result_eval_quit)) {
+        if ((immModeCommandStack.getElementCount() > 0) && (execResult != result_eval_kill) && (execResult != result_eval_quit)) {  //// fout: eval() levels aftrekken
             char* nextInstructionsPointer = _programCounter;
             OpenFunctionData* pDeepestOpenFunction = &_activeFunctionData;
 
