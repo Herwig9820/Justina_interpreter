@@ -79,6 +79,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         _localVarStringObjectCount = 0;
         _localArrayObjectCount = 0;
         _activeFunctionData.callerEvalStackLevels = 0;          // this is the highest program level
+        _callStackDepth = 0;                                            // equals flow control stack depth minus open loop (if, for, ...) blocks (= blocks being executed)
+        _openDebugLevels = 0;                                           // equals imm mode cmd stack depth minus open eval() strings (= eval() strings being executed)
     }
 
     _stepCmdExecuted = db_continue;      // switch single step mode OFF before starting to execute command line (even in debug mode). Step and Debug commands will switch it on again (to execute one step).
@@ -746,10 +748,11 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         // push current command line storage to command line stack, to make room for debug commands
         _pImmediateCmdStackTop = (char*)immModeCommandStack.appendListElement(IMM_MEM_SIZE);//// aanpassen
         memcpy(_pImmediateCmdStackTop, _programStart, IMM_MEM_SIZE);
+        ++_openDebugLevels;
     }
 
     // no programs in debug: always; otherwise: only if error is in fact quit or kill event 
-    else if ((immModeCommandStack.getElementCount() == 0) || (execResult == result_eval_quit) || (execResult == result_eval_kill)) {             // do not clear flow control stack while in debug mode
+    else if ((_openDebugLevels == 0) || (execResult == result_eval_quit) || (execResult == result_eval_kill)) {             // do not clear flow control stack while in debug mode
         clearImmediateCmdStack();
         clearFlowCtrlStack();           // and remaining local storage + local variable string and array values
         clearEvalStack();
@@ -920,7 +923,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             bool OpenBlock{ true };
             char nextStepBlockAction{ block_na };          // init
 
-            if (immModeCommandStack.getElementCount() == 0) { return result_noProgramStopped; }
+            if (_openDebugLevels == 0) { return result_noProgramStopped; }
 
             // debugging command requiring an open block ? (-> step out of block, step to block end commands)
             // debugging command not applicable to block start and block end commands ? (-> skip command)
@@ -971,6 +974,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             memcpy(_programStart, _pImmediateCmdStackTop, IMM_MEM_SIZE);        // size berekenen
             immModeCommandStack.deleteListElement(_pImmediateCmdStackTop);
             _pImmediateCmdStackTop = (char*)immModeCommandStack.getLastListElement();  //// size aanpassen
+            --_openDebugLevels;
 
             // abort: all done
             if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_abort) { return result_eval_abort; }
@@ -1003,7 +1007,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
             // info needed to check when commands like step out, ... have finished executing, returning control to user
             _stepCallStackLevel = _callStackDepth;                          // call stack levels at time of first program step to execute after step,... command
-            _stepFlowCtrlStackLevels = flowCtrlStack.getElementCount();     // all flow control stack levels at time of first program step to execute after step,... command
+            _stepFlowCtrlStackLevels = flowCtrlStack.getElementCount();     // all flow control stack levels at time of first program step to execute after step,... command (includes open blocks)
 
             _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackTop);
             _pFlowCtrlStackMinus2 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackMinus1);
@@ -2270,6 +2274,8 @@ void Justina_interpreter::clearImmediateCmdStack() {
         memcpy(_programStorage + PROG_MEM_SIZE, _pImmediateCmdStackTop, IMM_MEM_SIZE);
         immModeCommandStack.deleteListElement(_pImmediateCmdStackTop);
     }
+    _openDebugLevels = 0;
+
     // do NOT delete parsed string constants for original command line (last copied to program storage) - handled later 
 }
 
@@ -2491,7 +2497,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execAllProcessedOpera
     }
 
     Serial.print("** END exec all operators: CALLER eval stack levels = "); Serial.println((int)_activeFunctionData.callerEvalStackLevels);
-    
+
     return result_execOK;
 }
 
@@ -2982,11 +2988,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         // --------------------------------------------
 
         case fnccod_eval:
+            //// _withinEval : waar ?
+            //// \s en \a tijdens eval ?
         {
             // only one argument possible
             if (argIsLong[0] || argIsFloat[0]) { return result_stringExpected; }
             char resultValueType;
-            execResult_type execResult = launchEval(pFunctionStackLvl, pFirstArgStackLvl);          // sets program counter to start of parsed eval() expression (among others)
+            execResult_type execResult = launchEval(pFunctionStackLvl, args[0].pStringConst);
             if (execResult != result_execOK) { return execResult; }
             // an 'external function' (executing the parsed eval() expressions) has just been 'launched' (and will start after current (right parenthesis) token is processed)
             // because eval function name token and single argument will be removed from stack now (see below, at end of this function), adapt caller evaluation stack levels
@@ -3314,13 +3322,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 }
                 break;
 
+                // note:parsing stack element count is always zero during evaluation: no entry provided here
                 case 19:fcnResult.longConst = _callStackDepth; break;                       // call stack depth; this excludes stack levels used by blocks (while, if, ...)
-                case 20:fcnResult.longConst = flowCtrlStack.getElementCount(); break;       // flow control stack element count (call stack depth + stack levels used by open blocks)
-                case 21:fcnResult.longConst = immModeCommandStack.getElementCount(); break; // immediate mode parsed programs stack element count
-                case 22:fcnResult.longConst = evalStack.getElementCount(); break;           // evaluation stack element count
-                    // note:parsing stack element count is always zero during evaluation: no entry provided here
+                case 20:fcnResult.longConst = _openDebugLevels; break;
+                case 21:fcnResult.longConst = evalStack.getElementCount(); break;           // evaluation stack element count
+                case 22:fcnResult.longConst = flowCtrlStack.getElementCount(); break;       // flow control stack element count (call stack depth + stack levels used by open blocks)
+                case 23:fcnResult.longConst = immModeCommandStack.getElementCount(); break; // immediate mode parsed programs stack element count
 
-                case 23:                                                                    // current object count
+                case 24:                                                                    // current object count
                 case 1001:                                                                  // current accumulated object count errors since cold start
                 {
                     fcnResultValueType = value_isStringPointer;
@@ -3349,7 +3358,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 }
                 break;
 
-                case 24:                                                                    // trace string
+                case 25:                                                                    // trace string
                 {
                     fcnResultValueType = value_isStringPointer;
                     fcnResult.pStringConst = nullptr;                                       // init (empty string)
@@ -3621,7 +3630,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchExternalFunctio
     _pFlowCtrlStackMinus2 = _pFlowCtrlStackMinus1; _pFlowCtrlStackMinus1 = _pFlowCtrlStackTop;
     _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
     *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                // push caller function data to stack
-    ++_callStackDepth;
+    ++_callStackDepth;                                                              // caller can be main, another external function or an eval() string
 
 
     _activeFunctionData.functionIndex = pFunctionStackLvl->function.index;     // index of external function to call
@@ -3719,15 +3728,15 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchExternalFunctio
 }
 
 
-// -------------
-// ////
-// -------------
+// ------------------------------------
+// launch execution of an eval() string
+// ------------------------------------
 
-Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl) {
+Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalStack*& pFunctionStackLvl, char* parsingInput) {
 
     execResult_type execResult{ result_execOK };
 
-    char* pEvalParsingInput = pFirstArgStackLvl->varOrConst.value.pStringConst;         // copy pointer to start of eval string
+    char* pEvalParsingInput = parsingInput;         // copy pointer to start of eval string
     if (pEvalParsingInput == nullptr) { return result_eval_nothingToEvaluate; }             //// of enkel spaces
 
 
@@ -3746,6 +3755,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
     parseTokenResult_type result = parseStatements(pEvalParsingInput, pDummy);           // parse all instructions
 
     if (result != result_tokenFound) {
+        /* ////
         // overwrite the parsed 'EVAL' expressions with the original parsed statements
         // before removing, delete any parsed strng constants for that command line
         deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
@@ -3753,7 +3763,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
         immModeCommandStack.deleteListElement(_pImmediateCmdStackTop);
         _pImmediateCmdStackTop = (char*)immModeCommandStack.getLastListElement();  //// size aanpassen
         _programCounter = holdProgramCounter;
-        Serial.print("eval() parsing error: "); Serial.println(result);
+        */
         return result_eval_parsingError;
     }
 
@@ -3776,7 +3786,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
     _pFlowCtrlStackMinus2 = _pFlowCtrlStackMinus1; _pFlowCtrlStackMinus1 = _pFlowCtrlStackTop;
     _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
     *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                // push caller function data to stack
-    ++_callStackDepth;
+    ++_callStackDepth;                                                                  // caller can be main, another external function or an eval() string
 
 
     _activeFunctionData.functionIndex = pFunctionStackLvl->function.index;     // index of (internal) eval() function - but will not be used
@@ -4021,8 +4031,7 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateExternalFunct
         ////Serial.print("*** terminate: delete local vars: areas = "); Serial.println(_localVarValueAreaCount);
     }
 
-    char blockType = block_none;
-
+    char blockType = block_none;            // init
     do {
         blockType = *(char*)_pFlowCtrlStackTop;            // always at least one open function level and optionally open eval() levels (because returning to caller from it)
 
@@ -4068,21 +4077,21 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateExternalFunct
 }
 
 
-// ---------------
-// ////
-// ---------------
+// ---------------------------------------
+// terminate execution of an eval() string
+// ---------------------------------------
 
 Justina_interpreter::execResult_type Justina_interpreter::terminateEval() {
 
     makeIntermediateConstant(_pEvalStackTop);            // if not already an intermediate constant
 
-    char blockType = block_none;
+    char blockType = block_none;        // init
     Serial.print("** beginning of terminateEval(): flow ctrl stack depth: "); Serial.println(flowCtrlStack.getElementCount());
     do {
         blockType = *(char*)_pFlowCtrlStackTop;            // always at least one open function (because returning to caller from it)
 
         // load local storage pointers again for caller function and restore pending step & active function information for caller function
-        if ((blockType == block_extFunction) || (blockType ==block_eval )) { Serial.println("popping flow ctrl stack"); _activeFunctionData = *(OpenFunctionData*)_pFlowCtrlStackTop; }
+        if ((blockType == block_extFunction) || (blockType == block_eval)) { Serial.println("popping flow ctrl stack"); _activeFunctionData = *(OpenFunctionData*)_pFlowCtrlStackTop; }
 
         // delete FLOW CONTROL stack level (includes any optional CALLED function open block stack levels before CALLER open function data stack level is reached)
         flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);
@@ -4090,7 +4099,7 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateEval() {
         _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackTop);
         _pFlowCtrlStackMinus2 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackMinus1);
 
-    } while ((blockType != block_extFunction)&& (blockType != block_eval));        // caller level can be caller eval() or caller external function
+    } while ((blockType != block_extFunction) && (blockType != block_eval));        // caller level can be caller eval() or caller external function
     --_callStackDepth;                  // caller reached: call stack depth decreased by 1
 
 

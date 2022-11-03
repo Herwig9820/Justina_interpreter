@@ -539,6 +539,7 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
         char* pDummy{};
         _withinTrace = false; _withinEval = false;
         result = parseStatements(pInstruction, pDummy);                                 // parse one instruction (ending with ';' character, if found)
+        Serial.print("////// parsed statements: ");Serial.print(pInstruction);Serial.println("//////");
         pErrorPos = pInstruction;                                                      // in case of error
         if (result != result_tokenFound) { _flushAllUntilEOF = true; }
         if (result == result_parse_kill) { kill = true; _quitJustinaAtEOF = true; }     // _flushAllUntilEOF is true already (flush buffer before quitting)
@@ -586,16 +587,17 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
         // - if an error occured while executing a command line, then this count is not changed either
         // flow control stack:
         // - at this point, structure '_activeFunctionData' always contains flow control data for the main program level (command line - in debug mode if the count of open programs is not zero)
-        // - the flow control stack maintains data about open block commands and open functions (call stack)
-        // => skip stack elements for any command line open block commands and fetch the data for the function where control will resume when started again
+        // - the flow control stack maintains data about open block commands, open functions and eval() strings in execution (call stack)
+        // => skip stack elements for any command line open block commands or eval() strings in execution, and fetch the data for the function where control will resume when started again
 
-        Serial.print("** main: imm mode cmd stack depth = "); Serial.println(immModeCommandStack.getElementCount());
+        Serial.print("** main: imm mode cmd stack depth = "); Serial.println(_openDebugLevels);
 
-        if ((immModeCommandStack.getElementCount() > 0) && (execResult != result_eval_kill) && (execResult != result_eval_quit)) {  //// fout: eval() levels aftrekken
+        if ((_openDebugLevels > 0) && (execResult != result_eval_kill) && (execResult != result_eval_quit)) {  //// fout: eval() levels aftrekken
             char* nextInstructionsPointer = _programCounter;
             OpenFunctionData* pDeepestOpenFunction = &_activeFunctionData;
 
-            void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                    int blockType = block_none;
+            void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                    
+            int blockType = block_none;
             do {                                                                // there is at least one open function in the call stack
                 blockType = *(char*)pFlowCtrlStackLvl;
                 if (blockType != block_extFunction) {
@@ -614,13 +616,13 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
             _pConsole->print(msg);
             prettyPrintInstructions(10, nextInstructionsPointer);
 
-            if (immModeCommandStack.getElementCount() > 1) {
-                sprintf(msg, "*** this + %d other programs STOPPED ***", immModeCommandStack.getElementCount() - 1);
+            if (_openDebugLevels > 1) {
+                sprintf(msg, "*** this + %d other programs STOPPED ***", _openDebugLevels - 1);
                 _pConsole->println(msg);
             }
         }
 
-        (immModeCommandStack.getElementCount() > 0) ? (_appFlags |= 0x0030L) : (_appFlags &= ~0x0030L);     // signal 'debug mode' to caller
+        (_openDebugLevels > 0) ? (_appFlags |= 0x0030L) : (_appFlags &= ~0x0030L);     // signal 'debug mode' to caller
 
         if (!_programMode && (_promptAndEcho != 0)) { _pConsole->print("Justina> "); _isPrompt = true; }                 // print new prompt
 

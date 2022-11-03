@@ -456,7 +456,8 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
     deleteConstStringObjects(_programStorage);
     deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
 
-    // if debug mode currently active: delete all 'immediate mode command stack' elements (parsed immediate mode statements that were pushed on the 'immediate mode command stack'
+    
+    // if parsed immediate mode statements are currently pushed to the immediate mode command stack (debug mode active and / or eval() strings being executed): delete all
     // before deleting an element, delete parsed alphanumeric constants in the corresponding parsed immediate mode statement  
     while (immModeCommandStack.getElementCount() != 0) {
         // copy command line stack top to command line program storage and pop command line stack top
@@ -578,11 +579,7 @@ void Justina_interpreter::initInterpreterVariables(bool withUserVariables) {
     _staticVarCountInFunction = 0;
     _staticVarCount = 0;
     _lastResultCount = 0;                                       // current last result FiFo depth (values currently stored)
-
     _extFunctionBlockOpen = false;
-    _callStackDepth = 0;
-    _stepCmdExecuted = db_continue;
-    _debugCmdExecuted = false;
 
     _programVarNameCount = 0;
     if (withUserVariables) { _userVarCount = 0; }
@@ -828,109 +825,6 @@ void Justina_interpreter::parseAndExecTraceString() {
     _pConsole->println();       // go to next output line
 
     return;
-}
-
-
-// ----------------------------------------------
-// *   parse and evaluate a string expression   *
-// ----------------------------------------------
-
-Justina_interpreter::execResult_type Justina_interpreter::parseAndExecEvalString(char* evalString, Val& resultValue, char& resultValueType) {
-
-    if (evalString == nullptr) { return result_eval_nothingToEvaluate; }
-    execResult_type execResult{ result_execOK };
-
-    ////Serial.print("MAIN *** entry: "); Serial.println(evalStack.getElementCount());
-
-    /*
-    // just passed as (constant) evalString: delete from stack, it's becoming text input for parsing
-    evalStack.deleteListElement();
-    _pEvalStackTop = (LE_evalStack*)evalStack.getLastListElement();
-    _pEvalStackMinus1 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackTop);
-    _pEvalStackMinus2 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackMinus1);
-    */
-
-
-    // push current command line storage to command line stack, to make room for the evaluation string (to parse) 
-    _pImmediateCmdStackTop = (char*)immModeCommandStack.appendListElement(IMM_MEM_SIZE);//// lengte aanpassen
-    memcpy(_pImmediateCmdStackTop, _programStart, IMM_MEM_SIZE);
-
-    //// exec wordt recursief aangeroepen => exit exec() vóór eval()
-    //// program counter nadien ?
-    //// _withinEval : waar ?
-    //// \s en \a tijdens eval ?
-    //// last value
-    //// errors
-    //// eval() niet mogelijk tijdens trace vie eval: user functies, wat niet mag)
-    //// 3 nested evals() ???
-
-    char* holdProgramStart = _programStart;
-    int holdProgramSize = _programSize;
-    char* holdProgramCounter = _programCounter;
-    OpenFunctionData holdActiveFunctionData = _activeFunctionData;
-
-    ++_activeFunctionData.callerEvalStackLevels;
-
-
-    // init
-    _programStart = _programStorage + PROG_MEM_SIZE;
-    _programSize = (_programMode ? PROG_MEM_SIZE : IMM_MEM_SIZE);
-    _programCounter = _programStart;                          // start of 'immediate mode' program area
-    *_programStart = '\0';          // in case no valid tokens will be stored
-
-
-
-
-
-    char* pEvalParsingInput = evalString;  // copy pointer to start of eval string
-    char* pDummy{};
-    _withinEval = true;
-    parseTokenResult_type result = parseStatements(pEvalParsingInput, pDummy);           // parse all instructions
-    ////Serial.print("MAIN *** eval: parsing result = "); Serial.println(result);
-
-
-    if (result == result_tokenFound) {
-        execResult = exec(_programStart);
-        ////Serial.print("MAIN *** eval exec done: float result = "); Serial.println(_pEvalStackTop->varOrConst.value.floatConst);////
-        resultValue = _pEvalStackTop->varOrConst.value;                           // long, float or pointer to string
-        resultValueType = _pEvalStackTop->varOrConst.valueType;              // value type of second operand  
-
-        evalStack.deleteListElement();
-        _pEvalStackTop = (LE_evalStack*)evalStack.getLastListElement();
-        _pEvalStackMinus1 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackTop);
-        _pEvalStackMinus2 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackMinus1);
-
-    }
-    else { execResult = result_eval_parsingError; }
-
-    _withinEval = false;  //// eval() nesting: OK ??? 
-
-
-
-
-
-    _programStart = holdProgramStart;
-    _programSize = holdProgramSize;
-    _programCounter = holdProgramCounter;
-    _activeFunctionData = holdActiveFunctionData;
-
-
-
-
-    // overwrite the parsed 'EVAL' expressions
-    // before removing, delete any parsed strng constants for that command line
-    deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
-    memcpy(_programStart, _pImmediateCmdStackTop, IMM_MEM_SIZE);        // size berekenen
-    immModeCommandStack.deleteListElement(_pImmediateCmdStackTop);
-    _pImmediateCmdStackTop = (char*)immModeCommandStack.getLastListElement();  //// size aanpassen
-
-
-    ////Serial.println("MAIN *** continue with main exec");
-
-
-    ////Serial.print("MAIN *** exit: "); Serial.println(evalStack.getElementCount());
-
-    return execResult;
 }
 
 
@@ -2841,16 +2735,16 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~var_isArray); // init (array flag may only be added when storage is created) 
             }
             else {  // not a declaration, but a variable reference
-                ////Serial.println("*** 4.2 - is not global or user");
+                Serial.println("*** 4.2 - is not global or user");
                 // it's neither a global or user variable declaration, nor a global or user variable reference (because storage doesnot exist for it). But the variable name exists,
                 // so local or static function variables using this name have been defined already. 
                 // in debug mode (program stopped), the name could refer to a local or static variable of a function in the call stack (open function) 
 
                 // in debug mode now ? (if multiple programs in debug mode, only the last one stopped will be considered here
-                if (immModeCommandStack.getElementCount() > 0) {
+                if (immModeCommandStack.getElementCount() > 0) { //// } (_openDebugLevels > 0) {
                     // check whether this is a local or static function variable reference of the deepest open function in the call stack
 
-                    // Serial.println("*** 4.2 - in debug mode");
+                    Serial.println("*** 4.2 - in debug mode");
                     int openFunctionIndex{};
                     void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                    int blockType = block_none;
                     do {
@@ -2901,7 +2795,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
         }
 
         else {  // global PROGRAM variable exists already: check for double definition (USER variables: detected when NAME was declared a second time) 
-            ////Serial.println("*** 4.2 - is existing global");
+            Serial.println("*** 4.2 - is existing global");
             if (_isGlobalOrUserVarCmd) { pNext = pch; result = result_varRedeclared; return false; }
         }
     }

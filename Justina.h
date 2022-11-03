@@ -1170,9 +1170,10 @@ public:
 
     long _appFlags = 0;
 
-    int _callStackDepth = 0;                                        // external function calls
+    int _callStackDepth{ 0 };                                       // equals flow control stack depth minus open loop (if, for, ...) blocks (= blocks being executed)
+    int _openDebugLevels{ 0 };                                      // equals imm mode cmd stack depth minus open eval() strings (= eval() strings being executed)
     int _stepCallStackLevel{ 0 };                                   // call stack levels at the moment of a step... command
-    int _stepFlowCtrlStackLevels{ 0 };                                // ALL flow control stack levels at the moment of a step... command
+    int _stepFlowCtrlStackLevels{ 0 };                              // ALL flow control stack levels at the moment of a step... command
 
     int _stepCmdExecuted{ db_continue };
     bool _debugCmdExecuted{ false };
@@ -1349,7 +1350,6 @@ public:
     void deleteLastValueFiFoStringObjects();
     void deleteConstStringObjects(char* pToken);
     void parseAndExecTraceString();
-    execResult_type parseAndExecEvalString(char* evalString, Val& resultValue, char& resultValueType);
     parseTokenResult_type  parseStatements(char*& pInputLine, char*& pNextParseStatement);
     void deleteParsedData();
     bool allExternalFunctionsDefined(int& index);
@@ -1372,7 +1372,7 @@ public:
     execResult_type  execInfixOperation();
     execResult_type  execInternalFunction(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount);
     execResult_type  launchExternalFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount);
-    execResult_type  launchEval(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl);
+    execResult_type  launchEval(LE_evalStack*& pFunctionStackLvl, char* parsingInput);
     execResult_type  terminateExternalFunction(bool addZeroReturnValue = false);
     execResult_type  terminateEval();
     execResult_type execProcessedCommand(bool& isFunctionReturn, bool& cmdLineRequestsProgramStop, bool& userRequestsAbort);
