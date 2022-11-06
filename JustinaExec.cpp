@@ -672,6 +672,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 int functionNameLength{ 0 };
                 _pConsole->print("\r\n  ");
 
+                clearImmediateCmdStack();
+
                 prettyPrintInstructions(1, _activeFunctionData.errorStatementStartStep, _activeFunctionData.errorProgramCounter, &sourceErrorPos);
                 for (int i = 1; i <= sourceErrorPos; ++i) { _pConsole->print(" "); }
             }
@@ -739,11 +741,14 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
     if (execResult == result_eval_stopForDebug) {              // stopping for debug now ('STOP' command or single step)
         // push caller function data (or main = user entry level in immediate mode) on FLOW CONTROL stack 
         _pFlowCtrlStackMinus2 = _pFlowCtrlStackMinus1; _pFlowCtrlStackMinus1 = _pFlowCtrlStackTop;
+        
         _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
         *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                // push caller function data to stack
         ++_callStackDepth;      // user function level added to flow control stack
+        Serial.print("--------------- stop for debug: append flowctrlstack-levels = ");Serial.println(flowCtrlStack.getElementCount());
 
         _activeFunctionData.callerEvalStackLevels = evalStack.getElementCount();                          // store evaluation stack levels in use by callers (call stack)
+        _activeFunctionData.pNextStep = _programStorage + PROG_MEM_SIZE;                // only to signal 'immediate mode command level'
 
         // push current command line storage to command line stack, to make room for debug commands
         _pImmediateCmdStackTop = (char*)immModeCommandStack.appendListElement(IMM_MEM_SIZE);//// aanpassen
@@ -1075,23 +1080,32 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
         case cmdcod_printCallSt:
         {
-            if (_callStackDepth > 0) {
+            if (_callStackDepth > 0) {      // including eval() stack levels but excluding open block (for, if, ...) stack levels
                 int indent = 0;
                 void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                    int blockType = block_none;
                 for (int i = 0; i < flowCtrlStack.getElementCount(); ++i) {
+                    char s[_maxIdentifierNameLen+1]="";
                     blockType = *(char*)pFlowCtrlStackLvl;
+                    if (blockType == block_eval) {
+                            for (int space = 0; space < indent - 4; ++space) { _pConsole->print(" "); }
+                            if (indent > 0) { _pConsole->print("|__ "); }
+                            _pConsole->println("eval() string");
+                            indent += 4;
+                    }
                     if (blockType == block_extFunction) {
                         if (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep < _programStart) {
                             for (int space = 0; space < indent - 4; ++space) { _pConsole->print(" "); }
                             if (indent > 0) { _pConsole->print("|__ "); }
-                            // print function name
-                            int index = ((OpenFunctionData*)pFlowCtrlStackLvl)->functionIndex;
-                            _pConsole->println(extFunctionNames[index]);
+                            int index = ((OpenFunctionData*)pFlowCtrlStackLvl)->functionIndex;              // print function name
+                            sprintf(s, "%s()", extFunctionNames[index]);
+                            _pConsole->println(s);
                             indent += 4;
                         }
                         else {
+                            for (int space = 0; space < indent - 4; ++space) { _pConsole->print(" "); }
+                            if (indent > 0) { _pConsole->print("|__ "); }
+                            _pConsole->println((i < flowCtrlStack.getElementCount() - 1) ? "debugging command line" : "command line");       // command line
                             indent = 0;
-                            if (i < flowCtrlStack.getElementCount() - 1) { _pConsole->println(); }      // command ine statements: empty line, except at the end
                         }
                     }
                     pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
@@ -2249,6 +2263,8 @@ void Justina_interpreter::clearFlowCtrlStack(execResult_type execResult, bool de
             if (!isInitialLoop) {
                 pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                 flowCtrlStack.deleteListElement(nullptr);
+                Serial.print("--------------- clear flow ctrl stack: append flowctrlstack-levels = "); Serial.println(flowCtrlStack.getElementCount());
+
             }
             if (pFlowCtrlStackLvl == nullptr) { break; }       // all done
             isInitialLoop = false;
@@ -3631,6 +3647,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchExternalFunctio
     _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
     *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                // push caller function data to stack
     ++_callStackDepth;                                                              // caller can be main, another external function or an eval() string
+    Serial.print("--------------- launch ext function: append flowctrlstack-levels = "); Serial.println(flowCtrlStack.getElementCount());
 
 
     _activeFunctionData.functionIndex = pFunctionStackLvl->function.index;     // index of external function to call
@@ -3755,15 +3772,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
     parseTokenResult_type result = parseStatements(pEvalParsingInput, pDummy);           // parse all instructions
 
     if (result != result_tokenFound) {
-        /* ////
-        // overwrite the parsed 'EVAL' expressions with the original parsed statements
-        // before removing, delete any parsed strng constants for that command line
-        deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
-        memcpy(_programStorage + PROG_MEM_SIZE, _pImmediateCmdStackTop, IMM_MEM_SIZE);        // size berekenen
-        immModeCommandStack.deleteListElement(_pImmediateCmdStackTop);
-        _pImmediateCmdStackTop = (char*)immModeCommandStack.getLastListElement();  //// size aanpassen
-        _programCounter = holdProgramCounter;
-        */
+        Serial.print("eval() parsing error: "); Serial.println(result);
         return result_eval_parsingError;
     }
 
@@ -3787,6 +3796,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
     _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
     *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                // push caller function data to stack
     ++_callStackDepth;                                                                  // caller can be main, another external function or an eval() string
+    Serial.print("--------------- launch eval(): append flowctrlstack-levels = "); Serial.println(flowCtrlStack.getElementCount());
 
 
     _activeFunctionData.functionIndex = pFunctionStackLvl->function.index;     // index of (internal) eval() function - but will not be used
@@ -4043,6 +4053,7 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateExternalFunct
         _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
         _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackTop);
         _pFlowCtrlStackMinus2 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackMinus1);
+        Serial.print("--------------- terminate ext function: append flowctrlstack-levels = "); Serial.println(flowCtrlStack.getElementCount());
 
     } while ((blockType != block_extFunction) && (blockType != block_eval));        // caller level can be caller eval() or caller external function
     --_callStackDepth;                  // caller reached: call stack depth decreased by 1
@@ -4098,6 +4109,7 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateEval() {
         _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
         _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackTop);
         _pFlowCtrlStackMinus2 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackMinus1);
+        Serial.print("--------------- terminate eval(): append flowctrlstack-levels = "); Serial.println(flowCtrlStack.getElementCount());
 
     } while ((blockType != block_extFunction) && (blockType != block_eval));        // caller level can be caller eval() or caller external function
     --_callStackDepth;                  // caller reached: call stack depth decreased by 1
@@ -4168,7 +4180,7 @@ void* Justina_interpreter::fetchVarBaseAddress(TokenIsVariable* pVarToken, char*
     // local variables (including parameters)    
     else {
         OpenFunctionData* pDeepestOpenFunction = &_activeFunctionData;
-        bool debugMode = (_activeFunctionData.pNextStep >= _programStart);
+        bool debugMode = (_openDebugLevels > 0);
         // local variable in an immediate mode statement ? only possible in debug mode
         if (debugMode) {
             // find flow control stack element for most deeply nested open function
@@ -4219,11 +4231,11 @@ void* Justina_interpreter::fetchVarBaseAddress(TokenIsVariable* pVarToken, char*
 // *   calculate array element address   *
 // ---------------------------------------
 
-void* Justina_interpreter::arrayElemAddress(void* varBaseAddress, int* elemSpec) {
+void* Justina_interpreter::arrayElemAddress(void* varBaseAddress, int* subscripts) {
 
     // varBaseAddress argument must be base address of an array variable (containing itself a pointer to the array)
-    // elemSpec array must specify an array element (max. 3 dimensions)
-    // return pointer will point to a float or a string pointer (both can be array elements) - nullptr if outside boundaries
+    // subscripts array must specify an array element (max. 3 dimensions)
+    // return pointer will point to a long, float or a string pointer (both can be array elements) - nullptr if outside boundaries
 
     void* pArray = varBaseAddress;                                                      // will point to float or string pointer (both can be array elements)
     int arrayDimCount = ((char*)pArray)[3];
@@ -4231,10 +4243,10 @@ void* Justina_interpreter::arrayElemAddress(void* varBaseAddress, int* elemSpec)
     int arrayElement{ 0 };
     for (int i = 0; i < arrayDimCount; i++) {
         int arrayDim = ((char*)pArray)[i];
-        if ((elemSpec[i] < 1) || (elemSpec[i] > arrayDim)) { return nullptr; }      // is outside array boundaries
+        if ((subscripts[i] < 1) || (subscripts[i] > arrayDim)) { return nullptr; }      // is outside array boundaries
 
         int arrayNextDim = (i < arrayDimCount - 1) ? ((char*)pArray)[i + 1] : 1;
-        arrayElement = (arrayElement + (elemSpec[i] - 1)) * arrayNextDim;
+        arrayElement = (arrayElement + (subscripts[i] - 1)) * arrayNextDim;
     }
     arrayElement++;                                                                     // add one (first array element contains dimensions and dimension count)
     return (Val*)pArray + arrayElement;                                              // pointer to a 4-byte array element (long, float or pointer to string)

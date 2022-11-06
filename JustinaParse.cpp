@@ -456,7 +456,7 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
     deleteConstStringObjects(_programStorage);
     deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
 
-    
+
     // if parsed immediate mode statements are currently pushed to the immediate mode command stack (debug mode active and / or eval() strings being executed): delete all
     // before deleting an element, delete parsed alphanumeric constants in the corresponding parsed immediate mode statement  
     while (immModeCommandStack.getElementCount() != 0) {
@@ -1917,8 +1917,8 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             }
 
 
-            // 2.4 Array element spec closing parenthesis ?
-            // --------------------------------------------
+            // 2.4 Array subscripts closing parenthesis ?
+            // ------------------------------------------
 
             else if (flags & arrayBit) {
                 // check if array dimension count corresponds (individual dimension adherence can only be checked at runtime)
@@ -2612,6 +2612,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
 
     bool globalVarStorMissingOrIsNotGlobal = false;                   // init: assume global (program or user) var with defined storage location
     bool isOpenFunctionStaticVariable{ false }, isOpenFunctionLocalVariable{ false }, isOpenFunctionParam{ false };
+    bool isOpenFunctionLocalArrayVariable{false};
     int openFunctionVar_valueIndex{};
 
     // 4.1 Currently parsing a FUNCTION...END block ? 
@@ -2741,23 +2742,29 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 // in debug mode (program stopped), the name could refer to a local or static variable of a function in the call stack (open function) 
 
                 // in debug mode now ? (if multiple programs in debug mode, only the last one stopped will be considered here
-                if (immModeCommandStack.getElementCount() > 0) { //// } (_openDebugLevels > 0) {
-                    // check whether this is a local or static function variable reference of the deepest open function in the call stack
+                if (_openDebugLevels > 0) {
 
                     Serial.println("*** 4.2 - in debug mode");
-                    int openFunctionIndex{};
-                    void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                    int blockType = block_none;
-                    do {
-                        blockType = *(char*)pFlowCtrlStackLvl;
-                        if (blockType != block_extFunction) {
-                            pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
-                            continue;
-                        };          // there is at least one open function in the call stack
-                        openFunctionIndex = ((OpenFunctionData*)pFlowCtrlStackLvl)->functionIndex;    // function index of deepest function in call stack
-                        break;
-                    } while (true);
 
-                    // is variable defined in this function, and is it local or static ?
+                    // find debug level (either in active function data or in flow control stack). Open function will be directly beneath it, in flow control stack
+                    void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;
+                    int blockType = _activeFunctionData.blockType;
+                    bool isDebugCmdLevel = (blockType == block_extFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + PROG_MEM_SIZE)) : false;
+
+                    if (!isDebugCmdLevel) {       // find immediate mode step in flow vontrol stack instead
+                        do {
+                            blockType = *(char*)pFlowCtrlStackLvl;
+                            isDebugCmdLevel = (blockType == block_extFunction) ? (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + PROG_MEM_SIZE)) : false;
+                            pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
+                        } while (!isDebugCmdLevel);          // stack level for open function found immediate below debug line found (always match)
+                    }
+
+                    // the open program flow control stack levels are directly beneath the debug command line
+                    // the first stack level refers to the deepest open function of the stopped program (stopping within an eval() line is not possible)
+                    int openFunctionIndex = ((OpenFunctionData*)pFlowCtrlStackLvl)->functionIndex;    // function index of stopped program's deepest function in call stack
+
+
+                    // check whether this is a local or static function variable reference of the deepest open function in the call stack
                     int staticVarStartIndex = extFunctionData[openFunctionIndex].staticVarStartIndex;
                     int staticVarCountInFunction = extFunctionData[openFunctionIndex].staticVarCountInFunction;
 
@@ -2778,13 +2785,19 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                                 openFunctionVar_valueIndex = i - localVarNameRefs_startIndex;   // calculate vaue index within local storage
                                 isOpenFunctionLocalVariable = (openFunctionVar_valueIndex >= paramOnlyCountInFunction);
                                 isOpenFunctionParam = (openFunctionVar_valueIndex < paramOnlyCountInFunction);
-                                break;
-                            }     // is a local variable of function and its value index is known
+                                break;      // is a local variable of function and its value index is known
+                            }
+
+                        }
+                        if (isOpenFunctionLocalVariable || isOpenFunctionParam) {
+                            // has this local variable been defined within the function as a scalar or array variable ?
+                            isOpenFunctionLocalArrayVariable = ((OpenFunctionData*)pFlowCtrlStackLvl)->pVariableAttributes[openFunctionVar_valueIndex] & var_isArray;
                         }
                     }
                     if (!isOpenFunctionStaticVariable && !isOpenFunctionLocalVariable && !isOpenFunctionParam) {
                         pNext = pch; result = result_varNotDeclared; return false;
                     }
+
                 }
 
                 else {
@@ -2810,7 +2823,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
         isOpenFunctionParam ? var_isParamInFunc :
         !isProgramVar ? var_isUser :
         varType[activeNameRange][varNameIndex] & var_scopeMask;  // may only contain variable scope info (parameter, local, static, global, user)
-
+    Serial.print("-- var scope: "); Serial.println(varScope, HEX);
 
     bool isGlobalOrUserVar = (isOpenFunctionStaticVariable || isOpenFunctionLocalVariable || isOpenFunctionParam) ? false :
         isProgramVar ? // NOTE: inside a function, test against 'var_isGlobal', outside a function, test against 'var_nameHasGlobalValue'
@@ -2818,9 +2831,12 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     bool isStaticVar = isOpenFunctionStaticVariable ? true : (_extFunctionBlockOpen && (varScope == var_isStaticInFunc));
     bool isLocalVar = isOpenFunctionLocalVariable ? true : (_extFunctionBlockOpen && (varScope == var_isLocalInFunc));
     bool isParam = isOpenFunctionParam ? false : (_extFunctionBlockOpen && (varScope == var_isParamInFunc));
+    Serial.print("-- is local: "); Serial.println(isLocalVar);
+    Serial.print("-- is static: "); Serial.println(isStaticVar);
 
     int valueIndex = (isOpenFunctionStaticVariable || isOpenFunctionLocalVariable || isOpenFunctionParam) ? openFunctionVar_valueIndex :
         isGlobalOrUserVar ? varNameIndex : programVarValueIndex[varNameIndex];
+    Serial.print("-- value index: "); Serial.println(valueIndex);
 
     /*
     Serial.print("*** 5: var scope: "); Serial.print(varScope, HEX);
@@ -2832,7 +2848,8 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     if (!(_isExtFunctionCmd || _isAnyVarCmd)) {  // not a variable definition but a variable reference
         bool existingArray = false;
         _arrayDimCount = 0;                  // init: if new variable (or no array), then set dimension count to zero
-        existingArray = isGlobalOrUserVar ? (varType[activeNameRange][valueIndex] & var_isArray) :
+        existingArray = isOpenFunctionLocalVariable ? isOpenFunctionLocalArrayVariable:
+        isGlobalOrUserVar ? (varType[activeNameRange][valueIndex] & var_isArray) :
             isStaticVar ? (staticVarType[valueIndex] & var_isArray) :
             (localVarType[valueIndex] & var_isArray);           // param or local
         // if not a function definition: array name does not have to be followed by a left parenthesis (passing the array and not an array element)
@@ -2846,6 +2863,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
             isFuncCallArgument = isFuncCallArgument && ((peek1[0] == term_comma[0]) || (peek1[0] == term_rightPar[0]));
             if (isFuncCallArgument) { isArray = true; }
         }
+
         if (existingArray ^ isArray) { pNext = pch; result = isArray ? result_varDefinedAsScalar : result_varDefinedAsArray; return false; }
 
 
@@ -2987,9 +3005,9 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
             delete[] pIdentifierName;
             _parsedStringConstObjectCount--;
             return false;
-        }
-        strcpy(_callbackUserProcAlias[_userCBprocAliasSet_count++], pIdentifierName);                           // maximum 10 user functions                                   
     }
+        strcpy(_callbackUserProcAlias[_userCBprocAliasSet_count++], pIdentifierName);                           // maximum 10 user functions                                   
+}
 
 
     // expression syntax check 

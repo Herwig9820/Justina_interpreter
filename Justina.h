@@ -618,6 +618,7 @@ public:
     static constexpr int MAX_LAST_RESULT_DEPTH{ 10 };
 
     static const uint8_t _maxIdentifierNameLen{ 15 };           // max length of identifier names, excluding terminating '\0'
+    static const uint8_t _maxAlphaCstLen{ 100 };                     // max length of character strings, excluding terminating '\0' (also if stored in variables)
 
 
     // storage for tokens
@@ -952,7 +953,6 @@ public:
     static const FuncDef _functions[24];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
-    static const uint8_t _maxAlphaCstLen{ 60 };                     // max length of character strings, excluding terminating '\0' (also if stored in variables)
 
 
 
@@ -1192,7 +1192,7 @@ public:
     // program storage
     char _programStorage[PROG_MEM_SIZE + IMM_MEM_SIZE];
     char* _programStart{};
-    int  _programSize{ false };
+    int  _programSize{  };
 
 
     MyParser* _pmyParser;
