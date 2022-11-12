@@ -40,7 +40,7 @@
 
 
 // ******************************************************************
-// ***                      class LinkedList                        *
+// ***                      class LinkedList                      ***
 // ******************************************************************
 
 // store and retrieve data in linked lists from linked list
@@ -118,9 +118,9 @@ public:
 
 class MyParser;
 
-// ******************************************************************
-// ***                 class Justina_interpreter                    *
-// ******************************************************************
+// *****************************************************************
+// ***                class Justina_interpreter                  ***
+// *****************************************************************
 
 // parse and evaluate user input and programs
 
@@ -403,7 +403,8 @@ public:
 
         // tracing errors
         result_trace_resWordNotAllowed = 2100,//// eval ???
-        result_trace_isUserFunctonOrUndefinedVar,
+        result_trace_userFunctonNotAllowed,
+        result_trace_evalFunctonNotAllowed,
         result_trace_genericNameNotAllowed,
 
         // other program errors
@@ -966,10 +967,12 @@ public:
     // bits b654: variable scope. Use: (1) during parsing: temporarily store the variable type associated with a particular reference of a variable name 
     // (2) stored in 'variable' token to indicate the variable type associated with a particular reference of a variable name 
     static constexpr uint8_t var_scopeMask = 0x70;               // mask
-    static constexpr uint8_t var_isUser = 5 << 4;                    // variable is a user variable, in or outside function
-    static constexpr uint8_t var_isGlobal = 4 << 4;                  // variable is global, in or outside function
-    static constexpr uint8_t var_isStaticInFunc = 3 << 4;            // variable is static in function
-    static constexpr uint8_t var_isLocalInFunc = 2 << 4;             // variable is local in function (non-parameter)
+    static constexpr uint8_t var_isUser = 7 << 4;                    // variable is a user variable, in or outside function
+    static constexpr uint8_t var_isGlobal = 6 << 4;                  // variable is global, in or outside function
+    static constexpr uint8_t var_isStaticInFunc = 5 << 4;            // variable is static in function
+    static constexpr uint8_t var_isLocalInStoppedFunc = 4 << 4;      // variable is local (non-parameter) variable in STOPPED function (debug) -> only used during variable fetching in execution 
+    static constexpr uint8_t var_isParamInStoppedFunc = 3 << 4;      // variable is function parameter in STOPPED function (debug) -> only used during variable fetching in execution 
+    static constexpr uint8_t var_isLocalInFunc = 2 << 4;             // variable is local (non-parameter) in function
     static constexpr uint8_t var_isParamInFunc = 1 << 4;             // variable is function parameter
     static constexpr uint8_t var_scopeToSpecify = 0 << 4;             // scope is not yet defined (temporary use during parsing; never stored in token)
 
@@ -1099,7 +1102,7 @@ public:
     char* _pTraceString{ nullptr };
     char* _pEvalString{ nullptr };
     bool _withinTrace{ false };
-    bool _withinEval{ false };//// weg
+    bool _parsingEvalString{ false };//// weg
 
 
     // counting of heap objects (note: linked list element count is maintained within the linked list objects)

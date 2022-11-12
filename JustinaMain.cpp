@@ -32,9 +32,9 @@
 #define debugPrint 0
 
 
-// ******************************************************************
-// ***         class Justina_interpreter - implemantation           *
-// ******************************************************************
+// *****************************************************************
+// ***            class LinkedList - implementation              ***
+// *****************************************************************
 
 // ---------------------------------------------
 // *   initialisation of static class member   *
@@ -537,7 +537,7 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
 
         char* pInstruction = _instruction;                                                 // because passed by reference 
         char* pDummy{};
-        _withinTrace = false; _withinEval = false;
+        _withinTrace = false; _parsingEvalString = false;
         result = parseStatements(pInstruction, pDummy);                                 // parse one instruction (ending with ';' character, if found)
         Serial.print("////// parsed statements: ");Serial.print(pInstruction);Serial.println("//////");
         pErrorPos = pInstruction;                                                      // in case of error

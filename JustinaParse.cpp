@@ -33,9 +33,9 @@
 #define debugPrint 0
 
 
-// ******************************************************************
-// ***         class Justina_interpreter - implemantation           *
-// ******************************************************************
+// *****************************************************************
+// ***        class Justina_interpreter - implemantation         ***
+// *****************************************************************
 
 // -------------------------------------------------
 // *   // initialisation of static class members   *
@@ -792,6 +792,10 @@ void Justina_interpreter::parseAndExecTraceString() {
         _programCounter = _programStart;                          // start of 'immediate mode' program area
         *_programStart = '\0';          // in case no valid tokens will be stored
 
+        // skip any spaces and semi-colons in the input stream
+        while ((pTraceParsingInput[0] == ' ') || (pTraceParsingInput[0]== term_semicolon[0]))  {pTraceParsingInput++;}
+        if (*pTraceParsingInput == '\0'){break;} // could occur if semicolons skipped
+
         // parse ONE expression in trace string
         parseTokenResult_type result = parseStatements(pTraceParsingInput, pNextParseStatement);
         if (result == result_tokenFound) {
@@ -1207,7 +1211,7 @@ bool Justina_interpreter::parseAsResWord(char*& pNext, parseTokenResult_type& re
         if (strncmp(_resWords[resWordIndex]._resWordName, pch, pNext - pch) != 0) { continue; } // token corresponds to keyword ? If not, skip remainder of loop ('continue') 
 
         // token is keyword, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-        if (_withinTrace || _withinEval) { pNext = pch; result = result_trace_resWordNotAllowed; return false; }
+        if (_withinTrace || _parsingEvalString) { pNext = pch; result = result_trace_resWordNotAllowed; return false; }
         if (_parenthesisLevel > 0) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
         if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2_0)) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
         if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
@@ -1777,7 +1781,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                     bool emptyParamList = _lastTokenIsTerminal ? (_lastTermCode == termcod_leftPar) : false;            // ok because no nesting allowed
                     _pParsingStack->openPar.actualArgsOrDims += (emptyParamList ? 0 : 1);
 
-                    // check order of mandatory and optional arguments, check if max. n� not exceeded
+                    // check order of mandatory and optional arguments, check if max. n° not exceeded
                     if (!emptyParamList) { if (!checkExtFunctionArguments(result, extFunctionDef_minArgCounter, extFunctionDef_maxArgCounter)) { pNext = pch; return false; }; }
 
                     int funcIndex = _pParsingStack->openPar.identifierIndex;            // note: also stored in stack for FUNCTION definition block level; here we can pick one of both
@@ -2276,6 +2280,12 @@ bool Justina_interpreter::parseAsInternFunction(char*& pNext, parseTokenResult_t
         if (_isExtFunctionCmd) { pNext = pch; result = result_redefiningIntFunctionNotAllowed; return false; }
         if (_isAnyVarCmd) { pNext = pch; result = result_functionNotAllowedHere; return false; }        // is a variable declaration: internal function name not allowed
 
+        // eval() function can not occur within a trace string (all other internal functins are OK)
+        if (_withinTrace) {
+            Serial.print("WITHIN TRACE: ");Serial.println((int)_functions[funcIndex].functionCode);
+            if (_functions[funcIndex].functionCode == fnccod_eval) {pNext = pch; result = result_trace_evalFunctonNotAllowed; return false;}
+        }
+
         // token is an internal function, and it's allowed here
 
         _minFunctionArgs = _functions[funcIndex].minArgs;                       // set min & max for allowed argument count (note: minimum is 0)
@@ -2336,7 +2346,7 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
     index = getIdentifier(userVarNames, _userVarCount, MAX_USERVARNAMES, pch, pNext - pch, createNewName, true);
     if (index != -1) { pNext = pch; return true; }                // is a user variable
 
-    if (_withinTrace) { pNext = pch; result = result_trace_isUserFunctonOrUndefinedVar; return false; }
+    if (_withinTrace) { pNext = pch; result = result_trace_userFunctonNotAllowed; return false; }
 
     if ((_isExtFunctionCmd) && (_parenthesisLevel > 0)) { pNext = pch; return true; }        // only array parameter allowed now
 
@@ -2610,10 +2620,11 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     //    Note: LOCAL variable storage is created at runtime
     // --------------------------------------------------------------------------------------------------------------------------------------
 
-    bool globalVarStorMissingOrIsNotGlobal = false;                   // init: assume global (program or user) var with defined storage location
+    bool globalVarStorageMissingOrIsNotGlobal = false;                   // init: assume global (program or user) var with defined storage location
     bool isOpenFunctionStaticVariable{ false }, isOpenFunctionLocalVariable{ false }, isOpenFunctionParam{ false };
-    bool isOpenFunctionLocalArrayVariable{false};
+    bool isOpenFunctionLocalArrayVariable{ false };
     int openFunctionVar_valueIndex{};
+    int openFunctionArray_dimCount{};
 
     // 4.1 Currently parsing a FUNCTION...END block ? 
     // ----------------------------------------------
@@ -2643,7 +2654,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
             varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~var_scopeMask) | varScope;     //set scope bits (will be stored in token AND needed during parsing current procedure)
 
             if (_isStaticVarCmd) {                                              // definition of NEW static variable for function
-                globalVarStorMissingOrIsNotGlobal = true;                                 // (but it isn't a global variable) 
+                globalVarStorageMissingOrIsNotGlobal = true;                                 // (but it isn't a global variable) 
                 if (_staticVarCount == MAX_STAT_VARS) { pNext = pch; result = result_maxStaticVariablesReached; return false; }
 
                 programVarValueIndex[varNameIndex] = _staticVarCount;
@@ -2664,7 +2675,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
             }
 
             else if (_isExtFunctionCmd || _isLocalVarCmd) {                  // definition of NEW parameter (in function definition) or NEW local variable for function
-                globalVarStorMissingOrIsNotGlobal = true;                                 // (but it isn't a global variable; relative position in a function's local variables area will be defined now) 
+                globalVarStorageMissingOrIsNotGlobal = true;                                 // (but it isn't a global variable; relative position in a function's local variables area will be defined now) 
                 if (_localVarCountInFunction == MAX_LOC_VARS_IN_FUNC) { pNext = pch; result = result_maxLocalVariablesReached; return false; }
 
                 programVarValueIndex[varNameIndex] = _localVarCountInFunction;
@@ -2690,9 +2701,9 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 // not a variable definition:  CAN BE an EXISTING global or user variable, within a function
                 // it CANNOT be a local or static variable, because this is the first reference of this variable name in the function and it's not a variable definition
                 // if the variable name refers to a user variable, the variable exists, so it's known then
-                globalVarStorMissingOrIsNotGlobal = isProgramVar ? (!(varType[activeNameRange][varNameIndex] & var_nameHasGlobalValue)) : false;
+                globalVarStorageMissingOrIsNotGlobal = isProgramVar ? (!(varType[activeNameRange][varNameIndex] & var_nameHasGlobalValue)) : false;
                 // variable is NEW ? Variable has not been declared
-                if (globalVarStorMissingOrIsNotGlobal) {              // undeclared global program variable                                                             
+                if (globalVarStorageMissingOrIsNotGlobal) {              // undeclared global program variable                                                             
                     pNext = pch; result = result_varNotDeclared; return false;
                 }
                 // existing global or user variable
@@ -2710,20 +2721,20 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     // 4.2 NOT parsing FUNCTION...END block 
      // ------------------------------------
 
-     // note: while parsing program instructions AND while parsing instructions entered in immediate mode
+     // parsing program instructions AND while parsing instructions entered in immediate mode
     else {
         // concentrate on global program variables and user variables first (not yet on function variables)
         // if program variable: has a GLOBAL program variabe with this name been declared already ? (if user variable, because the name exixts, storage exists)
-        globalVarStorMissingOrIsNotGlobal = isProgramVar ? !(varType[activeNameRange][varNameIndex] & var_nameHasGlobalValue) : _isGlobalOrUserVarCmd;
-        if (db_functionVarOnly) { globalVarStorMissingOrIsNotGlobal = true; }                    // because it's not a global variable
+        globalVarStorageMissingOrIsNotGlobal = isProgramVar ? !(varType[activeNameRange][varNameIndex] & var_nameHasGlobalValue) : _isGlobalOrUserVarCmd;
+        if (db_functionVarOnly) { globalVarStorageMissingOrIsNotGlobal = true; }                    // because it's not a global variable
 
         // qualifier 'var_isGlobal' (program variables): set it now, because could have been cleared by previously parsed function (will ultimately be stored in token)
         if (isProgramVar) { varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~var_scopeMask) | var_isGlobal; }
 
         ////Serial.print("*** 4.2 - var NAME index: "); Serial.println(varNameIndex);
 
-        // variable not yet declared as global or user variable, OR it's a function variable (# prefix) ?
-        if (globalVarStorMissingOrIsNotGlobal) {
+        // variable not yet declared as global or user variable ? (If in debug mode, it can still be a static or local variable of a stopped function)
+        if (globalVarStorageMissingOrIsNotGlobal) {
             ////Serial.println("\r\n*** 4.2 - var not yet known");
             // but this can still be a global or user variable declaration 
             if (_isGlobalOrUserVarCmd) {                           // is it a declaration ?  defne storage location now
@@ -2735,23 +2746,24 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 if (isProgramVar) { varType[activeNameRange][varNameIndex] = varType[activeNameRange][varNameIndex] | var_nameHasGlobalValue; }   // set 'has global value' or 'user var' bit
                 varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~var_isArray); // init (array flag may only be added when storage is created) 
             }
-            else {  // not a declaration, but a variable reference
+            else {  // not a variable declaration, but a variable reference
                 Serial.println("*** 4.2 - is not global or user");
-                // it's neither a global or user variable declaration, nor a global or user variable reference (because storage doesnot exist for it). But the variable name exists,
+                // it's neither a global or user variable declaration, nor a global or user variable reference (because storage does not exist for it). But the variable name exists,
                 // so local or static function variables using this name have been defined already. 
-                // in debug mode (program stopped), the name could refer to a local or static variable of a function in the call stack (open function) 
+                // in debug mode (program stopped), the name could refer to a local or static variable within the currently stopped function (open function) 
 
                 // in debug mode now ? (if multiple programs in debug mode, only the last one stopped will be considered here
                 if (_openDebugLevels > 0) {
 
                     Serial.println("*** 4.2 - in debug mode");
 
-                    // find debug level (either in active function data or in flow control stack). Open function will be directly beneath it, in flow control stack
+                    // find debug level (either in active function data or in flow control stack). Open function data (function where the program was stopped) will be directly beneath it, in the flow control stack
+                    // it can NOT be an eval() string execution level, because a program can not be stopped during the execution of an eval() string (although it can during an external function called from an eval() string)
                     void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;
                     int blockType = _activeFunctionData.blockType;
                     bool isDebugCmdLevel = (blockType == block_extFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + PROG_MEM_SIZE)) : false;
 
-                    if (!isDebugCmdLevel) {       // find immediate mode step in flow vontrol stack instead
+                    if (!isDebugCmdLevel) {       // find debug level in flow control stack instead
                         do {
                             blockType = *(char*)pFlowCtrlStackLvl;
                             isDebugCmdLevel = (blockType == block_extFunction) ? (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + PROG_MEM_SIZE)) : false;
@@ -2763,7 +2775,6 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                     // the first stack level refers to the deepest open function of the stopped program (stopping within an eval() line is not possible)
                     int openFunctionIndex = ((OpenFunctionData*)pFlowCtrlStackLvl)->functionIndex;    // function index of stopped program's deepest function in call stack
 
-
                     // check whether this is a local or static function variable reference of the deepest open function in the call stack
                     int staticVarStartIndex = extFunctionData[openFunctionIndex].staticVarStartIndex;
                     int staticVarCountInFunction = extFunctionData[openFunctionIndex].staticVarCountInFunction;
@@ -2774,12 +2785,14 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                     for (i = staticVarStartIndex; i <= staticVarStartIndex + staticVarCountInFunction - 1; ++i) {        // skip if count is zero
                         if (staticVarNameRef[i] == varNameIndex) { isOpenFunctionStaticVariable = true; openFunctionVar_valueIndex = i; break; }     // is a static variable of function and its value index is known
                     }
+
+                    //  not a static variable of the open function: is it a local variable (including a function parameter) ?
+                    // this is a little more complex, because local variable memory is dynamically allocated when functions are launched (during execution)
                     if (!isOpenFunctionStaticVariable) {
                         int localVarNameRefs_startIndex = extFunctionData[openFunctionIndex].localVarNameRefs_startIndex;
                         int localVarCountInFunction = extFunctionData[openFunctionIndex].localVarCountInFunction;
                         int paramOnlyCountInFunction = extFunctionData[openFunctionIndex].paramOnlyCountInFunction;
 
-                        //   is variable defined in this function as a local variable ?
                         for (i = localVarNameRefs_startIndex; i <= localVarNameRefs_startIndex + localVarCountInFunction - 1; ++i) {        // skip if count is zero
                             if (localVarNameRef[i] == varNameIndex) {
                                 openFunctionVar_valueIndex = i - localVarNameRefs_startIndex;   // calculate vaue index within local storage
@@ -2790,8 +2803,19 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
 
                         }
                         if (isOpenFunctionLocalVariable || isOpenFunctionParam) {
-                            // has this local variable been defined within the function as a scalar or array variable ?
+                            // supplied argument is a variable ? (scalar or array)
+                            bool isSourceVarRef = ((OpenFunctionData*)pFlowCtrlStackLvl)->pVariableAttributes[openFunctionVar_valueIndex] & value_isVarRef;
+                            Serial.print("------ is open function var ref: "); Serial.println(isSourceVarRef);
+
+                            // has this local variable been defined as a scalar or array ?
                             isOpenFunctionLocalArrayVariable = ((OpenFunctionData*)pFlowCtrlStackLvl)->pVariableAttributes[openFunctionVar_valueIndex] & var_isArray;
+                            Serial.print("------ is open function local array: "); Serial.println(isOpenFunctionLocalArrayVariable);
+                            if (isOpenFunctionLocalArrayVariable) {
+                                void* pArray = isSourceVarRef ? *(((OpenFunctionData*)pFlowCtrlStackLvl)->pLocalVarValues[openFunctionVar_valueIndex].ppArray) :
+                                    ((OpenFunctionData*)pFlowCtrlStackLvl)->pLocalVarValues[openFunctionVar_valueIndex].pArray;
+                                openFunctionArray_dimCount = ((char*)pArray)[3];
+                                Serial.print("------ open function local var dim count: "); Serial.println(openFunctionArray_dimCount);
+                            }
                         }
                     }
                     if (!isOpenFunctionStaticVariable && !isOpenFunctionLocalVariable && !isOpenFunctionParam) {
@@ -2823,20 +2847,16 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
         isOpenFunctionParam ? var_isParamInFunc :
         !isProgramVar ? var_isUser :
         varType[activeNameRange][varNameIndex] & var_scopeMask;  // may only contain variable scope info (parameter, local, static, global, user)
-    Serial.print("-- var scope: "); Serial.println(varScope, HEX);
 
     bool isGlobalOrUserVar = (isOpenFunctionStaticVariable || isOpenFunctionLocalVariable || isOpenFunctionParam) ? false :
         isProgramVar ? // NOTE: inside a function, test against 'var_isGlobal', outside a function, test against 'var_nameHasGlobalValue'
         ((_extFunctionBlockOpen && (varScope == var_isGlobal)) || (!_extFunctionBlockOpen && (varType[activeNameRange][varNameIndex] & var_nameHasGlobalValue))) : true;
     bool isStaticVar = isOpenFunctionStaticVariable ? true : (_extFunctionBlockOpen && (varScope == var_isStaticInFunc));
     bool isLocalVar = isOpenFunctionLocalVariable ? true : (_extFunctionBlockOpen && (varScope == var_isLocalInFunc));
-    bool isParam = isOpenFunctionParam ? false : (_extFunctionBlockOpen && (varScope == var_isParamInFunc));
-    Serial.print("-- is local: "); Serial.println(isLocalVar);
-    Serial.print("-- is static: "); Serial.println(isStaticVar);
+    bool isParam = isOpenFunctionParam ? true : (_extFunctionBlockOpen && (varScope == var_isParamInFunc));
 
     int valueIndex = (isOpenFunctionStaticVariable || isOpenFunctionLocalVariable || isOpenFunctionParam) ? openFunctionVar_valueIndex :
         isGlobalOrUserVar ? varNameIndex : programVarValueIndex[varNameIndex];
-    Serial.print("-- value index: "); Serial.println(valueIndex);
 
     /*
     Serial.print("*** 5: var scope: "); Serial.print(varScope, HEX);
@@ -2848,8 +2868,8 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     if (!(_isExtFunctionCmd || _isAnyVarCmd)) {  // not a variable definition but a variable reference
         bool existingArray = false;
         _arrayDimCount = 0;                  // init: if new variable (or no array), then set dimension count to zero
-        existingArray = isOpenFunctionLocalVariable ? isOpenFunctionLocalArrayVariable:
-        isGlobalOrUserVar ? (varType[activeNameRange][valueIndex] & var_isArray) :
+        existingArray = (isOpenFunctionLocalVariable || isOpenFunctionParam) ? isOpenFunctionLocalArrayVariable :
+            isGlobalOrUserVar ? (varType[activeNameRange][valueIndex] & var_isArray) :
             isStaticVar ? (staticVarType[valueIndex] & var_isArray) :
             (localVarType[valueIndex] & var_isArray);           // param or local
         // if not a function definition: array name does not have to be followed by a left parenthesis (passing the array and not an array element)
@@ -2873,8 +2893,11 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
             if (isStaticVar) { pArray = staticVarValues[valueIndex].pArray; }
             else if (isGlobalOrUserVar) { pArray = varValues[activeNameRange][valueIndex].pArray; }
             else if (isLocalVar) { pArray = (float*)localVarDims[valueIndex]; }   // dimensions and count are stored in a float
+
             // retrieve dimension count from array element 0, character 3 (char 0 to 2 contain the dimensions) 
-            _arrayDimCount = isParam ? MAX_ARRAY_DIMS : ((char*)pArray)[3];
+            // parameters; set to maximum allowed for now (count only known during exec))
+            // debug mode: retrieve from local array variable in stopped function
+            _arrayDimCount = (isParam && !isOpenFunctionParam) ? MAX_ARRAY_DIMS : isOpenFunctionLocalArrayVariable ? openFunctionArray_dimCount : ((char*)pArray)[3];
         }
 
 
@@ -2911,6 +2934,11 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     _variableNameIndex = varNameIndex;          // will be pushed to parsing stack
     _variableScope = varScope;
 
+    // AFTER assignment to _variableScope: if parsing local variable or parameter in STOPPED function, adapt varScope before storing it in variable token.
+    // only used while fetching the variable during execution (procedure fetchVarBaseAddress()), to fetch the variable within the STOPPED function's allocated memory  
+    if (isOpenFunctionLocalVariable) { varScope = var_isLocalInStoppedFunc; }
+    else if (isOpenFunctionParam) { varScope = var_isParamInStoppedFunc; }
+
     // expression syntax check 
     _thisLvl_lastIsVariable = true;
 
@@ -2929,6 +2957,8 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     pToken->identInfo = varScope | (isArray ? var_isArray : 0) | (db_functionVarOnly ? var_isForcedFunctionVar : 0);              // qualifier, array flag ? (is fixed for a variable -> can be stored in token)  
     pToken->identNameIndex = varNameIndex;
     pToken->identValueIndex = valueIndex;                      // points to storage area element for the variable  
+
+    Serial.print("------ store token: info: scope+array+forced (hex): "); Serial.println(pToken->identInfo, HEX);
 
     /*
     Serial.print("     token address: "); Serial.println(_programCounter - _programStorage);
@@ -2971,7 +3001,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
     while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                   // do until first character after alphanumeric token (can be anything, including '\0')
 
     // token is a generic identifier, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-    if (_withinTrace || _withinEval) { pNext = pch; result = result_trace_genericNameNotAllowed; return false; }
+    if (_withinTrace || _parsingEvalString) { pNext = pch; result = result_trace_genericNameNotAllowed; return false; }
 
     if (_parenthesisLevel > 0) { pNext = pch; result = result_identifierNotAllowedHere; return false; }
     if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2_0)) { pNext = pch; result = result_identifierNotAllowedHere; return false; }
@@ -3005,9 +3035,9 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
             delete[] pIdentifierName;
             _parsedStringConstObjectCount--;
             return false;
-    }
+        }
         strcpy(_callbackUserProcAlias[_userCBprocAliasSet_count++], pIdentifierName);                           // maximum 10 user functions                                   
-}
+        }
 
 
     // expression syntax check 
@@ -3035,7 +3065,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
     *_programCounter = '\0';                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
-}
+    }
 
 
 // -----------------------------------------

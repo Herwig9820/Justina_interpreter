@@ -35,9 +35,9 @@
 const char passCopyToCallback = 0x40;       // flag: string is an empty string 
 
 
-// ******************************************************************
-// ***         class Justina_interpreter - implemantation           *
-// ******************************************************************
+// *****************************************************************
+// ***        class Justina_interpreter - implementation         ***
+// *****************************************************************
 
 // ---------------------------------
 // *   execute parsed statements   *
@@ -454,8 +454,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                                 int tokenType, tokenCode;
                                 char* pStep = _programCounter;
                                 do {
-                                    tokenType = jumpTokens(1, pStep, tokenCode);
-                                    bool isTerminal = ((tokenType == tok_isTerminalGroup1) || (tokenType == tok_isTerminalGroup2) || (tokenType != tok_isTerminalGroup3));
+                                    tokenType = jumpTokens(1, pStep, tokenCode);        // check next parsed token
+                                    bool isTerminal = ((tokenType == tok_isTerminalGroup1) || (tokenType == tok_isTerminalGroup2) || (tokenType == tok_isTerminalGroup3));
                                     bool nextExpressionFound = isTerminal ? (tokenCode != termcod_semicolon) : (tokenType != tok_isEvalEnd);
                                     if (nextExpressionFound) { break; }      // not last expression
                                 } while ((*pStep & 0x0F) != tok_isEvalEnd);             // always match
@@ -583,7 +583,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             // process debugging commands (entered from the command line, or '\a' and '\s' escape sequences entered while a program is running  
             // --------------------------------------------------------------------------------------------------------------------------------
 
-            // note: skip while executing trace expressions or quitting
+            // note: skip while executing trace expressions, parsed eval() expresions or quitting Justina
 
             bool isParsedEval = (_activeFunctionData.blockType == block_eval);//// waarom ?
             if (!_withinTrace && !isParsedEval && (execResult != result_eval_kill) && (execResult != result_eval_quit)) {
@@ -741,11 +741,11 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
     if (execResult == result_eval_stopForDebug) {              // stopping for debug now ('STOP' command or single step)
         // push caller function data (or main = user entry level in immediate mode) on FLOW CONTROL stack 
         _pFlowCtrlStackMinus2 = _pFlowCtrlStackMinus1; _pFlowCtrlStackMinus1 = _pFlowCtrlStackTop;
-        
+
         _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
         *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                // push caller function data to stack
         ++_callStackDepth;      // user function level added to flow control stack
-        Serial.print("--------------- stop for debug: append flowctrlstack-levels = ");Serial.println(flowCtrlStack.getElementCount());
+        Serial.print("--------------- stop for debug: append flowctrlstack-levels = "); Serial.println(flowCtrlStack.getElementCount());
 
         _activeFunctionData.callerEvalStackLevels = evalStack.getElementCount();                          // store evaluation stack levels in use by callers (call stack)
         _activeFunctionData.pNextStep = _programStorage + PROG_MEM_SIZE;                // only to signal 'immediate mode command level'
@@ -776,6 +776,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             char* fmtString = (isLong || isFloat) ? _dispNumberFmtString : _dispStringFmtString;
             // printToString() expects long, float or char*: remove extra level of indirection (variables only)
             value.floatConst = isVar ? *_pEvalStackTop->varOrConst.value.pFloatConst : _pEvalStackTop->varOrConst.value.floatConst;  // works for long and string as well
+
+            Serial.print("********** Result: "); Serial.println(value.longConst);
 
             printToString(0, (isLong || isFloat) ? _dispNumPrecision : _maxCharsToPrint,
                 (!isLong && !isFloat), _dispIsIntFmt, &_pEvalStackTop->varOrConst.valueType, &value, fmtString, toPrint, charsPrinted);
@@ -1084,13 +1086,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 int indent = 0;
                 void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                    int blockType = block_none;
                 for (int i = 0; i < flowCtrlStack.getElementCount(); ++i) {
-                    char s[_maxIdentifierNameLen+1]="";
+                    char s[_maxIdentifierNameLen + 1] = "";
                     blockType = *(char*)pFlowCtrlStackLvl;
                     if (blockType == block_eval) {
-                            for (int space = 0; space < indent - 4; ++space) { _pConsole->print(" "); }
-                            if (indent > 0) { _pConsole->print("|__ "); }
-                            _pConsole->println("eval() string");
-                            indent += 4;
+                        for (int space = 0; space < indent - 4; ++space) { _pConsole->print(" "); }
+                        if (indent > 0) { _pConsole->print("|__ "); }
+                        _pConsole->println("eval() string");
+                        indent += 4;
                     }
                     if (blockType == block_extFunction) {
                         if (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep < _programStart) {
@@ -3004,7 +3006,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         // --------------------------------------------
 
         case fnccod_eval:
-            //// _withinEval : waar ?
             //// \s en \a tijdens eval ?
         {
             // only one argument possible
@@ -3688,7 +3689,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchExternalFunctio
                     _activeFunctionData.pLocalVarValues[i].pBaseValue = pStackLvl->varOrConst.value.pBaseValue;  // pointer to 'source' variable
                     _activeFunctionData.ppSourceVarTypes[i] = pStackLvl->varOrConst.varTypeAddress;            // pointer to 'source' variable value type
                     _activeFunctionData.pVariableAttributes[i] = value_isVarRef |                              // local variable value type (reference) ...
-                        (pStackLvl->varOrConst.variableAttributes & var_scopeMask);                             // ... and SOURCE variable scope (user, global, static; local, param)
+                        (pStackLvl->varOrConst.variableAttributes & (var_scopeMask | var_isArray));             // ... and SOURCE variable scope (user, global, static; local, param), array flag
                 }
                 else {      // parsed, or intermediate, constant passed as value
                     if (operandIsLong || operandIsFloat) {                                                      // operand is float constant
@@ -3769,8 +3770,9 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
     char* pDummy{};
     char* holdProgramCounter = _programCounter;
     _programCounter = _programStorage + PROG_MEM_SIZE;                                  // parsed statements go to immediate mode program memory
+    _parsingEvalString = true;
     parseTokenResult_type result = parseStatements(pEvalParsingInput, pDummy);           // parse all instructions
-
+    _parsingEvalString = false;
     if (result != result_tokenFound) {
         Serial.print("eval() parsing error: "); Serial.println(result);
         return result_eval_parsingError;
@@ -3842,7 +3844,7 @@ void Justina_interpreter::initFunctionDefaultParamVariables(char*& pStep, int su
             bool operandIsLong = (valueType == value_isLong);
             bool operandIsFloat = (valueType == value_isFloat);
 
-            _activeFunctionData.pVariableAttributes[count] = valueType;                // long, float or string
+            _activeFunctionData.pVariableAttributes[count] = valueType;                // long, float or string (array flag is reset here)
 
             if (operandIsLong) {                                                      // operand is float constant
                 memcpy(&_activeFunctionData.pLocalVarValues[count].longConst, ((TokenIsConstant*)pStep)->cstValue.longConst, sizeof(long));
@@ -4148,7 +4150,7 @@ void* Justina_interpreter::fetchVarBaseAddress(TokenIsVariable* pVarToken, char*
     uint8_t varScope = pVarToken->identInfo & var_scopeMask;                                // global, user, local, static or parameter
     bool isUserVar = (varScope == var_isUser);
     bool isGlobalVar = (varScope == var_isGlobal);
-    bool isStaticVar = (varScope == var_isStaticInFunc);
+    bool isStaticVar = (varScope == var_isStaticInFunc);                                // could also be a static variable in a stopped function (determined during parsing)
 
     // init source variable scope (if the current variable is a reference variable, this will be changed to the source variable scope later)
     valueAttributes = 0;                                                                                // not an intermediate constant                                         
@@ -4179,23 +4181,31 @@ void* Justina_interpreter::fetchVarBaseAddress(TokenIsVariable* pVarToken, char*
 
     // local variables (including parameters)    
     else {
+        bool isStoppedFunctionLocalOrParam = ((varScope == var_isLocalInStoppedFunc) || (varScope == var_isParamInStoppedFunc));//// WEG (deze var scop const zijn niet meer nodig)
+        Serial.print("++++++ push var: is STOPPED function variable (debug mode): "); Serial.println(isStoppedFunctionLocalOrParam);
+
         OpenFunctionData* pDeepestOpenFunction = &_activeFunctionData;
-        bool debugMode = (_openDebugLevels > 0);
-        // local variable in an immediate mode statement ? only possible in debug mode
-        if (debugMode) {
-            // find flow control stack element for most deeply nested open function
-            void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                    int blockType = block_none;
-            do {
-                blockType = *(char*)pFlowCtrlStackLvl;
-                if (blockType != block_extFunction) {
+        // find debug level (either in active function data or in flow control stack). Open function data (function where the program was stopped) will be directly beneath it, in the flow control stack
+        // it can NOT be an eval() string execution level, because a program can not be stopped during the execution of an eval() string (although it can during an external function called from an eval() string)
+
+        int blockType = _activeFunctionData.blockType;
+        void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;
+        bool isStoppedFunctionVar = (blockType == block_extFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + PROG_MEM_SIZE)) : true;     // true command line or eval() block type
+        Serial.print("++++++         : is STOPPED function variable (debug mode): "); Serial.println(isStoppedFunctionVar);
+        if (isStoppedFunctionVar) {
+            bool isDebugCmdLevel = (blockType == block_extFunction);
+            if (!isDebugCmdLevel) {       // find debug level in flow control stack instead
+                do {
+                    Serial.println("       (loop)");
+                    blockType = *(char*)pFlowCtrlStackLvl;
+                    isDebugCmdLevel = (blockType == block_extFunction) ? (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + PROG_MEM_SIZE)) : false;
                     pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
-                    continue;
-                };          // there is at least one open function in the call stack
-                break;
-            } while (true);
+                } while (!isDebugCmdLevel);          // stack level for open function found immediate below debug line found (always match)
+            }
             pDeepestOpenFunction = (OpenFunctionData*)pFlowCtrlStackLvl;
         }
 
+        Serial.println("       (end loop)");
         // note (function parameter variables only): when a function is called with a variable argument (always passed by reference), 
         // the parameter value type has been set to 'reference' when the function was called
         localValueType = pDeepestOpenFunction->pVariableAttributes[valueIndex] & value_typeMask;         // local variable value type (indicating float or string or REFERENCE)
@@ -4204,13 +4214,13 @@ void* Justina_interpreter::fetchVarBaseAddress(TokenIsVariable* pVarToken, char*
             sourceVarTypeAddress = pDeepestOpenFunction->ppSourceVarTypes[valueIndex];                   // pointer to 'source' variable value type
 
             // local variable value type (reference); SOURCE variable scope (user, global, static; local, param), 'is array' flag
-            variableAttributes = pDeepestOpenFunction->pVariableAttributes[valueIndex] | (pVarToken->identInfo & var_isArray);
+            variableAttributes = pDeepestOpenFunction->pVariableAttributes[valueIndex] | (pVarToken->identInfo & var_isArray);      // add array flag
 
-            Val* ppval = ((Val**)pDeepestOpenFunction->pLocalVarValues)[valueIndex];//// weg
+            Serial.print("       push var: is var ref, var attrib = "); Serial.println(variableAttributes, HEX);
             /* ////
+            Val* ppval = ((Val**)pDeepestOpenFunction->pLocalVarValues)[valueIndex];//// weg
             Serial.println("*** PUSH var - is ref");
             Serial.print("    value type: "); Serial.println(*sourceVarTypeAddress, HEX);
-            Serial.print("    var attrib: "); Serial.println(variableAttributes, HEX);
             Serial.print("    long value: ");Serial.println((*ppval).longConst);
             */
             return   ((Val**)pDeepestOpenFunction->pLocalVarValues)[valueIndex];                       // pointer to 'source' variable value 
@@ -4221,6 +4231,7 @@ void* Justina_interpreter::fetchVarBaseAddress(TokenIsVariable* pVarToken, char*
             sourceVarTypeAddress = pDeepestOpenFunction->pVariableAttributes + valueIndex;               // pointer to local variable value type and 'is array' flag
             // local variable value type (reference); local variable scope (user, global, static; local, param), 'is array' flag
             variableAttributes = pVarToken->identInfo & (var_scopeMask | var_isArray);
+            Serial.print("       push var: is local (non var ref), var attrib = "); Serial.println(variableAttributes, HEX);
             return (Val*)&(pDeepestOpenFunction->pLocalVarValues[valueIndex]);                           // pointer to local variable value 
         }
     }
