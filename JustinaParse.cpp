@@ -285,17 +285,15 @@ void Justina_interpreter::deleteIdentifierNameObjects(char** pIdentNameArray, in
 }
 
 
-// ----------------------------------------------------------------------------------------------
-// *   delete variable heap objects: scalar variable strings and array variable array storage   *
-// ----------------------------------------------------------------------------------------------
+// ----------------------------------------------------------------------
+// *   delete variable heap objects: array variable character strings   *
+// ----------------------------------------------------------------------
 
-void Justina_interpreter::deleteArrayElementStringObjects(Justina_interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar, bool isLocalVar) {
-    int index = 0;
+void Justina_interpreter::deleteArrayElementStringObjects(Justina_interpreter::Val* varValues, char* varType, int varNameCount, int paramOnlyCount, bool checkIfGlobalValue, bool isUserVar, bool isLocalVar) {
+    int index = paramOnlyCount;                                             // skip parameters (if function, otherwise must be zero)
     while (index < varNameCount) {
         if (!checkIfGlobalValue || (varType[index] & (var_nameHasGlobalValue))) { // if only for global values: is it a global value ?
-            if ((varType[index] & (var_isArray | value_typeMask)) ==
-                (var_isArray | value_isStringPointer)) {              // array of strings
-
+            if ((varType[index] & (var_isArray | value_typeMask)) == (var_isArray | value_isStringPointer)) {              // array of strings
                 void* pArrayStorage = varValues[index].pArray;        // void pointer to an array of string pointers; element 0 contains dimensions and dimension count
                 int dimensions = (((char*)pArrayStorage)[3]);  // can range from 1 to MAX_ARRAY_DIMS
                 int arrayElements = 1;                                  // determine array size
@@ -326,11 +324,13 @@ void Justina_interpreter::deleteArrayElementStringObjects(Justina_interpreter::V
 
 // note: make sure array variable element string objects have been deleted prior to calling this routine
 
-void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar, bool isLocalVar) {
+void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* varValues, char* varType, int varNameCount, int paramOnlyCount, bool checkIfGlobalValue, bool isUserVar, bool isLocalVar) {
 
-    int index = 0;
+    Serial.print("*-* total function parameters: "); Serial.println(paramOnlyCount);
+    int index = paramOnlyCount;                                             // skip parameters (if function, otherwise must be zero)
     while (index < varNameCount) {
         if (!checkIfGlobalValue || (varType[index] & (var_nameHasGlobalValue))) { // global value ?
+
             // check for arrays before checking for strings (if both 'var_isArray' and 'value_isStringPointer' bits are set: array of strings, with strings already deleted)
             if (varType[index] & var_isArray) {       // variable is an array: delete array storage          
             #if printCreateDeleteListHeapObjects
@@ -338,6 +338,8 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
             #endif
                 delete[]  varValues[index].pArray;
                 isUserVar ? _userArrayObjectCount-- : isLocalVar ? _localArrayObjectCount-- : _globalStaticArrayObjectCount--;
+                Serial.print("*-* DELETE array, index = ");Serial.print(index);
+                isUserVar ? Serial.println(" - user") : isLocalVar ? Serial.println(" - local") : Serial.println(" - global");
             }
             else if ((varType[index] & value_typeMask) == value_isStringPointer) {       // variable is a scalar containing a string
                 if (varValues[index].pStringConst != nullptr) {
@@ -354,9 +356,9 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
 }
 
 
-// ----------------------------------------------------------------------------------------------
-// *   delete variable heap objects: scalar variable strings and array variable array storage   *
-// ----------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------
+// *   delete variable heap objects: last value Fifo string objects   *
+// --------------------------------------------------------------------
 
 void Justina_interpreter::deleteLastValueFiFoStringObjects() {
 
@@ -373,7 +375,6 @@ void Justina_interpreter::deleteLastValueFiFoStringObjects() {
         }
     }
 }
-
 
 
 // -----------------------------------------------------------------------------------------
@@ -430,18 +431,18 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
     if (withUserVariables) { deleteIdentifierNameObjects(userVarNames, _userVarCount, true); }
 
     // delete variable heap objects: array variable element string objects
-    deleteArrayElementStringObjects(globalVarValues, globalVarType, _programVarNameCount, true);
-    deleteArrayElementStringObjects(staticVarValues, staticVarType, _staticVarCount, false);
+    deleteArrayElementStringObjects(globalVarValues, globalVarType, _programVarNameCount, 0, true);
+    deleteArrayElementStringObjects(staticVarValues, staticVarType, _staticVarCount, 0, false);
     if (withUserVariables) {
-        deleteArrayElementStringObjects(userVarValues, userVarType, _userVarCount, false, true);
+        deleteArrayElementStringObjects(userVarValues, userVarType, _userVarCount, 0, false, true);
         deleteLastValueFiFoStringObjects();
     }
 
     // delete variable heap objects: scalar variable strings and array variable array storage 
-    deleteVariableValueObjects(globalVarValues, globalVarType, _programVarNameCount, true);
-    deleteVariableValueObjects(staticVarValues, staticVarType, _staticVarCount, false);
+    deleteVariableValueObjects(globalVarValues, globalVarType, _programVarNameCount, 0, true);
+    deleteVariableValueObjects(staticVarValues, staticVarType, _staticVarCount, 0, false);
     if (withUserVariables) {
-        deleteVariableValueObjects(userVarValues, userVarType, _userVarCount, false, true);
+        deleteVariableValueObjects(userVarValues, userVarType, _userVarCount, 0, false, true);
 
         if (_pTraceString != nullptr) {        // internal trace 'variable'
         #if printCreateDeleteListHeapObjects
@@ -596,6 +597,17 @@ void Justina_interpreter::initInterpreterVariables(bool withUserVariables) {
     *_programStorage = '\0';                                    //  current end of program 
     *_programStart = '\0';                                      //  current end of program (immediate mode)
     _programName[0] = '\0';
+
+    _pEvalStackTop = nullptr;   _pEvalStackMinus2 = nullptr; _pEvalStackMinus1 = nullptr;
+    _pFlowCtrlStackTop = nullptr;   _pFlowCtrlStackMinus2 = nullptr; _pFlowCtrlStackMinus1 = nullptr;
+    _pImmediateCmdStackTop = nullptr;
+    _intermediateStringObjectCount = 0;      // reset at the start of execution
+    _localVarValueAreaCount = 0;
+    _localVarStringObjectCount = 0;
+    _localArrayObjectCount = 0;
+    _activeFunctionData.callerEvalStackLevels = 0;          // this is the highest program level
+    _callStackDepth = 0;                                            // equals flow control stack depth minus open loop (if, for, ...) blocks (= blocks being executed)
+    _openDebugLevels = 0;                                           // equals imm mode cmd stack depth minus open eval() strings (= eval() strings being executed)
 
 
     // reset counters for heap objects
@@ -782,7 +794,7 @@ void Justina_interpreter::parseAndExecTraceString() {
     deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
 
     char* pTraceParsingInput = _pTraceString;  // copy pointer to start of trace string
-    _withinTrace = true;
+    _parsingExecutingTraceString = true;
 
     _pConsole->print("TRACE ==>> ");
     do {
@@ -793,8 +805,8 @@ void Justina_interpreter::parseAndExecTraceString() {
         *_programStart = '\0';          // in case no valid tokens will be stored
 
         // skip any spaces and semi-colons in the input stream
-        while ((pTraceParsingInput[0] == ' ') || (pTraceParsingInput[0]== term_semicolon[0]))  {pTraceParsingInput++;}
-        if (*pTraceParsingInput == '\0'){break;} // could occur if semicolons skipped
+        while ((pTraceParsingInput[0] == ' ') || (pTraceParsingInput[0] == term_semicolon[0])) { pTraceParsingInput++; }
+        if (*pTraceParsingInput == '\0') { break; } // could occur if semicolons skipped
 
         // parse ONE expression in trace string
         parseTokenResult_type result = parseStatements(pTraceParsingInput, pNextParseStatement);
@@ -825,7 +837,7 @@ void Justina_interpreter::parseAndExecTraceString() {
         if (*pTraceParsingInput != '\0') { _pConsole->print(", "); }                    // separate values (if more than one)
     } while (*pTraceParsingInput != '\0');                                              // exit loop if all expressions handled
 
-    _withinTrace = false;
+    _parsingExecutingTraceString = false;
     _pConsole->println();       // go to next output line
 
     return;
@@ -905,7 +917,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(
         // move to the first character of next token (within one instruction)
         while (pNext[0] == ' ') { pNext++; }                                         // skip leading spaces
         if (pNext[0] == '\0') { pNextParseStatement = pNext; break; }                                             // end of instruction  
-        if ((pNext[0] == term_semicolon[0]) && (_withinTrace)) { pNextParseStatement = pNext + 1; break; }        // within trace : only parse one instruction at a time, then execute it first
+        if ((pNext[0] == term_semicolon[0]) && (_parsingExecutingTraceString)) { pNextParseStatement = pNext + 1; break; }        // within trace : only parse one instruction at a time, then execute it first
 
         _lastTokenType_hold = _lastTokenType;                                       // remember the last parsed token during parsing of a next token
         _lastTermCode_hold = _lastTermCode;                                         // only relevant for certain tokens
@@ -1211,7 +1223,7 @@ bool Justina_interpreter::parseAsResWord(char*& pNext, parseTokenResult_type& re
         if (strncmp(_resWords[resWordIndex]._resWordName, pch, pNext - pch) != 0) { continue; } // token corresponds to keyword ? If not, skip remainder of loop ('continue') 
 
         // token is keyword, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-        if (_withinTrace || _parsingEvalString) { pNext = pch; result = result_trace_resWordNotAllowed; return false; }
+        if (_parsingExecutingTraceString || _parsingEvalString) { pNext = pch; result = result_trace_resWordNotAllowed; return false; }
         if (_parenthesisLevel > 0) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
         if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2_0)) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
         if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
@@ -2281,9 +2293,9 @@ bool Justina_interpreter::parseAsInternFunction(char*& pNext, parseTokenResult_t
         if (_isAnyVarCmd) { pNext = pch; result = result_functionNotAllowedHere; return false; }        // is a variable declaration: internal function name not allowed
 
         // eval() function can not occur within a trace string (all other internal functins are OK)
-        if (_withinTrace) {
-            Serial.print("WITHIN TRACE: ");Serial.println((int)_functions[funcIndex].functionCode);
-            if (_functions[funcIndex].functionCode == fnccod_eval) {pNext = pch; result = result_trace_evalFunctonNotAllowed; return false;}
+        if (_parsingExecutingTraceString) {
+            Serial.print("WITHIN TRACE: "); Serial.println((int)_functions[funcIndex].functionCode);
+            if (_functions[funcIndex].functionCode == fnccod_eval) { pNext = pch; result = result_trace_evalFunctonNotAllowed; return false; }
         }
 
         // token is an internal function, and it's allowed here
@@ -2346,7 +2358,7 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
     index = getIdentifier(userVarNames, _userVarCount, MAX_USERVARNAMES, pch, pNext - pch, createNewName, true);
     if (index != -1) { pNext = pch; return true; }                // is a user variable
 
-    if (_withinTrace) { pNext = pch; result = result_trace_userFunctonNotAllowed; return false; }
+    if (_parsingExecutingTraceString) { pNext = pch; result = result_trace_userFunctonNotAllowed; return false; }
 
     if ((_isExtFunctionCmd) && (_parenthesisLevel > 0)) { pNext = pch; return true; }        // only array parameter allowed now
 
@@ -2934,11 +2946,6 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     _variableNameIndex = varNameIndex;          // will be pushed to parsing stack
     _variableScope = varScope;
 
-    // AFTER assignment to _variableScope: if parsing local variable or parameter in STOPPED function, adapt varScope before storing it in variable token.
-    // only used while fetching the variable during execution (procedure fetchVarBaseAddress()), to fetch the variable within the STOPPED function's allocated memory  
-    if (isOpenFunctionLocalVariable) { varScope = var_isLocalInStoppedFunc; }
-    else if (isOpenFunctionParam) { varScope = var_isParamInStoppedFunc; }
-
     // expression syntax check 
     _thisLvl_lastIsVariable = true;
 
@@ -3001,7 +3008,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
     while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                   // do until first character after alphanumeric token (can be anything, including '\0')
 
     // token is a generic identifier, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-    if (_withinTrace || _parsingEvalString) { pNext = pch; result = result_trace_genericNameNotAllowed; return false; }
+    if (_parsingExecutingTraceString || _parsingEvalString) { pNext = pch; result = result_trace_genericNameNotAllowed; return false; }
 
     if (_parenthesisLevel > 0) { pNext = pch; result = result_identifierNotAllowedHere; return false; }
     if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2_0)) { pNext = pch; result = result_identifierNotAllowedHere; return false; }
@@ -3037,7 +3044,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
             return false;
         }
         strcpy(_callbackUserProcAlias[_userCBprocAliasSet_count++], pIdentifierName);                           // maximum 10 user functions                                   
-        }
+    }
 
 
     // expression syntax check 
@@ -3065,7 +3072,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
     *_programCounter = '\0';                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
-    }
+}
 
 
 // -----------------------------------------

@@ -967,11 +967,9 @@ public:
     // bits b654: variable scope. Use: (1) during parsing: temporarily store the variable type associated with a particular reference of a variable name 
     // (2) stored in 'variable' token to indicate the variable type associated with a particular reference of a variable name 
     static constexpr uint8_t var_scopeMask = 0x70;               // mask
-    static constexpr uint8_t var_isUser = 7 << 4;                    // variable is a user variable, in or outside function
-    static constexpr uint8_t var_isGlobal = 6 << 4;                  // variable is global, in or outside function
-    static constexpr uint8_t var_isStaticInFunc = 5 << 4;            // variable is static in function
-    static constexpr uint8_t var_isLocalInStoppedFunc = 4 << 4;      // variable is local (non-parameter) variable in STOPPED function (debug) -> only used during variable fetching in execution 
-    static constexpr uint8_t var_isParamInStoppedFunc = 3 << 4;      // variable is function parameter in STOPPED function (debug) -> only used during variable fetching in execution 
+    static constexpr uint8_t var_isUser = 5 << 4;                    // variable is a user variable, in or outside function
+    static constexpr uint8_t var_isGlobal = 4 << 4;                  // variable is global, in or outside function
+    static constexpr uint8_t var_isStaticInFunc = 3 << 4;            // variable is static in function
     static constexpr uint8_t var_isLocalInFunc = 2 << 4;             // variable is local (non-parameter) in function
     static constexpr uint8_t var_isParamInFunc = 1 << 4;             // variable is function parameter
     static constexpr uint8_t var_scopeToSpecify = 0 << 4;             // scope is not yet defined (temporary use during parsing; never stored in token)
@@ -1101,8 +1099,8 @@ public:
     bool _coldStart{};
     char* _pTraceString{ nullptr };
     char* _pEvalString{ nullptr };
-    bool _withinTrace{ false };
-    bool _parsingEvalString{ false };//// weg
+    bool _parsingExecutingTraceString{ false };
+    bool _parsingEvalString{ false };
 
 
     // counting of heap objects (note: linked list element count is maintained within the linked list objects)
@@ -1173,8 +1171,12 @@ public:
 
     long _appFlags = 0;
 
-    int _callStackDepth{ 0 };                                       // equals flow control stack depth minus open loop (if, for, ...) blocks (= blocks being executed)
-    int _openDebugLevels{ 0 };                                      // equals imm mode cmd stack depth minus open eval() strings (= eval() strings being executed)
+    // number of currently [called external functions + open eval() levels + stopped programs]: equals flow ctrl stack levels minus open loop (if, for, ...) blocks (= blocks being executed)
+    int _callStackDepth{ 0 };                                       
+    // number of stopped programs: equals imm mode cmd stack depth minus open eval() strings (= eval() strings being executed)
+    int _openDebugLevels{ 0 };                                      
+    
+    
     int _stepCallStackLevel{ 0 };                                   // call stack levels at the moment of a step... command
     int _stepFlowCtrlStackLevels{ 0 };                              // ALL flow control stack levels at the moment of a step... command
 
@@ -1348,8 +1350,8 @@ public:
     void initInterpreterVariables(bool withUserVariables);
     void danglingPointerCheckAndCount(bool withUserVariables);
     void deleteIdentifierNameObjects(char** pIdentArray, int identifiersInUse, bool isUserVar = false);
-    void deleteArrayElementStringObjects(Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false);
-    void deleteVariableValueObjects(Val* varValues, char* varType, int varNameCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false);
+    void deleteArrayElementStringObjects(Val* varValues, char* varType, int varNameCount, int paramOnlyCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false);
+    void deleteVariableValueObjects(Val* varValues, char* varType, int varNameCount, int paramOnlyCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false);
     void deleteLastValueFiFoStringObjects();
     void deleteConstStringObjects(char* pToken);
     void parseAndExecTraceString();
