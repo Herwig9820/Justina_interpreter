@@ -1172,11 +1172,11 @@ public:
     long _appFlags = 0;
 
     // number of currently [called external functions + open eval() levels + stopped programs]: equals flow ctrl stack levels minus open loop (if, for, ...) blocks (= blocks being executed)
-    int _callStackDepth{ 0 };                                       
+    int _callStackDepth{ 0 };
     // number of stopped programs: equals imm mode cmd stack depth minus open eval() strings (= eval() strings being executed)
-    int _openDebugLevels{ 0 };                                      
-    
-    
+    int _openDebugLevels{ 0 };
+
+
     int _stepCallStackLevel{ 0 };                                   // call stack levels at the moment of a step... command
     int _stepFlowCtrlStackLevels{ 0 };                              // ALL flow control stack levels at the moment of a step... command
 
@@ -1399,8 +1399,8 @@ public:
     void saveLastValue(bool& overWritePrevious);
     void clearEvalStack();
     void clearEvalStackLevels(int n);
-    void clearFlowCtrlStack(execResult_type execResult = result_execOK, bool debugModeError = false);
-    void clearImmediateCmdStack();
+    void clearFlowCtrlStack(int& deleteImmModeCmdStackLevels,execResult_type execResult = result_execOK, bool debugModeError = false );
+    void clearImmediateCmdStack(int n);
 
     execResult_type makeFormatString();
     execResult_type deleteVarStringObject(LE_evalStack* pStackLvl);

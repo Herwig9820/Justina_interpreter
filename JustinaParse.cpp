@@ -29,7 +29,7 @@
 #include "Justina.h"
 
 #define printCreateDeleteListHeapObjects 0
-#define printParsedTokens 1
+#define printParsedTokens 0
 #define debugPrint 0
 
 
@@ -326,7 +326,7 @@ void Justina_interpreter::deleteArrayElementStringObjects(Justina_interpreter::V
 
 void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* varValues, char* varType, int varNameCount, int paramOnlyCount, bool checkIfGlobalValue, bool isUserVar, bool isLocalVar) {
 
-    Serial.print("*-* total function parameters: "); Serial.println(paramOnlyCount);
+    ////Serial.print("*-* total function parameters: "); Serial.println(paramOnlyCount);
     int index = paramOnlyCount;                                             // skip parameters (if function, otherwise must be zero)
     while (index < varNameCount) {
         if (!checkIfGlobalValue || (varType[index] & (var_nameHasGlobalValue))) { // global value ?
@@ -338,8 +338,8 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
             #endif
                 delete[]  varValues[index].pArray;
                 isUserVar ? _userArrayObjectCount-- : isLocalVar ? _localArrayObjectCount-- : _globalStaticArrayObjectCount--;
-                Serial.print("*-* DELETE array, index = ");Serial.print(index);
-                isUserVar ? Serial.println(" - user") : isLocalVar ? Serial.println(" - local") : Serial.println(" - global");
+                ////Serial.print("*-* DELETE array, index = ");Serial.print(index);
+                ////isUserVar ? Serial.println(" - user") : isLocalVar ? Serial.println(" - local") : Serial.println(" - global");
             }
             else if ((varType[index] & value_typeMask) == value_isStringPointer) {       // variable is a scalar containing a string
                 if (varValues[index].pStringConst != nullptr) {
@@ -465,6 +465,7 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
         _pImmediateCmdStackTop = immModeCommandStack.getLastListElement();
         memcpy(_programStorage + PROG_MEM_SIZE, _pImmediateCmdStackTop, IMM_MEM_SIZE);
         immModeCommandStack.deleteListElement(_pImmediateCmdStackTop);
+        Serial.print("reset machine: delete immModeParsedStatStack - levels = "); Serial.println(immModeCommandStack.getElementCount());////
         deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
     }
 
@@ -812,7 +813,7 @@ void Justina_interpreter::parseAndExecTraceString() {
         parseTokenResult_type result = parseStatements(pTraceParsingInput, pNextParseStatement);
         if (result == result_tokenFound) {
             prettyPrintInstructions(0);         // do NOT pretty print if parsing error, to avoid bad-looking partially printed statements (even if there will be an execution error later)
-            Serial.print(": ");                 // resulting value will follow
+            _pConsole->print(": ");                 // resulting value will follow
             pTraceParsingInput = pNextParseStatement;
         }
         else {
@@ -2759,7 +2760,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~var_isArray); // init (array flag may only be added when storage is created) 
             }
             else {  // not a variable declaration, but a variable reference
-                Serial.println("*** 4.2 - is not global or user");
+                ////Serial.println("*** 4.2 - is not global or user");
                 // it's neither a global or user variable declaration, nor a global or user variable reference (because storage does not exist for it). But the variable name exists,
                 // so local or static function variables using this name have been defined already. 
                 // in debug mode (program stopped), the name could refer to a local or static variable within the currently stopped function (open function) 
@@ -2767,7 +2768,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 // in debug mode now ? (if multiple programs in debug mode, only the last one stopped will be considered here
                 if (_openDebugLevels > 0) {
 
-                    Serial.println("*** 4.2 - in debug mode");
+                    ////Serial.println("*** 4.2 - in debug mode");
 
                     // find debug level (either in active function data or in flow control stack). Open function data (function where the program was stopped) will be directly beneath it, in the flow control stack
                     // it can NOT be an eval() string execution level, because a program can not be stopped during the execution of an eval() string (although it can during an external function called from an eval() string)
@@ -2817,16 +2818,16 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                         if (isOpenFunctionLocalVariable || isOpenFunctionParam) {
                             // supplied argument is a variable ? (scalar or array)
                             bool isSourceVarRef = ((OpenFunctionData*)pFlowCtrlStackLvl)->pVariableAttributes[openFunctionVar_valueIndex] & value_isVarRef;
-                            Serial.print("------ is open function var ref: "); Serial.println(isSourceVarRef);
+                            ////Serial.print("------ is open function var ref: "); Serial.println(isSourceVarRef);
 
                             // has this local variable been defined as a scalar or array ?
                             isOpenFunctionLocalArrayVariable = ((OpenFunctionData*)pFlowCtrlStackLvl)->pVariableAttributes[openFunctionVar_valueIndex] & var_isArray;
-                            Serial.print("------ is open function local array: "); Serial.println(isOpenFunctionLocalArrayVariable);
+                            ////Serial.print("------ is open function local array: "); Serial.println(isOpenFunctionLocalArrayVariable);
                             if (isOpenFunctionLocalArrayVariable) {
                                 void* pArray = isSourceVarRef ? *(((OpenFunctionData*)pFlowCtrlStackLvl)->pLocalVarValues[openFunctionVar_valueIndex].ppArray) :
                                     ((OpenFunctionData*)pFlowCtrlStackLvl)->pLocalVarValues[openFunctionVar_valueIndex].pArray;
                                 openFunctionArray_dimCount = ((char*)pArray)[3];
-                                Serial.print("------ open function local var dim count: "); Serial.println(openFunctionArray_dimCount);
+                                ////Serial.print("------ open function local var dim count: "); Serial.println(openFunctionArray_dimCount);
                             }
                         }
                     }
@@ -2844,7 +2845,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
         }
 
         else {  // global PROGRAM variable exists already: check for double definition (USER variables: detected when NAME was declared a second time) 
-            Serial.println("*** 4.2 - is existing global");
+            ////Serial.println("*** 4.2 - is existing global");
             if (_isGlobalOrUserVarCmd) { pNext = pch; result = result_varRedeclared; return false; }
         }
     }
@@ -2965,7 +2966,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     pToken->identNameIndex = varNameIndex;
     pToken->identValueIndex = valueIndex;                      // points to storage area element for the variable  
 
-    Serial.print("------ store token: info: scope+array+forced (hex): "); Serial.println(pToken->identInfo, HEX);
+    ////Serial.print("------ store token: info: scope+array+forced (hex): "); Serial.println(pToken->identInfo, HEX);
 
     /*
     Serial.print("     token address: "); Serial.println(_programCounter - _programStorage);

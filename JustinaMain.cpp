@@ -118,7 +118,7 @@ char* LinkedList::deleteListElement(void* pPayload) {                           
         q = q->pNext;
     }
 
-    Serial.print("(LIST) Delete elem # "); Serial.print(i); Serial.print (" (new # "); Serial.print(_listElementCount - 1);
+    Serial.print("(LIST) Delete elem # "); Serial.print(i); Serial.print(" (new # "); Serial.print(_listElementCount - 1);
     Serial.print("), list ID "); Serial.print(_listID);
     Serial.print(", stack: "); Serial.print(_listName);
     Serial.print(", list elem address: "); Serial.println((uint32_t)pElem - RAMSTART);
@@ -539,7 +539,6 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
         char* pDummy{};
         _parsingExecutingTraceString = false; _parsingEvalString = false;
         result = parseStatements(pInstruction, pDummy);                                 // parse one instruction (ending with ';' character, if found)
-        Serial.print("////// parsed statements: ");Serial.print(pInstruction);Serial.println("//////");
         pErrorPos = pInstruction;                                                      // in case of error
         if (result != result_tokenFound) { _flushAllUntilEOF = true; }
         if (result == result_parse_kill) { kill = true; _quitJustinaAtEOF = true; }     // _flushAllUntilEOF is true already (flush buffer before quitting)
@@ -590,13 +589,16 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
         // - the flow control stack maintains data about open block commands, open functions and eval() strings in execution (call stack)
         // => skip stack elements for any command line open block commands or eval() strings in execution, and fetch the data for the function where control will resume when started again
 
-        Serial.print("** main: imm mode cmd stack depth = "); Serial.println(_openDebugLevels);
+        Serial.print("** main: debug levels = "); Serial.print(_openDebugLevels);
+        Serial.print(", imm mode cmd stack depth = "); Serial.print(immModeCommandStack.getElementCount());
+        Serial.print(", stack depth = "); Serial.print(_callStackDepth);
+        Serial.print(", flow ctrl stack depth = "); Serial.println(flowCtrlStack.getElementCount());
 
-        if ((_openDebugLevels > 0) && (execResult != result_eval_kill) && (execResult != result_eval_quit)) {  //// fout: eval() levels aftrekken
+        if ((_openDebugLevels > 0) && (execResult != result_eval_kill) && (execResult != result_eval_quit)) {
             char* nextInstructionsPointer = _programCounter;
             OpenFunctionData* pDeepestOpenFunction = &_activeFunctionData;
 
-            void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                    
+            void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;
             int blockType = block_none;
             do {                                                                // there is at least one open function in the call stack
                 blockType = *(char*)pFlowCtrlStackLvl;
