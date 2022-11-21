@@ -28,7 +28,7 @@
 
 #include "Justina.h"
 
-#define printCreateDeleteListHeapObjects 0
+#define printCreateDeleteListHeapObjects 1
 #define debugPrint 0
 
 
@@ -589,10 +589,9 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
         // - the flow control stack maintains data about open block commands, open functions and eval() strings in execution (call stack)
         // => skip stack elements for any command line open block commands or eval() strings in execution, and fetch the data for the function where control will resume when started again
 
-        Serial.print("** main: debug levels = "); Serial.print(_openDebugLevels);
-        Serial.print(", imm mode cmd stack depth = "); Serial.print(immModeCommandStack.getElementCount());
-        Serial.print(", stack depth = "); Serial.print(_callStackDepth);
-        Serial.print(", flow ctrl stack depth = "); Serial.println(flowCtrlStack.getElementCount());
+        Serial.print("** debug lvls-imm.mode stack depth "); Serial.print(_openDebugLevels);Serial.print("-"); Serial.print(immModeCommandStack.getElementCount());
+        Serial.print(", call stack depth-flow ctrl stack depth "); Serial.print(_callStackDepth); Serial.print("-"); Serial.print(flowCtrlStack.getElementCount());
+        Serial.print(", eval caller lvls-eval stack depth "); Serial.print((int)_activeFunctionData.callerEvalStackLevels); Serial.print("-"); Serial.println(evalStack.getElementCount());
 
         if ((_openDebugLevels > 0) && (execResult != result_eval_kill) && (execResult != result_eval_quit)) {
             char* nextInstructionsPointer = _programCounter;

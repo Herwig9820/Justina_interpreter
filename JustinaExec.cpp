@@ -28,8 +28,8 @@
 
 #include "Justina.h"
 
-#define printCreateDeleteListHeapObjects 0
-#define printProcessedTokens 0
+#define printCreateDeleteListHeapObjects 1
+#define printProcessedTokens 1
 #define debugPrint 0
 
 const char passCopyToCallback = 0x40;       // flag: string is an empty string 
@@ -256,7 +256,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             #endif
 
             #if printProcessedTokens
-                Serial.print("=== process var nam: address "); Serial.print(_programCounter - _programStorage);  Serial.print(", eval stack depth "); Serial.print(evalStack.getElementCount()); Serial.print(" [");
+                Serial.print("=== process var name: address "); Serial.print(_programCounter - _programStorage);  Serial.print(", eval stack depth "); Serial.print(evalStack.getElementCount()); Serial.print(" [");
                 int varNameIndex = ((TokenIsVariable*)_programCounter)->identNameIndex;
                 char scopeMask = ((TokenIsVariable*)_programCounter)->identInfo & var_scopeMask;
                 char* varName = (scopeMask == var_isUser) ? userVarNames[varNameIndex] : programVarNames[varNameIndex];
@@ -283,6 +283,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 execResult = execAllProcessedOperators();
                 if (execResult != result_execOK) { break; }
 
+                Serial.println("=== processed var name");
                 break;
             }
 
@@ -418,10 +419,10 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
                 else if (isSemicolon) {
 
-                #if debugPrint
-                    Serial.print("eval stack depth "); Serial.print(evalStack.getElementCount());  Serial.print(" - semicolon"); ////
+                    ////#if debugPrint
+                    Serial.print("=== process semicolon : eval stack depth "); Serial.print(evalStack.getElementCount());  Serial.print(" - semicolon"); ////
                     Serial.print("   ["); Serial.print(_programCounter - _programStorage); Serial.println("]");
-                #endif
+                    ////#endif
                     bool doCaseBreak{ false };
 
                     lastTokenIsSemicolon = true;
@@ -437,7 +438,9 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                         else if (evalStack.getElementCount() == _activeFunctionData.callerEvalStackLevels + 1) {
                             // in main program level ? store as last value (for now, we don't know if it will be followed by other 'last' values)
                             ////Serial.print("processing SEMICOLON: block type = "); Serial.println((int)_activeFunctionData.blockType);
+                            Serial.println("****** ONE eval stack level above callers stack levels");
                             if (_activeFunctionData.blockType == block_eval) {  // executing parsed eval() string
+                                Serial.print("  ****IS eval() block");
                                 // never store a last value; delete all expression results except the last one
                                 int tokenType, tokenCode;
                                 char* pStep = _programCounter;
@@ -450,8 +453,11 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                                 if (tokenType != tok_isEvalEnd) { clearEvalStackLevels(1); }     // a next expression is found: delete the current expression's result
                             }
                             else {  // not an eval() block
+                                Serial.print("  **** NOT an eval() block: block type = "); Serial.println((int)_activeFunctionData.blockType);
+                                Serial.println((_programCounter >= (_programStorage + PROG_MEM_SIZE)) ? "       immediate mode statement" : "       program statement");
                                 if (_programCounter >= (_programStorage + PROG_MEM_SIZE)) { saveLastValue(_lastValueIsStored); }                // save last result in FIFO and delete stack level
                                 else { clearEvalStackLevels(1); } // NOT main program level: we don't need to keep the statement result
+
                             }
                         }
                     }
@@ -466,7 +472,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 #endif
 
                 #if printProcessedTokens        // after evaluation stack has been updated and before breaking 
-                    Serial.print("=== processed termin : address "); Serial.print(_programCounter - _programStorage);  Serial.print(", eval stack depth "); Serial.print(evalStack.getElementCount()); Serial.print(" [ ");
+                    Serial.print("=== processed semicolon : address "); Serial.print(_programCounter - _programStorage);  Serial.print(", eval stack depth "); Serial.print(evalStack.getElementCount()); Serial.print(" [ ");
                     Serial.print(_terminals[tokenIndex].terminalName);   Serial.println(" ]");
                 #endif
 
@@ -520,6 +526,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         #if printProcessedTokens        
             Serial.println("\r\n");
         #endif
+            Serial.println("**** end of statement separator");////
 
             programCnt_previousStatementStart = holdProgramCnt_StatementStart;
             holdProgramCnt_StatementStart = _programCounter;
@@ -696,6 +703,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
     if (!_parsingExecutingTraceString) {
         if (!_atLineStart) { _pConsole->println(); _atLineStart = true; }
         if (_lastValueIsStored && _printLastResult) {
+            Serial.println("**** printing last result");////
 
             // print last result
             bool isLong = (lastResultTypeFiFo[0] == value_isLong);
@@ -796,8 +804,10 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
     // program or command line exec error while at least one other program is currently stopped in debug mode ?
     else if (execResult != result_execOK) {
+        Serial.println("**** exec error: delete stack elements");////
         int deleteImmModeCmdStackLevels{ 0 };
         clearFlowCtrlStack(deleteImmModeCmdStackLevels, execResult, true);           // returns imm. mode command stack levels to delete
+        Serial.print(deleteImmModeCmdStackLevels); Serial.println(" imm mode stack levels to delete");////
         clearImmediateCmdStack(deleteImmModeCmdStackLevels);                        // do not delete all stack levels but only supplied level count
         clearEvalStackLevels(evalStack.getElementCount() - (int)_activeFunctionData.callerEvalStackLevels);
     }
@@ -810,6 +820,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
     Serial.print("*** exit exec: eval stack depth: "); Serial.println(evalStack.getElementCount());
     Serial.print("** EXEC: return error code: "); Serial.println(execResult);
 #endif
+    Serial.println("**** returning to main");////
     return execResult;   // return result, in case it's needed by caller
 };
 
@@ -1304,8 +1315,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         // but it does not need to be changed, because in the next step, the respective stack level will be deleted 
 
                         ////_pConsole->println(input);      // echo input
-                        }
                     }
+                }
 
 
                 if (cmdParamCount == (isInput ? 3 : 2)) {       // last argument (optional second if Info, third if Input statement) serves a dual purpose: allow cancel (on entry) and signal 'canceled' (on exit)
@@ -1317,13 +1328,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     // if NOT a variable REFERENCE, then value type on the stack indicates the real value type and NOT 'variable reference' ...
                     // but it does not need to be changed, because in the next step, the respective stack level will be deleted 
                 }
-                } while (!answerValid);
-                _appFlags &= ~0x0040;    // bit b6 reset: NOT waiting for user interaction
+            } while (!answerValid);
+            _appFlags &= ~0x0040;    // bit b6 reset: NOT waiting for user interaction
 
-                clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
+            clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
 
-                _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
-            }
+            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
+        }
         break;
 
 
@@ -1891,10 +1902,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         }
         break;
 
-        }       // end switch
+    }       // end switch
 
     return result_execOK;
-    }
+}
 
 
 // -------------------------------
@@ -2083,6 +2094,7 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
         _lastResultCount++;     // only adding an item, without removing previous one
     }
 
+    Serial.println("****** saving last result - 1");
 
     // move older last results one place up in FIFO, except when just overwriting 'previous' last result
     if (!overWritePrevious && (_lastResultCount > 1)) {       // if 'new' last result count is 1, no old results need to be moved  
@@ -2101,6 +2113,7 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
     bool lastValueNumeric = ((sourceValueType == value_isLong) || (sourceValueType == value_isFloat));
     bool lastValueIntermediate = ((_pEvalStackTop->varOrConst.valueAttributes & constIsIntermediate) == constIsIntermediate);
 
+    Serial.print("****** saving last result - 2 , is variable: "); Serial.print(lastValueIsVariable); Serial.print(", is numeric: ");  Serial.println((int)sourceValueType);
 
 
     // line below works for long integers as well
@@ -2215,7 +2228,7 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
     bool isDebugCmdLevel = (_activeFunctionData.blockType == block_extFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + PROG_MEM_SIZE)) : false;  // debug command line
 
     // imm. mode level error while in debug mode: do not end currently stopped program, except when 'error' indicates 'abort currently STOPPED program'
-    ////if (debugModeError && isDebugCmdLevel && (execResult != result_eval_abort)) { return; }
+    if (debugModeError && isDebugCmdLevel && (execResult != result_eval_abort)) { return; }
 
     if (flowCtrlStack.getElementCount() > 0) {                // skip if only main level (no program running)
         bool isInitialLoop{ true };
@@ -2258,7 +2271,7 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
                         delete[] _activeFunctionData.pVariableAttributes;
                         delete[] _activeFunctionData.ppSourceVarTypes;
                         _localVarValueAreaCount--;
-                        ////Serial.print("*** clear flow ctrl stack: delete local vars: areas = ");; Serial.println(_localVarValueAreaCount);
+                        Serial.print("**** clear flow ctrl stack: delete local vars: areas = ");; Serial.println(_localVarValueAreaCount);
                     }
                 }
                 if (!isInitialLoop) { --_callStackDepth; }
@@ -2274,7 +2287,7 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
             if (!isInitialLoop) {
                 pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                 flowCtrlStack.deleteListElement(nullptr);                           // delete last element
-                ////if (debugModeError) { Serial.print("--------------- [clear flowctrlstack] delete element - levels = "); Serial.println(flowCtrlStack.getElementCount()); }////
+                if (debugModeError) { Serial.print("--------------- [clear flowctrlstack] delete element - levels = "); Serial.println(flowCtrlStack.getElementCount()); }////
             }
 
 
@@ -2443,8 +2456,8 @@ void Justina_interpreter::makeIntermediateConstant(LE_evalStack* pEvalStackLvl) 
         pEvalStackLvl->varOrConst.tokenType = tok_isConstant;              // use generic constant type
         pEvalStackLvl->varOrConst.valueAttributes = constIsIntermediate;             // is an intermediate result (intermediate constant strings must be deleted when not needed any more)
         pEvalStackLvl->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
-        }
     }
+}
 
 
 // ----------------------------------------
@@ -2750,7 +2763,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
                     Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)opResult.pStringConst - RAMSTART);
                 #endif
                 }
-                }
+            }
 
             else {
                 opResultLong ? opResult.longConst = operand1.longConst + operand2.longConst : opResult.floatConst = operand1.floatConst + operand2.floatConst;
@@ -2845,10 +2858,10 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
         case termcod_ne:
             opResult.longConst = opResultLong ? (operand1.longConst != operand2.longConst) : (operand1.floatConst != operand2.floatConst);
             break;
-            }       // switch
+    }       // switch
 
 
-            // float values: extra value tests
+    // float values: extra value tests
 
     if ((opResultFloat) && (operatorCode != termcod_assign)) {     // check error (float values only, not for pure assignment)
         if (isnan(opResult.floatConst)) { return result_undefined; }
@@ -2901,9 +2914,9 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
                 if (pUnclippedResultString != nullptr) {     // pure assignment: is in fact pointing to operand 2 
                     delete[] pUnclippedResultString;
                     _intermediateStringObjectCount--;
+                }
+            }
         }
-    }
-    }
 
         // store value in variable and adapt variable value type - next line is valid for long integers as well
         if (opResultLong || opResultFloat) { *_pEvalStackMinus2->varOrConst.value.pFloatConst = opResult.floatConst; }
@@ -2917,7 +2930,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) |
                 (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
         }
-}
+    }
 
 
     // (7) post process
@@ -3131,7 +3144,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             #endif            
             }
 
-            }
+        }
         break;
 
 
@@ -3377,7 +3390,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                             min(999, _globalStaticVarStringObjectCount), min(999, _globalStaticArrayObjectCount), min(999, _userVarStringObjectCount), min(999, _userArrayObjectCount),
                             min(999, _localVarStringObjectCount), min(999, _localArrayObjectCount), min(999, _localVarValueAreaCount), min(999, _intermediateStringObjectCount),
                             min(999, _systemVarStringObjectCount));
-                }
+                    }
                     else {     // print heap object create/delete errors
                         sprintf(fcnResult.pStringConst, "%0d-%0d-%0d-%0d / %0d-%0d-%0d-%0d / %0d-%0d-%0d-%0d / %0d",
                             min(999, _identifierNameStringObjectErrors), min(999, _userVarNameStringObjectErrors), min(999, _parsedStringConstObjectErrors), min(999, _lastValuesStringObjectErrors),
@@ -3400,19 +3413,19 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                         Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
                     #endif
                     }
-                    }
+                }
                 break;
 
                 default: return result_arg_invalid; break;
-                }       // switch (sysVal)
-                }
+            }       // switch (sysVal)
+        }
         break;
 
-                }       // end switch
+    }       // end switch
 
 
-                // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
-                // -------------------------------------------------------------------------------------------------------------------
+    // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
+    // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
@@ -3443,7 +3456,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
     ////Serial.print("** int function end:: eval stack depth = "); Serial.println(evalStack.getElementCount());
 
     return result_execOK;
-            }
+}
 
 
 // -----------------------
@@ -3633,14 +3646,14 @@ Justina_interpreter::execResult_type Justina_interpreter::copyValueArgsFromStack
                     Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)args[i].pStringConst - RAMSTART);
                 #endif
                 }
-                }
             }
-
-        pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
         }
 
-    return result_execOK;
+        pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
     }
+
+    return result_execOK;
+}
 
 // --------------------------------
 // *   launch external function   *
@@ -3719,14 +3732,14 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchExternalFunctio
                             Serial.print("+++++ (loc var str) ");   Serial.println((uint32_t)_activeFunctionData.pLocalVarValues[i].pStringConst - RAMSTART);
                         #endif
                         }
-                        };
-                    }
+                    };
+                }
 
                 deleteIntermStringObject(pStackLvl);                                              // if intermediate constant string, then delete char string object (tested within called routine)
                 pStackLvl = (LE_evalStack*)evalStack.deleteListElement(pStackLvl);        // argument saved: remove argument from stack and point to next argument
-                }
             }
         }
+    }
 
     // also delete function name token from evaluation stack
     _pEvalStackTop = (LE_evalStack*)evalStack.getPrevListElement(pFunctionStackLvl);
@@ -3754,7 +3767,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchExternalFunctio
     _activeFunctionData.errorProgramCounter = calledFunctionTokenStep;
 
     return  result_execOK;
-    }
+}
 
 
 // ------------------------------------
@@ -3793,7 +3806,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
         ////Serial.print("launch eval parsing error: delete immModeParsedStatStack - levels = "); Serial.println(immModeCommandStack.getElementCount());////
         _pImmediateCmdStackTop = (char*)immModeCommandStack.getLastListElement();  //// size aanpassen
 
-        ////Serial.print("eval() parsing error: "); Serial.println(result);
+        Serial.print("** eval() parsing error: "); Serial.println(result);
         return result_eval_parsingError;
     }
 
@@ -3885,14 +3898,14 @@ void Justina_interpreter::initFunctionDefaultParamVariables(char*& pStep, int su
                     Serial.print("+++++ (loc var str) ");   Serial.println((uint32_t)_activeFunctionData.pLocalVarValues[count].pStringConst - RAMSTART);
                 #endif
                 }
-                }
-            count++;
             }
+            count++;
         }
+    }
 
     // skip (remainder of) function definition
     findTokenStep(tok_isTerminalGroup1, termcod_semicolon, pStep);
-    };
+};
 
 
 
@@ -4007,11 +4020,11 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
                             Serial.print("+++++ (loc var str) "); Serial.println((uint32_t)pVarString - RAMSTART);
                         #endif
                         }
-                        }
                     }
+                }
 
                 tokenType = jumpTokens(1, pStep, terminalCode);       // comma or semicolon
-                }
+            }
 
             else {  // no initializer: if array, initialize it now (scalar has been initialized already)
                 if ((_activeFunctionData.pVariableAttributes[count] & var_isArray) == var_isArray) {
@@ -4021,10 +4034,10 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
             }
             count++;
 
-            } while (terminalCode == termcod_comma);
+        } while (terminalCode == termcod_comma);
 
-        }
-    };
+    }
+};
 
 
 // -----------------------------------
@@ -4211,21 +4224,46 @@ void* Justina_interpreter::fetchVarBaseAddress(TokenIsVariable* pVarToken, char*
         // it can NOT be an eval() string execution level, because a program can not be stopped during the execution of an eval() string (although it can during an external function called from an eval() string)
 
         int blockType = _activeFunctionData.blockType;
+        
         void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;
         bool isStoppedFunctionVar = (blockType == block_extFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + PROG_MEM_SIZE)) : true;     // command line or eval() block type
-        ////Serial.print("++++++         : is STOPPED function variable (debug mode): "); Serial.println(isStoppedFunctionVar);
+        Serial.print("** FETCHING variable: block type "); Serial.println(blockType);
         if (isStoppedFunctionVar) {
+            Serial.print("   is STOPPED function variable (debug mode): "); Serial.println(isStoppedFunctionVar);
             bool isDebugCmdLevel = (blockType == block_extFunction);
+            Serial.print("   is debug command level: "); Serial.println(isDebugCmdLevel);
             if (!isDebugCmdLevel) {       // find debug level in flow control stack instead
                 do {
                     ////Serial.println("       (loop)");
                     blockType = *(char*)pFlowCtrlStackLvl;
                     isDebugCmdLevel = (blockType == block_extFunction) ? (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + PROG_MEM_SIZE)) : false;  // debug command line
+                    Serial.print("   ** new flow ctrl stack lvl: block type "); Serial.println(blockType);
+                    Serial.print("      is debug command level: "); Serial.println(isDebugCmdLevel);
+
                     pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                 } while (!isDebugCmdLevel);          // stack level for open function found immediate below debug line found (always match)
+                
+                pDeepestOpenFunction = (OpenFunctionData*)pFlowCtrlStackLvl;        // stack level underneath debug command level
+                blockType = pDeepestOpenFunction->blockType;
             }
-            pDeepestOpenFunction = (OpenFunctionData*)pFlowCtrlStackLvl;
+
+
+
+            Serial.print("   ** block type of stack level beneath debug command level "); Serial.println((int)pDeepestOpenFunction->blockType);
+
+            while (blockType != block_extFunction) {
+                pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
+                blockType = ((OpenFunctionData*)pFlowCtrlStackLvl)->blockType;
+                Serial.print("   ** new flow ctrl stack lvl: block type "); Serial.println(blockType);
+            }
+            pDeepestOpenFunction = (OpenFunctionData*)pFlowCtrlStackLvl;        // stack level underneath debug command level
+
+
         }
+
+        Serial.print("   ** block type of final flow ctrl stack level "); Serial.println((int)pDeepestOpenFunction->blockType);
+
+
 
         ////Serial.println("       (end loop)");
         // note (function parameter variables only): when a function is called with a variable argument (always passed by reference), 
@@ -4238,18 +4276,15 @@ void* Justina_interpreter::fetchVarBaseAddress(TokenIsVariable* pVarToken, char*
             // local variable value type (reference); SOURCE variable scope (user, global, static; local, param), 'is array' flag
             variableAttributes = pDeepestOpenFunction->pVariableAttributes[valueIndex] | (pVarToken->identInfo & var_isArray);      // add array flag
 
-            ////Serial.print("       push var: is var ref, var attrib = "); Serial.println(variableAttributes, HEX);
-            /* ////
-            Val* ppval = ((Val**)pDeepestOpenFunction->pLocalVarValues)[valueIndex];//// weg
-            Serial.println("*** PUSH var - is ref");
-            Serial.print("    value type: "); Serial.println(*sourceVarTypeAddress, HEX);
-            Serial.print("    long value: ");Serial.println((*ppval).longConst);
-            */
+            Serial.print("   is VAR REF - local value index is "); Serial.println(valueIndex);
+
             return   ((Val**)pDeepestOpenFunction->pLocalVarValues)[valueIndex];                       // pointer to 'source' variable value 
         }
 
         // local variable OR parameter variable that received the result of an expression (or constant) as argument (passed by value) OR optional parameter variable that received no value (default initialization) 
         else {
+            Serial.print("   is LOCAL VAR - local value index is "); Serial.println(valueIndex);
+
             sourceVarTypeAddress = pDeepestOpenFunction->pVariableAttributes + valueIndex;               // pointer to local variable value type and 'is array' flag
             // local variable value type (reference); local variable scope (user, global, static; local, param), 'is array' flag
             variableAttributes = pVarToken->identInfo & (var_scopeMask | var_isArray);
@@ -4392,4 +4427,10 @@ void Justina_interpreter::pushVariable(int& tokenType) {                        
         _pEvalStackTop->varOrConst.variableAttributes, _pEvalStackTop->varOrConst.valueAttributes);
     _pEvalStackTop->varOrConst.value.pBaseValue = varAddress;                                    // base address of variable
 
+    Serial.println("** PUSHING variable to eval stack top");
+    Serial.print("     source vartype address: "); Serial.println((uint32_t)_pEvalStackTop->varOrConst.varTypeAddress - RAMSTART);
+    Serial.print("     local value type: "); Serial.println(_pEvalStackTop->varOrConst.valueType, HEX);
+    Serial.print("     source variable attributes: "); Serial.println(_pEvalStackTop->varOrConst.variableAttributes, HEX);
+    Serial.print("     value attributes: "); Serial.println(_pEvalStackTop->varOrConst.valueAttributes, HEX);
+    Serial.print("     var base value address: "); Serial.println((uint32_t)_pEvalStackTop->varOrConst.value.pBaseValue - RAMSTART);
 }
