@@ -2768,7 +2768,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 // in debug mode now ? (if multiple programs in debug mode, only the last one stopped will be considered here
                 if (_openDebugLevels > 0) {
 
-                    Serial.println("** 4.2 PARSING FUNCTION VARIABLE - in debug mode");
+                    ////Serial.println("** 4.2 PARSING FUNCTION VARIABLE - in debug mode");
 
                     // first locate the debug command level (either in active function data or down in the flow control stack)
                     // from there onwards, find the first flow control stack level containing a 'function' block type  
@@ -2778,28 +2778,31 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                     // these levels can NOT refer to an eval() string execution level, because a program can not be stopped during the execution of an eval() string
                     // (although it can during an external function called from an eval() string)
                     
-                    void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;
                     int blockType = _activeFunctionData.blockType;
+                    void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;       // one level below _activeFunctionData
                     bool isDebugCmdLevel = (blockType == block_extFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + PROG_MEM_SIZE)) : false;
+                    /*
+                    Serial.print("   is debug cmd lvl step if >= 2000: "); Serial.println(_activeFunctionData.pNextStep - _programStorage);
+                    Serial.print("   block type: "); Serial.println(blockType);
                     Serial.print("   is debug command level: "); Serial.println(isDebugCmdLevel);
-
+                    */
                     if (!isDebugCmdLevel) {       // find debug level in flow control stack instead
                         do {
                             blockType = *(char*)pFlowCtrlStackLvl;
                             isDebugCmdLevel = (blockType == block_extFunction) ? (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + PROG_MEM_SIZE)) : false;
-                            Serial.print("   ** new flow ctrl stack lvl: block type "); Serial.println(blockType);
-                            Serial.print("      is debug command level: "); Serial.println(isDebugCmdLevel);
+                            ////Serial.print("   ** new flow ctrl stack lvl: block type "); Serial.println(blockType);
+                            ////Serial.print("      is debug command level: "); Serial.println(isDebugCmdLevel);
                             pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                         } while (!isDebugCmdLevel);          // stack level for open function found immediate below debug line found (always match)
                     }
-                    Serial.print("   ** block type of stack level beneath debug command level "); Serial.println((int)((OpenFunctionData*)pFlowCtrlStackLvl)->blockType);
+                    ////Serial.print("   ** block type of stack level beneath debug command level "); Serial.println((int)((OpenFunctionData*)pFlowCtrlStackLvl)->blockType);
 
                     blockType = ((OpenFunctionData*)pFlowCtrlStackLvl)->blockType;
                     while (blockType != block_extFunction){
                         pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                         blockType = ((OpenFunctionData*)pFlowCtrlStackLvl)->blockType;
                     }
-                    Serial.print("   ** block type of final flow ctrl stack level "); Serial.println((int)((OpenFunctionData*)pFlowCtrlStackLvl)->blockType);
+                    ////Serial.print("   ** block type of final flow ctrl stack level "); Serial.println((int)((OpenFunctionData*)pFlowCtrlStackLvl)->blockType);
 
                     
                     // the open program flow control stack levels are directly beneath the debug command line
@@ -2836,7 +2839,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                         if (isOpenFunctionLocalVariable || isOpenFunctionParam) {
                             // supplied argument is a variable ? (scalar or array)
                             bool isSourceVarRef = ((OpenFunctionData*)pFlowCtrlStackLvl)->pVariableAttributes[openFunctionVar_valueIndex] & value_isVarRef;
-                            Serial.print("     is open function 'var ref': "); Serial.println(isSourceVarRef);
+                            ////Serial.print("     is open function 'var ref': "); Serial.println(isSourceVarRef);
 
                             // has this local variable been defined as a scalar or array ?
                             isOpenFunctionLocalArrayVariable = ((OpenFunctionData*)pFlowCtrlStackLvl)->pVariableAttributes[openFunctionVar_valueIndex] & var_isArray;
@@ -2984,15 +2987,13 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     pToken->identNameIndex = varNameIndex;
     pToken->identValueIndex = valueIndex;                      // points to storage area element for the variable  
 
-    ////Serial.print("------ store token: info: scope+array+forced (hex): "); Serial.println(pToken->identInfo, HEX);
-
-    
+    /* ////
     Serial.print("   ** token address: "); Serial.println(_programCounter - _programStorage);
     Serial.print("      token type: "); Serial.println(pToken->tokenType, HEX);
     Serial.print("      info: scope+array+forced (hex): "); Serial.println(pToken->identInfo, HEX);
     Serial.print("      name index: "); Serial.println((int)pToken->identNameIndex);
     Serial.print("      value index: "); Serial.println((int)pToken->identValueIndex);
-    
+    */
 
     _lastTokenStep = _programCounter - _programStorage;
     _lastVariableTokenStep = _lastTokenStep;

@@ -28,8 +28,8 @@
 
 #include "Justina.h"
 
-#define printCreateDeleteListHeapObjects 1
-#define printProcessedTokens 1
+#define printCreateDeleteListHeapObjects 0
+#define printProcessedTokens 0
 #define debugPrint 0
 
 const char passCopyToCallback = 0x40;       // flag: string is an empty string 
@@ -510,6 +510,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         tokenType = *_activeFunctionData.pNextStep & 0x0F;                                                               // next token type (could be token within caller, if returning now)
         precedingIsComma = isComma;                             // remember if this was a comma
 
+        Serial.print("** token has been processed: next step = "); Serial.println(_activeFunctionData.pNextStep - _programStorage);
+
         ////Serial.print("**** finalize processing token: next step = "); Serial.print(_programCounter - _programStorage), Serial.print(", token type: "); Serial.println((int)(tokenType & 0x0F));
 
         // 1.3 last token processed was a statement separator ? 
@@ -740,13 +742,15 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         ////Serial.print("--------------- stop for debug: append flowctrlstack element - levels = "); Serial.println(flowCtrlStack.getElementCount());
 
         _activeFunctionData.callerEvalStackLevels = evalStack.getElementCount();                          // store evaluation stack levels in use by callers (call stack)
-        _activeFunctionData.pNextStep = _programStorage + PROG_MEM_SIZE;                // only to signal 'immediate mode command level'
+        ////_activeFunctionData.pNextStep = _programStorage + PROG_MEM_SIZE;                // only to signal 'immediate mode command level' => staat nu net voor return naar main
 
         // push current command line storage to command line stack, to make room for debug commands
         _pImmediateCmdStackTop = (char*)immModeCommandStack.appendListElement(IMM_MEM_SIZE);//// aanpassen
         memcpy(_pImmediateCmdStackTop, (_programStorage + PROG_MEM_SIZE), IMM_MEM_SIZE);
         ////Serial.print("stop for debug: append immModeParsedStatStack - levels = "); Serial.println(immModeCommandStack.getElementCount());////
         ++_openDebugLevels;
+        Serial.print("** stopping for debug: active function data next step: "); Serial.println(_activeFunctionData.pNextStep - _programStorage);
+
     }
 
     // no programs in debug: always; otherwise: only if error is in fact quit or kill event 
@@ -766,13 +770,14 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             Val value;
             bool isVar = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable);
             char valueType = isVar ? (*_pEvalStackTop->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackTop->varOrConst.valueType;
+            
             bool isLong = (valueType == value_isLong);
             bool isFloat = (valueType == value_isFloat);
             char* fmtString = (isLong || isFloat) ? _dispNumberFmtString : _dispStringFmtString;
             // printToString() expects long, float or char*: remove extra level of indirection (variables only)
             value.floatConst = isVar ? *_pEvalStackTop->varOrConst.value.pFloatConst : _pEvalStackTop->varOrConst.value.floatConst;  // works for long and string as well
 
-            ////Serial.print("********** Result: "); Serial.println(value.longConst);
+            Serial.print("********** Trace result: "); Serial.println(value.longConst);
 
             printToString(0, (isLong || isFloat) ? _dispNumPrecision : _maxCharsToPrint,
                 (!isLong && !isFloat), _dispIsIntFmt, &_pEvalStackTop->varOrConst.valueType, &value, fmtString, toPrint, charsPrinted);
@@ -807,7 +812,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         Serial.println("**** exec error: delete stack elements");////
         int deleteImmModeCmdStackLevels{ 0 };
         clearFlowCtrlStack(deleteImmModeCmdStackLevels, execResult, true);           // returns imm. mode command stack levels to delete
-        Serial.print(deleteImmModeCmdStackLevels); Serial.println(" imm mode stack levels to delete");////
+        Serial.print(deleteImmModeCmdStackLevels); Serial.println("** imm mode stack levels to delete");////
         clearImmediateCmdStack(deleteImmModeCmdStackLevels);                        // do not delete all stack levels but only supplied level count
         clearEvalStackLevels(evalStack.getElementCount() - (int)_activeFunctionData.callerEvalStackLevels);
     }
@@ -821,6 +826,10 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
     Serial.print("** EXEC: return error code: "); Serial.println(execResult);
 #endif
     Serial.println("**** returning to main");////
+    _activeFunctionData.pNextStep = _programStorage + PROG_MEM_SIZE;                // only to signal 'immediate mode command level'
+
+    Serial.print("     active function data next step: "); Serial.println(_activeFunctionData.pNextStep - _programStorage);
+
     return execResult;   // return result, in case it's needed by caller
 };
 
@@ -860,6 +869,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // 'stop' behaves as if an error occured, in order to follow the same processing logic  
 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
+            Serial.print("** STOP keyword: next step = "); Serial.println(_activeFunctionData.pNextStep-_programStorage);
             return result_eval_stopForDebug;
             break;
         }
@@ -2296,6 +2306,7 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
         } while (true);
     }
 
+    Serial.print("** ENDING flow ctrl stack clear: active function data block type = "); Serial.println((int) _activeFunctionData.blockType);
     _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
     _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackTop);
     _pFlowCtrlStackMinus2 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackMinus1);
@@ -3661,7 +3672,7 @@ Justina_interpreter::execResult_type Justina_interpreter::copyValueArgsFromStack
 
 Justina_interpreter::execResult_type  Justina_interpreter::launchExternalFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount) {
 
-    // remember token address of internal function token (this where the internal function is called), in case an error occurs (while passing arguments etc.)   
+    // remember token address of internal function token (this is where the internal function is called), in case an error occurs (while passing arguments etc.)   
     _activeFunctionData.errorProgramCounter = pFunctionStackLvl->function.tokenAddress;
 
 
@@ -4219,77 +4230,74 @@ void* Justina_interpreter::fetchVarBaseAddress(TokenIsVariable* pVarToken, char*
 
     // local variables (including parameters)    
     else {
-        OpenFunctionData* pDeepestOpenFunction = &_activeFunctionData;
-        // find debug level (either in active function data or in flow control stack). Open function data (function where the program was stopped) will be directly beneath it, in the flow control stack
-        // it can NOT be an eval() string execution level, because a program can not be stopped during the execution of an eval() string (although it can during an external function called from an eval() string)
+        // first locate the debug command level (either in active function data or down in the flow control stack)
+        // from there onwards, find the first flow control stack level containing a 'function' block type  
+        // The open function data (function where the program was stopped) needed to retrieve function variable data will referenced in that flow control stack level
+        //
+        // note: levels in between debug command level and open function level may exist, containing open block data for the debug command level
+        // these levels can NOT refer to an eval() string execution level, because a program can not be stopped during the execution of an eval() string
+        // (although it can during an external function called from an eval() string)
 
-        int blockType = _activeFunctionData.blockType;
-        
-        void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;
+        int blockType = _activeFunctionData.blockType;      // init
+        void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;       // one level below _activeFunctionData
+
+        // variable is a local (including parameter) value: if the current flow control stack level does not refer to a function, but to a command line or eval() block type,
+        // then the variable is a local variable of a stopped program's open function 
         bool isStoppedFunctionVar = (blockType == block_extFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + PROG_MEM_SIZE)) : true;     // command line or eval() block type
         Serial.print("** FETCHING variable: block type "); Serial.println(blockType);
+
         if (isStoppedFunctionVar) {
-            Serial.print("   is STOPPED function variable (debug mode): "); Serial.println(isStoppedFunctionVar);
-            bool isDebugCmdLevel = (blockType == block_extFunction);
+            bool isDebugCmdLevel = (blockType == block_extFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + PROG_MEM_SIZE)) : false;
             Serial.print("   is debug command level: "); Serial.println(isDebugCmdLevel);
+
             if (!isDebugCmdLevel) {       // find debug level in flow control stack instead
                 do {
-                    ////Serial.println("       (loop)");
                     blockType = *(char*)pFlowCtrlStackLvl;
-                    isDebugCmdLevel = (blockType == block_extFunction) ? (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + PROG_MEM_SIZE)) : false;  // debug command line
+                    isDebugCmdLevel = (blockType == block_extFunction) ? (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + PROG_MEM_SIZE)) : false;
                     Serial.print("   ** new flow ctrl stack lvl: block type "); Serial.println(blockType);
                     Serial.print("      is debug command level: "); Serial.println(isDebugCmdLevel);
-
                     pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                 } while (!isDebugCmdLevel);          // stack level for open function found immediate below debug line found (always match)
-                
-                pDeepestOpenFunction = (OpenFunctionData*)pFlowCtrlStackLvl;        // stack level underneath debug command level
-                blockType = pDeepestOpenFunction->blockType;
             }
+            Serial.print("   ** block type of stack level beneath debug command level "); Serial.println((int)((OpenFunctionData*)pFlowCtrlStackLvl)->blockType);
 
-
-
-            Serial.print("   ** block type of stack level beneath debug command level "); Serial.println((int)pDeepestOpenFunction->blockType);
-
+            blockType = ((OpenFunctionData*)pFlowCtrlStackLvl)->blockType;
             while (blockType != block_extFunction) {
                 pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                 blockType = ((OpenFunctionData*)pFlowCtrlStackLvl)->blockType;
-                Serial.print("   ** new flow ctrl stack lvl: block type "); Serial.println(blockType);
             }
-            pDeepestOpenFunction = (OpenFunctionData*)pFlowCtrlStackLvl;        // stack level underneath debug command level
-
-
+            Serial.print("   ** block type of final flow ctrl stack level "); Serial.println((int)((OpenFunctionData*)pFlowCtrlStackLvl)->blockType);
+        }
+        else {       // the variable is a local variable of the function referenced in _activeFunctionData
+            pFlowCtrlStackLvl=&_activeFunctionData;
         }
 
-        Serial.print("   ** block type of final flow ctrl stack level "); Serial.println((int)pDeepestOpenFunction->blockType);
 
-
-
-        ////Serial.println("       (end loop)");
-        // note (function parameter variables only): when a function is called with a variable argument (always passed by reference), 
-        // the parameter value type has been set to 'reference' when the function was called
-        localValueType = pDeepestOpenFunction->pVariableAttributes[valueIndex] & value_typeMask;         // local variable value type (indicating float or string or REFERENCE)
+         ////Serial.println("       (end loop)");
+         // note (function parameter variables only): when a function is called with a variable argument (always passed by reference), 
+         // the parameter value type has been set to 'reference' when the function was called
+        localValueType = ((OpenFunctionData*)pFlowCtrlStackLvl)->pVariableAttributes[valueIndex] & value_typeMask;         // local variable value type (indicating float or string or REFERENCE)
 
         if (localValueType == value_isVarRef) {                                                       // local value is a reference to 'source' variable                                                         
-            sourceVarTypeAddress = pDeepestOpenFunction->ppSourceVarTypes[valueIndex];                   // pointer to 'source' variable value type
+            sourceVarTypeAddress = ((OpenFunctionData*)pFlowCtrlStackLvl)->ppSourceVarTypes[valueIndex];                   // pointer to 'source' variable value type
 
             // local variable value type (reference); SOURCE variable scope (user, global, static; local, param), 'is array' flag
-            variableAttributes = pDeepestOpenFunction->pVariableAttributes[valueIndex] | (pVarToken->identInfo & var_isArray);      // add array flag
+            variableAttributes = ((OpenFunctionData*)pFlowCtrlStackLvl)->pVariableAttributes[valueIndex] | (pVarToken->identInfo & var_isArray);      // add array flag
 
             Serial.print("   is VAR REF - local value index is "); Serial.println(valueIndex);
 
-            return   ((Val**)pDeepestOpenFunction->pLocalVarValues)[valueIndex];                       // pointer to 'source' variable value 
+            return   ((Val**)((OpenFunctionData*)pFlowCtrlStackLvl)->pLocalVarValues)[valueIndex];                       // pointer to 'source' variable value 
         }
 
         // local variable OR parameter variable that received the result of an expression (or constant) as argument (passed by value) OR optional parameter variable that received no value (default initialization) 
         else {
             Serial.print("   is LOCAL VAR - local value index is "); Serial.println(valueIndex);
 
-            sourceVarTypeAddress = pDeepestOpenFunction->pVariableAttributes + valueIndex;               // pointer to local variable value type and 'is array' flag
+            sourceVarTypeAddress = ((OpenFunctionData*)pFlowCtrlStackLvl)->pVariableAttributes + valueIndex;               // pointer to local variable value type and 'is array' flag
             // local variable value type (reference); local variable scope (user, global, static; local, param), 'is array' flag
             variableAttributes = pVarToken->identInfo & (var_scopeMask | var_isArray);
             ////Serial.print("       push var: is local (non var ref), var attrib = "); Serial.println(variableAttributes, HEX);
-            return (Val*)&(pDeepestOpenFunction->pLocalVarValues[valueIndex]);                           // pointer to local variable value 
+            return (Val*)&(((OpenFunctionData*)pFlowCtrlStackLvl)->pLocalVarValues[valueIndex]);                           // pointer to local variable value 
         }
     }
 }

@@ -789,9 +789,6 @@ public:
         // data is stored when a keyword is processed and it is cleared when the ending semicolon (ending the command) is processed
         char activeCmd_ResWordCode;     // keyword code (set to 'cmdcod_none' again when semicolon is processed)
 
-        char directCallByEval;          // exec() was directly called by eval function
-        char spare[3];                 // boundary alignment
-
         char* activeCmd_tokenAddress;   // address in program memory of parsed keyword token                                
 
         // value area pointers (note: a value is a long, a float or a pointer to a string or array, or (if reference): pointer to 'source' (referenced) variable))
