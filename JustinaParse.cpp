@@ -76,8 +76,9 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     /* programs and functions */
     /* ---------------------- */
 
-    {"Program",         cmdcod_program,         cmd_onlyProgramTop | cmd_skipDuringExec,            0,0,    cmdPar_103,     cmdProgram},
+    {"Program",         cmdcod_program,         cmd_onlyProgramTop | cmd_skipDuringExec,            0,0,    cmdPar_103,     cmdProgram},        //// non-block commands: cmdBlockNone ?
     {"Function",        cmdcod_function,        cmd_onlyInProgram | cmd_skipDuringExec,             0,0,    cmdPar_108,     cmdBlockExtFunction},
+    {"Endprogram",      cmdcod_endProgram,      cmd_onlyInProgOutsideFunc | cmd_skipDuringExec,     0,0,    cmdPar_102,     cmdProgram},
 
 
     /* declare variables */
@@ -89,6 +90,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
 
     //// to do
     //// -----
+
     {"Delvar",          cmdcod_delete,          cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_110,     cmdDeleteVar},
     {"Clearvars",       cmdcod_clear,           cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockNone},
     {"Test",            cmdcod_test,            cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_999,     cmdBlockNone},//// test var no assignment
@@ -97,6 +99,8 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"PrintCBs",        cmdcod_printCB,         cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
     {"Printprog",       cmdcod_printProg,       cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
     {"Printcallstack",  cmdcod_printCallSt,     cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+
+    {"Loadprog",        cmdcod_loadProg,        cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockNone},
 
 
     /* flow control commands */
@@ -809,7 +813,7 @@ void Justina_interpreter::parseAndExecTraceString() {
         while ((pTraceParsingInput[0] == ' ') || (pTraceParsingInput[0] == term_semicolon[0])) { pTraceParsingInput++; }
         if (*pTraceParsingInput == '\0') { break; } // could occur if semicolons skipped
 
-        // parse ONE expression in trace string
+        // parse ONE trace string expression only
         parseTokenResult_type result = parseStatements(pTraceParsingInput, pNextParseStatement);
         if (result == result_tokenFound) {
             prettyPrintInstructions(0);         // do NOT pretty print if parsing error, to avoid bad-looking partially printed statements (even if there will be an execution error later)
@@ -849,7 +853,7 @@ void Justina_interpreter::parseAndExecTraceString() {
 // *   parse ONE instruction in a character string, ended by an optional ';' character and a '\0' mandatary character   *
 // ----------------------------------------------------------------------------------------------------------------------
 
-Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(char*& pInputStart, char*& pNextParseStatement) {
+Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(char*& pInputStart, char*& pNextParseStatement, bool* initiateProgramLoad, bool* endProgramLoad) {
     _appFlags &= ~0x0001L;              // clear error condition flag 
     _appFlags = (_appFlags & ~0x0030L) | 0x0010L;     // set bits b54 to 01: parsing
 
@@ -896,11 +900,12 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(
         bool isOperator = _lastTokenIsTerminal ? (_lastTermCode <= termcod_opRangeEnd) : false;
 
         if ((_lastTokenType == tok_no_token) || isSemicolon) {
-            _isProgramCmd = false;
+            _isProgramCmd = false; _isEndProgramCmd = false;
             _isDeclCBcmd = false; _isClearCBcmd = false; _isCallbackCmd = false;
             _isExtFunctionCmd = false; _isGlobalOrUserVarCmd = false; _isLocalVarCmd = false; _isStaticVarCmd = false; _isAnyVarCmd = false;
             _isForCommand = false;
             _isDeleteVarCmd = false;
+            _isLoadProgramCmd = false;
         }
         // determine token group of last token parsed (bits b4 to b0): this defines which tokens are allowed as next token
         _lastTokenGroup_sequenceCheck_bit = isOperator ? lastTokenGroup_0 :
@@ -915,10 +920,13 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(
         // space check result is OK if a check is not required or if a space is present anyway
         _leadingSpaceCheck = ((t == tok_isReservedWord) || _lastTokenIsString || isRightPar) && (pNext[0] != ' ');
 
-        // move to the first character of next token (within one instruction)
+        // move to the first non-space character of next token 
         while (pNext[0] == ' ') { pNext++; }                                         // skip leading spaces
-        if (pNext[0] == '\0') { pNextParseStatement = pNext; break; }                                             // end of instruction  
-        if ((pNext[0] == term_semicolon[0]) && (_parsingExecutingTraceString)) { pNextParseStatement = pNext + 1; break; }        // within trace : only parse one instruction at a time, then execute it first
+        if (pNext[0] == '\0') { pNextParseStatement = pNext; break; }                // end of instruction: prepare to quit parsing  
+        
+        // trace string ? exit after each individual expression
+        if (_parsingExecutingTraceString && isSemicolon) { pNextParseStatement = pNext;  break; }        // within trace : only parse one instruction at a time, then execute it first
+
 
         _lastTokenType_hold = _lastTokenType;                                       // remember the last parsed token during parsing of a next token
         _lastTermCode_hold = _lastTermCode;                                         // only relevant for certain tokens
@@ -958,6 +966,8 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(
             isCommandStart = (_lastTokenType == tok_isReservedWord);                       // keyword at start of statement ? is start of a command 
             _isCommand = isCommandStart;                                                                // is start of a command ? then within a command now. Otherwise, it's an 'expression only' statement
             if (_isCommand) { if (!checkCommandKeyword(result)) { ; pNext = pNext_hold; break; } }         // start of a command: keyword
+            if (_isLoadProgramCmd) {  *initiateProgramLoad = true; }
+            if (_isEndProgramCmd) {  *endProgramLoad = true; }
         }
 
         bool isCommandArgToken = (!isCommandStart && _isCommand);
@@ -986,6 +996,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(
     pInputStart = pNext;                                                                // set to next character (if error: indicates error position)
     (result == result_tokenFound) ? _appFlags &= ~0x0001L : _appFlags |= 0x0001L;              // clear or set error condition flag 
     _appFlags = (_appFlags & ~0x0030L);     // clear bits b54: parsing ended
+
     return result;
 }
 
@@ -1004,6 +1015,7 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
 
     _isExtFunctionCmd = _resWords[_tokenIndex].resWordCode == cmdcod_function;
     _isProgramCmd = _resWords[_tokenIndex].resWordCode == cmdcod_program;
+    _isEndProgramCmd = _resWords[_tokenIndex].resWordCode == cmdcod_endProgram;
     _isDeclCBcmd = _resWords[_tokenIndex].resWordCode == cmdcod_declCB;
     _isClearCBcmd = _resWords[_tokenIndex].resWordCode == cmdcod_clearCB;
     _isCallbackCmd = _resWords[_tokenIndex].resWordCode == cmdcod_callback;
@@ -1012,6 +1024,7 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
     _isStaticVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_static;
     _isForCommand = _resWords[_tokenIndex].resWordCode == cmdcod_for;
     _isDeleteVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_delete;
+    _isLoadProgramCmd = _resWords[_tokenIndex].resWordCode == cmdcod_loadProg;
 
     _isAnyVarCmd = _isGlobalOrUserVarCmd || _isLocalVarCmd || _isStaticVarCmd;      //  VAR, LOCAL, STATIC
 
@@ -1029,7 +1042,7 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
     if (!_programMode && (cmdRestriction == cmd_onlyInProgram)) { result = result_onlyInsideProgram; return false; }
     if (!_extFunctionBlockOpen && (cmdRestriction == cmd_onlyInFunctionBlock)) { result = result_onlyInsideFunction; return false; }
     if (_extFunctionBlockOpen && (cmdRestriction == cmd_onlyOutsideFunctionBlock)) { result = result_onlyOutsideFunction; return false; }
-    if (((!_programMode) || _extFunctionBlockOpen) && (cmdRestriction == cmd_onlyInProgramOutsideFunctionBlock)) { result = result_onlyInProgOutsideFunction; return false; };
+    if (((!_programMode) || _extFunctionBlockOpen) && (cmdRestriction == cmd_onlyInProgOutsideFunc)) { result = result_onlyInProgOutsideFunction; return false; };
     if ((_programMode && !_extFunctionBlockOpen) && (cmdRestriction == cmd_onlyImmOrInsideFuncBlock)) { result = result_onlyImmediateOrInFunction; return false; };
 
     if (_extFunctionBlockOpen && _isExtFunctionCmd) { result = result_functionDefsCannotBeNested; return false; } // separate message to indicate 'no nesting'
@@ -2295,7 +2308,7 @@ bool Justina_interpreter::parseAsInternFunction(char*& pNext, parseTokenResult_t
 
         // eval() function can not occur within a trace string (all other internal functins are OK)
         if (_parsingExecutingTraceString) {
-            Serial.print("WITHIN TRACE: "); Serial.println((int)_functions[funcIndex].functionCode);
+            ////Serial.print("WITHIN TRACE: "); Serial.println((int)_functions[funcIndex].functionCode);
             if (_functions[funcIndex].functionCode == fnccod_eval) { pNext = pch; result = result_trace_evalFunctonNotAllowed; return false; }
         }
 
@@ -2768,8 +2781,6 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 // in debug mode now ? (if multiple programs in debug mode, only the last one stopped will be considered here
                 if (_openDebugLevels > 0) {
 
-                    ////Serial.println("** 4.2 PARSING FUNCTION VARIABLE - in debug mode");
-
                     // first locate the debug command level (either in active function data or down in the flow control stack)
                     // from there onwards, find the first flow control stack level containing a 'function' block type  
                     // The open function data (function where the program was stopped) needed to retrieve function variable data will referenced in that flow control stack level
@@ -2777,36 +2788,24 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                     // note: levels in between debug command level and open function level may exist, containing open block data for the debug command level
                     // these levels can NOT refer to an eval() string execution level, because a program can not be stopped during the execution of an eval() string
                     // (although it can during an external function called from an eval() string)
-                    
+
                     int blockType = _activeFunctionData.blockType;
                     void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;       // one level below _activeFunctionData
                     bool isDebugCmdLevel = (blockType == block_extFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + PROG_MEM_SIZE)) : false;
-                    /*
-                    Serial.print("   is debug cmd lvl step if >= 2000: "); Serial.println(_activeFunctionData.pNextStep - _programStorage);
-                    Serial.print("   block type: "); Serial.println(blockType);
-                    Serial.print("   is debug command level: "); Serial.println(isDebugCmdLevel);
-                    */
                     if (!isDebugCmdLevel) {       // find debug level in flow control stack instead
                         do {
                             blockType = *(char*)pFlowCtrlStackLvl;
                             isDebugCmdLevel = (blockType == block_extFunction) ? (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + PROG_MEM_SIZE)) : false;
-                            ////Serial.print("   ** new flow ctrl stack lvl: block type "); Serial.println(blockType);
-                            ////Serial.print("      is debug command level: "); Serial.println(isDebugCmdLevel);
                             pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                         } while (!isDebugCmdLevel);          // stack level for open function found immediate below debug line found (always match)
                     }
-                    ////Serial.print("   ** block type of stack level beneath debug command level "); Serial.println((int)((OpenFunctionData*)pFlowCtrlStackLvl)->blockType);
 
                     blockType = ((OpenFunctionData*)pFlowCtrlStackLvl)->blockType;
-                    while (blockType != block_extFunction){
+                    while (blockType != block_extFunction) {
                         pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                         blockType = ((OpenFunctionData*)pFlowCtrlStackLvl)->blockType;
                     }
-                    ////Serial.print("   ** block type of final flow ctrl stack level "); Serial.println((int)((OpenFunctionData*)pFlowCtrlStackLvl)->blockType);
 
-                    
-                    // the open program flow control stack levels are directly beneath the debug command line
-                    // the first stack level refers to the deepest open function of the stopped program (stopping within an eval() line is not possible)
                     int openFunctionIndex = ((OpenFunctionData*)pFlowCtrlStackLvl)->functionIndex;    // function index of stopped program's deepest function in call stack
 
                     // check whether this is a local or static function variable reference of the deepest open function in the call stack

@@ -330,6 +330,7 @@ bool Justina_interpreter::setUserFcnCallback(void(*func) (const void** data, con
 // ----------------------------
 
 bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, int definedTerms) {
+    bool endProgramReached{ false };
     bool kill{ false };                                       // kill is true: request from caller, kill is false: quit command executed
     bool quitNow{ false };
     char c;
@@ -354,6 +355,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 
     _coldStart = false;             // can be used if needed in this procedure, to determine whether this was a cold or warm start
 
+    long startWaitForReadTime{};
     do {
         // while waiting for characters, continuously do a housekeeping callback (if function defined)
         if (_housekeepingCallback != nullptr) {
@@ -361,14 +363,22 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
             _previousTime = _currenttime;                                                   // keep up to date (needed during parsing and evaluation)
             _lastCallBackTime = _currenttime;
             _housekeepingCallback(quitNow, _appFlags);
-            if (quitNow) { kill = true; break; }                // return true if kill request received from calling program OR Justina Quit command executed 
+
+            if (quitNow) { kill = true; break; }                // return true if kill request received from calling program OR Justina Quit command executed
         }
 
-        if (_pConsole->available() > 0) {     // if terminal character available for reading
-            c = _pConsole->read();
-            quitNow = processCharacter(c, kill);        // process one character. Kill request from calling program and 
+        bool readCharWindowExpired = (_programMode && (startWaitForReadTime + 3000L < millis()));        // only while parsing a program
+        if ((_pConsole->available() > 0) || endProgramReached || readCharWindowExpired) {     // if terminal character available for reading, or 'end program' reached
+
+            if (readCharWindowExpired) { Serial.println("expired"); }
+            if (readCharWindowExpired || endProgramReached) { c = 0x001a; endProgramReached = false; }
+            else { c = _pConsole->read(); }
+            quitNow = processCharacter(kill, endProgramReached, c, readCharWindowExpired);        // process one character. Kill request from calling program and 
+
             if (quitNow) { ; break; }                        // user gave quit command
+            startWaitForReadTime = millis();                    // opening a time window for reading next character
         }
+
     } while (true);
 
     _appFlags = 0x0000L;
@@ -386,7 +396,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 // *   process an input character   *
 // ----------------------------------
 
-bool Justina_interpreter::processCharacter(char c, bool& kill) {
+bool Justina_interpreter::processCharacter(bool& kill, bool& endProgramStatementParsed, char c, bool programLoadTimeOut) {
     // process character
     static parseTokenResult_type result{};
     static bool requestMachineReset{ false };
@@ -398,25 +408,23 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
     static bool withinComment{ false };
     static bool withinString{ false };
 
+    static bool initiateProgramLoad{ false };
+
     static char* pErrorPos{};
 
     const char quitCalc[8] = "*quit*";
 
-    char EOFchar = 0x1A;
+    char stopProgramParsing = 0x1A;
     char commentStartChar = '$';
 
     bool redundantSpaces = false;                                       // init
     bool redundantSemiColon = false;
 
-    bool isEndOfFile = (!_programMode && (c == '\n')) || (c == EOFchar);                                      // end of input: EOF in program mode, LF or EOF in immediate mode
+    bool isEndOfFile = _programMode ? (c == stopProgramParsing) : (c == '\n');                                      // end of input: EOF in program mode, LF or EOF in immediate mode
     bool isCommentStartChar = (c == '$');                               // character can also be part of comment
 
-    //// tijdelijk
-    bool isProgramCtrl = (c == 2);                                   // switch between program and immediate mode ?
-    bool isParserReset = (c == 3);                                     // reset parser ?
-
-
-    if (isProgramCtrl) {
+    if (initiateProgramLoad) {
+        initiateProgramLoad = false;
         // do not touch program memory itself: there could be a program in it 
         _programMode = !_programMode;
         _programStart = _programStorage + (_programMode ? 0 : PROG_MEM_SIZE);
@@ -441,26 +449,9 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
         _isPrompt = (_promptAndEcho != 0) ? !_programMode : false;
         return false;
     }
-    else if (isParserReset) {  // temporary
-        _programMode = false;
-        resetMachine(true);
-
-        instructionsParsed = false;
-
-        _instructionCharCount = 0;
-        _lineCount = 0;                             // taking into account new line after 'load program' command ////
-        _StarCmdCharCount = 0;
-        _flushAllUntilEOF = false;
-
-        lastCharWasWhiteSpace = false;
-        lastCharWasSemiColon = false;
-
-        withinString = false; withinStringEscSequence = false;
-        withinComment = false;
-
+    else if ((c < ' ') && (c != '\n') && (!isEndOfFile)) {
         return false;
-    }
-    else if ((c < ' ') && (c != '\n') && (!isEndOfFile)) { return false; }                  // skip control-chars except new line and EOF character
+    }                  // skip control-chars except new line and EOF character
 
 
 
@@ -538,7 +529,7 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
         char* pInstruction = _instruction;                                                 // because passed by reference 
         char* pDummy{};
         _parsingExecutingTraceString = false; _parsingEvalString = false;
-        result = parseStatements(pInstruction, pDummy);                                 // parse one instruction (ending with ';' character, if found)
+        result = parseStatements(pInstruction, pDummy, &initiateProgramLoad, &endProgramStatementParsed);                                 // parse ONE instruction only 
         pErrorPos = pInstruction;                                                      // in case of error
         if (result != result_tokenFound) { _flushAllUntilEOF = true; }
         if (result == result_parse_kill) { kill = true; _quitJustinaAtEOF = true; }     // _flushAllUntilEOF is true already (flush buffer before quitting)
@@ -550,6 +541,7 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
 
 
     if (isEndOfFile) {
+
         execResult_type execResult{ result_execOK };
 
         if (instructionsParsed) {
@@ -589,10 +581,12 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
         // - the flow control stack maintains data about open block commands, open functions and eval() strings in execution (call stack)
         // => skip stack elements for any command line open block commands or eval() strings in execution, and fetch the data for the function where control will resume when started again
 
+        /*
         Serial.print("** END: debug lvls-imm.mode stack depth "); Serial.print(_openDebugLevels);Serial.print("-"); Serial.print(immModeCommandStack.getElementCount());
         Serial.print(", call stack depth-flow ctrl stack depth "); Serial.print(_callStackDepth); Serial.print("-"); Serial.print(flowCtrlStack.getElementCount());
         Serial.print(", eval caller lvls-eval stack depth "); Serial.print((int)_activeFunctionData.callerEvalStackLevels); Serial.print("-"); Serial.println(evalStack.getElementCount());
         Serial.print("   active function data next step: ");Serial.println(_activeFunctionData.pNextStep-_programStorage);
+        */
 
         if ((_openDebugLevels > 0) && (execResult != result_eval_kill) && (execResult != result_eval_quit)) {
             char* nextInstructionsPointer = _programCounter;
@@ -626,7 +620,6 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
 
         (_openDebugLevels > 0) ? (_appFlags |= 0x0030L) : (_appFlags &= ~0x0030L);     // signal 'debug mode' to caller
 
-        if (!_programMode && (_promptAndEcho != 0)) { _pConsole->print("Justina> "); _isPrompt = true; }                 // print new prompt
 
         bool wasReset = false;      // init
         if (_programMode) {               //// waarschijnlijk aan te passen als LOADPROG cmd implemented (-> steeds vanuit immediate mode)
@@ -641,8 +634,10 @@ bool Justina_interpreter::processCharacter(char c, bool& kill) {
             }
         }
 
+        if (_promptAndEcho != 0) { _pConsole->print("Justina> "); _isPrompt = true; }                 // print new prompt
+
         // in immediate mode; if stopping a program for debug, do not delete parsed strings included in the command line, because that command line has now been pushed on  ...
-        // the parsed command line stack and included parsed constants will be deleted later (resetMachine routine)
+         // the parsed command line stack and included parsed constants will be deleted later (resetMachine routine)
         else if (execResult == result_eval_stopForDebug) { *_programStart = '\0'; }  ////
 
         // in immediate mode

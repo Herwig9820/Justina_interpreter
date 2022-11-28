@@ -133,6 +133,7 @@ public:
         cmdcod_none,        // no command being executed
 
         cmdcod_program,
+        cmdcod_endProgram,
         cmdcod_delete,
         cmdcod_clear,
         cmdcod_vars,
@@ -175,6 +176,7 @@ public:
         cmdcod_declCB,
         cmdcod_clearCB,
         cmdcod_callback,
+        cmdcod_loadProg,
         cmdcod_test //// test
     };
 
@@ -936,7 +938,7 @@ public:
 
     static constexpr char cmd_noRestrictions = 0x00;                  // command has no usage restrictions 
     static constexpr char cmd_onlyInProgram = 0x01;                   // command is only allowed insde a program
-    static constexpr char cmd_onlyInProgramOutsideFunctionBlock = 0x02;    // command is only allowed insde a program
+    static constexpr char cmd_onlyInProgOutsideFunc = 0x02;    // command is only allowed insde a program
     static constexpr char cmd_onlyInFunctionBlock = 0x03;               // command is only allowed inside a function block
     static constexpr char cmd_onlyImmediate = 0x04;                   // command is only allowed in immediate mode
     static constexpr char cmd_onlyOutsideFunctionBlock = 0x05;             // command is only allowed outside a function block (so also in immediate mode)
@@ -947,7 +949,7 @@ public:
     static constexpr char cmd_skipDuringExec = 0x80;
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[45];                          // keyword names
+    static const ResWordDef _resWords[46];                          // keyword names
     static const FuncDef _functions[24];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
@@ -1021,6 +1023,7 @@ public:
     int _terminalCount;
 
     bool _isProgramCmd = false;
+    bool _isEndProgramCmd = false;
     bool _isExtFunctionCmd = false;                             // FUNCTION command is being parsed (not the complete function)
     bool _isGlobalOrUserVarCmd = false;                                // VAR command is being parsed
     bool _isLocalVarCmd = false;                                // LOCAL command is being parsed
@@ -1028,6 +1031,7 @@ public:
     bool _isAnyVarCmd = false;                                     // VAR, LOCAL or STATIC command is being parsed
     bool _isDeleteVarCmd = false;
     bool _isForCommand = false;
+    bool _isLoadProgramCmd = false;
 
     bool _isDeclCBcmd = false;
     bool _isClearCBcmd = false;
@@ -1352,13 +1356,13 @@ public:
     void deleteLastValueFiFoStringObjects();
     void deleteConstStringObjects(char* pToken);
     void parseAndExecTraceString();
-    parseTokenResult_type  parseStatements(char*& pInputLine, char*& pNextParseStatement);
+    parseTokenResult_type  parseStatements(char*& pInputLine, char*& pNextParseStatement, bool* initiateProgramLoad = nullptr, bool* endProgramLoad = nullptr);
     void deleteParsedData();
     bool allExternalFunctionsDefined(int& index);
     void prettyPrintInstructions(int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
     void printParsingResult(parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* const pErrorPos);
     bool run(Stream* const pConsole, Stream** const pTerminal, int definedTerms);
-    bool processCharacter(char c, bool& kill);
+    bool processCharacter(bool& kill, bool& endProgramLoad,char c,  bool programLoadTimeOut);
 
     bool setMainLoopCallback(void (*func)(bool& requistQuit, long& appFlags));                   // set callback functions
     bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType));
@@ -1386,6 +1390,7 @@ public:
     void printToString(int width, int precision, bool isFmtString, bool isIntFmt, char* valueType, Val* operands, char* fmtString,
         Val& fcnResult, int& charsPrinted);
 
+    void initFunctionParamVarWithSuppliedArg(int suppliedArgCount, LE_evalStack*& pFirstArgStackLvl);
     void initFunctionDefaultParamVariables(char*& calledFunctionTokenStep, int suppliedArgCount, int paramCount);
     void initFunctionLocalNonParamVariables(char* calledFunctionTokenStep, int paramCount, int localVarCount);
 
@@ -1396,7 +1401,7 @@ public:
     void saveLastValue(bool& overWritePrevious);
     void clearEvalStack();
     void clearEvalStackLevels(int n);
-    void clearFlowCtrlStack(int& deleteImmModeCmdStackLevels,execResult_type execResult = result_execOK, bool debugModeError = false );
+    void clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, execResult_type execResult = result_execOK, bool debugModeError = false);
     void clearImmediateCmdStack(int n);
 
     execResult_type makeFormatString();
