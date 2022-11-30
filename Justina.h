@@ -403,11 +403,11 @@ public:
         result_notAllowedInThisOpenBlock,
         result_wrongBlockSequence,
 
-        // tracing errors
-        result_trace_resWordNotAllowed = 2100,//// eval ???
-        result_trace_userFunctonNotAllowed,
-        result_trace_evalFunctonNotAllowed,
-        result_trace_genericNameNotAllowed,
+        // tracing and eval() parsing errors
+        result_trace_eval_resWordNotAllowed = 2100,
+        result_trace_eval_genericNameNotAllowed,
+        result_trace_userFunctonNotAllowed,             // tracing restriction only
+        result_trace_evalFunctonNotAllowed,             // tracing restriction only
 
         // other program errors
         result_progMemoryFull = 2200,
@@ -423,7 +423,7 @@ public:
         tok_isReservedWord,
         tok_isInternFunction,
         tok_isExternFunction,
-        tok_isConstant,
+        tok_isConstant, 
         tok_isVariable,
         tok_isGenericName,
 
@@ -1362,7 +1362,7 @@ public:
     void prettyPrintInstructions(int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
     void printParsingResult(parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* const pErrorPos);
     bool run(Stream* const pConsole, Stream** const pTerminal, int definedTerms);
-    bool processCharacter(bool& kill, bool& endProgramLoad,char c,  bool programLoadTimeOut);
+    bool processCharacter(bool& kill, bool& loadProgParsed, bool& endProgramLoad,char c,  bool programLoadTimeOut);
 
     bool setMainLoopCallback(void (*func)(bool& requistQuit, long& appFlags));                   // set callback functions
     bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType));

@@ -394,10 +394,13 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
 
     prgmCnt.pTokenChars = pFirstToken;
     uint8_t tokenType = *prgmCnt.pTokenChars & 0x0F;
+    ////Serial.print("   start address: "); Serial.println(pFirstToken - _programStorage);
     while (tokenType != '\0') {                                                                    // for all tokens in token list
         ////Serial.print(prgmCnt.pTokenChars - _programStorage); Serial.print(" - "); Serial.println((int)tokenType);////
         bool isStringConst = (tokenType == tok_isConstant) ? (((*prgmCnt.pTokenChars >> 4) & value_typeMask) == value_isStringPointer) : false;
-        ////Serial.print("value type: "); Serial.println((int)(*prgmCnt.pTokenChars >> 4));
+
+        ////Serial.print("   token type: "); Serial.println(tokenType);
+
         if (isStringConst || (tokenType == tok_isGenericName)) {
             ////Serial.print("is string cst: "); Serial.println(isStringConst);
             memcpy(&pAnum, prgmCnt.pCstToken->cstValue.pStringConst, sizeof(pAnum));                         // pointer not necessarily aligned with word size: copy memory instead
@@ -458,8 +461,10 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
     }
 
     // delete parsed alphanumeric constants in program and immediate mode (parsed) statement memory
+    Serial.print("++ deleting parsed strings: current count = "); Serial.println(_parsedStringConstObjectCount);
     deleteConstStringObjects(_programStorage);
     deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
+    Serial.print("++ parsed strings deleted: new count = "); Serial.println(_parsedStringConstObjectCount);
 
 
     // if parsed immediate mode statements are currently pushed to the immediate mode command stack (debug mode active and / or eval() strings being executed): delete all
@@ -798,9 +803,11 @@ void Justina_interpreter::parseAndExecTraceString() {
     // before overwriting user statements that were just parsed and executed, delete parsed strings
     deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
 
+    bool valuePrinted{ false };
     char* pTraceParsingInput = _pTraceString;  // copy pointer to start of trace string
     _parsingExecutingTraceString = true;
 
+    ////Serial.print("start trace: eval stack levels = "); Serial.println(evalStack.getElementCount());
     _pConsole->print("TRACE ==>> ");
     do {
         // init
@@ -814,6 +821,8 @@ void Justina_interpreter::parseAndExecTraceString() {
         if (*pTraceParsingInput == '\0') { break; } // could occur if semicolons skipped
 
         // parse ONE trace string expression only
+        if (valuePrinted) { _pConsole->print(", "); }                    // separate values (if more than one)
+
         parseTokenResult_type result = parseStatements(pTraceParsingInput, pNextParseStatement);
         if (result == result_tokenFound) {
             prettyPrintInstructions(0);         // do NOT pretty print if parsing error, to avoid bad-looking partially printed statements (even if there will be an execution error later)
@@ -835,12 +844,15 @@ void Justina_interpreter::parseAndExecTraceString() {
             execResult = exec(_programStart);        // note: value or exec. error is printed from inside exec()
         }
 
+        valuePrinted = true;
+
         // execution finished: delete parsed strings in imm mode command (they are on the heap and not needed any more)
         deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);  // always
         *(_programStorage + PROG_MEM_SIZE) = '\0';                                      //  current end of program (immediate mode)
 
-        if (*pTraceParsingInput != '\0') { _pConsole->print(", "); }                    // separate values (if more than one)
     } while (*pTraceParsingInput != '\0');                                              // exit loop if all expressions handled
+
+    ////Serial.print("\r\nend trace: eval stack levels = "); Serial.println(evalStack.getElementCount());
 
     _parsingExecutingTraceString = false;
     _pConsole->println();       // go to next output line
@@ -923,7 +935,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(
         // move to the first non-space character of next token 
         while (pNext[0] == ' ') { pNext++; }                                         // skip leading spaces
         if (pNext[0] == '\0') { pNextParseStatement = pNext; break; }                // end of instruction: prepare to quit parsing  
-        
+
         // trace string ? exit after each individual expression
         if (_parsingExecutingTraceString && isSemicolon) { pNextParseStatement = pNext;  break; }        // within trace : only parse one instruction at a time, then execute it first
 
@@ -966,8 +978,8 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(
             isCommandStart = (_lastTokenType == tok_isReservedWord);                       // keyword at start of statement ? is start of a command 
             _isCommand = isCommandStart;                                                                // is start of a command ? then within a command now. Otherwise, it's an 'expression only' statement
             if (_isCommand) { if (!checkCommandKeyword(result)) { ; pNext = pNext_hold; break; } }         // start of a command: keyword
-            if (_isLoadProgramCmd) {  *initiateProgramLoad = true; }
-            if (_isEndProgramCmd) {  *endProgramLoad = true; }
+            if (_isLoadProgramCmd) { *initiateProgramLoad = true; }
+            if (_isEndProgramCmd) { *endProgramLoad = true; }
         }
 
         bool isCommandArgToken = (!isCommandStart && _isCommand);
@@ -1237,7 +1249,7 @@ bool Justina_interpreter::parseAsResWord(char*& pNext, parseTokenResult_type& re
         if (strncmp(_resWords[resWordIndex]._resWordName, pch, pNext - pch) != 0) { continue; } // token corresponds to keyword ? If not, skip remainder of loop ('continue') 
 
         // token is keyword, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-        if (_parsingExecutingTraceString || _parsingEvalString) { pNext = pch; result = result_trace_resWordNotAllowed; return false; }
+        if (_parsingExecutingTraceString || _parsingEvalString) { pNext = pch; result = result_trace_eval_resWordNotAllowed; return false; }
         if (_parenthesisLevel > 0) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
         if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2_0)) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
         if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
@@ -1523,7 +1535,7 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
     result = result_tokenFound;                                                         // flag 'valid token found'
 
     return true;
-}
+        }
 
 
 // ---------------------------------------------------------------------------------
@@ -1882,7 +1894,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                         staticVarValues[valueIndex].pArray = pArray;
                         staticVarType[_staticVarCount - 1] |= var_isArray;             // set array bit
                     }
-                }
+                    }
 
                 // local arrays (note: NOT for function parameter arrays): set pointer to dimension storage 
                 // the array flag has been set when local variable was created (including function parameters, which are also local variables)
@@ -1897,7 +1909,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                     ((char*)pArray)[i] = arrayDef_dims[i];
                 }
                 ((char*)pArray)[3] = array_dimCounter;        // (note: for param arrays, set to max dimension count during parsing)
-            }
+                }
 
 
             // 2.3 Internal or external function call, or parenthesis pair, closing parenthesis ?
@@ -1981,7 +1993,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
 
             _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
             break;
-        }
+            }
 
 
         case termcod_comma: {
@@ -2246,7 +2258,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             _lastTokenIsPostfixOp = tokenIsPostfixOp;
             _lastTokenIsPrefixIncrDecr = isPrefixIncrDecr;
         }
-    }
+        }
 
     // create token
     // ------------
@@ -2271,7 +2283,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
     *_programCounter = '\0';                                                  // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
-}
+    }
 
 
 // ----------------------------------------------------------------------------
@@ -3027,7 +3039,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
     while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                   // do until first character after alphanumeric token (can be anything, including '\0')
 
     // token is a generic identifier, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-    if (_parsingExecutingTraceString || _parsingEvalString) { pNext = pch; result = result_trace_genericNameNotAllowed; return false; }
+    if (_parsingExecutingTraceString || _parsingEvalString) { pNext = pch; result = result_trace_eval_genericNameNotAllowed; return false; }
 
     if (_parenthesisLevel > 0) { pNext = pch; result = result_identifierNotAllowedHere; return false; }
     if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2_0)) { pNext = pch; result = result_identifierNotAllowedHere; return false; }
@@ -3063,7 +3075,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
             return false;
         }
         strcpy(_callbackUserProcAlias[_userCBprocAliasSet_count++], pIdentifierName);                           // maximum 10 user functions                                   
-    }
+        }
 
 
     // expression syntax check 
@@ -3091,7 +3103,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
     *_programCounter = '\0';                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
-}
+    }
 
 
 // -----------------------------------------

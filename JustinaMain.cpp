@@ -28,7 +28,7 @@
 
 #include "Justina.h"
 
-#define printCreateDeleteListHeapObjects 0
+#define printCreateDeleteListHeapObjects 1
 #define debugPrint 0
 
 
@@ -83,12 +83,14 @@ char* LinkedList::appendListElement(int size) {
     _listElementCount++;
 
 #if printCreateDeleteListHeapObjects
-    Serial.print("(LIST) Create elem # "); Serial.print(_listElementCount);
-    Serial.print(", list ID "); Serial.print(_listID);
-    Serial.print(", stack: "); Serial.print(_listName);
-    if (p == nullptr) { Serial.println("- list elem adres: nullptr"); }
-    else {
-        Serial.print(", list elem address: "); Serial.println((uint32_t)p - RAMSTART);
+    if (_listName[0] == 'e') {
+        Serial.print("(LIST) Create elem # "); Serial.print(_listElementCount);
+        Serial.print(", list ID "); Serial.print(_listID);
+        Serial.print(", stack: "); Serial.print(_listName);
+        if (p == nullptr) { Serial.println("- list elem adres: nullptr"); }
+        else {
+            Serial.print(", list elem address: "); Serial.println((uint32_t)p - RAMSTART);
+        }
     }
 #endif
     return (char*)(p + 1);                                          // pointer to payload of newly created element
@@ -111,18 +113,21 @@ char* LinkedList::deleteListElement(void* pPayload) {                           
 
 #if printCreateDeleteListHeapObjects
     // determine list element # by counting from the list start
-    ListElemHead* q = _pFirstElement;
-    int i{};
-    for (i = 1; i <= _listElementCount; ++i) {
-        if (q == pElem) { break; }            // always a match
-        q = q->pNext;
-    }
+    if (_listName[0] == 'e') {
+        ListElemHead* q = _pFirstElement;
+        int i{};
+        for (i = 1; i <= _listElementCount; ++i) {
+            if (q == pElem) { break; }            // always a match
+            q = q->pNext;
+        }
 
-    Serial.print("(LIST) Delete elem # "); Serial.print(i); Serial.print(" (new # "); Serial.print(_listElementCount - 1);
-    Serial.print("), list ID "); Serial.print(_listID);
-    Serial.print(", stack: "); Serial.print(_listName);
-    Serial.print(", list elem address: "); Serial.println((uint32_t)pElem - RAMSTART);
+        Serial.print("(LIST) Delete elem # "); Serial.print(i); Serial.print(" (new # "); Serial.print(_listElementCount - 1);
+        Serial.print("), list ID "); Serial.print(_listID);
+        Serial.print(", stack: "); Serial.print(_listName);
+        Serial.print(", list elem address: "); Serial.println((uint32_t)pElem - RAMSTART);
+    }
 #endif
+
     // before deleting object, remove from list:
     // change pointers from previous element (or _pFirstPointer, if no previous element) and next element (or _pLastPointer, if no next element)
     ((pElem->pPrev == nullptr) ? _pFirstElement : pElem->pPrev->pNext) = pElem->pNext;
@@ -330,9 +335,11 @@ bool Justina_interpreter::setUserFcnCallback(void(*func) (const void** data, con
 // ----------------------------
 
 bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, int definedTerms) {
+    bool loadProgJustParsed{ false };
     bool endProgramReached{ false };
     bool kill{ false };                                       // kill is true: request from caller, kill is false: quit command executed
     bool quitNow{ false };
+    bool enableTimeOutOnChar{ false }, timeOutEnabled{ false };
     char c;
 
     _pConsole->println();
@@ -367,17 +374,27 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
             if (quitNow) { kill = true; break; }                // return true if kill request received from calling program OR Justina Quit command executed
         }
 
-        bool readCharWindowExpired = (_programMode && (startWaitForReadTime + 3000L < millis()));        // only while parsing a program
+        bool readCharWindowExpired = (_programMode && timeOutEnabled && (startWaitForReadTime + 200L < millis()));        // only while parsing a program
+
+
+
+
+
+
         if ((_pConsole->available() > 0) || endProgramReached || readCharWindowExpired) {     // if terminal character available for reading, or 'end program' reached
+            if (_pConsole->available() > 0) {     // terminal character available for reading ?
+                c = _pConsole->read();
+                if ((c >= 0x20) && enableTimeOutOnChar) { timeOutEnabled = true; }
+            }
+            else { c = 0x001a; endProgramReached = false; }
 
-            if (readCharWindowExpired) { Serial.println("expired"); }
-            if (readCharWindowExpired || endProgramReached) { c = 0x001a; endProgramReached = false; }
-            else { c = _pConsole->read(); }
-            quitNow = processCharacter(kill, endProgramReached, c, readCharWindowExpired);        // process one character. Kill request from calling program and 
-
+            quitNow = processCharacter(kill, loadProgJustParsed, endProgramReached, c, readCharWindowExpired);        // process one character. Kill request from calling program and 
             if (quitNow) { ; break; }                        // user gave quit command
+            if (loadProgJustParsed) { enableTimeOutOnChar = true; }
+            else if (endProgramReached || readCharWindowExpired) { enableTimeOutOnChar = false; timeOutEnabled = false; }
             startWaitForReadTime = millis();                    // opening a time window for reading next character
         }
+
 
     } while (true);
 
@@ -396,7 +413,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 // *   process an input character   *
 // ----------------------------------
 
-bool Justina_interpreter::processCharacter(bool& kill, bool& endProgramStatementParsed, char c, bool programLoadTimeOut) {
+bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad, bool& endProgramStatementParsed, char c, bool programLoadTimeOut) {
     // process character
     static parseTokenResult_type result{};
     static bool requestMachineReset{ false };
@@ -407,8 +424,6 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& endProgramStatement
 
     static bool withinComment{ false };
     static bool withinString{ false };
-
-    static bool initiateProgramLoad{ false };
 
     static char* pErrorPos{};
 
@@ -423,15 +438,16 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& endProgramStatement
     bool isEndOfFile = _programMode ? (c == stopProgramParsing) : (c == '\n');                                      // end of input: EOF in program mode, LF or EOF in immediate mode
     bool isCommentStartChar = (c == '$');                               // character can also be part of comment
 
-    if (initiateProgramLoad) {
+    if ((c == '\n') && initiateProgramLoad) {
         initiateProgramLoad = false;
         // do not touch program memory itself: there could be a program in it 
-        _programMode = !_programMode;
+        _programMode = true;
         _programStart = _programStorage + (_programMode ? 0 : PROG_MEM_SIZE);
         _programSize = (_programMode ? PROG_MEM_SIZE : IMM_MEM_SIZE);
         _programCounter = _programStart;                          // start of 'immediate mode' program area
 
-        requestMachineReset = _programMode;                         // reset machine when parsing starts, not earlier (in case there is a program in memory)
+        resetMachine(false);
+        requestMachineReset = true;                         // reset machine when parsing starts, not earlier (in case there is a program in memory)
 
         _instructionCharCount = 0;
         _lineCount = 0;                             // taking into account new line after 'load program' command ////
@@ -561,7 +577,7 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& endProgramStatement
                     if (_promptAndEcho == 2) { prettyPrintInstructions(0); _pConsole->println(); }                    // immediate mode and result OK: pretty print input line
                     else if (_promptAndEcho == 1) { _pConsole->println(); _isPrompt = false; }
 
-                    execResult = exec(_programStart);                                 // execute parsed user statements
+                    execResult = exec(_programStorage + PROG_MEM_SIZE);                                 // execute parsed user statements
 
                     if ((execResult == result_eval_kill) || (execResult == result_eval_quit)) { _quitJustinaAtEOF = true; }
                     if (execResult == result_eval_kill) { kill = true; }
@@ -638,13 +654,13 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& endProgramStatement
 
         // in immediate mode; if stopping a program for debug, do not delete parsed strings included in the command line, because that command line has now been pushed on  ...
          // the parsed command line stack and included parsed constants will be deleted later (resetMachine routine)
-        else if (execResult == result_eval_stopForDebug) { *_programStart = '\0'; }  ////
+        if (execResult == result_eval_stopForDebug) { *(_programStorage + PROG_MEM_SIZE) = '\0'; }  ////
 
         // in immediate mode
-        else if (instructionsParsed) {
+        else {
             // execution finished: delete parsed strings in imm mode command OR in executed trace expressions (they are on the heap and not needed any more). Identifiers must stay avaialble
             deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);  // always
-            *_programStart = '\0';                                      //  current end of program (immediate mode)
+            *(_programStorage + PROG_MEM_SIZE) = '\0';                                      //  current end of program (immediate mode)
         }
 
         if (!wasReset) {

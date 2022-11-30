@@ -431,7 +431,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                     if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_none) {       // currently not executing a command, but a simple expression
                         if (evalStack.getElementCount() > (_activeFunctionData.callerEvalStackLevels + 1)) {
                             //// _pConsole ???
-                            Serial.print("*** Evaluation stack error. Remaining stack levels for current program level: "); Serial.println(evalStack.getElementCount() - (_activeFunctionData.callerEvalStackLevels + 1));
+                            // if tracing, message would not be correct. Eval stack levels will be deleted right after printing a traced value (or trace execution error)
+                            if (!_parsingExecutingTraceString) { Serial.print("*** Evaluation stack error. Remaining stack levels for current program level: "); Serial.println(evalStack.getElementCount() - (_activeFunctionData.callerEvalStackLevels + 1)); }
                         }
 
                         // did the last expression produce a result ?  
@@ -538,6 +539,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         Serial.print("*** token processed: eval stack depth: "); Serial.print(evalStack.getElementCount()); Serial.print(", list element address: "); Serial.println((uint32_t)_pEvalStackTop - sizeof(LinkedList::ListElemHead) - RAMSTART); Serial.println();
     #endif
         if (isEndOfStatementSeparator) {        // after expression AND after command
+
         #if printProcessedTokens        
             Serial.println("\r\n");
             Serial.println("**** is 'end of statement separator'\r\n");////
@@ -682,6 +684,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             if (!isEvent) {
                 int sourceErrorPos{ 0 };
                 int functionNameLength{ 0 };
+                long programCounterOffset{ 0 };
 
                 // if error during executing (nested) eval() function(s): find first flow control stack level that called (nested) eval() function(s)
 
@@ -692,18 +695,38 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 Serial.println("*** 1");
                 if (_activeFunctionData.blockType == block_eval) {
                     Serial.println("*** 2");
+                    // if error while executing an eval() function: find first flow control stack level immediately below (optionally nested) eval() levels 
+                    // this will always be a flow control stack level for an external function block type (an eval() function can not have any open blocks) 
+
                     void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;       // one level below _activeFunctionData
+                    char* pImmediateCmdStackLvl = _pImmediateCmdStackTop;
+                    ////programCounterOffset = pImmediateCmdStackLvl - (_programStorage + PROG_MEM_SIZE);
+
                     while (((OpenFunctionData*)pFlowCtrlStackLvl)->blockType == block_eval) {
                         Serial.println("*** 3");
                         pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
+
+                        pImmediateCmdStackLvl = immModeCommandStack.getPrevListElement(pImmediateCmdStackLvl);
+                        ////programCounterOffset = pImmediateCmdStackLvl - (_programStorage + PROG_MEM_SIZE);
                     }
+
+                    // retrieve error statement pointers and function index (in case the 'function' block type is referring to immediate mode statements)
                     errorStatementStartStep = ((OpenFunctionData*)pFlowCtrlStackLvl)->errorStatementStartStep;
                     errorProgramCounter = ((OpenFunctionData*)pFlowCtrlStackLvl)->errorProgramCounter;
                     functionIndex = ((OpenFunctionData*)pFlowCtrlStackLvl)->functionIndex;
+                
+                    // imm. mode program memory currently contains the parsed eval() string where the error occured
+                    // any parsed outer eval() strings (if nested) have been pushed on the imm.mode parsed command stack  
+                    // as well as the imm. mode parsed statements at the time of the call to the outer eval() function
+                    // (even if the outer eval() was called from a program, because that program had been called before from imm. mode)
+                    
+                    // if the error statement pointers refer to immediate mode code (not to a program), pretty print directly from the imm.mode parsed command stack: add an offset to the pointers 
+                    bool isImmMode = (errorStatementStartStep >= (_programStorage + PROG_MEM_SIZE));
+                    if(isImmMode){programCounterOffset = pImmediateCmdStackLvl - (_programStorage + PROG_MEM_SIZE);}
                 }
 
                 _pConsole->print("\r\n  ");
-                prettyPrintInstructions(1, errorStatementStartStep, errorProgramCounter, &sourceErrorPos);
+                prettyPrintInstructions(1, errorStatementStartStep + programCounterOffset, errorProgramCounter + programCounterOffset, &sourceErrorPos);
                 for (int i = 1; i <= sourceErrorPos; ++i) { _pConsole->print(" "); }
 
                 sprintf(execInfo, "  ^\r\n  Exec error %d", execResult);     // in main program level 
@@ -760,9 +783,9 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             #endif
                 delete[] toPrint.pStringConst;
                 _intermediateStringObjectCount--;
+            }
         }
     }
-}
 
     // 2.2 adapt imm. mode parsed statement stack, flow control stack and evaluation stack
     // -----------------------------------------------------------------------------------
@@ -795,10 +818,12 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         clearImmediateCmdStack(immModeCommandStack.getElementCount());
         clearFlowCtrlStack(dummy);           // and remaining local storage + local variable string and array values
         clearEvalStack();
+        Serial.println("CLEARING all eval stack levels");
     }
 
     // tracing (this means at least one program is stopped; if no exec error then one evaluation stack level (with the result) needs to be deleted
     else if (_parsingExecutingTraceString) {
+
         int charsPrinted{  };        // needed but not used
         Val toPrint;
         if (execResult == result_execOK) {
@@ -819,20 +844,19 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             sprintf(errStr, "<ErrE%d>", (int)execResult);
             Val temp;
             temp.pStringConst = errStr;
-
             printToString(0, _maxCharsToPrint, true, false, &valTyp, &temp, _dispStringFmtString, toPrint, charsPrinted);
         }
 
-        if (toPrint.pStringConst != nullptr) {
+        if (toPrint.pStringConst == nullptr) { _pConsole->println(); }
+        else {
+            _pConsole->print(toPrint.pStringConst);
         #if printCreateDeleteListHeapObjects
             Serial.print("----- (Intermd str) "); Serial.println((uint32_t)toPrint.pStringConst - RAMSTART);
         #endif
             delete[] toPrint.pStringConst;
             _intermediateStringObjectCount--;
-    }
+        }
 
-
-        _pConsole->print(toPrint.pStringConst);
 
         // note: flow control stack and immediate command stack (program code) are not affected: only need to clear evaluation stack
         clearEvalStackLevels(evalStack.getElementCount() - (int)_activeFunctionData.callerEvalStackLevels);
@@ -1087,7 +1111,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 delete[] pString;
                 _pTraceString = nullptr;      // old trace or eval string
                 _systemVarStringObjectCount--;
-        }
+            }
 
             if (value.pStringConst != nullptr) {                           // new trace string
                 _systemVarStringObjectCount++;
@@ -1105,7 +1129,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
             break;
-    }
+        }
 
 
         // ---------------------------------------------------------------------------------------------------------
@@ -1669,7 +1693,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         delete[] args[i].pStringConst;                                                  // delete temporary string
                         _intermediateStringObjectCount--;
-                }
+                    }
 
                     // callback routine changed non-empty VARIABLE string into empty variable string ("\0") ?
                     else if (strlen(args[i].pStringConst) == 0) {
@@ -1683,10 +1707,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
                         // set variable string pointer to null pointer
                         *pStackLvl->varOrConst.value.ppStringConst = nullptr;                           // change pointer to string (in variable) to null pointer
-            }
-        }
+                    }
+                }
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-}
+            }
 
 
             // finalize
@@ -1695,7 +1719,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             clearEvalStackLevels(cmdParamCount);                                                        // clear evaluation stack and intermediate strings
 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
-}
+        }
         break;
 
 
@@ -2129,9 +2153,9 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
                 // note: this is always an intermediate string
                 delete[] lastResultValueFiFo[itemToRemove].pStringConst;
                 _lastValuesStringObjectCount--;
+            }
         }
     }
-}
     else {
         _lastResultCount++;     // only adding an item, without removing previous one
     }
@@ -2183,7 +2207,7 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
         #endif
             delete[] lastvalue.value.pStringConst;
             _intermediateStringObjectCount--;
-    }
+        }
     }
 
     // store new last value type
@@ -2199,7 +2223,7 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
     overWritePrevious = true;
 
     return;
-    }
+}
 
 // ----------------------------------------------------------------
 // Clear evaluation stack and associated intermediate string object 
@@ -2237,7 +2261,6 @@ void Justina_interpreter::clearEvalStackLevels(int n) {
 
         // delete evaluation stack level
         pPrecedingStackLvl = (LE_evalStack*)evalStack.getPrevListElement(pStackLvl);
-        ////Serial.println(">>>>>> 3 >> delete 1 eval stack element"); 
         evalStack.deleteListElement(pStackLvl);
         pStackLvl = pPrecedingStackLvl;
     }
@@ -2261,9 +2284,10 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
     // - if immediate mode error (error did not occur in a running program or during execution of a parsed eval() string): 
     //   _activeFunctionData already refers to (debug level) imm. mode data: flow control stack is OK
     // - if error occured within a running program or during execution of a parsed eval() string: delete all flow control stack levels UNTIL stopped program function is encountered   
+    //   (-> do NOT delete any stack levels for the stopped program)
     //   when function type block for debug command level is encountered in between: move to _activeFunctionData but continue deleting command level open blocks, if any 
-    // (do NOT delete any stack levels for the stopped program)
-    //
+    //   (-> function type block for debug command level can still be followed by open block (if, for, ...) stack levels for that function)
+    // 
     // always clear remaining local storage + local variable string and array values for open functions referenced in functions to abort
 
     deleteImmModeCmdStackLevels = 0;      // init
@@ -2314,10 +2338,10 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
                         delete[] _activeFunctionData.ppSourceVarTypes;
                         _localVarValueAreaCount--;
                         Serial.print("**** clear flow ctrl stack: delete local vars: areas = ");; Serial.println(_localVarValueAreaCount);
+                    }
                 }
-            }
                 if (!isInitialLoop) { --_callStackDepth; }
-        }
+            }
 
             else if (blockType == block_eval) {
                 // no need to copy flow control stack level to _activeFunctionData
@@ -2335,8 +2359,8 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
 
             if (pFlowCtrlStackLvl == nullptr) { break; }       // all done
             isInitialLoop = false;
-    } while (true);
-}
+        } while (true);
+    }
 
     ////Serial.print("** ENDING flow ctrl stack clear: active function data block type = "); Serial.println((int)_activeFunctionData.blockType);
     _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
@@ -2958,8 +2982,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
                     delete[] pUnclippedResultString;
                     _intermediateStringObjectCount--;
                 }
+            }
         }
-    }
 
         // store value in variable and adapt variable value type - next line is valid for long integers as well
         if (opResultLong || opResultFloat) { *_pEvalStackMinus2->varOrConst.value.pFloatConst = opResult.floatConst; }
@@ -2973,7 +2997,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) |
                 (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
         }
-}
+    }
 
 
     // (7) post process
@@ -3233,13 +3257,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             if (!argIsLong[0] && !argIsFloat[0]) { return result_arg_integerExpected; }
             int asciiCode = argIsLong[0] ? args[0].longConst : int(args[0].floatConst);
             if (argIsFloat[0]) { if (args[0].floatConst != asciiCode) { return result_arg_integerExpected; } }
-            if ((asciiCode < 1) || (asciiCode > 0xFF)) { return result_arg_outsideRange; }        // do not allow \0
+            if ((asciiCode < 1) || (asciiCode > 0x7F)) { return result_arg_outsideRange; }        // do not allow \0
 
             // result is string
             fcnResultValueType = value_isStringPointer;
             fcnResult.pStringConst = new char[2];
             _intermediateStringObjectCount++;
-            fcnResult.pStringConst[0] = asciiCode;
+            fcnResult.pStringConst[0] = (asciiCode < '0') ? '~' : asciiCode;
             fcnResult.pStringConst[1] = '\0';                                // terminating \0
         #if printCreateDeleteListHeapObjects
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
@@ -3464,11 +3488,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         }
         break;
 
-        }       // end switch
+    }       // end switch
 
 
-        // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
-        // -------------------------------------------------------------------------------------------------------------------
+    // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
+    // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
@@ -3499,7 +3523,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
     ////Serial.print("** int function end:: eval stack depth = "); Serial.println(evalStack.getElementCount());
 
     return result_execOK;
-    }
+}
 
 
 // -----------------------
@@ -3551,9 +3575,6 @@ Justina_interpreter::execResult_type Justina_interpreter::checkFmtSpecifiers(boo
 
 
 void  Justina_interpreter::makeFormatString(int flags, bool isIntFmt, char* numFmt, char* fmtString) {
-
-    // prepare format string
-    // ---------------------
 
     fmtString[0] = '%';
     int strPos = 1;
@@ -3801,7 +3822,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
 
     // create a temporary string to hold expressions to parse, with an extra semicolon added at the end (in case it's missing)
     char* pEvalParsingInput = new char[strlen(parsingInput) + 2]; // room for additional semicolon (in case string is not ending with it) and terminating '\0'
-    _systemVarStringObjectCount++;
+    _intermediateStringObjectCount++;
     strcpy(pEvalParsingInput, parsingInput);              // copy the actual string
 
     pEvalParsingInput[strlen(parsingInput)] = term_semicolon[0];
@@ -3813,7 +3834,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
     char* pParsingInput_temp = pEvalParsingInput;        // temp, because value will be changed upon return (preserve original pointer value)
     parseTokenResult_type result = parseStatements(pParsingInput_temp, pDummy);           // parse all eval() expressions in ONE go (which is not the case for standard parsing and trace string parsing)
     delete[] pEvalParsingInput;
-    _systemVarStringObjectCount--;
+    _intermediateStringObjectCount--;
 #if printCreateDeleteListHeapObjects
     Serial.print("----- (system var str) "); Serial.println((uint32_t)pEvalParsingInput - RAMSTART);
 #endif
@@ -3828,7 +3849,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
         ////Serial.print("launch eval parsing error: delete immModeParsedStatStack - levels = "); Serial.println(immModeCommandStack.getElementCount());////
         _pImmediateCmdStackTop = (char*)immModeCommandStack.getLastListElement();  //// size aanpassen
 
-        Serial.print("** eval() parsing error: "); Serial.println(result);
+        Serial.print("** eval() parsing error: "); Serial.println(result); //// te gebruiken in error message
         return result_eval_parsingError;
     }
 
@@ -4151,12 +4172,12 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateExternalFunct
 
     char blockType = block_none;            // init
     do {
-        blockType = *(char*)_pFlowCtrlStackTop;            // always at least one open function level and optionally open eval() levels (because returning to caller from it)
+        blockType = *(char*)_pFlowCtrlStackTop;            // always at least one level present for caller (because returning to it)
 
         // load local storage pointers again for caller function and restore pending step & active function information for caller function
         if ((blockType == block_extFunction) || (blockType == block_eval)) { _activeFunctionData = *(OpenFunctionData*)_pFlowCtrlStackTop; }        // caller level
 
-        // delete FLOW CONTROL stack level (includes any optional CALLED function open block stack levels before CALLER open function data stack level is reached)
+        // delete FLOW CONTROL stack level (any optional CALLED function open block stack level) 
         flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);
         _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
         _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackTop);
@@ -4201,19 +4222,24 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateExternalFunct
 // ---------------------------------------
 
 Justina_interpreter::execResult_type Justina_interpreter::terminateEval() {
+    execResult_type execResult{ result_execOK };        // init
 
-    makeIntermediateConstant(_pEvalStackTop);            // if not already an intermediate constant
+    if (evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels >= 1) {
+        makeIntermediateConstant(_pEvalStackTop);
+    }
+    else { return result_eval_nothingToEvaluate; }
+
 
     char blockType = block_none;        // init
     ////Serial.print("** beginning of terminateEval(): flow ctrl stack depth: "); Serial.println(flowCtrlStack.getElementCount());
     do {
-        blockType = *(char*)_pFlowCtrlStackTop;            // always at least one open function (because returning to caller from it)
+        blockType = *(char*)_pFlowCtrlStackTop;            // always at least one level present for caller (because returning to it)
 
         // load local storage pointers again for caller function and restore pending step & active function information for caller function
         if ((blockType == block_extFunction) || (blockType == block_eval)) { _activeFunctionData = *(OpenFunctionData*)_pFlowCtrlStackTop; }
         ////if ((blockType == block_extFunction) || (blockType == block_eval)) { Serial.println("popping flow ctrl stack");  }
 
-        // delete FLOW CONTROL stack level (includes any optional CALLED function open block stack levels before CALLER open function data stack level is reached)
+        // delete FLOW CONTROL stack level (any optional CALLED function open block stack level) 
         flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);
         _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
         _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackTop);
@@ -4236,8 +4262,11 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateEval() {
     ////Serial.print("                   : flow ctrl stack depth: "); Serial.println(flowCtrlStack.getElementCount());
     ////Serial.print("                   : eval stack depth: "); Serial.print(evalStack.getElementCount()); Serial.print(", long result: "); Serial.println(_pEvalStackTop->varOrConst.value.longConst);
 
-    execResult_type execResult = execAllProcessedOperators();
-
+    if (evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels >= 1) {
+        execResult = execAllProcessedOperators();
+        if (execResult != result_execOK) { return execResult; }
+    }
+    return execResult;
 }
 
 
