@@ -95,6 +95,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
     while (tokenType != tok_no_token) {                                                                    // for all tokens in token list
         // if terminal token, determine which terminal type
+        ////Serial.print("exec: token step = "); Serial.println(_programCounter - _programStorage);
+
         bool isTerminal = ((tokenType == tok_isTerminalGroup1) || (tokenType == tok_isTerminalGroup2) || (tokenType == tok_isTerminalGroup3));
         if (isTerminal) {
             tokenIndex = ((((TokenIsTerminal*)_programCounter)->tokenTypeAndIndex >> 4) & 0x0F);
@@ -696,33 +698,34 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 if (_activeFunctionData.blockType == block_eval) {
                     Serial.println("*** 2");
                     // if error while executing an eval() function: find first flow control stack level immediately below (optionally nested) eval() levels 
-                    // this will always be a flow control stack level for an external function block type (an eval() function can not have any open blocks) 
-
+                    // this will always be a flow control stack level for the external function block type that 'called' the eval() function, because an eval() function can not have any open blocks 
+        
                     void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;       // one level below _activeFunctionData
                     char* pImmediateCmdStackLvl = _pImmediateCmdStackTop;
-                    ////programCounterOffset = pImmediateCmdStackLvl - (_programStorage + PROG_MEM_SIZE);
 
                     while (((OpenFunctionData*)pFlowCtrlStackLvl)->blockType == block_eval) {
                         Serial.println("*** 3");
                         pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
-
                         pImmediateCmdStackLvl = immModeCommandStack.getPrevListElement(pImmediateCmdStackLvl);
-                        ////programCounterOffset = pImmediateCmdStackLvl - (_programStorage + PROG_MEM_SIZE);
                     }
 
                     // retrieve error statement pointers and function index (in case the 'function' block type is referring to immediate mode statements)
                     errorStatementStartStep = ((OpenFunctionData*)pFlowCtrlStackLvl)->errorStatementStartStep;
                     errorProgramCounter = ((OpenFunctionData*)pFlowCtrlStackLvl)->errorProgramCounter;
                     functionIndex = ((OpenFunctionData*)pFlowCtrlStackLvl)->functionIndex;
-                
-                    // imm. mode program memory currently contains the parsed eval() string where the error occured
+
+                    // imm. mode program memory currently contains the (potentially inner, if nested) parsed eval() string where the error occured
                     // any parsed outer eval() strings (if nested) have been pushed on the imm.mode parsed command stack  
                     // as well as the imm. mode parsed statements at the time of the call to the outer eval() function
                     // (even if the outer eval() was called from a program, because that program had been called before from imm. mode)
-                    
+
                     // if the error statement pointers refer to immediate mode code (not to a program), pretty print directly from the imm.mode parsed command stack: add an offset to the pointers 
                     bool isImmMode = (errorStatementStartStep >= (_programStorage + PROG_MEM_SIZE));
-                    if(isImmMode){programCounterOffset = pImmediateCmdStackLvl - (_programStorage + PROG_MEM_SIZE);}
+                    if (isImmMode) { programCounterOffset = pImmediateCmdStackLvl - (_programStorage + PROG_MEM_SIZE); }
+                    if (true) {
+                        Serial.println("\r\n++ imm. mode statements: ");
+                        prettyPrintInstructions(0, pImmediateCmdStackLvl);
+                    }
                 }
 
                 _pConsole->print("\r\n  ");
@@ -733,8 +736,12 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 _pConsole->print(execInfo);
 
                 // errorProgramCounter is never pointing to a token directly contained in a parsed() eval() string 
-                if (errorProgramCounter >= (_programStorage + PROG_MEM_SIZE)) { sprintf(execInfo, "\r\n"); }
-                else { sprintf(execInfo, " - user function %s\r\n", extFunctionNames[functionIndex]); }
+                if (errorProgramCounter >= (_programStorage + PROG_MEM_SIZE)) { sprintf(execInfo, ""); }
+                else { sprintf(execInfo, " - user function %s", extFunctionNames[functionIndex]); }
+                _pConsole->print(execInfo);
+
+                if (execResult != result_eval_parsingError) { sprintf(execInfo, "\r\n"); }
+                else { sprintf(execInfo, " (eval() parsing error %ld)\r\n", _evalParseErrorCode); }
                 _pConsole->print(execInfo);
             }
 
@@ -743,13 +750,12 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 _pConsole->print(strcat(execInfo, _keepInMemory ? "data retained\r\n" : "memory released\r\n"));
             }
             else if (execResult == result_eval_kill) {}      // do nothing
-            else if (execResult == result_eval_abort) { _pConsole->print("\r\n+++ Code execution terminated +++\r\n"); }
+            else if (execResult == result_eval_abort) { _pConsole->print("\r\n+++ Abort: code execution terminated +++\r\n"); }
             else if (execResult == result_eval_stopForDebug) { if (isBackslashStop) { _pConsole->print("\r\n+++ Program stopped +++\r\n"); } }
 
             _lastValueIsStored = false;              // prevent printing last result (if any)
             break;
         }
-
     }   // end 'while ( tokenType != tok_no_token )'                                                                                       // end 'while ( tokenType != tok_no_token )'
 
 
@@ -818,7 +824,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         clearImmediateCmdStack(immModeCommandStack.getElementCount());
         clearFlowCtrlStack(dummy);           // and remaining local storage + local variable string and array values
         clearEvalStack();
-        Serial.println("CLEARING all eval stack levels");
+        ////Serial.println("CLEARING all eval stack levels");
     }
 
     // tracing (this means at least one program is stopped; if no exec error then one evaluation stack level (with the result) needs to be deleted
@@ -1040,7 +1046,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
 
             // overwrite the parsed command line (containing the 'step', 'go' or 'abort' command) with the command line stack top and pop the command line stack top
-            // before removing, delete any parsed strng constants for that command line
+            // before removing, delete any parsed string constants for that command line
             deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
             memcpy((_programStorage + PROG_MEM_SIZE), _pImmediateCmdStackTop, IMM_MEM_SIZE);        // size berekenen
             immModeCommandStack.deleteListElement(_pImmediateCmdStackTop);
@@ -2369,14 +2375,19 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
 }
 
 
-// ------------------------
+// -----------------------------
 // Clear immediate command stack  
-// ------------------------
+// -----------------------------
+
+// deletes parsed strings referenced in program storage for the current command line statements, and subsequently pops a parsed command line from the stack to program storage
+// the parameter n specifies the number of stack levels to pop
 
 void Justina_interpreter::clearImmediateCmdStack(int n) {
 
-    while (n-- > 0) {         // only clear entries for eval() levels for currently running program (if there is one) and current debug level (at least one program is stopped) 
-        deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);      // debug line
+    // note: ensure that only entries are cleared for eval() levels for currently running program (if there is one) and current debug level (if at least one program is stopped)
+    while (n-- > 0) {
+        Serial.println("clear imm.mode parsed statements stack level");
+        deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);      // current command line
         // copy command line stack top to command line program storage and pop command line stack top
         _pImmediateCmdStackTop = immModeCommandStack.getLastListElement();
         memcpy(_programStorage + PROG_MEM_SIZE, _pImmediateCmdStackTop, IMM_MEM_SIZE);
@@ -3263,7 +3274,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             fcnResultValueType = value_isStringPointer;
             fcnResult.pStringConst = new char[2];
             _intermediateStringObjectCount++;
-            fcnResult.pStringConst[0] = (asciiCode < '0') ? '~' : asciiCode;
+            fcnResult.pStringConst[0] = ((asciiCode < ' ') || (asciiCode > 0x7F)) ? '~' : asciiCode;
             fcnResult.pStringConst[1] = '\0';                                // terminating \0
         #if printCreateDeleteListHeapObjects
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
@@ -3452,14 +3463,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                         // (1)program variable and function NAMES-(2)user variable NAMES-(3)parsed string constants-(4)last value strings-
                         // (5)global and static variable strings-(6)global and static array storage areas-(7)user variable strings-(8)user array storage areas-
                         // (9)local variable strings-(10)local array storage areas-(11)local variable base value areas-(12)intermediate string constants
-                        sprintf(fcnResult.pStringConst, "%0d-%0d-%0d-%0d / %0d-%0d-%0d-%0d / %0d-%0d-%0d-%0d / %0d",
+                        sprintf(fcnResult.pStringConst, "%0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d",
                             min(999, _identifierNameStringObjectCount), min(999, _userVarNameStringObjectCount), min(999, _parsedStringConstObjectCount), min(999, _lastValuesStringObjectCount),
                             min(999, _globalStaticVarStringObjectCount), min(999, _globalStaticArrayObjectCount), min(999, _userVarStringObjectCount), min(999, _userArrayObjectCount),
                             min(999, _localVarStringObjectCount), min(999, _localArrayObjectCount), min(999, _localVarValueAreaCount), min(999, _intermediateStringObjectCount),
                             min(999, _systemVarStringObjectCount));
                     }
                     else {     // print heap object create/delete errors
-                        sprintf(fcnResult.pStringConst, "%0d-%0d-%0d-%0d / %0d-%0d-%0d-%0d / %0d-%0d-%0d-%0d / %0d",
+                        sprintf(fcnResult.pStringConst, "%0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d",
                             min(999, _identifierNameStringObjectErrors), min(999, _userVarNameStringObjectErrors), min(999, _parsedStringConstObjectErrors), min(999, _lastValuesStringObjectErrors),
                             min(999, _globalStaticVarStringObjectErrors), min(999, _globalStaticArrayObjectErrors), min(999, _userVarStringObjectErrors), min(999, _userArrayObjectErrors),
                             min(999, _localVarStringObjectErrors), min(999, _localArrayObjectErrors), min(999, _localVarValueAreaErrors), min(999, _intermediateStringObjectErrors),
@@ -3809,6 +3820,9 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
     // push current command line storage to command line stack, to make room for the evaluation string (to parse) 
     // ----------------------------------------------------------------------------------------------------------
 
+    // the parsed command line pushed, contains the parsed statements 'calling' (parsing and executing) the eval() string 
+    // this is either an outer level parsed eval() string, or a parsed command line (which would be empty if eval() was called from inside a program) 
+
     _pImmediateCmdStackTop = (char*)immModeCommandStack.appendListElement(IMM_MEM_SIZE);//// lengte nog aanpassen
     memcpy(_pImmediateCmdStackTop, (_programStorage + PROG_MEM_SIZE), IMM_MEM_SIZE);
     ////Serial.print("launch eval: append immModeParsedStatStack - levels = "); Serial.println(immModeCommandStack.getElementCount());////
@@ -3827,7 +3841,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
 
     pEvalParsingInput[strlen(parsingInput)] = term_semicolon[0];
     pEvalParsingInput[strlen(parsingInput) + 1] = '\0';
-    Serial.print("eval string to parse: "); Serial.println(pEvalParsingInput);
+    ////Serial.print("eval string to parse: "); Serial.println(pEvalParsingInput);
 #if printCreateDeleteListHeapObjects
     Serial.print("+++++ (system var str) "); Serial.println((uint32_t)pEvalParsingInput - RAMSTART);
 #endif
@@ -3841,15 +3855,27 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
 
     _parsingEvalString = false;
     if (result != result_tokenFound) {
-        // remove imm.mode parsed statement stack level again because corresponding entry in flow ctrl stack will not be created
-        // before removing, delete any parsed strng constants for that command line
-        deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
+        // remove imm.mode parsed statement stack top level again because corresponding entry in flow ctrl stack will not be created
+        // before removing, delete any parsed string constants for that command line. Note the exception below:
+
+        // if the direct 'caller' of [the statements contained in] the eval() string was either another eval() string OR an immediate mode statement, ...
+        // then the imm. mode parsed statement stack top level currently contains the parsed statements of this 'caller'.
+        // - if the direct 'caller' is another eval() string, the parsed constant contained in it may be deleted - we don't need it any more.
+        // - if the direct 'caller' is an immediate mode statement, parsed constants in it may NOT be deleted, because an error message still needs to be printed
+        // - if the direct 'caller' is a program, the imm. mode parsed statement stack top level contains an empty (immediate mode) program and there are no parsed strings referenced in it.  
+        // -> only delete parsed constants if the caller is an outer eval() function
+
+        if (((OpenFunctionData*)_pFlowCtrlStackTop)->blockType == block_eval) {//// doc. why no delete parsed objects: is main level
+                Serial.println("launch eval() -> delete parsed string objects");
+            deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
+        }
         memcpy((_programStorage + PROG_MEM_SIZE), _pImmediateCmdStackTop, IMM_MEM_SIZE);        // size berekenen
         immModeCommandStack.deleteListElement(_pImmediateCmdStackTop);
         ////Serial.print("launch eval parsing error: delete immModeParsedStatStack - levels = "); Serial.println(immModeCommandStack.getElementCount());////
         _pImmediateCmdStackTop = (char*)immModeCommandStack.getLastListElement();  //// size aanpassen
 
         Serial.print("** eval() parsing error: "); Serial.println(result); //// te gebruiken in error message
+        _evalParseErrorCode = result;       // remember
         return result_eval_parsingError;
     }
 
@@ -4252,6 +4278,7 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateEval() {
 
     // overwrite the parsed 'EVAL' string expressions
     // before removing, delete any parsed strng constants for that command line
+    Serial.println("terminate eval()");
     deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
     memcpy((_programStorage + PROG_MEM_SIZE), _pImmediateCmdStackTop, IMM_MEM_SIZE);        // size berekenen
     immModeCommandStack.deleteListElement(_pImmediateCmdStackTop);

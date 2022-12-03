@@ -100,7 +100,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"Printprog",       cmdcod_printProg,       cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
     {"Printcallstack",  cmdcod_printCallSt,     cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
 
-    {"Loadprog",        cmdcod_loadProg,        cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockNone},
+    {"Receiveprog",     cmdcod_receiveProg,     cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockNone},
 
 
     /* flow control commands */
@@ -408,6 +408,7 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
             #if printCreateDeleteListHeapObjects
                 Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pAnum - RAMSTART);
             #endif
+                Serial.print("DELETE parsed string : ");Serial.print(Serial.print((uint32_t)pAnum - RAMSTART));Serial.print(", "); Serial.println(pAnum);
                 delete[] pAnum;
                 _parsedStringConstObjectCount--;
             }
@@ -460,23 +461,24 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
         }
     }
 
-    // delete parsed alphanumeric constants in program and immediate mode (parsed) statement memory
-    Serial.print("++ deleting parsed strings: current count = "); Serial.println(_parsedStringConstObjectCount);
+    // delete all elements of the immediate mode parsed statements stack
+    // (parsed immediate mode statements can be temporarily pushed on the immediate mode stack to be replaced either by parsed debug command lines or parsed eval() strings) 
+    // also delete all parsed alphanumeric constants: (1) in the currently parsed program program, (2) in parsed immediate mode statements (including those on the imm.mode parsed statements stack)) 
+    
+    clearImmediateCmdStack(immModeCommandStack.getElementCount());      // including parsed string constants
+    ////Serial.print("++ deleting parsed program strings: current count = "); Serial.println(_parsedStringConstObjectCount);
     deleteConstStringObjects(_programStorage);
+    Serial.print("++ deleting parsed imm. mode statement strings: current count = "); Serial.println(_parsedStringConstObjectCount);
     deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
-    Serial.print("++ parsed strings deleted: new count = "); Serial.println(_parsedStringConstObjectCount);
+    Serial.print("++ -> parsed strings deleted: new count = "); Serial.println(_parsedStringConstObjectCount);
 
+    // delete all elements of the flow control stack 
+    // delete all local variable areas referenced in elements of the flow control stack referring to functions, including local variable string and array values
+    int dummy{};
+    clearFlowCtrlStack(dummy);           
 
-    // if parsed immediate mode statements are currently pushed to the immediate mode command stack (debug mode active and / or eval() strings being executed): delete all
-    // before deleting an element, delete parsed alphanumeric constants in the corresponding parsed immediate mode statement  
-    while (immModeCommandStack.getElementCount() != 0) {
-        // copy command line stack top to command line program storage and pop command line stack top
-        _pImmediateCmdStackTop = immModeCommandStack.getLastListElement();
-        memcpy(_programStorage + PROG_MEM_SIZE, _pImmediateCmdStackTop, IMM_MEM_SIZE);
-        immModeCommandStack.deleteListElement(_pImmediateCmdStackTop);
-        Serial.print("reset machine: delete immModeParsedStatStack - levels = "); Serial.println(immModeCommandStack.getElementCount());////
-        deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
-    }
+    // clear expression evaluation stack
+    clearEvalStack();
 
     // delete parsing stack (keeps track of open parentheses and open command blocks during parsing)
     parsingStack.deleteList();
@@ -600,12 +602,10 @@ void Justina_interpreter::initInterpreterVariables(bool withUserVariables) {
     }
     _userCBprocAliasSet_count = 0;   // note: _userCBprocStartSet_count: only reset when starting interpreter
 
-    _programStart = _programStorage + (_programMode ? 0 : PROG_MEM_SIZE);
-    _programSize = (_programMode ? PROG_MEM_SIZE : IMM_MEM_SIZE);
-    _programCounter = _programStart;                          // start of 'immediate mode' program area
+    *_programStorage = '\0';                                                        //  set as current end of program 
+    *(_programStorage + PROG_MEM_SIZE) = '\0';                                      //  set as current end of program (immediate mode)
+    _programCounter = _programStorage + PROG_MEM_SIZE;                          // start of 'immediate mode' program area
 
-    *_programStorage = '\0';                                    //  current end of program 
-    *_programStart = '\0';                                      //  current end of program (immediate mode)
     _programName[0] = '\0';
 
     _pEvalStackTop = nullptr;   _pEvalStackMinus2 = nullptr; _pEvalStackMinus1 = nullptr;
@@ -811,10 +811,8 @@ void Justina_interpreter::parseAndExecTraceString() {
     _pConsole->print("TRACE ==>> ");
     do {
         // init
-        _programStart = _programStorage + PROG_MEM_SIZE;
-        _programSize = (_programMode ? PROG_MEM_SIZE : IMM_MEM_SIZE);
-        _programCounter = _programStart;                          // start of 'immediate mode' program area
-        *_programStart = '\0';          // in case no valid tokens will be stored
+        *(_programStorage + PROG_MEM_SIZE) = '\0';          // in case no valid tokens will be stored
+        _programCounter = _programStorage + PROG_MEM_SIZE;                     // start of 'immediate mode' program area
 
         // skip any spaces and semi-colons in the input stream
         while ((pTraceParsingInput[0] == ' ') || (pTraceParsingInput[0] == term_semicolon[0])) { pTraceParsingInput++; }
@@ -841,7 +839,7 @@ void Justina_interpreter::parseAndExecTraceString() {
         // if parsing went OK: execute ONE parsed expression (just parsed now)
         execResult_type execResult{ result_execOK };
         if (result == result_tokenFound) {
-            execResult = exec(_programStart);        // note: value or exec. error is printed from inside exec()
+            execResult = exec(_programStorage + PROG_MEM_SIZE);        // note: value or exec. error is printed from inside exec()
         }
 
         valuePrinted = true;
@@ -954,7 +952,9 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(
             // if a function returns true, then either proceed OR skip reminder of loop ('continue') if 'result' indicates a token has been found
             // if a function returns false, then break with 'result' containing the error
 
-            if ((_programCounter + sizeof(TokenIsConstant) + 1) > (_programStart + _programSize)) { result = result_progMemoryFull; break; };
+            char* lastProgramByte = _programStorage + PROG_MEM_SIZE + (_programMode ? 0 : IMM_MEM_SIZE) - 1;
+            if ((_programCounter + sizeof(TokenIsConstant) + 1) > lastProgramByte) { result = result_progMemoryFull; break; };
+
             if (!parseAsResWord(pNext, result)) { break; } if (result == result_tokenFound) { break; }             // check before checking for identifier  
             if (!parseTerminalToken(pNext, result)) { break; }  if (result == result_tokenFound) { break; }       // check before checking for number
             if (!parseAsNumber(pNext, result)) { break; }  if (result == result_tokenFound) { break; }
@@ -1036,7 +1036,7 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
     _isStaticVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_static;
     _isForCommand = _resWords[_tokenIndex].resWordCode == cmdcod_for;
     _isDeleteVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_delete;
-    _isLoadProgramCmd = _resWords[_tokenIndex].resWordCode == cmdcod_loadProg;
+    _isLoadProgramCmd = _resWords[_tokenIndex].resWordCode == cmdcod_receiveProg;
 
     _isAnyVarCmd = _isGlobalOrUserVarCmd || _isLocalVarCmd || _isStaticVarCmd;      //  VAR, LOCAL, STATIC
 
@@ -1480,6 +1480,7 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
             if (pSource[0] == '\\') { pSource++; escChars--; }                           // if escape sequences found: skip first escape sequence character (backslash)
             pDestin++[0] = pSource++[0];
         }
+        Serial.print("CREATE parsed string: "); Serial.print(Serial.print((uint32_t)pStringCst - RAMSTART)); Serial.print(", "); Serial.println(pStringCst);
     }
     pNext++;                                                                            // skip closing quote
 
@@ -1535,7 +1536,7 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
     result = result_tokenFound;                                                         // flag 'valid token found'
 
     return true;
-        }
+}
 
 
 // ---------------------------------------------------------------------------------
@@ -1894,7 +1895,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                         staticVarValues[valueIndex].pArray = pArray;
                         staticVarType[_staticVarCount - 1] |= var_isArray;             // set array bit
                     }
-                    }
+                }
 
                 // local arrays (note: NOT for function parameter arrays): set pointer to dimension storage 
                 // the array flag has been set when local variable was created (including function parameters, which are also local variables)
@@ -1909,7 +1910,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                     ((char*)pArray)[i] = arrayDef_dims[i];
                 }
                 ((char*)pArray)[3] = array_dimCounter;        // (note: for param arrays, set to max dimension count during parsing)
-                }
+            }
 
 
             // 2.3 Internal or external function call, or parenthesis pair, closing parenthesis ?
@@ -1993,7 +1994,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
 
             _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
             break;
-            }
+        }
 
 
         case termcod_comma: {
@@ -2258,7 +2259,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             _lastTokenIsPostfixOp = tokenIsPostfixOp;
             _lastTokenIsPrefixIncrDecr = isPrefixIncrDecr;
         }
-        }
+    }
 
     // create token
     // ------------
@@ -2283,7 +2284,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
     *_programCounter = '\0';                                                  // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
-    }
+}
 
 
 // ----------------------------------------------------------------------------
@@ -3073,9 +3074,9 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
             delete[] pIdentifierName;
             _parsedStringConstObjectCount--;
             return false;
-        }
+    }
         strcpy(_callbackUserProcAlias[_userCBprocAliasSet_count++], pIdentifierName);                           // maximum 10 user functions                                   
-        }
+}
 
 
     // expression syntax check 
@@ -3113,7 +3114,7 @@ void Justina_interpreter::prettyPrintInstructions(int instructionCount, char* st
 
     // input: stored tokens
     TokenPointer progCnt;
-    progCnt.pTokenChars = (startToken == nullptr) ? _programStart : startToken;
+    progCnt.pTokenChars = (startToken == nullptr) ? _programStorage + PROG_MEM_SIZE : startToken;
     int tokenType = *progCnt.pTokenChars & 0x0F;
     int lastTokenType = tok_no_token;
     bool lastHasTrailingSpace = false, testForPostfix = false, testForPrefix = false;

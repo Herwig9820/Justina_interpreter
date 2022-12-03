@@ -28,7 +28,7 @@
 
 #include "Justina.h"
 
-#define printCreateDeleteListHeapObjects 1
+#define printCreateDeleteListHeapObjects 0
 #define debugPrint 0
 
 
@@ -83,14 +83,12 @@ char* LinkedList::appendListElement(int size) {
     _listElementCount++;
 
 #if printCreateDeleteListHeapObjects
-    if (_listName[0] == 'e') {
-        Serial.print("(LIST) Create elem # "); Serial.print(_listElementCount);
-        Serial.print(", list ID "); Serial.print(_listID);
-        Serial.print(", stack: "); Serial.print(_listName);
-        if (p == nullptr) { Serial.println("- list elem adres: nullptr"); }
-        else {
-            Serial.print(", list elem address: "); Serial.println((uint32_t)p - RAMSTART);
-        }
+    Serial.print("(LIST) Create elem # "); Serial.print(_listElementCount);
+    Serial.print(", list ID "); Serial.print(_listID);
+    Serial.print(", stack: "); Serial.print(_listName);
+    if (p == nullptr) { Serial.println("- list elem adres: nullptr"); }
+    else {
+        Serial.print(", list elem address: "); Serial.println((uint32_t)p - RAMSTART);
     }
 #endif
     return (char*)(p + 1);                                          // pointer to payload of newly created element
@@ -113,19 +111,17 @@ char* LinkedList::deleteListElement(void* pPayload) {                           
 
 #if printCreateDeleteListHeapObjects
     // determine list element # by counting from the list start
-    if (_listName[0] == 'e') {
-        ListElemHead* q = _pFirstElement;
-        int i{};
-        for (i = 1; i <= _listElementCount; ++i) {
-            if (q == pElem) { break; }            // always a match
-            q = q->pNext;
-        }
-
-        Serial.print("(LIST) Delete elem # "); Serial.print(i); Serial.print(" (new # "); Serial.print(_listElementCount - 1);
-        Serial.print("), list ID "); Serial.print(_listID);
-        Serial.print(", stack: "); Serial.print(_listName);
-        Serial.print(", list elem address: "); Serial.println((uint32_t)pElem - RAMSTART);
+    ListElemHead* q = _pFirstElement;
+    int i{};
+    for (i = 1; i <= _listElementCount; ++i) {
+        if (q == pElem) { break; }            // always a match
+        q = q->pNext;
     }
+
+    Serial.print("(LIST) Delete elem # "); Serial.print(i); Serial.print(" (new # "); Serial.print(_listElementCount - 1);
+    Serial.print("), list ID "); Serial.print(_listID);
+    Serial.print(", stack: "); Serial.print(_listName);
+    Serial.print(", list elem address: "); Serial.println((uint32_t)pElem - RAMSTART);
 #endif
 
     // before deleting object, remove from list:
@@ -354,7 +350,8 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     for (int i = 0; i < 48; i++) { _pConsole->print("*"); } _pConsole->println();
 
     _programMode = false;                                   //// te checken of er dan nog iets moet gereset worden
-    *_programStart = '\0';                                      //  current end of program (immediate mode)
+    _programCounter = _programStorage + PROG_MEM_SIZE;
+    *(_programStorage + PROG_MEM_SIZE) = '\0';                                      //  current end of program (immediate mode)
     _pConsole = pConsole;//// ??? constructor toch ?
     _isPrompt = false;                 // end of parsing
     _pTerminal = pTerminal;
@@ -416,7 +413,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad, bool& endProgramStatementParsed, char c, bool programLoadTimeOut) {
     // process character
     static parseTokenResult_type result{};
-    static bool requestMachineReset{ false };
+    ////static bool requestMachineReset{ false };
     static bool withinStringEscSequence{ false };
     static bool instructionsParsed{ false };
     static bool lastCharWasWhiteSpace{ false };
@@ -441,13 +438,12 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
     if ((c == '\n') && initiateProgramLoad) {
         initiateProgramLoad = false;
         // do not touch program memory itself: there could be a program in it 
-        _programMode = true;
-        _programStart = _programStorage + (_programMode ? 0 : PROG_MEM_SIZE);
-        _programSize = (_programMode ? PROG_MEM_SIZE : IMM_MEM_SIZE);
-        _programCounter = _programStart;                          // start of 'immediate mode' program area
 
         resetMachine(false);
-        requestMachineReset = true;                         // reset machine when parsing starts, not earlier (in case there is a program in memory)
+        ////requestMachineReset = true;                         // reset machine when parsing starts, not earlier (in case there is a program in memory)
+
+        _programMode = true;
+        _programCounter = _programStorage;
 
         _instructionCharCount = 0;
         _lineCount = 0;                             // taking into account new line after 'load program' command ////
@@ -537,11 +533,12 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
     if (instructionComplete && !_quitJustinaAtEOF) {                                                // terminated by a semicolon if not end of input
         _instruction[_instructionCharCount] = '\0';                            // add string terminator
 
-        if (requestMachineReset) {
+        //// niet nodig: reeds na Loadprog; 
+        /*if (requestMachineReset) {
             resetMachine(false);                                // prepare for parsing next program (stay in current mode )
             requestMachineReset = false;
         }
-
+        */
         char* pInstruction = _instruction;                                                 // because passed by reference 
         char* pDummy{};
         _parsingExecutingTraceString = false; _parsingEvalString = false;
@@ -570,7 +567,7 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
                 if (result != result_tokenFound) { _appFlags |= 0x0001L; }              // if parsing error only occurs here, error condition flag can still be set here (signal to caller)
             }
 
-            if (result == result_tokenFound) {            // result could be altered in the meantime
+            if (result == result_tokenFound) {
                 if (!_programMode) {
 
                     // evaluation comes here
@@ -588,6 +585,7 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
             printParsingResult(result, funcNotDefIndex, _instruction, _lineCount, pErrorPos);
         }
         else { _pConsole->println(); }
+
 
         // count of programs in debug:
         // - if an error occured in a RUNNING program, the program is terminated and the number of STOPPED programs ('in debug mode') does not change.
@@ -641,13 +639,13 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
         if (_programMode) {               //// waarschijnlijk aan te passen als LOADPROG cmd implemented (-> steeds vanuit immediate mode)
             // end of file: always back to immediate mode
             // do not touch program memory itself: there could be a program in it 
-            _programMode = false;
 
             // if program parsing error: reset machine, because variable storage is not consistent with program 
             if (result != result_tokenFound) {
                 resetMachine(false);      // message not needed here
                 wasReset = true;
             }
+            if (c = stopProgramParsing) { _programMode = false;  _programCounter = _programStorage + PROG_MEM_SIZE; }
         }
 
         if (_promptAndEcho != 0) { _pConsole->print("Justina> "); _isPrompt = true; }                 // print new prompt
@@ -659,6 +657,7 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
         // in immediate mode
         else {
             // execution finished: delete parsed strings in imm mode command OR in executed trace expressions (they are on the heap and not needed any more). Identifiers must stay avaialble
+            Serial.println("finalizing");
             deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);  // always
             *(_programStorage + PROG_MEM_SIZE) = '\0';                                      //  current end of program (immediate mode)
         }
@@ -668,9 +667,7 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
             _blockLevel = 0;
             _extFunctionBlockOpen = false;
 
-            _programStart = _programStorage + PROG_MEM_SIZE;        // already set immediate mode 
-            _programSize = IMM_MEM_SIZE;
-            _programCounter = _programStart;                        // start of 'immediate mode' program area
+            _programCounter = _programStorage + PROG_MEM_SIZE;                 // start of 'immediate mode' program area
 
         }
 

@@ -176,7 +176,7 @@ public:
         cmdcod_declCB,
         cmdcod_clearCB,
         cmdcod_callback,
-        cmdcod_loadProg,
+        cmdcod_receiveProg,
         cmdcod_test //// test
     };
 
@@ -1102,7 +1102,7 @@ public:
     char* _pEvalString{ nullptr };
     bool _parsingExecutingTraceString{ false };
     bool _parsingEvalString{ false };
-
+    long _evalParseErrorCode{0L};
 
     // counting of heap objects (note: linked list element count is maintained within the linked list objects)
 
@@ -1197,8 +1197,6 @@ public:
 
     // program storage
     char _programStorage[PROG_MEM_SIZE + IMM_MEM_SIZE];
-    char* _programStart{};
-    int  _programSize{  };
 
 
     MyParser* _pmyParser;
@@ -1357,7 +1355,6 @@ public:
     void deleteConstStringObjects(char* pToken);
     void parseAndExecTraceString();
     parseTokenResult_type  parseStatements(char*& pInputLine, char*& pNextParseStatement, bool* initiateProgramLoad = nullptr, bool* endProgramLoad = nullptr);
-    void deleteParsedData();
     bool allExternalFunctionsDefined(int& index);
     void prettyPrintInstructions(int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
     void printParsingResult(parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* const pErrorPos);
@@ -1404,7 +1401,6 @@ public:
     void clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, execResult_type execResult = result_execOK, bool debugModeError = false);
     void clearImmediateCmdStack(int n);
 
-    execResult_type makeFormatString();
     execResult_type deleteVarStringObject(LE_evalStack* pStackLvl);
     execResult_type deleteIntermStringObject(LE_evalStack* pStackLvl);
 
@@ -1416,43 +1412,10 @@ public:
     int jumpTokens(int n);
 
     void pushTerminalToken(int& tokenType);
-    void pushResWord(int& tokenType);
     void pushFunctionName(int& tokenType);
     void pushGenericName(int& tokenType);
     void pushConstant(int& tokenType);
     void pushVariable(int& tokenType);
-    void pushIdentifierName(int& tokenType);
 };
-
-
-/***********************************************************
-*                       class MyParser                     *
-*             parse character string into tokens           *
-***********************************************************/
-
-class MyParser {//// naming
-
-    // --------------------
-    // *   enumerations   *
-    // --------------------
-
-    // -----------------
-    // *   constants   *
-    // -----------------
-
-    // -----------------
-    // *   variables   *
-    // -----------------
-
-
-    // ------------------------------------
-    // *   methods (doc: see .cpp file)   *
-    // ------------------------------------
-
-public:
-
-
-};
-
 
 #endif
