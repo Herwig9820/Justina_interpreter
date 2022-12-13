@@ -346,10 +346,10 @@ void housekeeping(bool& requestQuit, long& appFlags) {
 
     heartbeat();                                                                        // blink a led to show program is running
 
-    if (errorCondition ^ (appFlags & 0x0001L)) { errorCondition = (appFlags & 0x0001L);  digitalWrite(ERROR_PIN, errorCondition); }  // only write if change detected
-    if (statusA ^ (appFlags & 0x0010L)) { statusA = (appFlags & 0x0010L);  digitalWrite(STATUS_A_PIN, statusA); }  // only write if change detected
-    if (statusB ^ (appFlags & 0x0020L)) { statusB = (appFlags & 0x0020L);  digitalWrite(STATUS_B_PIN, statusB); }  // only write if change detected
-    if (waitingForUser ^ (appFlags & 0x0040L)) { waitingForUser = (appFlags & 0x0040L);  digitalWrite(WAIT_FOR_USER_PIN, waitingForUser); }  // only write if change detected
+    if (errorCondition ^ (appFlags & Justina_interpreter:: appFlag_errorConditionBit)) { errorCondition = (appFlags & Justina_interpreter::appFlag_errorConditionBit);  digitalWrite(ERROR_PIN, errorCondition); }  // only write if change detected
+    if (statusA ^ (appFlags & Justina_interpreter::appFlag_statusAbit)) { statusA = (appFlags & Justina_interpreter::appFlag_statusAbit);  digitalWrite(STATUS_A_PIN, statusA); }  // only write if change detected
+    if (statusB ^ (appFlags & Justina_interpreter::appFlag_statusBbit)) { statusB = (appFlags & Justina_interpreter::appFlag_statusBbit);  digitalWrite(STATUS_B_PIN, statusB); }  // only write if change detected
+    if (waitingForUser ^ (appFlags & Justina_interpreter::appFlag_waitingForUser)) { waitingForUser = (appFlags & Justina_interpreter::appFlag_waitingForUser);  digitalWrite(WAIT_FOR_USER_PIN, waitingForUser); }  // only write if change detected
 
 
     //// test 'force quit' vanuit main: 
@@ -464,7 +464,7 @@ void userFcn_readPort(const void** pdata, const char* valueType) {     // data: 
         else if (isFloat) { pFloat = (float*)pdata[i]; }                                // copy a pointer to a float argument
         else { pText = (char*)pdata[i]; }                                               // copy a pointer to a character string argument
 
-        // change data (is safe -> after return, will have No effect for constants) - you can always check here for variable / constant (see above)
+        // change data (is safe -> after return, will have no effect for constants) - you can always check here for variable / constant (see above)
         if (isLong) { *pLong += 10+i; }
         else if (isFloat) { *pFloat += 10.+i; }
         else {

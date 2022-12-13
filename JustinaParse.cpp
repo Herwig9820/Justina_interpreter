@@ -28,7 +28,7 @@
 
 #include "Justina.h"
 
-#define printCreateDeleteListHeapObjects 0
+#define printCreateDeleteListHeapObjects 1
 #define printParsedTokens 0
 #define debugPrint 0
 
@@ -396,19 +396,21 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
     uint8_t tokenType = *prgmCnt.pTokenChars & 0x0F;
     ////Serial.print("   start address: "); Serial.println(pFirstToken - _programStorage);
     while (tokenType != '\0') {                                                                    // for all tokens in token list
-        ////Serial.print(prgmCnt.pTokenChars - _programStorage); Serial.print(" - "); Serial.println((int)tokenType);////
         bool isStringConst = (tokenType == tok_isConstant) ? (((*prgmCnt.pTokenChars >> 4) & value_typeMask) == value_isStringPointer) : false;
 
         ////Serial.print("   token type: "); Serial.println(tokenType);
 
         if (isStringConst || (tokenType == tok_isGenericName)) {
+            Serial.println();Serial.print(prgmCnt.pTokenChars - _programStorage); Serial.print(" <- token address - token type-> "); Serial.println((int)tokenType);////
+
             ////Serial.print("is string cst: "); Serial.println(isStringConst);
             memcpy(&pAnum, prgmCnt.pCstToken->cstValue.pStringConst, sizeof(pAnum));                         // pointer not necessarily aligned with word size: copy memory instead
             if (pAnum != nullptr) {
             #if printCreateDeleteListHeapObjects
-                Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pAnum - RAMSTART);
+                ////Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pAnum - RAMSTART);
+                Serial.print("----- (parsed str ) ");   Serial.print((uint32_t)pAnum - RAMSTART); Serial.print(", "); Serial.println(pAnum);
             #endif
-                Serial.print("DELETE parsed string : ");Serial.print(Serial.print((uint32_t)pAnum - RAMSTART));Serial.print(", "); Serial.println(pAnum);
+                ////Serial.print("DELETE parsed string : ");Serial.print(Serial.print((uint32_t)pAnum - RAMSTART));Serial.print(", "); Serial.println(pAnum);
                 delete[] pAnum;
                 _parsedStringConstObjectCount--;
             }
@@ -464,18 +466,17 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
     // delete all elements of the immediate mode parsed statements stack
     // (parsed immediate mode statements can be temporarily pushed on the immediate mode stack to be replaced either by parsed debug command lines or parsed eval() strings) 
     // also delete all parsed alphanumeric constants: (1) in the currently parsed program program, (2) in parsed immediate mode statements (including those on the imm.mode parsed statements stack)) 
-    
+
+    Serial.println("** reset: clear parsed strings in immediate command stack");
     clearImmediateCmdStack(immModeCommandStack.getElementCount());      // including parsed string constants
-    ////Serial.print("++ deleting parsed program strings: current count = "); Serial.println(_parsedStringConstObjectCount);
     deleteConstStringObjects(_programStorage);
-    Serial.print("++ deleting parsed imm. mode statement strings: current count = "); Serial.println(_parsedStringConstObjectCount);
+    Serial.println("** reset: clear parsed strings");
     deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
-    Serial.print("++ -> parsed strings deleted: new count = "); Serial.println(_parsedStringConstObjectCount);
 
     // delete all elements of the flow control stack 
-    // delete all local variable areas referenced in elements of the flow control stack referring to functions, including local variable string and array values
+    // in the process, delete all local variable areas referenced in elements of the flow control stack referring to functions, including local variable string and array values
     int dummy{};
-    clearFlowCtrlStack(dummy);           
+    clearFlowCtrlStack(dummy);
 
     // clear expression evaluation stack
     clearEvalStack();
@@ -611,10 +612,12 @@ void Justina_interpreter::initInterpreterVariables(bool withUserVariables) {
     _pEvalStackTop = nullptr;   _pEvalStackMinus2 = nullptr; _pEvalStackMinus1 = nullptr;
     _pFlowCtrlStackTop = nullptr;   _pFlowCtrlStackMinus2 = nullptr; _pFlowCtrlStackMinus1 = nullptr;
     _pImmediateCmdStackTop = nullptr;
+    
     _intermediateStringObjectCount = 0;      // reset at the start of execution
     _localVarValueAreaCount = 0;
     _localVarStringObjectCount = 0;
     _localArrayObjectCount = 0;
+    
     _activeFunctionData.callerEvalStackLevels = 0;          // this is the highest program level
     _callStackDepth = 0;                                            // equals flow control stack depth minus open loop (if, for, ...) blocks (= blocks being executed)
     _openDebugLevels = 0;                                           // equals imm mode cmd stack depth minus open eval() strings (= eval() strings being executed)
@@ -643,16 +646,16 @@ void Justina_interpreter::initInterpreterVariables(bool withUserVariables) {
     // -------------------------------------------------------------------------------------------
 
     // calculation result print format
-    _dispWidth = _defaultPrintWidth, _dispNumPrecision = _defaultNumPrecision;
-    _dispCharsToPrint = _defaultCharsToPrint; _dispFmtFlags = _defaultPrintFlags;
+    _dispWidth = DEFAULT_PRINT_WIDTH, _dispNumPrecision = DEFAULT_NUM_PRECISION;
+    _dispCharsToPrint = DEFAULT_STRCHAR_TO_PRINT; _dispFmtFlags = _defaultPrintFlags;
     _dispNumSpecifier[0] = 'G'; _dispNumSpecifier[1] = '\0';
     _dispIsIntFmt = false;
     makeFormatString(_dispFmtFlags, false, _dispNumSpecifier, _dispNumberFmtString);       // for numbers
     strcpy(_dispStringFmtString, "%*.*s%n");                                                           // for strings
 
     // print command argument format
-    _printWidth = _defaultPrintWidth, _printNumPrecision = _defaultNumPrecision;
-    _printCharsToPrint = _defaultCharsToPrint, _printFmtFlags = _defaultPrintFlags;
+    _printWidth = DEFAULT_PRINT_WIDTH, _printNumPrecision = DEFAULT_NUM_PRECISION;
+    _printCharsToPrint = DEFAULT_STRCHAR_TO_PRINT, _printFmtFlags = _defaultPrintFlags;
     _printNumSpecifier[0] = 'G'; _printNumSpecifier[1] = '\0';
 
     // display output settings
@@ -686,7 +689,7 @@ int Justina_interpreter::getIdentifier(char** pIdentNameArray, int& identifiersI
 
     if (createNewName) {
         if (identifiersInUse == maxIdentifiers) { return index; }                // create identifier name failed: return -1 with createNewName = true
-        pIdentifierName = new char[_maxIdentifierNameLen + 1 + 1];                      // create standard length char array on the heap, including '\0' and an extra character 
+        pIdentifierName = new char[MAX_IDENT_NAME_LEN + 1 + 1];                      // create standard length char array on the heap, including '\0' and an extra character 
         isUserVar ? _userVarNameStringObjectCount++ : _identifierNameStringObjectCount++;
     #if printCreateDeleteListHeapObjects
         Serial.print(isUserVar ? "+++++ (usrvar name) " : "+++++ (ident name ) "); Serial.println((uint32_t)pIdentifierName - RAMSTART);
@@ -864,8 +867,8 @@ void Justina_interpreter::parseAndExecTraceString() {
 // ----------------------------------------------------------------------------------------------------------------------
 
 Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(char*& pInputStart, char*& pNextParseStatement, bool* initiateProgramLoad, bool* endProgramLoad) {
-    _appFlags &= ~0x0001L;              // clear error condition flag 
-    _appFlags = (_appFlags & ~0x0030L) | 0x0010L;     // set bits b54 to 01: parsing
+    _appFlags &= ~appFlag_errorConditionBit;              // clear error condition flag 
+    _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_parsing;     // set bits b54 to 01: parsing
 
     _lastTokenType_hold = tok_no_token;
     _lastTokenType = tok_no_token;                                                      // no token yet
@@ -1006,8 +1009,8 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(
     }
 
     pInputStart = pNext;                                                                // set to next character (if error: indicates error position)
-    (result == result_tokenFound) ? _appFlags &= ~0x0001L : _appFlags |= 0x0001L;              // clear or set error condition flag 
-    _appFlags = (_appFlags & ~0x0030L);     // clear bits b54: parsing ended
+    (result == result_tokenFound) ? _appFlags &= ~appFlag_errorConditionBit : _appFlags |= appFlag_errorConditionBit;              // clear or set error condition flag 
+    _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_idle;     // clear bits b54: parsing ended
 
     return result;
 }
@@ -1462,7 +1465,7 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
     };
 
     // if alphanumeric constant is too long, reset pointer to first character to parse, indicate error and return
-    if (pNext - (pch + 1) - escChars > _maxAlphaCstLen) { pNext = pch; result = result_alphaConstTooLong; return false; }
+    if (pNext - (pch + 1) - escChars > MAX_ALPHA_CONST_LEN) { pNext = pch; result = result_alphaConstTooLong; return false; }
 
     char* pStringCst = nullptr;                 // init: is empty string (prevent creating a string object to conserve memory)
     if (pNext - (pch + 1) - escChars > 0) {    // not an empty string: create string object 
@@ -1471,7 +1474,7 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
         pStringCst = new char[pNext - (pch + 1) - escChars + 1];                                // create char array on the heap to store alphanumeric constant, including terminating '\0'
         _parsedStringConstObjectCount++;
     #if printCreateDeleteListHeapObjects
-        Serial.print("+++++ (parsed str ) "); Serial.println((uint32_t)pStringCst - RAMSTART);
+        ////Serial.print("+++++ (parsed str ) "); Serial.println((uint32_t)pStringCst - RAMSTART);
     #endif
         // store alphanumeric constant in newly created character array
         pStringCst[pNext - (pch + 1) - escChars] = '\0';                                 // store string terminating '\0' (pch + 1 points to character after opening quote, pNext points to closing quote)
@@ -1480,7 +1483,8 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
             if (pSource[0] == '\\') { pSource++; escChars--; }                           // if escape sequences found: skip first escape sequence character (backslash)
             pDestin++[0] = pSource++[0];
         }
-        Serial.print("CREATE parsed string: "); Serial.print(Serial.print((uint32_t)pStringCst - RAMSTART)); Serial.print(", "); Serial.println(pStringCst);
+        Serial.print("+++++ (parsed str ) ");   Serial.print((uint32_t)pStringCst - RAMSTART); Serial.print(", "); Serial.println(pStringCst);
+        ////Serial.print("CREATE parsed string: "); Serial.print(Serial.print((uint32_t)pStringCst - RAMSTART)); Serial.print(", "); Serial.println(pStringCst);
     }
     pNext++;                                                                            // skip closing quote
 
@@ -1568,6 +1572,7 @@ bool Justina_interpreter::checkArrayDimCountAndSize(parseTokenResult_type& resul
     }
 
     if (l < 1) { result = result_arrayDefNegativeDim; return false; }
+    if (l > 255) { result = result_arrayDefDimTooLarge; return false; }
     arrayDef_dims[dimCnt - 1] = l;
     int arrayElements = 1;
     for (int cnt = 0; cnt < dimCnt; cnt++) { arrayElements *= arrayDef_dims[cnt]; }
@@ -1825,7 +1830,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
 
                     int funcIndex = _pParsingStack->openPar.identifierIndex;            // note: also stored in stack for FUNCTION definition block level; here we can pick one of both
                     // if previous calls, check if range of actual argument counts that occured in previous calls corresponds to mandatory and optional arguments defined now
-                    bool previousCalls = (extFunctionNames[funcIndex][_maxIdentifierNameLen + 1]) != c_extFunctionFirstOccurFlag;
+                    bool previousCalls = (extFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1]) != c_extFunctionFirstOccurFlag;
                     if (previousCalls) {                                                      // stack contains current range of actual args occured in previous calls
                         if (((int)_pParsingStack->openPar.minArgs < extFunctionDef_minArgCounter) ||
                             (int)_pParsingStack->openPar.maxArgs > extFunctionDef_maxArgCounter) {
@@ -1835,7 +1840,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
 
                     // store min required & max allowed n� of arguments in identifier storage
                     // this replaces the range of actual argument counts that occured in previous calls (if any)
-                    extFunctionNames[funcIndex][_maxIdentifierNameLen + 1] = (extFunctionDef_minArgCounter << 4) | (extFunctionDef_maxArgCounter);
+                    extFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1] = (extFunctionDef_minArgCounter << 4) | (extFunctionDef_maxArgCounter);
 
                     // check that order of arrays and scalar variables is consistent with previous callsand function definition
                     if (!checkExternFuncArgArrayPattern(result, true)) { pNext = pch; return false; };       // verify that the order of scalar and array parameters is consistent with arguments
@@ -1843,8 +1848,8 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             }
 
 
-            // 2.2 Array definition dimension spec closing parenthesis ?
-            // ---------------------------------------------------------
+            // 2.2 Array definition closing parenthesis ?
+            // ------------------------------------------
 
             else if (_isAnyVarCmd) {                        // note: parenthesis level is 1 (because no inner parenthesis allowed)
                 if (!checkArrayDimCountAndSize(result, arrayDef_dims, array_dimCounter)) { pNext = pch; return false; }
@@ -1931,10 +1936,10 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                     // if at least one previous call (maybe a nested call) is completely parsed, retrieve current range of actual args that occured in these previous calls
                     // and update this range with the argument count of the current external function call that is at its closing parenthesis
                     int funcIndex = _pParsingStack->openPar.identifierIndex;            // of current function call: stored in stack for current PARENTHESIS level
-                    bool prevExtFuncCompletelyParsed = (extFunctionNames[funcIndex][_maxIdentifierNameLen + 1]) != c_extFunctionFirstOccurFlag;
+                    bool prevExtFuncCompletelyParsed = (extFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1]) != c_extFunctionFirstOccurFlag;
                     if (prevExtFuncCompletelyParsed) {
-                        _pParsingStack->openPar.minArgs = ((extFunctionNames[funcIndex][_maxIdentifierNameLen + 1]) >> 4) & 0x0F;
-                        _pParsingStack->openPar.maxArgs = (extFunctionNames[funcIndex][_maxIdentifierNameLen + 1]) & 0x0F;
+                        _pParsingStack->openPar.minArgs = ((extFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1]) >> 4) & 0x0F;
+                        _pParsingStack->openPar.maxArgs = (extFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1]) & 0x0F;
                         if ((int)_pParsingStack->openPar.minArgs > actualArgs) { _pParsingStack->openPar.minArgs = actualArgs; }
                         if ((int)_pParsingStack->openPar.maxArgs < actualArgs) { _pParsingStack->openPar.maxArgs = actualArgs; }
                     }
@@ -1942,7 +1947,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                     else { _pParsingStack->openPar.minArgs = actualArgs; _pParsingStack->openPar.maxArgs = actualArgs; }
 
                     // store the up to date range of actual argument counts in identifier storage
-                    extFunctionNames[funcIndex][_maxIdentifierNameLen + 1] = (_pParsingStack->openPar.minArgs << 4) | (_pParsingStack->openPar.maxArgs);
+                    extFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1] = (_pParsingStack->openPar.minArgs << 4) | (_pParsingStack->openPar.maxArgs);
                 }
 
                 // if call to previously defined external function, to an internal function, or if open parenthesis, then check argument count 
@@ -2404,7 +2409,7 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
     if (!tokenAllowed) { pNext = pch; result = result_functionNotAllowedHere; return false; ; }
 
     // if function name is too long, reset pointer to first character to parse, indicate error and return
-    if (pNext - pch > _maxIdentifierNameLen) { pNext = pch; result = result_identifierTooLong;  return false; }
+    if (pNext - pch > MAX_IDENT_NAME_LEN) { pNext = pch; result = result_identifierTooLong;  return false; }
 
     createNewName = false;                                                              // only check if function is defined, do NOT YET create storage for it
     index = getIdentifier(extFunctionNames, _extFunctionCount, MAX_EXT_FUNCS, pch, pNext - pch, createNewName);
@@ -2443,7 +2448,7 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
     char* funcName = extFunctionNames[index];                                    // either new or existing function name
     if (createNewName) {                                                                      // new function name
         // init max (bits 7654) & min (bits 3210) allowed n� OR actual n� of arguments; store in last position (behind string terminating character)
-        funcName[_maxIdentifierNameLen + 1] = c_extFunctionFirstOccurFlag;                          // max (bits 7654) < (bits 3210): indicates value is not yet updated by parsing previous calls closing parenthesis
+        funcName[MAX_IDENT_NAME_LEN + 1] = c_extFunctionFirstOccurFlag;                          // max (bits 7654) < (bits 3210): indicates value is not yet updated by parsing previous calls closing parenthesis
         extFunctionData[index].pExtFunctionStartToken = nullptr;                      // initialize. Pointer will be set when function definition is parsed (checked further down)
         extFunctionData[index].paramIsArrayPattern[1] = 0x80;                        // set flag to indicate a new function name is parsed (definition or call)
         extFunctionData[index].paramIsArrayPattern[0] = 0x00;                        // boundary alignment 
@@ -2484,8 +2489,8 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
     // if function was defined prior to this occurence (which is then a call), retrieve min & max allowed arguments for checking actual argument count
     // if function not yet defined: retrieve current state of min & max of actual argument count found in COMPLETELY PARSED previous calls to same function 
     // if no previous occurences at all: data is not yet initialized (which is ok)
-    _minFunctionArgs = ((funcName[_maxIdentifierNameLen + 1]) >> 4) & 0x0F;         // use only for passing to parsing stack
-    _maxFunctionArgs = (funcName[_maxIdentifierNameLen + 1]) & 0x0F;
+    _minFunctionArgs = ((funcName[MAX_IDENT_NAME_LEN + 1]) >> 4) & 0x0F;         // use only for passing to parsing stack
+    _maxFunctionArgs = (funcName[MAX_IDENT_NAME_LEN + 1]) & 0x0F;
     _functionIndex = index;
 
     // expression syntax check 
@@ -2580,7 +2585,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     if (_isAnyVarCmd && (_parenthesisLevel > 0)) { pNext = pch; result = result_variableNotAllowedHere; return false; }
 
     // if variable name is too long, reset pointer to first character to parse, indicate error and return
-    if (pNext - pch > _maxIdentifierNameLen) { pNext = pch; result = result_identifierTooLong;  return false; }
+    if (pNext - pch > MAX_IDENT_NAME_LEN) { pNext = pch; result = result_identifierTooLong;  return false; }
 
     // name already in use as external function name ?
     bool createNewName{ false };
@@ -3046,16 +3051,17 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
     if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2_0)) { pNext = pch; result = result_identifierNotAllowedHere; return false; }
 
     // if variable name is too long, reset pointer to first character to parse, indicate error and return
-    if (pNext - pch > _maxIdentifierNameLen) { pNext = pch; result = result_identifierTooLong;  return false; }
+    if (pNext - pch > MAX_IDENT_NAME_LEN) { pNext = pch; result = result_identifierTooLong;  return false; }
 
     // token is an identifier name, and it's allowed here
     char* pIdentifierName = new char[pNext - pch + 1];                    // create char array on the heap to store identifier name, including terminating '\0'
     _parsedStringConstObjectCount++;
 #if printCreateDeleteListHeapObjects
-    Serial.print("+++++ (parsed str ) "); Serial.println((uint32_t)pIdentifierName - RAMSTART);
+    ////Serial.print("+++++ (parsed str ) "); Serial.println((uint32_t)pIdentifierName - RAMSTART);
 #endif
     strncpy(pIdentifierName, pch, pNext - pch);                            // store identifier name in newly created character array
     pIdentifierName[pNext - pch] = '\0';                                                 // string terminating '\0'
+    Serial.print("+++++ (parsed str ) ");   Serial.print((uint32_t)pIdentifierName - RAMSTART); Serial.print(", "); Serial.println(pIdentifierName);
 
     // Declaring program name or aliases ? Store 
     if (_isProgramCmd) {
@@ -3074,9 +3080,9 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
             delete[] pIdentifierName;
             _parsedStringConstObjectCount--;
             return false;
-    }
+        }
         strcpy(_callbackUserProcAlias[_userCBprocAliasSet_count++], pIdentifierName);                           // maximum 10 user functions                                   
-}
+    }
 
 
     // expression syntax check 
@@ -3104,7 +3110,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
     *_programCounter = '\0';                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
-    }
+}
 
 
 // -----------------------------------------
@@ -3139,7 +3145,9 @@ void Justina_interpreter::prettyPrintInstructions(int instructionCount, char* st
         bool hasTrailingSpace = false;
         bool isSemicolon = false;
 
-        char prettyToken[maxCharsPrettyToken] = "";
+        char prettyToken[maxCharsPrettyToken] = "";         // used for all tokens except string values
+        char* pPrettyToken{ prettyToken };                  // init: for all tokens except string values
+        bool tempStringCreated{ false };                    // init: for all tokens except string values
 
         switch (tokenType) {
             case tok_isReservedWord:
@@ -3210,8 +3218,14 @@ void Justina_interpreter::prettyPrintInstructions(int instructionCount, char* st
             case tok_isGenericName:
             {
                 char* pAnum{ nullptr };
-                memcpy(&pAnum, progCnt.pCstToken->cstValue.pStringConst, sizeof(pAnum));                         // pointer not necessarily aligned with word size: copy memory instead
-                sprintf(prettyToken, (testNextForPostfix ? "\"%s\"" : "%s "), (pAnum == nullptr) ? "" : pAnum);
+                memcpy(&pAnum, progCnt.pCstToken->cstValue.pStringConst, sizeof(pAnum));                         // copy pointer, not string (not necessarily aligned with word size: copy memory instead)
+
+                if (testNextForPostfix) {  // string constant and NOT a generic name ?
+                    tempStringCreated = expandStringBackslashSequences(pAnum);          // returns pointer to either original string or temp. string created on the heap 
+                }
+
+                if (tempStringCreated) { pPrettyToken = pAnum; }        // now pointing to temp string (only if occurences of \ or " found); string terminating " characters added 
+                else { sprintf(prettyToken, (testNextForPostfix ? "\"%s\"" : "%s "), (pAnum == nullptr) ? "" : pAnum); }
                 hasTrailingSpace = !testNextForPostfix;
 
                 break;
@@ -3274,14 +3288,16 @@ void Justina_interpreter::prettyPrintInstructions(int instructionCount, char* st
         // if not printing all instructions, then limit output, but always print the first instruction in full
         if (!allInstructions && !isFirstInstruction && (outputLength > maxOutputLength)) { break; }
 
-        int tokenSourceLength = strlen(prettyToken);
+        int tokenSourceLength = strlen(pPrettyToken);
         if (isSemicolon) {
-            if (multipleInstructions && isFirstInstruction) { prettyToken[1] = '\0'; }  // no space after semicolon
-            if ((nextTokenType != tok_no_token) && (allInstructions || (instructionCount > 1))) { _pConsole->print(prettyToken); }
+            if (multipleInstructions && isFirstInstruction) { pPrettyToken[1] = '\0'; }  // no space after semicolon
+            if ((nextTokenType != tok_no_token) && (allInstructions || (instructionCount > 1))) { _pConsole->print(pPrettyToken); }
             if (isFirstInstruction && multipleInstructions) { _pConsole->print("]   ( ==>> "); }
         }
 
-        else { _pConsole->print(prettyToken); }              // not a semicolon
+        else { _pConsole->print(pPrettyToken); }              // not a semicolon
+
+        if (tempStringCreated) { delete[] pPrettyToken; }
 
         // if printing a fixed number of instructions, return output error position based on token where execution error was produced
         if (!allInstructions) {
@@ -3314,15 +3330,53 @@ void Justina_interpreter::prettyPrintInstructions(int instructionCount, char* st
 }
 
 
+// -------------------------------------------
+// *   expand backslash sequence in string   *
+// -------------------------------------------
+
+// note: this routine may create a character string on the heap; it must be deleted afterwards
+
+bool Justina_interpreter::expandStringBackslashSequences(char*& stringValue) {
+    if (stringValue == nullptr) { return false; }     // empty string ? return false: no heap character string created
+
+    int occurences{ 0 };                   // count '\' and '"' characters within string
+    char* pos = stringValue;
+    do { pos = strpbrk(pos, "\\\""); if (pos != nullptr) { ++occurences; } } while (pos++ != nullptr);
+    if (occurences == 0) { return false; }     // false: no heap character string created
+
+    char* output = new char[strlen(stringValue) + occurences + 2 + 1];       // provide room for expanded \ and " characters, 2 string terminating " and terminator
+    output[0] = '"';                                                          // add starting string terminator
+    char* newPos = pos = stringValue;
+
+    char* destinPos = output + 1;
+
+    for (int i = 1; i <= occurences; ++i) {
+        newPos = strpbrk(pos, "\\\"");      // always match
+        int len = newPos - pos;             // if zero, first character is \ or "
+        if (len > 0) { memcpy(destinPos, pos, len);  destinPos += len; }          // copy characters before found \ or " character 
+        destinPos[0] = '\\'; destinPos[1] = newPos[0];  destinPos += 2;
+        newPos++;
+        pos = newPos;
+    }
+
+    strcpy(destinPos, pos);     // remainder of string
+    output[strlen(stringValue) + occurences + 2 - 1] = '"';
+    output[strlen(stringValue) + occurences + 2] = '\0';
+    stringValue = output;
+    return true;            // true: a heap character string has been created
+}
+
+
 // ----------------------------
 // *   print parsing result   *
 // ----------------------------
 
 void Justina_interpreter::printParsingResult(parseTokenResult_type result, int funcNotDefIndex, char* const pInstruction, int lineCount, char* const pErrorPos) {
 
-    char parsingInfo[_maxInstructionChars];
+    char parsingInfo[100 + MAX_IDENT_NAME_LEN] = "";       // provide sufficient room for longest possible message (int: no OK message in immediate mode)
     if (result == result_tokenFound) {                                                // prepare message with parsing result
-        strcpy(parsingInfo, _programMode ? "Program parsed without errors" : "");
+        if (_programMode) { 
+        sprintf(parsingInfo, "Program parsed without errors. %ld %% of program memory used", (long) (((_lastProgramStep - _programStorage +1) * 100) / PROG_MEM_SIZE  )); }
     }
 
     else  if ((result == result_undefinedFunctionOrArray) && _programMode) {     // in program mode only 

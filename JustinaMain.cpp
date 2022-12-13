@@ -276,13 +276,6 @@ Justina_interpreter::Justina_interpreter(Stream* const pConsole) : _pConsole(pCo
     flowCtrlStack.setListName("flowCtrl");
     immModeCommandStack.setListName("cmd line");
 
-    // purely execution related counters
-    _intermediateStringObjectCount = 0;
-    _localVarValueAreaCount = 0;
-    _localVarStringObjectCount = 0;
-    _localArrayObjectCount = 0;
-
-
     // initialize interpreter object fields
     // ------------------------------------
 
@@ -373,11 +366,6 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 
         bool readCharWindowExpired = (_programMode && timeOutEnabled && (startWaitForReadTime + 200L < millis()));        // only while parsing a program
 
-
-
-
-
-
         if ((_pConsole->available() > 0) || endProgramReached || readCharWindowExpired) {     // if terminal character available for reading, or 'end program' reached
             if (_pConsole->available() > 0) {     // terminal character available for reading ?
                 c = _pConsole->read();
@@ -395,7 +383,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 
     } while (true);
 
-    _appFlags = 0x0000L;
+    _appFlags = 0x0000L;                            // clear all application flags
     _housekeepingCallback(quitNow, _appFlags);      // only to pass application flags to caller
 
     if (kill) { _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
@@ -510,7 +498,7 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
         }
 
         // less than 3 positions available in buffer: discard character (keep 2 free positions to add optional ';' and for terminating '\0')  
-        if ((_instructionCharCount <= _maxInstructionChars - 3) && !isEndOfFile && !redundantSpaces && !redundantSemiColon && !withinComment) {
+        if ((_instructionCharCount <= MAX_STATEMENT_LEN - 3) && !isEndOfFile && !redundantSpaces && !redundantSemiColon && !withinComment) {
             _instruction[_instructionCharCount] = c;                               // still room: add character
             _instructionCharCount++;
         }
@@ -533,12 +521,6 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
     if (instructionComplete && !_quitJustinaAtEOF) {                                                // terminated by a semicolon if not end of input
         _instruction[_instructionCharCount] = '\0';                            // add string terminator
 
-        //// niet nodig: reeds na Loadprog; 
-        /*if (requestMachineReset) {
-            resetMachine(false);                                // prepare for parsing next program (stay in current mode )
-            requestMachineReset = false;
-        }
-        */
         char* pInstruction = _instruction;                                                 // because passed by reference 
         char* pDummy{};
         _parsingExecutingTraceString = false; _parsingEvalString = false;
@@ -564,9 +546,12 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
                 if (_programMode && (!allExternalFunctionsDefined(funcNotDefIndex))) { result = result_undefinedFunctionOrArray; }
                 if (_blockLevel > 0) { result = result_noBlockEnd; }
 
-                if (result != result_tokenFound) { _appFlags |= 0x0001L; }              // if parsing error only occurs here, error condition flag can still be set here (signal to caller)
+                if (result != result_tokenFound) { _appFlags |= appFlag_errorConditionBit; }              // if parsing error only occurs here, error condition flag can still be set here (signal to caller)
             }
 
+            (_programMode ? _lastProgramStep : _lastUserCmdStep) = ((result == result_tokenFound) ? _programCounter : nullptr);    // if parsing error, store nullptr as last token position
+
+            Serial.print("\r\n== last program step: "); Serial.println(_lastUserCmdStep - _programStorage);
             if (result == result_tokenFound) {
                 if (!_programMode) {
 
@@ -581,6 +566,7 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
                 }
             }
 
+            ////if(_programMode){Serial.println(_lastProgramStep- _programStorage); }////
             // parsing OK message (program mode only - no message in immediate mode) or error message 
             printParsingResult(result, funcNotDefIndex, _instruction, _lineCount, pErrorPos);
         }
@@ -632,7 +618,8 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
             }
         }
 
-        (_openDebugLevels > 0) ? (_appFlags |= 0x0030L) : (_appFlags &= ~0x0030L);     // signal 'debug mode' to caller
+        (_appFlags &= ~appFlag_statusMask);
+        (_openDebugLevels > 0) ? (_appFlags |= appFlag_stoppedInDebug) : (_appFlags |= appFlag_idle);     // signal 'debug mode' or 'idle' to caller
 
 
         bool wasReset = false;      // init
@@ -657,7 +644,7 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
         // in immediate mode
         else {
             // execution finished: delete parsed strings in imm mode command OR in executed trace expressions (they are on the heap and not needed any more). Identifiers must stay avaialble
-            Serial.println("finalizing");
+            Serial.println("** finalizing - after prompt");
             deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);  // always
             *(_programStorage + PROG_MEM_SIZE) = '\0';                                      //  current end of program (immediate mode)
         }

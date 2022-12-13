@@ -36,7 +36,7 @@
 #define ProductName "Justina: JUST an INterpreter for Arduino"
 #define LegalCopyright "Copyright (C) Herwig Taveirne, 2022"
 #define ProductVersion "1.0.1"
-#define BuildDate "July 25, 2022"
+#define BuildDate "December 8, 2022"
 
 
 // ******************************************************************
@@ -53,7 +53,6 @@ class LinkedList {
 
     static const int listNameSize = 9;             // including terminating '\0'
 
-public:
 
     enum listType_type {                                       // identifier type
         list_isToken,
@@ -67,7 +66,6 @@ public:
     // *   structures   *
     // ------------------
 
-public:
 
     struct ListElemHead {                                        // list element structure (fixed length for all data types)
         ListElemHead* pNext;                                     // pointer to next list element
@@ -88,9 +86,7 @@ public:
     int _listElementCount{ 0 };                                // list element count (currently not used)
     listType_type _listType{};
 
-private:
     char _listName[listNameSize] = "";                                         // includes terminating '\0'
-public:
     int _listID{ 0 };                                       // list ID (in order of creation) 
 
 
@@ -99,9 +95,9 @@ public:
     // ------------------------------------
 
 public:
-
     LinkedList();                   // constructor
     ~LinkedList();                   // constructor
+
     char* appendListElement(int size);
     char* deleteListElement(void* pPayload = nullptr);                  // pointer to payload of list element to be removed
     void deleteList();
@@ -122,11 +118,40 @@ class MyParser;
 // ***                class Justina_interpreter                  ***
 // *****************************************************************
 
-// parse and evaluate user input and programs
+
+
 
 class Justina_interpreter {
 
-public:
+    static constexpr int PROG_MEM_SIZE{ 2000 };             // size, in bytes, of program memory (stores parsed program)
+    static constexpr int IMM_MEM_SIZE{ 300 };               // size, in bytes, of user command memory (stores parsed user statements)
+    
+    static constexpr int MAX_USERVARNAMES{ 255 };           // max. user variables allowed. Absolute parser limit: 255
+    static constexpr int MAX_PROGVARNAMES{ 255 };           // max. program variable NAMES allowed (same name may be reused for global, static, local & parameter variables). Absolute limit: 255
+    static constexpr int MAX_STAT_VARS{ 255 };              // max. static variables allowed across all parsed functions (only). Absolute limit: 255
+    static constexpr int MAX_LOCAL_VARS{ 255 };             // max. local variables allowed across all parsed functons, including function parameters. Absolute limit: 255
+    static constexpr int MAX_LOC_VARS_IN_FUNC{ 32 };        // max. local and parameter variables allowed (only) in an INDIVIDUAL parsed function. Absolute limit: 255 
+    static constexpr int MAX_EXT_FUNCS{ 32 };               // max. user functions allowed. Absolute limit: 255
+    static constexpr int MAX_ARRAY_DIMS{ 3 };               // max. array dimensions allowed. Absolute limit: 3 
+    static constexpr int MAX_ARRAY_ELEM{ 200 };             // max. elements allowed in an array. Absolute limit: 2^15-1 = 32767. Individual dimensions are limited to a size of 255
+    static constexpr int MAX_LAST_RESULT_DEPTH{ 10 };       // max. depth of 'last results' FiFo
+
+    static constexpr int MAX_IDENT_NAME_LEN{ 20 };          // max length of identifier names, excluding terminating '\0'
+    static constexpr int MAX_ALPHA_CONST_LEN{ 255 };        // max length of character strings, excluding terminating '\0' (also if stored in variables). Absolute limit: 255
+    static constexpr int MAX_USER_INPUT_LEN{ 100 };         // max. length of text a user can enter with an input statement. Absolute limit: 255
+
+    static constexpr int MAX_STATEMENT_LEN{ 300 };          // max. length of a single user statement 
+
+    static constexpr int DEFAULT_PRINT_WIDTH = 30;          // default width of the print field.
+    static constexpr int DEFAULT_NUM_PRECISION = 3;         // default numeric precision.
+    static constexpr int DEFAULT_STRCHAR_TO_PRINT = 30;     // default # alphanumeric characters to print
+
+    const int MAX_PRINT_WIDTH = 200;                        // max. width of the print field. Absolute limit: 255. With as defined as in c++ printf 'format.width' sub-specifier
+    const int MAX_NUM_PRECISION = 7;                        // max. numeric precision. Precision as defined as in c++ printf 'format.precision' sub-specifier
+    const int MAX_STRCHAR_TO_PRINT = 200;                   // max. # of alphanumeric characters to print. Absolute limit: 255. Defined as in c++ printf 'format.precision' sub-specifier
+
+
+
 
     // unique identification code of a command
     enum cmd_code {
@@ -287,6 +312,23 @@ public:
         termcod_rightPar,
     };
 
+    enum tokenType_type {                                       // token type
+        tok_no_token,                                           // no token to process
+        tok_isReservedWord,
+        tok_isInternFunction,
+        tok_isExternFunction,
+        tok_isConstant,
+        tok_isVariable,
+        tok_isGenericName,
+
+        // all terminal tokens: at the end of the list ! (occupy only one character in program, combining token type and index)
+        tok_isTerminalGroup1,       // if index < 15 -    because too many operators to fit in 4 bits
+        tok_isTerminalGroup2,       // if index between 16 and 31
+        tok_isTerminalGroup3,       // if index between 32 and 47
+
+        tok_isEvalEnd               // execution only, signals end of parsed eval() statements
+    };
+
     enum parseTokenResult_type {                                // token parsing result
         result_tokenFound = 0,
 
@@ -363,6 +405,7 @@ public:
         // array errors
         result_arrayDefNoDims = 1700,
         result_arrayDefNegativeDim,
+        result_arrayDefDimTooLarge,
         result_arrayDefMaxDimsExceeded,
         result_arrayDefMaxElementsExceeded,
         result_arrayUseNoDims,
@@ -412,28 +455,8 @@ public:
         // other program errors
         result_progMemoryFull = 2200,
         result_parse_kill
-
     };
 
-
-public:
-
-    enum tokenType_type {                                       // token type
-        tok_no_token,                                           // no token to process
-        tok_isReservedWord,
-        tok_isInternFunction,
-        tok_isExternFunction,
-        tok_isConstant, 
-        tok_isVariable,
-        tok_isGenericName,
-
-        // all terminal tokens: at the end of the list ! (occupy only one character in program, combining token type and index)
-        tok_isTerminalGroup1,       // if index < 15 -    because too many operators to fit in 4 bits
-        tok_isTerminalGroup2,       // if index between 16 and 31
-        tok_isTerminalGroup3,       // if index between 32 and 47
-
-        tok_isEvalEnd               // execution only, signals end of parsed eval() statements
-    };
 
     enum execResult_type {
         result_execOK = 0,
@@ -505,7 +528,8 @@ public:
         db_skip
     };
 
-public:
+
+    static constexpr int _defaultPrintFlags = 0x00;
 
     static constexpr char c_extFunctionFirstOccurFlag = 0x10;     // flag: min > max means not initialized
     static constexpr char c_extFunctionMaxArgs = 0xF;             // must fit in 4 bits
@@ -543,7 +567,6 @@ public:
     static constexpr char* term_leftPar = "(";          // must be single character
     static constexpr char* term_rightPar = ")";         // must be single character
 
-public:
 
     // operators
     static constexpr char* term_assign = "=";
@@ -590,13 +613,6 @@ public:
 
 
 
-    // printing (to string, to stream)
-    const int _defaultPrintWidth = 30, _defaultNumPrecision = 3, _defaultCharsToPrint = 30, _defaultPrintFlags = 0x00;       // at start up
-    const int _maxPrintFieldWidth = 200, _maxNumPrecision = 7, _maxCharsToPrint = 200, _printFlagMask = 0x1F;
-
-    // input
-    const int _maxCharsToInput = 100;
-
     // type of parenthesis level
     static constexpr uint8_t extFunctionBit{ B00000001 };
     static constexpr uint8_t extFunctionPrevDefinedBit{ B00000010 };
@@ -608,24 +624,137 @@ public:
     static constexpr uint8_t varHasPrefixIncrDecrBit{ B01000000 };
 
 
-    static constexpr int PROG_MEM_SIZE{ 2000 };
-    static constexpr int IMM_MEM_SIZE{ 300 };
-    static constexpr int MAX_USERVARNAMES{ 32 };                       // max. vars (all types: global, static, local, parameter). Absolute limit: 255
-    static constexpr int MAX_PROGVARNAMES{ 64 };                       // max. vars (all types: global, static, local, parameter). Absolute limit: 255
-    static constexpr int MAX_STAT_VARS{ 64 };                      // max. static vars (only). Absolute limit: 255
-    static constexpr int MAX_LOCAL_VARS{ 64 };                      // max. local vars, including function parameters (only). Absolute limit: 255
-    static constexpr int MAX_LOC_VARS_IN_FUNC{ 32 };               // max. local and parameter vars (only) in an INDIVIDUAL function. Absolute limit: 255 
-    static constexpr int MAX_EXT_FUNCS{ 16 };                      // max. external functions. Absolute limit: 255
-    static constexpr int MAX_ARRAY_DIMS{ 3 };                        // 1, 2 or 3 is allwed: must fit in 3 bytes
-    static constexpr int MAX_ARRAY_ELEM{ 200 };                      // max. n� of floats in a single array
-    static constexpr int MAX_LAST_RESULT_DEPTH{ 10 };
+    // commands (FUNCTION, FOR, ...): allowed command parameters (naming: cmdPar_<n[nnn]> with A'=variable with (optional) assignment, 'E'=expression, 'E'=expression, 'R'=keyword
+    static const char cmdPar_100[4];
+    static const char cmdPar_101[4];
+    static const char cmdPar_102[4];
+    static const char cmdPar_103[4];
+    static const char cmdPar_104[4];
+    static const char cmdPar_105[4];
+    static const char cmdPar_106[4];
+    static const char cmdPar_107[4];
+    static const char cmdPar_108[4];
+    static const char cmdPar_109[4];
+    static const char cmdPar_110[4];
+    static const char cmdPar_111[4];
+    static const char cmdPar_112[4];
+    static const char cmdPar_113[4];
+    static const char cmdPar_114[4];
+    static const char cmdPar_999[4];////test
 
-    static const uint8_t _maxIdentifierNameLen{ 15 };           // max length of identifier names, excluding terminating '\0'
-    static const uint8_t _maxAlphaCstLen{ 100 };                     // max length of character strings, excluding terminating '\0' (also if stored in variables)
+    // commands parameters: types allowed
+    static constexpr uint8_t cmdPar_none = 0;
+    static constexpr uint8_t cmdPar_resWord = 1;            // !!! note: keywords as parameters: not implemented
+    static constexpr uint8_t cmdPar_varNoAssignment = 2;    // and no operators
+    static constexpr uint8_t cmdPar_varOptAssignment = 3;
+    static constexpr uint8_t cmdPar_expression = 4;
+    static constexpr uint8_t cmdPar_extFunction = 5;
+    static constexpr uint8_t cmdPar_numConstOnly = 6;
+    static constexpr uint8_t cmdPar_ident = 7;
+
+    // flags may be combined with value of one of the allowed types above
+    static constexpr uint8_t cmdPar_flagMask = 0x18;             // allowed 0 to n times. Only for last command parameter
+    static constexpr uint8_t cmdPar_multipleFlag = 0x08;             // allowed 0 to n times. Only for last command parameter
+    static constexpr uint8_t cmdPar_optionalFlag = 0x10;             // allowed 0 to 1 times. If parameter is present, next parameters do not have to be optional 
+
+    // bits b3210: indicate command (not parameter) usage restrictions 
+    static constexpr char cmd_usageRestrictionMask = 0x0F;               // mask
+
+    static constexpr char cmd_noRestrictions = 0x00;                  // command has no usage restrictions 
+    static constexpr char cmd_onlyInProgram = 0x01;                   // command is only allowed insde a program
+    static constexpr char cmd_onlyInProgOutsideFunc = 0x02;    // command is only allowed insde a program
+    static constexpr char cmd_onlyInFunctionBlock = 0x03;               // command is only allowed inside a function block
+    static constexpr char cmd_onlyImmediate = 0x04;                   // command is only allowed in immediate mode
+    static constexpr char cmd_onlyOutsideFunctionBlock = 0x05;             // command is only allowed outside a function block (so also in immediate mode)
+    static constexpr char cmd_onlyImmOrInsideFuncBlock = 0x06;   // command is only allowed inside a function block
+    static constexpr char cmd_onlyProgramTop = 0x07;                        // only as first program statement
+
+    // bit b7: skip command during execution
+    static constexpr char cmd_skipDuringExec = 0x80;
 
 
-    // storage for tokens
-    // note: to avoid boundary alignment of structure members, character placeholders of correct size are used for all structure members
+
+
+    // variable scope and value type bits: 
+
+    // bit b7: program variable name has a global program variable associated with it. Only used during parsing, not stored in token
+    //         user variables: user variable is used by program. Not stored in token 
+    static constexpr uint8_t var_nameHasGlobalValue = 0x80;          // flag: global program variable attached to this variable NAME (note that meaning is different from 'var_isGlobal' constant)
+    static constexpr uint8_t var_userVarUsedByProgram = 0x80;        // flag: user variable is used by program
+
+    // bits b654: variable scope. Use: (1) during parsing: temporarily store the variable type associated with a particular reference of a variable name 
+    // (2) stored in 'variable' token to indicate the variable type associated with a particular reference of a variable name 
+    static constexpr uint8_t var_scopeMask = 0x70;               // mask
+    static constexpr uint8_t var_isUser = 5 << 4;                    // variable is a user variable, in or outside function
+    static constexpr uint8_t var_isGlobal = 4 << 4;                  // variable is global, in or outside function
+    static constexpr uint8_t var_isStaticInFunc = 3 << 4;            // variable is static in function
+    static constexpr uint8_t var_isLocalInFunc = 2 << 4;             // variable is local (non-parameter) in function
+    static constexpr uint8_t var_isParamInFunc = 1 << 4;             // variable is function parameter
+    static constexpr uint8_t var_scopeToSpecify = 0 << 4;             // scope is not yet defined (temporary use during parsing; never stored in token)
+
+    // bit b3: variable is an array (and not a scalar)
+    static constexpr uint8_t var_isArray = 0x08;                     // stored with variable attributes and in 'variable' token. Can not be changed at runtime
+
+    // bit 0 (maintain in token only): 'forced function variable in debug mode' (for pretty printing only)
+    static constexpr uint8_t var_isForcedFunctionVar = 1;
+
+    // bits b210: value type 
+    // - PARSED constants: value type bits are maintained in the 'constant' token (but not in same bit positions)
+    // - INTERMEDIATE constants (execution only) and variables: value type is maintained together with variable / intermediate constant data (per variable, array or constant) 
+    // Note: because the value type is not fixed for scalar variables (type can dynamically change at runtime), this info is not maintained in the parsed 'variable' token 
+
+public:
+    static constexpr uint8_t value_typeMask = 0x07;                    // mask: float, char* 
+    static constexpr uint8_t value_noValue = 0 << 0;
+    static constexpr uint8_t value_isLong = 1 << 0;
+    static constexpr uint8_t value_isFloat = 2 << 0;
+    static constexpr uint8_t value_isStringPointer = 3 << 0;
+
+    // application flag bits
+    static constexpr long appFlag_errorConditionBit = 0x01L;       // flags signaling specific Justina status conditions
+    static constexpr long appFlag_statusAbit = 0x10L;
+    static constexpr long appFlag_statusBbit = 0x20L;
+    static constexpr long appFlag_waitingForUser = 0x40L;
+    
+private:
+    // application flag bits b54: application status
+    static constexpr long appFlag_statusMask = 0x30L;
+    static constexpr long appFlag_idle = 0x00L;
+    static constexpr long appFlag_parsing = 0x10L;
+    static constexpr long appFlag_executing = 0x20L;
+    static constexpr long appFlag_stoppedInDebug = 0x30L;
+
+
+    static constexpr uint8_t value_isVarRef = 4 << 0;
+
+    // constants used during execution, only stored within the stack for value tokens
+
+    // bit b0: intermediate constant (not a parsed constant, not a constant stored in a variable) 
+    static constexpr uint8_t constIsIntermediate = 0x01;
+    // bit b1: the address is the address of an array element. If this bit is zero, the address is the scalar or array variable base address 
+    static constexpr uint8_t var_isArray_pendingSubscripts = 0x02;
+
+    // block statements
+    static constexpr uint8_t withinIteration = 0x01;        // flag is set at the start of each iteration and cleared at the end
+    static constexpr uint8_t forLoopInit = 0x02;            // flag signals start of first iteration of a FOR loop
+    static constexpr uint8_t breakFromLoop = 0x04;          // flag: break statement encountered
+    static constexpr uint8_t testFail = 0x08;               // flag: loop test failed
+
+
+    static constexpr int _userCBarrayDepth = 10;
+    static constexpr char passCopyToCallback = 0x40;       // flag: string is an empty string 
+
+
+    static constexpr unsigned long callbackPeriod = 10;      // in ms; should be considerably less than any heartbeat period defined in main program
+
+
+
+    // --------------------------
+    // *   unions, structures   *
+    // --------------------------
+
+        // storage for tokens
+        // note: to avoid boundary alignment of structure members, character placeholders of correct size are used for all structure members
 
     union CstValue {
         char longConst[4];
@@ -804,11 +933,7 @@ public:
     };
 
 
-    // --------------------------
-// *   unions, structures   *
-// --------------------------
-
-// Note: structures starting with 'LE_' are used to cast list elements for easy handling
+    // Note: structures starting with 'LE_' are used to cast list elements for easy handling
 
     struct CmdBlockDef {                                        // block commands
         char blockType;                                         // block type ('for' block, 'if' block,...)
@@ -874,39 +999,6 @@ public:
         OpenCmdBlockLvl openBlock;
     };
 
-    // commands (FUNCTION, FOR, ...): allowed command parameters (naming: cmdPar_<n[nnn]> with A'=variable with (optional) assignment, 'E'=expression, 'E'=expression, 'R'=keyword
-    static const char cmdPar_100[4];
-    static const char cmdPar_101[4];
-    static const char cmdPar_102[4];
-    static const char cmdPar_103[4];
-    static const char cmdPar_104[4];
-    static const char cmdPar_105[4];
-    static const char cmdPar_106[4];
-    static const char cmdPar_107[4];
-    static const char cmdPar_108[4];
-    static const char cmdPar_109[4];
-    static const char cmdPar_110[4];
-    static const char cmdPar_111[4];
-    static const char cmdPar_112[4];
-    static const char cmdPar_113[4];
-    static const char cmdPar_114[4];
-    static const char cmdPar_999[4];////test
-
-    // commands parameters: types allowed
-    static constexpr uint8_t cmdPar_none = 0;
-    static constexpr uint8_t cmdPar_resWord = 1;            // !!! note: keywords as parameters: not implemented
-    static constexpr uint8_t cmdPar_varNoAssignment = 2;    // and no operators
-    static constexpr uint8_t cmdPar_varOptAssignment = 3;
-    static constexpr uint8_t cmdPar_expression = 4;
-    static constexpr uint8_t cmdPar_extFunction = 5;
-    static constexpr uint8_t cmdPar_numConstOnly = 6;
-    static constexpr uint8_t cmdPar_ident = 7;
-
-    // flags may be combined with value of one of the allowed types above
-    static constexpr uint8_t cmdPar_flagMask = 0x18;             // allowed 0 to n times. Only for last command parameter
-    static constexpr uint8_t cmdPar_multipleFlag = 0x08;             // allowed 0 to n times. Only for last command parameter
-    static constexpr uint8_t cmdPar_optionalFlag = 0x10;             // allowed 0 to 1 times. If parameter is present, next parameters do not have to be optional 
-
     // block commands only (FOR, END, etc.): type of block, position in block, sequence check in block: allowed previous block commands 
     static constexpr CmdBlockDef cmdBlockExtFunction{ block_extFunction,block_startPos,block_na,block_na };                // 'IF' block mid position 2, min & max previous position is block start & block position 1, resp.
     static constexpr CmdBlockDef cmdBlockWhile{ block_while,block_startPos,block_na,block_na };                            // 'WHILE' block start
@@ -931,87 +1023,10 @@ public:
     // used to close any type of currently open inner block
     static constexpr CmdBlockDef cmdBlockGenEnd{ block_genericEnd,block_endPos,block_na,block_endPos };            // all block types: block end 
 
-
-
-    // bits b3210: indicate command (not parameter) usage restrictions 
-    static constexpr char cmd_usageRestrictionMask = 0x0F;               // mask
-
-    static constexpr char cmd_noRestrictions = 0x00;                  // command has no usage restrictions 
-    static constexpr char cmd_onlyInProgram = 0x01;                   // command is only allowed insde a program
-    static constexpr char cmd_onlyInProgOutsideFunc = 0x02;    // command is only allowed insde a program
-    static constexpr char cmd_onlyInFunctionBlock = 0x03;               // command is only allowed inside a function block
-    static constexpr char cmd_onlyImmediate = 0x04;                   // command is only allowed in immediate mode
-    static constexpr char cmd_onlyOutsideFunctionBlock = 0x05;             // command is only allowed outside a function block (so also in immediate mode)
-    static constexpr char cmd_onlyImmOrInsideFuncBlock = 0x06;   // command is only allowed inside a function block
-    static constexpr char cmd_onlyProgramTop = 0x07;                        // only as first program statement
-
-    // bit b7: skip command during execution
-    static constexpr char cmd_skipDuringExec = 0x80;
-
     // sizes MUST be specified AND must be exact
     static const ResWordDef _resWords[46];                          // keyword names
     static const FuncDef _functions[24];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
-
-
-
-
-    // variable scope and value type bits: 
-
-    // bit b7: program variable name has a global program variable associated with it. Only used during parsing, not stored in token
-    //         user variables: user variable is used by program. Not stored in token 
-    static constexpr uint8_t var_nameHasGlobalValue = 0x80;          // flag: global program variable attached to this variable NAME (note that meaning is different from 'var_isGlobal' constant)
-    static constexpr uint8_t var_userVarUsedByProgram = 0x80;        // flag: user variable is used by program
-
-    // bits b654: variable scope. Use: (1) during parsing: temporarily store the variable type associated with a particular reference of a variable name 
-    // (2) stored in 'variable' token to indicate the variable type associated with a particular reference of a variable name 
-    static constexpr uint8_t var_scopeMask = 0x70;               // mask
-    static constexpr uint8_t var_isUser = 5 << 4;                    // variable is a user variable, in or outside function
-    static constexpr uint8_t var_isGlobal = 4 << 4;                  // variable is global, in or outside function
-    static constexpr uint8_t var_isStaticInFunc = 3 << 4;            // variable is static in function
-    static constexpr uint8_t var_isLocalInFunc = 2 << 4;             // variable is local (non-parameter) in function
-    static constexpr uint8_t var_isParamInFunc = 1 << 4;             // variable is function parameter
-    static constexpr uint8_t var_scopeToSpecify = 0 << 4;             // scope is not yet defined (temporary use during parsing; never stored in token)
-
-    // bit b3: variable is an array (and not a scalar)
-    static constexpr uint8_t var_isArray = 0x08;                     // stored with variable attributes and in 'variable' token. Can not be changed at runtime
-
-    // bit 0 (maintain in token only): 'forced function variable in debug mode' (for pretty printing only)
-    static constexpr uint8_t var_isForcedFunctionVar = 1;
-
-    // bits b210: value type 
-    // - PARSED constants: value type bits are maintained in the 'constant' token (but not in same bit positions)
-    // - INTERMEDIATE constants (execution only) and variables: value type is maintained together with variable / intermediate constant data (per variable, array or constant) 
-    // Note: because the value type is not fixed for scalar variables (type can dynamically change at runtime), this info is not maintained in the parsed 'variable' token 
-
-    static constexpr uint8_t value_typeMask = 0x07;                    // mask: float, char* 
-    static constexpr uint8_t value_noValue = 0 << 0;
-    static constexpr uint8_t value_isLong = 1 << 0;
-    static constexpr uint8_t value_isFloat = 2 << 0;
-    static constexpr uint8_t value_isStringPointer = 3 << 0;
-
-    static constexpr uint8_t value_isVarRef = 4 << 0;
-public:
-
-    // constants used during execution, only stored within the stack for value tokens
-
-    // bit b0: intermediate constant (not a parsed constant, not a constant stored in a variable) 
-    static constexpr uint8_t constIsIntermediate = 0x01;
-    // bit b1: the address is the address of an array element. If this bit is zero, the address is the scalar or array variable base address 
-    static constexpr uint8_t var_isArray_pendingSubscripts = 0x02;
-
-    // block statements
-    static constexpr uint8_t withinIteration = 0x01;        // flag is set at the start of each iteration and cleared at the end
-    static constexpr uint8_t forLoopInit = 0x02;            // flag signals start of first iteration of a FOR loop
-    static constexpr uint8_t breakFromLoop = 0x04;          // flag: break statement encountered
-    static constexpr uint8_t testFail = 0x08;               // flag: loop test failed
-
-
-    static const int _userCBarrayDepth = 10;
-
-    static constexpr  int _maxInstructionChars{ 300 };
-
-    static const unsigned long callbackPeriod = 10;      // in ms; should be considerably less than any heartbeat period defined in main program
 
 
     // ---------
@@ -1102,7 +1117,7 @@ public:
     char* _pEvalString{ nullptr };
     bool _parsingExecutingTraceString{ false };
     bool _parsingEvalString{ false };
-    long _evalParseErrorCode{0L};
+    long _evalParseErrorCode{ 0L };
 
     // counting of heap objects (note: linked list element count is maintained within the linked list objects)
 
@@ -1134,20 +1149,20 @@ public:
     bool _lastValueIsStored = false;
 
     // calculation result print
-    int _dispWidth = _defaultPrintWidth, _dispNumPrecision = _defaultNumPrecision, _dispCharsToPrint = _defaultCharsToPrint, _dispFmtFlags = _defaultPrintFlags;
+    int _dispWidth = DEFAULT_PRINT_WIDTH, _dispNumPrecision = DEFAULT_NUM_PRECISION, _dispCharsToPrint = DEFAULT_STRCHAR_TO_PRINT, _dispFmtFlags = _defaultPrintFlags;
     char _dispNumSpecifier[2] = "G";      // room for 1 character and an extra terminating \0 
     bool _dispIsIntFmt{ false };              // initialized during reset          
     char  _dispNumberFmtString[20] = "", _dispStringFmtString[20] = "%*.*s%n";        // long enough to contain all format specifier parts; initialized during reset
 
     // for print command
-    int _printWidth = _defaultPrintWidth, _printNumPrecision = _defaultNumPrecision, _printCharsToPrint = _defaultCharsToPrint, _printFmtFlags = _defaultPrintFlags;
+    int _printWidth = DEFAULT_PRINT_WIDTH, _printNumPrecision = DEFAULT_NUM_PRECISION, _printCharsToPrint = DEFAULT_STRCHAR_TO_PRINT, _printFmtFlags = _defaultPrintFlags;
     char _printNumSpecifier[2] = "G";      // room for 1 character and an extra terminating \0 (initialized during reset)
 
     // display output settings
     int _promptAndEcho{ 2 };              // output prompt and echo of input
     bool _printLastResult{ true };
 
-    char _instruction[_maxInstructionChars + 1] = "";
+    char _instruction[MAX_STATEMENT_LEN + 1] = "";
     int _instructionCharCount{ 0 };
     bool _programMode{ false };
     bool _flushAllUntilEOF{ false };
@@ -1170,7 +1185,7 @@ public:
     int _userCBprocStartSet_count = 0;
     int _userCBprocAliasSet_count = 0;
 
-    long _appFlags = 0;
+    long _appFlags = 0x00L;                                         // bidirectional flags to transfer info / requests between caller and Justina library
 
     // number of currently [called external functions + open eval() levels + stopped programs]: equals flow ctrl stack levels minus open loop (if, for, ...) blocks (= blocks being executed)
     int _callStackDepth{ 0 };
@@ -1187,9 +1202,11 @@ public:
     char _arrayDimCount{ 0 };
     char* _programCounter{ nullptr };                                // pointer to token memory address (not token step n�)
 
+    char* _lastProgramStep, * _lastUserCmdStep;                     // location in Justine program memory where final 'tok_no_token' token is placed
+
     uint16_t _paramIsArrayPattern{ 0 };
 
-    char _programName[_maxIdentifierNameLen + 1];
+    char _programName[MAX_IDENT_NAME_LEN + 1];
 
     Stream* _pConsole{ nullptr };
     Stream** _pTerminal{ nullptr };
@@ -1315,7 +1332,7 @@ public:
 
     void (*_callbackUserProcStart[_userCBarrayDepth])(const void** pdata, const char* valueType);             // user functions: pointers to c++ procedures                                   
 
-    char _callbackUserProcAlias[_userCBarrayDepth][_maxIdentifierNameLen + 1];       // user functions aliases                                   
+    char _callbackUserProcAlias[_userCBarrayDepth][MAX_IDENT_NAME_LEN + 1];       // user functions aliases                                   
     void* _callbackUserData[_userCBarrayDepth][3]{ nullptr };                          // user functions: pointers to data                                   
 
 
@@ -1323,9 +1340,14 @@ public:
     // *   methods (doc: see .cpp file)   *
     // ------------------------------------
 
+public:
     Justina_interpreter(Stream* const pConsole);               // constructor
     ~Justina_interpreter();               // deconstructor
+    bool setMainLoopCallback(void (*func)(bool& requistQuit, long& appFlags));                   // set callback functions
+    bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType));
+    bool run(Stream* const pConsole, Stream** const pTerminal, int definedTerms);
 
+private:
     bool parseAsResWord(char*& pNext, parseTokenResult_type& result);
     bool parseAsNumber(char*& pNext, parseTokenResult_type& result);
     bool parseAsStringConstant(char*& pNext, parseTokenResult_type& result);
@@ -1358,11 +1380,9 @@ public:
     bool allExternalFunctionsDefined(int& index);
     void prettyPrintInstructions(int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
     void printParsingResult(parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* const pErrorPos);
-    bool run(Stream* const pConsole, Stream** const pTerminal, int definedTerms);
-    bool processCharacter(bool& kill, bool& loadProgParsed, bool& endProgramLoad,char c,  bool programLoadTimeOut);
+    bool processCharacter(bool& kill, bool& loadProgParsed, bool& endProgramLoad, char c, bool programLoadTimeOut);
 
-    bool setMainLoopCallback(void (*func)(bool& requistQuit, long& appFlags));                   // set callback functions
-    bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType));
+    bool expandStringBackslashSequences(char*& input);
 
     void* fetchVarBaseAddress(TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& variableAttributes, char& sourceVarAttributes);
     void* arrayElemAddress(void* varBaseAddress, int* dims);
@@ -1416,6 +1436,10 @@ public:
     void pushGenericName(int& tokenType);
     void pushConstant(int& tokenType);
     void pushVariable(int& tokenType);
+
+
+    bool getKey(char &c);
+    bool readText(bool& doAbort, bool& doStop, bool& doCancel, bool& doDefault, char* input, int& length);
 };
 
 #endif
