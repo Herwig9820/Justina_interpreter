@@ -342,10 +342,10 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     _pConsole->print("    Version: "); _pConsole->print(ProductVersion); _pConsole->print(" ("); _pConsole->print(BuildDate); _pConsole->println(")");
     for (int i = 0; i < 48; i++) { _pConsole->print("*"); } _pConsole->println();
 
-    _programMode = false;                                   //// te checken of er dan nog iets moet gereset worden
+    _programMode = false;                                   
     _programCounter = _programStorage + PROG_MEM_SIZE;
     *(_programStorage + PROG_MEM_SIZE) = '\0';                                      //  current end of program (immediate mode)
-    _pConsole = pConsole;//// ??? constructor toch ?
+    _pConsole = pConsole;
     _isPrompt = false;                 // end of parsing
     _pTerminal = pTerminal;
     _definedTerminals = definedTerms;
@@ -401,7 +401,6 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad, bool& endProgramStatementParsed, char c, bool programLoadTimeOut) {
     // process character
     static parseTokenResult_type result{};
-    ////static bool requestMachineReset{ false };
     static bool withinStringEscSequence{ false };
     static bool instructionsParsed{ false };
     static bool lastCharWasWhiteSpace{ false };
@@ -428,7 +427,6 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
         // do not touch program memory itself: there could be a program in it 
 
         resetMachine(false);
-        ////requestMachineReset = true;                         // reset machine when parsing starts, not earlier (in case there is a program in memory)
 
         _programMode = true;
         _programCounter = _programStorage;
@@ -551,7 +549,6 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
 
             (_programMode ? _lastProgramStep : _lastUserCmdStep) = ((result == result_tokenFound) ? _programCounter : nullptr);    // if parsing error, store nullptr as last token position
 
-            Serial.print("\r\n== last program step: "); Serial.println(_lastUserCmdStep - _programStorage);
             if (result == result_tokenFound) {
                 if (!_programMode) {
 
@@ -566,7 +563,6 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
                 }
             }
 
-            ////if(_programMode){Serial.println(_lastProgramStep- _programStorage); }////
             // parsing OK message (program mode only - no message in immediate mode) or error message 
             printParsingResult(result, funcNotDefIndex, _instruction, _lineCount, pErrorPos);
         }
@@ -580,13 +576,6 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
         // - at this point, structure '_activeFunctionData' always contains flow control data for the main program level (command line - in debug mode if the count of open programs is not zero)
         // - the flow control stack maintains data about open block commands, open functions and eval() strings in execution (call stack)
         // => skip stack elements for any command line open block commands or eval() strings in execution, and fetch the data for the function where control will resume when started again
-
-        /*
-        Serial.print("** END: debug lvls-imm.mode stack depth "); Serial.print(_openDebugLevels);Serial.print("-"); Serial.print(immModeCommandStack.getElementCount());
-        Serial.print(", call stack depth-flow ctrl stack depth "); Serial.print(_callStackDepth); Serial.print("-"); Serial.print(flowCtrlStack.getElementCount());
-        Serial.print(", eval caller lvls-eval stack depth "); Serial.print((int)_activeFunctionData.callerEvalStackLevels); Serial.print("-"); Serial.println(evalStack.getElementCount());
-        Serial.print("   active function data next step: ");Serial.println(_activeFunctionData.pNextStep-_programStorage);
-        */
 
         if ((_openDebugLevels > 0) && (execResult != result_eval_kill) && (execResult != result_eval_quit)) {
             char* nextInstructionsPointer = _programCounter;
@@ -623,7 +612,7 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
 
 
         bool wasReset = false;      // init
-        if (_programMode) {               //// waarschijnlijk aan te passen als LOADPROG cmd implemented (-> steeds vanuit immediate mode)
+        if (_programMode) {               
             // end of file: always back to immediate mode
             // do not touch program memory itself: there could be a program in it 
 
@@ -637,14 +626,13 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
 
         if (_promptAndEcho != 0) { _pConsole->print("Justina> "); _isPrompt = true; }                 // print new prompt
 
-        // in immediate mode; if stopping a program for debug, do not delete parsed strings included in the command line, because that command line has now been pushed on  ...
+        // if stopping a program for debug, do not delete parsed strings included in the command line, because that command line has now been pushed on  ...
          // the parsed command line stack and included parsed constants will be deleted later (resetMachine routine)
-        if (execResult == result_eval_stopForDebug) { *(_programStorage + PROG_MEM_SIZE) = '\0'; }  ////
+        if (execResult == result_eval_stopForDebug) { *(_programStorage + PROG_MEM_SIZE) = '\0'; }  
 
         // in immediate mode
         else {
             // execution finished: delete parsed strings in imm mode command OR in executed trace expressions (they are on the heap and not needed any more). Identifiers must stay avaialble
-            Serial.println("** finalizing - after prompt");
             deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);  // always
             *(_programStorage + PROG_MEM_SIZE) = '\0';                                      //  current end of program (immediate mode)
         }
