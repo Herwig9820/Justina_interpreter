@@ -547,7 +547,7 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
                 if (result != result_tokenFound) { _appFlags |= appFlag_errorConditionBit; }              // if parsing error only occurs here, error condition flag can still be set here (signal to caller)
             }
 
-            (_programMode ? _lastProgramStep : _lastUserCmdStep) = ((result == result_tokenFound) ? _programCounter : nullptr);    // if parsing error, store nullptr as last token position
+            (_programMode ? _lastProgramStep : _lastUserCmdStep) = _programCounter;    
 
             if (result == result_tokenFound) {
                 if (!_programMode) {

@@ -400,7 +400,6 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
             #if printCreateDeleteListHeapObjects
                 Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pAnum - RAMSTART);
             #endif
-                Serial.print("<delete parsed str> ");   Serial.println(pAnum);////
                 delete[] pAnum;
                 _parsedStringConstObjectCount--;
             }

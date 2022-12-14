@@ -31,7 +31,7 @@
 #define printCreateDeleteListHeapObjects 0
 #define printProcessedTokens 0
 #define debugPrint 0
-
+#define parsedStatementStack 0
 
 // *****************************************************************
 // ***        class Justina_interpreter - implementation         ***
@@ -683,7 +683,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
                     // if the error statement pointers refer to immediate mode code (not to a program), pretty print directly from the imm.mode parsed command stack: add an offset to the pointers 
                     bool isImmMode = (errorStatementStartStep >= (_programStorage + PROG_MEM_SIZE));
-                    if (isImmMode) { programCounterOffset = pImmediateCmdStackLvl - (_programStorage + PROG_MEM_SIZE); }
+                    if (isImmMode) { programCounterOffset = pImmediateCmdStackLvl + sizeof(char*) - (_programStorage + PROG_MEM_SIZE); }
                 }
 
                 _pConsole->print("\r\n  ");
@@ -764,11 +764,12 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         _activeFunctionData.callerEvalStackLevels = evalStack.getElementCount();                          // store evaluation stack levels in use by callers (call stack)
 
         // push current command line storage to command line stack, to make room for debug commands
-        Serial.print("  >> PUSH  (stop for debug): last step: "); Serial.println(_lastUserCmdStep - (_programStorage + PROG_MEM_SIZE));
+    #if parsedStatementStack
+        Serial.print("  >> PUSH parsed statements (stop for debug): last step: "); Serial.println(_lastUserCmdStep - (_programStorage + PROG_MEM_SIZE));
+    #endif
         long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + PROG_MEM_SIZE) + 1;
         _pImmediateCmdStackTop = (char*)immModeCommandStack.appendListElement(sizeof(char*) + parsedUserCmdLen);
         *(char**)_pImmediateCmdStackTop = _lastUserCmdStep;
-        _lastUserCmdStep = nullptr;
         memcpy(_pImmediateCmdStackTop + sizeof(char*), (_programStorage + PROG_MEM_SIZE), parsedUserCmdLen);
 
         ++_openDebugLevels;
@@ -1104,7 +1105,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             memcpy((_programStorage + PROG_MEM_SIZE), _pImmediateCmdStackTop + sizeof(char*), parsedUserCmdLen);        // size berekenen
             immModeCommandStack.deleteListElement(_pImmediateCmdStackTop);
             _pImmediateCmdStackTop = immModeCommandStack.getLastListElement();
-            Serial.print("  >> POP (Go): last step: "); Serial.println(_lastUserCmdStep - (_programStorage + PROG_MEM_SIZE));
+        #if parsedStatementStack
+            Serial.print("  >> POP parsed statements (Go): last step: "); Serial.println(_lastUserCmdStep - (_programStorage + PROG_MEM_SIZE));
+        #endif
             --_openDebugLevels;
 
             // abort: all done
@@ -1188,7 +1191,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
             break;
-            }
+        }
 
 
         // ---------------------------------------------------------------------------------------------------------
@@ -1387,8 +1390,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
                         // if NOT a variable REFERENCE, then value type on the stack indicates the real value type and NOT 'variable reference' ...
                         // but it does not need to be changed, because in the next step, the respective stack level will be deleted 
-                        }
                     }
+                }
 
 
                 if (cmdParamCount == (isInput ? 3 : 2)) {       // last argument (optional second if Info, third if Input statement) serves a dual purpose: allow cancel (on entry) and signal 'canceled' (on exit)
@@ -1400,12 +1403,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     // if NOT a variable REFERENCE, then value type on the stack indicates the real value type and NOT 'variable reference' ...
                     // but it does not need to be changed, because in the next step, the respective stack level will be deleted 
                 }
-                } while (!answerValid);
-                _appFlags &= ~appFlag_waitingForUser;    // bit b6 reset: NOT waiting for user interaction
+            } while (!answerValid);
+            _appFlags &= ~appFlag_waitingForUser;    // bit b6 reset: NOT waiting for user interaction
 
-                clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
-                _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
-            }
+            clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
+            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
+        }
         break;
 
 
@@ -1939,10 +1942,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         }
         break;
 
-        }       // end switch
+    }       // end switch
 
     return result_execOK;
-        }
+}
 
 
 // -------------------------------
@@ -2173,8 +2176,8 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
         #endif
             delete[] lastvalue.value.pStringConst;
             _intermediateStringObjectCount--;
+        }
     }
-}
 
     // store new last value type
     lastResultTypeFiFo[0] = sourceValueType;               // value type
@@ -2188,7 +2191,7 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
     overWritePrevious = true;
 
     return;
-    }
+}
 
 // ----------------------------------------------------------------
 // Clear evaluation stack and associated intermediate string object 
@@ -2352,7 +2355,9 @@ void Justina_interpreter::clearImmediateCmdStack(int n) {
         memcpy((_programStorage + PROG_MEM_SIZE), _pImmediateCmdStackTop + sizeof(char*), parsedUserCmdLen);        // size berekenen
         immModeCommandStack.deleteListElement(_pImmediateCmdStackTop);
         _pImmediateCmdStackTop = immModeCommandStack.getLastListElement();
-        Serial.print("  >> POP (clr imm cmd stack): last step: "); Serial.println(_lastUserCmdStep - (_programStorage + PROG_MEM_SIZE));
+    #if parsedStatementStack
+        Serial.print("  >> POP parsed statements (clr imm cmd stack): last step: "); Serial.println(_lastUserCmdStep - (_programStorage + PROG_MEM_SIZE));
+    #endif
     }
 
     // do NOT delete parsed string constants for original command line (last copied to program storage) - handled later 
@@ -2493,8 +2498,8 @@ void Justina_interpreter::makeIntermediateConstant(LE_evalStack* pEvalStackLvl) 
         pEvalStackLvl->varOrConst.tokenType = tok_isConstant;              // use generic constant type
         pEvalStackLvl->varOrConst.valueAttributes = constIsIntermediate;             // is an intermediate result (intermediate constant strings must be deleted when not needed any more)
         pEvalStackLvl->varOrConst.variableAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
-        }
     }
+}
 
 
 // ----------------------------------------
@@ -2877,10 +2882,10 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
         case termcod_ne:
             opResult.longConst = opResultLong ? (operand1.longConst != operand2.longConst) : (operand1.floatConst != operand2.floatConst);
             break;
-                }       // switch
+    }       // switch
 
 
-                // float values: extra value tests
+    // float values: extra value tests
 
     if ((opResultFloat) && (operatorCode != termcod_assign)) {     // check error (float values only, not for pure assignment)
         if (isnan(opResult.floatConst)) { return result_undefined; }
@@ -2933,9 +2938,9 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
                 if (pUnclippedResultString != nullptr) {     // pure assignment: is in fact pointing to operand 2 
                     delete[] pUnclippedResultString;
                     _intermediateStringObjectCount--;
-        }
-    }
+                }
             }
+        }
 
         // store value in variable and adapt variable value type - next line is valid for long integers as well
         if (opResultLong || opResultFloat) { *_pEvalStackMinus2->varOrConst.value.pFloatConst = opResult.floatConst; }
@@ -3404,7 +3409,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                             min(999, _globalStaticVarStringObjectCount), min(999, _globalStaticArrayObjectCount), min(999, _userVarStringObjectCount), min(999, _userArrayObjectCount),
                             min(999, _localVarStringObjectCount), min(999, _localArrayObjectCount), min(999, _localVarValueAreaCount), min(999, _intermediateStringObjectCount),
                             min(999, _systemVarStringObjectCount));
-                }
+                    }
                     else {     // print heap object create/delete errors
                         sprintf(fcnResult.pStringConst, "%0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d",
                             min(999, _identifierNameStringObjectErrors), min(999, _userVarNameStringObjectErrors), min(999, _parsedStringConstObjectErrors), min(999, _lastValuesStringObjectErrors),
@@ -3431,15 +3436,15 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 break;
 
                 default: return result_arg_invalid; break;
-                    }       // switch (sysVal)
-                }
+            }       // switch (sysVal)
+        }
         break;
 
-                }       // end switch
+    }       // end switch
 
 
-                // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
-                // -------------------------------------------------------------------------------------------------------------------
+    // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
+    // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
@@ -3460,7 +3465,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
     }
 
     return result_execOK;
-                }
+}
 
 
 // -----------------------
@@ -3651,10 +3656,10 @@ Justina_interpreter::execResult_type Justina_interpreter::copyValueArgsFromStack
         }
 
         pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-                }
+    }
 
     return result_execOK;
-            }
+}
 
 // --------------------------------
 // *   launch external function   *
@@ -3724,7 +3729,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchExternalFunctio
     _activeFunctionData.errorProgramCounter = calledFunctionTokenStep;
 
     return  result_execOK;
-    }
+}
 
 
 // ------------------------------------
@@ -3744,11 +3749,12 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
     // the parsed command line pushed, contains the parsed statements 'calling' (parsing and executing) the eval() string 
     // this is either an outer level parsed eval() string, or the parsed command line where execution started  
 
-    Serial.print("  >> PUSH (launch eval): last step: "); Serial.println(_lastUserCmdStep - (_programStorage + PROG_MEM_SIZE));
+#if parsedStatementStack
+    Serial.print("  >> PUSH parsed statements (launch eval): last step: "); Serial.println(_lastUserCmdStep - (_programStorage + PROG_MEM_SIZE));
+#endif
     long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + PROG_MEM_SIZE) + 1;
     _pImmediateCmdStackTop = (char*)immModeCommandStack.appendListElement(sizeof(char*) + parsedUserCmdLen);
     *(char**)_pImmediateCmdStackTop = _lastUserCmdStep;
-    _lastUserCmdStep = nullptr;
     memcpy(_pImmediateCmdStackTop + sizeof(char*), (_programStorage + PROG_MEM_SIZE), parsedUserCmdLen);
 
 
@@ -3782,19 +3788,17 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
 
     _parsingEvalString = false;
     if (result != result_tokenFound) {
-        // remove imm.mode parsed statement stack top level again because corresponding entry in flow ctrl stack will not be created
-        // before removing, delete any parsed string constants for that command line. Note the exception below:
+        // reverse push to imm. mode parsed statement stack that just happened:
+        // pop imm.mode parsed statement stack top level again to imm. mode program memory (because corresponding entry in flow ctrl stack will not be created)
+        // before removing, delete any parsed string constants in immediate mode program memory
 
-        Serial.print("<eval parse error> block type = "); Serial.println((int)((OpenFunctionData*)_pFlowCtrlStackTop)->blockType);
-        if (((OpenFunctionData*)_pFlowCtrlStackTop)->blockType == block_eval) {deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);}
-
-        // reverse push to stack that just happened
         deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);      // string constants that were created just now 
         memcpy((_programStorage + PROG_MEM_SIZE), _pImmediateCmdStackTop + sizeof(char*), parsedUserCmdLen);
         immModeCommandStack.deleteListElement(_pImmediateCmdStackTop);
         _pImmediateCmdStackTop = (char*)immModeCommandStack.getLastListElement();
-        Serial.print("  >> POP (launch eval parse error): last step: "); Serial.println(_lastUserCmdStep - (_programStorage + PROG_MEM_SIZE));
-
+    #if parsedStatementStack
+        Serial.print("  >> POP parsed statements (launch eval parse error): last step: "); Serial.println(_lastUserCmdStep - (_programStorage + PROG_MEM_SIZE));
+    #endif
 
         _evalParseErrorCode = result;       // remember
         return result_eval_parsingError;
@@ -3880,9 +3884,9 @@ void Justina_interpreter::initFunctionParamVarWithSuppliedArg(int suppliedArgCou
 
             deleteIntermStringObject(pStackLvl);                                              // if intermediate constant string, then delete char string object (tested within called routine)
             pStackLvl = (LE_evalStack*)evalStack.deleteListElement(pStackLvl);        // argument saved: remove argument from stack and point to next argument
-                }
-            }
         }
+    }
+}
 
 
 // ------------------------------------------------------------------------------------------------------------
@@ -3934,11 +3938,11 @@ void Justina_interpreter::initFunctionDefaultParamVariables(char*& pStep, int su
             }
             count++;
         }
-            }
+    }
 
     // skip (remainder of) function definition
     findTokenStep(tok_isTerminalGroup1, termcod_semicolon, pStep);
-        };
+};
 
 
 
@@ -4056,7 +4060,7 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
                 }
 
                 tokenType = jumpTokens(1, pStep, terminalCode);       // comma or semicolon
-                    }
+            }
 
             else {  // no initializer: if array, initialize it now (scalar has been initialized already)
                 if ((_activeFunctionData.pVariableAttributes[count] & var_isArray) == var_isArray) {
@@ -4066,10 +4070,10 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
             }
             count++;
 
-                } while (terminalCode == termcod_comma);
+        } while (terminalCode == termcod_comma);
 
-            }
-        };
+    }
+};
 
 
 // -----------------------------------
@@ -4191,7 +4195,9 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateEval() {
     memcpy((_programStorage + PROG_MEM_SIZE), _pImmediateCmdStackTop + sizeof(char*), parsedUserCmdLen);        // size berekenen
     immModeCommandStack.deleteListElement(_pImmediateCmdStackTop);
     _pImmediateCmdStackTop = (char*)immModeCommandStack.getLastListElement();
-    Serial.print("  >> POP (terminate eval): last step: "); Serial.println(_lastUserCmdStep - (_programStorage + PROG_MEM_SIZE));
+#if parsedStatementStack
+    Serial.print("  >> POP parsed statements (terminate eval): last step: "); Serial.println(_lastUserCmdStep - (_programStorage + PROG_MEM_SIZE));
+#endif
 
     if (evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels >= 1) {
         execResult = execAllProcessedOperators();
