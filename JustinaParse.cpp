@@ -391,7 +391,7 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
 
     prgmCnt.pTokenChars = pFirstToken;
     uint8_t tokenType = *prgmCnt.pTokenChars & 0x0F;
-    while (tokenType != '\0') {                                                                    // for all tokens in token list
+    while (tokenType != tok_no_token) {                                                                    // for all tokens in token list
         bool isStringConst = (tokenType == tok_isConstant) ? (((*prgmCnt.pTokenChars >> 4) & value_typeMask) == value_isStringPointer) : false;
 
         if (isStringConst || (tokenType == tok_isGenericName)) {
@@ -400,6 +400,7 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
             #if printCreateDeleteListHeapObjects
                 Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pAnum - RAMSTART);
             #endif
+                Serial.print("<delete parsed str> ");   Serial.println(pAnum);////
                 delete[] pAnum;
                 _parsedStringConstObjectCount--;
             }
@@ -590,8 +591,8 @@ void Justina_interpreter::initInterpreterVariables(bool withUserVariables) {
     }
     _userCBprocAliasSet_count = 0;   // note: _userCBprocStartSet_count: only reset when starting interpreter
 
-    *_programStorage = '\0';                                                        //  set as current end of program 
-    *(_programStorage + PROG_MEM_SIZE) = '\0';                                      //  set as current end of program (immediate mode)
+    *_programStorage = tok_no_token;                                                        //  set as current end of program 
+    *(_programStorage + PROG_MEM_SIZE) = tok_no_token;                                      //  set as current end of program (immediate mode)
     _programCounter = _programStorage + PROG_MEM_SIZE;                          // start of 'immediate mode' program area
 
     _programName[0] = '\0';
@@ -800,7 +801,7 @@ void Justina_interpreter::parseAndExecTraceString() {
     _pConsole->print("TRACE ==>> ");
     do {
         // init
-        *(_programStorage + PROG_MEM_SIZE) = '\0';          // in case no valid tokens will be stored
+        *(_programStorage + PROG_MEM_SIZE) = tok_no_token;          // in case no valid tokens will be stored
         _programCounter = _programStorage + PROG_MEM_SIZE;                     // start of 'immediate mode' program area
 
         // skip any spaces and semi-colons in the input stream
@@ -835,7 +836,7 @@ void Justina_interpreter::parseAndExecTraceString() {
 
         // execution finished: delete parsed strings in imm mode command (they are on the heap and not needed any more)
         deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);  // always
-        *(_programStorage + PROG_MEM_SIZE) = '\0';                                      //  current end of program (immediate mode)
+        *(_programStorage + PROG_MEM_SIZE) = tok_no_token;                                      //  current end of program (immediate mode)
 
     } while (*pTraceParsingInput != '\0');                                              // exit loop if all expressions handled
 
@@ -1280,7 +1281,7 @@ bool Justina_interpreter::parseAsResWord(char*& pNext, parseTokenResult_type& re
     #endif
 
         _programCounter += sizeof(TokenIsResWord) - (hasTokenStep ? 0 : 2);
-        *_programCounter = '\0';                                                 // indicates end of program
+        *_programCounter = tok_no_token;                                                 // indicates end of program
         result = result_tokenFound;                                                     // flag 'valid token found'
         return true;
     }
@@ -1392,7 +1393,7 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parseTokenResult_type& res
 #endif
 
     _programCounter += sizeof(TokenIsConstant);
-    *_programCounter = '\0';                                                 // indicates end of program
+    *_programCounter = tok_no_token;                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
 }
@@ -1512,7 +1513,7 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
 #endif
 
     _programCounter += sizeof(TokenIsConstant);
-    *_programCounter = '\0';                                                 // indicates end of program
+    *_programCounter = tok_no_token;                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
 
     return true;
@@ -2262,7 +2263,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
 #endif
 
     _programCounter += sizeof(TokenIsTerminal);
-    *_programCounter = '\0';                                                  // indicates end of program
+    *_programCounter = tok_no_token;                                                  // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
 }
@@ -2330,7 +2331,7 @@ bool Justina_interpreter::parseAsInternFunction(char*& pNext, parseTokenResult_t
     #endif
 
         _programCounter += sizeof(TokenIsIntFunction);
-        *_programCounter = '\0';                                                 // indicates end of program
+        *_programCounter = tok_no_token;                                                 // indicates end of program
         result = result_tokenFound;                                                     // flag 'valid token found'
         return true;
     }
@@ -2491,7 +2492,7 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
 #endif
 
     _programCounter += sizeof(TokenIsExtFunction);
-    *_programCounter = '\0';                                                 // indicates end of program
+    *_programCounter = tok_no_token;                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
 }
@@ -2992,7 +2993,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
 #endif
 
     _programCounter += sizeof(TokenIsVariable);
-    *_programCounter = '\0';                                                 // indicates end of program
+    *_programCounter = tok_no_token;                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
 
     return true;
@@ -3076,7 +3077,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
 #endif
 
     _programCounter += sizeof(TokenIsConstant);
-    *_programCounter = '\0';                                                 // indicates end of program
+    *_programCounter = tok_no_token;                                                 // indicates end of program
     result = result_tokenFound;                                                         // flag 'valid token found'
     return true;
 }

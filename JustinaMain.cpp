@@ -344,7 +344,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 
     _programMode = false;                                   
     _programCounter = _programStorage + PROG_MEM_SIZE;
-    *(_programStorage + PROG_MEM_SIZE) = '\0';                                      //  current end of program (immediate mode)
+    *(_programStorage + PROG_MEM_SIZE) = tok_no_token;                                      //  current end of program (immediate mode)
     _pConsole = pConsole;
     _isPrompt = false;                 // end of parsing
     _pTerminal = pTerminal;
@@ -628,13 +628,13 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
 
         // if stopping a program for debug, do not delete parsed strings included in the command line, because that command line has now been pushed on  ...
          // the parsed command line stack and included parsed constants will be deleted later (resetMachine routine)
-        if (execResult == result_eval_stopForDebug) { *(_programStorage + PROG_MEM_SIZE) = '\0'; }  
+        if (execResult == result_eval_stopForDebug) { *(_programStorage + PROG_MEM_SIZE) = tok_no_token; }
 
         // in immediate mode
         else {
             // execution finished: delete parsed strings in imm mode command OR in executed trace expressions (they are on the heap and not needed any more). Identifiers must stay avaialble
             deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);  // always
-            *(_programStorage + PROG_MEM_SIZE) = '\0';                                      //  current end of program (immediate mode)
+            *(_programStorage + PROG_MEM_SIZE) = tok_no_token;                                      //  current end of program (immediate mode)
         }
 
         if (!wasReset) {
