@@ -264,7 +264,6 @@ Justina_interpreter::Justina_interpreter(Stream* const pConsole) : _pConsole(pCo
     _instructionCharCount = 0;
     _lineCount = 0;                             // taking into account new line after 'load program' command ////
     _flushAllUntilEOF = false;
-    _StarCmdCharCount = 0;
 
     _programMode = false;
     _currenttime = millis();
@@ -402,7 +401,7 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
     // process character
     static parseTokenResult_type result{};
     static bool withinStringEscSequence{ false };
-    static bool instructionsParsed{ false };
+    static bool instructionParsed{ false };
     static bool lastCharWasWhiteSpace{ false };
     static bool lastCharWasSemiColon{ false };
 
@@ -410,8 +409,6 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
     static bool withinString{ false };
 
     static char* pErrorPos{};
-
-    const char quitCalc[8] = "*quit*";
 
     char stopProgramParsing = 0x1A;
     char commentStartChar = '$';
@@ -433,7 +430,6 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
 
         _instructionCharCount = 0;
         _lineCount = 0;                             // taking into account new line after 'load program' command ////
-        _StarCmdCharCount = 0;
         _flushAllUntilEOF = false;
 
         lastCharWasWhiteSpace = false;
@@ -456,18 +452,7 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
     if (!isEndOfFile) {
         if (_flushAllUntilEOF) { return false; }                       // discard characters (after parsing error)
 
-        bool isLeadingSpace = ((_StarCmdCharCount == 0) && (c == ' '));
-        if (c == '\n') { _lineCount++; _StarCmdCharCount = 0; }                           // line number used when while reading program in input file
-
-        // check for exit command if not in program mode
-        if (!_programMode && !isLeadingSpace && !(c == '\n') && (_StarCmdCharCount >= 0)) {
-            if (c == quitCalc[_StarCmdCharCount]) {
-                _StarCmdCharCount++;
-                if (quitCalc[_StarCmdCharCount] == '\0') { _flushAllUntilEOF = true; _quitJustinaAtEOF = true; return false; }         // perfect match: set flag to exit interpreter
-                else  if (_StarCmdCharCount == strlen(quitCalc)) { _StarCmdCharCount = -1; }  // -1: no match: no further checking for now
-            }
-            else { _StarCmdCharCount = -1; };     // -1: no match: no further checking for now
-        }
+        if (c == '\n') { _lineCount++; }                           // line number used when while reading program in input file
 
         // currently within a string or within a comment ?
         if (withinString) {
@@ -529,7 +514,7 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
 
         _instructionCharCount = 0;
         withinString = false; withinStringEscSequence = false;
-        instructionsParsed = true;                                  // instructions found
+        instructionParsed = true;                                  // instructions found
     }
 
 
@@ -537,7 +522,7 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
 
         execResult_type execResult{ result_execOK };
 
-        if (instructionsParsed) {
+        if (instructionParsed) {
             int funcNotDefIndex;
             if (result == result_tokenFound) {
                 // checks at the end of parsing: any undefined functions (program mode only) ?  any open blocks ?
@@ -621,7 +606,7 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
                 resetMachine(false);      // message not needed here
                 wasReset = true;
             }
-            if (c = stopProgramParsing) { _programMode = false;  _programCounter = _programStorage + PROG_MEM_SIZE; }
+            _programMode = false; 
         }
 
         if (_promptAndEcho != 0) { _pConsole->print("Justina> "); _isPrompt = true; }                 // print new prompt
@@ -646,12 +631,11 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
 
         }
 
-        instructionsParsed = false;
+        instructionParsed = false;
         lastCharWasSemiColon = false;
 
         _instructionCharCount = 0;
         _lineCount = 0;
-        _StarCmdCharCount = 0;
         _flushAllUntilEOF = false;
 
         withinComment = false;

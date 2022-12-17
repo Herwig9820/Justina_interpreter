@@ -398,7 +398,7 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
             memcpy(&pAnum, prgmCnt.pCstToken->cstValue.pStringConst, sizeof(pAnum));                         // pointer not necessarily aligned with word size: copy memory instead
             if (pAnum != nullptr) {
             #if printCreateDeleteListHeapObjects
-                Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pAnum - RAMSTART);
+                Serial.print("----- (parsed str ) ");   Serial.print((uint32_t)pAnum - RAMSTART); Serial.print(", string: "); Serial.println(pAnum);
             #endif
                 delete[] pAnum;
                 _parsedStringConstObjectCount--;
@@ -599,12 +599,12 @@ void Justina_interpreter::initInterpreterVariables(bool withUserVariables) {
     _pEvalStackTop = nullptr;   _pEvalStackMinus2 = nullptr; _pEvalStackMinus1 = nullptr;
     _pFlowCtrlStackTop = nullptr;   _pFlowCtrlStackMinus2 = nullptr; _pFlowCtrlStackMinus1 = nullptr;
     _pImmediateCmdStackTop = nullptr;
-    
+
     _intermediateStringObjectCount = 0;      // reset at the start of execution
     _localVarValueAreaCount = 0;
     _localVarStringObjectCount = 0;
     _localArrayObjectCount = 0;
-    
+
     _activeFunctionData.callerEvalStackLevels = 0;          // this is the highest program level
     _callStackDepth = 0;                                            // equals flow control stack depth minus open loop (if, for, ...) blocks (= blocks being executed)
     _openDebugLevels = 0;                                           // equals imm mode cmd stack depth minus open eval() strings (= eval() strings being executed)
@@ -880,6 +880,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(
 
     _isCommand = false;
 
+    *_programCounter = tok_no_token;                                                    // in case first token produces error
     parseTokenResult_type result = result_tokenFound;                                   // possible error will be determined during parsing 
     tokenType_type& t = _lastTokenType;
     char* pNext = pInputStart;                                                          // set to first character in instruction
@@ -1164,7 +1165,7 @@ bool Justina_interpreter::checkCommandArgToken(parseTokenResult_type& result) {
     bool previousTokenWasCmdArgSep = false;
     previousTokenWasCmdArgSep = (_lastTokenIsTerminal_hold ? (_lastTermCode_hold == termcod_comma) : false) && (_parenthesisLevel == isLeftPar ? 1 : 0);
     bool isExpressionFirstToken = _lvl0_withinExpression &&
-        (_lastTokenType_hold == tok_isReservedWord) || (_lastTokenType_hold == tok_isGenericName) || previousTokenWasCmdArgSep;    
+        (_lastTokenType_hold == tok_isReservedWord) || (_lastTokenType_hold == tok_isGenericName) || previousTokenWasCmdArgSep;
 
 
     // keep track of argument index within command
@@ -1457,9 +1458,6 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
         // token is an alphanumeric constant, and it's allowed here
         pStringCst = new char[pNext - (pch + 1) - escChars + 1];                                // create char array on the heap to store alphanumeric constant, including terminating '\0'
         _parsedStringConstObjectCount++;
-    #if printCreateDeleteListHeapObjects
-        Serial.print("+++++ (parsed str ) "); Serial.println((uint32_t)pStringCst - RAMSTART);
-    #endif
         // store alphanumeric constant in newly created character array
         pStringCst[pNext - (pch + 1) - escChars] = '\0';                                 // store string terminating '\0' (pch + 1 points to character after opening quote, pNext points to closing quote)
         char* pSource = pch + 1, * pDestin = pStringCst;                                  // pSource points to character after opening quote
@@ -1467,6 +1465,9 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
             if (pSource[0] == '\\') { pSource++; escChars--; }                           // if escape sequences found: skip first escape sequence character (backslash)
             pDestin++[0] = pSource++[0];
         }
+    #if printCreateDeleteListHeapObjects
+        Serial.print("+++++ (parsed str ) "); Serial.print((uint32_t)pStringCst - RAMSTART); Serial.print(", string: "); Serial.println(pStringCst);
+    #endif
     }
     pNext++;                                                                            // skip closing quote
 
@@ -3344,8 +3345,9 @@ void Justina_interpreter::printParsingResult(parseTokenResult_type result, int f
 
     char parsingInfo[100 + MAX_IDENT_NAME_LEN] = "";       // provide sufficient room for longest possible message (int: no OK message in immediate mode)
     if (result == result_tokenFound) {                                                // prepare message with parsing result
-        if (_programMode) { 
-        sprintf(parsingInfo, "Program parsed without errors. %ld %% of program memory used", (long) (((_lastProgramStep - _programStorage +1) * 100) / PROG_MEM_SIZE  )); }
+        if (_programMode) {
+            sprintf(parsingInfo, "Program parsed without errors. %ld %% of program memory used", (long)(((_lastProgramStep - _programStorage + 1) * 100) / PROG_MEM_SIZE));
+        }
     }
 
     else  if ((result == result_undefinedFunctionOrArray) && _programMode) {     // in program mode only 

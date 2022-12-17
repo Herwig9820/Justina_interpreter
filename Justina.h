@@ -1171,7 +1171,6 @@ private:
     bool _isPrompt{ false };
 
     int _lineCount{ 0 };                             // taking into account new line after 'load program' command ////
-    int _StarCmdCharCount{ 0 };
 
     int _userVarCount{ 0 };                                        // counts number of user variables (names and values) 
     int _programVarNameCount{ 0 };                                        // counts number of variable names (global variables: also stores values) 
