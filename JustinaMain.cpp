@@ -327,7 +327,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     static bool withinStringEscSequence{ false };
     static bool lastCharWasSemiColon{ false };
     static bool within1LineComment{ false };
-    static bool withinMultiLineComment{false};
+    static bool withinMultiLineComment{ false };
     static bool withinString{ false };
 
     static char* pErrorPos{};
@@ -382,16 +382,17 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
             quitNow = false;
 
             // if no character added: nothing to do, wait for next
-            bool bufferOverrun{false};
-            bool noCharAdded = !addCharacterToInput(lastCharWasSemiColon, withinString, withinStringEscSequence, within1LineComment, withinMultiLineComment, redundantSemiColon, programOrLineRead,bufferOverrun, c);
-            if (bufferOverrun) { result = result_statementTooLong; }
-            else if (noCharAdded) {  break ;}               // start a new outer loop (read a character if available, etc.)
+            bool bufferOverrun{ false };
+            bool noCharAdded = !addCharacterToInput(lastCharWasSemiColon, withinString, withinStringEscSequence, within1LineComment, withinMultiLineComment, redundantSemiColon, programOrLineRead, bufferOverrun, c);
+            result = result_tokenFound;     // init
+            if (bufferOverrun) { Serial.println("buffer overrun"); result = result_statementTooLong; }
+            else if (noCharAdded) { break; }               // start a new outer loop (read a character if available, etc.)
 
             // if a statement is complete (terminated by a semicolon or end of input), parse it
             // --------------------------------------------------------------------------------
             bool isStatementSeparator = (!withinString) && (!within1LineComment) && (!withinMultiLineComment) && (c == ';') && !redundantSemiColon;
             isStatementSeparator = isStatementSeparator || (withinString && (c == '\n'));  // new line sent to parser as well
-            bool statementComplete = !bufferOverrun && (isStatementSeparator || (programOrLineRead && (_statementCharCount > 0))) ;
+            bool statementComplete = !bufferOverrun && (isStatementSeparator || (programOrLineRead && (_statementCharCount > 0)));
 
             if (statementComplete && !_quitJustina) {                   // if quitting anyway, just skip                                               
                 _statement[_statementCharCount] = '\0';                            // add string terminator
@@ -406,13 +407,13 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
                 if (result == result_parse_kill) { kill = true; _quitJustina = true; }     // _flushAllUntilEOF is true already (flush buffer before quitting)
 
                 _statementCharCount = 0;                                                        // reset after each statement read
-                withinString = false; withinStringEscSequence = false; within1LineComment = false; withinMultiLineComment=false;
+                withinString = false; withinStringEscSequence = false; within1LineComment = false; withinMultiLineComment = false;
                 statementParsed = true;                                                     // with or without error
             }
 
 
             if (!programOrLineRead) { break; }       // program mode: complete program read and parsed / imm. mode: 1 statement read and parsed (with or without error)
-            quitNow = processAndExec(statementParsed, result, kill, pErrorPos);  // return value: quit Justina now
+            quitNow = processAndExec(statementParsed || bufferOverrun, result, kill, pErrorPos);  // return value: quit Justina now
 
             // reset character input status variables
             lastCharWasSemiColon = false;
@@ -433,7 +434,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     _lineCount = 0;
     _flushAllUntilEOF = false;
 
-    if (kill) {_keepInMemory = false; _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
+    if (kill) { _keepInMemory = false; _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
     if (_keepInMemory) { _pConsole->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
     _quitJustina = false;         // if interpreter stays in memory: re-init
 
@@ -445,8 +446,8 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 // *                 *
 // -------------------
 
-bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool & withinMultiLineComment, 
-    bool& redundantSemiColon,bool programOrLineRead, bool &bufferOverrun, char c) {
+bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool& withinMultiLineComment,
+    bool& redundantSemiColon, bool programOrLineRead, bool& bufferOverrun, char c) {
 
     const char commentStartChar = '$';
 
@@ -459,13 +460,16 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
 
     // if last statement in buffer does not contain a semicolon separator at the end, add it
     if (programOrLineRead) {
-        if (_statementCharCount > 0) {              
+        if (_statementCharCount > 0) {
             if (_statement[_statementCharCount - 1] != ';') {
-                if(_statementCharCount == MAX_STATEMENT_LEN ){bufferOverrun = true; return false;}
+                if (_statementCharCount == MAX_STATEMENT_LEN) { bufferOverrun = true; return false; }
                 _statement[_statementCharCount] = ';';                               // still room: add character
                 _statementCharCount++;
             }
         }
+        
+        within1LineComment = false;                              // comment stops at end of line
+        Serial.println("** - End of comment(EOF)");
     }
 
     // process character
@@ -473,6 +477,8 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
         if (_flushAllUntilEOF) { return false; }                       // discard characters (after parsing error)
 
         if (c == '\n') { _lineCount++; }                           // line number used when while reading program in input file
+
+        Serial.print("** process character: "); Serial.println(c);
 
         // currently within a string or within a comment ?
         if (withinString) {
@@ -484,15 +490,15 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
         }
 
         else if (within1LineComment) {
-            if (c == '\n') { within1LineComment = false; return false; }                // comment stops at end of line
+            if (c == '\n') { Serial.println("** - End of comment (line)"); within1LineComment = false; return false; }                // comment stops at end of line
         }
 
         else {                                                                                              // not within a string or comment
             bool leadingWhiteSpace = (((c == ' ') || (c == '\n')) && (_statementCharCount == 0));
-            if (leadingWhiteSpace) { return false; };                        
+            if (leadingWhiteSpace) { return false; };
 
             if (!within1LineComment && !withinMultiLineComment && (c == '\"')) { withinString = true; }
-            else if (!withinString && (c == commentStartChar)) { within1LineComment = true; return false; }
+            else if (!withinString && (c == commentStartChar)) { Serial.println("** - Start of comment");  within1LineComment = true; return false; }
             else if (c == '\n') { c = ' '; }                       // not within string or comment: replace a new line with a space (white space in multi-line statement)
 
             redundantSpaces = (_statementCharCount > 0) && (c == ' ') && lastCharWasWhiteSpace;
@@ -501,7 +507,7 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
             lastCharWasSemiColon = (c == ';');
         }
 
-        if (redundantSpaces || redundantSemiColon || within1LineComment) { return false; }            // no character added
+        if (redundantSpaces || redundantSemiColon || within1LineComment || withinMultiLineComment) { return false; }            // no character added
 
         // add character  
         if (_statementCharCount == MAX_STATEMENT_LEN) { bufferOverrun = true; return false; }
@@ -518,7 +524,6 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
 // -------------------
 
 bool Justina_interpreter::processAndExec(bool statementParsed, parseTokenResult_type result, bool& kill, char* pErrorPos) {
-
     execResult_type execResult{ result_execOK };
 
     if (statementParsed) {
@@ -558,7 +563,7 @@ bool Justina_interpreter::processAndExec(bool statementParsed, parseTokenResult_
 
     // if program parsing error: reset machine, because variable storage might not be consistent with program any more
     if ((_programMode) && (result != result_tokenFound)) { resetMachine(false); }
-    else if (execResult == result_initiateProgramLoad) { Serial.println("** reset machine "); resetMachine(false); }//// 1 lijn met vorige
+    else if (execResult == result_initiateProgramLoad) { resetMachine(false); }//// 1 lijn met vorige
 
     // no program error (could be immmediate mode error however): only reset a couple of items here 
     else {
