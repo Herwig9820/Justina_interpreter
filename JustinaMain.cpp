@@ -258,10 +258,10 @@ Justina_interpreter::Justina_interpreter(Stream* const pConsole) : _pConsole(pCo
     _functionCount = (sizeof(_functions)) / sizeof(_functions[0]);
     _terminalCount = (sizeof(_terminals)) / sizeof(_terminals[0]);
 
-    _quitJustinaAtEOF = false;
+    _quitJustina = false;
     _isPrompt = false;
 
-    _instructionCharCount = 0;
+    _statementCharCount = 0;
     _lineCount = 0;                             // taking into account new line after 'load program' command ////
     _flushAllUntilEOF = false;
 
@@ -323,12 +323,26 @@ bool Justina_interpreter::setUserFcnCallback(void(*func) (const void** data, con
 // ----------------------------
 
 bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, int definedTerms) {
-    bool loadProgJustParsed{ false };
-    bool endProgramReached{ false };
+    // local static variables
+    static bool withinStringEscSequence{ false };
+    static bool lastCharWasSemiColon{ false };
+    static bool within1LineComment{ false };
+    static bool withinMultiLineComment{false};
+    static bool withinString{ false };
+
+    static char* pErrorPos{};
+
+    static parseTokenResult_type result{ result_tokenFound };    // init
+    static bool statementParsed{ false };                      // init
+    static bool receivingProgram{ false };
+
+    // local variables 
     bool kill{ false };                                       // kill is true: request from caller, kill is false: quit command executed
     bool quitNow{ false };
-    bool enableTimeOutOnChar{ false }, timeOutEnabled{ false };
     char c;
+
+    bool redundantSemiColon = false;
+    bool isCommentStartChar = (c == '$');                               // character can also be part of comment
 
     _pConsole->println();
     for (int i = 0; i < 13; i++) { _pConsole->print("*"); } _pConsole->print("____");
@@ -341,7 +355,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     _pConsole->print("    Version: "); _pConsole->print(ProductVersion); _pConsole->print(" ("); _pConsole->print(BuildDate); _pConsole->println(")");
     for (int i = 0; i < 48; i++) { _pConsole->print("*"); } _pConsole->println();
 
-    _programMode = false;                                   
+    _programMode = false;
     _programCounter = _programStorage + PROG_MEM_SIZE;
     *(_programStorage + PROG_MEM_SIZE) = tok_no_token;                                      //  current end of program (immediate mode)
     _pConsole = pConsole;
@@ -351,33 +365,63 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 
     _coldStart = false;             // can be used if needed in this procedure, to determine whether this was a cold or warm start
 
-    long startWaitForReadTime{};
+
+
     do {
-        // while waiting for characters, continuously do a housekeeping callback (if function defined)
-        if (_housekeepingCallback != nullptr) {
-            _currenttime = millis();                                                        // while reading from console, continuously call housekeeping callback routine
-            _previousTime = _currenttime;                                                   // keep up to date (needed during parsing and evaluation)
-            _lastCallBackTime = _currenttime;
-            _housekeepingCallback(quitNow, _appFlags);
+        // when loading a program, as soon as first printable character of a PROGRAM is read, each subsequent character needs to follow after the previous one within a fixed time delay, handled by getKey().
+        // program reading ends when no character is read within this time window.
+        // when processing immediate mode statements (single line), reading ends when a New Line terminating character is received
+        bool allowTimeOut = _programMode && !_initiateProgramLoad;          // _initiateProgramLoad is set during execution of the command to read a program source file from the console
+        if (getKey(c, allowTimeOut)) { kill = true; break; }                // return true if kill request received from calling program
+        if (c < 0xFF) { _initiateProgramLoad = false; }                     // reset _initiateProgramLoad after each printable character received
+        bool programOrLineRead = _programMode ? ((c == 0xFF) && allowTimeOut) : (c == '\n');
+        if ((c == 0xFF) && !programOrLineRead) { continue; }                // no character (except when program or line is read): start next loop
 
-            if (quitNow) { kill = true; break; }                // return true if kill request received from calling program OR Justina Quit command executed
-        }
 
-        bool readCharWindowExpired = (_programMode && timeOutEnabled && (startWaitForReadTime + 200L < millis()));        // only while parsing a program
+        do {        // one loop only
+            quitNow = false;
 
-        if ((_pConsole->available() > 0) || endProgramReached || readCharWindowExpired) {     // if terminal character available for reading, or 'end program' reached
-            if (_pConsole->available() > 0) {     // terminal character available for reading ?
-                c = _pConsole->read();
-                if ((c >= 0x20) && enableTimeOutOnChar) { timeOutEnabled = true; }
+            // if no character added: nothing to do, wait for next
+            bool bufferOverrun{false};
+            bool noCharAdded = !addCharacterToInput(lastCharWasSemiColon, withinString, withinStringEscSequence, within1LineComment, withinMultiLineComment, redundantSemiColon, programOrLineRead,bufferOverrun, c);
+            if (bufferOverrun) { result = result_statementTooLong; }
+            else if (noCharAdded) {  break ;}               // start a new outer loop (read a character if available, etc.)
+
+            // if a statement is complete (terminated by a semicolon or end of input), parse it
+            // --------------------------------------------------------------------------------
+            bool isStatementSeparator = (!withinString) && (!within1LineComment) && (!withinMultiLineComment) && (c == ';') && !redundantSemiColon;
+            isStatementSeparator = isStatementSeparator || (withinString && (c == '\n'));  // new line sent to parser as well
+            bool statementComplete = !bufferOverrun && (isStatementSeparator || (programOrLineRead && (_statementCharCount > 0))) ;
+
+            if (statementComplete && !_quitJustina) {                   // if quitting anyway, just skip                                               
+                _statement[_statementCharCount] = '\0';                            // add string terminator
+
+                char* pStatement = _statement;                                                 // because passed by reference 
+                char* pDummy{};
+                _parsingExecutingTraceString = false; _parsingEvalString = false;
+                result = parseStatements(pStatement, pDummy);                                 // parse ONE statement only 
+                pErrorPos = pStatement;                                                      // in case of error
+
+                if (result != result_tokenFound) { _flushAllUntilEOF = true; }
+                if (result == result_parse_kill) { kill = true; _quitJustina = true; }     // _flushAllUntilEOF is true already (flush buffer before quitting)
+
+                _statementCharCount = 0;                                                        // reset after each statement read
+                withinString = false; withinStringEscSequence = false; within1LineComment = false; withinMultiLineComment=false;
+                statementParsed = true;                                                     // with or without error
             }
-            else { c = 0x001a; endProgramReached = false; }
 
-            quitNow = processCharacter(kill, loadProgJustParsed, endProgramReached, c, readCharWindowExpired);        // process one character. Kill request from calling program and 
-            if (quitNow) { ; break; }                        // user gave quit command
-            if (loadProgJustParsed) { enableTimeOutOnChar = true; }
-            else if (endProgramReached || readCharWindowExpired) { enableTimeOutOnChar = false; timeOutEnabled = false; }
-            startWaitForReadTime = millis();                    // opening a time window for reading next character
-        }
+
+            if (!programOrLineRead) { break; }       // program mode: complete program read and parsed / imm. mode: 1 statement read and parsed (with or without error)
+            quitNow = processAndExec(statementParsed, result, kill, pErrorPos);  // return value: quit Justina now
+
+            // reset character input status variables
+            lastCharWasSemiColon = false;
+            _statementCharCount = 0;
+            _lineCount = 0;
+            _flushAllUntilEOF = false;
+        } while (false);
+
+        if (quitNow) { break; }                        // user gave quit command
 
 
     } while (true);
@@ -385,71 +429,47 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     _appFlags = 0x0000L;                            // clear all application flags
     _housekeepingCallback(quitNow, _appFlags);      // only to pass application flags to caller
 
-    if (kill) { _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
-    if (_keepInMemory) { _pConsole->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
-    _quitJustinaAtEOF = false;         // if interpreter stays in memory: re-init
+    _statementCharCount = 0;
+    _lineCount = 0;
+    _flushAllUntilEOF = false;
 
-    return _keepInMemory;
+    if (kill) {_keepInMemory = false; _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
+    if (_keepInMemory) { _pConsole->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
+    _quitJustina = false;         // if interpreter stays in memory: re-init
+
+    return _keepInMemory;           // return to calling program
 }
 
 
-// ----------------------------------
-// *   process an input character   *
-// ----------------------------------
+// -------------------
+// *                 *
+// -------------------
 
-bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad, bool& endProgramStatementParsed, char c, bool programLoadTimeOut) {
-    // process character
-    static parseTokenResult_type result{};
-    static bool withinStringEscSequence{ false };
-    static bool instructionParsed{ false };
+bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool & withinMultiLineComment, 
+    bool& redundantSemiColon,bool programOrLineRead, bool &bufferOverrun, char c) {
+
+    const char commentStartChar = '$';
+
     static bool lastCharWasWhiteSpace{ false };
-    static bool lastCharWasSemiColon{ false };
-
-    static bool withinComment{ false };
-    static bool withinString{ false };
-
-    static char* pErrorPos{};
-
-    char stopProgramParsing = 0x1A;
-    char commentStartChar = '$';
 
     bool redundantSpaces = false;                                       // init
-    bool redundantSemiColon = false;
 
-    bool isEndOfFile = _programMode ? (c == stopProgramParsing) : (c == '\n');                                      // end of input: EOF in program mode, LF or EOF in immediate mode
-    bool isCommentStartChar = (c == '$');                               // character can also be part of comment
+    bufferOverrun = false;
+    if ((c < ' ') && (c != '\n')) { return false; }          // skip control-chars except new line and EOF character
 
-    if ((c == '\n') && initiateProgramLoad) {
-        initiateProgramLoad = false;
-        // do not touch program memory itself: there could be a program in it 
-
-        resetMachine(false);
-
-        _programMode = true;
-        _programCounter = _programStorage;
-
-        _instructionCharCount = 0;
-        _lineCount = 0;                             // taking into account new line after 'load program' command ////
-        _flushAllUntilEOF = false;
-
-        lastCharWasWhiteSpace = false;
-        lastCharWasSemiColon = false;
-
-        withinString = false; withinStringEscSequence = false;
-        withinComment = false;
-
-        if (_isPrompt) { _pConsole->println(); }
-        _pConsole->print(_programMode ? "Waiting for program...\r\n" : ((_promptAndEcho != 0) ? "Justina> " : ""));
-        _isPrompt = (_promptAndEcho != 0) ? !_programMode : false;
-        return false;
+    // if last statement in buffer does not contain a semicolon separator at the end, add it
+    if (programOrLineRead) {
+        if (_statementCharCount > 0) {              
+            if (_statement[_statementCharCount - 1] != ';') {
+                if(_statementCharCount == MAX_STATEMENT_LEN ){bufferOverrun = true; return false;}
+                _statement[_statementCharCount] = ';';                               // still room: add character
+                _statementCharCount++;
+            }
+        }
     }
-    else if ((c < ' ') && (c != '\n') && (!isEndOfFile)) {
-        return false;
-    }                  // skip control-chars except new line and EOF character
 
-
-
-    if (!isEndOfFile) {
+    // process character
+    else {                                                                  // not yet at end of program or imm. mode line
         if (_flushAllUntilEOF) { return false; }                       // discard characters (after parsing error)
 
         if (c == '\n') { _lineCount++; }                           // line number used when while reading program in input file
@@ -461,188 +481,170 @@ bool Justina_interpreter::processCharacter(bool& kill, bool& initiateProgramLoad
             else { withinStringEscSequence = false; }                 // any other character within string
             lastCharWasWhiteSpace = false;
             lastCharWasSemiColon = false;
-
         }
-        else if (withinComment) {
-            if (c == '\n') { withinComment = false; return false; }                // comment stops at end of line
+
+        else if (within1LineComment) {
+            if (c == '\n') { within1LineComment = false; return false; }                // comment stops at end of line
         }
-        else {                                                                                              // not within a string
-            bool leadingWhiteSpace = (((c == ' ') || (c == '\n')) && (_instructionCharCount == 0));
-            if (leadingWhiteSpace) { return false; };                        // but always process end of file character
 
-            if (!withinComment && (c == '\"')) { withinString = true; }
-            else if (!withinString && (c == commentStartChar)) { withinComment = true; return false; }
-            else if (c == '\n') { c = ' '; }                       // not within string or comment: replace a new line with a space (white space in multi-line instruction)
+        else {                                                                                              // not within a string or comment
+            bool leadingWhiteSpace = (((c == ' ') || (c == '\n')) && (_statementCharCount == 0));
+            if (leadingWhiteSpace) { return false; };                        
 
-            redundantSpaces = (_instructionCharCount > 0) && (c == ' ') && lastCharWasWhiteSpace;
+            if (!within1LineComment && !withinMultiLineComment && (c == '\"')) { withinString = true; }
+            else if (!withinString && (c == commentStartChar)) { within1LineComment = true; return false; }
+            else if (c == '\n') { c = ' '; }                       // not within string or comment: replace a new line with a space (white space in multi-line statement)
+
+            redundantSpaces = (_statementCharCount > 0) && (c == ' ') && lastCharWasWhiteSpace;
             redundantSemiColon = (c == ';') && lastCharWasSemiColon;
             lastCharWasWhiteSpace = (c == ' ');                     // remember
             lastCharWasSemiColon = (c == ';');
         }
 
-        // less than 3 positions available in buffer: discard character (keep 2 free positions to add optional ';' and for terminating '\0')  
-        if ((_instructionCharCount <= MAX_STATEMENT_LEN - 3) && !isEndOfFile && !redundantSpaces && !redundantSemiColon && !withinComment) {
-            _instruction[_instructionCharCount] = c;                               // still room: add character
-            _instructionCharCount++;
-        }
+        if (redundantSpaces || redundantSemiColon || within1LineComment) { return false; }            // no character added
+
+        // add character  
+        if (_statementCharCount == MAX_STATEMENT_LEN) { bufferOverrun = true; return false; }
+        _statement[_statementCharCount] = c;                               // still room: add character
+        _statementCharCount++;
     }
 
-    if ((_instructionCharCount > 0) && isEndOfFile) {             // if last instruction before EOF does not contain a semicolon separator at the end, add it 
-        if (_instruction[_instructionCharCount - 1] != ';') {
-            _instruction[_instructionCharCount] = ';';                               // still room: add character
-            _instructionCharCount++;
+    return true;
+}
+
+
+// -------------------
+// *                 *
+// -------------------
+
+bool Justina_interpreter::processAndExec(bool statementParsed, parseTokenResult_type result, bool& kill, char* pErrorPos) {
+
+    execResult_type execResult{ result_execOK };
+
+    if (statementParsed) {
+        int funcNotDefIndex;
+        if (result == result_tokenFound) {
+            // checks at the end of parsing: any undefined functions (program mode only) ?  any open blocks ?
+            if (_programMode && (!allExternalFunctionsDefined(funcNotDefIndex))) { result = result_undefinedFunctionOrArray; }
+            if (_blockLevel > 0) { result = result_noBlockEnd; }
+
+            if (result != result_tokenFound) { _appFlags |= appFlag_errorConditionBit; }              // if parsing error only occurs here, error condition flag can still be set here (signal to caller)
         }
-    }
 
+        (_programMode ? _lastProgramStep : _lastUserCmdStep) = _programCounter;
 
+        if (result == result_tokenFound) {
+            if (!_programMode) {
 
+                // evaluation comes here
+                if (_promptAndEcho == 2) { prettyPrintStatements(0); _pConsole->println(); }                    // immediate mode and result OK: pretty print input line
+                else if (_promptAndEcho == 1) { _pConsole->println(); _isPrompt = false; }
 
-    bool isInstructionSeparator = (!withinString) && (!withinComment) && (c == ';') && !redundantSemiColon;   // only if before end of file character 
-    isInstructionSeparator = isInstructionSeparator || (withinString && (c == '\n'));  // new line sent to parser as well
-    bool instructionComplete = isInstructionSeparator || (isEndOfFile && (_instructionCharCount > 0));
+                execResult = exec(_programStorage + PROG_MEM_SIZE);                                 // execute parsed user statements
 
-    if (instructionComplete && !_quitJustinaAtEOF) {                                                // terminated by a semicolon if not end of input
-        _instruction[_instructionCharCount] = '\0';                            // add string terminator
-
-        char* pInstruction = _instruction;                                                 // because passed by reference 
-        char* pDummy{};
-        _parsingExecutingTraceString = false; _parsingEvalString = false;
-        result = parseStatements(pInstruction, pDummy, &initiateProgramLoad, &endProgramStatementParsed);                                 // parse ONE instruction only 
-        pErrorPos = pInstruction;                                                      // in case of error
-        if (result != result_tokenFound) { _flushAllUntilEOF = true; }
-        if (result == result_parse_kill) { kill = true; _quitJustinaAtEOF = true; }     // _flushAllUntilEOF is true already (flush buffer before quitting)
-
-        _instructionCharCount = 0;
-        withinString = false; withinStringEscSequence = false;
-        instructionParsed = true;                                  // instructions found
-    }
-
-
-    if (isEndOfFile) {
-
-        execResult_type execResult{ result_execOK };
-
-        if (instructionParsed) {
-            int funcNotDefIndex;
-            if (result == result_tokenFound) {
-                // checks at the end of parsing: any undefined functions (program mode only) ?  any open blocks ?
-                if (_programMode && (!allExternalFunctionsDefined(funcNotDefIndex))) { result = result_undefinedFunctionOrArray; }
-                if (_blockLevel > 0) { result = result_noBlockEnd; }
-
-                if (result != result_tokenFound) { _appFlags |= appFlag_errorConditionBit; }              // if parsing error only occurs here, error condition flag can still be set here (signal to caller)
-            }
-
-            (_programMode ? _lastProgramStep : _lastUserCmdStep) = _programCounter;    
-
-            if (result == result_tokenFound) {
-                if (!_programMode) {
-
-                    // evaluation comes here
-                    if (_promptAndEcho == 2) { prettyPrintInstructions(0); _pConsole->println(); }                    // immediate mode and result OK: pretty print input line
-                    else if (_promptAndEcho == 1) { _pConsole->println(); _isPrompt = false; }
-
-                    execResult = exec(_programStorage + PROG_MEM_SIZE);                                 // execute parsed user statements
-
-                    if ((execResult == result_eval_kill) || (execResult == result_eval_quit)) { _quitJustinaAtEOF = true; }
-                    if (execResult == result_eval_kill) { kill = true; }
-                }
-            }
-
-            // parsing OK message (program mode only - no message in immediate mode) or error message 
-            printParsingResult(result, funcNotDefIndex, _instruction, _lineCount, pErrorPos);
-        }
-        else { _pConsole->println(); }
-
-
-        // count of programs in debug:
-        // - if an error occured in a RUNNING program, the program is terminated and the number of STOPPED programs ('in debug mode') does not change.
-        // - if an error occured while executing a command line, then this count is not changed either
-        // flow control stack:
-        // - at this point, structure '_activeFunctionData' always contains flow control data for the main program level (command line - in debug mode if the count of open programs is not zero)
-        // - the flow control stack maintains data about open block commands, open functions and eval() strings in execution (call stack)
-        // => skip stack elements for any command line open block commands or eval() strings in execution, and fetch the data for the function where control will resume when started again
-
-        if ((_openDebugLevels > 0) && (execResult != result_eval_kill) && (execResult != result_eval_quit)) {
-            char* nextInstructionsPointer = _programCounter;
-            OpenFunctionData* pDeepestOpenFunction = &_activeFunctionData;
-
-            void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;
-            int blockType = block_none;
-            do {                                                                // there is at least one open function in the call stack
-                blockType = *(char*)pFlowCtrlStackLvl;
-                if (blockType != block_extFunction) {
-                    pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
-                    continue;
-                };
-                break;
-            } while (true);
-            pDeepestOpenFunction = (OpenFunctionData*)pFlowCtrlStackLvl;        // deepest level of nested functions
-            nextInstructionsPointer = pDeepestOpenFunction->pNextStep;
-
-            _pConsole->println(); for (int i = 1; i <= _dispWidth; i++) { _pConsole->print("-"); } _pConsole->println();
-            parseAndExecTraceString();     // trace string may not contain keywords, external functions, generic names
-            char msg[150] = "";
-            sprintf(msg, "DEBUG ==>> NEXT [%s: ", extFunctionNames[pDeepestOpenFunction->functionIndex]);
-            _pConsole->print(msg);
-            prettyPrintInstructions(10, nextInstructionsPointer);
-
-            if (_openDebugLevels > 1) {
-                sprintf(msg, "*** this + %d other programs STOPPED ***", _openDebugLevels - 1);
-                _pConsole->println(msg);
+                if ((execResult == result_kill) || (execResult == result_quit)) { _quitJustina = true; }
+                if (execResult == result_kill) { kill = true; }
             }
         }
 
-        (_appFlags &= ~appFlag_statusMask);
-        (_openDebugLevels > 0) ? (_appFlags |= appFlag_stoppedInDebug) : (_appFlags |= appFlag_idle);     // signal 'debug mode' or 'idle' to caller
-
-
-        bool wasReset = false;      // init
-        if (_programMode) {               
-            // end of file: always back to immediate mode
-            // do not touch program memory itself: there could be a program in it 
-
-            // if program parsing error: reset machine, because variable storage is not consistent with program 
-            if (result != result_tokenFound) {
-                resetMachine(false);      // message not needed here
-                wasReset = true;
-            }
-            _programMode = false; 
-        }
-
-        if (_promptAndEcho != 0) { _pConsole->print("Justina> "); _isPrompt = true; }                 // print new prompt
-
-        // if stopping a program for debug, do not delete parsed strings included in the command line, because that command line has now been pushed on  ...
-         // the parsed command line stack and included parsed constants will be deleted later (resetMachine routine)
-        if (execResult == result_eval_stopForDebug) { *(_programStorage + PROG_MEM_SIZE) = tok_no_token; }
-
-        // in immediate mode
-        else {
-            // execution finished: delete parsed strings in imm mode command OR in executed trace expressions (they are on the heap and not needed any more). Identifiers must stay avaialble
-            deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);  // always
-            *(_programStorage + PROG_MEM_SIZE) = tok_no_token;                                      //  current end of program (immediate mode)
-        }
-
-        if (!wasReset) {
-            parsingStack.deleteList();                      // safety
-            _blockLevel = 0;
-            _extFunctionBlockOpen = false;
-
-            _programCounter = _programStorage + PROG_MEM_SIZE;                 // start of 'immediate mode' program area
-
-        }
-
-        instructionParsed = false;
-        lastCharWasSemiColon = false;
-
-        _instructionCharCount = 0;
-        _lineCount = 0;
-        _flushAllUntilEOF = false;
-
-        withinComment = false;
-
-        return _quitJustinaAtEOF;
-
-
+        // parsing OK message (program mode only - no message in immediate mode) or error message 
+        printParsingResult(result, funcNotDefIndex, _statement, _lineCount, pErrorPos);
+        statementParsed = false;      // reset
     }
-    return false;  // and wait for next character
+    else { _pConsole->println(); }
+
+    // if in debug mode, trace expressions (if defined) and print debug info 
+    if ((_openDebugLevels > 0) && (execResult != result_kill) && (execResult != result_quit) && (execResult != result_initiateProgramLoad)) { traceAndPrintDebugInfo(); }
+
+    // if program parsing error: reset machine, because variable storage might not be consistent with program any more
+    if ((_programMode) && (result != result_tokenFound)) { resetMachine(false); }
+    else if (execResult == result_initiateProgramLoad) { Serial.println("** reset machine "); resetMachine(false); }//// 1 lijn met vorige
+
+    // no program error (could be immmediate mode error however): only reset a couple of items here 
+    else {
+        parsingStack.deleteList();
+        _blockLevel = 0;
+        _extFunctionBlockOpen = false;
+    }
+
+    if ((_promptAndEcho != 0) && (execResult != result_initiateProgramLoad)) { _pConsole->print("Justina> "); _isPrompt = true; }                 // print new prompt
+
+    // execution finished (not stopping in debug mode), with or without error: delete parsed strings in imm mode command : they are on the heap and not needed any more. Identifiers must stay avaialble
+    // -> if stopping a program for debug, do not delete parsed strings (in imm. mode command), because that command line has now been pushed on  ...
+     // the parsed command line stack and included parsed constants will be deleted later (resetMachine routine)
+    if (execResult != result_stopForDebug) { deleteConstStringObjects(_programStorage + PROG_MEM_SIZE); } // always
+
+    // finalize 
+    _programMode = false;
+    _programCounter = _programStorage + PROG_MEM_SIZE;                 // start of 'immediate mode' program area
+    *(_programStorage + PROG_MEM_SIZE) = tok_no_token;                                      //  current end of program (immediate mode)
+
+
+
+
+
+    if (execResult == result_initiateProgramLoad) {
+        _programMode = true;
+        _programCounter = _programStorage;
+
+        if (_isPrompt) { _pConsole->println(); }
+        _pConsole->print("Waiting for program...\r\n");
+        _isPrompt = false;
+
+        _initiateProgramLoad = true;
+    }
+
+
+
+
+
+
+    statementParsed = false;
+
+    (_appFlags &= ~appFlag_statusMask);
+    (_openDebugLevels > 0) ? (_appFlags |= appFlag_stoppedInDebug) : (_appFlags |= appFlag_idle);     // signal 'debug mode' or 'idle' to caller
+
+    return _quitJustina;
+}
+
+// -------------------
+// *                 *
+// -------------------
+
+void Justina_interpreter::traceAndPrintDebugInfo() {
+    // count of programs in debug:
+    // - if an error occured in a RUNNING program, the program is terminated and the number of STOPPED programs ('in debug mode') does not change.
+    // - if an error occured while executing a command line, then this count is not changed either
+    // flow control stack:
+    // - at this point, structure '_activeFunctionData' always contains flow control data for the main program level (command line - in debug mode if the count of open programs is not zero)
+    // - the flow control stack maintains data about open block commands, open functions and eval() strings in execution (call stack)
+    // => skip stack elements for any command line open block commands or eval() strings in execution, and fetch the data for the function where control will resume when started again
+
+    char* nextStatementPointer = _programCounter;
+    OpenFunctionData* pDeepestOpenFunction = &_activeFunctionData;
+
+    void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;
+    int blockType = block_none;
+    do {                                                                // there is at least one open function in the call stack
+        blockType = *(char*)pFlowCtrlStackLvl;
+        if (blockType != block_extFunction) {
+            pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
+            continue;
+        };
+        break;
+    } while (true);
+    pDeepestOpenFunction = (OpenFunctionData*)pFlowCtrlStackLvl;        // deepest level of nested functions
+    nextStatementPointer = pDeepestOpenFunction->pNextStep;
+
+    _pConsole->println(); for (int i = 1; i <= _dispWidth; i++) { _pConsole->print("-"); } _pConsole->println();
+    parseAndExecTraceString();     // trace string may not contain keywords, external functions, generic names
+    char msg[150] = "";
+    sprintf(msg, "DEBUG ==>> NEXT [%s: ", extFunctionNames[pDeepestOpenFunction->functionIndex]);
+    _pConsole->print(msg);
+    prettyPrintStatements(10, nextStatementPointer);
+
+    if (_openDebugLevels > 1) {
+        sprintf(msg, "*** this + %d other programs STOPPED ***", _openDebugLevels - 1);
+        _pConsole->println(msg);
+    }
 }

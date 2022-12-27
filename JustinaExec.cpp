@@ -31,7 +31,7 @@
 #define printCreateDeleteListHeapObjects 0
 #define printProcessedTokens 0
 #define debugPrint 0
-#define printParsedStatementStack 1
+#define printParsedStatementStack 0
 
 // *****************************************************************
 // ***        class Justina_interpreter - implementation         ***
@@ -558,7 +558,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             char c{ 0xFF };                                                           // init: no character available
             // read a character, if available in buffer
             do {
-                if (getKey(c)) { execResult = result_eval_kill; return execResult; }      // return value true: kill Justina interpreter (buffer is now flushed until next line character)
+                if (getKey(c)) { execResult = result_kill; return execResult; }      // return value true: kill Justina interpreter (buffer is now flushed until next line character)
                 if (c != 0xFF) {                                                                           // terminal character available for reading ?
                     // Check for Justina ESCAPE sequence (sent by terminal as individual characters) and cancel input, or use default value, if indicated
                     // Note: if Justina ESCAPE sequence is not recognized, then backslash character is simply discarded
@@ -581,7 +581,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             // note: skip while executing trace expressions, parsed eval() expresions or quitting Justina
 
             bool executingEvalString = (_activeFunctionData.blockType == block_eval);
-            if (!_parsingExecutingTraceString && !executingEvalString && (execResult != result_eval_kill) && (execResult != result_eval_quit)) {
+            if (!_parsingExecutingTraceString && !executingEvalString && (execResult != result_kill) && (execResult != result_quit)) {
                 bool nextIsSameLvlEnd{ false };
                 if ((_stepCmdExecuted == db_stepToBlockEnd) && (flowCtrlStack.getElementCount() == _stepFlowCtrlStackLevels)
                     && ((*_activeFunctionData.pNextStep & 0x0F) == tok_isReservedWord)) {
@@ -627,8 +627,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
                 if (doStopForDebugNow) { userRequestsStop = false; _debugCmdExecuted = false; }           // reset request to stop program
 
-                if (userRequestsAbort) { execResult = result_eval_abort; }
-                else if (doStopForDebugNow || doSkip) { execResult = result_eval_stopForDebug; }
+                if (userRequestsAbort) { execResult = result_abort; }
+                else if (doStopForDebugNow || doSkip) { execResult = result_stopForDebug; }
 
                 isFunctionReturn = false;
             }
@@ -644,7 +644,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             if (!_atLineStart) { _pConsole->println(); _atLineStart = true; }
             execError = true;
 
-            bool isEvent = (execResult >= result_eval_startOfEvents);       // not an error but an event ?
+            bool isEvent = (execResult >= result_startOfEvents);       // not an error but an event ?
             char execInfo[150] = "";
 
             // plain error ? 
@@ -668,10 +668,10 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 char* errorProgramCounter = _activeFunctionData.errorProgramCounter;
                 int functionIndex = _activeFunctionData.functionIndex;          // init
 
-                Serial.print("** block type: "); Serial.println((int)_activeFunctionData.blockType);
+                ////Serial.print("** block type: "); Serial.println((int)_activeFunctionData.blockType);
                 // info to identify and print the statement where the error occured is on the flow ctrl stack ? find it there
                 if (_activeFunctionData.blockType == block_eval) {
-                    Serial.println("   active function: block type block_eval -> take flow ctrl stack top");
+                    ////Serial.println("   active function: block type block_eval -> take flow ctrl stack top");
 
                     void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;       // one level below _activeFunctionData
                     char* pImmediateCmdStackLvl = _pImmediateCmdStackTop;
@@ -679,7 +679,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                     while (((OpenFunctionData*)pFlowCtrlStackLvl)->blockType == block_eval) {
                         pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                         pImmediateCmdStackLvl = immModeCommandStack.getPrevListElement(pImmediateCmdStackLvl);
-                        Serial.println("   flow ctrl stack level: block type block_eval -> take previous");
+                        ////Serial.println("   flow ctrl stack level: block type block_eval -> take previous");
                     }
 
                     // retrieve error statement pointers and function index (in case the 'function' block type is referring to immediate mode statements)
@@ -693,7 +693,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 }
 
                 _pConsole->print("\r\n  ");
-                prettyPrintInstructions(1, errorStatementStartStep + programCounterOffset, errorProgramCounter + programCounterOffset, &sourceErrorPos);
+                prettyPrintStatements(1, errorStatementStartStep + programCounterOffset, errorProgramCounter + programCounterOffset, &sourceErrorPos);
                 for (int i = 1; i <= sourceErrorPos; ++i) { _pConsole->print(" "); }
 
                 sprintf(execInfo, "  ^\r\n  Exec error %d", execResult);     // in main program level 
@@ -709,13 +709,14 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 _pConsole->print(execInfo);
             }
 
-            else if (execResult == result_eval_quit) {
+            else if (execResult == result_quit) {
                 strcpy(execInfo, "\r\nExecuting 'quit' command, ");
                 _pConsole->print(strcat(execInfo, _keepInMemory ? "data retained\r\n" : "memory released\r\n"));
             }
-            else if (execResult == result_eval_kill) {}      // do nothing
-            else if (execResult == result_eval_abort) { _pConsole->print("\r\n+++ Abort: code execution terminated +++\r\n"); }
-            else if (execResult == result_eval_stopForDebug) { if (isBackslashStop) { _pConsole->print("\r\n+++ Program stopped +++\r\n"); } }
+            else if (execResult == result_kill) {}      // do nothing
+            else if (execResult == result_abort) { _pConsole->print("\r\n+++ Abort: code execution terminated +++\r\n"); }
+            else if (execResult == result_stopForDebug) { if (isBackslashStop) { _pConsole->print("\r\n+++ Program stopped +++\r\n"); } }
+            else if (execResult == result_initiateProgramLoad){}        ////
 
             _lastValueIsStored = false;              // prevent printing last result (if any)
             break;
@@ -759,7 +760,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
     // 2.2 adapt imm. mode parsed statement stack, flow control stack and evaluation stack
     // -----------------------------------------------------------------------------------
 
-    if (execResult == result_eval_stopForDebug) {              // stopping for debug now ('STOP' command or single step)
+    if (execResult == result_stopForDebug) {              // stopping for debug now ('STOP' command or single step)
         // push caller function data (or main = user entry level in immediate mode) on FLOW CONTROL stack 
         _pFlowCtrlStackMinus2 = _pFlowCtrlStackMinus1; _pFlowCtrlStackMinus1 = _pFlowCtrlStackTop;
 
@@ -782,7 +783,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
     }
 
     // no programs in debug: always; otherwise: only if error is in fact quit or kill event 
-    else if ((_openDebugLevels == 0) || (execResult == result_eval_quit) || (execResult == result_eval_kill)) {             // do not clear flow control stack while in debug mode
+    else if ((_openDebugLevels == 0) || (execResult == result_quit) || (execResult == result_kill)) {             // do not clear flow control stack while in debug mode
         int dummy{};
         _openDebugLevels = 0;       // (if not yet zero)
         clearImmediateCmdStack(immModeCommandStack.getElementCount());
@@ -792,7 +793,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
     // tracing (this means at least one program is stopped; if no exec error then one evaluation stack level (with the result) needs to be deleted
     else if (_parsingExecutingTraceString) {
-
         int charsPrinted{  };        // needed but not used
         Val toPrint;
         if (execResult == result_execOK) {
@@ -840,7 +840,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
     }
 
     // adapt application flags
-    ((execResult == result_execOK) || (execResult >= result_eval_startOfEvents)) ? _appFlags &= ~appFlag_errorConditionBit : _appFlags |= appFlag_errorConditionBit;              // clear or set error condition flag 
+    ((execResult == result_execOK) || (execResult >= result_startOfEvents)) ? _appFlags &= ~appFlag_errorConditionBit : _appFlags |= appFlag_errorConditionBit;              // clear or set error condition flag 
     _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_idle;     // clear bits b54: evaluation ended
 
 #if debugPrint
@@ -858,31 +858,39 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 // *   read character from keyboard, if available   *
 // --------------------------------------------------
 
-bool Justina_interpreter::getKey(char& c) {
+bool Justina_interpreter::getKey(char& c, bool enableTimeOut) {     // default: no time out
+
+    // enable time out = false: only check once for character, exit anyway
+    //                   true: wait a little until exiting if no character is read
 
     bool quitNow{ false };
 
-    // do a housekeeping callback at regular intervals (if callback function defined)
-    if (_housekeepingCallback != nullptr) {
-        _currenttime = millis();
-        _previousTime = _currenttime;
-        // note: also handles millis() overflow after about 47 days
-        if ((_lastCallBackTime + callbackPeriod < _currenttime) || (_currenttime < _previousTime)) {            // while executing, limit calls to housekeeping callback routine 
-            _lastCallBackTime = _currenttime;
-            _housekeepingCallback(quitNow, _appFlags);                                                           // execute housekeeping callback
-            if (quitNow) { while (_pConsole->available() > 0) { _pConsole->read(); } return true; }             // flush buffer and flag 'quit (request from Justina caller)'
-        }
-    }
-
     // read a character, if available in buffer
-    c = 0xFF;                                                                                                 // init: no character read
-    if (_pConsole->available() > 0) { c = _pConsole->read(); }                                          // if terminal character available for reading
+    long startWaitForReadTime = millis();
+    bool readCharWindowExpired{};
+    do {
+        // do a housekeeping callback at regular intervals (if callback function defined)
+        if (_housekeepingCallback != nullptr) {
+            _currenttime = millis();
+            _previousTime = _currenttime;
+            // note: also handles millis() overflow after about 47 days
+            if ((_lastCallBackTime + callbackPeriod < _currenttime) || (_currenttime < _previousTime)) {            // while executing, limit calls to housekeeping callback routine 
+                _lastCallBackTime = _currenttime;
+                _housekeepingCallback(quitNow, _appFlags);                                                           // execute housekeeping callback
+                if (quitNow) { while (_pConsole->available() > 0) { _pConsole->read(); } return true; }             // flush buffer and flag 'quit (request from Justina caller)'
+            }
+        }
+
+        if (_pConsole->available() > 0) { c = _pConsole->read(); return false; }                                          // if terminal character available for reading
+        readCharWindowExpired = (!enableTimeOut || (startWaitForReadTime + 2000L < millis()));        // only while parsing a program
+    } while (!readCharWindowExpired);
+    c = 0xFF;                                                                                                 // no character read
     return false;                                                                                           // do not quit
 }
 
-// -----------------------------------------------------
-// *   read text from keyboard and store in variable   *
-// -----------------------------------------------------
+// ---------------------------------------------------------
+// *   read text from keyboard and store in c++ variable   *
+// ---------------------------------------------------------
 
 // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
 // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
@@ -964,7 +972,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // 'stop' behaves as if an error occured, in order to follow the same processing logic  
 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
-            return result_eval_stopForDebug;
+            return result_stopForDebug;
             break;
         }
 
@@ -990,7 +998,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 if (((uint8_t)(valueType[0]) != value_isLong) && ((uint8_t)(valueType[0]) != value_isFloat)) { return result_arg_numValueExpected; }
                 if ((uint8_t)(valueType[0]) == value_isFloat) { args[1].longConst = (int)args[1].floatConst; }
                 _keepInMemory = (args[0].longConst == 0);       // silent mode (even not possible to cancel)
-                return result_eval_quit;
+                return result_quit;
             }
 
             else {      // keep in memory when quitting, cancel: ask user
@@ -1003,7 +1011,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     bool doAbort{ false }, doStop{ false }, doCancel{ false }, doDefault{ false }, backslashFound{ false }, answerIsNo{ false }, quitNow{ false };
                     int length{ 0 };
                     char input[MAX_USER_INPUT_LEN + 1] = "";                                                                          // init: empty string
-                    if (readText(doAbort, doStop, doCancel, doDefault, input, length)) { return result_eval_kill; }  // kill request from caller ? 
+                    if (readText(doAbort, doStop, doCancel, doDefault, input, length)) { return result_kill; }  // kill request from caller ? 
                     if (doAbort) { userRequestsAbort = true; break; }    // '\a': abort running code (program or immediate mode statements - highest priority)
                     else if (doStop) { userRequestsStop = true; }       // '\s': stop a running program AFTER next PROGRAM statement (will have no effect anyway, because quitting)
                     else if (doCancel) { break; }                       // '\c': cancel operation (lowest priority)
@@ -1011,7 +1019,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
                     if (validAnswer) {
                         _keepInMemory = (tolower(input[0]) == 'y');
-                        return result_eval_quit;                        // Justina Quit command executed 
+                        return result_quit;                        // Justina Quit command executed 
                     }
                 } while (true);
             }
@@ -1089,7 +1097,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                 } while ((blockType != block_extFunction) && (blockType != block_eval));
 
-                // access the flow control stack level below the stack level for the active function, and check the blocktype: is it an ope block within the function ?
+                // access the flow control stack level below the stack level for the active function, and check the blocktype: is it an open block within the function ?
                 // (if not, then it's the stack level for the caller already)
                 blockType = *(char*)pFlowCtrlStackLvl;
                 if ((blockType != block_for) && (blockType != block_while) && (blockType != block_if)) { OpenBlock = false; }       // is it an open block ?
@@ -1117,7 +1125,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             --_openDebugLevels;
 
             // abort: all done
-            if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_abort) { return result_eval_abort; }
+            if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_abort) { return result_abort; }
 
 
             _stepCmdExecuted = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_step) ? db_singleStep :
@@ -1205,15 +1213,28 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         // ---------------------------------------------------------------------------------------------------------
 
         case cmdcod_debug:
-            _debugCmdExecuted = true;
+        {_debugCmdExecuted = true;
 
+        _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
+        break;
+        }
+
+        // -----------------------------------
+        // read and parse program from console
+        // -----------------------------------
+
+
+        case cmdcod_receiveProg:
+        {
+            return result_initiateProgramLoad;
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
             break;
+        }
 
 
-            // ----------------
-            // Print call stack
-            // ----------------
+        // ----------------
+        // Print call stack
+        // ----------------
 
         case cmdcod_printCallSt:
         {
@@ -1351,7 +1372,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 bool doAbort{ false }, doStop{ false }, doCancel{ false }, doDefault{ false }, backslashFound{ false }, answerIsNo{ false }, quitNow{ false };
                 int length{ 0 };
                 char input[MAX_USER_INPUT_LEN + 1] = "";                                                                          // init: empty string
-                if (readText(doAbort, doStop, doCancel, doDefault, input, length)) { execResult = result_eval_kill; return execResult; }
+                if (readText(doAbort, doStop, doCancel, doDefault, input, length)) { execResult = result_kill; return execResult; }
                 doDefault = checkForDefault && doDefault;        // gate doDefault
                 doCancel = checkForCancel && doCancel;           // gate doCancel
 
@@ -1454,7 +1475,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             do {                                                                                                            // until new line character encountered
                 char c{ 0xFF };                                                           // init: no character available
                 // read a character, if available in buffer
-                if (getKey(c)) { execResult = result_eval_kill; return execResult; }      // return value true: kill Justina interpreter (buffer is now flushed until next line character)
+                if (getKey(c)) { execResult = result_kill; return execResult; }      // return value true: kill Justina interpreter (buffer is now flushed until next line character)
 
                 if (c != 0xFF) {                                                                           // terminal character available for reading ?
                     if (c == '\n') { if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_halt) { break; } }
@@ -1477,7 +1498,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
             _appFlags &= ~appFlag_waitingForUser;    // bit b6 reset: NOT waiting for user interaction (and program not paused)
 
-            if (doAbort) { execResult = result_eval_abort; return execResult; }                                     // stop a running Justina program (buffer is now flushed until nex line character) 
+            if (doAbort) { execResult = result_abort; return execResult; }                                     // stop a running Justina program (buffer is now flushed until nex line character) 
             else if (doStop) { userRequestsStop = true; }                                                           // '\s': stop a running program (do not produce stop event yet, wait until program statement executed)
 
             // finalise
@@ -1673,7 +1694,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         delete[] args[i].pStringConst;                                                  // delete temporary string
                         _intermediateStringObjectCount--;
-                    }
+                }
 
                     // callback routine changed non-empty VARIABLE string into empty variable string ("\0") ?
                     else if (strlen(args[i].pStringConst) == 0) {
@@ -1688,9 +1709,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         // set variable string pointer to null pointer
                         *pStackLvl->varOrConst.value.ppStringConst = nullptr;                           // change pointer to string (in variable) to null pointer
                     }
-                }
-                pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
             }
+                pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
+        }
 
 
             // finalize
@@ -1699,7 +1720,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             clearEvalStackLevels(cmdParamCount);                                                        // clear evaluation stack and intermediate strings
 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
-        }
+    }
         break;
 
 
@@ -1948,7 +1969,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         }
         break;
 
-    }       // end switch
+}       // end switch
 
     return result_execOK;
 }
@@ -2133,9 +2154,9 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
                 // note: this is always an intermediate string
                 delete[] lastResultValueFiFo[itemToRemove].pStringConst;
                 _lastValuesStringObjectCount--;
-            }
         }
     }
+}
     else {
         _lastResultCount++;     // only adding an item, without removing previous one
     }
@@ -2182,7 +2203,7 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
         #endif
             delete[] lastvalue.value.pStringConst;
             _intermediateStringObjectCount--;
-        }
+    }
     }
 
     // store new last value type
@@ -2268,12 +2289,12 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
     bool isDebugCmdLevel = (_activeFunctionData.blockType == block_extFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + PROG_MEM_SIZE)) : false;  // debug command line
 
     // imm. mode level error while in debug mode: do not end currently stopped program, except when 'error' indicates 'abort currently STOPPED program'
-    if (debugModeError && isDebugCmdLevel && (execResult != result_eval_abort)) { return; }
+    if (debugModeError && isDebugCmdLevel && (execResult != result_abort)) { return; }
 
     if (flowCtrlStack.getElementCount() > 0) {                // skip if only main level (no program running)
         bool isInitialLoop{ true };
-        bool noMoreProgramsToTerminate = (debugModeError && isDebugCmdLevel && (execResult != result_eval_abort));                // true if stopped program was terminated
-        bool deleteDebugLevelOpenBlocksOnly = (debugModeError && isDebugCmdLevel && (execResult != result_eval_abort));
+        bool noMoreProgramsToTerminate = (debugModeError && isDebugCmdLevel && (execResult != result_abort));                // true if stopped program was terminated
+        bool deleteDebugLevelOpenBlocksOnly = (debugModeError && isDebugCmdLevel && (execResult != result_abort));
         void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                   // deepest caller, parsed eval() expression, loop ..., if any
 
         // delete all flow control stack levels above the current command line stack level (this could be a debugging command line)
@@ -2311,10 +2332,10 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
                         delete[] _activeFunctionData.pVariableAttributes;
                         delete[] _activeFunctionData.ppSourceVarTypes;
                         _localVarValueAreaCount--;
-                    }
                 }
-                if (!isInitialLoop) { --_callStackDepth; }
             }
+                if (!isInitialLoop) { --_callStackDepth; }
+        }
 
             else if (blockType == block_eval) {
                 // no need to copy flow control stack level to _activeFunctionData
@@ -2332,8 +2353,8 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
 
             if (pFlowCtrlStackLvl == nullptr) { break; }       // all done
             isInitialLoop = false;
-        } while (true);
-    }
+    } while (true);
+}
 
     _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
     _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackTop);
@@ -2949,8 +2970,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
             #endif
                 delete[] pUnclippedResultString;     // compound assignment: pointing to the unclipped result WHICH IS NON-EMPTY: so it's a heap object and must be deleted now
                 _intermediateStringObjectCount--;
-            }
         }
+    }
 
         // store value in variable and adapt variable value type - next line is valid for long integers as well
         if (opResultLong || opResultFloat) { *_pEvalStackMinus2->varOrConst.value.pFloatConst = opResult.floatConst; }
@@ -2964,7 +2985,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) |
                 (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
         }
-    }
+}
 
 
     // (7) post process
@@ -3449,11 +3470,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         }
         break;
 
-    }       // end switch
+        }       // end switch
 
 
-    // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
-    // -------------------------------------------------------------------------------------------------------------------
+        // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
+        // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
@@ -3474,7 +3495,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
     }
 
     return result_execOK;
-}
+    }
 
 
 // -----------------------

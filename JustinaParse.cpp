@@ -78,7 +78,6 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
 
     {"Program",         cmdcod_program,         cmd_onlyProgramTop | cmd_skipDuringExec,            0,0,    cmdPar_103,     cmdProgram},        //// non-block commands: cmdBlockNone ?
     {"Function",        cmdcod_function,        cmd_onlyInProgram | cmd_skipDuringExec,             0,0,    cmdPar_108,     cmdBlockExtFunction},
-    {"Endprogram",      cmdcod_endProgram,      cmd_onlyInProgOutsideFunc | cmd_skipDuringExec,     0,0,    cmdPar_102,     cmdProgram},
 
 
     /* declare variables */
@@ -100,7 +99,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"Printprog",       cmdcod_printProg,       cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
     {"Printcallstack",  cmdcod_printCallSt,     cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
 
-    {"Receiveprog",     cmdcod_receiveProg,     cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockNone},
+    {"Receiveprog",     cmdcod_receiveProg,     cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
 
 
     /* flow control commands */
@@ -812,7 +811,7 @@ void Justina_interpreter::parseAndExecTraceString() {
 
         parseTokenResult_type result = parseStatements(pTraceParsingInput, pNextParseStatement);
         if (result == result_tokenFound) {
-            prettyPrintInstructions(0);         // do NOT pretty print if parsing error, to avoid bad-looking partially printed statements (even if there will be an execution error later)
+            prettyPrintStatements(0);         // do NOT pretty print if parsing error, to avoid bad-looking partially printed statements (even if there will be an execution error later)
             _pConsole->print(": ");                 // resulting value will follow
             pTraceParsingInput = pNextParseStatement;
         }
@@ -850,7 +849,7 @@ void Justina_interpreter::parseAndExecTraceString() {
 // *   parse ONE instruction in a character string, ended by an optional ';' character and a '\0' mandatary character   *
 // ----------------------------------------------------------------------------------------------------------------------
 
-Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(char*& pInputStart, char*& pNextParseStatement, bool* initiateProgramLoad, bool* endProgramLoad) {
+Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(char*& pInputStart, char*& pNextParseStatement) {
     _appFlags &= ~appFlag_errorConditionBit;              // clear error condition flag 
     _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_parsing;     // set bits b54 to 01: parsing
 
@@ -898,7 +897,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(
         bool isOperator = _lastTokenIsTerminal ? (_lastTermCode <= termcod_opRangeEnd) : false;
 
         if ((_lastTokenType == tok_no_token) || isSemicolon) {
-            _isProgramCmd = false; _isEndProgramCmd = false;
+            _isProgramCmd = false; 
             _isDeclCBcmd = false; _isClearCBcmd = false; _isCallbackCmd = false;
             _isExtFunctionCmd = false; _isGlobalOrUserVarCmd = false; _isLocalVarCmd = false; _isStaticVarCmd = false; _isAnyVarCmd = false;
             _isForCommand = false;
@@ -966,8 +965,6 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(
             isCommandStart = (_lastTokenType == tok_isReservedWord);                       // keyword at start of statement ? is start of a command 
             _isCommand = isCommandStart;                                                                // is start of a command ? then within a command now. Otherwise, it's an 'expression only' statement
             if (_isCommand) { if (!checkCommandKeyword(result)) { ; pNext = pNext_hold; break; } }         // start of a command: keyword
-            if (_isLoadProgramCmd) { *initiateProgramLoad = true; }
-            if (_isEndProgramCmd) { *endProgramLoad = true; }
         }
 
         bool isCommandArgToken = (!isCommandStart && _isCommand);
@@ -977,21 +974,6 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(
 
     // one instruction parsed (or error: no token found OR command syntax error OR semicolon encountered)
 
-
-    // while parsing, periodically do a housekeeping callback (if function defined)
-    // ----------------------------------------------------------------------------
-
-    if (_housekeepingCallback != nullptr) {
-        bool quitNow{ false };
-        _currenttime = millis();
-        _previousTime = _currenttime;                                                                           // keep up to date (needed during parsing and evaluation)
-        // also handle millis() overflow after about 47 days
-        if ((_lastCallBackTime + callbackPeriod < _currenttime) || (_currenttime < _previousTime)) {     // while parsing, limit calls to housekeeping callback routine 
-            _lastCallBackTime = _currenttime;
-            _housekeepingCallback(quitNow, _appFlags);
-            if (quitNow) { pNext = pNext_hold; result = result_parse_kill; }
-        }
-    }
 
     pInputStart = pNext;                                                                // set to next character (if error: indicates error position)
     (result == result_tokenFound) ? _appFlags &= ~appFlag_errorConditionBit : _appFlags |= appFlag_errorConditionBit;              // clear or set error condition flag 
@@ -1015,7 +997,6 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
 
     _isExtFunctionCmd = _resWords[_tokenIndex].resWordCode == cmdcod_function;
     _isProgramCmd = _resWords[_tokenIndex].resWordCode == cmdcod_program;
-    _isEndProgramCmd = _resWords[_tokenIndex].resWordCode == cmdcod_endProgram;
     _isDeclCBcmd = _resWords[_tokenIndex].resWordCode == cmdcod_declCB;
     _isClearCBcmd = _resWords[_tokenIndex].resWordCode == cmdcod_clearCB;
     _isCallbackCmd = _resWords[_tokenIndex].resWordCode == cmdcod_callback;
@@ -3086,7 +3067,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
 // -----------------------------------------
 // *   pretty print a parsed instruction   *
 // -----------------------------------------
-void Justina_interpreter::prettyPrintInstructions(int instructionCount, char* startToken, char* errorProgCounter, int* sourceErrorPos) {
+void Justina_interpreter::prettyPrintStatements(int instructionCount, char* startToken, char* errorProgCounter, int* sourceErrorPos) {
 
     // input: stored tokens
     TokenPointer progCnt;
@@ -3341,12 +3322,13 @@ bool Justina_interpreter::expandStringBackslashSequences(char*& stringValue) {
 // *   print parsing result   *
 // ----------------------------
 
-void Justina_interpreter::printParsingResult(parseTokenResult_type result, int funcNotDefIndex, char* const pInstruction, int lineCount, char* const pErrorPos) {
+void Justina_interpreter::printParsingResult(parseTokenResult_type result, int funcNotDefIndex, char* const pInstruction, int lineCount, char* pErrorPos) {
 
     char parsingInfo[100 + MAX_IDENT_NAME_LEN] = "";       // provide sufficient room for longest possible message (int: no OK message in immediate mode)
     if (result == result_tokenFound) {                                                // prepare message with parsing result
         if (_programMode) {
-            sprintf(parsingInfo, "Program parsed without errors. %ld %% of program memory used", (long)(((_lastProgramStep - _programStorage + 1) * 100) / PROG_MEM_SIZE));
+            if (_lastProgramStep == _programStorage) {strcpy( parsingInfo, "\r\nNo program loaded"); }
+            else{sprintf(parsingInfo, "\r\nProgram parsed without errors. %ld %% of program memory used", (long)(((_lastProgramStep - _programStorage + 1) * 100) / PROG_MEM_SIZE));}
         }
     }
 
@@ -3358,13 +3340,15 @@ void Justina_interpreter::printParsingResult(parseTokenResult_type result, int f
 
     else {                                                                              // parsing error
         // instruction not parsed (because of error): print source instruction where error is located (can not 'unparse' yet for printing instruction)
+        if (result == result_statementTooLong){pErrorPos = pInstruction;}
+
+        _pConsole->print("\r\n  "); _pConsole->println(pInstruction);
         char point[pErrorPos - pInstruction + 3];                               // 2 extra positions for 2 leading spaces, 2 for '^' and '\0' characters
         memset(point, ' ', pErrorPos - pInstruction + 2);
         point[pErrorPos - pInstruction + 2] = '^';
         point[pErrorPos - pInstruction + 3] = '\0';
-
-        _pConsole->print("\r\n  "); _pConsole->println(pInstruction);
         _pConsole->println(point);
+        
         if (_programMode) { sprintf(parsingInfo, "  Parsing error %d: statement ending at line %d", result, lineCount); }
         else { sprintf(parsingInfo, "  Parsing error %d", result); }
     }

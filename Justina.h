@@ -125,7 +125,7 @@ class Justina_interpreter {
 
     static constexpr int PROG_MEM_SIZE{ 2000 };             // size, in bytes, of program memory (stores parsed program)
     static constexpr int IMM_MEM_SIZE{ 300 };               // size, in bytes, of user command memory (stores parsed user statements)
-    
+
     static constexpr int MAX_USERVARNAMES{ 255 };           // max. user variables allowed. Absolute parser limit: 255
     static constexpr int MAX_PROGVARNAMES{ 255 };           // max. program variable NAMES allowed (same name may be reused for global, static, local & parameter variables). Absolute limit: 255
     static constexpr int MAX_STAT_VARS{ 255 };              // max. static variables allowed across all parsed functions (only). Absolute limit: 255
@@ -158,7 +158,6 @@ class Justina_interpreter {
         cmdcod_none,        // no command being executed
 
         cmdcod_program,
-        cmdcod_endProgram,
         cmdcod_delete,
         cmdcod_clear,
         cmdcod_vars,
@@ -333,7 +332,8 @@ class Justina_interpreter {
         result_tokenFound = 0,
 
         // incomplete expression errors
-        result_tokenNotFound = 1000,
+        result_statementTooLong = 1000,
+        result_tokenNotFound,
         result_expressionNotComplete,
         result_missingLeftParenthesis,
         result_missingRightParenthesis,
@@ -509,13 +509,15 @@ class Justina_interpreter {
         result_eval_parsingError,
 
         // *** MANDATORY =>LAST<= range of errors: events ***
-        result_eval_startOfEvents = 4000,
+        result_startOfEvents = 4000,
 
         // abort, kill, quit, stop, skip debug: EVENTS (first handled as errors - which they are not - initially following the same flow)
-        result_eval_stopForDebug = result_eval_startOfEvents,    // 'Stop' command executed (from inside a program only): this enters debug mode
-        result_eval_abort,                                  // abort running program (return to Justina prompt)
-        result_eval_kill,                                   // caller requested to exit Justina interpreter
-        result_eval_quit                                   // 'Quit' command executed (exit Justina interpreter)
+        result_stopForDebug = result_startOfEvents,    // 'Stop' command executed (from inside a program only): this enters debug mode
+        result_abort,                                  // abort running program (return to Justina prompt)
+        result_kill,                                   // caller requested to exit Justina interpreter
+        result_quit,                                   // 'Quit' command executed (exit Justina interpreter)
+
+        result_initiateProgramLoad
     };
 
     enum dbType_type {
@@ -715,7 +717,7 @@ public:
     static constexpr long appFlag_statusAbit = 0x10L;
     static constexpr long appFlag_statusBbit = 0x20L;
     static constexpr long appFlag_waitingForUser = 0x40L;
-    
+
 private:
     // application flag bits b54: application status
     static constexpr long appFlag_statusMask = 0x30L;
@@ -1024,7 +1026,7 @@ private:
     static constexpr CmdBlockDef cmdBlockGenEnd{ block_genericEnd,block_endPos,block_na,block_endPos };            // all block types: block end 
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[46];                          // keyword names
+    static const ResWordDef _resWords[45];                          // keyword names
     static const FuncDef _functions[24];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
@@ -1038,7 +1040,6 @@ private:
     int _terminalCount;
 
     bool _isProgramCmd = false;
-    bool _isEndProgramCmd = false;
     bool _isExtFunctionCmd = false;                             // FUNCTION command is being parsed (not the complete function)
     bool _isGlobalOrUserVarCmd = false;                                // VAR command is being parsed
     bool _isLocalVarCmd = false;                                // LOCAL command is being parsed
@@ -1046,7 +1047,9 @@ private:
     bool _isAnyVarCmd = false;                                     // VAR, LOCAL or STATIC command is being parsed
     bool _isDeleteVarCmd = false;
     bool _isForCommand = false;
-    bool _isLoadProgramCmd = false;
+    bool _isLoadProgramCmd = false;////weg
+    bool _initiateProgramLoad = false;
+
 
     bool _isDeclCBcmd = false;
     bool _isClearCBcmd = false;
@@ -1162,11 +1165,11 @@ private:
     int _promptAndEcho{ 2 };              // output prompt and echo of input
     bool _printLastResult{ true };
 
-    char _instruction[MAX_STATEMENT_LEN + 1] = "";
-    int _instructionCharCount{ 0 };
+    char _statement[MAX_STATEMENT_LEN + 1] = "";
+    int _statementCharCount{ 0 };
     bool _programMode{ false };
     bool _flushAllUntilEOF{ false };
-    bool _quitJustinaAtEOF{ false };
+    bool _quitJustina{ false };
     bool _keepInMemory{ true };                        //// maak afhankelijk van command parameter
     bool _isPrompt{ false };
 
@@ -1375,11 +1378,10 @@ private:
     void deleteLastValueFiFoStringObjects();
     void deleteConstStringObjects(char* pToken);
     void parseAndExecTraceString();
-    parseTokenResult_type  parseStatements(char*& pInputLine, char*& pNextParseStatement, bool* initiateProgramLoad = nullptr, bool* endProgramLoad = nullptr);
+    parseTokenResult_type  parseStatements(char*& pInputLine, char*& pNextParseStatement);
     bool allExternalFunctionsDefined(int& index);
-    void prettyPrintInstructions(int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
-    void printParsingResult(parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* const pErrorPos);
-    bool processCharacter(bool& kill, bool& loadProgParsed, bool& endProgramLoad, char c, bool programLoadTimeOut);
+    void prettyPrintStatements(int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
+    void printParsingResult(parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* pErrorPos);
 
     bool expandStringBackslashSequences(char*& input);
 
@@ -1437,8 +1439,13 @@ private:
     void pushVariable(int& tokenType);
 
 
-    bool getKey(char &c);
+    bool getKey(char& c, bool enableTimeOut = false);
     bool readText(bool& doAbort, bool& doStop, bool& doCancel, bool& doDefault, char* input, int& length);
+
+    bool addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool& withinMultiLineComment,
+        bool& redundantSemiColon, bool isEndOfFile, bool& bufferOverrun, char c);
+    bool processAndExec(bool instructionParsed, parseTokenResult_type result, bool& kill, char* pErrorPos);
+    void traceAndPrintDebugInfo();
 };
 
 #endif
