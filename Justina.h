@@ -1166,14 +1166,10 @@ private:
     bool _printLastResult{ true };
 
     char _statement[MAX_STATEMENT_LEN + 1] = "";
-    int _statementCharCount{ 0 };
     bool _programMode{ false };
-    bool _flushAllUntilEOF{ false };
     bool _quitJustina{ false };
     bool _keepInMemory{ true };                        //// maak afhankelijk van command parameter
     bool _isPrompt{ false };
-
-    int _lineCount{ 0 };                             // taking into account new line after 'load program' command ////
 
     int _userVarCount{ 0 };                                        // counts number of user variables (names and values) 
     int _programVarNameCount{ 0 };                                        // counts number of variable names (global variables: also stores values) 
@@ -1443,8 +1439,8 @@ private:
     bool readText(bool& doAbort, bool& doStop, bool& doCancel, bool& doDefault, char* input, int& length);
 
     bool addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool& withinMultiLineComment,
-        bool& redundantSemiColon, bool isEndOfFile, bool& bufferOverrun, char c);
-    bool processAndExec(bool instructionParsed, parseTokenResult_type result, bool& kill, char* pErrorPos);
+        bool& redundantSemiColon, bool isEndOfFile, bool& bufferOverrun,bool  _flushAllUntilEOF, int &_lineCount, int &_statementCharCount, char c);
+    bool processAndExec(bool instructionParsed, parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos);
     void traceAndPrintDebugInfo();
 };
 

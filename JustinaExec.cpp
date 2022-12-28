@@ -716,7 +716,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             else if (execResult == result_kill) {}      // do nothing
             else if (execResult == result_abort) { _pConsole->print("\r\n+++ Abort: code execution terminated +++\r\n"); }
             else if (execResult == result_stopForDebug) { if (isBackslashStop) { _pConsole->print("\r\n+++ Program stopped +++\r\n"); } }
-            else if (execResult == result_initiateProgramLoad){}        ////
+            else if (execResult == result_initiateProgramLoad){}        // nothing to do here for this event
 
             _lastValueIsStored = false;              // prevent printing last result (if any)
             break;
@@ -882,7 +882,7 @@ bool Justina_interpreter::getKey(char& c, bool enableTimeOut) {     // default: 
         }
 
         if (_pConsole->available() > 0) { c = _pConsole->read(); return false; }                                          // if terminal character available for reading
-        readCharWindowExpired = (!enableTimeOut || (startWaitForReadTime + 2000L < millis()));        // only while parsing a program
+        readCharWindowExpired = (!enableTimeOut || (startWaitForReadTime + 200L < millis()));        // only while parsing a program
     } while (!readCharWindowExpired);
     c = 0xFF;                                                                                                 // no character read
     return false;                                                                                           // do not quit
@@ -2803,7 +2803,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
                 if (!op1emptyString) { stringlen = strlen(operand1.pStringConst); }
                 if (!op2emptyString) { stringlen += strlen(operand2.pStringConst); }
 
-                Serial.println(stringlen);
                 if (stringlen == 0) { opResult.pStringConst = nullptr; }                                // empty strings are represented by a nullptr (conserve heap space)
                 else {                                                                                  // string to be assigned is not empty
                     opResult.pStringConst = new char[stringlen + 1];

@@ -470,7 +470,7 @@ void userFcn_readPort(const void** pdata, const char* valueType) {     // data: 
         else {
             if (strlen(pText) >= 10) { pText[7] = '\0'; }  // do NOT increase the length of strings
             if (strlen(pText) >= 5) { pText[3] = pText[4]; pText[4] = '>'; }  // do NOT increase the length of strings
-            else if (strlen(pText) >= 2) { pText[0] = '\0'; }       // change non-empty string into empty string //// test: moet error produceren
+            else if (strlen(pText) >= 2) { pText[0] = '\0'; }       // change non-empty string into empty string 
         }
 
         // print a value

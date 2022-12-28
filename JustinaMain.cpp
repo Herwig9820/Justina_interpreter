@@ -261,10 +261,6 @@ Justina_interpreter::Justina_interpreter(Stream* const pConsole) : _pConsole(pCo
     _quitJustina = false;
     _isPrompt = false;
 
-    _statementCharCount = 0;
-    _lineCount = 0;                             // taking into account new line after 'load program' command ////
-    _flushAllUntilEOF = false;
-
     _programMode = false;
     _currenttime = millis();
     _previousTime = _currenttime;
@@ -323,18 +319,19 @@ bool Justina_interpreter::setUserFcnCallback(void(*func) (const void** data, con
 // ----------------------------
 
 bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, int definedTerms) {
-    // local static variables
-    static bool withinStringEscSequence{ false };
-    static bool lastCharWasSemiColon{ false };
-    static bool within1LineComment{ false };
-    static bool withinMultiLineComment{ false };
-    static bool withinString{ false };
 
-    static char* pErrorPos{};
+    bool withinStringEscSequence{ false };
+    bool lastCharWasSemiColon{ false };
+    bool within1LineComment{ false };
+    bool withinMultiLineComment{ false };
+    bool withinString{ false };
+    static bool flushAllUntilEOF{ false };
 
-    static parseTokenResult_type result{ result_tokenFound };    // init
-    static bool statementParsed{ false };                      // init
-    static bool receivingProgram{ false };
+    int lineCount{ 0 };
+    int statementCharCount{ 0 };
+    char* pErrorPos{};
+    parseTokenResult_type result{ result_tokenFound };    // init
+    bool statementParsed{ false };                      // init
 
     // local variables 
     bool kill{ false };                                       // kill is true: request from caller, kill is false: quit command executed
@@ -365,8 +362,6 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 
     _coldStart = false;             // can be used if needed in this procedure, to determine whether this was a cold or warm start
 
-
-
     do {
         // when loading a program, as soon as first printable character of a PROGRAM is read, each subsequent character needs to follow after the previous one within a fixed time delay, handled by getKey().
         // program reading ends when no character is read within this time window.
@@ -375,51 +370,55 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
         if (getKey(c, allowTimeOut)) { kill = true; break; }                // return true if kill request received from calling program
         if (c < 0xFF) { _initiateProgramLoad = false; }                     // reset _initiateProgramLoad after each printable character received
         bool programOrLineRead = _programMode ? ((c == 0xFF) && allowTimeOut) : (c == '\n');
-        if ((c == 0xFF) && !programOrLineRead) { continue; }                // no character (except when program or line is read): start next loop
+        if ((c == 0xFF) && !programOrLineRead) { continue; }                // no character (except when program or imm. mode line is read): start next loop
 
+        quitNow = false;
+
+        // if no character added: nothing to do, wait for next
+        bool bufferOverrun{ false };
+        bool noCharAdded = !addCharacterToInput(lastCharWasSemiColon, withinString, withinStringEscSequence, within1LineComment, withinMultiLineComment, redundantSemiColon, programOrLineRead,
+            bufferOverrun, flushAllUntilEOF, lineCount, statementCharCount, c);
 
         do {        // one loop only
-            quitNow = false;
-
-            // if no character added: nothing to do, wait for next
-            bool bufferOverrun{ false };
-            bool noCharAdded = !addCharacterToInput(lastCharWasSemiColon, withinString, withinStringEscSequence, within1LineComment, withinMultiLineComment, redundantSemiColon, programOrLineRead, bufferOverrun, c);
-            result = result_tokenFound;     // init
-            if (bufferOverrun) { Serial.println("buffer overrun"); result = result_statementTooLong; }
+            if (bufferOverrun) { result = result_statementTooLong; }
             else if (noCharAdded) { break; }               // start a new outer loop (read a character if available, etc.)
 
             // if a statement is complete (terminated by a semicolon or end of input), parse it
             // --------------------------------------------------------------------------------
             bool isStatementSeparator = (!withinString) && (!within1LineComment) && (!withinMultiLineComment) && (c == ';') && !redundantSemiColon;
             isStatementSeparator = isStatementSeparator || (withinString && (c == '\n'));  // new line sent to parser as well
-            bool statementComplete = !bufferOverrun && (isStatementSeparator || (programOrLineRead && (_statementCharCount > 0)));
+
+            bool statementComplete = !bufferOverrun && (isStatementSeparator || (programOrLineRead && (statementCharCount > 0)));
 
             if (statementComplete && !_quitJustina) {                   // if quitting anyway, just skip                                               
-                _statement[_statementCharCount] = '\0';                            // add string terminator
+                _statement[statementCharCount] = '\0';                            // add string terminator
 
                 char* pStatement = _statement;                                                 // because passed by reference 
                 char* pDummy{};
                 _parsingExecutingTraceString = false; _parsingEvalString = false;
                 result = parseStatements(pStatement, pDummy);                                 // parse ONE statement only 
-                pErrorPos = pStatement;                                                      // in case of error
-
-                if (result != result_tokenFound) { _flushAllUntilEOF = true; }
-                if (result == result_parse_kill) { kill = true; _quitJustina = true; }     // _flushAllUntilEOF is true already (flush buffer before quitting)
-
-                _statementCharCount = 0;                                                        // reset after each statement read
-                withinString = false; withinStringEscSequence = false; within1LineComment = false; withinMultiLineComment = false;
                 statementParsed = true;                                                     // with or without error
+                pErrorPos = pStatement;                                                      // in case of error
+                
+                if (result != result_tokenFound) { flushAllUntilEOF = true; }
+                if (result == result_parse_kill) { kill = true; _quitJustina = true; }     // flushAllUntilEOF is true already (flush buffer before quitting)
+
+                // reset after each statement read 
+                statementCharCount = 0;
+                withinString = false; withinStringEscSequence = false; within1LineComment = false; withinMultiLineComment = false;
+                lastCharWasSemiColon = false;
             }
 
+            if (programOrLineRead) {       // program mode: complete program read and parsed / imm. mode: 1 statement read and parsed (with or without error)
+                quitNow = processAndExec(statementParsed || bufferOverrun, result, kill, lineCount, pErrorPos);  // return value: quit Justina now
 
-            if (!programOrLineRead) { break; }       // program mode: complete program read and parsed / imm. mode: 1 statement read and parsed (with or without error)
-            quitNow = processAndExec(statementParsed || bufferOverrun, result, kill, pErrorPos);  // return value: quit Justina now
+                // reset after program (or imm. mode line) is read
+                lineCount = 0;
+                flushAllUntilEOF = false;
 
-            // reset character input status variables
-            lastCharWasSemiColon = false;
-            _statementCharCount = 0;
-            _lineCount = 0;
-            _flushAllUntilEOF = false;
+                _statement[statementCharCount] = '\0';                            // add string terminator
+                result = result_tokenFound;
+            }
         } while (false);
 
         if (quitNow) { break; }                        // user gave quit command
@@ -427,12 +426,9 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 
     } while (true);
 
+    // returning control to Justina caller
     _appFlags = 0x0000L;                            // clear all application flags
     _housekeepingCallback(quitNow, _appFlags);      // only to pass application flags to caller
-
-    _statementCharCount = 0;
-    _lineCount = 0;
-    _flushAllUntilEOF = false;
 
     if (kill) { _keepInMemory = false; _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
     if (_keepInMemory) { _pConsole->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
@@ -447,11 +443,13 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 // -------------------
 
 bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool& withinMultiLineComment,
-    bool& redundantSemiColon, bool programOrLineRead, bool& bufferOverrun, char c) {
+    bool& redundantSemiColon, bool ImmModeLineOrProgramRead, bool& bufferOverrun, bool _flushAllUntilEOF, int& _lineCount, int& _statementCharCount, char c) {
 
-    const char commentStartChar = '$';
+    const char commentOuterDelim = '/'; // twice: single line comment, followed by inner del.: start of multi-line comment, preceded by inner delimiter: end of multi-line comment 
+    const char commentInnerDelim = '*';
 
     static bool lastCharWasWhiteSpace{ false };
+    static char lastCommentChar{ '\0' };                                  // init: none
 
     bool redundantSpaces = false;                                       // init
 
@@ -459,7 +457,7 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
     if ((c < ' ') && (c != '\n')) { return false; }          // skip control-chars except new line and EOF character
 
     // if last statement in buffer does not contain a semicolon separator at the end, add it
-    if (programOrLineRead) {
+    if (ImmModeLineOrProgramRead) {
         if (_statementCharCount > 0) {
             if (_statement[_statementCharCount - 1] != ';') {
                 if (_statementCharCount == MAX_STATEMENT_LEN) { bufferOverrun = true; return false; }
@@ -467,18 +465,16 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
                 _statementCharCount++;
             }
         }
-        
-        within1LineComment = false;                              // comment stops at end of line
-        Serial.println("** - End of comment(EOF)");
+
+        within1LineComment = false;
+        withinMultiLineComment = false;
     }
 
-    // process character
+    // process character (note: line feed characters are only processed here if in program mode)  
     else {                                                                  // not yet at end of program or imm. mode line
         if (_flushAllUntilEOF) { return false; }                       // discard characters (after parsing error)
 
         if (c == '\n') { _lineCount++; }                           // line number used when while reading program in input file
-
-        Serial.print("** process character: "); Serial.println(c);
 
         // currently within a string or within a comment ?
         if (withinString) {
@@ -490,16 +486,36 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
         }
 
         else if (within1LineComment) {
-            if (c == '\n') { Serial.println("** - End of comment (line)"); within1LineComment = false; return false; }                // comment stops at end of line
+            if (c == '\n') { within1LineComment = false; return false; }                // comment stops at end of line (program mode only)
         }
 
-        else {                                                                                              // not within a string or comment
+        else if (withinMultiLineComment) {
+            if ((c == commentOuterDelim) && (lastCommentChar == commentInnerDelim)) { withinMultiLineComment = false; return false; }
+            lastCommentChar = c;                // a discarded character within a comment
+        }
+
+        // NOT within a string or (single-or multi-) line comment
+        else {
             bool leadingWhiteSpace = (((c == ' ') || (c == '\n')) && (_statementCharCount == 0));
             if (leadingWhiteSpace) { return false; };
 
-            if (!within1LineComment && !withinMultiLineComment && (c == '\"')) { withinString = true; }
-            else if (!withinString && (c == commentStartChar)) { Serial.println("** - Start of comment");  within1LineComment = true; return false; }
-            else if (c == '\n') { c = ' '; }                       // not within string or comment: replace a new line with a space (white space in multi-line statement)
+            // start of string ?
+            if (c == '\"') { withinString = true; }
+
+            // start of (single-or multi-) line comment ?
+            else if ((c == commentOuterDelim) || (c == commentInnerDelim)) {  // if previous character = same, then remove it from input buffer. It's the start of a single line comment
+                if (_statementCharCount > 0) {
+                    if (_statement[_statementCharCount - 1] == commentOuterDelim) {
+                        lastCommentChar = '\0';         // reset
+                        --_statementCharCount;
+                        _statement[_statementCharCount] = '\0';                            // add string terminator
+
+                        ((c == commentOuterDelim) ? within1LineComment : withinMultiLineComment) = true; return false;
+                    }
+                }
+            }
+
+            else if (c == '\n') { c = ' '; }                       // program only (multi-line statements): replace a new line with a space 
 
             redundantSpaces = (_statementCharCount > 0) && (c == ' ') && lastCharWasWhiteSpace;
             redundantSemiColon = (c == ';') && lastCharWasSemiColon;
@@ -511,8 +527,9 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
 
         // add character  
         if (_statementCharCount == MAX_STATEMENT_LEN) { bufferOverrun = true; return false; }
+
         _statement[_statementCharCount] = c;                               // still room: add character
-        _statementCharCount++;
+        ++_statementCharCount;
     }
 
     return true;
@@ -523,7 +540,7 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
 // *                 *
 // -------------------
 
-bool Justina_interpreter::processAndExec(bool statementParsed, parseTokenResult_type result, bool& kill, char* pErrorPos) {
+bool Justina_interpreter::processAndExec(bool statementParsed, parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos) {
     execResult_type execResult{ result_execOK };
 
     if (statementParsed) {
@@ -553,7 +570,7 @@ bool Justina_interpreter::processAndExec(bool statementParsed, parseTokenResult_
         }
 
         // parsing OK message (program mode only - no message in immediate mode) or error message 
-        printParsingResult(result, funcNotDefIndex, _statement, _lineCount, pErrorPos);
+        printParsingResult(result, funcNotDefIndex, _statement, lineCount, pErrorPos);
         statementParsed = false;      // reset
     }
     else { _pConsole->println(); }
@@ -563,7 +580,7 @@ bool Justina_interpreter::processAndExec(bool statementParsed, parseTokenResult_
 
     // if program parsing error: reset machine, because variable storage might not be consistent with program any more
     if ((_programMode) && (result != result_tokenFound)) { resetMachine(false); }
-    else if (execResult == result_initiateProgramLoad) { resetMachine(false); }//// 1 lijn met vorige
+    else if (execResult == result_initiateProgramLoad) { resetMachine(false); }
 
     // no program error (could be immmediate mode error however): only reset a couple of items here 
     else {
@@ -584,10 +601,6 @@ bool Justina_interpreter::processAndExec(bool statementParsed, parseTokenResult_
     _programCounter = _programStorage + PROG_MEM_SIZE;                 // start of 'immediate mode' program area
     *(_programStorage + PROG_MEM_SIZE) = tok_no_token;                                      //  current end of program (immediate mode)
 
-
-
-
-
     if (execResult == result_initiateProgramLoad) {
         _programMode = true;
         _programCounter = _programStorage;
@@ -598,11 +611,6 @@ bool Justina_interpreter::processAndExec(bool statementParsed, parseTokenResult_
 
         _initiateProgramLoad = true;
     }
-
-
-
-
-
 
     statementParsed = false;
 

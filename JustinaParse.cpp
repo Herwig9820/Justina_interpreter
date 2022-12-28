@@ -897,7 +897,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(
         bool isOperator = _lastTokenIsTerminal ? (_lastTermCode <= termcod_opRangeEnd) : false;
 
         if ((_lastTokenType == tok_no_token) || isSemicolon) {
-            _isProgramCmd = false; 
+            _isProgramCmd = false;
             _isDeclCBcmd = false; _isClearCBcmd = false; _isCallbackCmd = false;
             _isExtFunctionCmd = false; _isGlobalOrUserVarCmd = false; _isLocalVarCmd = false; _isStaticVarCmd = false; _isAnyVarCmd = false;
             _isForCommand = false;
@@ -3327,8 +3327,8 @@ void Justina_interpreter::printParsingResult(parseTokenResult_type result, int f
     char parsingInfo[100 + MAX_IDENT_NAME_LEN] = "";       // provide sufficient room for longest possible message (int: no OK message in immediate mode)
     if (result == result_tokenFound) {                                                // prepare message with parsing result
         if (_programMode) {
-            if (_lastProgramStep == _programStorage) {strcpy( parsingInfo, "\r\nNo program loaded"); }
-            else{sprintf(parsingInfo, "\r\nProgram parsed without errors. %ld %% of program memory used", (long)(((_lastProgramStep - _programStorage + 1) * 100) / PROG_MEM_SIZE));}
+            if (_lastProgramStep == _programStorage) { strcpy(parsingInfo, "\r\nNo program loaded"); }
+            else { sprintf(parsingInfo, "\r\nProgram parsed without errors. %ld %% of program memory used", (long)(((_lastProgramStep - _programStorage + 1) * 100) / PROG_MEM_SIZE)); }
         }
     }
 
@@ -3340,7 +3340,7 @@ void Justina_interpreter::printParsingResult(parseTokenResult_type result, int f
 
     else {                                                                              // parsing error
         // instruction not parsed (because of error): print source instruction where error is located (can not 'unparse' yet for printing instruction)
-        if (result == result_statementTooLong){pErrorPos = pInstruction;}
+        if (result == result_statementTooLong) { pErrorPos = pInstruction; }
 
         _pConsole->print("\r\n  "); _pConsole->println(pInstruction);
         char point[pErrorPos - pInstruction + 3];                               // 2 extra positions for 2 leading spaces, 2 for '^' and '\0' characters
@@ -3348,8 +3348,8 @@ void Justina_interpreter::printParsingResult(parseTokenResult_type result, int f
         point[pErrorPos - pInstruction + 2] = '^';
         point[pErrorPos - pInstruction + 3] = '\0';
         _pConsole->println(point);
-        
-        if (_programMode) { sprintf(parsingInfo, "  Parsing error %d: statement ending at line %d", result, lineCount); }
+
+        if (_programMode) { sprintf(parsingInfo, "  Parsing error %d: statement ending at line %d", result, lineCount+1); }
         else { sprintf(parsingInfo, "  Parsing error %d", result); }
     }
 
