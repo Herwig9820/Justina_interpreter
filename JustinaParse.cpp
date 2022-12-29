@@ -49,7 +49,7 @@ const char
 // command parameter spec name      param type and flags                param type and flags                            param type and flags                        param type and flags
 // ---------------------------      --------------------                --------------------                            --------------------                        --------------------
 Justina_interpreter::cmdPar_100[4]{ cmdPar_ident | cmdPar_multipleFlag,            cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
-Justina_interpreter::cmdPar_101[4]{ cmdPar_ident,                                  cmdPar_expression | cmdPar_multipleFlag,        cmdPar_none,                                    cmdPar_none, },
+Justina_interpreter::cmdPar_101[4]{ cmdPar_ident,                                  cmdPar_expression | cmdPar_multipleFlag,        cmdPar_none,                                    cmdPar_none,},
 Justina_interpreter::cmdPar_102[4]{ cmdPar_none,                                   cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
 Justina_interpreter::cmdPar_103[4]{ cmdPar_ident,                                  cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
 Justina_interpreter::cmdPar_104[4]{ cmdPar_expression,                             cmdPar_none,                                    cmdPar_none,                                    cmdPar_none },
@@ -809,7 +809,8 @@ void Justina_interpreter::parseAndExecTraceString() {
         // parse ONE trace string expression only
         if (valuePrinted) { _pConsole->print(", "); }                    // separate values (if more than one)
 
-        parseTokenResult_type result = parseStatements(pTraceParsingInput, pNextParseStatement);
+        // note: application flags are not adapted (would not be passed to caller immediately)
+        parseTokenResult_type result = parseStatement(pTraceParsingInput, pNextParseStatement);
         if (result == result_tokenFound) {
             prettyPrintStatements(0);         // do NOT pretty print if parsing error, to avoid bad-looking partially printed statements (even if there will be an execution error later)
             _pConsole->print(": ");                 // resulting value will follow
@@ -849,10 +850,7 @@ void Justina_interpreter::parseAndExecTraceString() {
 // *   parse ONE instruction in a character string, ended by an optional ';' character and a '\0' mandatary character   *
 // ----------------------------------------------------------------------------------------------------------------------
 
-Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(char*& pInputStart, char*& pNextParseStatement) {
-    _appFlags &= ~appFlag_errorConditionBit;              // clear error condition flag 
-    _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_parsing;     // set bits b54 to 01: parsing
-
+Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(char*& pInputStart, char*& pNextParseStatement) {
     _lastTokenType_hold = tok_no_token;
     _lastTokenType = tok_no_token;                                                      // no token yet
     _lastTokenIsString = false;
@@ -976,8 +974,6 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatements(
 
 
     pInputStart = pNext;                                                                // set to next character (if error: indicates error position)
-    (result == result_tokenFound) ? _appFlags &= ~appFlag_errorConditionBit : _appFlags |= appFlag_errorConditionBit;              // clear or set error condition flag 
-    _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_idle;     // clear bits b54: parsing ended
 
     return result;
 }

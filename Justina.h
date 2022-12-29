@@ -517,7 +517,7 @@ class Justina_interpreter {
         result_kill,                                   // caller requested to exit Justina interpreter
         result_quit,                                   // 'Quit' command executed (exit Justina interpreter)
 
-        result_initiateProgramLoad
+        result_initiateProgramLoad                      // command processed to start loading a program
     };
 
     enum dbType_type {
@@ -712,9 +712,9 @@ public:
     static constexpr uint8_t value_isFloat = 2 << 0;
     static constexpr uint8_t value_isStringPointer = 3 << 0;
 
-    // application flag bits
-    static constexpr long appFlag_errorConditionBit = 0x01L;       // flags signaling specific Justina status conditions
-    static constexpr long appFlag_statusAbit = 0x10L;
+    // application flag bits:flags signaling specific Justina status conditions
+    static constexpr long appFlag_errorConditionBit = 0x01L;       // bit 0: a Justina parsing or execution error has occured
+    static constexpr long appFlag_statusAbit = 0x10L;              // status bits A and B: bits 5 and 4. Justina status (see below)
     static constexpr long appFlag_statusBbit = 0x20L;
     static constexpr long appFlag_waitingForUser = 0x40L;
 
@@ -1374,7 +1374,7 @@ private:
     void deleteLastValueFiFoStringObjects();
     void deleteConstStringObjects(char* pToken);
     void parseAndExecTraceString();
-    parseTokenResult_type  parseStatements(char*& pInputLine, char*& pNextParseStatement);
+    parseTokenResult_type  parseStatement(char*& pInputLine, char*& pNextParseStatement);
     bool allExternalFunctionsDefined(int& index);
     void prettyPrintStatements(int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
     void printParsingResult(parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* pErrorPos);
@@ -1440,7 +1440,7 @@ private:
 
     bool addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool& withinMultiLineComment,
         bool& redundantSemiColon, bool isEndOfFile, bool& bufferOverrun,bool  _flushAllUntilEOF, int &_lineCount, int &_statementCharCount, char c);
-    bool processAndExec(bool instructionParsed, parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos);
+    bool processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos);
     void traceAndPrintDebugInfo();
 };
 

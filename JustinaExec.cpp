@@ -47,8 +47,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 #endif
     // init
 
-    _appFlags &= ~appFlag_errorConditionBit;              // clear error condition flag
-    _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_executing;     // set bits b54 to 10: executing
+    _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_executing;     // status 'executing'
 
     int tokenType = *startHere & 0x0F;
     int tokenIndex{ 0 };
@@ -840,8 +839,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
     }
 
     // adapt application flags
-    ((execResult == result_execOK) || (execResult >= result_startOfEvents)) ? _appFlags &= ~appFlag_errorConditionBit : _appFlags |= appFlag_errorConditionBit;              // clear or set error condition flag 
-    _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_idle;     // clear bits b54: evaluation ended
+    _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_idle;     // status 'idle'
 
 #if debugPrint
     Serial.print("*** exit exec: eval stack depth: "); Serial.println(evalStack.getElementCount());
@@ -861,7 +859,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 bool Justina_interpreter::getKey(char& c, bool enableTimeOut) {     // default: no time out
 
     // enable time out = false: only check once for character, exit anyway
-    //                   true: wait a little until exiting if no character is read
+    //                   true: continue checking for character, exit after time out if no character is read
 
     bool quitNow{ false };
 
@@ -3804,7 +3802,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
     Serial.print("+++++ (system var str) "); Serial.println((uint32_t)pEvalParsingInput - RAMSTART);
 #endif
     char* pParsingInput_temp = pEvalParsingInput;        // temp, because value will be changed upon return (preserve original pointer value)
-    parseTokenResult_type result = parseStatements(pParsingInput_temp, pDummy);           // parse all eval() expressions in ONE go (which is not the case for standard parsing and trace string parsing)
+    // note: application flags are not adapted (would not be passed to caller immediately)
+    parseTokenResult_type result = parseStatement(pParsingInput_temp, pDummy);           // parse all eval() expressions in ONE go (which is not the case for standard parsing and trace string parsing)
     delete[] pEvalParsingInput;
     _intermediateStringObjectCount--;
 #if printCreateDeleteListHeapObjects

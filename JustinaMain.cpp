@@ -331,7 +331,6 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     int statementCharCount{ 0 };
     char* pErrorPos{};
     parseTokenResult_type result{ result_tokenFound };    // init
-    bool statementParsed{ false };                      // init
 
     // local variables 
     bool kill{ false };                                       // kill is true: request from caller, kill is false: quit command executed
@@ -351,6 +350,8 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     _pConsole->print("    "); _pConsole->println(LegalCopyright);
     _pConsole->print("    Version: "); _pConsole->print(ProductVersion); _pConsole->print(" ("); _pConsole->print(BuildDate); _pConsole->println(")");
     for (int i = 0; i < 48; i++) { _pConsole->print("*"); } _pConsole->println();
+
+    _appFlags = 0x0000L;                            // init application flags (for communication with Justina caller, using callbacks)
 
     _programMode = false;
     _programCounter = _programStorage + PROG_MEM_SIZE;
@@ -391,15 +392,17 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
             bool statementComplete = !bufferOverrun && (isStatementSeparator || (programOrLineRead && (statementCharCount > 0)));
 
             if (statementComplete && !_quitJustina) {                   // if quitting anyway, just skip                                               
+                _appFlags &= ~appFlag_errorConditionBit;              // clear error condition flag 
+                _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_parsing;     // status 'parsing'
+
                 _statement[statementCharCount] = '\0';                            // add string terminator
 
                 char* pStatement = _statement;                                                 // because passed by reference 
                 char* pDummy{};
                 _parsingExecutingTraceString = false; _parsingEvalString = false;
-                result = parseStatements(pStatement, pDummy);                                 // parse ONE statement only 
-                statementParsed = true;                                                     // with or without error
+                result = parseStatement(pStatement, pDummy);                                 // parse ONE statement only 
                 pErrorPos = pStatement;                                                      // in case of error
-                
+
                 if (result != result_tokenFound) { flushAllUntilEOF = true; }
                 if (result == result_parse_kill) { kill = true; _quitJustina = true; }     // flushAllUntilEOF is true already (flush buffer before quitting)
 
@@ -410,7 +413,9 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
             }
 
             if (programOrLineRead) {       // program mode: complete program read and parsed / imm. mode: 1 statement read and parsed (with or without error)
-                quitNow = processAndExec(statementParsed || bufferOverrun, result, kill, lineCount, pErrorPos);  // return value: quit Justina now
+                _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_idle;     // status 'idle'
+
+                quitNow = processAndExec(result, kill, lineCount, pErrorPos);  // return value: quit Justina now
 
                 // reset after program (or imm. mode line) is read
                 lineCount = 0;
@@ -428,7 +433,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 
     // returning control to Justina caller
     _appFlags = 0x0000L;                            // clear all application flags
-    _housekeepingCallback(quitNow, _appFlags);      // only to pass application flags to caller
+    _housekeepingCallback(quitNow, _appFlags);      // pass application flags to caller immediately
 
     if (kill) { _keepInMemory = false; _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
     if (_keepInMemory) { _pConsole->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
@@ -438,9 +443,9 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 }
 
 
-// -------------------
-// *                 *
-// -------------------
+// ------------------------------------------------------------------------------
+// * add a character received from the input stream to the parsing input buffer *
+// ------------------------------------------------------------------------------
 
 bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool& withinMultiLineComment,
     bool& redundantSemiColon, bool ImmModeLineOrProgramRead, bool& bufferOverrun, bool _flushAllUntilEOF, int& _lineCount, int& _statementCharCount, char c) {
@@ -456,7 +461,7 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
     bufferOverrun = false;
     if ((c < ' ') && (c != '\n')) { return false; }          // skip control-chars except new line and EOF character
 
-    // if last statement in buffer does not contain a semicolon separator at the end, add it
+    // when a program or imm. mode line is completely read and the last character (part of the last statement) received from input stream is not a semicolon, add it
     if (ImmModeLineOrProgramRead) {
         if (_statementCharCount > 0) {
             if (_statement[_statementCharCount - 1] != ';') {
@@ -470,13 +475,13 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
         withinMultiLineComment = false;
     }
 
-    // process character (note: line feed characters are only processed here if in program mode)  
-    else {                                                                  // not yet at end of program or imm. mode line
+    // not at end of program or imm. mode line: process character   
+    else {
         if (_flushAllUntilEOF) { return false; }                       // discard characters (after parsing error)
 
         if (c == '\n') { _lineCount++; }                           // line number used when while reading program in input file
 
-        // currently within a string or within a comment ?
+        // currently within a string or within a comment ? check for ending delimiter, check for in-string backslash sequences
         if (withinString) {
             if (c == '\\') { withinStringEscSequence = !withinStringEscSequence; }
             else if (c == '\"') { withinString = withinStringEscSequence; withinStringEscSequence = false; }
@@ -485,16 +490,18 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
             lastCharWasSemiColon = false;
         }
 
+        // within a single-line comment ? check for end of comment 
         else if (within1LineComment) {
-            if (c == '\n') { within1LineComment = false; return false; }                // comment stops at end of line (program mode only)
+            if (c == '\n') { within1LineComment = false; return false; }                // comment stops at end of line
         }
 
+        // within a multi-line comment ? check for end of comment 
         else if (withinMultiLineComment) {
             if ((c == commentOuterDelim) && (lastCommentChar == commentInnerDelim)) { withinMultiLineComment = false; return false; }
             lastCommentChar = c;                // a discarded character within a comment
         }
 
-        // NOT within a string or (single-or multi-) line comment
+        // NOT within a string or (single-or multi-) line comment ?
         else {
             bool leadingWhiteSpace = (((c == ' ') || (c == '\n')) && (_statementCharCount == 0));
             if (leadingWhiteSpace) { return false; };
@@ -515,19 +522,21 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
                 }
             }
 
-            else if (c == '\n') { c = ' '; }                       // program only (multi-line statements): replace a new line with a space 
+            // white space in multi-line statements: replace a new line with a space (program only)
+            else if (c == '\n') { c = ' '; }
 
+            // check last character 
             redundantSpaces = (_statementCharCount > 0) && (c == ' ') && lastCharWasWhiteSpace;
             redundantSemiColon = (c == ';') && lastCharWasSemiColon;
             lastCharWasWhiteSpace = (c == ' ');                     // remember
             lastCharWasSemiColon = (c == ';');
         }
 
+        // do NOT add character to parsing input buffer if specific conditions are met
         if (redundantSpaces || redundantSemiColon || within1LineComment || withinMultiLineComment) { return false; }            // no character added
-
-        // add character  
         if (_statementCharCount == MAX_STATEMENT_LEN) { bufferOverrun = true; return false; }
 
+        // add character  
         _statement[_statementCharCount] = c;                               // still room: add character
         ++_statementCharCount;
     }
@@ -536,48 +545,55 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
 }
 
 
-// -------------------
-// *                 *
-// -------------------
+// ------------------------------------------------------------------------------------------------------------------------
+// * finalise parsing, execute if no errors, if in debug mode, trace and print debug info, re-init machine state and exit *
+// ------------------------------------------------------------------------------------------------------------------------
 
-bool Justina_interpreter::processAndExec(bool statementParsed, parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos) {
-    execResult_type execResult{ result_execOK };
+bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos) {
 
-    if (statementParsed) {
-        int funcNotDefIndex;
-        if (result == result_tokenFound) {
-            // checks at the end of parsing: any undefined functions (program mode only) ?  any open blocks ?
-            if (_programMode && (!allExternalFunctionsDefined(funcNotDefIndex))) { result = result_undefinedFunctionOrArray; }
-            if (_blockLevel > 0) { result = result_noBlockEnd; }
-
-            if (result != result_tokenFound) { _appFlags |= appFlag_errorConditionBit; }              // if parsing error only occurs here, error condition flag can still be set here (signal to caller)
-        }
-
-        (_programMode ? _lastProgramStep : _lastUserCmdStep) = _programCounter;
-
-        if (result == result_tokenFound) {
-            if (!_programMode) {
-
-                // evaluation comes here
-                if (_promptAndEcho == 2) { prettyPrintStatements(0); _pConsole->println(); }                    // immediate mode and result OK: pretty print input line
-                else if (_promptAndEcho == 1) { _pConsole->println(); _isPrompt = false; }
-
-                execResult = exec(_programStorage + PROG_MEM_SIZE);                                 // execute parsed user statements
-
-                if ((execResult == result_kill) || (execResult == result_quit)) { _quitJustina = true; }
-                if (execResult == result_kill) { kill = true; }
-            }
-        }
-
-        // parsing OK message (program mode only - no message in immediate mode) or error message 
-        printParsingResult(result, funcNotDefIndex, _statement, lineCount, pErrorPos);
-        statementParsed = false;      // reset
+    // all statements (in program or imm. mode line) have been parsed: finalise
+    // ------------------------------------------------------------------------
+    int funcNotDefIndex;
+    if (result == result_tokenFound) {
+        // checks at the end of parsing: any undefined functions (program mode only) ?  any open blocks ?
+        if (_programMode && (!allExternalFunctionsDefined(funcNotDefIndex))) { result = result_undefinedFunctionOrArray; }
+        if (_blockLevel > 0) { result = result_noBlockEnd; }
     }
-    else { _pConsole->println(); }
+
+    (_programMode ? _lastProgramStep : _lastUserCmdStep) = _programCounter;
+
+    if (result == result_tokenFound) {
+        if (_programMode) {
+            // parsing OK message (program mode only - no message in immediate mode)  
+            printParsingResult(result, funcNotDefIndex, _statement, lineCount, pErrorPos);
+        }
+        else {
+            // evaluation comes here
+            if (_promptAndEcho == 2) { prettyPrintStatements(0); _pConsole->println(); }                    // immediate mode and result OK: pretty print input line
+            else if (_promptAndEcho == 1) { _pConsole->println(); _isPrompt = false; }
+        }
+    }
+    else { printParsingResult(result, funcNotDefIndex, _statement, lineCount, pErrorPos); }                   // error message
+
+
+    // if not in program mode and no parsing error: execute
+    // ----------------------------------------------------
+    execResult_type execResult{ result_execOK };
+    if (!_programMode && (result == result_tokenFound)) {
+        execResult = exec(_programStorage + PROG_MEM_SIZE);                                             // execute parsed user statements
+
+        if ((execResult == result_kill) || (execResult == result_quit)) { _quitJustina = true; }
+        if (execResult == result_kill) { kill = true; }
+    }
+
 
     // if in debug mode, trace expressions (if defined) and print debug info 
+    // ---------------------------------------------------------------------
     if ((_openDebugLevels > 0) && (execResult != result_kill) && (execResult != result_quit) && (execResult != result_initiateProgramLoad)) { traceAndPrintDebugInfo(); }
 
+
+    // re-init or reset interpreter state 
+    // ----------------------------------
     // if program parsing error: reset machine, because variable storage might not be consistent with program any more
     if ((_programMode) && (result != result_tokenFound)) { resetMachine(false); }
     else if (execResult == result_initiateProgramLoad) { resetMachine(false); }
@@ -589,14 +605,15 @@ bool Justina_interpreter::processAndExec(bool statementParsed, parseTokenResult_
         _extFunctionBlockOpen = false;
     }
 
-    if ((_promptAndEcho != 0) && (execResult != result_initiateProgramLoad)) { _pConsole->print("Justina> "); _isPrompt = true; }                 // print new prompt
 
     // execution finished (not stopping in debug mode), with or without error: delete parsed strings in imm mode command : they are on the heap and not needed any more. Identifiers must stay avaialble
     // -> if stopping a program for debug, do not delete parsed strings (in imm. mode command), because that command line has now been pushed on  ...
      // the parsed command line stack and included parsed constants will be deleted later (resetMachine routine)
     if (execResult != result_stopForDebug) { deleteConstStringObjects(_programStorage + PROG_MEM_SIZE); } // always
 
-    // finalize 
+
+    // finalize
+    // --------
     _programMode = false;
     _programCounter = _programStorage + PROG_MEM_SIZE;                 // start of 'immediate mode' program area
     *(_programStorage + PROG_MEM_SIZE) = tok_no_token;                                      //  current end of program (immediate mode)
@@ -612,17 +629,22 @@ bool Justina_interpreter::processAndExec(bool statementParsed, parseTokenResult_
         _initiateProgramLoad = true;
     }
 
-    statementParsed = false;
-
+    // has an error occured ? (exclude 'events' reported as an error)
+    bool isError = (result != result_tokenFound) || ((execResult != result_execOK) && (execResult < result_startOfEvents));
+    isError ? (_appFlags |= appFlag_errorConditionBit) : (_appFlags &= ~appFlag_errorConditionBit);              // set or clear error condition flag 
     (_appFlags &= ~appFlag_statusMask);
-    (_openDebugLevels > 0) ? (_appFlags |= appFlag_stoppedInDebug) : (_appFlags |= appFlag_idle);     // signal 'debug mode' or 'idle' to caller
+    (_openDebugLevels > 0) ? (_appFlags |= appFlag_stoppedInDebug) : (_appFlags |= appFlag_idle);     // status 'debug mode' or 'idle'
 
+
+    // print new prompt and exit
+    // -------------------------
+    if ((_promptAndEcho != 0) && (execResult != result_initiateProgramLoad)) { _pConsole->print("Justina> "); _isPrompt = true; }
     return _quitJustina;
 }
 
-// -------------------
-// *                 *
-// -------------------
+// ---------------------------------------------------------------------
+// * trace expressions as defined in Trace statement, print debug info *
+// ---------------------------------------------------------------------
 
 void Justina_interpreter::traceAndPrintDebugInfo() {
     // count of programs in debug:
