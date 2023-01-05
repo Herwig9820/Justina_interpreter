@@ -27,6 +27,8 @@
 
 
 #include "Justina.h"
+////#include "math.h"
+////#include <avr/dtostrf.h>  & dotostrf() functie toevoegen (bug in sprintf)        
 
 #define printCreateDeleteListHeapObjects 0
 #define debugPrint 0
@@ -238,6 +240,314 @@ int LinkedList::getElementCount() {
 /***********************************************************
 *                 class Justina_interpreter                *
 ***********************************************************/
+
+// -------------------------------------------------
+// *   // initialisation of static class members   *
+// -------------------------------------------------
+
+
+// commands (FUNCTION, FOR, ...): 'allowed command parameter' keys
+// ---------------------------------------------------------------
+
+// command parameter spec name      param type and flags                            param type and flags                            param type and flags                        param type and flags
+// ---------------------------      --------------------                            --------------------                            --------------------                        --------------------
+
+const char Justina_interpreter::cmdPar_100[4]{ cmdPar_ident | cmdPar_multipleFlag,            cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
+const char Justina_interpreter::cmdPar_101[4]{ cmdPar_ident,                                  cmdPar_expression | cmdPar_multipleFlag,         cmdPar_none,                                    cmdPar_none };
+const char Justina_interpreter::cmdPar_102[4]{ cmdPar_none,                                   cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
+const char Justina_interpreter::cmdPar_103[4]{ cmdPar_ident,                                  cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
+const char Justina_interpreter::cmdPar_104[4]{ cmdPar_expression,                             cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
+const char Justina_interpreter::cmdPar_105[4]{ cmdPar_expression,                             cmdPar_expression,                               cmdPar_none,                                    cmdPar_none };
+const char Justina_interpreter::cmdPar_106[4]{ cmdPar_expression | cmdPar_optionalFlag,       cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
+const char Justina_interpreter::cmdPar_107[4]{ cmdPar_expression | cmdPar_multipleFlag,       cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
+const char Justina_interpreter::cmdPar_108[4]{ cmdPar_extFunction,                            cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
+const char Justina_interpreter::cmdPar_109[4]{ cmdPar_varOptAssignment,                       cmdPar_expression,                               cmdPar_expression | cmdPar_optionalFlag,        cmdPar_none };
+const char Justina_interpreter::cmdPar_110[4]{ cmdPar_ident,                                  cmdPar_ident | cmdPar_multipleFlag,              cmdPar_none,                                    cmdPar_none };
+const char Justina_interpreter::cmdPar_111[4]{ cmdPar_varOptAssignment,                       cmdPar_varOptAssignment | cmdPar_multipleFlag,   cmdPar_none,                                    cmdPar_none };
+const char Justina_interpreter::cmdPar_112[4]{ cmdPar_expression,                             cmdPar_expression | cmdPar_multipleFlag,         cmdPar_none,                                    cmdPar_none };
+const char Justina_interpreter::cmdPar_113[4]{ cmdPar_expression,                             cmdPar_varOptAssignment,                         cmdPar_varOptAssignment,                        cmdPar_none };
+const char Justina_interpreter::cmdPar_114[4]{ cmdPar_expression,                             cmdPar_varOptAssignment | cmdPar_optionalFlag,   cmdPar_none,                                    cmdPar_none };
+const char Justina_interpreter::cmdPar_999[4]{ cmdPar_varNoAssignment,                        cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };////test var no assignment
+
+
+// commands: keywords with attributes
+// ----------------------------------
+
+const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
+    //  name            id code             where allowed               padding (boundary alignment)    param key       control info
+    //  ----            -------             -------------               ----------------------------    ---------      ------------   
+
+    /* programs and functions */
+    /* ---------------------- */
+
+    {"Program",         cmdcod_program,         cmd_onlyProgramTop | cmd_skipDuringExec,            0,0,    cmdPar_103,     cmdProgram},        //// non-block commands: cmdBlockNone ?
+    {"Function",        cmdcod_function,        cmd_onlyInProgram | cmd_skipDuringExec,             0,0,    cmdPar_108,     cmdBlockExtFunction},
+
+
+    /* declare variables */
+    /* ----------------- */
+
+    {"Var",             cmdcod_var,             cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_111,     cmdGlobalVar},
+    {"Static",          cmdcod_static,          cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_111,     cmdStaticVar},
+    {"Local",           cmdcod_local,           cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_111,     cmdLocalVar},
+
+    //// to do
+    //// -----
+
+    {"Delvar",          cmdcod_delete,          cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_110,     cmdDeleteVar},
+    {"Clearvars",       cmdcod_clear,           cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockNone},
+    {"Test",            cmdcod_test,            cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_999,     cmdBlockNone},//// test var no assignment
+
+    {"Printvars",       cmdcod_vars,            cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
+    {"PrintCBs",        cmdcod_printCB,         cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
+    {"Printprog",       cmdcod_printProg,       cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
+
+
+    // 
+    // --------------
+
+    {"Printcallstack",  cmdcod_printCallSt,     cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+
+    {"Receiveprog",     cmdcod_receiveProg,     cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+
+
+    /* flow control commands */
+    /* --------------------- */
+
+    {"For",             cmdcod_for,             cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_109,     cmdBlockFor},
+    {"While",           cmdcod_while,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockWhile},
+    {"If",              cmdcod_if,              cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockIf},
+    {"Elseif",          cmdcod_elseif,          cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockIf_elseIf},
+    {"Else",            cmdcod_else,            cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockIf_else},
+    {"End",             cmdcod_end,             cmd_noRestrictions,                                 0,0,    cmdPar_102,     cmdBlockGenEnd},                // closes inner open command block
+
+    {"Break",           cmdcod_break,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockOpenBlock_loop},        // allowed if at least one open loop block (any level) 
+    {"Continue",        cmdcod_continue,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockOpenBlock_loop },       // allowed if at least one open loop block (any level) 
+    {"Return",          cmdcod_return,          cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockOpenBlock_function},    // allowed if currently an open function definition block 
+
+
+    /* input and output commands */
+    /* ------------------------- */
+
+    {"Info",            cmdcod_info,            cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_114,     cmdBlockNone},
+    {"Input",           cmdcod_input,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_113,     cmdBlockNone},
+    {"Print",           cmdcod_print,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},
+    {"Dispfmt",         cmdcod_dispfmt,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"Dispmod",         cmdcod_dispmod,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_105,     cmdBlockNone},
+    {"Pause",           cmdcod_pause,           cmd_onlyInFunctionBlock,                            0,0,    cmdPar_106,     cmdBlockNone},
+    {"Halt",            cmdcod_halt,            cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},
+
+
+    /* debugging commands */
+    /* ------------------ */
+
+    {"Stop",            cmdcod_stop,            cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},
+    {"Nop",             cmdcod_nop,             cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_102,     cmdBlockNone},                  // insert two bytes in program, do nothing
+
+    {"Go",              cmdcod_go,              cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"Step",            cmdcod_step,            cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"Stepout",         cmdcod_stepOut,         cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"Stepover",        cmdcod_stepOver,        cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"Blockstepout",    cmdcod_stepOutOfBlock,  cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"Blockstepend",    cmdcod_stepToBlockEnd,  cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"Skip",            cmdcod_skip,            cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+
+    {"Trace",           cmdcod_trace,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockNone},
+
+    {"Abort",           cmdcod_abort,           cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"Debug",           cmdcod_debug,           cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"Quit",            cmdcod_quit,            cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockNone},
+
+
+    /* user callback functions */
+    /* ----------------------- */
+
+    {"DeclareCB",       cmdcod_declCB,          cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_110,     cmdBlockNone},
+    {"ClearCB",         cmdcod_clearCB,         cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_102,     cmdBlockNone},
+    {"Callcpp",         cmdcod_callback,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_101,     cmdBlockNone},
+};
+
+
+// internal (intrinsic) Justina functions
+// --------------------------------------
+
+// the 8 array pattern bits indicate the order of arrays and scalars; bit b0 to bit b7 refer to parameter 1 to 8, if a bit is set, an array is expected as argument
+// if more than 8 arguments are supplied, only arguments 1 to 8 can be set as array arguments
+// maximum number of parameters should be no more than 16
+
+const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
+    //  name        id code             #par    array pattern
+    //  ----        -------             ----    -------------   
+
+    //// nog te implementeren
+    {"ifte",                    fnccod_ifte,                    3,3,    0b0},
+    {"switch",                  fnccod_switch,                  2,16,   0b0},
+
+    // Justina functions
+    {"eval",                    fnccod_eval,                    1,1,    0b0},
+    {"ubound",                  fnccod_ubound,                  2,2,    0b00000001},        // first parameter is array (LSB)
+    {"dims",                    fnccod_dims,                    1,1,    0b00000001},
+    {"type",                    fnccod_valueType,               1,1,    0b0},
+    {"r",                       fnccod_last,                    0,1,    0b0},               // short label for 'last result'
+    {"ft",                      fnccod_format,                  1,6,    0b0},               // short label for 'system value'
+    {"sysval",                  fnccod_sysVal,                  1,1,    0b0},
+
+    // math functions
+    {"sqrt",                    fnccod_sqrt,                    1,1,    0b0},
+    {"sin",                     fnccod_sin,                     1,1,    0b0},
+    {"cos",                     fnccod_cos,                     1,1,    0b0},
+    {"tan",                     fnccod_tan,                     1,1,    0b0},
+    {"asin",                    fnccod_asin,                    1,1,    0b0},
+    {"acos",                    fnccod_acos,                    1,1,    0b0},
+    {"atan",                    fnccod_atan,                    1,1,    0b0},
+    {"ln",                      fnccod_ln,                      1,1,    0b0},
+    {"lnp1",                    fnccod_lnp1,                    1,1,    0b0},
+    {"log10",                   fnccod_log10,                   1,1,    0b0},
+    {"exp",                     fnccod_exp,                     1,1,    0b0},
+    {"expm1",                   fnccod_expm1,                   1,1,    0b0},
+
+    {"round",                   fnccod_round,                   1,1,    0b0},
+    {"ceil",                    fnccod_ceil,                    1,1,    0b0},
+    {"floor",                   fnccod_floor,                   1,1,    0b0},
+    {"trunc",                   fnccod_trunc,                   1,1,    0b0},
+
+    {"min",                     fnccod_min,                     2,2,    0b0},
+    {"max",                     fnccod_max,                     2,2,    0b0},
+    {"abs",                     fnccod_abs,                     1,1,    0b0},
+    {"sign",                    fnccod_sign,                    1,1,    0b0},
+    {"fmod",                    fnccod_fmod,                    2,2,    0b0},
+
+    {"cInt",                    fnccod_cint,                    1,1,    0b0},
+    {"cFloat",                  fnccod_cfloat,                  1,1,    0b0},
+    {"cStr",                    fnccod_cstr,                    1,1,    0b0},
+    
+    // Arduino digital I/O, timing and other functions
+    {"millis",                  fnccod_millis,                  0,0,    0b0},
+    {"micros",                  fnccod_micros,                  0,0,    0b0},
+    {"delay",                   fnccod_delay,                   1,1,    0b0},
+    {"delayMicroseconds",       fnccod_delayMicroseconds,       1,1,    0b0},
+    {"digitalRead",             fnccod_digitalRead,             1,1,    0b0},
+    {"digitalWrite",            fnccod_digitalWrite,            2,2,    0b0},
+    {"pinMode",                 fnccod_pinMode,                 2,2,    0b0},
+    {"analogRead",              fnccod_analogRead,              1,1,    0b0},
+    {"analogReference",         fnccod_analogReference,         1,1,    0b0},
+    {"analogWrite",             fnccod_analogWrite,             2,2,    0b0},
+    {"analogReadResolution",    fnccod_analogReadResolution,    1,1,    0b0},
+    {"analogWriteResolution",   fnccod_analogWriteResolution,   1,1,    0b0},
+    {"noTone",                  fnccod_noTone,                  1,1,    0b0},
+    {"pulseIn",                 fnccod_pulseIn,                 2,3,    0b0},
+    {"shiftIn",                 fnccod_shiftIn,                 3,3,    0b0},
+    {"shiftOut",                fnccod_shiftOut,                4,4,    0b0},
+    {"tone",                    fnccod_tone,                    2,3,    0b0},
+    {"random",                  fnccod_random,                  1,2,    0b0},
+    {"randomSeed",              fnccod_randomSeed,              1,1,    0b0},
+
+    // bit and byte manipulation functions
+    {"bit",                     fnccod_bit,                     1,1,    0b0},
+    {"bitRead",                 fnccod_bitRead,                 2,2,    0b0},
+    {"bitClear",                fnccod_bitClear,                2,2,    0b0},
+    {"bitSet",                  fnccod_bitSet,                  2,2,    0b0},
+    {"bitWrite",                fnccod_bitWrite,                3,3,    0b0},
+    {"maskedBitRead",           fnccod_bitsMaskedRead,          2,2,    0b0},
+    {"maskedBitClear",          fnccod_bitsMaskedClear,         3,3,    0b0},
+    {"maskedBitSet",            fnccod_bitsMaskedSet,           3,3,    0b0},
+    {"maskedBitWrite",          fnccod_bitsMaskedWrite,         3,3,    0b0},
+
+    // 'character' functions
+    {"char",                    fnccod_char,                    1,1,    0b0},
+    {"len",                     fnccod_len,                     1,1,    0b0},
+    {"nl",                      fnccod_nl,                      0,0,    0b0},
+    {"asc",                     fnccod_asc,                     1,2,    0b0},
+
+    {"isAlpha",                 fnccod_isAlpha,                 1,2,    0b0},
+    {"isAlphaNumeric",          fnccod_isAlphaNumeric,          1,2,    0b0},
+    {"isAscii",                 fnccod_isAscii,                 1,2,    0b0},
+    {"isControl",               fnccod_isControl,               1,2,    0b0},
+    {"isDigit",                 fnccod_isDigit,                 1,2,    0b0},
+    {"isGraph",                 fnccod_isGraph,                 1,2,    0b0},
+    {"isHexadecimalDigit",      fnccod_isHexadecimalDigit,      1,2,    0b0},
+    {"isLowerCase",             fnccod_isLowerCase,             1,2,    0b0},
+    {"isPrintable",             fnccod_isPrintable,             1,2,    0b0},
+    {"isPunct",                 fnccod_isPunct,                 1,2,    0b0},
+    {"isSpace",                 fnccod_isSpace  ,               1,2,    0b0},
+    {"isUpperCase",             fnccod_isUpperCase,             1,2,    0b0},
+    {"isWhitespace",            fnccod_isWhitespace,            1,2,    0b0},
+};
+
+
+// terminal tokens 
+// ---------------
+
+// priority: bits b43210 define priority if used as prefix, infix, postfix operator, respectively (0x1 = lowest, 0x1F = highest) 
+// priority 0 means operator not available for use as use as postfix, prefix, infix operator
+// bit b7 defines associativity for infix operators (bit set indicates 'right-to-left').
+// prefix operators: always right-to-left. postfix operators: always left-to-right
+// NOTE: table entries with names starting with same characters: shortest entries should come BEFORE longest (e.g. '!' before '!=', '&' before '&&')
+// postfix operator names can only be shared with prefix operator names
+
+const Justina_interpreter::TerminalDef Justina_interpreter::_terminals[]{
+
+    //  name            id code                 prefix prio                 infix prio          postfix prio         
+    //  ----            -------                 -----------                 ----------          ------------   
+
+    // non-operator terminals
+
+    {term_comma,            termcod_comma,              0x00,               0x00,                       0x00},
+    {term_semicolon,        termcod_semicolon,          0x00,               0x00,                       0x00},
+    {term_rightPar,         termcod_rightPar,           0x00,               0x00,                       0x00},
+    {term_leftPar,          termcod_leftPar,            0x00,               0x10,                       0x00},
+
+    // operators (0x00 -> operator not available, 0x01 -> pure or compound assignment)
+    // op_long: operands must be long, a long is returned (e.g. 'bitand' operator)
+    // res_long: operands can be float or long, a long is returned (e.g. 'and' operator)
+    // op_RtoL: operator has right-to-left associativity
+    // prefix operators: always right-to-left associativity; not added to the operator definition table below
+
+    {term_assign,           termcod_assign,             0x00,               0x01 | op_RtoL,             0x00},
+
+    {term_bitAnd,           termcod_bitAnd,             0x00,               0x06 | op_long,             0x00},
+    {term_bitXor,           termcod_bitXor,             0x00,               0x05 | op_long,             0x00},
+    {term_bitOr,            termcod_bitOr,              0x00,               0x04 | op_long,             0x00},
+
+    {term_and,              termcod_and,                0x00,               0x03 | res_long,            0x00},
+    {term_or,               termcod_or,                 0x00,               0x02 | res_long,            0x00},
+    {term_not,              termcod_not,                0x0C | res_long,    0x00,                       0x00},
+    {term_bitCompl,         termcod_bitCompl,           0x0C | op_long,     0x00,                       0x00},
+
+    {term_eq,               termcod_eq,                 0x00,               0x07 | res_long,            0x00},
+    {term_neq,              termcod_ne,                 0x00,               0x07 | res_long,            0x00},
+    {term_lt,               termcod_lt,                 0x00,               0x08 | res_long,            0x00},
+    {term_gt,               termcod_gt,                 0x00,               0x08 | res_long,            0x00},
+    {term_ltoe,             termcod_ltoe,               0x00,               0x08 | res_long,            0x00},
+    {term_gtoe,             termcod_gtoe,               0x00,               0x08 | res_long,            0x00},
+
+    {term_bitShLeft,        termcod_bitShLeft,          0x00,               0x09 | op_long,             0x00},
+    {term_bitShRight,       termcod_bitShRight,         0x00,               0x09 | op_long,             0x00},
+
+    {term_plus,             termcod_plus,               0x0C,               0x0A,                       0x00},      // note: for strings, concatenate
+    {term_minus,            termcod_minus,              0x0C,               0x0A,                       0x00},
+    {term_mult,             termcod_mult,               0x00,               0x0B,                       0x00},
+    {term_div,              termcod_div,                0x00,               0x0B,                       0x00},
+    {term_mod,              termcod_mod,                0x00,               0x0B | op_long,             0x00},
+    {term_pow,              termcod_pow,                0x00,               0x0D | op_RtoL,             0x00},
+
+    {term_incr,             termcod_incr,               0x0E,               0x00,                       0x0F},
+    {term_decr,             termcod_decr,               0x0E,               0x00,                       0x0F},
+
+    {term_plusAssign,       termcod_plusAssign,         0x00,               0x01 | op_RtoL,             0x00},
+    {term_minusAssign,      termcod_minusAssign,        0x00,               0x01 | op_RtoL,             0x00},
+    {term_multAssign,       termcod_multAssign,         0x00,               0x01 | op_RtoL,             0x00},
+    {term_divAssign,        termcod_divAssign,          0x00,               0x01 | op_RtoL,             0x00},
+    {term_modAssign,        termcod_modAssign,          0x00,               0x01 | op_RtoL,             0x00},
+
+    {term_bitAndAssign,     termcod_bitAndAssign,       0x00,               0x01 | op_RtoL | op_long,   0x00},
+    {term_bitOrAssign,      termcod_bitOrAssign,        0x00,               0x01 | op_RtoL | op_long,   0x00},
+    {term_bitXorAssign,     termcod_bitXorAssign,       0x00,               0x01 | op_RtoL | op_long,   0x00},
+
+    {term_bitShLeftAssign,  termcod_bitShLeftAssign,    0x00,               0x01 | op_RtoL | op_long,   0x00},
+    {term_bitShRightAssign, termcod_bitShRightAssign,   0x00,               0x01 | op_RtoL | op_long,   0x00},
+};
+
 
 // -------------------
 // *   constructor   *

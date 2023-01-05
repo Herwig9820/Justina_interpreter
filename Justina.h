@@ -235,20 +235,32 @@ class Justina_interpreter {
     };
 
     enum func_code {
-        fnccod_varAddress,
-        fnccod_varIndirect,
-        fnccod_varName,
-        fnccod_eval,
         fnccod_ifte,
         fnccod_switch,
-        fnccod_and,
-        fnccod_or,
-        fnccod_not,
+
+        fnccod_sqrt,
         fnccod_sin,
         fnccod_cos,
         fnccod_tan,
-        fnccod_millis,
-        fnccod_sqrt,
+        fnccod_asin,
+        fnccod_acos,
+        fnccod_atan,
+        fnccod_ln,
+        fnccod_lnp1,
+        fnccod_log10,
+        fnccod_exp,
+        fnccod_expm1,
+        fnccod_round,
+        fnccod_ceil,
+        fnccod_floor,
+        fnccod_trunc,
+        fnccod_min,
+        fnccod_max,
+        fnccod_abs,
+        fnccod_sign,
+        fnccod_fmod,
+
+        fnccod_eval,
         fnccod_ubound,
         fnccod_dims,
         fnccod_valueType,
@@ -258,8 +270,55 @@ class Justina_interpreter {
         fnccod_len,
         fnccod_nl,
         fnccod_format,
-        fnccod_fmtStr,
-        fnccod_sysVal
+        fnccod_sysVal,
+
+        fnccod_cint,
+        fnccod_cfloat,
+        fnccod_cstr,
+
+        fnccod_millis,
+        fnccod_micros,
+        fnccod_delay,
+        fnccod_delayMicroseconds,
+        fnccod_digitalRead,                 // Arduino functions
+        fnccod_digitalWrite,
+        fnccod_pinMode,
+        fnccod_analogRead,
+        fnccod_analogReference,
+        fnccod_analogWrite,
+        fnccod_analogReadResolution,
+        fnccod_analogWriteResolution,
+        fnccod_noTone,
+        fnccod_pulseIn,
+        fnccod_shiftIn,
+        fnccod_shiftOut,
+        fnccod_tone,
+        fnccod_random,
+        fnccod_randomSeed,
+
+        fnccod_bit,
+        fnccod_bitClear,
+        fnccod_bitSet,
+        fnccod_bitRead,
+        fnccod_bitWrite,
+        fnccod_bitsMaskedClear,
+        fnccod_bitsMaskedSet,
+        fnccod_bitsMaskedRead,
+        fnccod_bitsMaskedWrite,
+
+        fnccod_isAlpha,
+        fnccod_isAlphaNumeric,
+        fnccod_isAscii,
+        fnccod_isControl,
+        fnccod_isDigit,
+        fnccod_isGraph,
+        fnccod_isHexadecimalDigit,
+        fnccod_isLowerCase,
+        fnccod_isPrintable,
+        fnccod_isPunct,
+        fnccod_isSpace,
+        fnccod_isUpperCase,
+        fnccod_isWhitespace
     };
 
     enum termin_code {
@@ -375,7 +434,7 @@ class Justina_interpreter {
         result_numberInvalidFormat,
         result_parse_overflow,                // underflow not detected during parsing
 
-        // function errors
+        // function definition or call errors
         result_nameInUseForVariable = 1500,
         result_wrong_arg_count,
         result_functionAlreadyDefinedBefore,
@@ -471,12 +530,14 @@ class Justina_interpreter {
         // internal functions
         result_arg_outsideRange = 3100,
         result_arg_integerExpected,
+        result_arg_numberExpected,
         result_arg_invalid,
-        result_arg_dimNumberIntegerExpected,
+        result_arg_integerDimExpected,
         result_arg_dimNumberInvalid,
         result_arg_stringExpected,
         result_arg_numValueExpected,
         result_arg_tooManyArgs,
+        result_arg_nonEmptyStringExpected,
 
         result_array_dimNumberNonInteger = 3200,
         result_array_dimNumberInvalid,
@@ -820,6 +881,8 @@ private:
         float* pFloatConst;
         char** ppStringConst;
         void** ppArray;
+
+        char bytes[4];
     };
 
 
@@ -1027,7 +1090,7 @@ private:
 
     // sizes MUST be specified AND must be exact
     static const ResWordDef _resWords[45];                          // keyword names
-    static const FuncDef _functions[24];                            // function names with min & max arguments allowed
+    static const FuncDef _functions[78];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
 
@@ -1439,9 +1502,11 @@ private:
     bool readText(bool& doAbort, bool& doStop, bool& doCancel, bool& doDefault, char* input, int& length);
 
     bool addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool& withinMultiLineComment,
-        bool& redundantSemiColon, bool isEndOfFile, bool& bufferOverrun,bool  _flushAllUntilEOF, int &_lineCount, int &_statementCharCount, char c);
+        bool& redundantSemiColon, bool isEndOfFile, bool& bufferOverrun, bool  _flushAllUntilEOF, int& _lineCount, int& _statementCharCount, char c);
     bool processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos);
     void traceAndPrintDebugInfo();
+
+    execResult_type stringToNumber();
 };
 
 #endif

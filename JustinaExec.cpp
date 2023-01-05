@@ -715,7 +715,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             else if (execResult == result_kill) {}      // do nothing
             else if (execResult == result_abort) { _pConsole->print("\r\n+++ Abort: code execution terminated +++\r\n"); }
             else if (execResult == result_stopForDebug) { if (isBackslashStop) { _pConsole->print("\r\n+++ Program stopped +++\r\n"); } }
-            else if (execResult == result_initiateProgramLoad){}        // nothing to do here for this event
+            else if (execResult == result_initiateProgramLoad) {}        // nothing to do here for this event
 
             _lastValueIsStored = false;              // prevent printing last result (if any)
             break;
@@ -1692,7 +1692,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         delete[] args[i].pStringConst;                                                  // delete temporary string
                         _intermediateStringObjectCount--;
-                }
+                    }
 
                     // callback routine changed non-empty VARIABLE string into empty variable string ("\0") ?
                     else if (strlen(args[i].pStringConst) == 0) {
@@ -1707,9 +1707,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         // set variable string pointer to null pointer
                         *pStackLvl->varOrConst.value.ppStringConst = nullptr;                           // change pointer to string (in variable) to null pointer
                     }
-            }
+                }
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-        }
+            }
 
 
             // finalize
@@ -1718,7 +1718,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             clearEvalStackLevels(cmdParamCount);                                                        // clear evaluation stack and intermediate strings
 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
-    }
+        }
         break;
 
 
@@ -1967,7 +1967,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         }
         break;
 
-}       // end switch
+    }       // end switch
 
     return result_execOK;
 }
@@ -2152,9 +2152,9 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
                 // note: this is always an intermediate string
                 delete[] lastResultValueFiFo[itemToRemove].pStringConst;
                 _lastValuesStringObjectCount--;
+            }
         }
     }
-}
     else {
         _lastResultCount++;     // only adding an item, without removing previous one
     }
@@ -2201,7 +2201,7 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
         #endif
             delete[] lastvalue.value.pStringConst;
             _intermediateStringObjectCount--;
-    }
+        }
     }
 
     // store new last value type
@@ -2330,10 +2330,10 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
                         delete[] _activeFunctionData.pVariableAttributes;
                         delete[] _activeFunctionData.ppSourceVarTypes;
                         _localVarValueAreaCount--;
+                    }
                 }
-            }
                 if (!isInitialLoop) { --_callStackDepth; }
-        }
+            }
 
             else if (blockType == block_eval) {
                 // no need to copy flow control stack level to _activeFunctionData
@@ -2351,8 +2351,8 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
 
             if (pFlowCtrlStackLvl == nullptr) { break; }       // all done
             isInitialLoop = false;
-    } while (true);
-}
+        } while (true);
+    }
 
     _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
     _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackTop);
@@ -2788,8 +2788,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
             opResult = operand2;
             break;
 
-            // note: no overflow checks for arithmatic operators (+ - * /)
-
         case termcod_plus:            // also for concatenation
         case termcod_plusAssign:
             if (opResultString) {      // then operands are strings as well
@@ -2827,7 +2825,11 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
         case termcod_mult:
         case termcod_multAssign:
             opResultLong ? opResult.longConst = operand1.longConst * operand2.longConst : opResult.floatConst = operand1.floatConst * operand2.floatConst;
-            if (opResultFloat) { if ((operand1.floatConst != 0) && (operand2.floatConst != 0) && (!isnormal(opResult.floatConst))) { return result_underflow; } }
+            if (opResultFloat) {
+                if (isnan(opResult.floatConst)) { return result_undefined; }
+                else if (!isfinite(opResult.floatConst)) { return result_overflow; }
+                if ((operand1.floatConst != 0) && (operand2.floatConst != 0) && (!isnormal(opResult.floatConst))) { return result_underflow; }
+            }
             break;
 
         case termcod_div:
@@ -2835,7 +2837,19 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
             if (opResultFloat) { if ((operand1.floatConst != 0) && (operand2.floatConst == 0)) { return result_divByZero; } }
             else { if (operand2.longConst == 0) { return (operand1.longConst == 0) ? result_undefined : result_divByZero; } }
             opResultLong ? opResult.longConst = operand1.longConst / operand2.longConst : opResult.floatConst = operand1.floatConst / operand2.floatConst;
-            if (opResultFloat) { if ((operand1.floatConst != 0) && (!isnormal(opResult.floatConst))) { return result_underflow; } }
+            if (opResultFloat) {
+                if (isnan(opResult.floatConst)) { return result_undefined; }
+                else if (!isfinite(opResult.floatConst)) { return result_overflow; }
+                if ((operand1.floatConst != 0) && (!isnormal(opResult.floatConst))) { return result_underflow; }
+            }
+            break;
+
+        case termcod_pow:     // operands always (converted to) floats
+            if ((operand1.floatConst == 0) && (operand2.floatConst == 0)) { return result_undefined; } // C++ pow() provides 1 as result
+            opResult.floatConst = pow(operand1.floatConst, operand2.floatConst);
+            if (isnan(opResult.floatConst)) { return result_undefined; }
+            else if (!isfinite(opResult.floatConst)) { return result_overflow; }
+            else if ((operand1.floatConst != 0) && (!isnormal(opResult.floatConst))) { return result_underflow; }
             break;
 
         case termcod_mod:
@@ -2871,11 +2885,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
             opResult.longConst = operand1.longConst >> operand2.longConst;
             break;
 
-        case termcod_pow:     // operands always (converted to) floats
-            if ((operand1.floatConst == 0) && (operand2.floatConst == 0)) { return result_undefined; } // C++ pow() provides 1 as result
-            opResult.floatConst = pow(operand1.floatConst, operand2.floatConst);
-            break;
-
         case termcod_and:
             opResult.longConst = opResultLong ? (operand1.longConst && operand2.longConst) : (operand1.floatConst && operand2.floatConst);
             break;
@@ -2909,13 +2918,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
             break;
     }       // switch
 
-
-    // float values: extra value tests
-
-    if ((opResultFloat) && (operatorCode != termcod_assign)) {     // check error (float values only, not for pure assignment)
-        if (isnan(opResult.floatConst)) { return result_undefined; }
-        else if (!isfinite(opResult.floatConst)) { return result_overflow; }
-    }
 
 
     // (6) store result in variable, if operation is a (pure or compound) assignment
@@ -2967,8 +2969,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
             #endif
                 delete[] pUnclippedResultString;     // compound assignment: pointing to the unclipped result WHICH IS NON-EMPTY: so it's a heap object and must be deleted now
                 _intermediateStringObjectCount--;
+            }
         }
-    }
 
         // store value in variable and adapt variable value type - next line is valid for long integers as well
         if (opResultLong || opResultFloat) { *_pEvalStackMinus2->varOrConst.value.pFloatConst = opResult.floatConst; }
@@ -2982,7 +2984,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) |
                 (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
         }
-}
+    }
 
 
     // (7) post process
@@ -3045,7 +3047,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
     int maxArgs = _functions[functionIndex].maxArgs;
     char fcnResultValueType = value_noValue;  // init
     Val fcnResult;
-    bool argIsVar[16], argIsLong[16], argIsFloat[16];
+    bool argIsVar[16], argIsLong[16], argIsFloat[16], argIsString[16];
     char argValueType[16];
     Val args[16];
 
@@ -3062,6 +3064,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             argValueType[i] = argIsVar[i] ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
             argIsLong[i] = ((uint8_t)argValueType[i] == value_isLong);
             argIsFloat[i] = ((uint8_t)argValueType[i] == value_isFloat);
+            argIsString[i] = ((uint8_t)argValueType[i] == value_isStringPointer);
 
             // fetch args: real constants or pointers to character strings (pointers to arrays: not used) - next line is valid for long values as well
             if (argIsLong || argIsFloat) { args[i].floatConst = (argIsVar[i] ? (*pStackLvl->varOrConst.value.pFloatConst) : pStackLvl->varOrConst.value.floatConst); }
@@ -3105,20 +3108,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         break;
 
 
-        // square root
-        // -----------
-
-        case fnccod_sqrt:
-        {
-            if (!argIsLong[0] && !argIsFloat[0]) { return result_numberExpected; }
-            if (argIsLong[0] ? args[0].longConst < 0 : args[0].floatConst < 0.) { return result_arg_outsideRange; }
-
-            fcnResultValueType = value_isFloat;
-            fcnResult.floatConst = argIsLong[0] ? sqrt(args[0].longConst) : sqrt(args[0].floatConst);
-        }
-        break;
-
-
         // dimension count of an array
         // ---------------------------
 
@@ -3136,11 +3125,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         // -----------------
         case fnccod_ubound:
         {
-            if (!argIsLong[1] && !argIsFloat[1]) { return result_arg_dimNumberIntegerExpected; }
+            if (!argIsLong[1] && !argIsFloat[1]) { return result_arg_integerDimExpected; }
             void* pArray = *pFirstArgStackLvl->varOrConst.value.ppArray;
             int arrayDimCount = ((char*)pArray)[3];
             int dimNo = argIsLong[1] ? args[1].longConst : int(args[1].floatConst);
-            if (argIsFloat[1]) { if (args[1].floatConst != dimNo) { return result_arg_dimNumberIntegerExpected; } }
+            if (argIsFloat[1]) { if (args[1].floatConst != dimNo) { return result_arg_integerDimExpected; } }
             if ((dimNo < 1) || (dimNo > arrayDimCount)) { return result_arg_dimNumberInvalid; }
 
             fcnResultValueType = value_isLong;
@@ -3190,40 +3179,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
             #endif            
             }
-
-        }
-        break;
-
-
-        // time since boot, in milliseconds
-        // --------------------------------
-
-        case fnccod_millis:
-        {
-            fcnResultValueType = value_isLong;
-            fcnResult.longConst = millis();
-        }
-        break;
-
-
-        // ASCII code of a single character in a string
-        // -------------------------------------------
-
-        case fnccod_asc:
-        {
-            if (argIsLong[0] || argIsFloat[0]) { return result_arg_stringExpected; }
-            if (args[0].pStringConst == nullptr) { return result_arg_invalid; }     // empty string
-            int charPos = 1;            // first character
-            if (suppliedArgCount == 2) {              // character position in string specified
-                if (!argIsLong[1] && !argIsFloat[1]) { return result_arg_integerExpected; }
-                charPos = argIsLong[1] ? args[1].longConst : int(args[1].floatConst);
-                if (argIsFloat[1]) { if (args[1].floatConst != charPos) { return result_arg_integerExpected; } }
-                if (charPos < 1) { return result_arg_outsideRange; }
-            }
-            if (charPos > strlen(args[0].pStringConst)) { return result_arg_invalid; }
-
-            fcnResultValueType = value_isLong;
-            fcnResult.longConst = args[0].pStringConst[--charPos];     // character code
         }
         break;
 
@@ -3253,7 +3208,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
         case fnccod_len:     // return length of a string
         {
-            if (argIsLong[0] || argIsFloat[0]) { return result_arg_stringExpected; }
+            if (!argIsString[0]) { return result_arg_stringExpected; }
             fcnResult.longConst = 0;      // init
             if (args[0].pStringConst != nullptr) { fcnResult.longConst = strlen(args[0].pStringConst); }
             fcnResultValueType = value_isLong;
@@ -3293,7 +3248,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // if the value to be formatted is a string, the precision argument is interpreted as 'maximum characters to print', otherwise it indicates numeric precision (both values retained seperately)
             // specifier is only relevant for formatting numbers (ignored for formatting strings), but can be set while formatting a string
 
-            const int leftJustify = 0b1, forceSign = 0b10, blankIfNoSign = 0b100, addDecPoint = 0b1000, padWithZeros = 0b10000;     // flags
+            const int leftJustify = 0b1, forceSign = 0b10, blankIfNoSign = 0b100, addDecPoint = 0b1000, padWithZeros = 0b10000;     // flags //// flags worden niet gebruikt ???
             bool isIntFmt{ false };
             int charsPrinted{ 0 };
 
@@ -3339,6 +3294,299 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 *_pEvalStackTop->varOrConst.value.pFloatConst = charsPrinted;
                 *_pEvalStackTop->varOrConst.varTypeAddress = (*_pEvalStackTop->varOrConst.varTypeAddress & ~value_typeMask) | value_isFloat;
             }
+        }
+        break;
+
+
+        // type conversion functions
+        // -------------------------
+
+        case fnccod_cint:
+        {
+            fcnResultValueType = value_isLong;
+            fcnResult.longConst = 0;
+            if (argIsLong[0]) { fcnResult.longConst = args[0].longConst; }
+            else if (argIsFloat[0]) { fcnResult.longConst = (long)args[0].floatConst; }
+            else if (argIsString[0]) { fcnResult.longConst = strtol(args[0].pStringConst, nullptr, 0); }
+        }
+        break;
+
+        case fnccod_cfloat:
+        {
+            fcnResultValueType = value_isFloat;
+            fcnResult.floatConst = 0.;
+            if (argIsLong[0]) { fcnResult.floatConst = (float)args[0].longConst; }
+            else if (argIsFloat[0]) { fcnResult.floatConst = args[0].floatConst; }
+            else if (argIsString[0]) { fcnResult.floatConst = strtof(args[0].pStringConst, nullptr); }
+        }
+        break;
+
+        case fnccod_cstr:
+        {
+            fcnResultValueType = value_isStringPointer;     // init
+            fcnResult.pStringConst = nullptr;                // init
+            if (argIsLong[0] || argIsFloat[0]) {
+                fcnResult.pStringConst = new char[30];      // provide sufficient length to store a number
+                _intermediateStringObjectCount++;
+                argIsLong[0] ? sprintf(fcnResult.pStringConst, "%ld", args[0].longConst) : sprintf(fcnResult.pStringConst, "%G", args[0].floatConst);
+
+            }
+            else if (argIsString[0]) {
+                if (args[0].pStringConst != nullptr) {
+                    fcnResult.pStringConst = new char[strlen(args[0].pStringConst) + 1];
+                    _intermediateStringObjectCount++;
+                    strcpy(fcnResult.pStringConst, args[0].pStringConst);       // just copy the string provided as argument
+                }
+            }
+            if (fcnResult.pStringConst != nullptr) {
+            #if printCreateDeleteListHeapObjects
+                Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
+            #endif
+            }
+        }
+        break;
+
+        // math functions 
+        // --------------
+
+        case fnccod_sqrt:
+        case fnccod_sin:
+        case fnccod_cos:
+        case fnccod_tan:
+        case fnccod_asin:
+        case fnccod_acos:
+        case fnccod_atan:
+        case fnccod_ln:
+        case fnccod_log10:
+        case fnccod_exp:
+        case fnccod_expm1:
+        case fnccod_lnp1:
+        case fnccod_round:
+        case fnccod_ceil:
+        case fnccod_floor:
+        case fnccod_trunc:
+        case fnccod_abs:
+        case fnccod_sign:
+        case fnccod_min:
+        case fnccod_max:
+        case fnccod_fmod:
+        {
+            for (int i = 0; i < suppliedArgCount; ++i) {
+                if (!argIsLong[i] && !argIsFloat[i]) { return result_numberExpected; }
+            }
+            float arg1float = argIsLong[0] ? (float)args[0].longConst : args[0].floatConst; // keep original value in args[0]
+
+            fcnResultValueType = value_isFloat;         // init: return a float
+            fcnResult.floatConst = 0.;                  // init: return 0. if the Arduino function doesn't return anything
+
+            // test arguments
+            if (functionCode == fnccod_sqrt) { if (arg1float < 0.) { return result_arg_outsideRange; } }
+            else if ((functionCode == fnccod_asin) || (functionCode == fnccod_acos)) { if ((arg1float < -1.) || (arg1float > 1.)) { return result_arg_outsideRange; } }
+            else if ((functionCode == fnccod_ln) || (functionCode == fnccod_log10)) { if (arg1float <= 0.) { return result_arg_outsideRange; } }
+            else if (functionCode == fnccod_lnp1) { if (arg1float <= -1.) { return result_arg_outsideRange; } }
+
+            // calculate
+            if (functionCode == fnccod_sqrt) { fcnResult.floatConst = sqrt(arg1float); }
+            else if (functionCode == fnccod_sin) { fcnResult.floatConst = sin(arg1float); }
+            else if (functionCode == fnccod_cos) { fcnResult.floatConst = cos(arg1float); }
+            else if (functionCode == fnccod_tan) { fcnResult.floatConst = tan(arg1float); }
+            else if (functionCode == fnccod_asin) { fcnResult.floatConst = asin(arg1float); }
+            else if (functionCode == fnccod_acos) { fcnResult.floatConst = acos(arg1float); }
+            else if (functionCode == fnccod_atan) { fcnResult.floatConst = atan(arg1float); }
+            else if (functionCode == fnccod_ln) { fcnResult.floatConst = log(arg1float); }
+            else if (functionCode == fnccod_lnp1) { fcnResult.floatConst = log1p(arg1float); }
+            else if (functionCode == fnccod_exp) { fcnResult.floatConst = exp(arg1float); }
+            else if (functionCode == fnccod_expm1) { fcnResult.floatConst = expm1(arg1float); }
+            else if (functionCode == fnccod_log10) { fcnResult.floatConst = log10(arg1float); }
+            else if (functionCode == fnccod_round) { fcnResult.floatConst = round(arg1float); }
+            else if (functionCode == fnccod_trunc) { fcnResult.floatConst = trunc(arg1float); }
+            else if (functionCode == fnccod_floor) { fcnResult.floatConst = floor(arg1float); }
+            else if (functionCode == fnccod_ceil) { fcnResult.floatConst = ceil(arg1float); }
+            // Arduino min(long 0, something greater than 0) returns a double very close to zero, but not zero (same for max()). Avoid this.
+            else if ((functionCode == fnccod_min) || (functionCode == fnccod_max)) {
+                if (argIsLong[0] && argIsLong[1]) {
+                    fcnResultValueType = value_isLong;
+                    fcnResult.longConst = (functionCode == fnccod_min) ? min(args[0].longConst, args[1].longConst) : max(args[0].longConst, args[1].longConst);
+                }
+                else {
+                    float arg2float = argIsLong[1] ? (float)args[1].longConst : args[1].floatConst;
+                    fcnResult.floatConst = ((arg1float <= arg2float) == (functionCode == fnccod_min)) ? arg1float : arg2float;
+                }
+            }
+            else if (functionCode == fnccod_abs) {
+                // avoid -0. as Arduino abs() result: use fabs() if result = float value
+                if (argIsLong[0]) { fcnResultValueType = value_isLong; };
+                argIsLong[0] ? fcnResult.longConst = abs(args[0].longConst) : fcnResult.floatConst = fabs(args[0].floatConst);
+            }
+            else if (functionCode == fnccod_sign) { fcnResultValueType = value_isLong; fcnResult.longConst = argIsLong[0] ? (args[0].longConst < 0 ? 1 : 0) : signbit(arg1float); }
+            else if (functionCode == fnccod_fmod) { fcnResult.floatConst = fmod(arg1float, argIsLong[1] ? args[1].longConst : args[1].floatConst); }     // second argument cast to float anyway
+
+
+            // test result (do net vtest for subnormal numbers here)
+            if (fcnResultValueType == value_isFloat) {
+                if (isnan(fcnResult.floatConst)) { return result_undefined; }
+                if (!isfinite(fcnResult.floatConst)) { return result_overflow; }
+            }
+        }
+        break;
+
+
+        // Bit manipulation functions
+        // --------------------------
+
+        // all arguments need to be long; if a value is returned, it's always a long integer
+
+        case fnccod_bit:
+        case fnccod_bitRead:
+        case fnccod_bitClear:
+        case fnccod_bitSet:
+        case fnccod_bitWrite:
+        case fnccod_bitsMaskedRead:
+        case fnccod_bitsMaskedClear:
+        case fnccod_bitsMaskedSet:
+        case fnccod_bitsMaskedWrite:
+        {
+            for (int i = 0; i < suppliedArgCount; ++i) {
+                if (!argIsLong[i]) { return result_arg_integerExpected; }
+            }
+            if ((functionCode == fnccod_bitClear) || (functionCode == fnccod_bitSet) || (functionCode == fnccod_bitWrite) ||
+                (functionCode == fnccod_bitsMaskedClear) || (functionCode == fnccod_bitsMaskedSet) || (functionCode == fnccod_bitsMaskedWrite)) {
+                if (!argIsVar[0]) { return result_arg_varExpected; }        // requires variable ? test for it
+            }
+            fcnResultValueType = value_isLong;      // init: return a long
+            fcnResult.longConst = 0;                // init: return 0 if the Arduino function doesn't return anything
+
+            if (functionCode == fnccod_bit) { fcnResult.longConst = 1 << args[0].longConst; }                                           // requires no variable
+
+            else if (functionCode == fnccod_bitRead) { fcnResult.longConst = (args[0].longConst & (1 << args[1].longConst)) != 0; }     // requires no variable
+            else if (functionCode == fnccod_bitClear) { fcnResult.longConst = args[0].longConst & ~(1 << args[1].longConst); }
+            else if (functionCode == fnccod_bitSet) { fcnResult.longConst = args[0].longConst | (1 << args[1].longConst); }
+            else if (functionCode == fnccod_bitWrite) { fcnResult.longConst = (args[2].longConst == 0) ? args[0].longConst & ~(1 << args[1].longConst) : args[0].longConst | (1 << args[1].longConst); }
+
+            else if (functionCode == fnccod_bitsMaskedRead) { fcnResult.longConst = (args[0].longConst & args[1].longConst); }     // requires no variable; second argument is considered mask
+            else if (functionCode == fnccod_bitsMaskedClear) { fcnResult.longConst = args[0].longConst & ~(args[1].longConst & args[2].longConst); }       // variable, mask, bits to clear 
+            else if (functionCode == fnccod_bitsMaskedSet) { fcnResult.longConst = args[0].longConst | (args[1].longConst & args[2].longConst); }       // variable, mask, bits to clear 
+            else if (functionCode == fnccod_bitsMaskedWrite) { fcnResult.longConst = args[0].longConst & (~args[1].longConst | args[2].longConst) | (args[1].longConst & args[2].longConst); }  // variable, mask, bits to write
+        }
+
+
+        // function modifies variable (first argument) ?
+        if ((functionCode == fnccod_bitClear) || (functionCode == fnccod_bitSet) || (functionCode == fnccod_bitWrite) ||
+            (functionCode == fnccod_bitsMaskedClear) || (functionCode == fnccod_bitsMaskedSet) || (functionCode == fnccod_bitsMaskedWrite)) {
+            *_pEvalStackMinus2->varOrConst.value.pLongConst = fcnResult.longConst;       // store result in variable (value type is long already)
+        }
+        break;
+
+
+        // Arduino timing and digital I/O functions 
+        // ----------------------------------------
+
+        // all arguments can be long or float; if a value is returned, it's always a long integer
+        // Note that, as Justina 'integer' constants and variables are internally represented by (signed) long values, large values returned by certain functions 
+        // may show up as negative values (if greater then or equal to 2^31)
+
+        case fnccod_millis:
+        case fnccod_micros:
+        case fnccod_delay:
+        case fnccod_delayMicroseconds:
+        case fnccod_digitalRead:
+        case fnccod_digitalWrite:
+        case fnccod_pinMode:
+        case fnccod_analogRead:
+        case fnccod_analogReference:
+        case fnccod_analogWrite:
+        case fnccod_analogReadResolution:
+        case fnccod_analogWriteResolution:
+        case fnccod_noTone:
+        case fnccod_pulseIn:
+        case fnccod_shiftIn:
+        case fnccod_shiftOut:
+        case fnccod_tone:
+        case fnccod_random:
+        case fnccod_randomSeed:
+        {
+            // for all arguments provided: check they are Justina integers or floats
+            // no additional checks are done (e.g. floats with fractions)
+            for (int i = 0; i < suppliedArgCount; ++i) {
+                if (!argIsLong[i] && !argIsFloat[i]) { return result_arg_numberExpected; }
+                if (argIsFloat[i]) { args[i].longConst = int(args[i].floatConst); }          // all these functions need integer values
+            }
+            fcnResultValueType = value_isLong;      // init: return a long
+            fcnResult.longConst = 0;                // init: return 0 if the Arduino function doesn't return anything
+
+            if (functionCode == fnccod_millis) { fcnResult.longConst = millis(); }
+            else if (functionCode == fnccod_micros) { fcnResult.longConst = micros(); }
+            else if (functionCode == fnccod_delay) { delay((unsigned long)args[0].longConst); }     // args: milliseconds    
+            else if (functionCode == fnccod_delayMicroseconds) { delayMicroseconds((unsigned long)args[0].longConst); }   // args: milliseconds 
+            else if (functionCode == fnccod_digitalRead) { fcnResult.longConst = digitalRead(args[0].longConst); }                              // arg: pin
+            else if (functionCode == fnccod_digitalWrite) { digitalWrite(args[0].longConst, args[1].longConst); }                        // args: pin, value
+            else if (functionCode == fnccod_pinMode) { pinMode(args[0].longConst, args[1].longConst); }                            // args: pin, pin mode
+            else if (functionCode == fnccod_analogRead) { fcnResult.longConst = analogRead(args[0].longConst); }                        // arg: pin
+            else if (functionCode == fnccod_analogReference) { analogReference(args[0].longConst); }                      // arg: reference type (0 to 5: see ARduino ref - 2 is external)
+            else if (functionCode == fnccod_analogWrite) { analogWrite(args[0].longConst, args[1].longConst); }                        // args: pin, value
+            else if (functionCode == fnccod_analogReadResolution) { analogReadResolution(args[0].longConst); }                // arg: bits
+            else if (functionCode == fnccod_analogWriteResolution) { analogWriteResolution(args[0].longConst); }                // arg: bits
+            else if (functionCode == fnccod_noTone) { noTone(args[0].longConst); }                             // arg: pin
+            else if (functionCode == fnccod_pulseIn) { fcnResult.longConst = (suppliedArgCount == 2) ? pulseIn(args[0].longConst, args[1].bytes[0]) : pulseIn(args[0].longConst, args[1].bytes[0], (uint32_t)args[2].longConst); }       // args: pin, value, (optional) time out
+            else if (functionCode == fnccod_shiftIn) { fcnResult.longConst = shiftIn(args[0].longConst, args[1].longConst, (BitOrder)args[2].longConst); }    // args: data pin, clock pin, bit order
+            else if (functionCode == fnccod_shiftOut) { shiftOut(args[0].longConst, args[1].longConst, (BitOrder)args[2].longConst, args[3].longConst); }        // args: data pin, clock pin, bit order, value
+            else if (functionCode == fnccod_tone) { (suppliedArgCount == 2) ? tone(args[0].longConst, args[1].longConst) : tone(args[0].longConst, args[1].longConst, args[2].longConst); }      // args: pin, frequency, (optional) duration
+            else if (functionCode == fnccod_random) { fcnResult.longConst = (suppliedArgCount == 1) ? random(args[0].longConst) : random(args[0].longConst, args[1].longConst); }
+            else if (functionCode == fnccod_randomSeed) { randomSeed(args[0].longConst); }
+        }
+        break;
+
+
+        // 'character' functions
+        // ---------------------
+
+        // first argument must be a non-empty string; optional argument must point to a character in the string (1 to string length)
+        // if a value is returned, it's always a long integer (if boolean: 0 (false) or not 0 (true)) 
+
+        case fnccod_isAlpha:
+        case fnccod_isAlphaNumeric:
+        case fnccod_isAscii:
+        case fnccod_isControl:
+        case fnccod_isDigit:
+        case fnccod_isGraph:
+        case fnccod_isHexadecimalDigit:
+        case fnccod_isLowerCase:
+        case fnccod_isPrintable:
+        case fnccod_isPunct:
+        case fnccod_isSpace:
+        case fnccod_isUpperCase:
+        case fnccod_isWhitespace:
+        case fnccod_asc:
+
+        {
+            // check that non-empty string is provided; if second argument is given, check it's within range
+            // no additional checks are done (e.g. floats with fractions)
+            if (!argIsString[0]) { return result_arg_stringExpected; }
+            if (args[0].pStringConst == nullptr) { return result_arg_nonEmptyStringExpected; }
+            int length = strlen(args[0].pStringConst);
+            int charPos = 1;        // first character in string
+            if (suppliedArgCount == 2) {
+                if (!argIsLong[1] && !argIsFloat[1]) { return result_arg_integerExpected; }
+                charPos = argIsLong[1] ? args[1].longConst : int(args[1].floatConst);
+                if ((args[1].longConst < 1) || (args[1].longConst > length)) { return result_outsideRange; }
+            }
+            fcnResultValueType = value_isLong;      // init: return a long
+            fcnResult.longConst = 0;                // init: return 0 if the Arduino function doesn't return anything
+
+            if (functionCode == fnccod_isAlpha) { fcnResult.longConst = isalpha(args[0].pStringConst[--charPos]); }
+            else if (functionCode == fnccod_isAlphaNumeric) { fcnResult.longConst = isAlphaNumeric(args[0].pStringConst[--charPos]); }
+            else if (functionCode == fnccod_isAscii) { fcnResult.longConst = isAscii(args[0].pStringConst[--charPos]); }
+            else if (functionCode == fnccod_isControl) { fcnResult.longConst = isControl(args[0].pStringConst[--charPos]); }
+            else if (functionCode == fnccod_isDigit) { fcnResult.longConst = isDigit(args[0].pStringConst[--charPos]); }
+            else if (functionCode == fnccod_isGraph) { fcnResult.longConst = isGraph(args[0].pStringConst[--charPos]); }
+            else if (functionCode == fnccod_isHexadecimalDigit) { fcnResult.longConst = isHexadecimalDigit(args[0].pStringConst[--charPos]); }
+            else if (functionCode == fnccod_isLowerCase) { fcnResult.longConst = isLowerCase(args[0].pStringConst[--charPos]); }
+            else if (functionCode == fnccod_isPrintable) { fcnResult.longConst = isPrintable(args[0].pStringConst[--charPos]); }
+            else if (functionCode == fnccod_isPunct) { fcnResult.longConst = isPunct(args[0].pStringConst[--charPos]); }
+            else if (functionCode == fnccod_isSpace) { fcnResult.longConst = isSpace(args[0].pStringConst[--charPos]); }
+            else if (functionCode == fnccod_isUpperCase) { fcnResult.longConst = isUpperCase(args[0].pStringConst[--charPos]); }
+            else if (functionCode == fnccod_isWhitespace) { fcnResult.longConst = isWhitespace(args[0].pStringConst[--charPos]); }
+            else if (functionCode == fnccod_asc) { fcnResult.longConst = args[0].pStringConst[--charPos]; }
         }
         break;
 
@@ -3467,11 +3715,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         }
         break;
 
-        }       // end switch
 
 
-        // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
-        // -------------------------------------------------------------------------------------------------------------------
+    }       // end switch
+
+
+    // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
+    // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
@@ -3492,8 +3742,16 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
     }
 
     return result_execOK;
-    }
+}
 
+
+// ----------------
+// 
+// ----------------
+
+Justina_interpreter::execResult_type Justina_interpreter::stringToNumber() {
+
+}
 
 // -----------------------
 // check format specifiers
