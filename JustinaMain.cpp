@@ -249,8 +249,8 @@ int LinkedList::getElementCount() {
 // commands (FUNCTION, FOR, ...): 'allowed command parameter' keys
 // ---------------------------------------------------------------
 
-// command parameter spec name      param type and flags                            param type and flags                            param type and flags                        param type and flags
-// ---------------------------      --------------------                            --------------------                            --------------------                        --------------------
+// command parameter spec name                 param type and flags                           param type and flags                            param type and flags                             param type and flags
+// ---------------------------                 --------------------                           --------------------                            --------------------                             --------------------
 
 const char Justina_interpreter::cmdPar_100[4]{ cmdPar_ident | cmdPar_multipleFlag,            cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
 const char Justina_interpreter::cmdPar_101[4]{ cmdPar_ident,                                  cmdPar_expression | cmdPar_multipleFlag,         cmdPar_none,                                    cmdPar_none };
@@ -274,97 +274,97 @@ const char Justina_interpreter::cmdPar_999[4]{ cmdPar_varNoAssignment,          
 // ----------------------------------
 
 const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
-    //  name            id code             where allowed               padding (boundary alignment)    param key       control info
-    //  ----            -------             -------------               ----------------------------    ---------      ------------   
-
-    /* programs and functions */
+    //  name            id code                 where allowed              padding (boundary alignment)     param key      control info
+    //  ----            -------                 -------------              ----------------------------     ---------      ------------   
+    
+    /* programs and functions */    
     /* ---------------------- */
 
-    {"Program",         cmdcod_program,         cmd_onlyProgramTop | cmd_skipDuringExec,            0,0,    cmdPar_103,     cmdProgram},        //// non-block commands: cmdBlockNone ?
-    {"Function",        cmdcod_function,        cmd_onlyInProgram | cmd_skipDuringExec,             0,0,    cmdPar_108,     cmdBlockExtFunction},
+    {"program",         cmdcod_program,         cmd_onlyProgramTop | cmd_skipDuringExec,            0,0,    cmdPar_103,     cmdProgram},        //// non-block commands: cmdBlockNone ?
+    {"function",        cmdcod_function,        cmd_onlyInProgram | cmd_skipDuringExec,             0,0,    cmdPar_108,     cmdBlockExtFunction},
 
 
     /* declare variables */
     /* ----------------- */
 
-    {"Var",             cmdcod_var,             cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_111,     cmdGlobalVar},
-    {"Static",          cmdcod_static,          cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_111,     cmdStaticVar},
-    {"Local",           cmdcod_local,           cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_111,     cmdLocalVar},
+    {"var",             cmdcod_var,             cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_111,     cmdGlobalVar},
+    {"static",          cmdcod_static,          cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_111,     cmdStaticVar},
+    {"local",           cmdcod_local,           cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_111,     cmdLocalVar},
 
     //// to do
     //// -----
 
-    {"Delvar",          cmdcod_delete,          cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_110,     cmdDeleteVar},
-    {"Clearvars",       cmdcod_clear,           cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockNone},
-    {"Test",            cmdcod_test,            cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_999,     cmdBlockNone},//// test var no assignment
+    {"delVar",          cmdcod_delete,          cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_110,     cmdDeleteVar},
+    {"clearVars",       cmdcod_clear,           cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockNone},
+    {"test",            cmdcod_test,            cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_999,     cmdBlockNone},//// test var no assignment
 
-    {"Printvars",       cmdcod_vars,            cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
-    {"PrintCBs",        cmdcod_printCB,         cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
-    {"Printprog",       cmdcod_printProg,       cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
+    {"printVars",       cmdcod_vars,            cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
+    {"printCBs",        cmdcod_printCB,         cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
+    {"printProg",       cmdcod_printProg,       cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
 
 
     // 
     // --------------
 
-    {"Printcallstack",  cmdcod_printCallSt,     cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"printCallstack",  cmdcod_printCallSt,     cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
 
-    {"Receiveprog",     cmdcod_receiveProg,     cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"receiveProg",     cmdcod_receiveProg,     cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
 
 
     /* flow control commands */
     /* --------------------- */
 
-    {"For",             cmdcod_for,             cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_109,     cmdBlockFor},
-    {"While",           cmdcod_while,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockWhile},
-    {"If",              cmdcod_if,              cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockIf},
-    {"Elseif",          cmdcod_elseif,          cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockIf_elseIf},
-    {"Else",            cmdcod_else,            cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockIf_else},
-    {"End",             cmdcod_end,             cmd_noRestrictions,                                 0,0,    cmdPar_102,     cmdBlockGenEnd},                // closes inner open command block
+    {"for",             cmdcod_for,             cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_109,     cmdBlockFor},
+    {"while",           cmdcod_while,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockWhile},
+    {"if",              cmdcod_if,              cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockIf},
+    {"elseif",          cmdcod_elseif,          cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockIf_elseIf},
+    {"else",            cmdcod_else,            cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockIf_else},
+    {"end",             cmdcod_end,             cmd_noRestrictions,                                 0,0,    cmdPar_102,     cmdBlockGenEnd},                // closes inner open command block
 
-    {"Break",           cmdcod_break,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockOpenBlock_loop},        // allowed if at least one open loop block (any level) 
-    {"Continue",        cmdcod_continue,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockOpenBlock_loop },       // allowed if at least one open loop block (any level) 
-    {"Return",          cmdcod_return,          cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockOpenBlock_function},    // allowed if currently an open function definition block 
+    {"break",           cmdcod_break,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockOpenBlock_loop},        // allowed if at least one open loop block (any level) 
+    {"continue",        cmdcod_continue,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockOpenBlock_loop },       // allowed if at least one open loop block (any level) 
+    {"return",          cmdcod_return,          cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockOpenBlock_function},    // allowed if currently an open function definition block 
 
 
     /* input and output commands */
     /* ------------------------- */
 
-    {"Info",            cmdcod_info,            cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_114,     cmdBlockNone},
-    {"Input",           cmdcod_input,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_113,     cmdBlockNone},
-    {"Print",           cmdcod_print,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},
-    {"Dispfmt",         cmdcod_dispfmt,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
-    {"Dispmod",         cmdcod_dispmod,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_105,     cmdBlockNone},
-    {"Pause",           cmdcod_pause,           cmd_onlyInFunctionBlock,                            0,0,    cmdPar_106,     cmdBlockNone},
-    {"Halt",            cmdcod_halt,            cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},
+    {"info",            cmdcod_info,            cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_114,     cmdBlockNone},
+    {"input",           cmdcod_input,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_113,     cmdBlockNone},
+    {"print",           cmdcod_print,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},
+    {"dispFmt",         cmdcod_dispfmt,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"dispMod",         cmdcod_dispmod,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_105,     cmdBlockNone},
+    {"pause",           cmdcod_pause,           cmd_onlyInFunctionBlock,                            0,0,    cmdPar_106,     cmdBlockNone},
+    {"halt",            cmdcod_halt,            cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},
 
 
     /* debugging commands */
     /* ------------------ */
 
-    {"Stop",            cmdcod_stop,            cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},
-    {"Nop",             cmdcod_nop,             cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_102,     cmdBlockNone},                  // insert two bytes in program, do nothing
+    {"stop",            cmdcod_stop,            cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},
+    {"nop",             cmdcod_nop,             cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_102,     cmdBlockNone},                  // insert two bytes in program, do nothing
 
-    {"Go",              cmdcod_go,              cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"Step",            cmdcod_step,            cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"Stepout",         cmdcod_stepOut,         cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"Stepover",        cmdcod_stepOver,        cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"Blockstepout",    cmdcod_stepOutOfBlock,  cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"Blockstepend",    cmdcod_stepToBlockEnd,  cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"Skip",            cmdcod_skip,            cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"go",              cmdcod_go,              cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"step",            cmdcod_step,            cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"stepOut",         cmdcod_stepOut,         cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"stepOver",        cmdcod_stepOver,        cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"blockStepOut",    cmdcod_stepOutOfBlock,  cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"blockStepEnd",    cmdcod_stepToBlockEnd,  cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"skip",            cmdcod_skip,            cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
 
-    {"Trace",           cmdcod_trace,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockNone},
+    {"trace",           cmdcod_trace,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockNone},
 
-    {"Abort",           cmdcod_abort,           cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"Debug",           cmdcod_debug,           cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"Quit",            cmdcod_quit,            cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockNone},
+    {"abort",           cmdcod_abort,           cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"debug",           cmdcod_debug,           cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"quit",            cmdcod_quit,            cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockNone},
 
 
     /* user callback functions */
     /* ----------------------- */
 
-    {"DeclareCB",       cmdcod_declCB,          cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_110,     cmdBlockNone},
-    {"ClearCB",         cmdcod_clearCB,         cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_102,     cmdBlockNone},
-    {"Callcpp",         cmdcod_callback,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_101,     cmdBlockNone},
+    {"declareCB",       cmdcod_declCB,          cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_110,     cmdBlockNone},
+    {"clearCB",         cmdcod_clearCB,         cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_102,     cmdBlockNone},
+    {"callCpp",         cmdcod_callback,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_101,     cmdBlockNone},
 };
 
 
@@ -376,14 +376,16 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
 // maximum number of parameters should be no more than 16
 
 const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
-    //  name        id code             #par    array pattern
-    //  ----        -------             ----    -------------   
+    //  name                    id code                         #par    array pattern
+    //  ----                    -------                         ----    -------------   
 
-    //// nog te implementeren
-    {"ifte",                    fnccod_ifte,                    3,3,    0b0},
-    {"switch",                  fnccod_switch,                  2,16,   0b0},
+    //// logical functions
+    {"ifte",                    fnccod_ifte,                    3,16,   0b0},
+    {"switch",                  fnccod_switch,                  3,16,   0b0},
+    {"index",                   fnccod_index,                   3,16,   0b0},
+    {"choose",                  fnccod_choose,                  3,16,   0b0},
 
-    // Justina functions
+    // other functions
     {"eval",                    fnccod_eval,                    1,1,    0b0},
     {"ubound",                  fnccod_ubound,                  2,2,    0b00000001},        // first parameter is array (LSB)
     {"dims",                    fnccod_dims,                    1,1,    0b00000001},
@@ -417,6 +419,7 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     {"sign",                    fnccod_sign,                    1,1,    0b0},
     {"fmod",                    fnccod_fmod,                    2,2,    0b0},
 
+    // conversion functions
     {"cInt",                    fnccod_cint,                    1,1,    0b0},
     {"cFloat",                  fnccod_cfloat,                  1,1,    0b0},
     {"cStr",                    fnccod_cstr,                    1,1,    0b0},
@@ -449,15 +452,27 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     {"bitSet",                  fnccod_bitSet,                  2,2,    0b0},
     {"bitWrite",                fnccod_bitWrite,                3,3,    0b0},
     {"maskedBitRead",           fnccod_bitsMaskedRead,          2,2,    0b0},
-    {"maskedBitClear",          fnccod_bitsMaskedClear,         3,3,    0b0},
-    {"maskedBitSet",            fnccod_bitsMaskedSet,           3,3,    0b0},
+    {"maskedBitClear",          fnccod_bitsMaskedClear,         2,2,    0b0},
+    {"maskedBitSet",            fnccod_bitsMaskedSet,           2,2,    0b0},
     {"maskedBitWrite",          fnccod_bitsMaskedWrite,         3,3,    0b0},
 
-    // 'character' functions
+    // string and 'character' functions
     {"char",                    fnccod_char,                    1,1,    0b0},
     {"len",                     fnccod_len,                     1,1,    0b0},
     {"nl",                      fnccod_nl,                      0,0,    0b0},
     {"asc",                     fnccod_asc,                     1,2,    0b0},
+    {"rtrim",                   fnccod_rtrim,                   1,1,    0b0},
+    {"ltrim",                   fnccod_ltrim,                   1,1,    0b0},
+    {"trim",                    fnccod_trim,                    1,1,    0b0},
+    {"left",                    fnccod_left,                    2,2,    0b0},
+    {"mid",                     fnccod_mid,                     3,3,    0b0},
+    {"right",                   fnccod_right,                   2,2,    0b0},
+    {"toUpper",                 fnccod_toupper,                 1,3,    0b0},
+    {"toLower",                 fnccod_tolower,                 1,3,    0b0},
+    {"space",                   fnccod_space,                   1,1,    0b0},    
+    {"repChar",                 fnccod_repchar,                 2,2,    0b0},
+    {"strStr",                  fnccod_strstr,                  2,3,    0b0},
+    {"strCmp",                  fnccod_strcmp,                  2,2,    0b0},
 
     {"isAlpha",                 fnccod_isAlpha,                 1,2,    0b0},
     {"isAlphaNumeric",          fnccod_isAlphaNumeric,          1,2,    0b0},
@@ -467,10 +482,10 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     {"isGraph",                 fnccod_isGraph,                 1,2,    0b0},
     {"isHexadecimalDigit",      fnccod_isHexadecimalDigit,      1,2,    0b0},
     {"isLowerCase",             fnccod_isLowerCase,             1,2,    0b0},
+    {"isUpperCase",             fnccod_isUpperCase,             1,2,    0b0},
     {"isPrintable",             fnccod_isPrintable,             1,2,    0b0},
     {"isPunct",                 fnccod_isPunct,                 1,2,    0b0},
-    {"isSpace",                 fnccod_isSpace  ,               1,2,    0b0},
-    {"isUpperCase",             fnccod_isUpperCase,             1,2,    0b0},
+    {"isSpace",                 fnccod_isSpace,                 1,2,    0b0},
     {"isWhitespace",            fnccod_isWhitespace,            1,2,    0b0},
 };
 

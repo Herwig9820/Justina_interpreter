@@ -1638,6 +1638,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             bool isDeclared = false;
             int index{};
             for (index = 0; index < _userCBprocAliasSet_count; index++) {                               // find alias in table (break if found)
+                // both strings are NOT empty: no nullpointers 
                 if (strcmp(_callbackUserProcAlias[index], alias) == 0) { isDeclared = true; break; }
             }
             if (!isDeclared) { execResult = result_aliasNotDeclared; return execResult; }
@@ -3038,6 +3039,20 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
 
 Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount) {
 
+    // this procedure is called when the closing parenthesis of an internal Justina function is encountered.
+    // all internal Justina functions use the same standard mechanism (with exception of the eval() function):
+    // -> all variables are passed by reference; parsed constants, intermediate constants (intermediate calculation results) are passed by value (for a string, this refers to the string pointer).
+    // right now, any function arguments (parsed constants, variable references, intermediate calculation results) have been pushed on the evaluation stack already.
+    // first thing to do is to copy these arguments (longs, floats, pointers to strings) to a fixed 'arguments' array, as well as a few attributes.
+    // - variable references are not copied, instead the actual value of the variable is stored (long, float, string pointer OR array pointer if the variable is an array)
+    // - in case the function needs to change the variable value, the variable reference is still available on the stack.
+    // next, control is passed to the specific Justina function (switch statement below).
+
+    // when the Justina function terminates, arguments are removed from the evaluation stack and the function result is pushed on the stack (at the end of the current procedure)
+    // as an intermediate constant (long, float, pointer to string).
+    // if the result is a non-empty string, a new string is created on the heap (Justina convention: empty strings are represented by a null pointer to conserve memory).
+
+
     // remember token address of internal function token (this where the internal function is called), in case an error occurs (while passing arguments etc.)   
     _activeFunctionData.errorProgramCounter = pFunctionStackLvl->function.tokenAddress;
     int functionIndex = pFunctionStackLvl->function.index;
@@ -3056,7 +3071,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
     // -----------------------------------------------------------------------
 
     if (suppliedArgCount > 0) {
-        LE_evalStack* pStackLvl = pFirstArgStackLvl;         // pointing to first argument on stack
+        LE_evalStack* pStackLvl = pFirstArgStackLvl;                                // pointing to first argument on stack
 
         for (int i = 0; i < suppliedArgCount; i++) {
             // value type of args
@@ -3070,7 +3085,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             if (argIsLong || argIsFloat) { args[i].floatConst = (argIsVar[i] ? (*pStackLvl->varOrConst.value.pFloatConst) : pStackLvl->varOrConst.value.floatConst); }
             else { args[i].pStringConst = (argIsVar[i] ? (*pStackLvl->varOrConst.value.ppStringConst) : pStackLvl->varOrConst.value.pStringConst); }
 
-            pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);       // value fetched: go to next argument
+            pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);     // value fetched: go to next argument
         }
     }
 
@@ -3090,20 +3105,132 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             execResult_type execResult = launchEval(pFunctionStackLvl, args[0].pStringConst);
             if (execResult != result_execOK) { return execResult; }
             // an 'EXTERNAL function' (executing the parsed eval() expressions) has just been 'launched' (and will start after current (right parenthesis) token is processed)
-            // because eval function name token and single argument will be removed from stack now (see below, at end of this function), adapt CALLER evaluation stack levels
+            // because eval function name token and single argument will be removed from stack now (see below, at end of this procedure), adapt CALLER evaluation stack levels
             _activeFunctionData.callerEvalStackLevels -= 2;
         }
         break;
 
 
-        // switch function
-        // ---------------
+        // switch and ifte functions
+        // -------------------------
 
         case fnccod_switch:
+        case fnccod_ifte:
         {
-            //// test 
-            fcnResultValueType = value_isFloat;
-            fcnResult.floatConst = 1.23;
+            // switch() arguments: switch expression, test expression 1 , result 1 [, ... [, test expression 7 , result 7]] [, default result expression]
+            // ifte() arguments  : test expression 1, true part, false part 1 (simple if, then, else form)
+            //               or  : test expression 1, true part 1, test expression 2, true part 2 [, test expression 3 , true part 3 ... [, test expression 7 , true part 7]]...] [, false part]
+            // no preliminary restriction on type of arguments
+
+            // set default value
+            bool isSwitch = (functionCode == fnccod_switch);
+            fcnResultValueType = (suppliedArgCount % 2 == (isSwitch ? 0 : 1)) ? argValueType[suppliedArgCount - 1] : value_isLong;      // init
+            fcnResult.longConst = 0; if (suppliedArgCount % 2 == (isSwitch ? 0 : 1)) { fcnResult = args[suppliedArgCount - 1]; }        // OK if default value is not a string or an empty string
+
+            bool testValueIsNumber = argIsLong[0] || argIsFloat[0];                                                                     // (for switch function only)
+            bool match{ false };
+            int matchIndex{ 0 };
+            int matchResultPairs = (suppliedArgCount - (isSwitch ? 1 : 0)) / 2;
+            for (int pair = (isSwitch ? 1 : 0); pair <= matchResultPairs - (isSwitch ? 0 : 1); ++pair) {
+                matchIndex = (pair << 1) - (isSwitch ? 1 : 0);                                                                          // index in argument array
+                match = false;      // init
+
+                if (isSwitch) {
+                    if (argIsString[0] && argIsString[matchIndex]) {                                                                    // test value and mmtch value are both strings
+                        if ((args[0].pStringConst == nullptr) || (args[matchIndex].pStringConst == nullptr)) {
+                            match = ((args[0].pStringConst == nullptr) && (args[matchIndex].pStringConst == nullptr));                  // equal
+                        }
+                        else { match = (strcmp(args[0].pStringConst, args[matchIndex].pStringConst) == 0); }
+                    }
+                    else if (testValueIsNumber && ((argIsLong[matchIndex]) || (argIsFloat[matchIndex]))) {                              // test value and match value are both numeric
+                        if (argIsLong[0] && argIsLong[matchIndex]) { match = ((args[0].longConst == args[matchIndex].longConst)); }
+                        else { match = (argIsFloat[0] ? args[0].floatConst : (float)args[0].longConst) == (argIsFloat[matchIndex] ? args[matchIndex].floatConst : (float)args[matchIndex].longConst); }
+                    }
+                }
+                else {
+                    if (!argIsLong[matchIndex] && !argIsFloat[matchIndex]) { return result_arg_testexpr_numberExpected; }               // test value and match value are both strings
+                    match = (argIsFloat[matchIndex] ? (args[matchIndex].floatConst != 0.) : (args[matchIndex].longConst == !0));
+                }
+
+                if (match) {
+                    fcnResultValueType = argValueType[matchIndex + 1];
+                    fcnResult = args[matchIndex + 1];                                                                                   // OK if not string or empty string
+                    break;
+                }
+            }
+
+            // result is a non-empty string ? an object still has to be created on the heap
+            if ((fcnResultValueType == value_isStringPointer) && (fcnResult.pStringConst != nullptr)) {
+                int resultIndex = match ? matchIndex + 1 : suppliedArgCount - 1;
+                fcnResult.pStringConst = new char[strlen(args[resultIndex].pStringConst) + 1];
+                _intermediateStringObjectCount++;
+                strcpy(fcnResult.pStringConst, args[resultIndex].pStringConst);
+            #if printCreateDeleteListHeapObjects
+                Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
+            #endif            
+            }
+        }
+        break;
+
+
+        // choose function
+        // ---------------
+
+        case fnccod_choose:
+        {
+            // arguments: expression, test expression 1, test expression 2 [... [, test expression 7]...]
+            // no preliminary restriction on type of arguments
+
+            // the first expression is an index into the test expressions: return  
+            if (!argIsLong[0] && !argIsFloat[0]) { return result_arg_numberExpected; }
+            int index = argIsLong[0] ? args[0].longConst : args[0].floatConst;
+            if ((index <= 0) || (index >= suppliedArgCount)) { return result_arg_outsideRange; }
+            fcnResultValueType = argValueType[index];
+            fcnResult = args[index];                                                                                                    // OK if not string or empty string
+
+            // result is a non-empty string ? an object still has to be created on the heap
+            if ((fcnResultValueType == value_isStringPointer) && (fcnResult.pStringConst != nullptr)) {
+                fcnResult.pStringConst = new char[strlen(args[index].pStringConst) + 1];
+                _intermediateStringObjectCount++;
+                strcpy(fcnResult.pStringConst, args[index].pStringConst);
+            #if printCreateDeleteListHeapObjects
+                Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
+            #endif            
+            }
+        }
+        break;
+
+
+        // index function
+        // --------------
+
+        case fnccod_index:
+        {
+            // arguments : expression, test expression 1, test expression 2 [... [, test expression 15]...]
+            // no preliminary restriction on type of arguments
+
+            fcnResultValueType = value_isLong;
+            fcnResult.longConst = 0;                                                                                                    // init: not found
+
+            bool testValueIsNumber = argIsLong[0] || argIsFloat[0];                                                                     // (for switch function only)
+            bool match{ false };
+            for (int i = 1; i <= suppliedArgCount - 1; ++i) {
+                if (argIsString[0] && argIsString[i]) {            // test value and mmtch value are both strings
+                    if ((args[0].pStringConst == nullptr) || (args[i].pStringConst == nullptr)) {
+                        match = ((args[0].pStringConst == nullptr) && (args[i].pStringConst == nullptr));                               // equal
+                    }
+                    else { match = (strcmp(args[0].pStringConst, args[i].pStringConst) == 0); }
+                }
+                else if (testValueIsNumber && ((argIsLong[i]) || (argIsFloat[i]))) {                                                    // test value and match value are both numeric
+                    if (argIsLong[0] && argIsLong[i]) { match = ((args[0].longConst == args[i].longConst)); }
+                    else { match = (argIsFloat[0] ? args[0].floatConst : (float)args[0].longConst) == (argIsFloat[i] ? args[i].floatConst : (float)args[i].longConst); }
+                }
+
+                if (match) {
+                    fcnResult.longConst = i;
+                    break;
+                }
+            }
         }
         break;
 
@@ -3155,11 +3282,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
         case fnccod_last:
         {
-            int FiFoElement = 1;    // init: newest FiFo element
-            if (suppliedArgCount == 1) {              // FiFo element specified
-                if (!argIsLong[0] && !argIsFloat[0]) { return result_arg_integerExpected; }
+            int FiFoElement = 1;                                                                                                        // init: newest FiFo element
+            if (suppliedArgCount == 1) {                                                                                                // FiFo element specified
+                if (!argIsLong[0] && !argIsFloat[0]) { return result_arg_numberExpected; }
                 FiFoElement = argIsLong[0] ? args[0].longConst : int(args[0].floatConst);
-                if (argIsFloat[0]) { if (args[0].floatConst != FiFoElement) { return result_arg_integerExpected; } }
                 if ((FiFoElement < 1) || (FiFoElement > MAX_LAST_RESULT_DEPTH)) { return result_arg_outsideRange; }
             }
             if (FiFoElement > _lastResultCount) { return result_arg_invalid; }
@@ -3183,58 +3309,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         break;
 
 
-        // return character with a given ASCII code
-        // ----------------------------------------
-
-        case fnccod_char:     // convert ASCII code to 1-character string
-        {
-            if (!argIsLong[0] && !argIsFloat[0]) { return result_arg_integerExpected; }
-            int asciiCode = argIsLong[0] ? args[0].longConst : int(args[0].floatConst);
-            if (argIsFloat[0]) { if (args[0].floatConst != asciiCode) { return result_arg_integerExpected; } }
-            if ((asciiCode < 0) || (asciiCode > 0x7F)) { return result_arg_outsideRange; }
-
-            // result is string
-            fcnResultValueType = value_isStringPointer;
-            fcnResult.pStringConst = new char[2];
-            _intermediateStringObjectCount++;
-            fcnResult.pStringConst[0] = asciiCode;
-            fcnResult.pStringConst[1] = '\0';                                // terminating \0
-        #if printCreateDeleteListHeapObjects
-            Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
-        #endif            
-        }
-        break;
-
-
-        case fnccod_len:     // return length of a string
-        {
-            if (!argIsString[0]) { return result_arg_stringExpected; }
-            fcnResult.longConst = 0;      // init
-            if (args[0].pStringConst != nullptr) { fcnResult.longConst = strlen(args[0].pStringConst); }
-            fcnResultValueType = value_isLong;
-        }
-        break;
-
-
-        // return CR and LF character string
-        // ---------------------------------
-
-        case fnccod_nl:             // new line character
-        {
-            // result is string
-            fcnResultValueType = value_isStringPointer;
-            fcnResult.pStringConst = new char[3];
-            _intermediateStringObjectCount++;
-            fcnResult.pStringConst[0] = '\r';
-            fcnResult.pStringConst[1] = '\n';
-            fcnResult.pStringConst[2] = '\0';                                // terminating \0
-        }
-    #if printCreateDeleteListHeapObjects
-        Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
-    #endif            
-        break;
-
-
         // format a number or a string into a destination string
         // -----------------------------------------------------
 
@@ -3248,7 +3322,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // if the value to be formatted is a string, the precision argument is interpreted as 'maximum characters to print', otherwise it indicates numeric precision (both values retained seperately)
             // specifier is only relevant for formatting numbers (ignored for formatting strings), but can be set while formatting a string
 
-            const int leftJustify = 0b1, forceSign = 0b10, blankIfNoSign = 0b100, addDecPoint = 0b1000, padWithZeros = 0b10000;     // flags //// flags worden niet gebruikt ???
+            const int leftJustify = 0b1, forceSign = 0b10, blankIfNoSign = 0b100, addDecPoint = 0b1000, padWithZeros = 0b10000;         // flags //// flags worden niet gebruikt ???
             bool isIntFmt{ false };
             int charsPrinted{ 0 };
 
@@ -3261,17 +3335,17 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             execResult_type execResult = checkFmtSpecifiers(false, (!argIsLong[0] && !argIsFloat[0]), suppliedArgCount, argValueType, args, _printNumSpecifier[0], width, precision, flags);
             if (execResult != result_execOK) { return execResult; }
 
-            // optional argument returning #chars that were printed is present ?  Variable expected
+            // optional argument returning #chars that were printed is present ? Variable expected
             bool hasSpecifierArg = false; // init
-            if (suppliedArgCount >= 3) { hasSpecifierArg = (!argIsLong[3] && !argIsFloat[3]); }       // third argument is either a specifier (string) or set of flags (number)
+            if (suppliedArgCount >= 3) { hasSpecifierArg = (!argIsLong[3] && !argIsFloat[3]); }                                         // third argument is either a specifier (string) or set of flags (number)
             if (suppliedArgCount == (hasSpecifierArg ? 6 : 5)) {
-                if (!argIsVar[suppliedArgCount - 1]) { return result_arg_varExpected; }          // it should be a variable
+                if (!argIsVar[suppliedArgCount - 1]) { return result_arg_varExpected; }                                                 // it should be a variable
             }
 
             // prepare format specifier string and format
             // ------------------------------------------
 
-            char  fmtString[20];        // long enough to contain all format specifier parts
+            char  fmtString[20];                                                                                                        // long enough to contain all format specifier parts
             char* specifier = "s";
             if (argIsLong[0] || argIsFloat[0]) {
                 specifier = _printNumSpecifier;
@@ -3323,10 +3397,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
         case fnccod_cstr:
         {
-            fcnResultValueType = value_isStringPointer;     // init
-            fcnResult.pStringConst = nullptr;                // init
+            fcnResultValueType = value_isStringPointer;                                                                                 // init
+            fcnResult.pStringConst = nullptr;
             if (argIsLong[0] || argIsFloat[0]) {
-                fcnResult.pStringConst = new char[30];      // provide sufficient length to store a number
+                fcnResult.pStringConst = new char[30];                                                                                  // provide sufficient length to store a number
                 _intermediateStringObjectCount++;
                 argIsLong[0] ? sprintf(fcnResult.pStringConst, "%ld", args[0].longConst) : sprintf(fcnResult.pStringConst, "%G", args[0].floatConst);
 
@@ -3374,10 +3448,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             for (int i = 0; i < suppliedArgCount; ++i) {
                 if (!argIsLong[i] && !argIsFloat[i]) { return result_numberExpected; }
             }
-            float arg1float = argIsLong[0] ? (float)args[0].longConst : args[0].floatConst; // keep original value in args[0]
+            float arg1float = argIsLong[0] ? (float)args[0].longConst : args[0].floatConst;                                             // keep original value in args[0]
 
-            fcnResultValueType = value_isFloat;         // init: return a float
-            fcnResult.floatConst = 0.;                  // init: return 0. if the Arduino function doesn't return anything
+            fcnResultValueType = value_isFloat;                                                                                         // init: return a float
+            fcnResult.floatConst = 0.;                                                                                                  // init: return 0. if the Arduino function doesn't return anything
 
             // test arguments
             if (functionCode == fnccod_sqrt) { if (arg1float < 0.) { return result_arg_outsideRange; } }
@@ -3431,30 +3505,34 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         break;
 
 
-        // Bit manipulation functions
+        // bit manipulation functions
         // --------------------------
 
-        // all arguments need to be long; if a value is returned, it's always a long integer
+        // all arguments need to be long integers; if a value is returned, it's always a long integer
 
+        // Arduino bit manipulation functoins
+        // arguments and return values: same as the corresponding Arduino functions
         case fnccod_bit:
         case fnccod_bitRead:
         case fnccod_bitClear:
         case fnccod_bitSet:
         case fnccod_bitWrite:
-        case fnccod_bitsMaskedRead:
-        case fnccod_bitsMaskedClear:
-        case fnccod_bitsMaskedSet:
-        case fnccod_bitsMaskedWrite:
+
+            // extra Justina bit manipulation functons. Mask argument indicates which bits to read, set, clear or write
+        case fnccod_bitsMaskedRead:     // 2 arguments. value, mask. returns masked value 
+        case fnccod_bitsMaskedClear:    // 2 arguments. variable, mask = bits to clear (bits indicated by mask are cleared in variable, new value is returned)
+        case fnccod_bitsMaskedSet:      // 2 arguments. variable, mask, bits = bits to set (bits indicated by mask are set in variable, new value is returned) 
+        case fnccod_bitsMaskedWrite:    // 3 arguments. variable, mask, bits to write (only bits indicated by mask are written in variable, new value is returned)
         {
             for (int i = 0; i < suppliedArgCount; ++i) {
-                if (!argIsLong[i]) { return result_arg_integerExpected; }
+                if (!argIsLong[i]) { return result_arg_integerTypeExpected; }
             }
             if ((functionCode == fnccod_bitClear) || (functionCode == fnccod_bitSet) || (functionCode == fnccod_bitWrite) ||
                 (functionCode == fnccod_bitsMaskedClear) || (functionCode == fnccod_bitsMaskedSet) || (functionCode == fnccod_bitsMaskedWrite)) {
                 if (!argIsVar[0]) { return result_arg_varExpected; }        // requires variable ? test for it
             }
-            fcnResultValueType = value_isLong;      // init: return a long
-            fcnResult.longConst = 0;                // init: return 0 if the Arduino function doesn't return anything
+            fcnResultValueType = value_isLong;                                                                                          // init: return a long
+            fcnResult.longConst = 0;                                                                                                    // init: return 0 if the Arduino function doesn't return anything
 
             if (functionCode == fnccod_bit) { fcnResult.longConst = 1 << args[0].longConst; }                                           // requires no variable
 
@@ -3463,17 +3541,17 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             else if (functionCode == fnccod_bitSet) { fcnResult.longConst = args[0].longConst | (1 << args[1].longConst); }
             else if (functionCode == fnccod_bitWrite) { fcnResult.longConst = (args[2].longConst == 0) ? args[0].longConst & ~(1 << args[1].longConst) : args[0].longConst | (1 << args[1].longConst); }
 
-            else if (functionCode == fnccod_bitsMaskedRead) { fcnResult.longConst = (args[0].longConst & args[1].longConst); }     // requires no variable; second argument is considered mask
-            else if (functionCode == fnccod_bitsMaskedClear) { fcnResult.longConst = args[0].longConst & ~(args[1].longConst & args[2].longConst); }       // variable, mask, bits to clear 
-            else if (functionCode == fnccod_bitsMaskedSet) { fcnResult.longConst = args[0].longConst | (args[1].longConst & args[2].longConst); }       // variable, mask, bits to clear 
-            else if (functionCode == fnccod_bitsMaskedWrite) { fcnResult.longConst = args[0].longConst & (~args[1].longConst | args[2].longConst) | (args[1].longConst & args[2].longConst); }  // variable, mask, bits to write
+            else if (functionCode == fnccod_bitsMaskedRead) { fcnResult.longConst = (args[0].longConst & args[1].longConst); }          // requires no variable; second argument is considered mask
+            else if (functionCode == fnccod_bitsMaskedClear) { fcnResult.longConst = args[0].longConst & ~args[1].longConst; }
+            else if (functionCode == fnccod_bitsMaskedSet) { fcnResult.longConst = args[0].longConst | args[1].longConst; }
+            else if (functionCode == fnccod_bitsMaskedWrite) { fcnResult.longConst = args[0].longConst & (~args[1].longConst | args[2].longConst) | (args[1].longConst & args[2].longConst); }
         }
 
 
         // function modifies variable (first argument) ?
         if ((functionCode == fnccod_bitClear) || (functionCode == fnccod_bitSet) || (functionCode == fnccod_bitWrite) ||
             (functionCode == fnccod_bitsMaskedClear) || (functionCode == fnccod_bitsMaskedSet) || (functionCode == fnccod_bitsMaskedWrite)) {
-            *_pEvalStackMinus2->varOrConst.value.pLongConst = fcnResult.longConst;       // store result in variable (value type is long already)
+            *_pEvalStackMinus2->varOrConst.value.pLongConst = fcnResult.longConst;                                                      // store result in variable (value type is long already)
         }
         break;
 
@@ -3484,6 +3562,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         // all arguments can be long or float; if a value is returned, it's always a long integer
         // Note that, as Justina 'integer' constants and variables are internally represented by (signed) long values, large values returned by certain functions 
         // may show up as negative values (if greater then or equal to 2^31)
+        // arguments and return values: same as the corresponding Arduino functions
 
         case fnccod_millis:
         case fnccod_micros:
@@ -3509,30 +3588,41 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // no additional checks are done (e.g. floats with fractions)
             for (int i = 0; i < suppliedArgCount; ++i) {
                 if (!argIsLong[i] && !argIsFloat[i]) { return result_arg_numberExpected; }
-                if (argIsFloat[i]) { args[i].longConst = int(args[i].floatConst); }          // all these functions need integer values
+                if (argIsFloat[i]) { args[i].longConst = int(args[i].floatConst); }                                                     // all these functions need integer values
             }
             fcnResultValueType = value_isLong;      // init: return a long
             fcnResult.longConst = 0;                // init: return 0 if the Arduino function doesn't return anything
 
             if (functionCode == fnccod_millis) { fcnResult.longConst = millis(); }
             else if (functionCode == fnccod_micros) { fcnResult.longConst = micros(); }
-            else if (functionCode == fnccod_delay) { delay((unsigned long)args[0].longConst); }     // args: milliseconds    
-            else if (functionCode == fnccod_delayMicroseconds) { delayMicroseconds((unsigned long)args[0].longConst); }   // args: milliseconds 
-            else if (functionCode == fnccod_digitalRead) { fcnResult.longConst = digitalRead(args[0].longConst); }                              // arg: pin
-            else if (functionCode == fnccod_digitalWrite) { digitalWrite(args[0].longConst, args[1].longConst); }                        // args: pin, value
-            else if (functionCode == fnccod_pinMode) { pinMode(args[0].longConst, args[1].longConst); }                            // args: pin, pin mode
+            else if (functionCode == fnccod_delay) { delay((unsigned long)args[0].longConst); }                                         // args: milliseconds    
+            else if (functionCode == fnccod_delayMicroseconds) { delayMicroseconds((unsigned long)args[0].longConst); }                 // args: milliseconds 
+            else if (functionCode == fnccod_digitalRead) { fcnResult.longConst = digitalRead(args[0].longConst); }                      // arg: pin
+            else if (functionCode == fnccod_digitalWrite) { digitalWrite(args[0].longConst, args[1].longConst); }                       // args: pin, value
+            else if (functionCode == fnccod_pinMode) { pinMode(args[0].longConst, args[1].longConst); }                                 // args: pin, pin mode
             else if (functionCode == fnccod_analogRead) { fcnResult.longConst = analogRead(args[0].longConst); }                        // arg: pin
-            else if (functionCode == fnccod_analogReference) { analogReference(args[0].longConst); }                      // arg: reference type (0 to 5: see ARduino ref - 2 is external)
-            else if (functionCode == fnccod_analogWrite) { analogWrite(args[0].longConst, args[1].longConst); }                        // args: pin, value
-            else if (functionCode == fnccod_analogReadResolution) { analogReadResolution(args[0].longConst); }                // arg: bits
-            else if (functionCode == fnccod_analogWriteResolution) { analogWriteResolution(args[0].longConst); }                // arg: bits
-            else if (functionCode == fnccod_noTone) { noTone(args[0].longConst); }                             // arg: pin
-            else if (functionCode == fnccod_pulseIn) { fcnResult.longConst = (suppliedArgCount == 2) ? pulseIn(args[0].longConst, args[1].bytes[0]) : pulseIn(args[0].longConst, args[1].bytes[0], (uint32_t)args[2].longConst); }       // args: pin, value, (optional) time out
-            else if (functionCode == fnccod_shiftIn) { fcnResult.longConst = shiftIn(args[0].longConst, args[1].longConst, (BitOrder)args[2].longConst); }    // args: data pin, clock pin, bit order
-            else if (functionCode == fnccod_shiftOut) { shiftOut(args[0].longConst, args[1].longConst, (BitOrder)args[2].longConst, args[3].longConst); }        // args: data pin, clock pin, bit order, value
-            else if (functionCode == fnccod_tone) { (suppliedArgCount == 2) ? tone(args[0].longConst, args[1].longConst) : tone(args[0].longConst, args[1].longConst, args[2].longConst); }      // args: pin, frequency, (optional) duration
-            else if (functionCode == fnccod_random) { fcnResult.longConst = (suppliedArgCount == 1) ? random(args[0].longConst) : random(args[0].longConst, args[1].longConst); }
-            else if (functionCode == fnccod_randomSeed) { randomSeed(args[0].longConst); }
+            else if (functionCode == fnccod_analogReference) { analogReference(args[0].longConst); }                                    // arg: reference type (0 to 5: see ARduino ref - 2 is external)
+            else if (functionCode == fnccod_analogWrite) { analogWrite(args[0].longConst, args[1].longConst); }                         // args: pin, value
+            else if (functionCode == fnccod_analogReadResolution) { analogReadResolution(args[0].longConst); }                          // arg: bits
+            else if (functionCode == fnccod_analogWriteResolution) { analogWriteResolution(args[0].longConst); }                        // arg: bits
+            else if (functionCode == fnccod_noTone) { noTone(args[0].longConst); }                                                      // arg: pin
+            else if (functionCode == fnccod_pulseIn) {                                                                                  // args: pin, value, (optional) time out
+                fcnResult.longConst = (suppliedArgCount == 2) ? pulseIn(args[0].longConst, args[1].bytes[0]) :
+                    pulseIn(args[0].longConst, args[1].bytes[0], (uint32_t)args[2].longConst);
+            }
+            else if (functionCode == fnccod_shiftIn) {                                                                                  // args: data pin, clock pin, bit order
+                fcnResult.longConst = shiftIn(args[0].longConst, args[1].longConst, (BitOrder)args[2].longConst); 
+            }
+            else if (functionCode == fnccod_shiftOut) {                                                                                 // args: data pin, clock pin, bit order, value
+                shiftOut(args[0].longConst, args[1].longConst, (BitOrder)args[2].longConst, args[3].longConst);
+            }
+            else if (functionCode == fnccod_tone) {                                                                                     // args: pin, frequency, (optional) duration
+                (suppliedArgCount == 2) ? tone(args[0].longConst, args[1].longConst) : tone(args[0].longConst, args[1].longConst, args[2].longConst);
+            }
+            else if (functionCode == fnccod_random) {                                                                                   //args: bondaries
+                fcnResult.longConst = (suppliedArgCount == 1) ? random(args[0].longConst) : random(args[0].longConst, args[1].longConst);
+            }
+            else if (functionCode == fnccod_randomSeed) { randomSeed(args[0].longConst); }                                              // arg: seed
         }
         break;
 
@@ -3564,14 +3654,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             if (!argIsString[0]) { return result_arg_stringExpected; }
             if (args[0].pStringConst == nullptr) { return result_arg_nonEmptyStringExpected; }
             int length = strlen(args[0].pStringConst);
-            int charPos = 1;        // first character in string
+            int charPos = 1;                                                                                                            // first character in string
             if (suppliedArgCount == 2) {
-                if (!argIsLong[1] && !argIsFloat[1]) { return result_arg_integerExpected; }
+                if (!argIsLong[1] && !argIsFloat[1]) { return result_arg_numberExpected; }
                 charPos = argIsLong[1] ? args[1].longConst : int(args[1].floatConst);
                 if ((args[1].longConst < 1) || (args[1].longConst > length)) { return result_outsideRange; }
             }
-            fcnResultValueType = value_isLong;      // init: return a long
-            fcnResult.longConst = 0;                // init: return 0 if the Arduino function doesn't return anything
+            fcnResultValueType = value_isLong;                                                                                          // init: return a long
+            fcnResult.longConst = 0;                                                                                                    // init: return 0 if the Arduino function doesn't return anything
 
             if (functionCode == fnccod_isAlpha) { fcnResult.longConst = isalpha(args[0].pStringConst[--charPos]); }
             else if (functionCode == fnccod_isAlphaNumeric) { fcnResult.longConst = isAlphaNumeric(args[0].pStringConst[--charPos]); }
@@ -3591,16 +3681,242 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         break;
 
 
+        // string functions
+        // ----------------
+
+        case fnccod_char:                                                                                                               // convert ASCII code (argument) to 1-character string
+        {
+            if (!argIsLong[0] && !argIsFloat[0]) { return result_arg_numberExpected; }
+            int asciiCode = argIsLong[0] ? args[0].longConst : int(args[0].floatConst);
+            if ((asciiCode < 0) || (asciiCode > 0x7F)) { return result_arg_outsideRange; }
+
+            // result is string
+            fcnResultValueType = value_isStringPointer;
+            fcnResult.pStringConst = new char[2];
+            _intermediateStringObjectCount++;
+            fcnResult.pStringConst[0] = asciiCode;
+            fcnResult.pStringConst[1] = '\0';                                                                                           // terminating \0
+        #if printCreateDeleteListHeapObjects
+            Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
+        #endif            
+        }
+        break;
+
+
+        case fnccod_len:                                                                                                                // return length of a string
+        {
+            if (!argIsString[0]) { return result_arg_stringExpected; }
+            fcnResultValueType = value_isLong;
+            fcnResult.longConst = 0;                                                                                                    // init
+            if (args[0].pStringConst != nullptr) { fcnResult.longConst = strlen(args[0].pStringConst); }
+        }
+        break;
+
+
+        case fnccod_nl:                                                                                                                 // return CR and LF character string
+        {
+            // result is string
+            fcnResultValueType = value_isStringPointer;
+            fcnResult.pStringConst = new char[3];
+            _intermediateStringObjectCount++;
+            fcnResult.pStringConst[0] = '\r';
+            fcnResult.pStringConst[1] = '\n';
+            fcnResult.pStringConst[2] = '\0';                                                                                           // terminating \0
+        }
+    #if printCreateDeleteListHeapObjects
+        Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
+    #endif            
+        break;
+
+        case fnccod_space:                                                                                                              // create a string with n spaces
+        case fnccod_repchar:                                                                                                            // create a string with n times the first character in the argument string
+        {
+            fcnResultValueType = value_isStringPointer;                                                                                 // init
+            fcnResult.pStringConst = nullptr;
+
+            char c{ ' ' };                                                                                                              // init
+            if (functionCode == fnccod_repchar) {
+                if (!argIsString[0]) { return result_stringExpected; }
+                if (args[0].pStringConst == nullptr) { return result_arg_nonEmptyStringExpected; }
+                c = args[0].pStringConst[0];                                                                                            // only first character in string will be repeated
+            }
+
+            int lengthArg = (functionCode == fnccod_repchar) ? 1 : 0;                                                                   // index for argument containing desired length of result string
+            if (!argIsLong[lengthArg] && !argIsFloat[lengthArg]) { return result_arg_numberExpected; }
+            int len = (argIsLong[lengthArg]) ? args[lengthArg].longConst : (long)args[lengthArg].floatConst;                            // convert to long if needed
+            if ((len <= 0) || (len > MAX_ALPHA_CONST_LEN)) { return result_outsideRange; }
+
+            // create new string
+            fcnResult.pStringConst = new char[len + 1];                                                                                 // space for terminating '0'
+            _intermediateStringObjectCount++;
+            for (int i = 0; i <= len - 1; ++i) { fcnResult.pStringConst[i] = c; }
+            fcnResult.pStringConst[len] = '\0';
+        #if printCreateDeleteListHeapObjects
+            Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
+        #endif            
+        }
+        break;
+
+
+        case fnccod_strcmp:
+        {
+            // arguments: string, substring to search for [, length]
+            fcnResultValueType = value_isLong;
+            fcnResult.longConst = 0;                                                                                                    // init: nothing found
+
+            if (!argIsString[0] || !argIsString[1]) { return result_arg_stringExpected; }
+            if ((args[0].pStringConst == nullptr) || (args[1].pStringConst == nullptr)) {
+                if ((args[0].pStringConst == nullptr) && (args[1].pStringConst == nullptr)) { break; }                                  // equal
+                else { fcnResult.longConst = (args[0].pStringConst == nullptr) ? -1 : 1; break; }
+            }
+
+            fcnResult.longConst = strcmp(args[0].pStringConst, args[1].pStringConst);                                                   // none of the strings is an empty string
+            if (fcnResult.longConst < 0) { fcnResult.longConst = -1; }
+            else if (fcnResult.longConst > 0) { fcnResult.longConst = 1; }
+        }
+        break;
+
+
+        case fnccod_strstr:
+        {
+            // arguments: string, substring to search for [, start]
+            fcnResultValueType = value_isLong;
+            fcnResult.longConst = 0;                        // init: nothing found
+
+            if (!argIsString[0] || !argIsString[1]) { return result_arg_stringExpected; }
+            if (args[0].pStringConst == nullptr) { break; }                                                                             // string is empty: a substring (even if empty) can not be found
+            else if (args[1].pStringConst == nullptr) { fcnResult.longConst = 1; break; }                                               // string is empty: an immediate match at start of string
+
+            char* startSearchChar = args[0].pStringConst;                                                                               // init: search for a match from start of string
+            if (suppliedArgCount == 3) {
+                if (!argIsLong[2] && !argIsFloat[2]) { return result_arg_numberExpected; }
+                int offset = (argIsLong[2] ? args[2].longConst : (long)args[2].floatConst) - 1;
+                if ((offset < 0) || (offset >= strlen(args[0].pStringConst))) { return result_arg_outsideRange; }
+                startSearchChar += offset;
+            }
+
+            char* substringStart = strstr(startSearchChar, args[1].pStringConst);
+            if (substringStart != nullptr) { fcnResult.longConst = substringStart - args[0].pStringConst + 1; }
+        }
+        break;
+
+        case fnccod_toupper:
+        case fnccod_tolower:
+        {
+            // arguments: string [, start [, end]])
+            // if string only as argument, start = first character, end = last character
+            // if start is specified, and end is not, then end = start
+            fcnResultValueType = value_isStringPointer;            // init
+            fcnResult.pStringConst = nullptr;
+
+            if (!argIsString[0]) { return result_arg_stringExpected; }
+            if (args[0].pStringConst == nullptr) { if (suppliedArgCount > 1) { return  result_arg_outsideRange; } else { break; } }     // result is empty string, but only one argument accepted
+
+            int len = strlen(args[0].pStringConst);
+            int first = 0, last = len - 1;                                                                                              // init: complete string
+            for (int i = 1; i < suppliedArgCount; ++i) {                                                                                // skip if only one argument (string)
+                if (!argIsLong[i] && !argIsFloat[i]) { return result_arg_numberExpected; }
+                if (argIsFloat[i]) { args[i].longConst = int(args[i].floatConst); }                                                     // all these functions need integer values
+                if (i == 1) { first = args[i].longConst - 1; last = 1; }
+                else { last = args[i].longConst - 1; }
+            }
+            if ((first > last) || (first < 0) || (last >= len)) { return result_arg_outsideRange; }
+
+            // create new string
+            fcnResult.pStringConst = new char[len + 1];                                                                                 // same length as original, space for terminating 
+            _intermediateStringObjectCount++;
+            strcpy(fcnResult.pStringConst, args[0].pStringConst);   // copy original string
+            for (int i = first; i <= last; i++) { fcnResult.pStringConst[i] = ((functionCode == fnccod_toupper) ? toupper(fcnResult.pStringConst[i]) : tolower(fcnResult.pStringConst[i])); }
+        #if printCreateDeleteListHeapObjects
+            Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
+        #endif            
+        }
+        break;
+
+
+        case fnccod_left:       // arguments: string, number of characters, starting from left, to return
+        case fnccod_right:      // arguments: string, number of characters, starting from right, to return
+        case fnccod_mid:        // arguments: string, first character to return (starting from left), number of characters to return
+        {
+
+            fcnResultValueType = value_isStringPointer;                                                                                 // init
+            fcnResult.pStringConst = nullptr;
+
+            if (!argIsString[0]) { return result_arg_stringExpected; }
+            if (args[0].pStringConst == nullptr) { return result_arg_nonEmptyStringExpected; }
+
+            for (int i = 1; i < suppliedArgCount; ++i) {                                                                                // skip first argument (string)
+                if (!argIsLong[i] && !argIsFloat[i]) { return result_arg_numberExpected; }
+                if (argIsFloat[i]) { args[i].longConst = int(args[i].floatConst); }                                                     // all these functions need integer values
+            }
+            int len = strlen(args[0].pStringConst);
+
+            int first = (functionCode == fnccod_left) ? 0 : (functionCode == fnccod_mid) ? args[1].longConst - 1 : len - args[1].longConst;
+            int last = (functionCode == fnccod_left) ? args[1].longConst - 1 : (functionCode == fnccod_mid) ? first + args[2].longConst - 1 : len - 1;
+
+            if ((first > last) || (first < 0) || (last >= len)) { return result_arg_outsideRange; }
+
+            // create new string
+            fcnResult.pStringConst = new char[last - first + 1];                                                                        // space for terminating '0'
+            _intermediateStringObjectCount++;
+            memcpy(fcnResult.pStringConst, args[0].pStringConst + first, last - first + 1);
+            fcnResult.pStringConst[last - first + 1] = '\0';
+        #if printCreateDeleteListHeapObjects
+            Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
+        #endif            
+        }
+        break;
+
+
+        case fnccod_ltrim:                                                                                                              // left trim, right trim, left & right trim
+        case fnccod_rtrim:
+        case fnccod_trim:
+        {
+            fcnResultValueType = value_isStringPointer;                                                                                 // init
+            fcnResult.pStringConst = nullptr;
+
+            int spaceCnt{ 0 };                                                                                                          // init
+            if (!argIsString[0]) { return result_arg_stringExpected; }
+            if (args[0].pStringConst == nullptr) { break; }                                                                             // original string is empty: return with empty result string
+
+            int len = strlen(args[0].pStringConst);
+            char* p = args[0].pStringConst;
+
+            // trim leading spaces ?
+            if ((functionCode == fnccod_ltrim) || (functionCode == fnccod_trim)) {                                                      // trim leading spaces ?
+                while (*p == ' ') { p++; };
+                spaceCnt = p - args[0].pStringConst;                                                                                    // subtraction of two pointers
+            }
+            if (spaceCnt == len) { break; }                                                                                             // trimmed string is empty: return with empty result string
+
+            // trim trailing spaces ? (string does not only contain spaces)
+            char* q = args[0].pStringConst + len - 1;                                                                                   // last character
+            if ((functionCode == fnccod_rtrim) || (functionCode == fnccod_trim)) {
+                while (*q == ' ') { q--; };
+                spaceCnt += (args[0].pStringConst + len - 1 - q);
+            }
+
+            // create new string
+            fcnResult.pStringConst = new char[len - spaceCnt + 1];                                                                      // space for terminating '0'
+            _intermediateStringObjectCount++;
+            memcpy(fcnResult.pStringConst, p, len - spaceCnt);
+            fcnResult.pStringConst[len - spaceCnt] = '\0';
+        #if printCreateDeleteListHeapObjects
+            Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
+        #endif            
+        }
+        break;
+
+
         // retrieve a system variable
         // --------------------------
 
         case fnccod_sysVal:
         {
-            if (!argIsLong[0] && !argIsFloat[0]) { return result_arg_integerExpected; }
+            if (!argIsLong[0] && !argIsFloat[0]) { return result_arg_numberExpected; }
             int sysVal = argIsLong[0] ? args[0].longConst : int(args[0].floatConst);
-            if (argIsFloat[0]) { if (args[0].floatConst != sysVal) { return result_arg_integerExpected; } }
 
-            fcnResultValueType = value_isLong;      // default for most system values
+            fcnResultValueType = value_isLong;                                                                                          // default for most system values
 
             switch (sysVal) {
 
@@ -3670,7 +3986,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 case 1001:                                                                  // current accumulated object count errors since cold start
                 {
                     fcnResultValueType = value_isStringPointer;
-                    fcnResult.pStringConst = new char[13 * 5];  // includes place for 13 times 5 characters (3 digits max. for each number, max. 2 extra in between) and terminating \0
+                    fcnResult.pStringConst = new char[13 * 5];                              // includes place for 13 times 5 characters (3 digits max. for each number, max. 2 extra in between) and terminating \0
                     _intermediateStringObjectCount++;
                 #if printCreateDeleteListHeapObjects
                     Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
@@ -3695,10 +4011,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 }
                 break;
 
-                case 25:                                                                    // trace string
+                case 25:                                                                                                                // trace string
                 {
                     fcnResultValueType = value_isStringPointer;
-                    fcnResult.pStringConst = nullptr;                                       // init (empty string)
+                    fcnResult.pStringConst = nullptr;                                                                                   // init (empty string)
                     if (_pTraceString != nullptr) {
                         fcnResult.pStringConst = new char[strlen(_pTraceString) + 1];
                         _intermediateStringObjectCount++;
@@ -3717,11 +4033,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
 
 
-    }       // end switch
+        }       // end switch
 
 
-    // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
-    // -------------------------------------------------------------------------------------------------------------------
+        // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
+        // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
@@ -3734,24 +4050,16 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         _pEvalStackMinus1 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackTop);
         _pEvalStackMinus2 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackMinus1);
 
-        _pEvalStackTop->varOrConst.value = fcnResult;                           // long, float or pointer to string
-        _pEvalStackTop->varOrConst.valueType = fcnResultValueType;              // value type of second operand  
-        _pEvalStackTop->varOrConst.tokenType = tok_isConstant;                  // use generic constant type
+        _pEvalStackTop->varOrConst.value = fcnResult;                                                                                   // long, float or pointer to string
+        _pEvalStackTop->varOrConst.valueType = fcnResultValueType;                                                                      // value type of second operand  
+        _pEvalStackTop->varOrConst.tokenType = tok_isConstant;                                                                          // use generic constant type
         _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
-        _pEvalStackTop->varOrConst.variableAttributes = 0x00;                   // not an array, not an array element (it's a constant) 
+        _pEvalStackTop->varOrConst.variableAttributes = 0x00;                                                                           // not an array, not an array element (it's a constant) 
     }
 
     return result_execOK;
-}
+    }
 
-
-// ----------------
-// 
-// ----------------
-
-Justina_interpreter::execResult_type Justina_interpreter::stringToNumber() {
-
-}
 
 // -----------------------
 // check format specifiers
@@ -3836,7 +4144,7 @@ void  Justina_interpreter::printToString(int width, int precision, bool inputIsS
         resultStrLen = max(width + 10, 30);         // 30: ensure length is sufficient to print a formatted nummber
     }
 
-    fcnResult.pStringConst = new char[resultStrLen];
+    fcnResult.pStringConst = new char[resultStrLen + 1];
     _intermediateStringObjectCount++;
 
 #if printCreateDeleteListHeapObjects

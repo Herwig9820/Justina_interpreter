@@ -146,9 +146,9 @@ class Justina_interpreter {
     static constexpr int DEFAULT_NUM_PRECISION = 3;         // default numeric precision.
     static constexpr int DEFAULT_STRCHAR_TO_PRINT = 30;     // default # alphanumeric characters to print
 
-    const int MAX_PRINT_WIDTH = 200;                        // max. width of the print field. Absolute limit: 255. With as defined as in c++ printf 'format.width' sub-specifier
+    const int MAX_PRINT_WIDTH = 255;                        // max. width of the print field. Absolute limit: 255. With as defined as in c++ printf 'format.width' sub-specifier
     const int MAX_NUM_PRECISION = 7;                        // max. numeric precision. Precision as defined as in c++ printf 'format.precision' sub-specifier
-    const int MAX_STRCHAR_TO_PRINT = 200;                   // max. # of alphanumeric characters to print. Absolute limit: 255. Defined as in c++ printf 'format.precision' sub-specifier
+    const int MAX_STRCHAR_TO_PRINT = 255;                   // max. # of alphanumeric characters to print. Absolute limit: 255. Defined as in c++ printf 'format.precision' sub-specifier
 
 
 
@@ -237,6 +237,8 @@ class Justina_interpreter {
     enum func_code {
         fnccod_ifte,
         fnccod_switch,
+        fnccod_index,
+        fnccod_choose,
 
         fnccod_sqrt,
         fnccod_sin,
@@ -271,6 +273,19 @@ class Justina_interpreter {
         fnccod_nl,
         fnccod_format,
         fnccod_sysVal,
+
+        fnccod_ltrim,
+        fnccod_rtrim,
+        fnccod_trim,
+        fnccod_left,
+        fnccod_mid,
+        fnccod_right,
+        fnccod_toupper,
+        fnccod_tolower,
+        fnccod_space,
+        fnccod_repchar,
+        fnccod_strstr,
+        fnccod_strcmp,
 
         fnccod_cint,
         fnccod_cfloat,
@@ -529,7 +544,7 @@ class Justina_interpreter {
 
         // internal functions
         result_arg_outsideRange = 3100,
-        result_arg_integerExpected,
+        result_arg_integerTypeExpected,
         result_arg_numberExpected,
         result_arg_invalid,
         result_arg_integerDimExpected,
@@ -538,6 +553,7 @@ class Justina_interpreter {
         result_arg_numValueExpected,
         result_arg_tooManyArgs,
         result_arg_nonEmptyStringExpected,
+        result_arg_testexpr_numberExpected,
 
         result_array_dimNumberNonInteger = 3200,
         result_array_dimNumberInvalid,
@@ -1090,7 +1106,7 @@ private:
 
     // sizes MUST be specified AND must be exact
     static const ResWordDef _resWords[45];                          // keyword names
-    static const FuncDef _functions[78];                            // function names with min & max arguments allowed
+    static const FuncDef _functions[92];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
 
@@ -1505,8 +1521,6 @@ private:
         bool& redundantSemiColon, bool isEndOfFile, bool& bufferOverrun, bool  _flushAllUntilEOF, int& _lineCount, int& _statementCharCount, char c);
     bool processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos);
     void traceAndPrintDebugInfo();
-
-    execResult_type stringToNumber();
 };
 
 #endif
