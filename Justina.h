@@ -147,7 +147,7 @@ class Justina_interpreter {
     static constexpr int DEFAULT_STRCHAR_TO_PRINT = 30;     // default # alphanumeric characters to print
 
     const int MAX_PRINT_WIDTH = 255;                        // max. width of the print field. Absolute limit: 255. With as defined as in c++ printf 'format.width' sub-specifier
-    const int MAX_NUM_PRECISION = 7;                        // max. numeric precision. Precision as defined as in c++ printf 'format.precision' sub-specifier
+    const int MAX_NUM_PRECISION = 8;                        // max. numeric precision. Precision as defined as in c++ printf 'format.precision' sub-specifier
     const int MAX_STRCHAR_TO_PRINT = 255;                   // max. # of alphanumeric characters to print. Absolute limit: 255. Defined as in c++ printf 'format.precision' sub-specifier
 
 
@@ -320,6 +320,12 @@ class Justina_interpreter {
         fnccod_bitsMaskedSet,
         fnccod_bitsMaskedRead,
         fnccod_bitsMaskedWrite,
+        fnccod_byteRead,
+        fnccod_byteWrite,
+        fnccod_reg32Read,
+        fnccod_reg8Read,
+        fnccod_reg32Write,
+        fnccod_reg8Write,
 
         fnccod_isAlpha,
         fnccod_isAlphaNumeric,
@@ -1106,7 +1112,7 @@ private:
 
     // sizes MUST be specified AND must be exact
     static const ResWordDef _resWords[45];                          // keyword names
-    static const FuncDef _functions[92];                            // function names with min & max arguments allowed
+    static const FuncDef _functions[98];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
 

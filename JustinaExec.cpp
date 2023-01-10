@@ -969,10 +969,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
             // 'stop' behaves as if an error occured, in order to follow the same processing logic  
 
+            // RETURN with 'event' error
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
             return result_stopForDebug;
-            break;
         }
+        break;
 
 
         // ------------------------
@@ -1023,10 +1024,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             }
 
             _appFlags &= ~appFlag_waitingForUser;    // bit b6 reset: NOT waiting for user interaction
+
+            // clean up
             clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
-            break;
         }
+        break;
 
 
         // -------------------------------------
@@ -1158,9 +1161,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackTop);
             _pFlowCtrlStackMinus2 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackMinus1);
 
-            // do NOT reset _activeFunctionData.activeCmd_ResWordCode:  _activeFunctionData just received its values from the flow control stack 
-            break;
+            // !!! DO NOT clean up: evaluation stack has been set correctly, and _activeFunctionData.activeCmd_ResWordCode:  _activeFunctionData just received its values from the flow control stack 
         }
+        break;
 
 
         // -------------------------------------------------------------
@@ -1200,10 +1203,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
             }
 
+            // clean up
             clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
-            break;
         }
+        break;
 
 
         // ---------------------------------------------------------------------------------------------------------
@@ -1211,11 +1215,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         // ---------------------------------------------------------------------------------------------------------
 
         case cmdcod_debug:
-        {_debugCmdExecuted = true;
+        {
+            _debugCmdExecuted = true;
 
-        _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
-        break;
+            // clean up
+            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
         }
+        break;
 
         // -----------------------------------
         // read and parse program from console
@@ -1225,9 +1231,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         case cmdcod_receiveProg:
         {
             return result_initiateProgramLoad;
+
+            // clean up
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
-            break;
         }
+        break;
 
 
         // ----------------
@@ -1267,6 +1275,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                 }
             }
+
+            // clean up
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
         }
         break;
@@ -1286,7 +1296,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             //             value is 3: idem, but if '\c' encountered in input stream the operation is canceled by user 
             // - on exit:  value is 0: operation was canceled by user, 1 if operation confirmed by user
 
-            // no break here: continue with Input command code
+            // NO BREAK here: continue with Input command code
 
 
         case cmdcod_input:
@@ -1431,6 +1441,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             } while (!answerValid);
             _appFlags &= ~appFlag_waitingForUser;    // bit b6 reset: NOT waiting for user interaction
 
+            // clean up
             clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
         }
@@ -1499,7 +1510,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             if (doAbort) { execResult = result_abort; return execResult; }                                     // stop a running Justina program (buffer is now flushed until nex line character) 
             else if (doStop) { userRequestsStop = true; }                                                           // '\s': stop a running program (do not produce stop event yet, wait until program statement executed)
 
-            // finalise
+            // clean up
             clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
         }
@@ -1544,6 +1555,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
             }
 
+            // clean up
             clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
         }
@@ -1559,6 +1571,23 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // mandatory argument 1: width (used for both numbers and strings) 
             // optional arguments 2-4 (relevant for printing numbers only): [precision, [specifier (F:fixed, E:scientific, G:general, D: decimal, X:hex), ] flags]
             // note that specifier argument can be left out, flags argument taking its place
+            // behaviour corresponds to c++ printf, sprintf, ..., result is a formatted string
+
+            // precision, specifier and flags are used as defaults for next calls to this command, if they are not provided again
+            // if the value to be formatted is a string, the precision argument is interpreted as 'maximum characters to print', otherwise it indicates numeric precision (both values retained seperately)
+            // the specifier is only relevant for formatting numbers (ignored for formatting strings)
+
+            // numeric precision: function depends on the specifier:
+            // - with specifiers 'D'and 'X': specifies the minimum number of digits to be written. Shorter values are padded with leading zeros. Longer values are not truncated. 
+            //   If the precision is zero, a zero value will not be printed.
+            // - with 'E' and 'F' specifiers: number of decimals to be printed after the decimal point
+            // - with 'G' specifier:maximum number of significant numbers to be printed
+
+            // flags: value 1 = left justify, 2 = force sign, 4 = insert a space if no sign, 8: the use depends on the precision specifier:
+            // - used with 'F', 'E', 'G' specifiers: always add a decimal point, even if no digits follow 
+            // - used with 'X' (hex) specifier: preceed non-zero numbers with '0x'
+            // - no function with 'D' (decimal) specifier
+            // flag value 16 = pad with zeros 
 
             bool argIsVar[4];
             bool argIsArray[4];
@@ -1580,8 +1609,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             _dispCharsToPrint = _dispWidth;
             strcpy(_dispStringFmtString, "%*.*s%n");                                                           // strings: set characters to print to display width
 
+            // clean up
             clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings
-
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
         }
         break;
@@ -1616,8 +1645,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             _lastValueIsStored = false;               // prevent printing last result (if any)
 
             _promptAndEcho = args[0].longConst, _printLastResult = args[1].longConst;
-            clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings
 
+            // clean up
+            clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
         }
         break;
@@ -1713,19 +1743,16 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             }
 
 
-            // finalize
-            // --------
-
+            // clean up
             clearEvalStackLevels(cmdParamCount);                                                        // clear evaluation stack and intermediate strings
-
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
         }
         break;
 
 
-        // -----------------
-        //
-        // -----------------
+        // --------------------
+        // block start commands
+        // --------------------
 
         case cmdcod_for:
         case cmdcod_if:                                                                                                   // 'if' command
@@ -1810,12 +1837,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             ((OpenBlockTestData*)_pFlowCtrlStackTop)->loopControl |= withinIteration;               // init at the start of an iteration for any loop
         }
 
-        // no break here: from here on, subsequent execution is common for 'if', 'elseif', 'else' and 'while'
+        // NO BREAK here: from here on, subsequent execution is common for 'if', 'elseif', 'else' and 'while'
 
 
-        // -----------------
-        //
-        // -----------------
+        // ------------------------
+        // middle-of-block commands
+        // ------------------------
 
         case cmdcod_else:
         case cmdcod_elseif:
@@ -1853,16 +1880,16 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 _activeFunctionData.pNextStep = _programStorage + toTokenStep;              // prepare jump to 'else', 'elseif' or 'end' command
             }
 
+            // clean up
             clearEvalStackLevels(cmdParamCount);      // clear evaluation stack
-
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
         }
         break;
 
 
-        // -----------------
-        //
-        // -----------------
+        // ---------------------------------
+        // block break and continue commands
+        // ---------------------------------
 
         case cmdcod_break:
         case cmdcod_continue:
@@ -1893,6 +1920,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
             if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_break) { ((OpenBlockTestData*)_pFlowCtrlStackTop)->loopControl |= breakFromLoop; }
 
+            // clean up
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
         }
         break;
@@ -1949,7 +1977,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
         }
 
-        // no break here: from here on, subsequent execution is the same for 'end' (function) and for 'return'
+        // NO BREAK here: from here on, subsequent execution is the same for 'end' (function) and for 'return'
 
 
         // --------------------
@@ -1963,8 +1991,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             execResult = terminateExternalFunction(returnWithZero);
             if (execResult != result_execOK) { return execResult; }
 
-            // do NOT reset _activeFunctionData.activeCmd_ResWordCode: _activeFunctionData will receive its values in routine terminateExternalFunction()
-
+            // DO NOT reset _activeFunctionData.activeCmd_ResWordCode: _activeFunctionData will receive its values in routine terminateExternalFunction()
         }
         break;
 
@@ -3316,13 +3343,25 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         {
             // mandatory argument 1: value to be formatted
             // optional arguments 2-5: width, precision, [specifier (F:fixed, E:scientific, G:general, D: long integer, X:hex)], flags, characters printed (return value)
-            // behaviour corresponds to c++ printf, sprintf, ..., result is a formatted string
             // note that specifier argument can be left out, flags argument taking its place
+            // behaviour corresponds to c++ printf, sprintf, ..., result is a formatted string
+
             // width, precision, specifier and flags are used as defaults for next calls to this function, if they are not provided again
             // if the value to be formatted is a string, the precision argument is interpreted as 'maximum characters to print', otherwise it indicates numeric precision (both values retained seperately)
-            // specifier is only relevant for formatting numbers (ignored for formatting strings), but can be set while formatting a string
+            // the specifier is only relevant for formatting numbers (ignored for formatting strings), but can be set while formatting a string
 
-            const int leftJustify = 0b1, forceSign = 0b10, blankIfNoSign = 0b100, addDecPoint = 0b1000, padWithZeros = 0b10000;         // flags //// flags worden niet gebruikt ???
+            // numeric precision: function depends on the specifier:
+            // - with specifiers 'D'and 'X': specifies the minimum number of digits to be written. Shorter values are padded with leading zeros. Longer values are not truncated. 
+            //   If the precision is zero, a zero value will not be printed.
+            // - with 'E' and 'F' specifiers: number of decimals to be printed after the decimal point
+            // - with 'G' specifier:maximum number of significant numbers to be printed
+
+            // flags: value 1 = left justify, 2 = force sign, 4 = insert a space if no sign, 8: the use depends on the precision specifier:
+            // - used with 'F', 'E', 'G' specifiers: always add a decimal point, even if no digits follow 
+            // - used with 'X' (hex) specifier: preceed non-zero numbers with '0x'
+            // - no function with 'D' (decimal) specifier
+            // flag value 16 = pad with zeros 
+
             bool isIntFmt{ false };
             int charsPrinted{ 0 };
 
@@ -3349,7 +3388,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             char* specifier = "s";
             if (argIsLong[0] || argIsFloat[0]) {
                 specifier = _printNumSpecifier;
-                isIntFmt = (specifier[0] == 'X') || (specifier[0] == 'x') || (specifier[0] == 'd') || (specifier[0] == 'D');
+                isIntFmt = (specifier[0] == 'X') || (specifier[0] == 'x') || (specifier[0] == 'D') || (specifier[0] == 'd');
             }
             makeFormatString(flags, isIntFmt, specifier, fmtString);
             printToString(width, precision, (!argIsLong[0] && !argIsFloat[0]), isIntFmt, argValueType, args, fmtString, fcnResult, charsPrinted);
@@ -3505,34 +3544,51 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         break;
 
 
-        // bit manipulation functions
-        // --------------------------
+        // bit and byte manipulation functions
+        // -----------------------------------
 
         // all arguments need to be long integers; if a value is returned, it's always a long integer
 
-        // Arduino bit manipulation functoins
+        // Arduino bit manipulation functions
         // arguments and return values: same as the corresponding Arduino functions
-        case fnccod_bit:
-        case fnccod_bitRead:
-        case fnccod_bitClear:
-        case fnccod_bitSet:
-        case fnccod_bitWrite:
+        case fnccod_bit:                // bit number -> value 
+
+        case fnccod_bitRead:            // 2 arguments: variable, bit (0 to 31) to read. Returned: 0 or 1
+        case fnccod_bitClear:           // 2 arguments: variable, bit (0 to 31) to clear. New variable value is returned
+        case fnccod_bitSet:             // 2 arguments: variable, bit (0 to 31) to set. New variable value is returned
+        case fnccod_bitWrite:           // 3 arguments: variable, bit (0 to 31), new bit value (0 or 1). New variable value is returned
 
             // extra Justina bit manipulation functons. Mask argument indicates which bits to read, set, clear or write
-        case fnccod_bitsMaskedRead:     // 2 arguments. value, mask. returns masked value 
-        case fnccod_bitsMaskedClear:    // 2 arguments. variable, mask = bits to clear (bits indicated by mask are cleared in variable, new value is returned)
-        case fnccod_bitsMaskedSet:      // 2 arguments. variable, mask, bits = bits to set (bits indicated by mask are set in variable, new value is returned) 
-        case fnccod_bitsMaskedWrite:    // 3 arguments. variable, mask, bits to write (only bits indicated by mask are written in variable, new value is returned)
+        case fnccod_bitsMaskedRead:     // 2 arguments: value, mask. Returns masked value 
+        case fnccod_bitsMaskedClear:    // 2 arguments: variable, mask = bits to clear (bits indicated by mask are cleared in variable, new value is returned)
+        case fnccod_bitsMaskedSet:      // 2 arguments: variable, mask = bits = bits to set (bits indicated by mask are set in variable, new value is returned) 
+        case fnccod_bitsMaskedWrite:    // 3 arguments: variable, mask, bits to write (only bits indicated by mask are written in variable, new value is returned)
+
+            // extra Justina byte manipulation functons. Byte argument indicates which byte to read or write
+        case fnccod_byteRead:           // 2 arguments: value, byte to read (0 to 3). Value returned is between 0x00 and 0xFF.     
+        case fnccod_byteWrite:          // 3 arguments: variable, byte to write (0 to 3), value to write (lowest 8 bits of argument). New value is stored in variable and is returned as well.    
         {
+            if (!argIsLong[0] && (functionCode != fnccod_bit)) { return result_arg_integerTypeExpected; }
             for (int i = 0; i < suppliedArgCount; ++i) {
-                if (!argIsLong[i]) { return result_arg_integerTypeExpected; }
+                if (!argIsLong[i] && !argIsFloat) { return result_arg_numberExpected; }
+                if (argIsFloat[i]) { args[i].longConst = (long)args[i].floatConst; }          // all arguments have long type now
             }
+
             if ((functionCode == fnccod_bitClear) || (functionCode == fnccod_bitSet) || (functionCode == fnccod_bitWrite) ||
-                (functionCode == fnccod_bitsMaskedClear) || (functionCode == fnccod_bitsMaskedSet) || (functionCode == fnccod_bitsMaskedWrite)) {
-                if (!argIsVar[0]) { return result_arg_varExpected; }        // requires variable ? test for it
+                (functionCode == fnccod_bitsMaskedClear) || (functionCode == fnccod_bitsMaskedSet) || (functionCode == fnccod_bitsMaskedWrite) ||
+                (functionCode == fnccod_byteWrite)) {
+                if (!argIsVar[0]) { return result_arg_varExpected; }                                                                    // requires variable ? test for it
             }
+
+            if (functionCode == fnccod_bit && ((args[0].longConst < 0) || (args[0].longConst > 31))) { return result_arg_outsideRange; }
+            if (((functionCode == fnccod_bitRead) || (functionCode == fnccod_bitClear) || (functionCode == fnccod_bitSet) || (functionCode == fnccod_bitWrite)) && ((args[1].longConst < 0) || (args[1].longConst > 31))) {
+                return result_arg_outsideRange;
+            }
+            if (((functionCode == fnccod_byteRead) || (functionCode == fnccod_byteWrite)) && ((args[1].longConst < 0) || (args[1].longConst > 3))) { return result_arg_outsideRange; }
+
             fcnResultValueType = value_isLong;                                                                                          // init: return a long
             fcnResult.longConst = 0;                                                                                                    // init: return 0 if the Arduino function doesn't return anything
+            uint8_t* pBytes = (uint8_t*)&(args[0].longConst);                                                                           // access individual bytes of a value
 
             if (functionCode == fnccod_bit) { fcnResult.longConst = 1 << args[0].longConst; }                                           // requires no variable
 
@@ -3545,13 +3601,50 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             else if (functionCode == fnccod_bitsMaskedClear) { fcnResult.longConst = args[0].longConst & ~args[1].longConst; }
             else if (functionCode == fnccod_bitsMaskedSet) { fcnResult.longConst = args[0].longConst | args[1].longConst; }
             else if (functionCode == fnccod_bitsMaskedWrite) { fcnResult.longConst = args[0].longConst & (~args[1].longConst | args[2].longConst) | (args[1].longConst & args[2].longConst); }
+
+            else if (functionCode == fnccod_byteRead) { fcnResult.longConst = pBytes[args[1].longConst]; }                              // requires variable; contents of 1 byte is returned
+            else if (functionCode == fnccod_byteWrite) { pBytes[args[1].longConst] = args[2].longConst; fcnResult.longConst = args[0].longConst; }  // new variable value is returned
         }
 
 
         // function modifies variable (first argument) ?
         if ((functionCode == fnccod_bitClear) || (functionCode == fnccod_bitSet) || (functionCode == fnccod_bitWrite) ||
-            (functionCode == fnccod_bitsMaskedClear) || (functionCode == fnccod_bitsMaskedSet) || (functionCode == fnccod_bitsMaskedWrite)) {
+            (functionCode == fnccod_bitsMaskedClear) || (functionCode == fnccod_bitsMaskedSet) || (functionCode == fnccod_bitsMaskedWrite) ||
+            (functionCode == fnccod_byteWrite)) {
             *_pEvalStackMinus2->varOrConst.value.pLongConst = fcnResult.longConst;                                                      // store result in variable (value type is long already)
+        }
+        break;
+
+
+        // hardware memory address 8 bit and 32 bit read and write
+        // -------------------------------------------------------
+
+        // intended to directly read and write to memory locations mapped to peripheral registers (I/O, counters, ...)
+        // !!! dangerous if you don't know what you're doing 
+
+        case    fnccod_reg32Read:
+        case    fnccod_reg8Read:
+        case    fnccod_reg32Write:
+        case    fnccod_reg8Write:
+        {
+            if (!argIsLong[0]) { return result_arg_integerTypeExpected; }
+            for (int i = 1; i < suppliedArgCount; ++i) {
+                if (!argIsLong[i] && !argIsFloat) { return result_arg_numberExpected; }
+                if (argIsFloat[i]) { args[i].longConst = (long)args[i].floatConst; }          // all arguments have long type now
+            }
+
+            if (((functionCode == fnccod_reg8Read) || (functionCode == fnccod_reg8Write)) && ((args[1].longConst < 0) || (args[1].longConst > 3))) { return result_arg_outsideRange; }
+
+            fcnResultValueType = value_isLong;                                                                                          // init: return a long
+            fcnResult.longConst = 0;                                                                                                    // init: return 0 if the Arduino function doesn't return anything
+
+            // write functions: the memory / peripheral register location is not read afterwards (because this could trigger a specific hardware action),
+            // so write functions return zero)  
+            if (functionCode == fnccod_reg32Read) { fcnResult.longConst = *(uint32_t*)args[0].longConst; }                              // 32 bit register value is returned
+            else if (functionCode == fnccod_reg8Read) { fcnResult.longConst = ((uint8_t*)(args[0].longConst))[args[1].longConst]; }     // 8 bit register value is returned
+            else if (functionCode == fnccod_reg32Write) { *(uint32_t*)args[0].longConst = args[1].longConst; }                          // register contents has not been read: zero is returned
+            else if (functionCode == fnccod_reg8Write) { ((uint8_t*)(args[0].longConst))[args[1].longConst] = args[2].longConst; }      // register contents has not been read: zero is returned
+
         }
         break;
 
@@ -3611,7 +3704,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                     pulseIn(args[0].longConst, args[1].bytes[0], (uint32_t)args[2].longConst);
             }
             else if (functionCode == fnccod_shiftIn) {                                                                                  // args: data pin, clock pin, bit order
-                fcnResult.longConst = shiftIn(args[0].longConst, args[1].longConst, (BitOrder)args[2].longConst); 
+                fcnResult.longConst = shiftIn(args[0].longConst, args[1].longConst, (BitOrder)args[2].longConst);
             }
             else if (functionCode == fnccod_shiftOut) {                                                                                 // args: data pin, clock pin, bit order, value
                 shiftOut(args[0].longConst, args[1].longConst, (BitOrder)args[2].longConst, args[3].longConst);
@@ -3760,7 +3853,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
         case fnccod_strcmp:
         {
-            // arguments: string, substring to search for [, length]
+            // arguments: string, substring to search for
             fcnResultValueType = value_isLong;
             fcnResult.longConst = 0;                                                                                                    // init: nothing found
 
@@ -4008,7 +4101,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                             min(999, _localVarStringObjectErrors), min(999, _localArrayObjectErrors), min(999, _localVarValueAreaErrors), min(999, _intermediateStringObjectErrors),
                             min(999, _systemVarStringObjectErrors));
                     }
-                }
+            }
                 break;
 
                 case 25:                                                                                                                // trace string
@@ -4022,22 +4115,22 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                     #if printCreateDeleteListHeapObjects
                         Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
                     #endif
-                    }
                 }
+        }
                 break;
 
                 default: return result_arg_invalid; break;
-            }       // switch (sysVal)
-        }
+    }       // switch (sysVal)
+}
         break;
 
 
 
-        }       // end switch
+                }       // end switch
 
 
-        // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
-        // -------------------------------------------------------------------------------------------------------------------
+                // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
+                // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
@@ -4058,7 +4151,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
     }
 
     return result_execOK;
-    }
+            }
 
 
 // -----------------------
@@ -4116,7 +4209,7 @@ void  Justina_interpreter::makeFormatString(int flags, bool isIntFmt, char* numF
     for (int i = 1; i <= 5; i++, flags >>= 1) {
         if (flags & 0b1) { fmtString[strPos] = ((i == 1) ? '-' : (i == 2) ? '+' : (i == 3) ? ' ' : (i == 4) ? '#' : '0'); ++strPos; }
     }
-    fmtString[strPos] = '*'; ++strPos; fmtString[strPos] = '.'; ++strPos; fmtString[strPos] = '*'; ++strPos;             // width and precision specified with additional arguments
+    fmtString[strPos] = '*'; ++strPos; fmtString[strPos] = '.'; ++strPos; fmtString[strPos] = '*'; ++strPos;             // width and precision specified with additional arguments (*.*)
     if (isIntFmt) { fmtString[strPos] = 'l'; ++strPos; fmtString[strPos] = numFmt[0]; ++strPos; }
     else { fmtString[strPos] = numFmt[0]; ++strPos; }
     fmtString[strPos] = '%'; ++strPos; fmtString[strPos] = 'n'; ++strPos; fmtString[strPos] = '\0'; ++strPos;            // %n specifier (return characters printed)
@@ -4703,7 +4796,7 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateExternalFunct
         delete[] _activeFunctionData.pVariableAttributes;
         delete[] _activeFunctionData.ppSourceVarTypes;
         _localVarValueAreaCount--;
-    }
+}
 
     char blockType = block_none;            // init
     do {

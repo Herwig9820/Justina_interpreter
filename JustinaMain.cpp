@@ -276,8 +276,8 @@ const char Justina_interpreter::cmdPar_999[4]{ cmdPar_varNoAssignment,          
 const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     //  name            id code                 where allowed              padding (boundary alignment)     param key      control info
     //  ----            -------                 -------------              ----------------------------     ---------      ------------   
-    
-    /* programs and functions */    
+
+    /* programs and functions */
     /* ---------------------- */
 
     {"program",         cmdcod_program,         cmd_onlyProgramTop | cmd_skipDuringExec,            0,0,    cmdPar_103,     cmdProgram},        //// non-block commands: cmdBlockNone ?
@@ -423,7 +423,7 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     {"cInt",                    fnccod_cint,                    1,1,    0b0},
     {"cFloat",                  fnccod_cfloat,                  1,1,    0b0},
     {"cStr",                    fnccod_cstr,                    1,1,    0b0},
-    
+
     // Arduino digital I/O, timing and other functions
     {"millis",                  fnccod_millis,                  0,0,    0b0},
     {"micros",                  fnccod_micros,                  0,0,    0b0},
@@ -455,7 +455,13 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     {"maskedBitClear",          fnccod_bitsMaskedClear,         2,2,    0b0},
     {"maskedBitSet",            fnccod_bitsMaskedSet,           2,2,    0b0},
     {"maskedBitWrite",          fnccod_bitsMaskedWrite,         3,3,    0b0},
-
+    {"byteRead",                fnccod_byteRead,                2,2,    0b0},
+    {"byteWrite",               fnccod_byteWrite,               3,3,    0b0},
+    {"reg32Read",               fnccod_reg32Read,               1,1,    0b0},
+    {"reg8Read",                fnccod_reg8Read,                2,2,    0b0},
+    {"reg32Write",              fnccod_reg32Write,              2,2,    0b0},
+    {"reg8Write",               fnccod_reg8Write,               3,3,    0b0},
+   
     // string and 'character' functions
     {"char",                    fnccod_char,                    1,1,    0b0},
     {"len",                     fnccod_len,                     1,1,    0b0},
@@ -469,7 +475,7 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     {"right",                   fnccod_right,                   2,2,    0b0},
     {"toUpper",                 fnccod_toupper,                 1,3,    0b0},
     {"toLower",                 fnccod_tolower,                 1,3,    0b0},
-    {"space",                   fnccod_space,                   1,1,    0b0},    
+    {"space",                   fnccod_space,                   1,1,    0b0},
     {"repChar",                 fnccod_repchar,                 2,2,    0b0},
     {"strStr",                  fnccod_strstr,                  2,3,    0b0},
     {"strCmp",                  fnccod_strcmp,                  2,2,    0b0},
@@ -661,6 +667,61 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     bool kill{ false };                                       // kill is true: request from caller, kill is false: quit command executed
     bool quitNow{ false };
     char c;
+
+
+
+    //// start temp test
+    uint8_t* testptr = (uint8_t*)0x20000000;
+
+    typedef union {
+        struct  {
+            uint32_t bits1_0:2;
+            uint32_t bits10_3:8;
+        } bit;
+        uint32_t reg;
+    } ABC_type;
+    
+    ABC_type abc;
+    abc.reg=0xFFFFFFFF;
+    Serial.print("word: "); Serial.println(abc.reg, HEX);
+
+    abc.bit.bits1_0=1;
+    abc.bit.bits10_3=3;
+    
+    Serial.print("word: "); Serial.println(abc.reg, HEX);
+    Serial.print("bits: "); Serial.println(abc.bit.bits10_3, HEX);
+
+    Serial.println("\r\nregisters: ");
+    testptr =  (uint8_t *)( &abc);
+    testptr[0] = 'a';
+    testptr[1] = 'b';
+    testptr[2] = 'c';
+    testptr[3] = 'd';
+    
+    Serial.println(testptr[0], HEX);
+    Serial.println(testptr[1], HEX);
+    Serial.println(testptr[2], HEX);
+    Serial.println(testptr[3], HEX);
+
+    
+    
+    uint32_t* tstp = (uint32_t*)(testptr);
+    Serial.println(*tstp, HEX);
+    Serial.print("word: "); Serial.println(abc.reg, HEX);
+
+
+    testptr = (uint8_t*)0x20000000;
+    testptr[1];
+
+
+
+
+
+    uint8_t* REG8_PORT_DIRCLR0 = (uint8_t*)(&REG_PORT_DIRCLR0);        // 8 bit port register acces
+    REG8_PORT_DIRCLR0[2];
+    // end temp test
+
+
 
     bool redundantSemiColon = false;
     bool isCommentStartChar = (c == '$');                               // character can also be part of comment
