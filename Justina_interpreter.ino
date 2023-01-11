@@ -410,8 +410,8 @@ void heartbeat() {
 // in Justina, the mechanism is used to allow the user to write specific procedures in C++ (not in Justina) and call them afterwards from within Justina
 // 
 // a user callback function should contain two parameters, as shown below
-// parameter 1 (const void** pdata) is a three-element array containing void pointers to data (if data present) 
-// parameter 2 (const char* valueType) is a three-element array indicating presence of corresponding data, the value type, and whether the data is a Justina variable or constant
+// parameter 1 (const void** pdata) is an 8-element array containing void pointers to data (if data present) 
+// parameter 2 (const char* valueType) is an 8-element array indicating presence of corresponding data, the value type, and whether the data is a Justina variable or constant
 // if data is present, the pointer passed will point to an integer, float or text (char*).
 // the value pointed to can be the value stored in a Justina variable or array element, or it can be a Justina constant 
 // the data pointed to can be changed (the pointers themselves not)
@@ -440,15 +440,13 @@ void heartbeat() {
 // example: show how to read and modify data supplied
 // --------------------------------------------------
 
-void userFcn_readPort(const void** pdata, const char* valueType) {     // data: can be anything, as long as user function knows what to expect
+void userFcn_readPort(const void** pdata, const char* valueType, const int argCount) {     // data: can be anything, as long as user function knows what to expect
 
-    pConsole->println("*** Justina was here ***");
+    pConsole->print("*** Justina was here *** - arg count: ");pConsole->println(argCount);
 
     char isVariableMask = 0x80;             // as defined in Justina
 
-    for (int i = 0; i < 8; i++) {
-        // data available ?
-        if ((valueType[i] & Justina_interpreter::value_typeMask) == Justina_interpreter::value_noValue) { continue; }       // no data
+    for (int i = 0; i < argCount; i++) {
 
         long* pLong{};          // pointer to long
         float* pFloat{};          // pointer to float
@@ -486,13 +484,13 @@ void userFcn_readPort(const void** pdata, const char* valueType) {     // data: 
 // example: a few other callback routines
 // --------------------------------------
 
-void userFcn_writePort(const void** pdata, const char* valueType) {
+void userFcn_writePort(const void** pdata, const char* valueType, const int argCount) {
     pConsole->println("*** Justina was here too ***");
     // do your thing here
 };
 
 
-void userFcn_togglePort(const void** pdata, const char* valueType) {
+void userFcn_togglePort(const void** pdata, const char* valueType, const int argCount) {
     pConsole->println("*** Justina just passed by ***");
     // do your thing here
 };

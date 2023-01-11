@@ -778,23 +778,28 @@ class Justina_interpreter {
     static constexpr uint8_t var_scopeToSpecify = 0 << 4;             // scope is not yet defined (temporary use during parsing; never stored in token)
 
     // bit b3: variable is an array (and not a scalar)
-    static constexpr uint8_t var_isArray = 0x08;                     // stored with variable attributes and in 'variable' token. Can not be changed at runtime
+    static constexpr uint8_t var_isArray = 0x08;                     // stored with variable attributes and in 'variable' token. Can not be changed during execution
 
-    // bit 0 (maintain in token only): 'forced function variable in debug mode' (for pretty printing only)
-    static constexpr uint8_t var_isForcedFunctionVar = 1;
-
-    // bits b210: value type 
+    // bit 2: is a constant value. Stored with variable attributes and in 'variable' token. Can not be changed during execution 
+    static constexpr uint8_t var_isConstant = 0x04;
+    
+public:
+    // bits b10: value type 
     // - PARSED constants: value type bits are maintained in the 'constant' token (but not in same bit positions)
     // - INTERMEDIATE constants (execution only) and variables: value type is maintained together with variable / intermediate constant data (per variable, array or constant) 
     // Note: because the value type is not fixed for scalar variables (type can dynamically change at runtime), this info is not maintained in the parsed 'variable' token 
 
-public:
-    static constexpr uint8_t value_typeMask = 0x07;                    // mask: float, char* 
-    static constexpr uint8_t value_noValue = 0 << 0;
-    static constexpr uint8_t value_isLong = 1 << 0;
-    static constexpr uint8_t value_isFloat = 2 << 0;
-    static constexpr uint8_t value_isStringPointer = 3 << 0;
+    static constexpr uint8_t value_typeMask = 0x07;     ////               // mask: float, char* 
+    static constexpr uint8_t value_isLong = 0 << 0;
+    static constexpr uint8_t value_isFloat = 1 << 0;
+    static constexpr uint8_t value_isStringPointer = 2 << 0;
 
+private:
+
+    // bit 0 (maintain in token only): 'forced function variable in debug mode' (for pretty printing only)
+    static constexpr uint8_t var_isForcedFunctionVar = 1;
+
+public:
     // application flag bits:flags signaling specific Justina status conditions
     static constexpr long appFlag_errorConditionBit = 0x01L;       // bit 0: a Justina parsing or execution error has occured
     static constexpr long appFlag_statusAbit = 0x10L;              // status bits A and B: bits 5 and 4. Justina status (see below)
@@ -1323,7 +1328,7 @@ private:
     // separate storage areas for user, global and static variable types
     // storage space for local function variable types (including function parameters) is only reserved during execution of a procedure (based on info collected during parsing) 
     // the variable type is maintained in one byte for each variable (see relevant constant definitions): 
-    // - bit 7: program variables: global program variable attached to this program variable NAME; user variables: flag - variable in use by program 
+    // - bit 7: program variables: global program variable is attached to this program variable NAME; user variables: flag - variable in use by program 
     // - bit b654: variable type ('scope'): user, program global, local, static, function parameter 
     // - bit b3: variable is an array
     // - bits b210: value type (long, float, ... see constant definitions) 
@@ -1369,7 +1374,7 @@ private:
     char* _pImmediateCmdStackTop{ nullptr };
 
     Val lastResultValueFiFo[MAX_LAST_RESULT_DEPTH];                // keep last evaluation results
-    char lastResultTypeFiFo[MAX_LAST_RESULT_DEPTH]{ value_noValue };
+    char lastResultTypeFiFo[MAX_LAST_RESULT_DEPTH]{  };
 
 
     // evaluation stack
@@ -1413,7 +1418,7 @@ private:
 
     void (*_housekeepingCallback)(bool& requestQuit, long& appFlags);                                         // pointer to callback function for heartbeat
 
-    void (*_callbackUserProcStart[_userCBarrayDepth])(const void** pdata, const char* valueType);             // user functions: pointers to c++ procedures                                   
+    void (*_callbackUserProcStart[_userCBarrayDepth])(const void** pdata, const char* valueType, const int argCount);             // user functions: pointers to c++ procedures                                   
 
     char _callbackUserProcAlias[_userCBarrayDepth][MAX_IDENT_NAME_LEN + 1];       // user functions aliases                                   
     void* _callbackUserData[_userCBarrayDepth][3]{ nullptr };                          // user functions: pointers to data                                   
@@ -1427,7 +1432,7 @@ public:
     Justina_interpreter(Stream* const pConsole);               // constructor
     ~Justina_interpreter();               // deconstructor
     bool setMainLoopCallback(void (*func)(bool& requistQuit, long& appFlags));                   // set callback functions
-    bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType));
+    bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType, const int argCount));
     bool run(Stream* const pConsole, Stream** const pTerminal, int definedTerms);
 
 private:
@@ -1506,7 +1511,7 @@ private:
     execResult_type deleteVarStringObject(LE_evalStack* pStackLvl);
     execResult_type deleteIntermStringObject(LE_evalStack* pStackLvl);
 
-    execResult_type copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, bool* argIsArray, char* valueType, Val* args, bool passVarRefOrConst = false);
+    execResult_type copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, bool* argIsArray, char* valueType, Val* args, bool prepareForCallback = false);
 
     int findTokenStep(int tokenTypeToFind, char tokenCodeToFind, char*& pStep);
     int jumpTokens(int n, char*& pStep, int& tokenCode);

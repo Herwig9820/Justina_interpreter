@@ -29,7 +29,7 @@
 #include "Justina.h"
 
 #define printCreateDeleteListHeapObjects 0
-#define printParsedTokens 0
+#define printParsedTokens 1
 #define debugPrint 0
 
 
@@ -763,8 +763,8 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
     _isDeclCBcmd = _resWords[_tokenIndex].resWordCode == cmdcod_declCB;
     _isClearCBcmd = _resWords[_tokenIndex].resWordCode == cmdcod_clearCB;
     _isCallbackCmd = _resWords[_tokenIndex].resWordCode == cmdcod_callback;
-    _isGlobalOrUserVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_var;
-    _isLocalVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_local;
+    _isGlobalOrUserVarCmd = (_resWords[_tokenIndex].resWordCode == cmdcod_var) && !_extFunctionBlockOpen;
+    _isLocalVarCmd = (_resWords[_tokenIndex].resWordCode == cmdcod_local) && _extFunctionBlockOpen;
     _isStaticVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_static;
     _isForCommand = _resWords[_tokenIndex].resWordCode == cmdcod_for;
     _isDeleteVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_delete;
@@ -2167,7 +2167,7 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
     if (index == -1) { pNext = pch; result = result_maxExtFunctionsReached; return false; }
     char* funcName = extFunctionNames[index];                                    // either new or existing function name
     if (createNewName) {                                                                      // new function name
-        // init max (bits 7654) & min (bits 3210) allowed n� OR actual n� of arguments; store in last position (behind string terminating character)
+        // init max (bits 7654) & min (bits 3210) allowed n° OR actual n° of arguments; store in last position (behind string terminating character)
         funcName[MAX_IDENT_NAME_LEN + 1] = c_extFunctionFirstOccurFlag;                          // max (bits 7654) < (bits 3210): indicates value is not yet updated by parsing previous calls closing parenthesis
         extFunctionData[index].pExtFunctionStartToken = nullptr;                      // initialize. Pointer will be set when function definition is parsed (checked further down)
         extFunctionData[index].paramIsArrayPattern[1] = 0x80;                        // set flag to indicate a new function name is parsed (definition or call)
