@@ -280,25 +280,25 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     /* programs and functions */
     /* ---------------------- */
 
-    {"program",         cmdcod_program,         cmd_onlyProgramTop | cmd_skipDuringExec,            0,0,    cmdPar_103,     cmdProgram},        //// non-block commands: cmdBlockNone ?
+    {"program",         cmdcod_program,         cmd_onlyProgramTop | cmd_skipDuringExec,            0,0,    cmdPar_103,     cmdBlockNone},        //// non-block commands: cmdBlockNone ?
     {"function",        cmdcod_function,        cmd_onlyInProgram | cmd_skipDuringExec,             0,0,    cmdPar_108,     cmdBlockExtFunction},
 
 
     /* declare variables */
     /* ----------------- */
 
-    {"var",             cmdcod_var,             cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_111,     cmdGlobalVar},
-    {"static",          cmdcod_static,          cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_111,     cmdStaticVar},
-    {"local",           cmdcod_local,           cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_111,     cmdLocalVar},
+    {"var",             cmdcod_var,             cmd_noRestrictions | cmd_skipDuringExec,            0,0,    cmdPar_111,     cmdBlockNone},
+    {"const",           cmdcod_constVar,        cmd_noRestrictions | cmd_skipDuringExec,            0,0,    cmdPar_111,     cmdBlockNone},
+    {"static",          cmdcod_static,          cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_111,     cmdBlockNone},
 
     //// to do
     //// -----
 
-    {"delVar",          cmdcod_delete,          cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_110,     cmdDeleteVar},
+    {"delVar",          cmdcod_delete,          cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_110,     cmdBlockNone},
     {"clearVars",       cmdcod_clear,           cmd_onlyImmediate | cmd_skipDuringExec,             0,0,    cmdPar_102,     cmdBlockNone},
     {"test",            cmdcod_test,            cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_999,     cmdBlockNone},//// test var no assignment
 
-    {"printVars",       cmdcod_vars,            cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
+    {"printVars",       cmdcod_printVars,       cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
     {"printCBs",        cmdcod_printCB,         cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
     {"printProg",       cmdcod_printProg,       cmd_onlyImmediate | cmd_skipDuringExec,/* temp */   0,0,    cmdPar_102,     cmdBlockNone},
 
@@ -461,7 +461,7 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     {"reg8Read",                fnccod_reg8Read,                2,2,    0b0},
     {"reg32Write",              fnccod_reg32Write,              2,2,    0b0},
     {"reg8Write",               fnccod_reg8Write,               3,3,    0b0},
-   
+
     // string and 'character' functions
     {"char",                    fnccod_char,                    1,1,    0b0},
     {"len",                     fnccod_len,                     1,1,    0b0},
@@ -635,7 +635,7 @@ bool Justina_interpreter::setMainLoopCallback(void (*func)(bool& requestQuit, lo
     return true;
 }
 
-bool Justina_interpreter::setUserFcnCallback(void(*func) (const void** data, const char* valueType)) {
+bool Justina_interpreter::setUserFcnCallback(void(*func) (const void** data, const char* valueType, const int argCount)) {
 
     // each call from the user program initializes a next 'user callback' function address in an array of function addresses 
     if (_userCBprocStartSet_count > +_userCBarrayDepth) { return false; }      // throw away if callback array full
@@ -674,37 +674,37 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     uint8_t* testptr = (uint8_t*)0x20000000;
 
     typedef union {
-        struct  {
-            uint32_t bits1_0:2;
-            uint32_t bits10_3:8;
+        struct {
+            uint32_t bits1_0 : 2;
+            uint32_t bits10_3 : 8;
         } bit;
         uint32_t reg;
     } ABC_type;
-    
+
     ABC_type abc;
-    abc.reg=0xFFFFFFFF;
+    abc.reg = 0xFFFFFFFF;
     Serial.print("word: "); Serial.println(abc.reg, HEX);
 
-    abc.bit.bits1_0=1;
-    abc.bit.bits10_3=3;
-    
+    abc.bit.bits1_0 = 1;
+    abc.bit.bits10_3 = 3;
+
     Serial.print("word: "); Serial.println(abc.reg, HEX);
     Serial.print("bits: "); Serial.println(abc.bit.bits10_3, HEX);
 
     Serial.println("\r\nregisters: ");
-    testptr =  (uint8_t *)( &abc);
+    testptr = (uint8_t*)(&abc);
     testptr[0] = 'a';
     testptr[1] = 'b';
     testptr[2] = 'c';
     testptr[3] = 'd';
-    
+
     Serial.println(testptr[0], HEX);
     Serial.println(testptr[1], HEX);
     Serial.println(testptr[2], HEX);
     Serial.println(testptr[3], HEX);
 
-    
-    
+
+
     uint32_t* tstp = (uint32_t*)(testptr);
     Serial.println(*tstp, HEX);
     Serial.print("word: "); Serial.println(abc.reg, HEX);

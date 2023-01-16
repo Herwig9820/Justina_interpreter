@@ -165,21 +165,21 @@ void loop() {
         // read character from local terminal (Serial), if a character is available
         if (Serial.available() > 0) {
             char localChar = Serial.read();
-#if withTCP
+        #if withTCP
             // mechanism to gain back local control, e.g. if remote connection (TCP) lost 
             bool forceLocal = (localChar == 0x01);                                      // character read from Serial is 0x01 ? force switch to local console      
             if (forceLocal && console_isRemoteTerm) { switchConsole(); }              // if console is currently remote terminal (TCP client), set console to local
-#endif
+        #endif
             if (!console_isRemoteTerm) { found = true; c = localChar; }               // if console is currently local terminal (Serial), accept character 
         }
 
-#if withTCP
+    #if withTCP
         // read character from remote terminal (TCP client), if a character is available
         if (myTCPconnection.getClient()->available() > 0) {
             char remoteChar = myTCPconnection.getClient()->read();
             if (console_isRemoteTerm) { found = true; c = remoteChar; }               // if console is currently remote terminal (TCP client), accept character
         }
-#endif
+    #endif
 
         if (!found || (c < ' ')) { break; }                                           // no character to process (also discard control characters)
 
@@ -189,83 +189,83 @@ void loop() {
 
         switch (tolower(c)) {
 
-#if withTCP
-        case '0':
-            myTCPconnection.requestAction(action_1_restartWiFi);
-            pConsole->println("(Re-)starting WiFi...");
-            break;
+        #if withTCP
+            case '0':
+                myTCPconnection.requestAction(action_1_restartWiFi);
+                pConsole->println("(Re-)starting WiFi...");
+                break;
 
-        case '1':
-            myTCPconnection.requestAction(action_0_disableWiFi);
-            pConsole->println("Disabling WiFi...");
-            break;
+            case '1':
+                myTCPconnection.requestAction(action_0_disableWiFi);
+                pConsole->println("Disabling WiFi...");
+                break;
 
-        case '2':
-            myTCPconnection.requestAction(action_2_TCPkeepAlive);
-            pConsole->println("Enabling TCP...");                                     // needs WiFi to be enabled and connected
-            break;
+            case '2':
+                myTCPconnection.requestAction(action_2_TCPkeepAlive);
+                pConsole->println("Enabling TCP...");                                     // needs WiFi to be enabled and connected
+                break;
 
-        case '3':
-            if (console_isRemoteTerm) { pConsole->println("Cannot disable TCP while console is remote"); }
-            else {
-                myTCPconnection.requestAction(action_4_TCPdisable);
-                pConsole->println("Disabling TCP...");
-            }
-            break;
+            case '3':
+                if (console_isRemoteTerm) { pConsole->println("Cannot disable TCP while console is remote"); }
+                else {
+                    myTCPconnection.requestAction(action_4_TCPdisable);
+                    pConsole->println("Disabling TCP...");
+                }
+                break;
 
-        case '4':                                                                       // set TCP server to verbose
-            myTCPconnection.setVerbose(true);
-            pConsole->println("TCP server: verbose");
-            break;
+            case '4':                                                                       // set TCP server to verbose
+                myTCPconnection.setVerbose(true);
+                pConsole->println("TCP server: verbose");
+                break;
 
-        case '5':                                                                       // set TCP server to silent
-            myTCPconnection.setVerbose(false);
-            pConsole->println("TCP server: silent");
-            break;
+            case '5':                                                                       // set TCP server to silent
+                myTCPconnection.setVerbose(false);
+                pConsole->println("TCP server: silent");
+                break;
 
-        case '6':                                                                       // if console is currently local terminal, switch to remote
-            if (console_isRemoteTerm) { pConsole->println("Nothing to do"); }
-            else { switchConsole(); }
-            break;
+            case '6':                                                                       // if console is currently local terminal, switch to remote
+                if (console_isRemoteTerm) { pConsole->println("Nothing to do"); }
+                else { switchConsole(); }
+                break;
 
-        case '7':                                                                       // if console is currently remote terminal, switch to local
-            if (!console_isRemoteTerm) { pConsole->println("Nothing to do"); }
-            else { switchConsole(); }
+            case '7':                                                                       // if console is currently remote terminal, switch to local
+                if (!console_isRemoteTerm) { pConsole->println("Nothing to do"); }
+                else { switchConsole(); }
 
-            break;
-#endif
-        case '8':
-            //// test
-            startTime = millis();
-            quitRequested = false;
+                break;
+            #endif
+            case '8':
+                //// test
+                startTime = millis();
+                quitRequested = false;
 
-            // start interpreter: control will not return to here until the user quits, because it has its own 'main loop'
-            heartbeatPeriod = 250;
-            withinApplication = true;                                                   // flag that control will be transferred to an 'application'
-            if (!interpreterInMemory) {
-                pJustina = new  Justina_interpreter(pConsole);// if interpreter not running: create an interpreter object on the heap
+                // start interpreter: control will not return to here until the user quits, because it has its own 'main loop'
+                heartbeatPeriod = 250;
+                withinApplication = true;                                                   // flag that control will be transferred to an 'application'
+                if (!interpreterInMemory) {
+                    pJustina = new  Justina_interpreter(pConsole);// if interpreter not running: create an interpreter object on the heap
 
-                // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
-                // this callback function will be called regularly, e.g. every time the interpreter reads a character
-                pJustina->setMainLoopCallback((&housekeeping));                    // set callback function to housekeeping routine in this .ino file (pass 'housekeeping' routine address to Justina_interpreter library)
+                    // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
+                    // this callback function will be called regularly, e.g. every time the interpreter reads a character
+                    pJustina->setMainLoopCallback((&housekeeping));                    // set callback function to housekeeping routine in this .ino file (pass 'housekeeping' routine address to Justina_interpreter library)
 
-                pJustina->setUserFcnCallback((&userFcn_readPort));                // pass user function addresses to Justina_interpreter library (return value 'true' indicates success)
-                pJustina->setUserFcnCallback((&userFcn_writePort));
-                pJustina->setUserFcnCallback((&userFcn_togglePort));
-            }
-            interpreterInMemory = pJustina->run(pConsole, pTerminal, terminalCount);                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
+                    pJustina->setUserFcnCallback((&userFcn_readPort));                // pass user function addresses to Justina_interpreter library (return value 'true' indicates success)
+                    pJustina->setUserFcnCallback((&userFcn_writePort));
+                    pJustina->setUserFcnCallback((&userFcn_togglePort));
+                }
+                interpreterInMemory = pJustina->run(pConsole, pTerminal, terminalCount);                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
 
-            if (!interpreterInMemory) {                                               // return from interpreter: remove from memory as well ?
-                delete pJustina;                                                     // cleanup and delete calculator object itself
-                pJustina = nullptr;                                                  // only to indicate memory is released
-            }
+                if (!interpreterInMemory) {                                               // return from interpreter: remove from memory as well ?
+                    delete pJustina;                                                     // cleanup and delete calculator object itself
+                    pJustina = nullptr;                                                  // only to indicate memory is released
+                }
 
-            heartbeatPeriod = 500;
-            withinApplication = false;                                                  // return from application
-            break;
+                heartbeatPeriod = 500;
+                withinApplication = false;                                                  // return from application
+                break;
 
-        default:
-            pConsole->println("This is not a valid choice");
+            default:
+                pConsole->println("This is not a valid choice");
         }
         pConsole->println(menu);                                                      // show menu again
     } while (false);
@@ -346,7 +346,7 @@ void housekeeping(bool& requestQuit, long& appFlags) {
 
     heartbeat();                                                                        // blink a led to show program is running
 
-    if (errorCondition ^ (appFlags & Justina_interpreter:: appFlag_errorConditionBit)) { errorCondition = (appFlags & Justina_interpreter::appFlag_errorConditionBit);  digitalWrite(ERROR_PIN, errorCondition); }  // only write if change detected
+    if (errorCondition ^ (appFlags & Justina_interpreter::appFlag_errorConditionBit)) { errorCondition = (appFlags & Justina_interpreter::appFlag_errorConditionBit);  digitalWrite(ERROR_PIN, errorCondition); }  // only write if change detected
     if (statusA ^ (appFlags & Justina_interpreter::appFlag_statusAbit)) { statusA = (appFlags & Justina_interpreter::appFlag_statusAbit);  digitalWrite(STATUS_A_PIN, statusA); }  // only write if change detected
     if (statusB ^ (appFlags & Justina_interpreter::appFlag_statusBbit)) { statusB = (appFlags & Justina_interpreter::appFlag_statusBbit);  digitalWrite(STATUS_B_PIN, statusB); }  // only write if change detected
     if (waitingForUser ^ (appFlags & Justina_interpreter::appFlag_waitingForUser)) { waitingForUser = (appFlags & Justina_interpreter::appFlag_waitingForUser);  digitalWrite(WAIT_FOR_USER_PIN, waitingForUser); }  // only write if change detected
@@ -374,7 +374,7 @@ void housekeeping(bool& requestQuit, long& appFlags) {
                 switchConsole();                                                        // set console to local
             }
         }
-}
+    }
 #endif
 }
 
@@ -440,15 +440,14 @@ void heartbeat() {
 // example: show how to read and modify data supplied
 // --------------------------------------------------
 
-void userFcn_readPort(const void** pdata, const char* valueType) {     // data: can be anything, as long as user function knows what to expect
+void userFcn_readPort(const void** pdata, const char* valueType, const int argCount) {     // data: can be anything, as long as user function knows what to expect
 
-    pConsole->println("*** Justina was here ***");
+    pConsole->print("arg count: "); pConsole->println(argCount);
 
     char isVariableMask = 0x80;             // as defined in Justina
 
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < argCount; i++) {
         // data available ?
-        if ((valueType[i] & Justina_interpreter::value_typeMask) == Justina_interpreter::value_noValue) { continue; }       // no data
 
         long* pLong{};          // pointer to long
         float* pFloat{};          // pointer to float
@@ -465,8 +464,8 @@ void userFcn_readPort(const void** pdata, const char* valueType) {     // data: 
         else { pText = (char*)pdata[i]; }                                               // copy a pointer to a character string argument
 
         // change data (is safe -> after return, will have no effect for constants) - you can always check here for variable / constant (see above)
-        if (isLong) { *pLong += 10+i; }
-        else if (isFloat) { *pFloat += 10.+i; }
+        if (isLong) { *pLong += 10 + i; }
+        else if (isFloat) { *pFloat += 10. + i; }
         else {
             if (strlen(pText) >= 10) { pText[7] = '\0'; }  // do NOT increase the length of strings
             if (strlen(pText) >= 5) { pText[3] = pText[4]; pText[4] = '>'; }  // do NOT increase the length of strings
@@ -478,7 +477,10 @@ void userFcn_readPort(const void** pdata, const char* valueType) {     // data: 
         if (isLong) { pConsole->println(*pLong); }
         else if (isFloat) { pConsole->println(*pFloat); }
         else { pConsole->println(pText); }
+
     };
+    pConsole->println("*** Justina was here ***");
+    return;
 }
 
 
@@ -486,13 +488,13 @@ void userFcn_readPort(const void** pdata, const char* valueType) {     // data: 
 // example: a few other callback routines
 // --------------------------------------
 
-void userFcn_writePort(const void** pdata, const char* valueType) {
+void userFcn_writePort(const void** pdata, const char* valueType, const int argCount) {
     pConsole->println("*** Justina was here too ***");
     // do your thing here
 };
 
 
-void userFcn_togglePort(const void** pdata, const char* valueType) {
+void userFcn_togglePort(const void** pdata, const char* valueType, const int argCount) {
     pConsole->println("*** Justina just passed by ***");
     // do your thing here
 };

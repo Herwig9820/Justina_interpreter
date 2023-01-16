@@ -160,13 +160,13 @@ class Justina_interpreter {
         cmdcod_program,
         cmdcod_delete,
         cmdcod_clear,
-        cmdcod_vars,
+        cmdcod_printVars,
         cmdcod_printCB,
         cmdcod_printProg,
         cmdcod_printCallSt,
         cmdcod_function,
         cmdcod_static,
-        cmdcod_local,
+        cmdcod_constVar,
         cmdcod_var,
         cmdcod_for,
         cmdcod_while,
@@ -430,6 +430,7 @@ class Justina_interpreter {
         result_alphaConstNotAllowedHere,
         result_numConstNotAllowedHere,
         result_assignmNotAllowedHere,
+        result_cannotChangeConstantValue,
         result_identifierNotAllowedHere,
 
         // token expected errors
@@ -469,6 +470,7 @@ class Justina_interpreter {
         result_redefiningIntFunctionNotAllowed,
         result_undefinedFunctionOrArray,
         result_arrayParamMustHaveEmptyDims,
+        result_constantArrayNotAllowed,
         result_functionNeedsParentheses,
 
         // variable errors
@@ -478,6 +480,7 @@ class Justina_interpreter {
         result_varDefinedAsArray,
         result_varDefinedAsScalar,
         result_varControlVarInUse,
+        result_controlVarIsConstant,
         result_illegalInDeclaration,
         result_illegalInProgram,
         result_noOpenFunction,
@@ -583,7 +586,7 @@ class Justina_interpreter {
         result_stringTooLong,
 
         // abort, kill, quit, debug
-        result_noProgramStopped = 3400,        // 'Go' command not allowed because not in debug mode
+        result_noProgramStopped = 3400,        // 'go' command not allowed because not in debug mode
         result_notWithinBlock,
         result_skipNotAllowedHere,
 
@@ -591,7 +594,9 @@ class Justina_interpreter {
         result_eval_nothingToEvaluate = 3500,
         result_eval_parsingError,
 
+        // **************************************************
         // *** MANDATORY =>LAST<= range of errors: events ***
+        // **************************************************
         result_startOfEvents = 4000,
 
         // abort, kill, quit, stop, skip debug: EVENTS (first handled as errors - which they are not - initially following the same flow)
@@ -698,15 +703,15 @@ class Justina_interpreter {
 
 
 
-    // type of parenthesis level
+    // type & info about of parenthesis level
     static constexpr uint8_t extFunctionBit{ B00000001 };
     static constexpr uint8_t extFunctionPrevDefinedBit{ B00000010 };
     static constexpr uint8_t intFunctionBit{ B00000100 };
     static constexpr uint8_t openParenthesisBit{ B00001000 };                                  // not a function
     static constexpr uint8_t arrayBit{ B00010000 };
-
     static constexpr uint8_t varAssignmentAllowedBit{ B00100000 };
     static constexpr uint8_t varHasPrefixIncrDecrBit{ B01000000 };
+    static constexpr uint8_t varIsConstantBit{ B10000000 };
 
 
     // commands (FUNCTION, FOR, ...): allowed command parameters (naming: cmdPar_<n[nnn]> with A'=variable with (optional) assignment, 'E'=expression, 'E'=expression, 'R'=keyword
@@ -778,7 +783,10 @@ class Justina_interpreter {
     static constexpr uint8_t var_scopeToSpecify = 0 << 4;             // scope is not yet defined (temporary use during parsing; never stored in token)
 
     // bit b3: variable is an array (and not a scalar)
-    static constexpr uint8_t var_isArray = 0x08;                     // stored with variable attributes and in 'variable' token. Can not be changed at runtime
+    static constexpr uint8_t var_isArray = 0x08;                     // stored with variable attributes and in 'variable' token. Value can not be changed during execution
+
+    // bitb2: variable is a constant
+    static constexpr uint8_t var_isConstantVar = 0x04;                     // stored with variable attributes and in 'variable' token. Can not be changed at runtime
 
     // bit 0 (maintain in token only): 'forced function variable in debug mode' (for pretty printing only)
     static constexpr uint8_t var_isForcedFunctionVar = 1;
@@ -789,11 +797,11 @@ class Justina_interpreter {
     // Note: because the value type is not fixed for scalar variables (type can dynamically change at runtime), this info is not maintained in the parsed 'variable' token 
 
 public:
-    static constexpr uint8_t value_typeMask = 0x07;                    // mask: float, char* 
-    static constexpr uint8_t value_noValue = 0 << 0;
-    static constexpr uint8_t value_isLong = 1 << 0;
-    static constexpr uint8_t value_isFloat = 2 << 0;
-    static constexpr uint8_t value_isStringPointer = 3 << 0;
+    static constexpr uint8_t value_typeMask = 0x03;                    // mask for value type 
+    static constexpr uint8_t value_isVarRef = 0x03;
+    static constexpr uint8_t value_isLong = 0x00;
+    static constexpr uint8_t value_isFloat = 0x01;
+    static constexpr uint8_t value_isStringPointer = 0x02;
 
     // application flag bits:flags signaling specific Justina status conditions
     static constexpr long appFlag_errorConditionBit = 0x01L;       // bit 0: a Justina parsing or execution error has occured
@@ -810,7 +818,6 @@ private:
     static constexpr long appFlag_stoppedInDebug = 0x30L;
 
 
-    static constexpr uint8_t value_isVarRef = 4 << 0;
 
     // constants used during execution, only stored within the stack for value tokens
 
@@ -940,7 +947,7 @@ private:
     struct VarOrConstLvl {
         char tokenType;
         char valueType;
-        char variableAttributes;                                    // is array; is array element; SOURCE variable scope
+        char sourceVarAttributes;                                    // is array; is array element; SOURCE variable scope
         char valueAttributes;
         char* tokenAddress;                                     // must be second 4-byte word, only for finding source error position during unparsing (for printing)
         Val value;                                              // float or pointer (4 byte)
@@ -1012,7 +1019,7 @@ private:
         // value area pointers (note: a value is a long, a float or a pointer to a string or array, or (if reference): pointer to 'source' (referenced) variable))
         Val* pLocalVarValues;           // points to local variable value storage area
         char** ppSourceVarTypes;        // only if local variable is reference to variable or array element: pointer to 'source' variable value type  
-        char* pVariableAttributes;      // local variable: value type (float, local string or reference); 'source' (if reference) or local variable scope (user, global, static; local, param) 
+        char* pSourceVarAttributes;      // local variable: value type (float, local string or reference); 'source' (if reference) or local variable scope (user, global, static; local, param) 
 
         char* pNextStep;                // next step to execute (look ahead)
         char* errorStatementStartStep;  // first token in statement where execution error occurs (error reporting)
@@ -1099,16 +1106,11 @@ private:
     static constexpr CmdBlockDef cmdBlockOpenBlock_loop{ block_alterFlow,block_inOpenLoopBlock,block_na,block_na };        // only if an open FOR or WHILE block 
     static constexpr CmdBlockDef cmdBlockOpenBlock_function{ block_alterFlow,block_inOpenFunctionBlock,block_na,block_na };// only if an open FUNCTION definition block 
 
-    // other commands: first value indicates it's not a block command, second value specifies command (last positions not used)
-    static constexpr CmdBlockDef cmdProgram{ block_none, cmd_program , block_na , block_na };
-    static constexpr CmdBlockDef cmdGlobalVar{ block_none, cmd_globalVar , block_na , block_na };
-    static constexpr CmdBlockDef cmdLocalVar{ block_none, cmd_localVar , block_na , block_na };
-    static constexpr CmdBlockDef cmdStaticVar{ block_none, cmd_staticVar , block_na , block_na };
-    static constexpr CmdBlockDef cmdDeleteVar{ block_none, cmd_deleteVar , block_na , block_na };
-    static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na,block_na,block_na };                                   // not a 'block' command
-
     // used to close any type of currently open inner block
     static constexpr CmdBlockDef cmdBlockGenEnd{ block_genericEnd,block_endPos,block_na,block_endPos };            // all block types: block end 
+
+    // other commands: first value indicates it's not a block command, other positions not used
+    static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na,block_na,block_na };                                   // not a 'block' command
 
     // sizes MUST be specified AND must be exact
     static const ResWordDef _resWords[45];                          // keyword names
@@ -1130,9 +1132,9 @@ private:
     bool _isLocalVarCmd = false;                                // LOCAL command is being parsed
     bool _isStaticVarCmd = false;                               // STATIC command is being parsed
     bool _isAnyVarCmd = false;                                     // VAR, LOCAL or STATIC command is being parsed
+    bool _isConstVarCmd = false;
     bool _isDeleteVarCmd = false;
     bool _isForCommand = false;
-    bool _isLoadProgramCmd = false;////weg
     bool _initiateProgramLoad = false;
 
 
@@ -1148,6 +1150,7 @@ private:
     int _functionIndex{ 0 };
     int _variableNameIndex{ 0 };
     int _variableScope{ 0 };
+    bool _varIsConstant{0};
 
     int _tokenIndex{ 0 };
 
@@ -1176,6 +1179,7 @@ private:
 
     // used for expression syntax checking (parsing)
     bool _thisLvl_lastIsVariable;                               // variable name, array name with 
+    bool _thislvl_lastIsConstVar;
     bool _thisLvl_assignmentStillPossible;
     bool _thisLvl_lastOpIsIncrDecr;
 
@@ -1253,7 +1257,7 @@ private:
     char _statement[MAX_STATEMENT_LEN + 1] = "";
     bool _programMode{ false };
     bool _quitJustina{ false };
-    bool _keepInMemory{ true };                        //// maak afhankelijk van command parameter
+    bool _keepInMemory{ true };
     bool _isPrompt{ false };
 
     int _userVarCount{ 0 };                                        // counts number of user variables (names and values) 
@@ -1369,7 +1373,7 @@ private:
     char* _pImmediateCmdStackTop{ nullptr };
 
     Val lastResultValueFiFo[MAX_LAST_RESULT_DEPTH];                // keep last evaluation results
-    char lastResultTypeFiFo[MAX_LAST_RESULT_DEPTH]{ value_noValue };
+    char lastResultTypeFiFo[MAX_LAST_RESULT_DEPTH]{  };
 
 
     // evaluation stack
@@ -1413,7 +1417,7 @@ private:
 
     void (*_housekeepingCallback)(bool& requestQuit, long& appFlags);                                         // pointer to callback function for heartbeat
 
-    void (*_callbackUserProcStart[_userCBarrayDepth])(const void** pdata, const char* valueType);             // user functions: pointers to c++ procedures                                   
+    void (*_callbackUserProcStart[_userCBarrayDepth])(const void** pdata, const char* valueType, const int argCount);             // user functions: pointers to c++ procedures                                   
 
     char _callbackUserProcAlias[_userCBarrayDepth][MAX_IDENT_NAME_LEN + 1];       // user functions aliases                                   
     void* _callbackUserData[_userCBarrayDepth][3]{ nullptr };                          // user functions: pointers to data                                   
@@ -1427,7 +1431,7 @@ public:
     Justina_interpreter(Stream* const pConsole);               // constructor
     ~Justina_interpreter();               // deconstructor
     bool setMainLoopCallback(void (*func)(bool& requistQuit, long& appFlags));                   // set callback functions
-    bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType));
+    bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType, const int argCount));
     bool run(Stream* const pConsole, Stream** const pTerminal, int definedTerms);
 
 private:
@@ -1466,7 +1470,7 @@ private:
 
     bool expandStringBackslashSequences(char*& input);
 
-    void* fetchVarBaseAddress(TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& variableAttributes, char& sourceVarAttributes);
+    void* fetchVarBaseAddress(TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& sourceVarAttributes);
     void* arrayElemAddress(void* varBaseAddress, int* dims);
 
     execResult_type  exec(char* startHere);
@@ -1508,7 +1512,7 @@ private:
 
     execResult_type copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, bool* argIsArray, char* valueType, Val* args, bool passVarRefOrConst = false);
 
-    int findTokenStep(int tokenTypeToFind, char tokenCodeToFind, char*& pStep);
+    int findTokenStep(char*& pStep, int tokenTypeToFind, char tokenCodeToFind, char tokenCode2ToFind = -1);
     int jumpTokens(int n, char*& pStep, int& tokenCode);
     int jumpTokens(int n, char*& pStep);
     int jumpTokens(int n);
