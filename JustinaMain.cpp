@@ -364,7 +364,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
 
     {"declareCB",       cmdcod_declCB,          cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_110,     cmdBlockNone},
     {"clearCB",         cmdcod_clearCB,         cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_102,     cmdBlockNone},
-    {"callCpp",         cmdcod_callback,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_101,     cmdBlockNone},
+    {"callcpp",         cmdcod_callback,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_101,     cmdBlockNone},
 };
 
 
@@ -748,6 +748,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     _definedTerminals = definedTerms;
 
     _coldStart = false;             // can be used if needed in this procedure, to determine whether this was a cold or warm start
+
 
     do {
         // when loading a program, as soon as first printable character of a PROGRAM is read, each subsequent character needs to follow after the previous one within a fixed time delay, handled by getKey().

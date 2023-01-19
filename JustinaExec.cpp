@@ -28,7 +28,7 @@
 
 #include "Justina.h"
 
-#define printCreateDeleteListHeapObjects 1
+#define printCreateDeleteListHeapObjects 0
 #define printProcessedTokens 0
 #define debugPrint 0
 #define printParsedStatementStack 0
@@ -1347,7 +1347,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     }
                     checkForCancel = true;
 
-                    if ((argIsArray[1]) && (valueType[1] != value_isStringPointer)) { return result_array_valueTypeIsFixed; }   // an array cannot change type: it needs to be string te receive result
+                    if ((argIsArray[1]) && (valueType[1] != value_isStringPointer)) { return result_array_valueTypeIsFixed; }   // an array cannot change type: it needs to be string to receive result
                     if (checkForDefault && (valueType[1] != value_isStringPointer)) { return result_arg_stringExpected; }       // default supplied: it needs to be string
 
                     char s[80] = "===== Input (\\c to cancel";                                                                  // title static text
@@ -1407,7 +1407,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         if (strlen(input) == 0) { args[1].pStringConst = nullptr; }
                         else {
                             // note that for reference variables, the variable type fetched is the SOURCE variable type
-                            int varScope = pStackLvl->varOrConst.sourceVarAttributes & var_scopeMask;
+                            int varScope = pStackLvl->varOrConst.sourceVarScopeAndFlags & var_scopeMask;
                             int stringlen = min(strlen(input), MAX_ALPHA_CONST_LEN);
                             (varScope == var_isUser) ? _userVarStringObjectCount++ : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount++ : _localVarStringObjectCount++;
 
@@ -1680,24 +1680,24 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             const char isVariable = 0x80;                                                               // mask: is variable (not a constant) 
 
             // if more than 8 arguments are supplied, excess arguments are discarded
-            Val args[8]{  };                                                                            // values to be passed to user routine
+            Val args[8]{}, dummyArgs[8]{};                                                                            // values to be passed to user routine
             char valueType[8]{ };                             // value types (long, float, char string)
             char varScope[8]{};                                                                         // if variable: variable scope (user, program global, static, local)
-            bool argIsVar[8]{};                                                                         // flag: is variable (scalar or aray)
+            bool argIsNonConstantVar[8]{};                                                                         // flag: is variable (scalar or aray)
             bool argIsArray[8]{};                                                                       // flag: is array element
 
-            const void* values[8]{};                                                                    // to keep it simple for the c++ user writing the user routine, we simply pass const void pointers
+            const void* pValues[8]{};                                                                    // to keep it simple for the c++ user writing the user routine, we simply pass const void pointers
 
-            // any data to pass ? (optional arguments 2 to 9)
+            // any data to pass ? (optional arguments 2 to 9: data)
             if (cmdParamCount >= 2) {                                                                   // first argument (callback procedure) processed (but still on the stack)
-                copyValueArgsFromStack(pStackLvl, cmdParamCount - 1, argIsVar, argIsArray, valueType, args, true);  // creates a NEW temporary string object if empty string OR or constant (non-variable) string 
+                copyValueArgsFromStack(pStackLvl, cmdParamCount - 1, argIsNonConstantVar, argIsArray, valueType, args, true, dummyArgs);  // creates a NEW temporary string object if empty string OR or constant (non-variable) string 
                 pStackLvl = pStackLvlFirstValueArg;     // set stack level again to first value argument
                 for (int i = 0; i < cmdParamCount - 1; i++) {
-                    if (argIsVar[i]) {                                                                  // is this a variable ? (not a constant)
-                        valueType[i] |= isVariable;                                                     // flag as variable (scalar or array element)
-                        varScope[i] = (pStackLvl->varOrConst.sourceVarAttributes & var_scopeMask);       // remember variable scope (user, program global, local, static) 
+                    if (argIsNonConstantVar[i]) {                                                                  // is this a 'changeable' variable ? (not a constant & not a constant variable)
+                        valueType[i] |= isVariable;                                                     // flag as 'changeable' variable (scalar or array element)
+                        varScope[i] = (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_scopeMask);       // remember variable scope (user, program global, local, static) 
                     }
-                    values[i] = args[i].pBaseValue;                                                     // set void pointer to: integer, float, char* 
+                    pValues[i] = args[i].pBaseValue;                                                     // copy pointers for safety (protect original pointers from changes by c++ routine) 
                     pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
                 }
             }
@@ -1706,7 +1706,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // call user routine
             // -----------------
 
-            _callbackUserProcStart[index](values, valueType, cmdParamCount - 1);                                           // call back user procedure
+            _callbackUserProcStart[index](pValues, valueType, cmdParamCount - 1);                          // pointers to values copied for safety
 
 
             // postprocess: check any strings RETURNED by callback procedure
@@ -1715,8 +1715,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             pStackLvl = pStackLvlFirstValueArg;                                                         // set stack level again to first value argument
             for (int i = 0; i < 8; i++) {
                 if ((valueType[i] & value_typeMask) == value_isStringPointer) {
-
-                    // string COPY (or newly created empty variable string) passed to user routine ? (only if string passed is empty string OR or constant (non-variable) string)
+                    // string argument was a constant (including a CONST variable) OR it was empty (null pointer) ?  
+                    // => a string copy or a new string solely consisting of a '\0' terminator (intermediate string) was passed to user routine and needs to be deleted 
                     if (valueType[i] & passCopyToCallback) {
                     #if printCreateDeleteListHeapObjects
                         Serial.print("----- (Intermd str) "); Serial.println((uint32_t)args[i].pStringConst - RAMSTART);
@@ -1725,17 +1725,17 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         _intermediateStringObjectCount--;
                     }
 
-                    // callback routine changed non-empty VARIABLE string into empty variable string ("\0") ?
+                    // string argument was a (NON-CONSTANT) variable string: no copy was made, the string itself was passed to the user routine
+                    // did the user routine change it to an empty, '\0' terminated string ?
+                    // then this variable string object needs to be deleted and the pointer to it needs to be replaced by a null pointer (Justnia convention)
                     else if (strlen(args[i].pStringConst) == 0) {
 
                     #if printCreateDeleteListHeapObjects 
                         Serial.print((varScope[i] == var_isUser) ? "----- (usr var str) " : ((varScope[i] == var_isGlobal) || (varScope[i] == var_isStaticInFunc)) ? "----- (var string ) " : "----- (loc var str) ");
                         Serial.println((uint32_t)args[i].pStringConst - RAMSTART);
                     #endif
-                        delete[]args[i].pStringConst;                                                   // delete variable string
+                        delete[]args[i].pStringConst;                                                   // delete original variable string
                         (varScope[i] == var_isUser) ? _userVarStringObjectCount-- : ((varScope[i] == var_isGlobal) || (varScope[i] == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount-- : _localVarStringObjectCount--;
-
-                        // set variable string pointer to null pointer
                         *pStackLvl->varOrConst.value.ppStringConst = nullptr;                           // change pointer to string (in variable) to null pointer
                     }
                 }
@@ -2352,12 +2352,12 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
                     #if printCreateDeleteListHeapObjects
                         Serial.print("----- (LOCAL STORAGE) ");   Serial.println((uint32_t)(_activeFunctionData.pLocalVarValues) - RAMSTART);
                     #endif
-                        deleteArrayElementStringObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pSourceVarAttributes, localVarCount, paramOnlyCount, false, false, true);
-                        deleteVariableValueObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pSourceVarAttributes, localVarCount, paramOnlyCount, false, false, true);
+                        deleteArrayElementStringObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, paramOnlyCount, false, false, true);
+                        deleteVariableValueObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, paramOnlyCount, false, false, true);
 
                         // release local variable storage for function that has been called
                         delete[] _activeFunctionData.pLocalVarValues;
-                        delete[] _activeFunctionData.pSourceVarAttributes;
+                        delete[] _activeFunctionData.pVariableAttributes;
                         delete[] _activeFunctionData.ppSourceVarTypes;
                         _localVarValueAreaCount--;
                     }
@@ -2552,7 +2552,7 @@ void Justina_interpreter::makeIntermediateConstant(LE_evalStack* pEvalStackLvl) 
         pEvalStackLvl->varOrConst.valueType = valueType;
         pEvalStackLvl->varOrConst.tokenType = tok_isConstant;              // use generic constant type
         pEvalStackLvl->varOrConst.valueAttributes = constIsIntermediate;             // is an intermediate result (intermediate constant strings must be deleted when not needed any more)
-        pEvalStackLvl->varOrConst.sourceVarAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
+        pEvalStackLvl->varOrConst.sourceVarScopeAndFlags = 0x00;                  // not an array, not an array element (it's a constant) 
     }
 }
 
@@ -2718,7 +2718,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execUnaryOperation(bo
         pOperandStackLvl->varOrConst.valueType = resultValueType;
         pOperandStackLvl->varOrConst.tokenType = tok_isConstant;                    // use generic constant type
         pOperandStackLvl->varOrConst.valueAttributes = constIsIntermediate;
-        pOperandStackLvl->varOrConst.sourceVarAttributes = 0x00;                     // not an array, not an array element (it's a constant) 
+        pOperandStackLvl->varOrConst.sourceVarScopeAndFlags = 0x00;                     // not an array, not an array element (it's a constant) 
     }
 
     //  clean up stack (drop operator)
@@ -2774,7 +2774,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
     // - other operators: not both operands are numeric (long, float)
 
     // main if...else level conditions: only include operatorCode tests
-    if (operatorCode == termcod_assign) { if ((op1isString != op2isString) && (_pEvalStackMinus2->varOrConst.sourceVarAttributes & var_isArray)) { return result_array_valueTypeIsFixed; } }
+    if (operatorCode == termcod_assign) { if ((op1isString != op2isString) && (_pEvalStackMinus2->varOrConst.sourceVarScopeAndFlags & var_isArray)) { return result_array_valueTypeIsFixed; } }
     else if (((operatorCode == termcod_plus) || (operatorCode == termcod_plusAssign))) { if (op1isString != op2isString) { return result_operandsNumOrStringExpected; } }
     else if (requiresLongOp) { if (!op1isLong || !op2isLong) { return result_integerExpected; } }
     else { if (op1isString || op2isString) { return result_numberExpected; } }
@@ -2962,7 +2962,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
 
         // the value to be assigned is numeric? upcast or downcast if needed (only for receiving array elements, because arrays cannot change value type)
         if (opResultLong || opResultFloat) {
-            bool assignToArray = (_pEvalStackMinus2->varOrConst.sourceVarAttributes & var_isArray);
+            bool assignToArray = (_pEvalStackMinus2->varOrConst.sourceVarScopeAndFlags & var_isArray);
             bool castToArrayValueType = (assignToArray && (((uint8_t)operand1valueType == value_isLong) ^ opResultLong));
             if (castToArrayValueType) {
                 opResultLong = ((uint8_t)operand1valueType == value_isLong); opResultFloat = !opResultLong;
@@ -2979,7 +2979,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
         // clip it if needed (strings stored in variables have a maximum length)
         else {
             // note that for reference variables, the variable type fetched is the SOURCE variable type
-            int varScope = _pEvalStackMinus2->varOrConst.sourceVarAttributes & var_scopeMask;
+            int varScope = _pEvalStackMinus2->varOrConst.sourceVarScopeAndFlags & var_scopeMask;
 
             // make a copy of the character string and store a pointer to this copy as result (even if operand string is already an intermediate constant)
             // because the value will be stored in a variable, limit to the maximum allowed string length
@@ -3047,7 +3047,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
         _pEvalStackTop->varOrConst.valueType = opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer;     // value type of second operand  
         _pEvalStackTop->varOrConst.tokenType = tok_isConstant;              // use generic constant type
         _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
-        _pEvalStackTop->varOrConst.sourceVarAttributes = 0x00;                  // not an array, not an array element (it's a constant) 
+        _pEvalStackTop->varOrConst.sourceVarScopeAndFlags = 0x00;                  // not an array, not an array element (it's a constant) 
     }
 
 #if debugPrint
@@ -3093,9 +3093,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
     int maxArgs = _functions[functionIndex].maxArgs;
     char fcnResultValueType{};  // init
     Val fcnResult;
-    bool argIsVar[16], argIsLong[16], argIsFloat[16], argIsString[16];
     char argValueType[16];
     Val args[16];
+
+
+    long argIsVarBits{ 0 }, argIsConstantVarBits{ 0 }, argIsLongBits{ 0 }, argIsFloatBits{ 0 }, argIsStringBits{ 0 };
+
+
 
 
     // preprocess: retrieve argument(s) info: variable or constant, value type
@@ -3104,18 +3108,21 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
     if (suppliedArgCount > 0) {
         LE_evalStack* pStackLvl = pFirstArgStackLvl;                                // pointing to first argument on stack
 
+        int bitNmask{ 0x01 };           // lsb
         for (int i = 0; i < suppliedArgCount; i++) {
+
             // value type of args
-            argIsVar[i] = (pStackLvl->varOrConst.tokenType == tok_isVariable);
-            argValueType[i] = argIsVar[i] ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
-            argIsLong[i] = ((uint8_t)argValueType[i] == value_isLong);
-            argIsFloat[i] = ((uint8_t)argValueType[i] == value_isFloat);
-            argIsString[i] = ((uint8_t)argValueType[i] == value_isStringPointer);
+            if (pStackLvl->varOrConst.tokenType == tok_isVariable) { argIsVarBits |= bitNmask; }
+            if (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_isConstantVar) { argIsConstantVarBits |= bitNmask; }
 
-            // fetch args: real constants or pointers to character strings (pointers to arrays: not used) - next line is valid for long values as well
-            if (argIsLong || argIsFloat) { args[i].floatConst = (argIsVar[i] ? (*pStackLvl->varOrConst.value.pFloatConst) : pStackLvl->varOrConst.value.floatConst); }
-            else { args[i].pStringConst = (argIsVar[i] ? (*pStackLvl->varOrConst.value.ppStringConst) : pStackLvl->varOrConst.value.pStringConst); }
+            argValueType[i] = (argIsVarBits & (1 << i)) ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
+            args[i].floatConst = (argIsVarBits & (0x1 << i)) ? (*pStackLvl->varOrConst.value.pFloatConst) : pStackLvl->varOrConst.value.floatConst;// fetch args: line is valid for all value types
 
+            if (((uint8_t)argValueType[i] == value_isLong)) { argIsLongBits |= bitNmask; }
+            if (((uint8_t)argValueType[i] == value_isFloat)) { argIsFloatBits |= bitNmask; }
+            if (((uint8_t)argValueType[i] == value_isStringPointer)) { argIsStringBits |= bitNmask; }
+
+            bitNmask <<= 1;
             pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);     // value fetched: go to next argument
         }
     }
@@ -3131,7 +3138,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         case fnccod_eval:
         {
             // only one argument possible (eval() string)
-            if (argIsLong[0] || argIsFloat[0]) { return result_stringExpected; }
+            if (!(argIsStringBits & (0x1 << 0))) { return result_stringExpected; }
             char resultValueType;
             execResult_type execResult = launchEval(pFunctionStackLvl, args[0].pStringConst);
             if (execResult != result_execOK) { return execResult; }
@@ -3158,7 +3165,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             fcnResultValueType = (suppliedArgCount % 2 == (isSwitch ? 0 : 1)) ? argValueType[suppliedArgCount - 1] : value_isLong;      // init
             fcnResult.longConst = 0; if (suppliedArgCount % 2 == (isSwitch ? 0 : 1)) { fcnResult = args[suppliedArgCount - 1]; }        // OK if default value is not a string or an empty string
 
-            bool testValueIsNumber = argIsLong[0] || argIsFloat[0];                                                                     // (for switch function only)
+            bool testValueIsNumber = (argIsLongBits & (0x1 << 0)) || (argIsFloatBits & (0x1 << 0));                                                                     // (for switch function only)
             bool match{ false };
             int matchIndex{ 0 };
             int matchResultPairs = (suppliedArgCount - (isSwitch ? 1 : 0)) / 2;
@@ -3167,20 +3174,20 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 match = false;      // init
 
                 if (isSwitch) {
-                    if (argIsString[0] && argIsString[matchIndex]) {                                                                    // test value and mmtch value are both strings
+                    if ((argIsStringBits & (0x1 << 0)) && (argIsStringBits & (0x1 << matchIndex))) {                                                                    // test value and mmtch value are both strings
                         if ((args[0].pStringConst == nullptr) || (args[matchIndex].pStringConst == nullptr)) {
                             match = ((args[0].pStringConst == nullptr) && (args[matchIndex].pStringConst == nullptr));                  // equal
                         }
                         else { match = (strcmp(args[0].pStringConst, args[matchIndex].pStringConst) == 0); }
                     }
-                    else if (testValueIsNumber && ((argIsLong[matchIndex]) || (argIsFloat[matchIndex]))) {                              // test value and match value are both numeric
-                        if (argIsLong[0] && argIsLong[matchIndex]) { match = ((args[0].longConst == args[matchIndex].longConst)); }
-                        else { match = (argIsFloat[0] ? args[0].floatConst : (float)args[0].longConst) == (argIsFloat[matchIndex] ? args[matchIndex].floatConst : (float)args[matchIndex].longConst); }
+                    else if (testValueIsNumber && (((argIsLongBits & (0x1 << matchIndex))) || ((argIsFloatBits & (0x1 << matchIndex))))) {                              // test value and match value are both numeric
+                        if ((argIsLongBits & (0x1 << 0)) && (argIsLongBits & (0x1 << matchIndex))) { match = ((args[0].longConst == args[matchIndex].longConst)); }
+                        else { match = ((argIsFloatBits & (0x1 << 0)) ? args[0].floatConst : (float)args[0].longConst) == ((argIsFloatBits & (0x1 << matchIndex)) ? args[matchIndex].floatConst : (float)args[matchIndex].longConst); }
                     }
                 }
                 else {
-                    if (!argIsLong[matchIndex] && !argIsFloat[matchIndex]) { return result_arg_testexpr_numberExpected; }               // test value and match value are both strings
-                    match = (argIsFloat[matchIndex] ? (args[matchIndex].floatConst != 0.) : (args[matchIndex].longConst == !0));
+                    if (!(argIsLongBits & (0x1 << matchIndex)) && !(argIsFloatBits & (0x1 << matchIndex))) { return result_arg_testexpr_numberExpected; }               // test value and match value are both strings
+                    match = ((argIsFloatBits & (0x1 << matchIndex)) ? (args[matchIndex].floatConst != 0.) : (args[matchIndex].longConst == !0));
                 }
 
                 if (match) {
@@ -3213,8 +3220,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // no preliminary restriction on type of arguments
 
             // the first expression is an index into the test expressions: return  
-            if (!argIsLong[0] && !argIsFloat[0]) { return result_arg_numberExpected; }
-            int index = argIsLong[0] ? args[0].longConst : args[0].floatConst;
+            if (!(argIsLongBits & (0x1 << 0)) && !(argIsFloatBits & (0x1 << 0))) { return result_arg_numberExpected; }
+            int index = (argIsLongBits & (0x1 << 0)) ? args[0].longConst : args[0].floatConst;
             if ((index <= 0) || (index >= suppliedArgCount)) { return result_arg_outsideRange; }
             fcnResultValueType = argValueType[index];
             fcnResult = args[index];                                                                                                    // OK if not string or empty string
@@ -3243,18 +3250,18 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             fcnResultValueType = value_isLong;
             fcnResult.longConst = 0;                                                                                                    // init: not found
 
-            bool testValueIsNumber = argIsLong[0] || argIsFloat[0];                                                                     // (for switch function only)
+            bool testValueIsNumber = (argIsLongBits & (0x1 << 0)) || (argIsFloatBits & (0x1 << 0));                                                                     // (for switch function only)
             bool match{ false };
             for (int i = 1; i <= suppliedArgCount - 1; ++i) {
-                if (argIsString[0] && argIsString[i]) {            // test value and mmtch value are both strings
+                if ((argIsStringBits & (0x1 << 0)) && (argIsStringBits & (0x1 << i))) {            // test value and mmtch value are both strings
                     if ((args[0].pStringConst == nullptr) || (args[i].pStringConst == nullptr)) {
                         match = ((args[0].pStringConst == nullptr) && (args[i].pStringConst == nullptr));                               // equal
                     }
                     else { match = (strcmp(args[0].pStringConst, args[i].pStringConst) == 0); }
                 }
-                else if (testValueIsNumber && ((argIsLong[i]) || (argIsFloat[i]))) {                                                    // test value and match value are both numeric
-                    if (argIsLong[0] && argIsLong[i]) { match = ((args[0].longConst == args[i].longConst)); }
-                    else { match = (argIsFloat[0] ? args[0].floatConst : (float)args[0].longConst) == (argIsFloat[i] ? args[i].floatConst : (float)args[i].longConst); }
+                else if (testValueIsNumber && (((argIsLongBits & (0x1 << i))) || ((argIsFloatBits & (0x1 << i))))) {                                                    // test value and match value are both numeric
+                    if ((argIsLongBits & (0x1 << 0)) && (argIsLongBits & (0x1 << i))) { match = ((args[0].longConst == args[i].longConst)); }
+                    else { match = ((argIsFloatBits & (0x1 << 0)) ? args[0].floatConst : (float)args[0].longConst) == ((argIsFloatBits & (0x1 << i)) ? args[i].floatConst : (float)args[i].longConst); }
                 }
 
                 if (match) {
@@ -3283,11 +3290,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         // -----------------
         case fnccod_ubound:
         {
-            if (!argIsLong[1] && !argIsFloat[1]) { return result_arg_integerDimExpected; }
+            if (!(argIsLongBits & (0x1 << 1)) && !(argIsFloatBits & (0x1 << 1))) { return result_arg_integerDimExpected; }
             void* pArray = *pFirstArgStackLvl->varOrConst.value.ppArray;
             int arrayDimCount = ((char*)pArray)[3];
-            int dimNo = argIsLong[1] ? args[1].longConst : int(args[1].floatConst);
-            if (argIsFloat[1]) { if (args[1].floatConst != dimNo) { return result_arg_integerDimExpected; } }
+            int dimNo = (argIsLongBits & (0x1 << 1)) ? args[1].longConst : int(args[1].floatConst);
+            if ((argIsFloatBits & (0x1 << 1))) { if (args[1].floatConst != dimNo) { return result_arg_integerDimExpected; } }
             if ((dimNo < 1) || (dimNo > arrayDimCount)) { return result_arg_dimNumberInvalid; }
 
             fcnResultValueType = value_isLong;
@@ -3315,8 +3322,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         {
             int FiFoElement = 1;                                                                                                        // init: newest FiFo element
             if (suppliedArgCount == 1) {                                                                                                // FiFo element specified
-                if (!argIsLong[0] && !argIsFloat[0]) { return result_arg_numberExpected; }
-                FiFoElement = argIsLong[0] ? args[0].longConst : int(args[0].floatConst);
+                if (!(argIsLongBits & (0x1 << 0)) && !(argIsFloatBits & (0x1 << 0))) { return result_arg_numberExpected; }
+                FiFoElement = (argIsLongBits & (0x1 << 0)) ? args[0].longConst : int(args[0].floatConst);
                 if ((FiFoElement < 1) || (FiFoElement > MAX_LAST_RESULT_DEPTH)) { return result_arg_outsideRange; }
             }
             if (FiFoElement > _lastResultCount) { return result_arg_invalid; }
@@ -3370,46 +3377,50 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             int charsPrinted{ 0 };
 
             // INIT print width, precision, specifier, flags
-            int& width = _printWidth, & precision = ((argIsLong[0] || argIsFloat[0]) ? _printNumPrecision : _printCharsToPrint), & flags = _printFmtFlags;
+            int& width = _printWidth, & precision = (((argIsLongBits & (0x1 << 0)) || (argIsFloatBits & (0x1 << 0))) ? _printNumPrecision : _printCharsToPrint), & flags = _printFmtFlags;
+
+            // optional argument returning #chars that were printed is present ? Variable expected
+            bool hasSpecifierArg = false; // init
+            if (suppliedArgCount >= 3) { hasSpecifierArg = (!(argIsLongBits & (0x1 << 3)) && !(argIsFloatBits & (0x1 << 3))); }             // third argument is either a specifier (string) or set of flags (number)
+            if (suppliedArgCount == (hasSpecifierArg ? 6 : 5)) {      // optional argument returning #chars that were printed is present
+                // if array has a non-numeric type (string), produce error (consistent with the way operators deal with it)
+                bool isArray = (_pEvalStackTop->varOrConst.sourceVarScopeAndFlags & var_isArray);
+                if ((!(argIsLongBits & (0x1 << suppliedArgCount - 1)) && !(argIsFloatBits & (0x1 << suppliedArgCount - 1))) && isArray) { return result_array_valueTypeIsFixed; }
+            }
 
             // test arguments and ADAPT print width, precision, specifier, flags
             // -----------------------------------------------------------------
 
-            execResult_type execResult = checkFmtSpecifiers(false, (!argIsLong[0] && !argIsFloat[0]), suppliedArgCount, argValueType, args, _printNumSpecifier[0], width, precision, flags);
+            execResult_type execResult = checkFmtSpecifiers(false, (!(argIsLongBits & (0x1 << 0)) && !(argIsFloatBits & (0x1 << 0))), suppliedArgCount, argValueType, args, _printNumSpecifier[0], width, precision, flags);
             if (execResult != result_execOK) { return execResult; }
-
-            // optional argument returning #chars that were printed is present ? Variable expected
-            bool hasSpecifierArg = false; // init
-            if (suppliedArgCount >= 3) { hasSpecifierArg = (!argIsLong[3] && !argIsFloat[3]); }                                         // third argument is either a specifier (string) or set of flags (number)
-            if (suppliedArgCount == (hasSpecifierArg ? 6 : 5)) {
-                if (!argIsVar[suppliedArgCount - 1]) { return result_arg_varExpected; }                                                 // it should be a variable
-            }
 
             // prepare format specifier string and format
             // ------------------------------------------
 
             char  fmtString[20];                                                                                                        // long enough to contain all format specifier parts
             char* specifier = "s";
-            if (argIsLong[0] || argIsFloat[0]) {
+            if ((argIsLongBits & (0x1 << 0)) || (argIsFloatBits & (0x1 << 0))) {
                 specifier = _printNumSpecifier;
                 isIntFmt = (specifier[0] == 'X') || (specifier[0] == 'x') || (specifier[0] == 'D') || (specifier[0] == 'd');
             }
             makeFormatString(flags, isIntFmt, specifier, fmtString);
-            printToString(width, precision, (!argIsLong[0] && !argIsFloat[0]), isIntFmt, argValueType, args, fmtString, fcnResult, charsPrinted);
+            printToString(width, precision, (!(argIsLongBits & (0x1 << 0)) && !(argIsFloatBits & (0x1 << 0))), isIntFmt, argValueType, args, fmtString, fcnResult, charsPrinted);
             fcnResultValueType = value_isStringPointer;
 
             // return number of characters printed into (variable) argument if it was supplied
             // -------------------------------------------------------------------------------
 
-            // note: NO errors should occur beyond this point, OR the intermediate string containing the function result should be deleted
             if (suppliedArgCount == (hasSpecifierArg ? 6 : 5)) {      // optional argument returning #chars that were printed is present
-                // if  variable currently holds a non-empty string (indicated by a nullptr), delete char string object
-                execResult_type execResult = deleteVarStringObject(_pEvalStackTop); if (execResult != result_execOK) { return execResult; }
+                bool isConstant = (!(argIsVarBits & (0x1 << suppliedArgCount - 1)) || (_pEvalStackTop->varOrConst.sourceVarScopeAndFlags & var_isConstantVar));
+                if (!isConstant) {
+                    // if  variable currently holds a non-empty string (indicated by a nullptr), delete char string object (it will be replaced by the number of characters printed)
+                    execResult_type execResult = deleteVarStringObject(_pEvalStackTop); if (execResult != result_execOK) { return execResult; }
 
-                // save value in variable and set variable value type to real 
-                // note: if variable reference, then value type on the stack indicates 'variable reference' which should not be changed (but stack level will be deleted now anyway)
-                *_pEvalStackTop->varOrConst.value.pFloatConst = charsPrinted;
-                *_pEvalStackTop->varOrConst.varTypeAddress = (*_pEvalStackTop->varOrConst.varTypeAddress & ~value_typeMask) | value_isFloat;
+                    // save value in variable now, and set variable value type to long 
+                    // note: if variable reference, then value type on the stack indicates 'variable reference' which should not be changed (but stack level will be deleted now anyway)
+                    *_pEvalStackTop->varOrConst.value.pFloatConst = charsPrinted;       // pointer to variable value
+                    *_pEvalStackTop->varOrConst.varTypeAddress = (*_pEvalStackTop->varOrConst.varTypeAddress & ~value_typeMask) | value_isFloat;
+                }
             }
         }
         break;
@@ -3422,9 +3433,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         {
             fcnResultValueType = value_isLong;
             fcnResult.longConst = 0;
-            if (argIsLong[0]) { fcnResult.longConst = args[0].longConst; }
-            else if (argIsFloat[0]) { fcnResult.longConst = (long)args[0].floatConst; }
-            else if (argIsString[0]) { fcnResult.longConst = strtol(args[0].pStringConst, nullptr, 0); }
+            if ((argIsLongBits & (0x1 << 0))) { fcnResult.longConst = args[0].longConst; }
+            else if ((argIsFloatBits & (0x1 << 0))) { fcnResult.longConst = (long)args[0].floatConst; }
+            else if ((argIsStringBits & (0x1 << 0))) { fcnResult.longConst = strtol(args[0].pStringConst, nullptr, 0); }
         }
         break;
 
@@ -3432,9 +3443,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         {
             fcnResultValueType = value_isFloat;
             fcnResult.floatConst = 0.;
-            if (argIsLong[0]) { fcnResult.floatConst = (float)args[0].longConst; }
-            else if (argIsFloat[0]) { fcnResult.floatConst = args[0].floatConst; }
-            else if (argIsString[0]) { fcnResult.floatConst = strtof(args[0].pStringConst, nullptr); }
+            if ((argIsLongBits & (0x1 << 0))) { fcnResult.floatConst = (float)args[0].longConst; }
+            else if ((argIsFloatBits & (0x1 << 0))) { fcnResult.floatConst = args[0].floatConst; }
+            else if ((argIsStringBits & (0x1 << 0))) { fcnResult.floatConst = strtof(args[0].pStringConst, nullptr); }
         }
         break;
 
@@ -3442,13 +3453,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         {
             fcnResultValueType = value_isStringPointer;                                                                                 // init
             fcnResult.pStringConst = nullptr;
-            if (argIsLong[0] || argIsFloat[0]) {
+            if ((argIsLongBits & (0x1 << 0)) || (argIsFloatBits & (0x1 << 0))) {
                 fcnResult.pStringConst = new char[30];                                                                                  // provide sufficient length to store a number
                 _intermediateStringObjectCount++;
-                argIsLong[0] ? sprintf(fcnResult.pStringConst, "%ld", args[0].longConst) : sprintf(fcnResult.pStringConst, "%G", args[0].floatConst);
+                (argIsLongBits & (0x1 << 0)) ? sprintf(fcnResult.pStringConst, "%ld", args[0].longConst) : sprintf(fcnResult.pStringConst, "%G", args[0].floatConst);
 
             }
-            else if (argIsString[0]) {
+            else if ((argIsStringBits & (0x1 << 0))) {
                 if (args[0].pStringConst != nullptr) {
                     fcnResult.pStringConst = new char[strlen(args[0].pStringConst) + 1];
                     _intermediateStringObjectCount++;
@@ -3489,9 +3500,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         case fnccod_fmod:
         {
             for (int i = 0; i < suppliedArgCount; ++i) {
-                if (!argIsLong[i] && !argIsFloat[i]) { return result_numberExpected; }
+                if (!(argIsLongBits & (0x1 << i)) && !(argIsFloatBits & (0x1 << i))) { return result_numberExpected; }
             }
-            float arg1float = argIsLong[0] ? (float)args[0].longConst : args[0].floatConst;                                             // keep original value in args[0]
+            float arg1float = (argIsLongBits & (0x1 << 0)) ? (float)args[0].longConst : args[0].floatConst;                                             // keep original value in args[0]
 
             fcnResultValueType = value_isFloat;                                                                                         // init: return a float
             fcnResult.floatConst = 0.;                                                                                                  // init: return 0. if the Arduino function doesn't return anything
@@ -3521,22 +3532,22 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             else if (functionCode == fnccod_ceil) { fcnResult.floatConst = ceil(arg1float); }
             // Arduino min(long 0, something greater than 0) returns a double very close to zero, but not zero (same for max()). Avoid this.
             else if ((functionCode == fnccod_min) || (functionCode == fnccod_max)) {
-                if (argIsLong[0] && argIsLong[1]) {
+                if ((argIsLongBits & (0x1 << 0)) && (argIsLongBits & (0x1 << 1))) {
                     fcnResultValueType = value_isLong;
                     fcnResult.longConst = (functionCode == fnccod_min) ? min(args[0].longConst, args[1].longConst) : max(args[0].longConst, args[1].longConst);
                 }
                 else {
-                    float arg2float = argIsLong[1] ? (float)args[1].longConst : args[1].floatConst;
+                    float arg2float = (argIsLongBits & (0x1 << 1)) ? (float)args[1].longConst : args[1].floatConst;
                     fcnResult.floatConst = ((arg1float <= arg2float) == (functionCode == fnccod_min)) ? arg1float : arg2float;
                 }
             }
             else if (functionCode == fnccod_abs) {
                 // avoid -0. as Arduino abs() result: use fabs() if result = float value
-                if (argIsLong[0]) { fcnResultValueType = value_isLong; };
-                argIsLong[0] ? fcnResult.longConst = abs(args[0].longConst) : fcnResult.floatConst = fabs(args[0].floatConst);
+                if ((argIsLongBits & (0x1 << 0))) { fcnResultValueType = value_isLong; };
+                (argIsLongBits & (0x1 << 0)) ? fcnResult.longConst = abs(args[0].longConst) : fcnResult.floatConst = fabs(args[0].floatConst);
             }
-            else if (functionCode == fnccod_sign) { fcnResultValueType = value_isLong; fcnResult.longConst = argIsLong[0] ? (args[0].longConst < 0 ? 1 : 0) : signbit(arg1float); }
-            else if (functionCode == fnccod_fmod) { fcnResult.floatConst = fmod(arg1float, argIsLong[1] ? args[1].longConst : args[1].floatConst); }     // second argument cast to float anyway
+            else if (functionCode == fnccod_sign) { fcnResultValueType = value_isLong; fcnResult.longConst = (argIsLongBits & (0x1 << 0)) ? (args[0].longConst < 0 ? 1 : 0) : signbit(arg1float); }
+            else if (functionCode == fnccod_fmod) { fcnResult.floatConst = fmod(arg1float, (argIsLongBits & (0x1 << 1)) ? args[1].longConst : args[1].floatConst); }     // second argument cast to float anyway
 
 
             // test result (do net vtest for subnormal numbers here)
@@ -3572,16 +3583,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         case fnccod_byteRead:           // 2 arguments: value, byte to read (0 to 3). Value returned is between 0x00 and 0xFF.     
         case fnccod_byteWrite:          // 3 arguments: variable, byte to write (0 to 3), value to write (lowest 8 bits of argument). New value is stored in variable and is returned as well.    
         {
-            if (!argIsLong[0] && (functionCode != fnccod_bit)) { return result_arg_integerTypeExpected; }
+            if (!(argIsLongBits & (0x1 << 0)) && (functionCode != fnccod_bit)) { return result_arg_integerTypeExpected; }
             for (int i = 0; i < suppliedArgCount; ++i) {
-                if (!argIsLong[i] && !argIsFloat) { return result_arg_numberExpected; }
-                if (argIsFloat[i]) { args[i].longConst = (long)args[i].floatConst; }          // all arguments have long type now
-            }
-
-            if ((functionCode == fnccod_bitClear) || (functionCode == fnccod_bitSet) || (functionCode == fnccod_bitWrite) ||
-                (functionCode == fnccod_bitsMaskedClear) || (functionCode == fnccod_bitsMaskedSet) || (functionCode == fnccod_bitsMaskedWrite) ||
-                (functionCode == fnccod_byteWrite)) {
-                if (!argIsVar[0]) { return result_arg_varExpected; }                                                                    // requires variable ? test for it
+                if (!(argIsLongBits & (0x1 << i)) && !(argIsFloatBits & (0x1 << i))) { return result_arg_numberExpected; }
+                if ((argIsFloatBits & (0x1 << i))) { args[i].longConst = (long)args[i].floatConst; }          // all arguments have long type now
             }
 
             if (functionCode == fnccod_bit && ((args[0].longConst < 0) || (args[0].longConst > 31))) { return result_arg_outsideRange; }
@@ -3616,8 +3621,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             (functionCode == fnccod_bitsMaskedClear) || (functionCode == fnccod_bitsMaskedSet) || (functionCode == fnccod_bitsMaskedWrite) ||
             (functionCode == fnccod_byteWrite)) {
 
-            char a = _pEvalStackMinus2->varOrConst.valueAttributes;////
-            *_pEvalStackMinus2->varOrConst.value.pLongConst = fcnResult.longConst;                                                      // store result in variable (value type is long already)
+            bool isConstant = (!(argIsVarBits & (0x1 << 0)) || (_pEvalStackMinus2->varOrConst.sourceVarScopeAndFlags & var_isConstantVar)); // first argument is variable ? then store result
+            if (!isConstant) { *_pEvalStackMinus2->varOrConst.value.pLongConst = fcnResult.longConst; }                                      // (note: it's a long already - tested above)
         }
         break;
 
@@ -3633,10 +3638,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         case    fnccod_reg32Write:
         case    fnccod_reg8Write:
         {
-            if (!argIsLong[0]) { return result_arg_integerTypeExpected; }
+            if (!(argIsLongBits & (0x1 << 0))) { return result_arg_integerTypeExpected; }
             for (int i = 1; i < suppliedArgCount; ++i) {
-                if (!argIsLong[i] && !argIsFloat) { return result_arg_numberExpected; }
-                if (argIsFloat[i]) { args[i].longConst = (long)args[i].floatConst; }          // all arguments have long type now
+                if (!(argIsLongBits & (0x1 << i)) && !(argIsFloatBits & (0x1 << i))) { return result_arg_numberExpected; }
+                if ((argIsFloatBits & (0x1 << i))) { args[i].longConst = (long)args[i].floatConst; }          // all arguments have long type now
             }
 
             if (((functionCode == fnccod_reg8Read) || (functionCode == fnccod_reg8Write)) && ((args[1].longConst < 0) || (args[1].longConst > 3))) { return result_arg_outsideRange; }
@@ -3686,8 +3691,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // for all arguments provided: check they are Justina integers or floats
             // no additional checks are done (e.g. floats with fractions)
             for (int i = 0; i < suppliedArgCount; ++i) {
-                if (!argIsLong[i] && !argIsFloat[i]) { return result_arg_numberExpected; }
-                if (argIsFloat[i]) { args[i].longConst = int(args[i].floatConst); }                                                     // all these functions need integer values
+                if (!(argIsLongBits & (0x1 << i)) && !(argIsFloatBits & (0x1 << i))) { return result_arg_numberExpected; }
+                if ((argIsFloatBits & (0x1 << i))) { args[i].longConst = int(args[i].floatConst); }                                                     // all these functions need integer values
             }
             fcnResultValueType = value_isLong;      // init: return a long
             fcnResult.longConst = 0;                // init: return 0 if the Arduino function doesn't return anything
@@ -3750,13 +3755,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         {
             // check that non-empty string is provided; if second argument is given, check it's within range
             // no additional checks are done (e.g. floats with fractions)
-            if (!argIsString[0]) { return result_arg_stringExpected; }
+            if (!(argIsStringBits & (0x1 << 0))) { return result_arg_stringExpected; }
             if (args[0].pStringConst == nullptr) { return result_arg_nonEmptyStringExpected; }
             int length = strlen(args[0].pStringConst);
             int charPos = 1;                                                                                                            // first character in string
             if (suppliedArgCount == 2) {
-                if (!argIsLong[1] && !argIsFloat[1]) { return result_arg_numberExpected; }
-                charPos = argIsLong[1] ? args[1].longConst : int(args[1].floatConst);
+                if (!(argIsLongBits & (0x1 << 1)) && !(argIsFloatBits & (0x1 << 1))) { return result_arg_numberExpected; }
+                charPos = (argIsLongBits & (0x1 << 1)) ? args[1].longConst : int(args[1].floatConst);
                 if ((args[1].longConst < 1) || (args[1].longConst > length)) { return result_outsideRange; }
             }
             fcnResultValueType = value_isLong;                                                                                          // init: return a long
@@ -3785,8 +3790,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
         case fnccod_char:                                                                                                               // convert ASCII code (argument) to 1-character string
         {
-            if (!argIsLong[0] && !argIsFloat[0]) { return result_arg_numberExpected; }
-            int asciiCode = argIsLong[0] ? args[0].longConst : int(args[0].floatConst);
+            if (!(argIsLongBits & (0x1 << 0)) && !(argIsFloatBits & (0x1 << 0))) { return result_arg_numberExpected; }
+            int asciiCode = (argIsLongBits & (0x1 << 0)) ? args[0].longConst : int(args[0].floatConst);
             if ((asciiCode < 0) || (asciiCode > 0x7F)) { return result_arg_outsideRange; }
 
             // result is string
@@ -3804,7 +3809,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
         case fnccod_len:                                                                                                                // return length of a string
         {
-            if (!argIsString[0]) { return result_arg_stringExpected; }
+            if (!(argIsStringBits & (0x1 << 0))) { return result_arg_stringExpected; }
             fcnResultValueType = value_isLong;
             fcnResult.longConst = 0;                                                                                                    // init
             if (args[0].pStringConst != nullptr) { fcnResult.longConst = strlen(args[0].pStringConst); }
@@ -3835,14 +3840,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
             char c{ ' ' };                                                                                                              // init
             if (functionCode == fnccod_repchar) {
-                if (!argIsString[0]) { return result_stringExpected; }
+                if (!(argIsStringBits & (0x1 << 0))) { return result_stringExpected; }
                 if (args[0].pStringConst == nullptr) { return result_arg_nonEmptyStringExpected; }
                 c = args[0].pStringConst[0];                                                                                            // only first character in string will be repeated
             }
 
             int lengthArg = (functionCode == fnccod_repchar) ? 1 : 0;                                                                   // index for argument containing desired length of result string
-            if (!argIsLong[lengthArg] && !argIsFloat[lengthArg]) { return result_arg_numberExpected; }
-            int len = (argIsLong[lengthArg]) ? args[lengthArg].longConst : (long)args[lengthArg].floatConst;                            // convert to long if needed
+            if (!(argIsLongBits & (0x1 << lengthArg)) && !(argIsFloatBits & (0x1 << lengthArg))) { return result_arg_numberExpected; }
+            int len = ((argIsLongBits & (0x1 << lengthArg))) ? args[lengthArg].longConst : (long)args[lengthArg].floatConst;                            // convert to long if needed
             if ((len <= 0) || (len > MAX_ALPHA_CONST_LEN)) { return result_outsideRange; }
 
             // create new string
@@ -3863,7 +3868,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             fcnResultValueType = value_isLong;
             fcnResult.longConst = 0;                                                                                                    // init: nothing found
 
-            if (!argIsString[0] || !argIsString[1]) { return result_arg_stringExpected; }
+            if (!(argIsStringBits & (0x1 << 0)) || !(argIsStringBits & (0x1 << 1))) { return result_arg_stringExpected; }
             if ((args[0].pStringConst == nullptr) || (args[1].pStringConst == nullptr)) {
                 if ((args[0].pStringConst == nullptr) && (args[1].pStringConst == nullptr)) { break; }                                  // equal
                 else { fcnResult.longConst = (args[0].pStringConst == nullptr) ? -1 : 1; break; }
@@ -3882,14 +3887,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             fcnResultValueType = value_isLong;
             fcnResult.longConst = 0;                        // init: nothing found
 
-            if (!argIsString[0] || !argIsString[1]) { return result_arg_stringExpected; }
+            if (!(argIsStringBits & (0x1 << 0)) || !(argIsStringBits & (0x1 << 1))) { return result_arg_stringExpected; }
             if (args[0].pStringConst == nullptr) { break; }                                                                             // string is empty: a substring (even if empty) can not be found
             else if (args[1].pStringConst == nullptr) { fcnResult.longConst = 1; break; }                                               // string is empty: an immediate match at start of string
 
             char* startSearchChar = args[0].pStringConst;                                                                               // init: search for a match from start of string
             if (suppliedArgCount == 3) {
-                if (!argIsLong[2] && !argIsFloat[2]) { return result_arg_numberExpected; }
-                int offset = (argIsLong[2] ? args[2].longConst : (long)args[2].floatConst) - 1;
+                if (!(argIsLongBits & (0x1 << 2)) && !(argIsFloatBits & (0x1 << 2))) { return result_arg_numberExpected; }
+                int offset = ((argIsLongBits & (0x1 << 2)) ? args[2].longConst : (long)args[2].floatConst) - 1;
                 if ((offset < 0) || (offset >= strlen(args[0].pStringConst))) { return result_arg_outsideRange; }
                 startSearchChar += offset;
             }
@@ -3908,14 +3913,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             fcnResultValueType = value_isStringPointer;            // init
             fcnResult.pStringConst = nullptr;
 
-            if (!argIsString[0]) { return result_arg_stringExpected; }
+            if (!(argIsStringBits & (0x1 << 0))) { return result_arg_stringExpected; }
             if (args[0].pStringConst == nullptr) { if (suppliedArgCount > 1) { return  result_arg_outsideRange; } else { break; } }     // result is empty string, but only one argument accepted
 
             int len = strlen(args[0].pStringConst);
             int first = 0, last = len - 1;                                                                                              // init: complete string
             for (int i = 1; i < suppliedArgCount; ++i) {                                                                                // skip if only one argument (string)
-                if (!argIsLong[i] && !argIsFloat[i]) { return result_arg_numberExpected; }
-                if (argIsFloat[i]) { args[i].longConst = int(args[i].floatConst); }                                                     // all these functions need integer values
+                if (!(argIsLongBits & (0x1 << i)) && !(argIsFloatBits & (0x1 << i))) { return result_arg_numberExpected; }
+                if ((argIsFloatBits & (0x1 << i))) { args[i].longConst = int(args[i].floatConst); }                                                     // all these functions need integer values
                 if (i == 1) { first = args[i].longConst - 1; last = 1; }
                 else { last = args[i].longConst - 1; }
             }
@@ -3941,12 +3946,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             fcnResultValueType = value_isStringPointer;                                                                                 // init
             fcnResult.pStringConst = nullptr;
 
-            if (!argIsString[0]) { return result_arg_stringExpected; }
+            if (!(argIsStringBits & (0x1 << 0))) { return result_arg_stringExpected; }
             if (args[0].pStringConst == nullptr) { return result_arg_nonEmptyStringExpected; }
 
             for (int i = 1; i < suppliedArgCount; ++i) {                                                                                // skip first argument (string)
-                if (!argIsLong[i] && !argIsFloat[i]) { return result_arg_numberExpected; }
-                if (argIsFloat[i]) { args[i].longConst = int(args[i].floatConst); }                                                     // all these functions need integer values
+                if (!(argIsLongBits & (0x1 << i)) && !(argIsFloatBits & (0x1 << i))) { return result_arg_numberExpected; }
+                if ((argIsFloatBits & (0x1 << i))) { args[i].longConst = int(args[i].floatConst); }                                                     // all these functions need integer values
             }
             int len = strlen(args[0].pStringConst);
 
@@ -3975,7 +3980,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             fcnResult.pStringConst = nullptr;
 
             int spaceCnt{ 0 };                                                                                                          // init
-            if (!argIsString[0]) { return result_arg_stringExpected; }
+            if (!(argIsStringBits & (0x1 << 0))) { return result_arg_stringExpected; }
             if (args[0].pStringConst == nullptr) { break; }                                                                             // original string is empty: return with empty result string
 
             int len = strlen(args[0].pStringConst);
@@ -4012,8 +4017,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
         case fnccod_sysVal:
         {
-            if (!argIsLong[0] && !argIsFloat[0]) { return result_arg_numberExpected; }
-            int sysVal = argIsLong[0] ? args[0].longConst : int(args[0].floatConst);
+            if (!(argIsLongBits & (0x1 << 0)) && !(argIsFloatBits & (0x1 << 0))) { return result_arg_numberExpected; }
+            int sysVal = (argIsLongBits & (0x1 << 0)) ? args[0].longConst : int(args[0].floatConst);
 
             fcnResultValueType = value_isLong;                                                                                          // default for most system values
 
@@ -4153,7 +4158,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         _pEvalStackTop->varOrConst.valueType = fcnResultValueType;                                                                      // value type of second operand  
         _pEvalStackTop->varOrConst.tokenType = tok_isConstant;                                                                          // use generic constant type
         _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
-        _pEvalStackTop->varOrConst.sourceVarAttributes = 0x00;                                                                           // not an array, not an array element (it's a constant) 
+        _pEvalStackTop->varOrConst.sourceVarScopeAndFlags = 0x00;                                                                           // not an array, not an array element (it's a constant) 
     }
 
     return result_execOK;
@@ -4265,12 +4270,11 @@ void  Justina_interpreter::printToString(int width, int precision, bool inputIsS
 // if not a string, then do nothing. If not a variable, then exit WITH error
 
 Justina_interpreter::execResult_type Justina_interpreter::deleteVarStringObject(LE_evalStack* pStackLvl) {
-    Serial.println("****** delete 1 var string object ");////
     if (pStackLvl->varOrConst.tokenType != tok_isVariable) { return result_arg_varExpected; };                            // not a variable
     if ((*pStackLvl->varOrConst.varTypeAddress & value_typeMask) != value_isStringPointer) { return result_execOK; }      // not a string object
     if (*pStackLvl->varOrConst.value.ppStringConst == nullptr) { return result_execOK; }
 
-    char varScope = (pStackLvl->varOrConst.sourceVarAttributes & var_scopeMask);
+    char varScope = (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_scopeMask);
 
     // delete variable string object
 #if printCreateDeleteListHeapObjects
@@ -4307,37 +4311,39 @@ Justina_interpreter::execResult_type Justina_interpreter::deleteIntermStringObje
 // copy command arguments or internal function arguments from evaluation stack
 // ---------------------------------------------------------------------------
 
-Justina_interpreter::execResult_type Justina_interpreter::copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, bool* argIsArray, char* valueType, Val* args, bool prepareForCallback) {
+Justina_interpreter::execResult_type Justina_interpreter::copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsNonConstantVar, bool* argIsArray, char* valueType, Val* args, bool prepareForCallback, Val* dummyArgs) {
     execResult_type execResult;
 
+
     for (int i = 0; i < argCount; i++) {
-        argIsVar[i] = (pStackLvl->varOrConst.tokenType == tok_isVariable);
-        argIsArray[i] = argIsVar[i] ? (pStackLvl->varOrConst.sourceVarAttributes & var_isArray) : false;
-        valueType[i] = argIsVar[i] ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
+        bool argIsVar = (pStackLvl->varOrConst.tokenType == tok_isVariable);                                                        // could be a constant variable
+        argIsNonConstantVar[i] = argIsVar && (!(pStackLvl->varOrConst.sourceVarScopeAndFlags & var_isConstantVar));                 // is a constant variable
+        bool argIsConstant = !(argIsNonConstantVar[i] && argIsVar);                                                                 // constant variable or pure constant
 
-        // argument is long or float: if preparing for callback, return pointer to value. Otherwise, return value itself
-        if ((valueType[i] & value_typeMask) == value_isLong) {
-            if (prepareForCallback) { args[i].pLongConst = (argIsVar[i] ? (pStackLvl->varOrConst.value.pLongConst) : &pStackLvl->varOrConst.value.longConst); }
-            else { args[i].longConst = (argIsVar[i] ? (*pStackLvl->varOrConst.value.pLongConst) : pStackLvl->varOrConst.value.longConst); }
-        }
-        else if ((valueType[i] & value_typeMask) == value_isFloat) {
-            if (prepareForCallback) { args[i].pFloatConst = (argIsVar[i] ? (pStackLvl->varOrConst.value.pFloatConst) : &pStackLvl->varOrConst.value.floatConst); }
-            else { args[i].floatConst = (argIsVar[i] ? (*pStackLvl->varOrConst.value.pFloatConst) : pStackLvl->varOrConst.value.floatConst); }
-        }
+        argIsArray[i] = argIsVar ? (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_isArray) : false;
+        valueType[i] = argIsVar ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
 
-        // argument is string: always return a pointer to string, but if preparing for callback, this pointer MAY point to a newly created empty string or copy of a non-empty string (see below)
-        else {
-            args[i].pStringConst = (argIsVar[i] ? (*pStackLvl->varOrConst.value.ppStringConst) : pStackLvl->varOrConst.value.pStringConst); // init: fetch pointer to string  
-            if (prepareForCallback) {       // for callback calls only      
+        args[i].longConst = (argIsVar ? (*pStackLvl->varOrConst.value.pLongConst) : pStackLvl->varOrConst.value.longConst);         // retrieve value (valid for ALL value types)
+        if (prepareForCallback) {                                                                                                   // preparing for callback function 
+            // numeric argument ?
+            if (((valueType[i] & value_typeMask) == value_isLong) || ((valueType[i] & value_typeMask) == value_isFloat)) {
+                // numeric CONSTANT argument: make a copy of the actual data (not the pointers to it: these will be copied, for safety as well, upon return of the present function)
+                if (argIsConstant) { dummyArgs[i].longConst = args[i].longConst; args[i].pLongConst = &(dummyArgs[i].longConst); }  // pure or variable constant: pass address of copied value
+                else { args[i].pLongConst = pStackLvl->varOrConst.value.pLongConst; }                                               // changeable variable: retrieve address of original value
+            }
+
+            // string argument ?
+            else if ((valueType[i] & value_typeMask) == value_isStringPointer) {        // for callback calls only      
+                char* pOriginalArg = args[i].pStringConst;                              // pointer to Justina variable or constant string
                 int strLength{ 0 };
-                // empty variable and empty constant strings: create a real empty string (no null pointer); non-empty constant strings: create a string copy
-                if ((args[i].pStringConst == nullptr) || !argIsVar[i]) {       // note: non-empty variable strings (only): pointer keeps pointing to variable string (no copy)           
-                    valueType[i] |= passCopyToCallback;           // string copy, or new empty string, passed
+                // empty (null pointer) and constant strings: create a temporary string (empty but null-terminated or copy of the non-empty string)
+                if ((args[i].pStringConst == nullptr) || argIsConstant) {               // note: non-empty variable strings (only): pointer keeps pointing to variable string (no copy)           
+                    valueType[i] |= passCopyToCallback;                                 // flag that a copy has been made (it will have to be deleted afterwards))
                     strLength = (args[i].pStringConst == nullptr) ? 0 : strlen(args[i].pStringConst);
-                    args[i].pStringConst = new char[strLength + 1];                                         // change pointer to copy of string
-                    _intermediateStringObjectCount++;
-                    if (strLength == 0) { args[i].pStringConst[0] = '\0'; }                                 // empty strings ("" -> no null pointer)
-                    else { strcpy(args[i].pStringConst, pStackLvl->varOrConst.value.pStringConst); }        // non-empty constant string
+                    args[i].pStringConst = new char[strLength + 1];                     // change pointer to copy of string
+                    _intermediateStringObjectCount++;                                   // temporary string object will be deleted right after return from call to user callback routine
+                    if (strLength == 0) { args[i].pStringConst[0] = '\0'; }             // empty string (sole character is null-character as terminator)
+                    else { strcpy(args[i].pStringConst, pOriginalArg); }                // non-empty constant string
                 #if printCreateDeleteListHeapObjects
                     Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)args[i].pStringConst - RAMSTART);
                 #endif
@@ -4383,7 +4389,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchExternalFunctio
     if (localVarCount > 0) {
         _activeFunctionData.pLocalVarValues = new Val[localVarCount];              // local variable value: real, pointer to string or array, or (if reference): pointer to 'source' (referenced) variable
         _activeFunctionData.ppSourceVarTypes = new char* [localVarCount];           // only if local variable is reference to variable or array element: pointer to 'source' variable value type  
-        _activeFunctionData.pSourceVarAttributes = new char[localVarCount];         // local variable: value type (float, local string or reference); 'source' (if reference) or local variable scope (user, global, static; local, param) 
+        _activeFunctionData.pVariableAttributes = new char[localVarCount];         // local variable: value type (float, local string or reference); 'source' (if reference) or local variable scope (user, global, static; local, param) 
         _localVarValueAreaCount++;
 
     #if printCreateDeleteListHeapObjects
@@ -4539,38 +4545,30 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
 void Justina_interpreter::initFunctionParamVarWithSuppliedArg(int suppliedArgCount, LE_evalStack*& pFirstArgStackLvl) {
     // save function caller's arguments to function's local storage and remove them from evaluation stack
     if (suppliedArgCount > 0) {
-        LE_evalStack* pStackLvl = pFirstArgStackLvl;         // pointing to first argument on stack
+        LE_evalStack* pStackLvl = pFirstArgStackLvl;                                                                        // pointing to first argument on stack
         for (int i = 0; i < suppliedArgCount; i++) {
             int valueType = pStackLvl->varOrConst.valueType;
             bool operandIsLong = (valueType == value_isLong);
             bool operandIsFloat = (valueType == value_isFloat);
-            bool operandIsString = (valueType == value_isStringPointer);
             bool operandIsVariable = (pStackLvl->varOrConst.tokenType == tok_isVariable);
             bool opIsConstantVar = operandIsVariable ? (*pStackLvl->varOrConst.varTypeAddress & var_isConstantVar) : false;
-            Serial.print("** 2. init param with arg : argument is constant variable ? "); Serial.println(opIsConstantVar);
 
             // non_constant variable (could be an array) passed ?
-            if (operandIsVariable && !opIsConstantVar) {                                      // argument is a variable => local value is a reference to 'source' variable
-                _activeFunctionData.pLocalVarValues[i].pBaseValue = pStackLvl->varOrConst.value.pBaseValue;  // pointer to 'source' variable
-                _activeFunctionData.ppSourceVarTypes[i] = pStackLvl->varOrConst.varTypeAddress;            // pointer to 'source' variable value type
-                _activeFunctionData.pSourceVarAttributes[i] = value_isVarRef |
-                    // local variable value type (reference) and SOURCE variable scope (user, global, static; local, param), 'is array' and 'is constant' (zero)  flags
-                    (pStackLvl->varOrConst.sourceVarAttributes & (var_scopeMask | var_isArray | var_isConstantVar));
+            if (operandIsVariable && !opIsConstantVar) {                                                                    // function argument is a variable => local value is a reference to 'source' variable
+                _activeFunctionData.pLocalVarValues[i].pBaseValue = pStackLvl->varOrConst.value.pBaseValue;                 // pointer to 'source' variable
+                _activeFunctionData.ppSourceVarTypes[i] = pStackLvl->varOrConst.varTypeAddress;                             // pointer to 'source' variable value type
+                _activeFunctionData.pVariableAttributes[i] = value_isVarRef |
+                    (pStackLvl->varOrConst.sourceVarScopeAndFlags & (var_scopeMask | var_isArray | var_isConstantVar));     // local 'ref var' value type + source variable scope, 'is array' and 'is constant' flags
             }
 
-            else {      // parsed, or intermediate, constant OR constant variable, passed as argument
-                _activeFunctionData.pSourceVarAttributes[i] = valueType;     // local variable value type (long, float, char*)
-                Serial.print("      arg is constant OR constant var: attributes = "); Serial.println(valueType);
-                // if constant is constant variable: add SOURCE variable scope(user, global, static; local, param), 'is array' (zero) and 'is constant' flags
-                
-                ////if (opIsConstantVar) { _activeFunctionData.pSourceVarAttributes[i] /* &= (var_scopeMask | var_isArray | var_isConstantVar)*/; }
-
-                if (operandIsLong || operandIsFloat) {                                                      // operand is float constant
+            // parsed, or intermediate, constant OR constant variable, passed as argument (constant: never an array)
+            else {
+                _activeFunctionData.pVariableAttributes[i] = valueType;                                                     // local variable value type (long, float, char*)
+                if (operandIsLong || operandIsFloat) {
                     _activeFunctionData.pLocalVarValues[i].floatConst = operandIsVariable ? *pStackLvl->varOrConst.value.pFloatConst : pStackLvl->varOrConst.value.floatConst;
                 }
-                else {                      // operand is string constant: create a local copy
-                    _activeFunctionData.pLocalVarValues[i].pStringConst = nullptr;             // init (if empty string)
-
+                else {                                                                                                      // function argument is string constant: create a local copy
+                    _activeFunctionData.pLocalVarValues[i].pStringConst = nullptr;                                          // init (empty string)
                     char* tempString{};
                     tempString = operandIsVariable ? *pStackLvl->varOrConst.value.ppStringConst : pStackLvl->varOrConst.value.pStringConst;
                     if (tempString != nullptr) {
@@ -4585,8 +4583,9 @@ void Justina_interpreter::initFunctionParamVarWithSuppliedArg(int suppliedArgCou
                 };
             }
 
-            deleteIntermStringObject(pStackLvl);                                              // if intermediate constant string, then delete char string object (tested within called routine)
-            pStackLvl = (LE_evalStack*)evalStack.deleteListElement(pStackLvl);        // argument saved: remove argument from stack and point to next argument
+            // if intermediate constant string, then delete char string object (tested within called routine)            
+            deleteIntermStringObject(pStackLvl);
+            pStackLvl = (LE_evalStack*)evalStack.deleteListElement(pStackLvl);                                              // argument saved: remove argument from stack and point to next argument
         }
     }
 }
@@ -4616,7 +4615,7 @@ void Justina_interpreter::initFunctionDefaultParamVariables(char*& pStep, int su
             bool operandIsLong = (valueType == value_isLong);
             bool operandIsFloat = (valueType == value_isFloat);
 
-            _activeFunctionData.pSourceVarAttributes[count] = valueType;                // long, float or string (array flag is reset here)
+            _activeFunctionData.pVariableAttributes[count] = valueType;                // long, float or string (array flag is reset here)
 
             if (operandIsLong) {                                                      // operand is float constant
                 memcpy(&_activeFunctionData.pLocalVarValues[count].longConst, ((TokenIsConstant*)pStep)->cstValue.longConst, sizeof(long));
@@ -4666,7 +4665,7 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
         do {
             // in case variable is not an array and it does not have an initializer: init now as zero (float). Arrays without initializer will be initialized later
             _activeFunctionData.pLocalVarValues[count].floatConst = 0;
-            _activeFunctionData.pSourceVarAttributes[count] = value_isFloat;        // for now, assume scalar
+            _activeFunctionData.pVariableAttributes[count] = value_isFloat;        // for now, assume scalar
 
             tokenType = jumpTokens(2, pStep, terminalCode);            // either left parenthesis, assignment, comma or semicolon separator (always a terminal)
 
@@ -4700,7 +4699,7 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
                 Serial.print("+++++ (loc ar stor) "); Serial.println((uint32_t)pArray - RAMSTART);
             #endif
                 _activeFunctionData.pLocalVarValues[count].pArray = pArray;
-                _activeFunctionData.pSourceVarAttributes[count] |= var_isArray;             // set array bit
+                _activeFunctionData.pVariableAttributes[count] |= var_isArray;             // set array bit
 
                 // store dimensions in element 0: char 0 to 2 is dimensions; char 3 = dimension count 
                 for (int i = 0; i < MAX_ARRAY_DIMS; i++) {
@@ -4732,11 +4731,11 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
                 if (isFloat) { memcpy(&initializer, ((TokenIsConstant*)pStep)->cstValue.floatConst, sizeof(float)); }
                 else { memcpy(&pString, ((TokenIsConstant*)pStep)->cstValue.pStringConst, sizeof(pString)); }     // copy pointer to string (not the string itself)
                 int length = (isLong || isFloat) ? 0 : (pString == nullptr) ? 0 : strlen(pString);       // only relevant for strings
-                _activeFunctionData.pSourceVarAttributes[count] =
-                    (_activeFunctionData.pSourceVarAttributes[count] & ~value_typeMask) | valueType;
+                _activeFunctionData.pVariableAttributes[count] =
+                    (_activeFunctionData.pVariableAttributes[count] & ~value_typeMask) | valueType;
 
                 // array: initialize (note: test for non-empty string - which are not allowed as initializer - done during parsing)
-                if ((_activeFunctionData.pSourceVarAttributes[count] & var_isArray) == var_isArray) {
+                if ((_activeFunctionData.pVariableAttributes[count] & var_isArray) == var_isArray) {
                     void* pArray = ((void**)_activeFunctionData.pLocalVarValues)[count];        // void pointer to an array 
                     // fill up with numeric constants or (empty strings:) null pointers
                     if (isLong) { for (int elem = 1; elem <= arrayElements; elem++) { ((long*)pArray)[elem] = initializer.longConst; } }
@@ -4766,7 +4765,7 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
             }
 
             else {  // no initializer: if array, initialize it now (scalar has been initialized already)
-                if ((_activeFunctionData.pSourceVarAttributes[count] & var_isArray) == var_isArray) {
+                if ((_activeFunctionData.pVariableAttributes[count] & var_isArray) == var_isArray) {
                     void* pArray = ((void**)_activeFunctionData.pLocalVarValues)[count];        // void pointer to an array 
                     for (int elem = 1; elem <= arrayElements; elem++) { ((float*)pArray)[elem] = 0.; } // float (by default)
                 }
@@ -4790,7 +4789,7 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateExternalFunct
         _pEvalStackTop->varOrConst.tokenType = tok_isConstant;          // use generic constant type
         _pEvalStackTop->varOrConst.value.longConst = 0;                // default return value (long)
         _pEvalStackTop->varOrConst.valueType = value_isLong;
-        _pEvalStackTop->varOrConst.sourceVarAttributes = 0x00;
+        _pEvalStackTop->varOrConst.sourceVarScopeAndFlags = 0x00;
         _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
     }
     else { makeIntermediateConstant(_pEvalStackTop); }             // if not already an intermediate constant
@@ -4801,20 +4800,18 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateExternalFunct
     int paramOnlyCount = extFunctionData[_activeFunctionData.functionIndex].paramOnlyCountInFunction;      // of function to be terminated
 
     if (localVarCount > 0) {
-        Serial.print(">> terminate function: local var count = "); Serial.println(localVarCount);
-        deleteArrayElementStringObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pSourceVarAttributes, localVarCount, paramOnlyCount, false, false, true);
-        deleteVariableValueObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pSourceVarAttributes, localVarCount, paramOnlyCount, false, false, true);
+        deleteArrayElementStringObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, paramOnlyCount, false, false, true);
+        deleteVariableValueObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, paramOnlyCount, false, false, true);
 
     #if printCreateDeleteListHeapObjects
         Serial.print("----- (LOCAL STORAGE) ");   Serial.println((uint32_t)_activeFunctionData.pLocalVarValues - RAMSTART);
     #endif
         // release local variable storage for function that has been called
         delete[] _activeFunctionData.pLocalVarValues;
-        delete[] _activeFunctionData.pSourceVarAttributes;
+        delete[] _activeFunctionData.pVariableAttributes;
         delete[] _activeFunctionData.ppSourceVarTypes;
         _localVarValueAreaCount--;
     }
-    Serial.println("terminating ext function; after local storage delete"); ////
     char blockType = block_none;            // init
     do {
         blockType = *(char*)_pFlowCtrlStackTop;            // always at least one level present for caller (because returning to it)
@@ -4915,51 +4912,50 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateEval() {
 // *   fetch variable base address   *
 // -----------------------------------
 
-void* Justina_interpreter::fetchVarBaseAddress(TokenIsVariable* pVarToken, char*& sourceVarTypeAddress, char& localValueType, char& sourceVarAttributes) {
+void* Justina_interpreter::fetchVarBaseAddress(TokenIsVariable* pVarToken, char*& sourceVarTypeAddress, char& selfValueType, char& sourceVarScopeAndFlags) {
 
-    // pVarToken argument must point to a variable token in Justina PROGRAM memory (containing variable type, index and attributes - NOT the actual variable's address)
+    // this function fetches the data stored in a parsed token, which should have token type 'tok_isVariable' and then returns a number of data elements to be pushed on the...
+    // ... evaluation stack by the caller of this function
+
+    // Justina function parameters receiving a variable (not an expression result) as a caller's argument:
+    // ->  the function's local 'parameter type' variable will not contain a copy of the 'source' variable, but a reference to it (value type 'value_isVarRef')
+    //     the prefix 'self' then refers to the Justina function 'parameter' variable(indicated by the token), the prefix 'source' refers to the Jusina caller's argument variable   
+    // All other cases: Justina global, static and user variables, local variables, 'parameter' variables receiving an expression result or not receiving a caller's argument (default initialisation):
+    // ->  the prefix 'self' and 'source' both refer to the Justina variable itself (indicated by the token)
+
+    // upon entry, pVarToken argument must point to a variable token in Justina PROGRAM memory 
     // upon return:
-    // - localValueType and sourceVarAttributes arguments will contain current variable value type (float or string; which is fixed for arrays) and array flag, respectively
-    // - sourceVarTypeAddress will point to (contain the address of) the variable value type (where variable value type and other attributes are maintained) in Justina memory allocated to variables
-    // - return pointer will point to (contain the address of) the variable base address (containing the value (float or char*) OR an address (for arrays and referenced variables)
+    // - selfValueType contains the value type (long, float, char* or reference) of Justina the variable indicated by the token
+    // - sourceVarScopeAndFlags contains the SOURCE variable's scope, 'is array' and 'is constant variable' (declared with 'const') flags, respectively
+    // - sourceVarTypeAddress points to (contains the address of) source variable's attributes (value type, ...) 
+    // - return pointer will point to (contain the address of) the 'self' variable base address (Justina variable indicated by the token): the address where the variable's value is stored
+    //   note that this 'value' can be an address itself: for referenced variables, but alse for arrays and strings (char*)
 
     int varNameIndex = pVarToken->identNameIndex;
-    // identInfo may only contains variable scope (parameter, local, static, global) and 'is array' flag 
-    uint8_t varScope = pVarToken->identInfo & var_scopeMask;                                // global, user, local, static or parameter
+    uint8_t varScope = pVarToken->identInfo & var_scopeMask;                                                // global, user, local, static or parameter
     bool isUserVar = (varScope == var_isUser);
     bool isGlobalVar = (varScope == var_isGlobal);
-    bool isStaticVar = (varScope == var_isStaticInFunc);                                // could also be a static variable in a stopped function (determined during parsing)
-
-    Serial.print("** 1. fetch variable: token-ident info (scope, array+const.var flags) = "); Serial.println(pVarToken->identInfo, HEX);
-
-    // init source variable scope (if the current variable is a reference variable, this will be changed to the source variable scope later)
-    ////valueAttributes = 0;                                                                                // not an intermediate constant                                         
+    bool isStaticVar = (varScope == var_isStaticInFunc);
 
     int valueIndex = pVarToken->identValueIndex;
 
     if (isUserVar) {
-        localValueType = userVarType[valueIndex] & value_typeMask;                                     // value type (indicating float or string)
-        sourceVarTypeAddress = userVarType + valueIndex;                                                // pointer to value type and the 'is array' and 'is constant var' flags          
-        sourceVarAttributes = pVarToken->identInfo & (var_scopeMask | var_isArray | var_isConstantVar);
-        Serial.print("      user var: 'source' var attributes = "); Serial.println(sourceVarAttributes, HEX);
-
-        return &userVarValues[valueIndex];                                                             // pointer to value (float, char* or (array variables only) pointer to array start in memory)
+        selfValueType = userVarType[valueIndex] & value_typeMask;                                           // value type (indicating long, float, char* or 'variable reference')
+        sourceVarTypeAddress = userVarType + valueIndex;                                                    // pointer to source variable's attributes          
+        sourceVarScopeAndFlags = pVarToken->identInfo & (var_scopeMask | var_isArray | var_isConstantVar);
+        return &userVarValues[valueIndex];                                                                  // pointer to value (long, float, char* or (array variables, strings) pointer to array or string)
     }
     else if (isGlobalVar) {
-        localValueType = globalVarType[valueIndex] & value_typeMask;                                   // value type (indicating float or string)
-        sourceVarTypeAddress = globalVarType + valueIndex;                                              // pointer to value type and the 'is array' and 'is constant var' flags
-        sourceVarAttributes = pVarToken->identInfo & (var_scopeMask | var_isArray | var_isConstantVar);
-        Serial.print("      global var: 'source' var attributes = "); Serial.println(sourceVarAttributes, HEX);
-
-        return &globalVarValues[valueIndex];                                                           // pointer to value (float, char* or (array variables only) pointer to array start in memory)
+        selfValueType = globalVarType[valueIndex] & value_typeMask;                                         // value type (indicating long, float, char* or 'variable reference')
+        sourceVarTypeAddress = globalVarType + valueIndex;                                                  // pointer to source variable's attributes
+        sourceVarScopeAndFlags = pVarToken->identInfo & (var_scopeMask | var_isArray | var_isConstantVar);
+        return &globalVarValues[valueIndex];                                                                // pointer to value (long, float, char* or (array variables, strings) pointer to array or string)
     }
     else if (isStaticVar) {
-        localValueType = staticVarType[valueIndex] & value_typeMask;                                   // value type (indicating float or string)
-        sourceVarTypeAddress = staticVarType + valueIndex;                                              // pointer to value type and the 'is array' and 'is constant var' flags
-        sourceVarAttributes = pVarToken->identInfo & (var_scopeMask | var_isArray | var_isConstantVar);
-        Serial.print("      static var: 'source' var attributes = "); Serial.println(sourceVarAttributes, HEX);
-
-        return &staticVarValues[valueIndex];                                                           // pointer to value (float, char* or (array variables only) pointer to array start in memory)
+        selfValueType = staticVarType[valueIndex] & value_typeMask;                                         // value type (indicating long, float, char* or 'variable reference')
+        sourceVarTypeAddress = staticVarType + valueIndex;                                                  // pointer to source variable's attributes
+        sourceVarScopeAndFlags = pVarToken->identInfo & (var_scopeMask | var_isArray | var_isConstantVar);
+        return &staticVarValues[valueIndex];                                                                // pointer to value (long, float, char* or (array variables, strings) pointer to array or string)
     }
 
     // local variables (including parameters)    
@@ -4972,68 +4968,52 @@ void* Justina_interpreter::fetchVarBaseAddress(TokenIsVariable* pVarToken, char*
         // these levels can NOT refer to an eval() string execution level, because a program can not be stopped during the execution of an eval() string
         // (although it can during an external function called from an eval() string)
 
-        int blockType = _activeFunctionData.blockType;      // init
-        void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;       // one level below _activeFunctionData
+        int blockType = _activeFunctionData.blockType;                                                      // init
+        void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                                                       // one level below _activeFunctionData
 
         // variable is a local (including parameter) value: if the current flow control stack level does not refer to a function, but to a command line or eval() block type,
         // then the variable is a local variable of a stopped program's open function 
         bool isStoppedFunctionVar = (blockType == block_extFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + PROG_MEM_SIZE)) : true;     // command line or eval() block type
-        ////Serial.print("** FETCHING variable: block type "); Serial.println(blockType);
 
         if (isStoppedFunctionVar) {
             bool isDebugCmdLevel = (blockType == block_extFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + PROG_MEM_SIZE)) : false;
-            ////Serial.print("   is debug command level: "); Serial.println(isDebugCmdLevel);
 
             if (!isDebugCmdLevel) {       // find debug level in flow control stack instead
                 do {
                     blockType = *(char*)pFlowCtrlStackLvl;
                     isDebugCmdLevel = (blockType == block_extFunction) ? (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + PROG_MEM_SIZE)) : false;
-                    ////Serial.print("   ** new flow ctrl stack lvl: block type "); Serial.println(blockType);
-                    ////Serial.print("      is debug command level: "); Serial.println(isDebugCmdLevel);
                     pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
-                } while (!isDebugCmdLevel);          // stack level for open function found immediate below debug line found (always match)
+                } while (!isDebugCmdLevel);                                                                 // stack level for open function found immediate below debug line found (always match)
             }
-            ////Serial.print("   ** block type of stack level beneath debug command level "); Serial.println((int)((OpenFunctionData*)pFlowCtrlStackLvl)->blockType);
 
             blockType = ((OpenFunctionData*)pFlowCtrlStackLvl)->blockType;
             while (blockType != block_extFunction) {
                 pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                 blockType = ((OpenFunctionData*)pFlowCtrlStackLvl)->blockType;
             }
-            ////Serial.print("   ** block type of final flow ctrl stack level "); Serial.println((int)((OpenFunctionData*)pFlowCtrlStackLvl)->blockType);
         }
-        else {       // the variable is a local variable of the function referenced in _activeFunctionData
+        else {                                                                                              // the variable is a local variable of the function referenced in _activeFunctionData
             pFlowCtrlStackLvl = &_activeFunctionData;
         }
 
 
-        ////Serial.println("       (end loop)");
         // note (function parameter variables only): when a function is called with a variable argument (always passed by reference), 
         // the parameter value type has been set to 'reference' when the function was called
-        localValueType = ((OpenFunctionData*)pFlowCtrlStackLvl)->pSourceVarAttributes[valueIndex] & value_typeMask;         // local variable value type (indicating long, float or string or REFERENCE)
+        selfValueType = ((OpenFunctionData*)pFlowCtrlStackLvl)->pVariableAttributes[valueIndex] & value_typeMask;           // local variable value type (indicating long, float, string or REFERENCE)
 
-        if (localValueType == value_isVarRef) {                                                       // local value is a reference to 'source' variable                                                         
-            sourceVarTypeAddress = ((OpenFunctionData*)pFlowCtrlStackLvl)->ppSourceVarTypes[valueIndex];                   // pointer to 'source' variable value type
-
-            // local variable value type (reference); SOURCE variable scope (user, global, static; local, param),'reference' value type copied from local variable storage
-            ////sourceVarAttributes = ((OpenFunctionData*)pFlowCtrlStackLvl)->pSourceVarAttributes[valueIndex] | (pVarToken->identInfo & var_isArray);      // add array flag
-            sourceVarAttributes = ((OpenFunctionData*)pFlowCtrlStackLvl)->pSourceVarAttributes[valueIndex]  &~ value_typeMask;  //// | (pVarToken->identInfo & var_isArray);      // add array flag
-
-            Serial.print("      param with arg supplied: 'source' var attributes = "); Serial.println(sourceVarAttributes, HEX);
-            Serial.print("                             : value type ('ref') = "); Serial.println(localValueType, HEX);
-            return   ((Val**)((OpenFunctionData*)pFlowCtrlStackLvl)->pLocalVarValues)[valueIndex];                       // pointer to 'source' variable value 
+        if (selfValueType == value_isVarRef) {
+            sourceVarTypeAddress = ((OpenFunctionData*)pFlowCtrlStackLvl)->ppSourceVarTypes[valueIndex];                    // pointer to 'source' variable attributes
+            // 'SOURCE'source' variable scope (user, global, static; local, param), 'is array' and 'is constant variable' flags
+            sourceVarScopeAndFlags = ((OpenFunctionData*)pFlowCtrlStackLvl)->pVariableAttributes[valueIndex] & ~value_typeMask;
+            return   ((Val**)((OpenFunctionData*)pFlowCtrlStackLvl)->pLocalVarValues)[valueIndex];                          // pointer to 'source' variable value 
         }
 
-        // local variable OR parameter variable that received the result of an expression (or constant) as argument (passed by value) OR optional parameter variable that received no value (default initialization) 
+        // local variable OR parameter variable that received the result of an expression (or constant) as argument (passed by value); optional parameter variable that received no value (default initialization) 
         else {
-            ////Serial.print("   is LOCAL VAR - local value index is "); Serial.println(valueIndex);
-
-            sourceVarTypeAddress = ((OpenFunctionData*)pFlowCtrlStackLvl)->pSourceVarAttributes + valueIndex;               // pointer to value type and the 'is array' and 'is constant var' flags
+            sourceVarTypeAddress = ((OpenFunctionData*)pFlowCtrlStackLvl)->pVariableAttributes + valueIndex;                // pointer to variable attributes
             // local variable value type; 'is array'  and 'is constant var' flags
-            sourceVarAttributes = pVarToken->identInfo & (var_scopeMask | var_isArray | var_isConstantVar);
-            Serial.print("      local var: 'source' var attributes = "); Serial.println(sourceVarAttributes, HEX);
-
-            return (Val*)&(((OpenFunctionData*)pFlowCtrlStackLvl)->pLocalVarValues[valueIndex]);                           // pointer to local variable value 
+            sourceVarScopeAndFlags = pVarToken->identInfo & (var_scopeMask | var_isArray | var_isConstantVar);
+            return (Val*)&(((OpenFunctionData*)pFlowCtrlStackLvl)->pLocalVarValues[valueIndex]);
         }
     }
 }
@@ -5049,19 +5029,19 @@ void* Justina_interpreter::arrayElemAddress(void* varBaseAddress, int* subscript
     // subscripts array must specify an array element (max. 3 dimensions)
     // return pointer will point to a long, float or a string pointer (both can be array elements) - nullptr if outside boundaries
 
-    void* pArray = varBaseAddress;                                                      // will point to float or string pointer (both can be array elements)
+    void* pArray = varBaseAddress;                                                                          // will point to float or string pointer (both can be array elements)
     int arrayDimCount = ((char*)pArray)[3];
 
     int arrayElement{ 0 };
     for (int i = 0; i < arrayDimCount; i++) {
         int arrayDim = ((char*)pArray)[i];
-        if ((subscripts[i] < 1) || (subscripts[i] > arrayDim)) { return nullptr; }      // is outside array boundaries
+        if ((subscripts[i] < 1) || (subscripts[i] > arrayDim)) { return nullptr; }                          // is outside array boundaries
 
         int arrayNextDim = (i < arrayDimCount - 1) ? ((char*)pArray)[i + 1] : 1;
         arrayElement = (arrayElement + (subscripts[i] - 1)) * arrayNextDim;
     }
-    arrayElement++;                                                                     // add one (first array element contains dimensions and dimension count)
-    return (Val*)pArray + arrayElement;                                              // pointer to a 4-byte array element (long, float or pointer to string)
+    arrayElement++;                                                                                         // add one (first array element contains dimensions and dimension count)
+    return (Val*)pArray + arrayElement;                                                                     // pointer to a 4-byte array element (long, float or pointer to string)
 }
 
 
@@ -5069,7 +5049,7 @@ void* Justina_interpreter::arrayElemAddress(void* varBaseAddress, int* subscript
 // *   push terminal token to evaluation stack   *
 // -----------------------------------------------
 
-void Justina_interpreter::pushTerminalToken(int& tokenType) {                                 // terminal token is assumed
+void Justina_interpreter::pushTerminalToken(int& tokenType) {                                               // terminal token is assumed
 
     // push internal or external function index to stack
 
@@ -5077,9 +5057,9 @@ void Justina_interpreter::pushTerminalToken(int& tokenType) {                   
 
     _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(TerminalTokenLvl));
     _pEvalStackTop->terminal.tokenType = tokenType;
-    _pEvalStackTop->terminal.tokenAddress = _programCounter;                                                    // only for finding source error position during unparsing (for printing)
+    _pEvalStackTop->terminal.tokenAddress = _programCounter;                                                // only for finding source error position during unparsing (for printing)
 
-    _pEvalStackTop->terminal.index = (*_programCounter >> 4) & 0x0F;                                            // terminal token only: calculate from partial index stored in high 4 bits of token type 
+    _pEvalStackTop->terminal.index = (*_programCounter >> 4) & 0x0F;                                        // terminal token only: calculate from partial index stored in high 4 bits of token type 
     _pEvalStackTop->terminal.index += ((tokenType == tok_isTerminalGroup2) ? 0x10 : (tokenType == tok_isTerminalGroup3) ? 0x20 : 0);
 };
 
@@ -5088,14 +5068,14 @@ void Justina_interpreter::pushTerminalToken(int& tokenType) {                   
 // *   push internal or external function name token to evaluation stack   *
 // ------------------------------------------------------------------------
 
-void Justina_interpreter::pushFunctionName(int& tokenType) {                                  // function name is assumed (internal or external)
+void Justina_interpreter::pushFunctionName(int& tokenType) {                                                // function token is assumed (internal or external)
 
     // push internal or external function index to stack
     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
 
     _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(FunctionLvl));
     _pEvalStackTop->function.tokenType = tokenType;
-    _pEvalStackTop->function.tokenAddress = _programCounter;                                    // only for finding source error position during unparsing (for printing)
+    _pEvalStackTop->function.tokenAddress = _programCounter;                                                // only for finding source error position during unparsing (for printing)
 
     _pEvalStackTop->function.index = ((TokenIsIntFunction*)_programCounter)->tokenIndex;
 };
@@ -5105,27 +5085,27 @@ void Justina_interpreter::pushFunctionName(int& tokenType) {                    
 // *   push real or string constant token to evaluation stack   *
 // -------------------------------------------------------------
 
-void Justina_interpreter::pushConstant(int& tokenType) {                                              // float or string constant token is assumed
+void Justina_interpreter::pushConstant(int& tokenType) {                                                                                    // float or string constant token is assumed
 
     // push real or string parsed constant, value type and array flag (false) to stack
     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
 
     _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(VarOrConstLvl));
-    _pEvalStackTop->varOrConst.tokenType = tok_isConstant;          // use generic constant type
-    _pEvalStackTop->varOrConst.tokenAddress = _programCounter;                                  // only for finding source error position during unparsing (for printing)
+    _pEvalStackTop->varOrConst.tokenType = tok_isConstant;                                                                                  // use generic constant type
+    _pEvalStackTop->varOrConst.tokenAddress = _programCounter;                                                                              // only for finding source error position during unparsing (for printing)
 
-    _pEvalStackTop->varOrConst.valueType = ((*(char*)_programCounter) >> 4) & value_typeMask;     // for constants, upper 4 bits contain the value type
-    _pEvalStackTop->varOrConst.sourceVarAttributes = 0x00;
+    _pEvalStackTop->varOrConst.valueType = ((*(char*)_programCounter) >> 4) & value_typeMask;                                               // for constants, upper 4 bits contain the value type
+    _pEvalStackTop->varOrConst.sourceVarScopeAndFlags = 0x00;
     _pEvalStackTop->varOrConst.valueAttributes = 0x00;
 
     if ((_pEvalStackTop->varOrConst.valueType & value_typeMask) == value_isLong) {
-        memcpy(&_pEvalStackTop->varOrConst.value.longConst, ((TokenIsConstant*)_programCounter)->cstValue.longConst, sizeof(long));          // float  not necessarily aligned with word size: copy memory instead
+        memcpy(&_pEvalStackTop->varOrConst.value.longConst, ((TokenIsConstant*)_programCounter)->cstValue.longConst, sizeof(long));         // float  not necessarily aligned with word size: copy memory instead
     }
     else if ((_pEvalStackTop->varOrConst.valueType & value_typeMask) == value_isFloat) {
-        memcpy(&_pEvalStackTop->varOrConst.value.floatConst, ((TokenIsConstant*)_programCounter)->cstValue.floatConst, sizeof(float));          // float  not necessarily aligned with word size: copy memory instead
+        memcpy(&_pEvalStackTop->varOrConst.value.floatConst, ((TokenIsConstant*)_programCounter)->cstValue.floatConst, sizeof(float));      // float  not necessarily aligned with word size: copy memory instead
     }
     else {
-        memcpy(&_pEvalStackTop->varOrConst.value.pStringConst, ((TokenIsConstant*)_programCounter)->cstValue.pStringConst, sizeof(void*)); // char pointer not necessarily aligned with word size: copy pointer instead
+        memcpy(&_pEvalStackTop->varOrConst.value.pStringConst, ((TokenIsConstant*)_programCounter)->cstValue.pStringConst, sizeof(void*));  // char pointer not necessarily aligned with word size: copy pointer instead
     }
 };
 
@@ -5134,15 +5114,15 @@ void Justina_interpreter::pushConstant(int& tokenType) {                        
 // *   push generic name token to evaluation stack   *
 // ---------------------------------------------------
 
-void Justina_interpreter::pushGenericName(int& tokenType) {                                              // float or string constant token is assumed
+void Justina_interpreter::pushGenericName(int& tokenType) {                                                 // float or string constant token is assumed
 
     // push real or string parsed constant, value type and array flag (false) to stack
     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
 
     // just push the string pointer to the generic name (no indexes, ...)
     _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(GenNameLvl));
-    _pEvalStackTop->varOrConst.tokenType = tok_isGenericName;          // use generic constant type
-    _pEvalStackTop->varOrConst.tokenAddress = _programCounter;                                  // only for finding source error position during unparsing (for printing)
+    _pEvalStackTop->varOrConst.tokenType = tok_isGenericName;                                               // use generic constant type
+    _pEvalStackTop->varOrConst.tokenAddress = _programCounter;                                              // only for finding source error position during unparsing (for printing)
 
     char* pAnum{ nullptr };
     memcpy(&pAnum, ((TokenIsConstant*)_programCounter)->cstValue.pStringConst, sizeof(pAnum)); // char pointer not necessarily aligned with word size: copy pointer instead
@@ -5154,7 +5134,7 @@ void Justina_interpreter::pushGenericName(int& tokenType) {                     
 // *   push variable token to evaluation stack   *
 // ----------------------------------------------
 
-void Justina_interpreter::pushVariable(int& tokenType) {                                              // variable name token is assumed
+void Justina_interpreter::pushVariable(int& tokenType) {                                                    // with variable token type
 
     // push variable base address, variable value type (real, string) and array flag to stack
     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
@@ -5163,19 +5143,15 @@ void Justina_interpreter::pushVariable(int& tokenType) {                        
     _pEvalStackTop->varOrConst.tokenType = tokenType;
     _pEvalStackTop->varOrConst.tokenAddress = _programCounter;
 
-    // note: _pEvalStackTop->varOrConst.valueType is a value ONLY containing the value type of the variable pushed on the stack (float, string, reference)
-    //       _pEvalStackTop->varOrConst.varTypeAddress is a pointer to the SOURCE variable's variable info (either a referenced variable or the variable itself), with ...
-    //       the source variable info containing the value type of the variable AND the 'is array' flag 
-
     void* varAddress = fetchVarBaseAddress((TokenIsVariable*)_programCounter, _pEvalStackTop->varOrConst.varTypeAddress, _pEvalStackTop->varOrConst.valueType,
-        _pEvalStackTop->varOrConst.sourceVarAttributes);
-    _pEvalStackTop->varOrConst.value.pBaseValue = varAddress;                                    // base address of variable
-    _pEvalStackTop->varOrConst.valueAttributes = 0;                                             // init
-
+        _pEvalStackTop->varOrConst.sourceVarScopeAndFlags);
+    _pEvalStackTop->varOrConst.value.pBaseValue = varAddress;                                               // base address of variable
+    _pEvalStackTop->varOrConst.valueAttributes = 0;                                                         // init
+    /*
     Serial.println("**    PUSHING variable to eval stack top");
     Serial.print("      source vartype address: "); Serial.println((uint32_t)_pEvalStackTop->varOrConst.varTypeAddress - RAMSTART);
     Serial.print("      local value type: "); Serial.println(_pEvalStackTop->varOrConst.valueType, HEX);
-    Serial.print("      source variable attributes: "); Serial.println(_pEvalStackTop->varOrConst.sourceVarAttributes, HEX);
+    Serial.print("      source variable attributes: "); Serial.println(_pEvalStackTop->varOrConst.sourceVarScopeAndFlags, HEX);
     Serial.print("      var base value address: "); Serial.println((uint32_t)_pEvalStackTop->varOrConst.value.pBaseValue - RAMSTART);
-
+    */
 }

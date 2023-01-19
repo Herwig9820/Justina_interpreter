@@ -796,12 +796,11 @@ class Justina_interpreter {
     // - INTERMEDIATE constants (execution only) and variables: value type is maintained together with variable / intermediate constant data (per variable, array or constant) 
     // Note: because the value type is not fixed for scalar variables (type can dynamically change at runtime), this info is not maintained in the parsed 'variable' token 
 
-public:
     static constexpr uint8_t value_typeMask = 0x03;                    // mask for value type 
-    static constexpr uint8_t value_isVarRef = 0x03;
-    static constexpr uint8_t value_isLong = 0x00;
-    static constexpr uint8_t value_isFloat = 0x01;
-    static constexpr uint8_t value_isStringPointer = 0x02;
+    static constexpr uint8_t value_isVarRef = 0x00;
+    static constexpr uint8_t value_isLong = 0x01;
+    static constexpr uint8_t value_isFloat = 0x02;
+    static constexpr uint8_t value_isStringPointer = 0x03;
 
     // application flag bits:flags signaling specific Justina status conditions
     static constexpr long appFlag_errorConditionBit = 0x01L;       // bit 0: a Justina parsing or execution error has occured
@@ -809,7 +808,6 @@ public:
     static constexpr long appFlag_statusBbit = 0x20L;
     static constexpr long appFlag_waitingForUser = 0x40L;
 
-private:
     // application flag bits b54: application status
     static constexpr long appFlag_statusMask = 0x30L;
     static constexpr long appFlag_idle = 0x00L;
@@ -899,7 +897,7 @@ private:
 
 
     union Val {
-        void* pBaseValue;                                        // address of a variable value (which can be a float, a string pointer or a variable address itself)
+        void* pBaseValue;                                        // address of a variable value (which can be a long, float, a string pointer or a variable address itself)
         // global, static, local variables; parameters with default initialisation (if no argument provided)
         long longConst;                                        // long
         float floatConst;                                        // float
@@ -947,7 +945,7 @@ private:
     struct VarOrConstLvl {
         char tokenType;
         char valueType;
-        char sourceVarAttributes;                                    // is array; is array element; SOURCE variable scope
+        char sourceVarScopeAndFlags;                                    // is array; is array element; SOURCE variable scope
         char valueAttributes;
         char* tokenAddress;                                     // must be second 4-byte word, only for finding source error position during unparsing (for printing)
         Val value;                                              // float or pointer (4 byte)
@@ -1019,7 +1017,7 @@ private:
         // value area pointers (note: a value is a long, a float or a pointer to a string or array, or (if reference): pointer to 'source' (referenced) variable))
         Val* pLocalVarValues;           // points to local variable value storage area
         char** ppSourceVarTypes;        // only if local variable is reference to variable or array element: pointer to 'source' variable value type  
-        char* pSourceVarAttributes;      // local variable: value type (float, local string or reference); 'source' (if reference) or local variable scope (user, global, static; local, param) 
+        char* pVariableAttributes;      // local variable: value type (float, local string or reference); 'source' (if reference) or local variable scope (user, global, static; local, param) and 'is array' and 'is constant var' flags
 
         char* pNextStep;                // next step to execute (look ahead)
         char* errorStatementStartStep;  // first token in statement where execution error occurs (error reporting)
@@ -1470,7 +1468,7 @@ private:
 
     bool expandStringBackslashSequences(char*& input);
 
-    void* fetchVarBaseAddress(TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& sourceVarAttributes);
+    void* fetchVarBaseAddress(TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& sourceVarScopeAndFlags);
     void* arrayElemAddress(void* varBaseAddress, int* dims);
 
     execResult_type  exec(char* startHere);
@@ -1510,7 +1508,7 @@ private:
     execResult_type deleteVarStringObject(LE_evalStack* pStackLvl);
     execResult_type deleteIntermStringObject(LE_evalStack* pStackLvl);
 
-    execResult_type copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, bool* argIsArray, char* valueType, Val* args, bool passVarRefOrConst = false);
+    execResult_type copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, bool* argIsArray, char* valueType, Val* args, bool passVarRefOrConst = false, Val* dummyArgs=nullptr);
 
     int findTokenStep(char*& pStep, int tokenTypeToFind, char tokenCodeToFind, char tokenCode2ToFind = -1);
     int jumpTokens(int n, char*& pStep, int& tokenCode);

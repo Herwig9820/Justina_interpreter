@@ -28,7 +28,7 @@
 
 #include "Justina.h"
 
-#define printCreateDeleteListHeapObjects 1
+#define printCreateDeleteListHeapObjects 0
 #define printParsedTokens 0
 #define debugPrint 0
 
@@ -59,12 +59,12 @@ void Justina_interpreter::deleteIdentifierNameObjects(char** pIdentNameArray, in
 // *   delete variable heap objects: array variable character strings   *
 // ----------------------------------------------------------------------
 
-void Justina_interpreter::deleteArrayElementStringObjects(Justina_interpreter::Val* varValues, char* sourceVarAttributes, int varNameCount, int paramOnlyCount, bool checkIfGlobalValue, bool isUserVar, bool isLocalVar) {
+void Justina_interpreter::deleteArrayElementStringObjects(Justina_interpreter::Val* varValues, char* sourceVarScopeAndFlags, int varNameCount, int paramOnlyCount, bool checkIfGlobalValue, bool isUserVar, bool isLocalVar) {
     int index = paramOnlyCount;                    // skip parameters (if function, otherwise must be zero) - if parameter variables are arrays, they are always a reference variable 
     while (index < varNameCount) {
-        if (!checkIfGlobalValue || (sourceVarAttributes[index] & (var_nameHasGlobalValue))) { // if only for global values: is it a global value ?
+        if (!checkIfGlobalValue || (sourceVarScopeAndFlags[index] & (var_nameHasGlobalValue))) { // if only for global values: is it a global value ?
             
-            if ((sourceVarAttributes[index] & (var_isArray | value_typeMask)) == (var_isArray | value_isStringPointer)) {              // array of strings
+            if ((sourceVarScopeAndFlags[index] & (var_isArray | value_typeMask)) == (var_isArray | value_isStringPointer)) {              // array of strings
                 void* pArrayStorage = varValues[index].pArray;        // void pointer to an array of string pointers; element 0 contains dimensions and dimension count
                 int dimensions = (((char*)pArrayStorage)[3]);  // can range from 1 to MAX_ARRAY_DIMS
                 int arrayElements = 1;                                  // determine array size
@@ -99,10 +99,9 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
 
     int index = 0;                          // do NOT skip parameters if deleting function variables: with constant args, a local copy is created (always scalar) and must be deleted if non-empty string
     while (index < varNameCount) {
-        Serial.print("index: "); Serial.print(index); Serial.print(", var type: "); Serial.println(varType[index], HEX);
         if (!checkIfGlobalValue || (varType[index] & (var_nameHasGlobalValue))) { // global value ?
             // check for arrays before checking for strings (if both 'var_isArray' and 'value_isStringPointer' bits are set: array of strings, with strings already deleted)
-            if (varType[index] & var_isArray) {       // variable is an array: delete array storage          
+            if (((varType[index] & value_typeMask) != value_isVarRef) && (varType[index] & var_isArray)) {       // variable is an array: delete array storage          
             #if printCreateDeleteListHeapObjects
                 Serial.print(isUserVar ? "----- (usr ar stor) " : isLocalVar ? "----- (loc ar stor) " : "----- (array stor ) "); Serial.println((uint32_t)varValues[index].pStringConst - RAMSTART);
             #endif
@@ -2589,11 +2588,11 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                         }
                         if (isOpenFunctionLocalVariable || isOpenFunctionParam) {
                             // supplied argument is a variable ? (scalar or array)
-                            bool isSourceVarRef = ((OpenFunctionData*)pFlowCtrlStackLvl)->pSourceVarAttributes[openFunctionVar_valueIndex] & value_isVarRef;
+                            bool isSourceVarRef = ((OpenFunctionData*)pFlowCtrlStackLvl)->pVariableAttributes[openFunctionVar_valueIndex] & value_isVarRef;
                             ////Serial.print("     is open function 'var ref': "); Serial.println(isSourceVarRef);
 
                             // has this local variable been defined as a scalar or array ?
-                            isOpenFunctionLocalArrayVariable = ((OpenFunctionData*)pFlowCtrlStackLvl)->pSourceVarAttributes[openFunctionVar_valueIndex] & var_isArray;
+                            isOpenFunctionLocalArrayVariable = ((OpenFunctionData*)pFlowCtrlStackLvl)->pVariableAttributes[openFunctionVar_valueIndex] & var_isArray;
                             ////Serial.print("------ is open function local array: "); Serial.println(isOpenFunctionLocalArrayVariable);
                             if (isOpenFunctionLocalArrayVariable) {
                                 void* pArray = isSourceVarRef ? *(((OpenFunctionData*)pFlowCtrlStackLvl)->pLocalVarValues[openFunctionVar_valueIndex].ppArray) :
