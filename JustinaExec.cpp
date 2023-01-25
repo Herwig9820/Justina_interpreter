@@ -325,8 +325,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                         // if postfix operation, execute it first (it always has highest priority)
                         bool isPostfixOperator = (_terminals[_pEvalStackTop->terminal.index & 0x7F].postfix_priority != 0);
                         if (isPostfixOperator) {
-                            execUnaryOperation(false);        // flag postfix operation
-                            execResult = execAllProcessedOperators();
+                            execResult = execUnaryOperation(false);        // flag postfix operation
+                            if (execResult == result_execOK) { execResult = execAllProcessedOperators(); }
                             if (execResult != result_execOK) { doCaseBreak = true;; }
                         }
                     }
@@ -715,7 +715,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             else if (execResult == result_kill) {}      // do nothing
             else if (execResult == result_abort) { _pConsole->print("\r\n+++ Abort: code execution terminated +++\r\n"); }
             else if (execResult == result_stopForDebug) { if (isBackslashStop) { _pConsole->print("\r\n+++ Program stopped +++\r\n"); } }
-            else if (execResult == result_initiateProgramLoad) {}        // nothing to do here for this event
+            else if (execResult == result_initiateProgramLoad) {}        // (nothing to do here for this event)
 
             _lastValueIsStored = false;              // prevent printing last result (if any)
             break;
@@ -851,89 +851,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
     return execResult;   // return result, in case it's needed by caller
 };
 
-
-// --------------------------------------------------
-// *   read character from keyboard, if available   *
-// --------------------------------------------------
-
-bool Justina_interpreter::getKey(char& c, bool enableTimeOut) {     // default: no time out
-
-    // enable time out = false: only check once for character, exit anyway
-    //                   true: continue checking for character, exit after time out if no character is read
-
-    bool quitNow{ false };
-
-    // read a character, if available in buffer
-    long startWaitForReadTime = millis();
-    bool readCharWindowExpired{};
-    do {
-        // do a housekeeping callback at regular intervals (if callback function defined)
-        if (_housekeepingCallback != nullptr) {
-            _currenttime = millis();
-            _previousTime = _currenttime;
-            // note: also handles millis() overflow after about 47 days
-            if ((_lastCallBackTime + callbackPeriod < _currenttime) || (_currenttime < _previousTime)) {            // while executing, limit calls to housekeeping callback routine 
-                _lastCallBackTime = _currenttime;
-                _housekeepingCallback(quitNow, _appFlags);                                                           // execute housekeeping callback
-                if (quitNow) { while (_pConsole->available() > 0) { _pConsole->read(); } return true; }             // flush buffer and flag 'quit (request from Justina caller)'
-            }
-        }
-
-        if (_pConsole->available() > 0) { c = _pConsole->read(); return false; }                                          // if terminal character available for reading
-        readCharWindowExpired = (!enableTimeOut || (startWaitForReadTime + 200L < millis()));        // only while parsing a program
-    } while (!readCharWindowExpired);
-    c = 0xFF;                                                                                                 // no character read
-    return false;                                                                                           // do not quit
-}
-
-// ---------------------------------------------------------
-// *   read text from keyboard and store in c++ variable   *
-// ---------------------------------------------------------
-
-// read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
-// return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
-// return value 'true' indicates kill request from Justina caller
-
-bool Justina_interpreter::readText(bool& doAbort, bool& doStop, bool& doCancel, bool& doDefault, char* input, int& length) {
-    bool backslashFound{ false }, quitNow{ false };
-
-    length = 0;  // init
-    do {                                                                                                            // until new line character encountered
-        // read a character, if available in buffer
-        char c{ 0xFF };                                                           // init: no character available
-        if (getKey(c)) { return true; }      // return value true: kill Justina interpreter (buffer is now flushed until next line character)
-
-        if (c != 0xFF) {                                                                           // terminal character available for reading ?
-            if (c == '\n') { break; }                                                                               // read until new line character
-            else if (c < ' ') { continue; }                                                                         // skip control-chars except new line (ESC is skipped here as well - flag already set)
-
-            // Check for Justina ESCAPE sequence (sent by terminal as individual characters) and cancel input, or use default value, if indicated
-            // Note: if Justina ESCAPE sequence is not recognized, then backslash character is simply discarded
-            if (c == '\\') {                                                                                        // backslash character found
-                backslashFound = !backslashFound;
-                if (backslashFound) { continue; }                                                                   // first backslash in a sequence: note and do nothing
-            }
-
-            else if (tolower(c) == 'a') {                                                                    // part of a Justina ESCAPE sequence ? Abort evaluation phase 
-                if (backslashFound) { backslashFound = false;  doAbort = true;  continue; }
-            }
-            else if (tolower(c) == 's') {                                                                    // part of a Justina ESCAPE sequence ? Stop and enter debug mode 
-                if (backslashFound) { backslashFound = false;  doStop = true;  continue; }
-            }
-            else if (tolower(c) == 'c') {                                                                    // part of a Justina ESCAPE sequence ? Cancel if allowed 
-                if (backslashFound) { backslashFound = false;  doCancel = true;  continue; }
-            }
-            else if (tolower(c) == 'd') {                                                                    // part of a Justina ESCAPE sequence ? Use default value if provided
-                if (backslashFound) { backslashFound = false; doDefault = true;  continue; }
-            }
-
-            if (length >= MAX_USER_INPUT_LEN) { continue; }                                                           // max. input length exceeded: drop character
-            input[length] = c; input[++length] = '\0';
-        }
-    } while (true);
-
-    return false;
-}
 
 // ----------------------------------------------------------------------
 // *   execute a processed command  (statement starting with a keyword) *
@@ -1223,6 +1140,22 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         }
         break;
 
+        // -------------------------------------
+        // print all variables (global and user)
+        // -------------------------------------
+
+        case cmdcod_printVars:
+        {
+            _pConsole->println();
+            printVariables(true);       // user variables
+            printVariables(false);      // global program variables
+
+            // clean up
+            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
+        }
+        break;
+
+
         // -----------------------------------
         // read and parse program from console
         // -----------------------------------
@@ -1321,6 +1254,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             //        if a '\' character is followed by a character other then 'c' or 'd', the backslash character is discarded
 
 
+            // the 'input' and 'info' statements do not accept constants for specific arguments. IN contrast to functions, which can only test this at runtime,...
+            // ... statements can test this during parsing. This is why there are no tests related to constants here. 
+
             bool argIsVar[3];
             bool argIsArray[3];
             char valueType[3];
@@ -1341,10 +1277,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
             do {                                                                                                                // until valid answer typed
                 if (isInput) {                                                                                                  // input command
-                    if (cmdParamCount == 3) {                                                                                   // 'allow default' if not zero 
-                        if (((uint8_t)(valueType[2]) != value_isLong) && ((uint8_t)(valueType[2]) != value_isFloat)) { return result_arg_numValueExpected; }    // flag: with default 
-                        checkForDefault = (((uint8_t)(valueType[2]) == value_isLong) ? args[2].longConst != 0 : args[2].floatConst != 0.);
-                    }
+                    if (((uint8_t)(valueType[2]) != value_isLong) && ((uint8_t)(valueType[2]) != value_isFloat)) { return result_arg_numValueExpected; }    // flag: with default 
+                    checkForDefault = (((uint8_t)(valueType[2]) == value_isLong) ? args[2].longConst != 0 : args[2].floatConst != 0.);
                     checkForCancel = true;
 
                     if ((argIsArray[1]) && (valueType[1] != value_isStringPointer)) { return result_array_valueTypeIsFixed; }   // an array cannot change type: it needs to be string to receive result
@@ -1680,24 +1614,30 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             const char isVariable = 0x80;                                                               // mask: is variable (not a constant) 
 
             // if more than 8 arguments are supplied, excess arguments are discarded
+            // to keep it simple for the c++ user writing the user routine, we always pass const void pointers, to variables and constants
+            // but for constants, the pointer will point to a copy of the data
+
             Val args[8]{}, dummyArgs[8]{};                                                                            // values to be passed to user routine
             char valueType[8]{ };                             // value types (long, float, char string)
             char varScope[8]{};                                                                         // if variable: variable scope (user, program global, static, local)
             bool argIsNonConstantVar[8]{};                                                                         // flag: is variable (scalar or aray)
             bool argIsArray[8]{};                                                                       // flag: is array element
 
-            const void* pValues[8]{};                                                                    // to keep it simple for the c++ user writing the user routine, we simply pass const void pointers
+            const void* pValues_copy[8]{};                                                              // copies for safety
+            char valueTypes_copy[8];
+            int cmdParamCount_copy{ cmdParamCount };
 
             // any data to pass ? (optional arguments 2 to 9: data)
             if (cmdParamCount >= 2) {                                                                   // first argument (callback procedure) processed (but still on the stack)
-                copyValueArgsFromStack(pStackLvl, cmdParamCount - 1, argIsNonConstantVar, argIsArray, valueType, args, true, dummyArgs);  // creates a NEW temporary string object if empty string OR or constant (non-variable) string 
+                copyValueArgsFromStack(pStackLvl, cmdParamCount - 1, argIsNonConstantVar, argIsArray, valueType, args, true, dummyArgs);
                 pStackLvl = pStackLvlFirstValueArg;     // set stack level again to first value argument
                 for (int i = 0; i < cmdParamCount - 1; i++) {
                     if (argIsNonConstantVar[i]) {                                                                  // is this a 'changeable' variable ? (not a constant & not a constant variable)
                         valueType[i] |= isVariable;                                                     // flag as 'changeable' variable (scalar or array element)
                         varScope[i] = (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_scopeMask);       // remember variable scope (user, program global, local, static) 
                     }
-                    pValues[i] = args[i].pBaseValue;                                                     // copy pointers for safety (protect original pointers from changes by c++ routine) 
+                    pValues_copy[i] = args[i].pBaseValue;                                                   // copy pointers for safety (protect original pointers from changes by c++ routine) 
+                    valueTypes_copy[i] = valueType[i];
                     pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
                 }
             }
@@ -1706,7 +1646,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // call user routine
             // -----------------
 
-            _callbackUserProcStart[index](pValues, valueType, cmdParamCount - 1);                          // pointers to values copied for safety
+            _callbackUserProcStart[index](pValues_copy, valueTypes_copy, cmdParamCount_copy - 1);     // value pointers, value types copied for safety (if constants are passed, even te values have been copied: dummyArgs[])
 
 
             // postprocess: check any strings RETURNED by callback procedure
@@ -2110,10 +2050,18 @@ int Justina_interpreter::jumpTokens(int n, char*& pStep, int& tokenCode) {
 // *   advance until specific token   *
 // ------------------------------------
 
-int Justina_interpreter::findTokenStep(char*& pStep, int tokenTypeToFind, char tokenCodeToFind, char tokenCode2ToFind) {
+int Justina_interpreter::findTokenStep(char*& pStep, int tokenType_spec, char criterium1, char criterium2) {
 
     // pStep: pointer to first token to test versus token group and (if applicable) token code
     // tokenType: if 'tok_isTerminalGroup1', test for the three terminal groups !
+
+    // if looking for a specific reserved word or a specific terminal (optionally you can specify two)
+    char & tokenCode1_spec = criterium1;    // keyword index or terminal index to look for
+    char& tokenCode2_spec = criterium2;     // optional second index (-1 if only one index to look for)
+
+    // if looking for a specific variable
+    char & varScope_spec = criterium1;      //  variable scope to look for (user, global, ...)
+    char & valueIndex_spec = criterium2;    // value index to look for
 
     // exclude current token step
     int tokenType = *pStep & 0x0F;
@@ -2124,27 +2072,40 @@ int Justina_interpreter::findTokenStep(char*& pStep, int tokenTypeToFind, char t
 
     do {
         tokenType = *pStep & 0x0F;
+        if(tokenType == '\0'){return tokenType;}            // signal 'not found'
 
-        bool tokenTypeMatch = (tokenTypeToFind == tokenType);
+        bool tokenTypeMatch = (tokenType_spec == tokenType);
 
-        if (tokenTypeToFind == tok_isTerminalGroup1) { tokenTypeMatch = tokenTypeMatch || (tokenType == tok_isTerminalGroup2) || (tokenType == tok_isTerminalGroup3); }
+        if (tokenType_spec == tok_isTerminalGroup1) { tokenTypeMatch = tokenTypeMatch || (tokenType == tok_isTerminalGroup2) || (tokenType == tok_isTerminalGroup3); }
         if (tokenTypeMatch) {
             bool tokenCodeMatch{ false };
             int tokenIndex{ 0 };
 
-            switch (tokenTypeToFind) {
+            switch (tokenType_spec) {
                 case tok_isReservedWord:
-                    tokenIndex = (((TokenIsResWord*)pStep)->tokenIndex);
-                    tokenCodeMatch = _resWords[tokenIndex].resWordCode == tokenCodeToFind;
-                    if (!tokenCodeMatch && (tokenCodeToFind != -1)) { tokenCodeMatch = _resWords[tokenIndex].resWordCode == tokenCode2ToFind; }
+                {
+                    int tokenIndex = (((TokenIsResWord*)pStep)->tokenIndex);
+                    tokenCodeMatch = _resWords[tokenIndex].resWordCode == tokenCode1_spec;
+                    if (!tokenCodeMatch && (tokenCode2_spec != -1)) { tokenCodeMatch = _resWords[tokenIndex].resWordCode == tokenCode2_spec; }
                     break;
+                }
 
                 case tok_isTerminalGroup1:       // actual token can be part of any of the three terminal groups
-                    tokenIndex = ((((TokenIsTerminal*)pStep)->tokenTypeAndIndex >> 4) & 0x0F);
+                {
+                    int tokenIndex = ((((TokenIsTerminal*)pStep)->tokenTypeAndIndex >> 4) & 0x0F);
                     tokenIndex += ((tokenType == tok_isTerminalGroup2) ? 0x10 : (tokenType == tok_isTerminalGroup3) ? 0x20 : 0);
-                    tokenCodeMatch = _terminals[tokenIndex].terminalCode == tokenCodeToFind;
-                    if (!tokenCodeMatch && (tokenCodeToFind != -1)) { tokenCodeMatch = _resWords[tokenIndex].resWordCode == tokenCode2ToFind; }
+                    tokenCodeMatch = _terminals[tokenIndex].terminalCode == tokenCode1_spec;
+                    if (!tokenCodeMatch && (tokenCode2_spec != -1)) { tokenCodeMatch = _resWords[tokenIndex].resWordCode == tokenCode2_spec; }
                     break;
+                }
+
+                case tok_isVariable:
+                {
+                    int varScope = ((TokenIsVariable*)pStep)->identInfo & var_scopeMask;
+                    int valueIndex = ((TokenIsVariable*)pStep)->identValueIndex;
+                    tokenCodeMatch = (varScope == (varScope_spec & var_scopeMask)) && ((valueIndex_spec == -1) ? true:  (valueIndex == tokenCode2_spec));
+                    break;
+                }
 
                 default:
                     return tokenType;
@@ -2167,8 +2128,8 @@ int Justina_interpreter::findTokenStep(char*& pStep, int tokenTypeToFind, char t
 void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
     if (!(evalStack.getElementCount() > _activeFunctionData.callerEvalStackLevels)) { return; }           // safety: data available ?
     // if overwrite 'previous' last result, then replace first item (if there is one); otherwise replace last item if FiFo full (-1 if nothing to replace)
-    int itemToRemove = overWritePrevious ? ((_lastResultCount >= 1) ? 0 : -1) :
-        ((_lastResultCount == MAX_LAST_RESULT_DEPTH) ? MAX_LAST_RESULT_DEPTH - 1 : -1);
+    int itemToRemove = overWritePrevious ? ((_lastValuesCount >= 1) ? 0 : -1) :
+        ((_lastValuesCount == MAX_LAST_RESULT_DEPTH) ? MAX_LAST_RESULT_DEPTH - 1 : -1);
 
     // remove a previous item ?
     if (itemToRemove != -1) {
@@ -2182,16 +2143,16 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
                 // note: this is always an intermediate string
                 delete[] lastResultValueFiFo[itemToRemove].pStringConst;
                 _lastValuesStringObjectCount--;
-            }
         }
     }
+}
     else {
-        _lastResultCount++;     // only adding an item, without removing previous one
+        _lastValuesCount++;     // only adding an item, without removing previous one
     }
 
     // move older last results one place up in FIFO, except when just overwriting 'previous' last result
-    if (!overWritePrevious && (_lastResultCount > 1)) {       // if 'new' last result count is 1, no old results need to be moved  
-        for (int i = _lastResultCount - 1; i > 0; i--) {
+    if (!overWritePrevious && (_lastValuesCount > 1)) {       // if 'new' last result count is 1, no old results need to be moved  
+        for (int i = _lastValuesCount - 1; i > 0; i--) {
             lastResultValueFiFo[i] = lastResultValueFiFo[i - 1];
             lastResultTypeFiFo[i] = lastResultTypeFiFo[i - 1];
         }
@@ -2231,7 +2192,7 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
         #endif
             delete[] lastvalue.value.pStringConst;
             _intermediateStringObjectCount--;
-        }
+    }
     }
 
     // store new last value type
@@ -2352,7 +2313,7 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
                     #if printCreateDeleteListHeapObjects
                         Serial.print("----- (LOCAL STORAGE) ");   Serial.println((uint32_t)(_activeFunctionData.pLocalVarValues) - RAMSTART);
                     #endif
-                        deleteArrayElementStringObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, paramOnlyCount, false, false, true);
+                        deleteStringArrayVarsStringObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, paramOnlyCount, false, false, true);
                         deleteVariableValueObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, paramOnlyCount, false, false, true);
 
                         // release local variable storage for function that has been called
@@ -2360,10 +2321,10 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
                         delete[] _activeFunctionData.pVariableAttributes;
                         delete[] _activeFunctionData.ppSourceVarTypes;
                         _localVarValueAreaCount--;
-                    }
                 }
-                if (!isInitialLoop) { --_callStackDepth; }
             }
+                if (!isInitialLoop) { --_callStackDepth; }
+        }
 
             else if (blockType == block_eval) {
                 // no need to copy flow control stack level to _activeFunctionData
@@ -2381,8 +2342,8 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
 
             if (pFlowCtrlStackLvl == nullptr) { break; }       // all done
             isInitialLoop = false;
-        } while (true);
-    }
+    } while (true);
+}
 
     _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
     _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackTop);
@@ -2655,8 +2616,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::execUnaryOperation(bo
     // operator
     int terminalIndex = pUnaryOpStackLvl->terminal.index & 0x7F;
     char terminalCode = _terminals[terminalIndex].terminalCode;
-    bool requiresLongOp = (_terminals[terminalIndex].prefix_priority & op_long);
-    bool resultCastLong = (_terminals[terminalIndex].prefix_priority & res_long);
+    bool requiresLongOp = isPrefix ? (_terminals[terminalIndex].prefix_priority & op_long) : (_terminals[terminalIndex].postfix_priority & op_long);
+    bool resultCastLong = isPrefix ? (_terminals[terminalIndex].prefix_priority & res_long) : (_terminals[terminalIndex].postfix_priority & res_long);
 
     // operand, result
     bool operandIsVar = (pOperandStackLvl->varOrConst.tokenType == tok_isVariable);
@@ -2668,11 +2629,11 @@ Justina_interpreter::execResult_type  Justina_interpreter::execUnaryOperation(bo
     // -------------------------------------------------------------------------------------------------------------------------------
 
 
-    execResult_type execResult = result_execOK;         // init  //// te testen
+    execResult_type execResult = result_execOK;         // init  
 
-    if (!opIsLong && !opIsFloat) { execResult = result_numberExpected; }                   // value is numeric ?
+    if (!opIsLong && !opIsFloat) { execResult = result_numberExpected; }                   // value is numeric ? (no prefix / postfix operators for strings)
     if (!opIsLong && requiresLongOp) { execResult = result_integerExpected; }              // only integer value type allowed
-    if (execResult != result_execOK) { evalStack.deleteListElement(pUnaryOpStackLvl); return execResult; }
+    if (execResult != result_execOK) { return execResult; }
 
     // (3) fetch operand - note that line is valid for long integers as well
     // ---------------------------------------------------------------------
@@ -3001,8 +2962,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
             #endif
                 delete[] pUnclippedResultString;     // compound assignment: pointing to the unclipped result WHICH IS NON-EMPTY: so it's a heap object and must be deleted now
                 _intermediateStringObjectCount--;
-            }
         }
+    }
 
         // store value in variable and adapt variable value type - next line is valid for long integers as well
         if (opResultLong || opResultFloat) { *_pEvalStackMinus2->varOrConst.value.pFloatConst = opResult.floatConst; }
@@ -3016,7 +2977,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) |
                 (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
         }
-    }
+}
 
 
     // (7) post process
@@ -3061,7 +3022,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
 #endif
 
     return result_execOK;
-}
+    }
 
 
 // ---------------------------------
@@ -3326,7 +3287,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 FiFoElement = (argIsLongBits & (0x1 << 0)) ? args[0].longConst : int(args[0].floatConst);
                 if ((FiFoElement < 1) || (FiFoElement > MAX_LAST_RESULT_DEPTH)) { return result_arg_outsideRange; }
             }
-            if (FiFoElement > _lastResultCount) { return result_arg_invalid; }
+            if (FiFoElement > _lastValuesCount) { return result_arg_invalid; }
             --FiFoElement;
 
             fcnResultValueType = lastResultTypeFiFo[FiFoElement];
@@ -3382,10 +3343,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // optional argument returning #chars that were printed is present ? Variable expected
             bool hasSpecifierArg = false; // init
             if (suppliedArgCount >= 3) { hasSpecifierArg = (!(argIsLongBits & (0x1 << 3)) && !(argIsFloatBits & (0x1 << 3))); }             // third argument is either a specifier (string) or set of flags (number)
+            bool returnArgIsArray{};
             if (suppliedArgCount == (hasSpecifierArg ? 6 : 5)) {      // optional argument returning #chars that were printed is present
                 // if array has a non-numeric type (string), produce error (consistent with the way operators deal with it)
-                bool isArray = (_pEvalStackTop->varOrConst.sourceVarScopeAndFlags & var_isArray);
-                if ((!(argIsLongBits & (0x1 << suppliedArgCount - 1)) && !(argIsFloatBits & (0x1 << suppliedArgCount - 1))) && isArray) { return result_array_valueTypeIsFixed; }
+                returnArgIsArray = (_pEvalStackTop->varOrConst.sourceVarScopeAndFlags & var_isArray);
+                if ((!(argIsLongBits & (0x1 << suppliedArgCount - 1)) && !(argIsFloatBits & (0x1 << suppliedArgCount - 1))) && returnArgIsArray) { return result_array_valueTypeIsFixed; }
             }
 
             // test arguments and ADAPT print width, precision, specifier, flags
@@ -3412,14 +3374,18 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
             if (suppliedArgCount == (hasSpecifierArg ? 6 : 5)) {      // optional argument returning #chars that were printed is present
                 bool isConstant = (!(argIsVarBits & (0x1 << suppliedArgCount - 1)) || (_pEvalStackTop->varOrConst.sourceVarScopeAndFlags & var_isConstantVar));
-                if (!isConstant) {
-                    // if  variable currently holds a non-empty string (indicated by a nullptr), delete char string object (it will be replaced by the number of characters printed)
+                if (!isConstant) { // if last argument is constant: skip saving value in last argument WITHOUT error  
+                    // if  last argument's variable currently holds a non-empty string (indicated by a nullptr), delete char string object (it will be replaced by the number of characters printed)
                     execResult_type execResult = deleteVarStringObject(_pEvalStackTop); if (execResult != result_execOK) { return execResult; }
-
                     // save value in variable now, and set variable value type to long 
                     // note: if variable reference, then value type on the stack indicates 'variable reference' which should not be changed (but stack level will be deleted now anyway)
-                    *_pEvalStackTop->varOrConst.value.pFloatConst = charsPrinted;       // pointer to variable value
-                    *_pEvalStackTop->varOrConst.varTypeAddress = (*_pEvalStackTop->varOrConst.varTypeAddress & ~value_typeMask) | value_isFloat;
+                    if ((argIsFloatBits & (0x1 << suppliedArgCount - 1)) && returnArgIsArray) {        // convert value to float (to match with array's fixed value type)
+                        *_pEvalStackTop->varOrConst.value.pFloatConst = (float)charsPrinted;
+                    }
+                    else {      // either variable has integer type, or the variable is scalar (any type): store integer value in it, and set type 
+                        *_pEvalStackTop->varOrConst.value.pLongConst = charsPrinted;
+                        *_pEvalStackTop->varOrConst.varTypeAddress = (*_pEvalStackTop->varOrConst.varTypeAddress & ~value_typeMask) | value_isLong;     // if not yet long
+                    }
                 }
             }
         }
@@ -3562,26 +3528,27 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         // bit and byte manipulation functions
         // -----------------------------------
 
-        // all arguments need to be long integers; if a value is returned, it's always a long integer
-
         // Arduino bit manipulation functions
         // arguments and return values: same as the corresponding Arduino functions
+        // all arguments need to be long integers; if a value is returned, it's always a long integer
+        // except for the 'read' functions (and the 'bit number to value' function), if the first argument is a variable; it's value is adapted as well
+
         case fnccod_bit:                // bit number -> value 
 
-        case fnccod_bitRead:            // 2 arguments: variable, bit (0 to 31) to read. Returned: 0 or 1
-        case fnccod_bitClear:           // 2 arguments: variable, bit (0 to 31) to clear. New variable value is returned
-        case fnccod_bitSet:             // 2 arguments: variable, bit (0 to 31) to set. New variable value is returned
-        case fnccod_bitWrite:           // 3 arguments: variable, bit (0 to 31), new bit value (0 or 1). New variable value is returned
+        case fnccod_bitRead:            // 2 arguments: long value, bit (0 to 31) to read. Returned: 0 or 1
+        case fnccod_bitClear:           // 2 arguments: long value, bit (0 to 31) to clear. New value is returned
+        case fnccod_bitSet:             // 2 arguments: long value, bit (0 to 31) to set. New value is returned 
+        case fnccod_bitWrite:           // 3 arguments: long value, bit (0 to 31), new bit value (0 or 1). New value is returned 
 
             // extra Justina bit manipulation functons. Mask argument indicates which bits to read, set, clear or write
-        case fnccod_bitsMaskedRead:     // 2 arguments: value, mask. Returns masked value 
-        case fnccod_bitsMaskedClear:    // 2 arguments: variable, mask = bits to clear (bits indicated by mask are cleared in variable, new value is returned)
-        case fnccod_bitsMaskedSet:      // 2 arguments: variable, mask = bits = bits to set (bits indicated by mask are set in variable, new value is returned) 
-        case fnccod_bitsMaskedWrite:    // 3 arguments: variable, mask, bits to write (only bits indicated by mask are written in variable, new value is returned)
+        case fnccod_bitsMaskedRead:     // 2 arguments: long value, mask. Returns masked value 
+        case fnccod_bitsMaskedClear:    // 2 arguments: long value, mask = bits to clear: bits indicated by mask are cleared. New value is returned
+        case fnccod_bitsMaskedSet:      // 2 arguments: long value, mask = bits = bits to set: bits indicated by mask are set. New value is returned 
+        case fnccod_bitsMaskedWrite:    // 3 arguments: long value, mask, bits to write: value bits indicated by mask are changed. New value is returned
 
             // extra Justina byte manipulation functons. Byte argument indicates which byte to read or write
-        case fnccod_byteRead:           // 2 arguments: value, byte to read (0 to 3). Value returned is between 0x00 and 0xFF.     
-        case fnccod_byteWrite:          // 3 arguments: variable, byte to write (0 to 3), value to write (lowest 8 bits of argument). New value is stored in variable and is returned as well.    
+        case fnccod_byteRead:           // 2 arguments: long, byte to read (0 to 3). Value returned is between 0x00 and 0xFF.     
+        case fnccod_byteWrite:          // 3 arguments: long, byte to write (0 to 3), value to write (lowest 8 bits of argument). New value is returned    
         {
             if (!(argIsLongBits & (0x1 << 0)) && (functionCode != fnccod_bit)) { return result_arg_integerTypeExpected; }
             for (int i = 0; i < suppliedArgCount; ++i) {
@@ -4137,11 +4104,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
 
 
-    }       // end switch
+        }       // end switch
 
 
-    // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
-    // -------------------------------------------------------------------------------------------------------------------
+        // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
+        // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
@@ -4162,7 +4129,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
     }
 
     return result_execOK;
-}
+    }
 
 
 // -----------------------
@@ -4472,7 +4439,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
 #endif
     char* pParsingInput_temp = pEvalParsingInput;        // temp, because value will be changed upon return (preserve original pointer value)
     // note: application flags are not adapted (would not be passed to caller immediately)
-    parseTokenResult_type result = parseStatement(pParsingInput_temp, pDummy);           // parse all eval() expressions in ONE go (which is not the case for standard parsing and trace string parsing)
+    int dummy{};
+    parseTokenResult_type result = parseStatement(pParsingInput_temp, pDummy, dummy);           // parse all eval() expressions in ONE go (which is not the case for standard parsing and trace string parsing)
     delete[] pEvalParsingInput;
     _intermediateStringObjectCount--;
 #if printCreateDeleteListHeapObjects
@@ -4800,7 +4768,7 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateExternalFunct
     int paramOnlyCount = extFunctionData[_activeFunctionData.functionIndex].paramOnlyCountInFunction;      // of function to be terminated
 
     if (localVarCount > 0) {
-        deleteArrayElementStringObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, paramOnlyCount, false, false, true);
+        deleteStringArrayVarsStringObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, paramOnlyCount, false, false, true);
         deleteVariableValueObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, paramOnlyCount, false, false, true);
 
     #if printCreateDeleteListHeapObjects

@@ -141,10 +141,12 @@ class Justina_interpreter {
     static constexpr int MAX_USER_INPUT_LEN{ 100 };         // max. length of text a user can enter with an input statement. Absolute limit: 255
 
     static constexpr int MAX_STATEMENT_LEN{ 300 };          // max. length of a single user statement 
+    
+    static constexpr int DEFAULT_PRINT_WIDTH {30};          // default width of the print field.
+    static constexpr int DEFAULT_NUM_PRECISION {3};         // default numeric precision.
+    static constexpr int DEFAULT_STRCHAR_TO_PRINT {30};     // default # alphanumeric characters to print
 
-    static constexpr int DEFAULT_PRINT_WIDTH = 30;          // default width of the print field.
-    static constexpr int DEFAULT_NUM_PRECISION = 3;         // default numeric precision.
-    static constexpr int DEFAULT_STRCHAR_TO_PRINT = 30;     // default # alphanumeric characters to print
+    static constexpr long GETCHAR_TIMEOUT{200};              // milli seconds
 
     const int MAX_PRINT_WIDTH = 255;                        // max. width of the print field. Absolute limit: 255. With as defined as in c++ printf 'format.width' sub-specifier
     const int MAX_NUM_PRECISION = 8;                        // max. numeric precision. Precision as defined as in c++ printf 'format.precision' sub-specifier
@@ -158,11 +160,11 @@ class Justina_interpreter {
         cmdcod_none,        // no command being executed
 
         cmdcod_program,
-        cmdcod_delete,
+        cmdcod_deleteVar,
         cmdcod_clear,
         cmdcod_printVars,
-        cmdcod_printCB,
-        cmdcod_printProg,
+        cmdcod_clearAll,
+        cmdcod_clearProg,
         cmdcod_printCallSt,
         cmdcod_function,
         cmdcod_static,
@@ -484,6 +486,7 @@ class Justina_interpreter {
         result_illegalInDeclaration,
         result_illegalInProgram,
         result_noOpenFunction,
+        result_varUsedInProgram,
 
         // array errors
         result_arrayDefNoDims = 1700,
@@ -504,7 +507,6 @@ class Justina_interpreter {
         result_varWithoutAssignmentExpectedAsCmdPar,
         result_varWithOptionalAssignmentExpectedAsCmdPar,
         result_variableExpectedAsCmdPar,
-        result_varRefExpectedAsCmdPar,
         result_identExpectedAsCmdPar,
         result_cmdParameterMissing,
         result_cmdHasTooManyParameters,
@@ -522,7 +524,12 @@ class Justina_interpreter {
         result_onlyOutsideFunction,
         result_onlyImmediateOrInFunction,
         result_onlyInProgOutsideFunction,
+        result_onlyImmediateEndOfLine,////
 
+        
+        result_event_endParsing,
+        
+        
         result_noOpenBlock,
         result_noBlockEnd,
         result_noOpenLoop,
@@ -756,8 +763,9 @@ class Justina_interpreter {
     static constexpr char cmd_onlyInFunctionBlock = 0x03;               // command is only allowed inside a function block
     static constexpr char cmd_onlyImmediate = 0x04;                   // command is only allowed in immediate mode
     static constexpr char cmd_onlyOutsideFunctionBlock = 0x05;             // command is only allowed outside a function block (so also in immediate mode)
-    static constexpr char cmd_onlyImmOrInsideFuncBlock = 0x06;   // command is only allowed inside a function block
+    static constexpr char cmd_onlyImmOrInsideFuncBlock = 0x06;   // command is only allowed inside a function block are in immediare mode
     static constexpr char cmd_onlyProgramTop = 0x07;                        // only as first program statement
+    static constexpr char cmd_onlyImmediateOutsideBlock = 0x08;                        // command is only allowed in immediate mode, and only outside blocks
 
     // bit b7: skip command during execution
     static constexpr char cmd_skipDuringExec = 0x80;
@@ -1132,6 +1140,8 @@ class Justina_interpreter {
     bool _isAnyVarCmd = false;                                     // VAR, LOCAL or STATIC command is being parsed
     bool _isConstVarCmd = false;
     bool _isDeleteVarCmd = false;
+    bool _isClearProgCmd = false;
+    bool _isClearAllCmd = false;
     bool _isForCommand = false;
     bool _initiateProgramLoad = false;
 
@@ -1182,10 +1192,10 @@ class Justina_interpreter {
     bool _thisLvl_lastOpIsIncrDecr;
 
     // used to check command argument constraints
-    bool _lvl0_withinExpression;
-    bool _lvl0_isPurePrefixIncrDecr;
-    bool _lvl0_isPureVariable;
-    bool _lvl0_isVarWithAssignment;
+    bool _lvl0_withinExpression;                    // currently parsing an expression
+    bool _lvl0_isPurePrefixIncrDecr;                // the prefix increment/decrement operator just parsed is the first token of a (sub-) expression
+    bool _lvl0_isPureVariable;                      // the variable token just parsed is the first token of a (sub-) expression (or the second token but only if preceded by a prefix incr/decr token)
+    bool _lvl0_isVarWithAssignment;                 // operator just parsed is a (compound or pure) assignment operator, preceded by a 'pure' variable (see preceding line)
 
     int _initVarOrParWithUnaryOp;                    // initialiser unary operators only: -1 = minus, 1 = plus, 0 = no unary op 
 
@@ -1259,14 +1269,14 @@ class Justina_interpreter {
     bool _isPrompt{ false };
 
     int _userVarCount{ 0 };                                        // counts number of user variables (names and values) 
-    int _programVarNameCount{ 0 };                                        // counts number of variable names (global variables: also stores values) 
+    int _programVarNameCount{ 0 };                                 // counts number of variable names (global variables: also stores values) 
     int _localVarCountInFunction{ 0 };                             // counts number of local variables in a specific function (names only, values not used)
     int _paramOnlyCountInFunction{ 0 };
     int _localVarCount{ 0 };                                      // local variable count (across all functions)
     int _staticVarCountInFunction{ 0 };
     int _staticVarCount{ 0 };                                      // static variable count (across all functions)
     int _extFunctionCount{ 0 };                                    // external function count
-    int _lastResultCount{ 0 };
+    int _lastValuesCount{ 0 };
     int _userCBprocStartSet_count = 0;
     int _userCBprocAliasSet_count = 0;
 
@@ -1333,6 +1343,9 @@ class Justina_interpreter {
     // the 'identInfo' field in variable tokens only stores variable scope (bits 654) and bit b3 (variable is array) 
 
 
+    // local variable value storage: pointers to data areas etc. for a local function's instance
+    OpenFunctionData _activeFunctionData;
+
     // user variable storage
     char* userVarNames[MAX_USERVARNAMES];                               // store distinct user variable names: ONLY for user variables (same name as program variable is OK)
     Val userVarValues[MAX_USERVARNAMES];
@@ -1348,9 +1361,6 @@ class Justina_interpreter {
     Val staticVarValues[MAX_STAT_VARS];                                 // store static variable values (float, pointer to string, pointer to array of floats) 
     char staticVarType[MAX_STAT_VARS]{ 0 };                             // stores value type (float, pointer to string) and 'is array' flag
     char staticVarNameRef[MAX_STAT_VARS]{ 0 };                          // used while in DEBUGGING mode only: index of static variable NAME
-
-    // local variable value storage
-    OpenFunctionData _activeFunctionData;
 
     // local variable value storage
     char localVarNameRef[MAX_LOCAL_VARS]{ 0 };                           // used while in DEBUGGING mode only: index of local variable NAME
@@ -1443,7 +1453,7 @@ private:
     bool parseAsIdentifierName(char*& pNext, parseTokenResult_type& result);
 
     bool checkCommandKeyword(parseTokenResult_type& result);
-    bool checkCommandArgToken(parseTokenResult_type& result);
+    bool checkCommandArgToken(parseTokenResult_type& result, int& clearIndicatore);
     bool checkExtFunctionArguments(parseTokenResult_type& result, int& minArgCnt, int& maxArgCnt);
     bool checkArrayDimCountAndSize(parseTokenResult_type& result, int* arrayDef_dims, int& dimCnt);
     int getIdentifier(char** pIdentArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNew, bool isUserVar = false);
@@ -1456,17 +1466,17 @@ private:
     void initInterpreterVariables(bool withUserVariables);
     void danglingPointerCheckAndCount(bool withUserVariables);
     void deleteIdentifierNameObjects(char** pIdentArray, int identifiersInUse, bool isUserVar = false);
-    void deleteArrayElementStringObjects(Val* varValues, char* varType, int varNameCount, int paramOnlyCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false);
+    void deleteStringArrayVarsStringObjects(Val* varValues, char* varType, int varNameCount, int paramOnlyCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false);
     void deleteVariableValueObjects(Val* varValues, char* varType, int varNameCount, int paramOnlyCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false);
     void deleteLastValueFiFoStringObjects();
     void deleteConstStringObjects(char* pToken);
     void parseAndExecTraceString();
-    parseTokenResult_type  parseStatement(char*& pInputLine, char*& pNextParseStatement);
+    parseTokenResult_type parseStatement(char*& pInputLine, char*& pNextParseStatement, int& clearIndicator);
     bool allExternalFunctionsDefined(int& index);
     void prettyPrintStatements(int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
     void printParsingResult(parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* pErrorPos);
 
-    bool expandStringBackslashSequences(char*& input);
+    void expandStringBackslashSequences(char*& input);
 
     void* fetchVarBaseAddress(TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& sourceVarScopeAndFlags);
     void* arrayElemAddress(void* varBaseAddress, int* dims);
@@ -1505,6 +1515,7 @@ private:
     void clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, execResult_type execResult = result_execOK, bool debugModeError = false);
     void clearImmediateCmdStack(int n);
 
+    void deleteOneArrayVarStringObjects(Justina_interpreter::Val* varValues, int index, bool isUserVar, bool isLocalVar);
     execResult_type deleteVarStringObject(LE_evalStack* pStackLvl);
     execResult_type deleteIntermStringObject(LE_evalStack* pStackLvl);
 
@@ -1527,8 +1538,11 @@ private:
 
     bool addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool& withinMultiLineComment,
         bool& redundantSemiColon, bool isEndOfFile, bool& bufferOverrun, bool  _flushAllUntilEOF, int& _lineCount, int& _statementCharCount, char c);
-    bool processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos);
+    bool processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, int clearIndicator);
     void traceAndPrintDebugInfo();
+    void printVariables(bool userVars);
+    parseTokenResult_type deleteUserVariable(char* userVarName);
+
 };
 
 #endif
