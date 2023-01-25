@@ -165,21 +165,21 @@ void loop() {
         // read character from local terminal (Serial), if a character is available
         if (Serial.available() > 0) {
             char localChar = Serial.read();
-#if withTCP
+        #if withTCP
             // mechanism to gain back local control, e.g. if remote connection (TCP) lost 
             bool forceLocal = (localChar == 0x01);                                      // character read from Serial is 0x01 ? force switch to local console      
             if (forceLocal && console_isRemoteTerm) { switchConsole(); }              // if console is currently remote terminal (TCP client), set console to local
-#endif
+        #endif
             if (!console_isRemoteTerm) { found = true; c = localChar; }               // if console is currently local terminal (Serial), accept character 
         }
 
-#if withTCP
+    #if withTCP
         // read character from remote terminal (TCP client), if a character is available
         if (myTCPconnection.getClient()->available() > 0) {
             char remoteChar = myTCPconnection.getClient()->read();
             if (console_isRemoteTerm) { found = true; c = remoteChar; }               // if console is currently remote terminal (TCP client), accept character
         }
-#endif
+    #endif
 
         if (!found || (c < ' ')) { break; }                                           // no character to process (also discard control characters)
 
@@ -189,83 +189,83 @@ void loop() {
 
         switch (tolower(c)) {
 
-#if withTCP
-        case '0':
-            myTCPconnection.requestAction(action_1_restartWiFi);
-            pConsole->println("(Re-)starting WiFi...");
-            break;
+        #if withTCP
+            case '0':
+                myTCPconnection.requestAction(action_1_restartWiFi);
+                pConsole->println("(Re-)starting WiFi...");
+                break;
 
-        case '1':
-            myTCPconnection.requestAction(action_0_disableWiFi);
-            pConsole->println("Disabling WiFi...");
-            break;
+            case '1':
+                myTCPconnection.requestAction(action_0_disableWiFi);
+                pConsole->println("Disabling WiFi...");
+                break;
 
-        case '2':
-            myTCPconnection.requestAction(action_2_TCPkeepAlive);
-            pConsole->println("Enabling TCP...");                                     // needs WiFi to be enabled and connected
-            break;
+            case '2':
+                myTCPconnection.requestAction(action_2_TCPkeepAlive);
+                pConsole->println("Enabling TCP...");                                     // needs WiFi to be enabled and connected
+                break;
 
-        case '3':
-            if (console_isRemoteTerm) { pConsole->println("Cannot disable TCP while console is remote"); }
-            else {
-                myTCPconnection.requestAction(action_4_TCPdisable);
-                pConsole->println("Disabling TCP...");
-            }
-            break;
+            case '3':
+                if (console_isRemoteTerm) { pConsole->println("Cannot disable TCP while console is remote"); }
+                else {
+                    myTCPconnection.requestAction(action_4_TCPdisable);
+                    pConsole->println("Disabling TCP...");
+                }
+                break;
 
-        case '4':                                                                       // set TCP server to verbose
-            myTCPconnection.setVerbose(true);
-            pConsole->println("TCP server: verbose");
-            break;
+            case '4':                                                                       // set TCP server to verbose
+                myTCPconnection.setVerbose(true);
+                pConsole->println("TCP server: verbose");
+                break;
 
-        case '5':                                                                       // set TCP server to silent
-            myTCPconnection.setVerbose(false);
-            pConsole->println("TCP server: silent");
-            break;
+            case '5':                                                                       // set TCP server to silent
+                myTCPconnection.setVerbose(false);
+                pConsole->println("TCP server: silent");
+                break;
 
-        case '6':                                                                       // if console is currently local terminal, switch to remote
-            if (console_isRemoteTerm) { pConsole->println("Nothing to do"); }
-            else { switchConsole(); }
-            break;
+            case '6':                                                                       // if console is currently local terminal, switch to remote
+                if (console_isRemoteTerm) { pConsole->println("Nothing to do"); }
+                else { switchConsole(); }
+                break;
 
-        case '7':                                                                       // if console is currently remote terminal, switch to local
-            if (!console_isRemoteTerm) { pConsole->println("Nothing to do"); }
-            else { switchConsole(); }
+            case '7':                                                                       // if console is currently remote terminal, switch to local
+                if (!console_isRemoteTerm) { pConsole->println("Nothing to do"); }
+                else { switchConsole(); }
 
-            break;
-#endif
-        case '8':
-            //// test
-            startTime = millis();
-            quitRequested = false;
+                break;
+            #endif
+            case '8':
+                //// test
+                startTime = millis();
+                quitRequested = false;
 
-            // start interpreter: control will not return to here until the user quits, because it has its own 'main loop'
-            heartbeatPeriod = 250;
-            withinApplication = true;                                                   // flag that control will be transferred to an 'application'
-            if (!interpreterInMemory) {
-                pJustina = new  Justina_interpreter(pConsole);// if interpreter not running: create an interpreter object on the heap
+                // start interpreter: control will not return to here until the user quits, because it has its own 'main loop'
+                heartbeatPeriod = 250;
+                withinApplication = true;                                                   // flag that control will be transferred to an 'application'
+                if (!interpreterInMemory) {
+                    pJustina = new  Justina_interpreter(pConsole);// if interpreter not running: create an interpreter object on the heap
 
-                // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
-                // this callback function will be called regularly, e.g. every time the interpreter reads a character
-                pJustina->setMainLoopCallback((&housekeeping));                    // set callback function to housekeeping routine in this .ino file (pass 'housekeeping' routine address to Justina_interpreter library)
+                    // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
+                    // this callback function will be called regularly, e.g. every time the interpreter reads a character
+                    pJustina->setMainLoopCallback((&housekeeping));                    // set callback function to housekeeping routine in this .ino file (pass 'housekeeping' routine address to Justina_interpreter library)
 
-                pJustina->setUserFcnCallback((&userFcn_readPort));                // pass user function addresses to Justina_interpreter library (return value 'true' indicates success)
-                pJustina->setUserFcnCallback((&userFcn_writePort));
-                pJustina->setUserFcnCallback((&userFcn_togglePort));
-            }
-            interpreterInMemory = pJustina->run(pConsole, pTerminal, terminalCount);                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
+                    pJustina->setUserFcnCallback((&userFcn_readPort));                // pass user function addresses to Justina_interpreter library (return value 'true' indicates success)
+                    pJustina->setUserFcnCallback((&userFcn_writePort));
+                    pJustina->setUserFcnCallback((&userFcn_togglePort));
+                }
+                interpreterInMemory = pJustina->run(pConsole, pTerminal, terminalCount);                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
 
-            if (!interpreterInMemory) {                                               // return from interpreter: remove from memory as well ?
-                delete pJustina;                                                     // cleanup and delete calculator object itself
-                pJustina = nullptr;                                                  // only to indicate memory is released
-            }
+                if (!interpreterInMemory) {                                               // return from interpreter: remove from memory as well ?
+                    delete pJustina;                                                     // cleanup and delete calculator object itself
+                    pJustina = nullptr;                                                  // only to indicate memory is released
+                }
 
-            heartbeatPeriod = 500;
-            withinApplication = false;                                                  // return from application
-            break;
+                heartbeatPeriod = 500;
+                withinApplication = false;                                                  // return from application
+                break;
 
-        default:
-            pConsole->println("This is not a valid choice");
+            default:
+                pConsole->println("This is not a valid choice");
         }
         pConsole->println(menu);                                                      // show menu again
     } while (false);
@@ -342,14 +342,21 @@ void onConnStateChange(connectionState_type  connectionState) {
 // in this program, this callback function is called at regular intervals from within the interpreter main loop  
 
 void housekeeping(bool& requestQuit, long& appFlags) {
-    bool& forceLocal = requestQuit;                                                     // reference variable
+    
+    // application flag bits:flags signaling specific Justina status conditions
+    constexpr long appFlag_errorConditionBit = 0x01L;       // bit 0: a Justina parsing or execution error has occured
+    constexpr long appFlag_statusAbit = 0x10L;              // status bits A and B: bits 5 and 4. Justina status (see below)
+    constexpr long appFlag_statusBbit = 0x20L;
+    constexpr long appFlag_waitingForUser = 0x40L;
+
+     bool& forceLocal = requestQuit;                                                     // reference variable
 
     heartbeat();                                                                        // blink a led to show program is running
 
-    if (errorCondition ^ (appFlags & Justina_interpreter:: appFlag_errorConditionBit)) { errorCondition = (appFlags & Justina_interpreter::appFlag_errorConditionBit);  digitalWrite(ERROR_PIN, errorCondition); }  // only write if change detected
-    if (statusA ^ (appFlags & Justina_interpreter::appFlag_statusAbit)) { statusA = (appFlags & Justina_interpreter::appFlag_statusAbit);  digitalWrite(STATUS_A_PIN, statusA); }  // only write if change detected
-    if (statusB ^ (appFlags & Justina_interpreter::appFlag_statusBbit)) { statusB = (appFlags & Justina_interpreter::appFlag_statusBbit);  digitalWrite(STATUS_B_PIN, statusB); }  // only write if change detected
-    if (waitingForUser ^ (appFlags & Justina_interpreter::appFlag_waitingForUser)) { waitingForUser = (appFlags & Justina_interpreter::appFlag_waitingForUser);  digitalWrite(WAIT_FOR_USER_PIN, waitingForUser); }  // only write if change detected
+    if (errorCondition ^ (appFlags & appFlag_errorConditionBit)) { errorCondition = (appFlags & appFlag_errorConditionBit);  digitalWrite(ERROR_PIN, errorCondition); }  // only write if change detected
+    if (statusA ^ (appFlags & appFlag_statusAbit)) { statusA = (appFlags & appFlag_statusAbit);  digitalWrite(STATUS_A_PIN, statusA); }  // only write if change detected
+    if (statusB ^ (appFlags & appFlag_statusBbit)) { statusB = (appFlags & appFlag_statusBbit);  digitalWrite(STATUS_B_PIN, statusB); }  // only write if change detected
+    if (waitingForUser ^ (appFlags & appFlag_waitingForUser)) { waitingForUser = (appFlags & appFlag_waitingForUser);  digitalWrite(WAIT_FOR_USER_PIN, waitingForUser); }  // only write if change detected
 
 
     //// test 'force quit' vanuit main: 
@@ -374,7 +381,7 @@ void housekeeping(bool& requestQuit, long& appFlags) {
                 switchConsole();                                                        // set console to local
             }
         }
-}
+    }
 #endif
 }
 
@@ -409,31 +416,31 @@ void heartbeat() {
 // a callback function is a mechanism to allow a library (like Justina) to call a procedure in a user program without having any knowledge about the name of the procedure
 // in Justina, the mechanism is used to allow the user to write specific procedures in C++ (not in Justina) and call them afterwards from within Justina
 // 
-// a user callback function should contain two parameters, as shown below
-// parameter 1 (const void** pdata) is an 8-element array containing void pointers to data (if data present) 
-// parameter 2 (const char* valueType) is an 8-element array indicating presence of corresponding data, the value type, and whether the data is a Justina variable or constant
-// if data is present, the pointer passed will point to an integer, float or text (char*).
-// the value pointed to can be the value stored in a Justina variable or array element, or it can be a Justina constant 
-// the data pointed to can be changed (the pointers themselves not)
-// changing a Justina CONSTANT, however, will have no effect (for safety, a copy of constant data is actually supplied that will be thrown away upon returning)
-// in case the value pointed to is an INTEGER or a FLOAT stored in an ARRAY element, you actually have access to the complete array by setting a pointer to subsequent or preceding array elements
-// if the value pointed to is a character string (char*), changing the pointer allows you to access all characters in the string and NOT to access other array elements
+// a user callback function should contain 3 parameters, as shown below
+// parameter 1 (const void** pdata) is an array containing void pointers to a maximum of 8 arguments, passed by reference by Justina 
+// parameter 2 (const char* valueType) is an array indicating the value type (long, float or char*), and whether the data is a Justina variable or constant
+// parameter 3 (const int argCount) contains the number of arguments passed
+// if data is present, the corresponding pointer passed will point to an integer, float or text (char*).
+// the value pointed to can be the value stored in a Justina scalar variable or array element, or it can be a Justina constant 
+// the data pointed to can always be changed, but changing a Justina constant or a Justina variable declared as constant, will have no effect once control returns to Justina
+// in case the value pointed to is a LONG or a FLOAT stored in an ARRAY element, you actually have access to the complete array by setting a pointer to subsequent or preceding array elements
+// if the value pointed to is a character string (char*), changing the pointer allows you to access all characters in the string
 // 
 // refer to Justina documentation to learn how to call a user procedure ('callback') from Justina and change the maximum number allowed
 // 
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-// !!                                                                                                                                  !!
-// !! when returning changed values                                                                                                    !!
-// !! - NEVER change the value type (float, character string)                                                                          !!
-// !! - NEVER INCREASE the length of strings (you can change the characters in the string, however)                                    !! 
-// !!   -> empty strings can not be changed at all (in Justina, an empty string is just a null pointer)                                !!
-// !! - if you DECREASE the length of a string from within a user callback function, it will still occupy the same amount of memory    !!
-// !!   -> but if you change it to an empty string, memory will be released (in Justina, an empty string is just a null pointer)       !!
-// !!                                                                                                                                  !!
-// !! you can not change the pointers in const array 'pdata', nor can you change the value types in const array 'valueType'            !!
-// !! but you can change the data supplied (this will be without any effect for Justina constants after return)                        !!
-// !!                                                                                                                                  !!
-// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// !!                                                                                                                                   !!
+// !! when returning changed values                                                                                                     !!
+// !! - NEVER change the value type (float, character string)                                                                           !!
+// !! - NEVER INCREASE the length of strings (you can change the characters in the string, however)                                     !! 
+// !!   -> empty strings can not be changed at all (this would increase the length of the string)                                       !!
+// !! - it is allowed to DECREASE the length of a string, but keep in mind that it will still occupy the same amount of memory          !!
+// !!   -> exception: if you change it to an empty string, memory will be released (in Justina, an empty string is just a null pointer) !!
+// !!                                                                                                                                   !!
+// !! do NOT directly change the arguments received. However you cpointers in array 'pdata'                                             !!
+// !! but you can change the data supplied (this will be without any effect for Justina constants after return)                         !!
+// !!                                                                                                                                   !!
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
 // --------------------------------------------------
@@ -442,20 +449,20 @@ void heartbeat() {
 
 void userFcn_readPort(const void** pdata, const char* valueType, const int argCount) {     // data: can be anything, as long as user function knows what to expect
 
-    pConsole->print("*** Justina was here *** - arg count: ");pConsole->println(argCount);
-
-    char isVariableMask = 0x80;             // as defined in Justina
+    pConsole->print("=== control is now in user c++ callback function: arg count = "); pConsole->println(argCount);
 
     for (int i = 0; i < argCount; i++) {
+        // data available ?
 
         long* pLong{};          // pointer to long
         float* pFloat{};          // pointer to float
         char* pText{};          // character pointer
 
         // get value type and variable / constant info
-        bool isLong = ((valueType[i] & Justina_interpreter::value_typeMask) == Justina_interpreter::value_isLong);
-        bool isFloat = ((valueType[i] & Justina_interpreter::value_typeMask) == Justina_interpreter::value_isFloat);
-        bool isVariable = (valueType[i] & isVariableMask);                                                                 // bit b7: '1' indicates 'variable', '0' means 'constant'
+        bool isLong = ((valueType[i] & 0x03) == 0x01);                                  // bits 2-0: value indicates value type (1=long, 2=float, 3=char*) 
+        bool isFloat = ((valueType[i] & 0x03) == 0x02);
+        bool isString = ((valueType[i] & 0x03) == 0x03);
+        bool isVariable = (valueType[i] & 0x80);                                        // bit b7: '1' indicates 'variable', '0' means 'constant'
 
         // get a (pointer to a) value
         if (isLong) { pLong = (long*)pdata[i]; }                                        // copy a pointer to a long argument 
@@ -463,20 +470,24 @@ void userFcn_readPort(const void** pdata, const char* valueType, const int argCo
         else { pText = (char*)pdata[i]; }                                               // copy a pointer to a character string argument
 
         // change data (is safe -> after return, will have no effect for constants) - you can always check here for variable / constant (see above)
-        if (isLong) { *pLong += 10+i; }
-        else if (isFloat) { *pFloat += 10.+i; }
+        if (isLong) { *pLong += 10 + i; }
+        else if (isFloat) { *pFloat += 10. + i; }
         else {
             if (strlen(pText) >= 10) { pText[7] = '\0'; }  // do NOT increase the length of strings
             if (strlen(pText) >= 5) { pText[3] = pText[4]; pText[4] = '>'; }  // do NOT increase the length of strings
             else if (strlen(pText) >= 2) { pText[0] = '\0'; }       // change non-empty string into empty string 
+            else if (strlen(pText) == 0) { }        // it is NOT allowed to increase the length of a string: you cannot change an empty string
         }
 
         // print a value
-        pConsole->print("*** value "); pConsole->print(i); pConsole->print(" returned: ");
+        pConsole->print("    adapted value (argument "); pConsole->print(i); pConsole->print(") is now: ");      // but value
         if (isLong) { pConsole->println(*pLong); }
         else if (isFloat) { pConsole->println(*pFloat); }
         else { pConsole->println(pText); }
+
     };
+    pConsole->println("=== leaving user c++ callback function");
+    return;
 }
 
 

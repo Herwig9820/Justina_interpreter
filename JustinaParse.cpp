@@ -29,7 +29,7 @@
 #include "Justina.h"
 
 #define printCreateDeleteListHeapObjects 0
-#define printParsedTokens 1
+#define printParsedTokens 0
 #define debugPrint 0
 
 
@@ -55,15 +55,17 @@ void Justina_interpreter::deleteIdentifierNameObjects(char** pIdentNameArray, in
 }
 
 
-// ----------------------------------------------------------------------
-// *   delete variable heap objects: array variable character strings   *
-// ----------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------------------------
+// *   all string array variables of a specified scope: delete array element character strings (heap objects)   *
+// --------------------------------------------------------------------------------------------------------------
 
-void Justina_interpreter::deleteArrayElementStringObjects(Justina_interpreter::Val* varValues, char* varType, int varNameCount, int paramOnlyCount, bool checkIfGlobalValue, bool isUserVar, bool isLocalVar) {
-    int index = paramOnlyCount;                                             // skip parameters (if function, otherwise must be zero)
+void Justina_interpreter::deleteStringArrayVarsStringObjects(Justina_interpreter::Val* varValues, char* sourceVarScopeAndFlags, int varNameCount, int paramOnlyCount, bool checkIfGlobalValue, bool isUserVar, bool isLocalVar) {
+    int index = paramOnlyCount;                    // skip parameters (if function, otherwise must be zero) - if parameter variables are arrays, they are always a reference variable 
     while (index < varNameCount) {
-        if (!checkIfGlobalValue || (varType[index] & (var_nameHasGlobalValue))) { // if only for global values: is it a global value ?
-            if ((varType[index] & (var_isArray | value_typeMask)) == (var_isArray | value_isStringPointer)) {              // array of strings
+        if (!checkIfGlobalValue || (sourceVarScopeAndFlags[index] & (var_nameHasGlobalValue))) { // if only for global values: is it a global value ?
+
+            if ((sourceVarScopeAndFlags[index] & (var_isArray | value_typeMask)) == (var_isArray | value_isStringPointer)) {              // array of strings
+                /*
                 void* pArrayStorage = varValues[index].pArray;        // void pointer to an array of string pointers; element 0 contains dimensions and dimension count
                 int dimensions = (((char*)pArrayStorage)[3]);  // can range from 1 to MAX_ARRAY_DIMS
                 int arrayElements = 1;                                  // determine array size
@@ -81,9 +83,38 @@ void Justina_interpreter::deleteArrayElementStringObjects(Justina_interpreter::V
                         isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
                     }
                 }
+                */ ////
+                deleteOneArrayVarStringObjects(varValues, index, isUserVar, isLocalVar);
             }
         }
         index++;
+    }
+}
+
+
+// --------------------------------------------------------------------------------------------
+// *   delete variable heap objects: array variable character strings for ONE array variable  *
+// --------------------------------------------------------------------------------------------
+
+// no checks are made - make sure the variable is an array variable storing strings
+
+void Justina_interpreter::deleteOneArrayVarStringObjects(Justina_interpreter::Val* varValues, int index, bool isUserVar, bool isLocalVar) {
+    void* pArrayStorage = varValues[index].pArray;        // void pointer to an array of string pointers; element 0 contains dimensions and dimension count
+    int dimensions = (((char*)pArrayStorage)[3]);  // can range from 1 to MAX_ARRAY_DIMS
+    int arrayElements = 1;                                  // determine array size
+    for (int dimCnt = 0; dimCnt < dimensions; dimCnt++) { arrayElements *= (int)((((char*)pArrayStorage)[dimCnt])); }
+
+    // delete non-empty strings
+    for (int arrayElem = 1; arrayElem <= arrayElements; arrayElem++) {  // array element 0 contains dimensions and count
+        char* pString = ((char**)pArrayStorage)[arrayElem];
+        uint32_t stringPointerAddress = (uint32_t) & (((char**)pArrayStorage)[arrayElem]);
+        if (pString != nullptr) {
+        #if printCreateDeleteListHeapObjects
+            Serial.print(isUserVar ? "----- (usr arr str) " : isLocalVar ? "-----(loc arr str)" : "----- (arr string ) "); Serial.println((uint32_t)pString - RAMSTART);     // applicable to string and array (same pointer)
+        #endif
+            delete[]  pString;                                  // applicable to string and array (same pointer)
+            isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
+        }
     }
 }
 
@@ -96,12 +127,11 @@ void Justina_interpreter::deleteArrayElementStringObjects(Justina_interpreter::V
 
 void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* varValues, char* varType, int varNameCount, int paramOnlyCount, bool checkIfGlobalValue, bool isUserVar, bool isLocalVar) {
 
-    int index = paramOnlyCount;                                             // skip parameters (if function, otherwise must be zero)
+    int index = 0;                          // do NOT skip parameters if deleting function variables: with constant args, a local copy is created (always scalar) and must be deleted if non-empty string
     while (index < varNameCount) {
         if (!checkIfGlobalValue || (varType[index] & (var_nameHasGlobalValue))) { // global value ?
-
             // check for arrays before checking for strings (if both 'var_isArray' and 'value_isStringPointer' bits are set: array of strings, with strings already deleted)
-            if (varType[index] & var_isArray) {       // variable is an array: delete array storage          
+            if (((varType[index] & value_typeMask) != value_isVarRef) && (varType[index] & var_isArray)) {       // variable is an array: delete array storage          
             #if printCreateDeleteListHeapObjects
                 Serial.print(isUserVar ? "----- (usr ar stor) " : isLocalVar ? "----- (loc ar stor) " : "----- (array stor ) "); Serial.println((uint32_t)varValues[index].pStringConst - RAMSTART);
             #endif
@@ -128,10 +158,9 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
 // --------------------------------------------------------------------
 
 void Justina_interpreter::deleteLastValueFiFoStringObjects() {
+    if (_lastValuesCount == 0) return;
 
-    if (_lastResultCount == 0) return;
-
-    for (int i = 0; i < _lastResultCount; i++) {
+    for (int i = 0; i < _lastValuesCount; i++) {
         bool isNonEmptyString = (lastResultTypeFiFo[i] == value_isStringPointer) ? (lastResultValueFiFo[i].pStringConst != nullptr) : false;
         if (isNonEmptyString) {
         #if printCreateDeleteListHeapObjects
@@ -196,10 +225,10 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
     if (withUserVariables) { deleteIdentifierNameObjects(userVarNames, _userVarCount, true); }
 
     // delete variable heap objects: array variable element string objects
-    deleteArrayElementStringObjects(globalVarValues, globalVarType, _programVarNameCount, 0, true);
-    deleteArrayElementStringObjects(staticVarValues, staticVarType, _staticVarCount, 0, false);
+    deleteStringArrayVarsStringObjects(globalVarValues, globalVarType, _programVarNameCount, 0, true);
+    deleteStringArrayVarsStringObjects(staticVarValues, staticVarType, _staticVarCount, 0, false);
     if (withUserVariables) {
-        deleteArrayElementStringObjects(userVarValues, userVarType, _userVarCount, 0, false, true);
+        deleteStringArrayVarsStringObjects(userVarValues, userVarType, _userVarCount, 0, false, true);
         deleteLastValueFiFoStringObjects();
     }
 
@@ -345,7 +374,6 @@ void Justina_interpreter::initInterpreterVariables(bool withUserVariables) {
     _localVarCount = 0;
     _staticVarCountInFunction = 0;
     _staticVarCount = 0;
-    _lastResultCount = 0;                                       // current last result FiFo depth (values currently stored)
     _extFunctionBlockOpen = false;
 
     _programVarNameCount = 0;
@@ -386,6 +414,8 @@ void Justina_interpreter::initInterpreterVariables(bool withUserVariables) {
     _globalStaticArrayObjectCount = 0;
 
     if (withUserVariables) {
+        _lastValuesCount = 0;                                       // current last result FiFo depth (values currently stored)
+
         _userVarNameStringObjectCount = 0;
         _userVarStringObjectCount = 0;
         _userArrayObjectCount = 0;
@@ -577,7 +607,8 @@ void Justina_interpreter::parseAndExecTraceString() {
         if (valuePrinted) { _pConsole->print(", "); }                    // separate values (if more than one)
 
         // note: application flags are not adapted (would not be passed to caller immediately)
-        parseTokenResult_type result = parseStatement(pTraceParsingInput, pNextParseStatement);
+        int dummy{};
+        parseTokenResult_type result = parseStatement(pTraceParsingInput, pNextParseStatement, dummy);
         if (result == result_tokenFound) {
             prettyPrintStatements(0);         // do NOT pretty print if parsing error, to avoid bad-looking partially printed statements (even if there will be an execution error later)
             _pConsole->print(": ");                 // resulting value will follow
@@ -617,7 +648,7 @@ void Justina_interpreter::parseAndExecTraceString() {
 // *   parse ONE instruction in a character string, ended by an optional ';' character and a '\0' mandatary character   *
 // ----------------------------------------------------------------------------------------------------------------------
 
-Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(char*& pInputStart, char*& pNextParseStatement) {
+Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(char*& pInputStart, char*& pNextParseStatement, int& clearIndicator) {
     _lastTokenType_hold = tok_no_token;
     _lastTokenType = tok_no_token;                                                      // no token yet
     _lastTokenIsString = false;
@@ -628,6 +659,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
 
     // expression syntax check
     _thisLvl_lastIsVariable = false;                               // init
+    _thislvl_lastIsConstVar = false;
     _thisLvl_assignmentStillPossible = true;                             // assume for now
     _thisLvl_lastOpIsIncrDecr = false;                                  // assume for now
 
@@ -664,10 +696,11 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
         if ((_lastTokenType == tok_no_token) || isSemicolon) {
             _isProgramCmd = false;
             _isDeclCBcmd = false; _isClearCBcmd = false; _isCallbackCmd = false;
-            _isExtFunctionCmd = false; _isGlobalOrUserVarCmd = false; _isLocalVarCmd = false; _isStaticVarCmd = false; _isAnyVarCmd = false;
+            _isExtFunctionCmd = false; _isGlobalOrUserVarCmd = false; _isLocalVarCmd = false; _isStaticVarCmd = false; _isAnyVarCmd = false, _isConstVarCmd = false;;
             _isForCommand = false;
             _isDeleteVarCmd = false;
-            _isLoadProgramCmd = false;
+            _isClearProgCmd = false;
+            _isClearAllCmd = false;
         }
         // determine token group of last token parsed (bits b4 to b0): this defines which tokens are allowed as next token
         _lastTokenGroup_sequenceCheck_bit = isOperator ? lastTokenGroup_0 :
@@ -733,7 +766,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
         }
 
         bool isCommandArgToken = (!isCommandStart && _isCommand);
-        if (!isCommandStart && _isCommand) { if (!checkCommandArgToken(result)) { pNext = pNext_hold; break; } }
+        if (!isCommandStart && _isCommand) { if (!checkCommandArgToken(result, clearIndicator)) { pNext = pNext_hold; break; } }
 
     } while (true);
 
@@ -763,12 +796,14 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
     _isDeclCBcmd = _resWords[_tokenIndex].resWordCode == cmdcod_declCB;
     _isClearCBcmd = _resWords[_tokenIndex].resWordCode == cmdcod_clearCB;
     _isCallbackCmd = _resWords[_tokenIndex].resWordCode == cmdcod_callback;
-    _isGlobalOrUserVarCmd = (_resWords[_tokenIndex].resWordCode == cmdcod_var) && !_extFunctionBlockOpen;
-    _isLocalVarCmd = (_resWords[_tokenIndex].resWordCode == cmdcod_local) && _extFunctionBlockOpen;
+    _isGlobalOrUserVarCmd = ((_resWords[_tokenIndex].resWordCode == cmdcod_var) || (_resWords[_tokenIndex].resWordCode == cmdcod_constVar)) && !_extFunctionBlockOpen;
+    _isLocalVarCmd = ((_resWords[_tokenIndex].resWordCode == cmdcod_var) || (_resWords[_tokenIndex].resWordCode == cmdcod_constVar)) && _extFunctionBlockOpen;
     _isStaticVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_static;
+    _isConstVarCmd = (_resWords[_tokenIndex].resWordCode == cmdcod_constVar);
     _isForCommand = _resWords[_tokenIndex].resWordCode == cmdcod_for;
-    _isDeleteVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_delete;
-    _isLoadProgramCmd = _resWords[_tokenIndex].resWordCode == cmdcod_receiveProg;
+    _isDeleteVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_deleteVar;
+    _isClearProgCmd = _resWords[_tokenIndex].resWordCode == cmdcod_clearProg;
+    _isClearAllCmd = _resWords[_tokenIndex].resWordCode == cmdcod_clearAll;
 
     _isAnyVarCmd = _isGlobalOrUserVarCmd || _isLocalVarCmd || _isStaticVarCmd;      //  VAR, LOCAL, STATIC
 
@@ -788,7 +823,7 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
     if (_extFunctionBlockOpen && (cmdRestriction == cmd_onlyOutsideFunctionBlock)) { result = result_onlyOutsideFunction; return false; }
     if (((!_programMode) || _extFunctionBlockOpen) && (cmdRestriction == cmd_onlyInProgOutsideFunc)) { result = result_onlyInProgOutsideFunction; return false; };
     if ((_programMode && !_extFunctionBlockOpen) && (cmdRestriction == cmd_onlyImmOrInsideFuncBlock)) { result = result_onlyImmediateOrInFunction; return false; };
-
+    if ((_programMode || (_blockLevel > 0)) && (cmdRestriction == cmd_onlyImmediateOutsideBlock)) { result = result_onlyImmediateEndOfLine; return false; }
     if (_extFunctionBlockOpen && _isExtFunctionCmd) { result = result_functionDefsCannotBeNested; return false; } // separate message to indicate 'no nesting'
 
     // not a block command: nothing more to do here 
@@ -882,7 +917,7 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
 // * Check a command argument token (apply additional command syntax rules) *
 // --------------------------------------------------------------------------
 
-bool Justina_interpreter::checkCommandArgToken(parseTokenResult_type& result) {
+bool Justina_interpreter::checkCommandArgToken(parseTokenResult_type& result, int& clearIndicator) {
 
     // init and adapt variables
     // ------------------------
@@ -936,6 +971,8 @@ bool Justina_interpreter::checkCommandArgToken(parseTokenResult_type& result) {
             result = result_cmdParameterMissing; return false;
         }
         if (_isClearCBcmd) { _userCBprocAliasSet_count = 0; }
+        else if (_isClearProgCmd) { clearIndicator = 1; }     // clear program
+        else if (_isClearAllCmd) { clearIndicator = 2; }      // clear all
 
         return true;                                                                    // nothing more to do for this command
     }
@@ -952,10 +989,12 @@ bool Justina_interpreter::checkCommandArgToken(parseTokenResult_type& result) {
         if (allowedParType == cmdPar_resWord && !isResWord) { result = result_resWordExpectedAsCmdPar; return false; }                              // does not occur, but keep for completeness
         if (allowedParType == cmdPar_ident && !isGenIdent) { result = result_identExpectedAsCmdPar; return false; }
         if ((allowedParType == cmdPar_expression) && !_lvl0_withinExpression) { result = result_expressionExpectedAsCmdPar; return false; }         // does not occur, but keep for completeness
-        if ((allowedParType == cmdPar_varOptAssignment) && (!_lvl0_isPurePrefixIncrDecr && !_lvl0_isPureVariable && !_lvl0_isVarWithAssignment)) {
+
+        if ((allowedParType == cmdPar_varOptAssignment) && (!_lvl0_isPurePrefixIncrDecr && (!_lvl0_isPureVariable && !_isConstVarCmd) && !_lvl0_isVarWithAssignment)) {
             result = (parseTokenResult_type)result_varWithOptionalAssignmentExpectedAsCmdPar; return false;
         }
-        if ((allowedParType == cmdPar_varNoAssignment) && (!_lvl0_isPureVariable)) {
+
+        if ((allowedParType == cmdPar_varNoAssignment) && !_lvl0_isPureVariable) {
             result = isAssignmentOp ? (parseTokenResult_type)result_varWithoutAssignmentExpectedAsCmdPar : (parseTokenResult_type)result_variableExpectedAsCmdPar; return false;
         }
     }
@@ -1000,6 +1039,7 @@ bool Justina_interpreter::parseAsResWord(char*& pNext, parseTokenResult_type& re
 
         // expression syntax check 
         _thisLvl_lastIsVariable = false;
+        _thislvl_lastIsConstVar = false;
         _thisLvl_assignmentStillPossible = true;                                                 // reset (expression may follow)                          
 
         // command argument constraints check: reset for next command parameter
@@ -1022,6 +1062,7 @@ bool Justina_interpreter::parseAsResWord(char*& pNext, parseTokenResult_type& re
 
     #if printParsedTokens
         Serial.print("parsing keyword: address is "); Serial.print(_lastTokenStep); Serial.print(" ["); Serial.print(_resWords[resWordIndex]._resWordName);  Serial.println("]");
+        Serial.print("- token (re. word) index = "); Serial.println(resWordIndex);
     #endif
 
         _programCounter += sizeof(TokenIsResWord) - (hasTokenStep ? 0 : 2);
@@ -1115,6 +1156,7 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parseTokenResult_type& res
 
     // expression syntax check 
     _thisLvl_lastIsVariable = false;
+    _thislvl_lastIsConstVar = false;
 
     // command argument constraints check
     _lvl0_withinExpression = true;
@@ -1217,6 +1259,7 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
 
     // expression syntax check 
     _thisLvl_lastIsVariable = false;
+    _thislvl_lastIsConstVar = false;
 
     // command argument constraints check
     _lvl0_withinExpression = true;
@@ -1334,7 +1377,7 @@ bool Justina_interpreter::checkInternFuncArgArrayPattern(parseTokenResult_type& 
             isArray = (((TokenIsVariable*)(_programStorage + _lastTokenStep))->identInfo) & var_isArray;
         }
 
-        bool arrayArgumentExpected = false;;
+        bool arrayArgumentExpected = false;
         if (argNumber >= 8) {
             if (isArray) { result = result_scalarArgExpected; return false; }
         }
@@ -1462,10 +1505,15 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
 
             // expression syntax check 
             _thisLvl_lastIsVariable = false;       // currently open block
+
+            if (_thislvl_lastIsConstVar) { flags |= varIsConstantBit; }
+            _thislvl_lastIsConstVar = false;
+
             if (_thisLvl_assignmentStillPossible) { flags = flags | varAssignmentAllowedBit; }          // remember if array element can be assigned to (after closing parenthesis)
-            _thisLvl_assignmentStillPossible = true;                                                                   // array subscripts: reset assignment allowed flag (init)
-            if (_thisLvl_lastOpIsIncrDecr) { flags = flags | varHasPrefixIncrDecrBit; }          // remember if array element has a prefix incr/decr operator (before opening parenthesis) 
-            _thisLvl_lastOpIsIncrDecr = false;                                                                   // array subscripts: reset assignment allowed flag 
+            _thisLvl_assignmentStillPossible = true;                                                    // array subscripts: reset assignment allowed flag (init)
+
+            if (_thisLvl_lastOpIsIncrDecr) { flags = flags | varHasPrefixIncrDecrBit; }                 // remember if array element has a prefix incr/decr operator (before opening parenthesis) 
+            _thisLvl_lastOpIsIncrDecr = false;                                                           // array subscripts: reset assignment allowed flag 
 
             // command argument constraints check
             _lvl0_withinExpression = true;
@@ -1482,6 +1530,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
 
             // if LOCAL, STATIC or GLOBAL array DEFINITION or USE (NOT: parameter array): initialize variables for reading dimensions 
             if (flags & arrayBit) {                    // always count, also if not first definition (could happen for global variables)
+                if (_varIsConstant) { pNext = pch; result = result_constantArrayNotAllowed; return false; }
                 array_dimCounter = 0;
                 for (int i = 0; i < MAX_ARRAY_DIMS; i++) { arrayDef_dims[i] = 0; }        // init dimensions (dimension count will result from dimensions being non-zero
             }
@@ -1528,8 +1577,9 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             flags = _pParsingStack->openPar.flags;
 
             // expression syntax check 
-            _thisLvl_lastIsVariable = (flags & arrayBit);                            // note: parameter array (empty parenthesis): array bit noet set
-            _thisLvl_assignmentStillPossible = (flags & varAssignmentAllowedBit);                                                            // array subscripts: reset assignment allowed flag 
+            _thisLvl_lastIsVariable = (flags & arrayBit);                            // note: parameter array (empty parenthesis): array bit not set
+            _thislvl_lastIsConstVar = (flags & varIsConstantBit);
+            _thisLvl_assignmentStillPossible = (flags & varAssignmentAllowedBit);    // array subscripts: retrieve assignment allowed flag 
             _thisLvl_lastOpIsIncrDecr = (flags & varHasPrefixIncrDecrBit);
 
 
@@ -1745,6 +1795,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
 
             // expression syntax check 
             _thisLvl_lastIsVariable = false;       // currently open block, new expression
+            _thislvl_lastIsConstVar = false;
             _thisLvl_assignmentStillPossible = true;            // init (start of (sub-)expression)
             _thisLvl_lastOpIsIncrDecr = false;
 
@@ -1843,10 +1894,12 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
 
             // token is a semicolon separator, and it's allowed here
+
             _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
             // expression syntax check 
             _thisLvl_lastIsVariable = false;       // currently open block
+            _thislvl_lastIsConstVar = false;
             _thisLvl_assignmentStillPossible = true;
             _thisLvl_lastOpIsIncrDecr = false;
 
@@ -1939,6 +1992,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
 
             if (isPostfixIncrDecr) {
                 if (!_thisLvl_lastIsVariable) { pNext = pch; result = result_operatorNotAllowedHere; return false; }   // not a variable or array element
+                if (_thislvl_lastIsConstVar) { pNext = pch; result = result_cannotChangeConstantValue; return false; }   // variable is declared constant
                 if (_thisLvl_lastOpIsIncrDecr) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
             }
 
@@ -1962,6 +2016,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
 
             if (operatorContainsAssignment) {
                 if (!_thisLvl_lastIsVariable) { pNext = pch; result = result_assignmNotAllowedHere; return false; }   // not a variable or array element
+                if (_thislvl_lastIsConstVar && !_isConstVarCmd) { pNext = pch; result = result_cannotChangeConstantValue; return false; }   // variable is declared constant
                 if (!_thisLvl_assignmentStillPossible) { pNext = pch; result = result_assignmNotAllowedHere; return false; }
             }
 
@@ -2058,6 +2113,7 @@ bool Justina_interpreter::parseAsInternFunction(char*& pNext, parseTokenResult_t
 
         // expression syntax check 
         _thisLvl_lastIsVariable = false;
+        _thislvl_lastIsConstVar = false;
 
         // command argument constraints check
         _lvl0_withinExpression = true;
@@ -2167,7 +2223,7 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
     if (index == -1) { pNext = pch; result = result_maxExtFunctionsReached; return false; }
     char* funcName = extFunctionNames[index];                                    // either new or existing function name
     if (createNewName) {                                                                      // new function name
-        // init max (bits 7654) & min (bits 3210) allowed n° OR actual n° of arguments; store in last position (behind string terminating character)
+        // init max (bits 7654) & min (bits 3210) allowed n� OR actual n� of arguments; store in last position (behind string terminating character)
         funcName[MAX_IDENT_NAME_LEN + 1] = c_extFunctionFirstOccurFlag;                          // max (bits 7654) < (bits 3210): indicates value is not yet updated by parsing previous calls closing parenthesis
         extFunctionData[index].pExtFunctionStartToken = nullptr;                      // initialize. Pointer will be set when function definition is parsed (checked further down)
         extFunctionData[index].paramIsArrayPattern[1] = 0x80;                        // set flag to indicate a new function name is parsed (definition or call)
@@ -2215,6 +2271,7 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
 
     // expression syntax check 
     _thisLvl_lastIsVariable = false;
+    _thislvl_lastIsConstVar = false;
 
     // command argument constraints check
     _lvl0_withinExpression = true;
@@ -2376,7 +2433,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
 
 
     // 4. The variable NAME exists now, but we still need to check whether storage space for the variable itself has been created / allocated
-    //    Note: LOCAL variable storage is created at runtime
+    //    Note: LOCAL variable storage is created at runtime when a function is called
     // --------------------------------------------------------------------------------------------------------------------------------------
 
     bool globalVarStorageMissingOrIsNotGlobal = false;                   // init: assume global (program or user) var with defined storage location
@@ -2410,7 +2467,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
 
             uint8_t varScope = _isExtFunctionCmd ? var_isParamInFunc : _isLocalVarCmd ? var_isLocalInFunc : _isStaticVarCmd ? var_isStaticInFunc : var_scopeToSpecify;
 
-            varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~var_scopeMask) | varScope;     //set scope bits (will be stored in token AND needed during parsing current procedure)
+            varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~var_scopeMask) | varScope;     //set scope bits (will be stored in token AND needed during current procedure)
 
             if (_isStaticVarCmd) {                                              // definition of NEW static variable for function
                 globalVarStorageMissingOrIsNotGlobal = true;                                 // (but it isn't a global variable) 
@@ -2419,8 +2476,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 programVarValueIndex[varNameIndex] = _staticVarCount;
                 if (!isArray) { staticVarValues[_staticVarCount].floatConst = 0.; }           // initialize variable (if initializer and/or array: will be overwritten)
 
-                staticVarType[_staticVarCount] = value_isFloat;                                         // init as float (for array or scalar)
-                staticVarType[_staticVarCount] = (staticVarType[_staticVarCount] & ~var_isArray); // init (array flag will be added when storage is created)    
+                staticVarType[_staticVarCount] = value_isFloat;                                         // init as float (for array or scalar - array flag will be added later) 
 
                 // will only be used while in DEBUGGING mode: index of static variable name
                 staticVarNameRef[_staticVarCount] = varNameIndex;
@@ -2440,8 +2496,8 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 programVarValueIndex[varNameIndex] = _localVarCountInFunction;
                 // param and local variables: array flag temporarily stored during function parsing       
                 // storage space creation and initialisation will occur when function is called durig execution 
-                localVarType[_localVarCountInFunction] = (localVarType[_localVarCountInFunction] & ~var_isArray) |
-                    (isArray ? var_isArray : 0); // init (no storage needs to be created: set array flag here) 
+                localVarType[_localVarCountInFunction] = (localVarType[_localVarCountInFunction] & ~(var_isArray | var_isConstantVar)) |
+                    (isArray ? var_isArray : 0) | (_isConstVarCmd ? var_isConstantVar : 0);  // init (no storage needs to be created: set array flag here) 
 
                 // will only be used while in DEBUGGING mode: index of local variable name
                 localVarNameRef[_localVarCount] = varNameIndex;
@@ -2465,9 +2521,10 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 if (globalVarStorageMissingOrIsNotGlobal) {              // undeclared global program variable                                                             
                     pNext = pch; result = result_varNotDeclared; return false;
                 }
-                // existing global or user variable
+                // // IS the use of an EXISTING global or user variable, within a function
                 varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~var_scopeMask) | (isProgramVar ? var_isGlobal : var_isUser);
-            }                                                                                               // IS the use of an EXISTING global or user variable, within a function
+
+            }
         }
 
         else {  // if variable name already referenced before in function (global / user variable use OR param, local, static declaration), then it has been defined already
@@ -2504,6 +2561,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 varType[activeNameRange][varNameIndex] = varType[activeNameRange][varNameIndex] | value_isFloat;         // init as float (for scalar and array)
                 if (isProgramVar) { varType[activeNameRange][varNameIndex] = varType[activeNameRange][varNameIndex] | var_nameHasGlobalValue; }   // set 'has global value' or 'user var' bit
                 varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~var_isArray); // init (array flag may only be added when storage is created) 
+                varType[activeNameRange][varNameIndex] |= (_isConstVarCmd ? var_isConstantVar : 0);
             }
             else {  // not a variable declaration, but a variable reference
                 ////Serial.println("*** 4.2 - is not global or user");
@@ -2624,6 +2682,11 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     int valueIndex = (isOpenFunctionStaticVariable || isOpenFunctionLocalVariable || isOpenFunctionParam) ? openFunctionVar_valueIndex :
         isGlobalOrUserVar ? varNameIndex : programVarValueIndex[varNameIndex];
 
+    bool varIsConstantVar = isGlobalOrUserVar ? (varType[activeNameRange][varNameIndex] & var_isConstantVar) :      // note: a STATIC or a PARAM variable is never a constant
+        isLocalVar ? (localVarType[valueIndex] & var_isConstantVar) : false;
+
+    if (_lastTokenIsPrefixIncrDecr && varIsConstantVar) { pNext = pch; result = result_cannotChangeConstantValue; return false; }
+
     /*
     Serial.print("*** 5: var scope: "); Serial.print(varScope, HEX);
     Serial.print(", glob/user static local param: "); Serial.print(isGlobalOrUserVar); Serial.print(" "); Serial.print(isStaticVar);
@@ -2670,41 +2733,46 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
         // if FOR loop control variable, check it is not in use by a FOR outer loop of SAME function  
         // -----------------------------------------------------------------------------------------
 
-        if (_isForCommand && (_blockLevel > 1)) {     // minimum 1 other (outer) open block
-            TokenPointer prgmCnt;
-            prgmCnt.pTokenChars = _programStorage + _lastTokenStep;  // address of keyword
-            int tokenIndex = prgmCnt.pResW->tokenIndex;
+        if (_isForCommand) {
+            if (varIsConstantVar) { pNext = pch; result = result_controlVarIsConstant; return false; }
+            if (_blockLevel > 1) {     // minimum 1 other (outer) open block
+                TokenPointer prgmCnt;
+                prgmCnt.pTokenChars = _programStorage + _lastTokenStep;  // address of keyword
+                int tokenIndex = prgmCnt.pResW->tokenIndex;
 
-            // check if control variable is in use by a FOR outer loop
-            LE_parsingStack* pStackLvl = (LE_parsingStack*)parsingStack.getLastListElement();        // current open block level
-            do {
-                pStackLvl = (LE_parsingStack*)parsingStack.getPrevListElement(pStackLvl);    // an outer block stack level
-                if (pStackLvl == nullptr) { break; }
-                if (pStackLvl->openBlock.cmdBlockDef.blockType == block_for) {    // outer block is FOR loop as well (could be while, if, ... block)
-                    // find token for control variable for this outer loop
-                    uint16_t tokenStep{ 0 };
-                    memcpy(&tokenStep, pStackLvl->openBlock.tokenStep, sizeof(char[2]));
-                    prgmCnt.pTokenChars = _programStorage + tokenStep;
-                    findTokenStep(tok_isVariable, 0, prgmCnt.pTokenChars);          // always match
+                // check if control variable is in use by a FOR outer loop
+                LE_parsingStack* pStackLvl = (LE_parsingStack*)parsingStack.getLastListElement();        // current open block level
+                do {
+                    pStackLvl = (LE_parsingStack*)parsingStack.getPrevListElement(pStackLvl);    // an outer block stack level
+                    if (pStackLvl == nullptr) { break; }
+                    if (pStackLvl->openBlock.cmdBlockDef.blockType == block_for) {    // outer block is FOR loop as well (could be while, if, ... block)
+                        // find token for control variable for this outer loop
+                        uint16_t tokenStep{ 0 };
+                        memcpy(&tokenStep, pStackLvl->openBlock.tokenStep, sizeof(char[2]));
+                        prgmCnt.pTokenChars = _programStorage + tokenStep;
+                        findTokenStep(prgmCnt.pTokenChars, tok_isVariable, 0);          // always match
 
-                    // compare variable qualifier, name index and value index of outer and inner loop control variable
-                    bool isSameControlVariable = ((varScope == uint8_t(prgmCnt.pVar->identInfo & var_scopeMask))
-                        && ((int)prgmCnt.pVar->identNameIndex == varNameIndex)
-                        && ((int)prgmCnt.pVar->identValueIndex == valueIndex));
-                    if (isSameControlVariable) { pNext = pch; result = result_varControlVarInUse; return false; }
-                }
-            } while (true);
+                        // compare variable qualifier, name index and value index of outer and inner loop control variable
+                        bool isSameControlVariable = ((varScope == uint8_t(prgmCnt.pVar->identInfo & var_scopeMask))
+                            && ((int)prgmCnt.pVar->identNameIndex == varNameIndex)
+                            && ((int)prgmCnt.pVar->identValueIndex == valueIndex));
+                        if (isSameControlVariable) { pNext = pch; result = result_varControlVarInUse; return false; }
+                    }
+                } while (true);
+            }
         }
     }
 
     _variableNameIndex = varNameIndex;          // will be pushed to parsing stack
     _variableScope = varScope;
+    _varIsConstant = varIsConstantVar;
 
     // expression syntax check 
     _thisLvl_lastIsVariable = true;
+    _thislvl_lastIsConstVar = varIsConstantVar;
 
     // command argument constraints check
-    if (!_lvl0_withinExpression || _lvl0_isPurePrefixIncrDecr) { _lvl0_isPureVariable = true; _lvl0_isPurePrefixIncrDecr = false; }
+    if (!_lvl0_withinExpression || _lvl0_isPurePrefixIncrDecr) { _lvl0_isPureVariable = !varIsConstantVar; _lvl0_isPurePrefixIncrDecr = false; }
     _lvl0_withinExpression = true;                                                         // reset for next command parameter
 
 
@@ -2714,18 +2782,11 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
 
     TokenIsVariable* pToken = (TokenIsVariable*)_programCounter;
     pToken->tokenType = tok_isVariable | (sizeof(TokenIsVariable) << 4);
-    // identInfo only contains variable scope info (parameter, local, static, global), 'is array' flag and 'is forced function variable in debug mode' flag (for printing only) 
-    pToken->identInfo = varScope | (isArray ? var_isArray : 0) | (db_functionVarOnly ? var_isForcedFunctionVar : 0);              // qualifier, array flag ? (is fixed for a variable -> can be stored in token)  
+    // identInfo only contains variable scope info (parameter, local, static, global), 'is array' flag, is constant var flag, and 'is forced function variable in debug mode' flag (for printing only) 
+    pToken->identInfo = varScope | (isArray ? var_isArray : 0) | (varIsConstantVar ? var_isConstantVar : 0) | (db_functionVarOnly ? var_isForcedFunctionVar : 0);              // qualifier, array flag ? (is fixed for a variable -> can be stored in token)  
     pToken->identNameIndex = varNameIndex;
     pToken->identValueIndex = valueIndex;                      // points to storage area element for the variable  
 
-    /* ////
-    Serial.print("   ** token address: "); Serial.println(_programCounter - _programStorage);
-    Serial.print("      token type: "); Serial.println(pToken->tokenType, HEX);
-    Serial.print("      info: scope+array+forced (hex): "); Serial.println(pToken->identInfo, HEX);
-    Serial.print("      name index: "); Serial.println((int)pToken->identNameIndex);
-    Serial.print("      value index: "); Serial.println((int)pToken->identValueIndex);
-    */
 
     _lastTokenStep = _programCounter - _programStorage;
     _lastVariableTokenStep = _lastTokenStep;
@@ -2733,8 +2794,16 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     _lastTokenIsString = false, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
 #if printParsedTokens
-    Serial.print("parsing var nam: address is "); Serial.print(_lastTokenStep); Serial.print(" ["); Serial.print(pvarNames[activeNameRange][varNameIndex]);  Serial.println("]");
+    Serial.print("parsing var name: address is "); Serial.print(_lastTokenStep); Serial.print(" ["); Serial.print(pvarNames[activeNameRange][varNameIndex]);  Serial.println("]");
 #endif
+
+    /*
+    Serial.print("-  token address: "); Serial.println(_programCounter - _programStorage);
+    Serial.print("-  token type: "); Serial.println(pToken->tokenType, HEX);
+    Serial.print("-  info: scope+array+forced (hex): "); Serial.println(pToken->identInfo, HEX);
+    Serial.print("-  name index: "); Serial.println((int)pToken->identNameIndex);
+    Serial.print("-  value index: "); Serial.println((int)pToken->identValueIndex);
+    */
 
     _programCounter += sizeof(TokenIsVariable);
     *_programCounter = tok_no_token;                                                 // indicates end of program
@@ -2752,7 +2821,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
     result = result_tokenNotFound;                                                      // init: flag 'no token found'
     char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
 
-    bool stay = (_isProgramCmd || _isDeleteVarCmd || _isDeclCBcmd);
+    bool stay = (_isProgramCmd || _isDeleteVarCmd || _isDeclCBcmd || _isClearAllCmd || _isClearProgCmd);
     stay = stay || (_isCallbackCmd && (_cmdArgNo == 0));
     if (!stay) { return true; }
 
@@ -2781,7 +2850,8 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
     if (_isProgramCmd) {
         strcpy(_programName, pIdentifierName);
     }
-    else if (_isDeclCBcmd) {                                             // maximum 10 user functions     
+
+    else if (_isDeclCBcmd) {                                             // !!! maximum 10 user functions !!!    
         if (_userCBprocAliasSet_count >= _userCBprocStartSet_count) { pNext = pch; result = result_allUserCBAliasesSet; } // still need to delete string object
         for (int i = 0; i < _userCBprocAliasSet_count; i++) {                               // alias already declared ?
             if (strcmp(_callbackUserProcAlias[i], pIdentifierName) == 0) { pNext = pch; result = result_userCBAliasRedeclared; }    // still need to delete string object
@@ -2795,12 +2865,24 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
             _parsedStringConstObjectCount--;
             return false;
         }
-        strcpy(_callbackUserProcAlias[_userCBprocAliasSet_count++], pIdentifierName);                           // maximum 10 user functions                                   
+        else (strcpy(_callbackUserProcAlias[_userCBprocAliasSet_count++], pIdentifierName));
     }
 
+    else if (_isDeleteVarCmd) {
+        result = deleteUserVariable(pIdentifierName);
+        if (result != result_tokenFound) {
+        #if printCreateDeleteListHeapObjects
+            Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pIdentifierName - RAMSTART);
+        #endif
+            delete[] pIdentifierName;
+            _parsedStringConstObjectCount--;
+            pNext = pch; return false;
+        }
+    }
 
     // expression syntax check 
     _thisLvl_lastIsVariable = false;
+    _thislvl_lastIsConstVar = false;
 
     // command argument constraints check : reset for next command parameter
     _lvl0_withinExpression = false;
@@ -2859,7 +2941,7 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
         bool hasTrailingSpace = false;
         bool isSemicolon = false;
 
-        char prettyToken[maxCharsPrettyToken] = "";         // used for all tokens except string values
+        char prettyToken[maxCharsPrettyToken] = "";         // used for all tokens except string values; must be long enough for the longest token in text
         char* pPrettyToken{ prettyToken };                  // init: for all tokens except string values
         bool tempStringCreated{ false };                    // init: for all tokens except string values
 
@@ -2926,7 +3008,9 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
                     break;   // and quit switch
                 }
 
-                else { testNextForPostfix = true; }     // no break here: fall into generic name handling
+                else if (isStringConst) {
+                    testNextForPostfix = true;     // no break here: fall into generic name handling
+                }
             }
 
             case tok_isGenericName:
@@ -2934,14 +3018,16 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
                 char* pAnum{ nullptr };
                 memcpy(&pAnum, progCnt.pCstToken->cstValue.pStringConst, sizeof(pAnum));                         // copy pointer, not string (not necessarily aligned with word size: copy memory instead)
 
-                if (testNextForPostfix) {  // string constant and NOT a generic name ?
-                    tempStringCreated = expandStringBackslashSequences(pAnum);          // returns pointer to either original string or temp. string created on the heap 
+                if (testNextForPostfix) {                   // string constant and NOT a generic name ? expand '\' sequences and add string delimiters
+                    tempStringCreated = true;
+                    expandStringBackslashSequences(pAnum);          // returns pointer to new (temporary) string created on the heap: it must be DELETED immediately when not needed any more 
+                    strcpy(prettyToken, pAnum);
+                    delete[]pAnum;
                 }
-
-                if (tempStringCreated) { pPrettyToken = pAnum; }        // now pointing to temp string (only if occurences of \ or " found); string terminating " characters added 
-                else { sprintf(prettyToken, (testNextForPostfix ? "\"%s\"" : "%s "), (pAnum == nullptr) ? "" : pAnum); }
+                else {
+                    strcpy(prettyToken, pAnum); strcat(prettyToken, " ");       // generic token: just add a space at the end
+                }
                 hasTrailingSpace = !testNextForPostfix;
-
                 break;
             }
 
@@ -3011,8 +3097,6 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
 
         else { _pConsole->print(pPrettyToken); }              // not a semicolon
 
-        if (tempStringCreated) { delete[] pPrettyToken; }
-
         // if printing a fixed number of instructions, return output error position based on token where execution error was produced
         if (!allInstructions) {
             if (errorProgCounter == progCnt.pTokenChars) {
@@ -3050,34 +3134,36 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
 
 // note: this routine may create a character string on the heap; it must be deleted afterwards
 
-bool Justina_interpreter::expandStringBackslashSequences(char*& stringValue) {
-    if (stringValue == nullptr) { return false; }     // empty string ? return false: no heap character string created
-
+void Justina_interpreter::expandStringBackslashSequences(char*& stringValue) {
     int occurences{ 0 };                   // count '\' and '"' characters within string
     char* pos = stringValue;
-    do { pos = strpbrk(pos, "\\\""); if (pos != nullptr) { ++occurences; } } while (pos++ != nullptr);
-    if (occurences == 0) { return false; }     // false: no heap character string created
 
-    char* output = new char[strlen(stringValue) + occurences + 2 + 1];       // provide room for expanded \ and " characters, 2 string terminating " and terminator
+    if (stringValue != nullptr) { do { pos = strpbrk(pos, "\\\""); if (pos != nullptr) { ++occurences; } } while (pos++ != nullptr); }
+    int oldLen = (stringValue == nullptr) ? 0 : strlen(stringValue);
+
+    // !!! new char* created without augmenting an object counter: make sure no error occurs between this creation and later deletion (as soon as possible)
+    char* output = new char[oldLen + occurences + 2 + 1];       // provide room for expanded \ and " characters, 2 string terminating " and terminator
     output[0] = '"';                                                          // add starting string terminator
-    char* newPos = pos = stringValue;
 
-    char* destinPos = output + 1;
+    if (oldLen != 0) {
+        char* newPos = pos = stringValue;
 
-    for (int i = 1; i <= occurences; ++i) {
-        newPos = strpbrk(pos, "\\\"");      // always match
-        int len = newPos - pos;             // if zero, first character is \ or "
-        if (len > 0) { memcpy(destinPos, pos, len);  destinPos += len; }          // copy characters before found \ or " character 
-        destinPos[0] = '\\'; destinPos[1] = newPos[0];  destinPos += 2;
-        newPos++;
-        pos = newPos;
+        char* destinPos = output + 1;
+
+        for (int i = 1; i <= occurences; ++i) {
+            newPos = strpbrk(pos, "\\\"");      // always match
+            int len = newPos - pos;             // if zero, first character is \ or "
+            if (len > 0) { memcpy(destinPos, pos, len);  destinPos += len; }          // copy characters before found \ or " character 
+            destinPos[0] = '\\'; destinPos[1] = newPos[0];  destinPos += 2;
+            newPos++;
+            pos = newPos;
+        }
+        strcpy(destinPos, pos);     // remainder of string
     }
-
-    strcpy(destinPos, pos);     // remainder of string
-    output[strlen(stringValue) + occurences + 2 - 1] = '"';
-    output[strlen(stringValue) + occurences + 2] = '\0';
+    output[oldLen + occurences + 2 - 1] = '"';
+    output[oldLen + occurences + 2] = '\0';
     stringValue = output;
-    return true;            // true: a heap character string has been created
+    return;
 }
 
 
