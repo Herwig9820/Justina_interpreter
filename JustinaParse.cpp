@@ -701,6 +701,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
             _isDeleteVarCmd = false;
             _isClearProgCmd = false;
             _isClearAllCmd = false;
+            _userVarUnderConstruction = false;
         }
         // determine token group of last token parsed (bits b4 to b0): this defines which tokens are allowed as next token
         _lastTokenGroup_sequenceCheck_bit = isOperator ? lastTokenGroup_0 :
@@ -774,6 +775,8 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
 
 
     pInputStart = pNext;                                                                // set to next character (if error: indicates error position)
+
+    if (_userVarUnderConstruction) { deleteUserVariable(); }
 
     return result;
 }
@@ -1642,7 +1645,10 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                 bool arrayWithAssignmentOp = (nextTermIndex < 0) ? false : _terminals[nextTermIndex].terminalCode == termcod_assign;
                 bool arrayWithoutInitializer = (nextTermIndex < 0) ? false : ((_terminals[nextTermIndex].terminalCode == termcod_comma) || (_terminals[nextTermIndex].terminalCode == termcod_semicolon));
                 if (!arrayWithAssignmentOp && !arrayWithoutInitializer) {
-                    if (isUserVar) { --_userVarCount; } // consider user variable not created (relevant for user variables only, because program variables are destroyed anyway if parsing fails)
+                    if (isUserVar) {
+                        --_userVarCount; // consider user variable not created (relevant for user variables only, because program variables are destroyed anyway if parsing fails)
+                        _userVarUnderConstruction = false;
+                    }
                     pNext = pch; result = result_assignmentOrTerminatorExpected; return false;
                 }  // before array is created
 
@@ -1878,7 +1884,11 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
 
             // token is a comma separator, and it's allowed here
             _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
-            break; }
+
+            if (_parenthesisLevel == 0) { _userVarUnderConstruction = false; }        // if a var was under construction, it has been created now without errors
+
+            break;
+        }
 
 
         case termcod_semicolon: {
@@ -1908,6 +1918,8 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             _lvl0_isPurePrefixIncrDecr = false;
             _lvl0_isPureVariable = false;
             _lvl0_isVarWithAssignment = false;
+
+            _userVarUnderConstruction = false;        // if a var was under construction, it has been created now without errors
 
             break;
         }
@@ -2313,19 +2325,19 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     // ----------------------------------
     result = result_tokenNotFound;                                                      // init: flag 'no token found'
     char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
-    bool db_functionVarOnly{ false };
+    bool debug_functionVarOnly{ false };
 
     if (!isalpha(pNext[0]) && (pNext[0] != '#')) { return true; }                                       // first character is not a letter ? Then it's not a variable name (it can still be something else)
     if (pNext[0] == '#') {
         if (_programMode) { pNext = pch; result = result_illegalInProgram; return false; }
         if (_isAnyVarCmd) { pNext = pch; result = result_illegalInDeclaration; return false; }
         else {
-            db_functionVarOnly = true; ++pNext;    // record that a 'function variable only' prefix was found 
+            debug_functionVarOnly = true; ++pNext;    // record that a 'function variable only' prefix was found 
             if (!isalpha(pNext[0])) { pNext = pch; result = result_variableNameExpected; return false; }
         }
     }
     while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                   // do until first character after alphanumeric token (can be anything, including '\0')
-    char* pName = pch + (db_functionVarOnly ? 1 : 0);
+    char* pName = pch + (debug_functionVarOnly ? 1 : 0);
 
 
     // 2. Is a variable name allowed here ? 
@@ -2381,12 +2393,12 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     Val* varValues[2]; varValues[0] = globalVarValues; varValues[1] = userVarValues;
 
     // 0: program variable, 1: user variable
-    int primaryNameRange = (_programMode || db_functionVarOnly) ? 0 : 1;        // immediate mode while in debug only: if '#' prefix is found, force 'function variable'
+    int primaryNameRange = (_programMode || debug_functionVarOnly) ? 0 : 1;        // immediate mode while in debug only: if '#' prefix is found, force 'function variable'
     int secondaryNameRange = _programMode ? 1 : 0;
     int activeNameRange = primaryNameRange;
 
     // init: program parsing: assume program variable name for now; immediate mode parsing: assume user variable name
-    bool isProgramVar = (_programMode || db_functionVarOnly);
+    bool isProgramVar = (_programMode || debug_functionVarOnly);
 
     // check if variable exists already (program mode OR '#' prefix found (debug imm. mode): as program variable; immediate mode: as user variable)
     // if a variable DEFINITION, then create variable name if it does not exist yet
@@ -2398,7 +2410,10 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
         if (varNameIndex == -1) { pNext = pch; result = result_maxVariableNamesReached; return false; }      // name still does not exist: error
 
         // user variables: detect immediatemy if a variable has been redeclared 
-        if (!isProgramVar && !createNewName) { pNext = pch; result = result_varRedeclared; return false; }
+        if (!isProgramVar) {
+            if (!createNewName) { pNext = pch; result = result_varRedeclared; return false; }
+            _userVarUnderConstruction = true;    // it may have to be deleted again (an error can still occur
+        }
 
         // name exists (newly created or pre-existing)
         // variable name is new: clear all variable value type flags and indicate 'qualifier not determined yet'
@@ -2409,7 +2424,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
         if (varNameIndex == -1) {
             // variable name does not exist in primary range (and no error produced, so it was not a variable declaration):
             // check if the name is defined in the secondary name range (except if only looking for function variable -> '#' prefix found)
-            if (!db_functionVarOnly) {
+            if (!debug_functionVarOnly) {
                 isProgramVar = !_programMode;                  // program parsing: is program variable; immediate mode: is user variable
                 varNameIndex = getIdentifier(pvarNames[secondaryNameRange], *varNameCount[secondaryNameRange], maxVarNames[secondaryNameRange], pName, pNext - pName, createNewName, !isProgramVar);
                 if (varNameIndex == -1) { pNext = pch; result = result_varNotDeclared; return false; }  // if the name doesn't exist, the variable doesn't
@@ -2422,18 +2437,22 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
         if (_programMode && !isProgramVar) { varType[activeNameRange][varNameIndex] = varType[activeNameRange][varNameIndex] | var_userVarUsedByProgram; }
     }
 
-    if (_isAnyVarCmd && !isArray) {  // scalar var declarations: check that variable is followed, either by an assignment oprator or a comma or semicolon 
+    if (_isAnyVarCmd && !isArray) {  // scalar var declarations: check that variable is followed, either by an assignment operator or a comma or semicolon 
         bool scalarWithAssignmentOp = (peek1[0] == term_assign[0]);
         bool scalarWithoutInitializer = ((peek1[0] == term_comma[0]) || (peek1[0] == term_semicolon[0]));
         if (!scalarWithAssignmentOp && !scalarWithoutInitializer) {
-            if (!isProgramVar) (*varNameCount[primaryNameRange])--;            // consider user variable not created (relevant for user variables only, because program variables are destroyed anyway if parsing fails)
+            if (!isProgramVar) {
+                (*varNameCount[primaryNameRange])--;            // consider user variable not created (relevant for user variables only, because program variables are destroyed anyway if parsing fails)
+                _userVarUnderConstruction = false;        // user variable has just been 'deleted'
+            }
             pNext = pch; result = result_assignmentOrTerminatorExpected; return false;
         }
     }
 
 
     // 4. The variable NAME exists now, but we still need to check whether storage space for the variable itself has been created / allocated
-    //    Note: LOCAL variable storage is created at runtime when a function is called
+    //    Notes: USER variable storage was created when the user variabke name was created (just now)
+    //           LOCAL variable storage is created at runtime when a function is called
     // --------------------------------------------------------------------------------------------------------------------------------------
 
     bool globalVarStorageMissingOrIsNotGlobal = false;                   // init: assume global (program or user) var with defined storage location
@@ -2537,12 +2556,12 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     // 4.2 NOT parsing FUNCTION...END block 
      // ------------------------------------
 
-     // parsing program instructions AND while parsing instructions entered in immediate mode
+     // parsing program instructions AND parsing instructions entered in immediate mode
     else {
         // concentrate on global program variables and user variables first (not yet on function variables)
         // if program variable: has a GLOBAL program variabe with this name been declared already ? (if user variable, because the name exixts, storage exists)
         globalVarStorageMissingOrIsNotGlobal = isProgramVar ? !(varType[activeNameRange][varNameIndex] & var_nameHasGlobalValue) : _isGlobalOrUserVarCmd;
-        if (db_functionVarOnly) { globalVarStorageMissingOrIsNotGlobal = true; }                    // because it's not a global variable
+        if (debug_functionVarOnly) { globalVarStorageMissingOrIsNotGlobal = true; }                    // because it's not a global variable
 
         // qualifier 'var_isGlobal' (program variables): set it now, because could have been cleared by previously parsed function (will ultimately be stored in token)
         if (isProgramVar) { varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~var_scopeMask) | var_isGlobal; }
@@ -2553,7 +2572,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
         if (globalVarStorageMissingOrIsNotGlobal) {
             ////Serial.println("\r\n*** 4.2 - var not yet known");
             // but this can still be a global or user variable declaration 
-            if (_isGlobalOrUserVarCmd) {                           // is it a declaration ?  defne storage location now
+            if (_isGlobalOrUserVarCmd) {                           // is it a declaration ?  define storage location now
                 ////Serial.println("*** 4.2 - is global or user");
                // is a declaration of a new program global variable (in program mode), or a new user user variable (in immediate mode) 
                // variable qualifier : don't care for now (global varables: reset at start of next external function parsing)
@@ -2657,7 +2676,10 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
 
         else {  // global PROGRAM variable exists already: check for double definition (USER variables: detected when NAME was declared a second time) 
             ////Serial.println("*** 4.2 - is existing global");
-            if (_isGlobalOrUserVarCmd) { pNext = pch; result = result_varRedeclared; return false; }
+            if (_isGlobalOrUserVarCmd) {
+                _userVarUnderConstruction = false;          // variable was declared earlier: don't delete it 
+                pNext = pch; result = result_varRedeclared; return false;
+            }
         }
     }
 
@@ -2783,7 +2805,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     TokenIsVariable* pToken = (TokenIsVariable*)_programCounter;
     pToken->tokenType = tok_isVariable | (sizeof(TokenIsVariable) << 4);
     // identInfo only contains variable scope info (parameter, local, static, global), 'is array' flag, is constant var flag, and 'is forced function variable in debug mode' flag (for printing only) 
-    pToken->identInfo = varScope | (isArray ? var_isArray : 0) | (varIsConstantVar ? var_isConstantVar : 0) | (db_functionVarOnly ? var_isForcedFunctionVar : 0);              // qualifier, array flag ? (is fixed for a variable -> can be stored in token)  
+    pToken->identInfo = varScope | (isArray ? var_isArray : 0) | (varIsConstantVar ? var_isConstantVar : 0) | (debug_functionVarOnly ? var_isForcedFunctionVar : 0);              // qualifier, array flag ? (is fixed for a variable -> can be stored in token)  
     pToken->identNameIndex = varNameIndex;
     pToken->identValueIndex = valueIndex;                      // points to storage area element for the variable  
 
@@ -2943,7 +2965,6 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
 
         char prettyToken[maxCharsPrettyToken] = "";         // used for all tokens except string values; must be long enough for the longest token in text
         char* pPrettyToken{ prettyToken };                  // init: for all tokens except string values
-        bool tempStringCreated{ false };                    // init: for all tokens except string values
 
         switch (tokenType) {
             case tok_isReservedWord:
@@ -3019,7 +3040,6 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
                 memcpy(&pAnum, progCnt.pCstToken->cstValue.pStringConst, sizeof(pAnum));                         // copy pointer, not string (not necessarily aligned with word size: copy memory instead)
 
                 if (testNextForPostfix) {                   // string constant and NOT a generic name ? expand '\' sequences and add string delimiters
-                    tempStringCreated = true;
                     expandStringBackslashSequences(pAnum);          // returns pointer to new (temporary) string created on the heap: it must be DELETED immediately when not needed any more 
                     strcpy(prettyToken, pAnum);
                     delete[]pAnum;

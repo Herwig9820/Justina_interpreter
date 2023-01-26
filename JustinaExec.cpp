@@ -745,7 +745,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 (!isLong && !isFloat), _dispIsIntFmt, lastResultTypeFiFo, lastResultValueFiFo, fmtString, toPrint, charsPrinted);
             _pConsole->println(toPrint.pStringConst);
 
-
             if (toPrint.pStringConst != nullptr) {
             #if printCreateDeleteListHeapObjects
                 Serial.print("----- (Intermd str) "); Serial.println((uint32_t)toPrint.pStringConst - RAMSTART);
@@ -2056,12 +2055,12 @@ int Justina_interpreter::findTokenStep(char*& pStep, int tokenType_spec, char cr
     // tokenType: if 'tok_isTerminalGroup1', test for the three terminal groups !
 
     // if looking for a specific reserved word or a specific terminal (optionally you can specify two)
-    char & tokenCode1_spec = criterium1;    // keyword index or terminal index to look for
+    char& tokenCode1_spec = criterium1;    // keyword index or terminal index to look for
     char& tokenCode2_spec = criterium2;     // optional second index (-1 if only one index to look for)
 
     // if looking for a specific variable
-    char & varScope_spec = criterium1;      //  variable scope to look for (user, global, ...)
-    char & valueIndex_spec = criterium2;    // value index to look for
+    char& varScope_spec = criterium1;      //  variable scope to look for (user, global, ...)
+    char& valueIndex_spec = criterium2;    // value index to look for
 
     // exclude current token step
     int tokenType = *pStep & 0x0F;
@@ -2072,7 +2071,7 @@ int Justina_interpreter::findTokenStep(char*& pStep, int tokenType_spec, char cr
 
     do {
         tokenType = *pStep & 0x0F;
-        if(tokenType == '\0'){return tokenType;}            // signal 'not found'
+        if (tokenType == '\0') { return tokenType; }            // signal 'not found'
 
         bool tokenTypeMatch = (tokenType_spec == tokenType);
 
@@ -2103,7 +2102,7 @@ int Justina_interpreter::findTokenStep(char*& pStep, int tokenType_spec, char cr
                 {
                     int varScope = ((TokenIsVariable*)pStep)->identInfo & var_scopeMask;
                     int valueIndex = ((TokenIsVariable*)pStep)->identValueIndex;
-                    tokenCodeMatch = (varScope == (varScope_spec & var_scopeMask)) && ((valueIndex_spec == -1) ? true:  (valueIndex == tokenCode2_spec));
+                    tokenCodeMatch = (varScope == (varScope_spec & var_scopeMask)) && ((valueIndex_spec == -1) ? true : (valueIndex == tokenCode2_spec));
                     break;
                 }
 
@@ -2143,9 +2142,9 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
                 // note: this is always an intermediate string
                 delete[] lastResultValueFiFo[itemToRemove].pStringConst;
                 _lastValuesStringObjectCount--;
+            }
         }
     }
-}
     else {
         _lastValuesCount++;     // only adding an item, without removing previous one
     }
@@ -2192,7 +2191,7 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
         #endif
             delete[] lastvalue.value.pStringConst;
             _intermediateStringObjectCount--;
-    }
+        }
     }
 
     // store new last value type
@@ -2321,10 +2320,10 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
                         delete[] _activeFunctionData.pVariableAttributes;
                         delete[] _activeFunctionData.ppSourceVarTypes;
                         _localVarValueAreaCount--;
+                    }
                 }
-            }
                 if (!isInitialLoop) { --_callStackDepth; }
-        }
+            }
 
             else if (blockType == block_eval) {
                 // no need to copy flow control stack level to _activeFunctionData
@@ -2342,8 +2341,8 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
 
             if (pFlowCtrlStackLvl == nullptr) { break; }       // all done
             isInitialLoop = false;
-    } while (true);
-}
+        } while (true);
+    }
 
     _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
     _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackTop);
@@ -2962,8 +2961,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
             #endif
                 delete[] pUnclippedResultString;     // compound assignment: pointing to the unclipped result WHICH IS NON-EMPTY: so it's a heap object and must be deleted now
                 _intermediateStringObjectCount--;
+            }
         }
-    }
 
         // store value in variable and adapt variable value type - next line is valid for long integers as well
         if (opResultLong || opResultFloat) { *_pEvalStackMinus2->varOrConst.value.pFloatConst = opResult.floatConst; }
@@ -2977,7 +2976,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) |
                 (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
         }
-}
+    }
 
 
     // (7) post process
@@ -3022,7 +3021,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
 #endif
 
     return result_execOK;
-    }
+}
 
 
 // ---------------------------------
@@ -4104,11 +4103,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
 
 
-        }       // end switch
+    }       // end switch
 
 
-        // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
-        // -------------------------------------------------------------------------------------------------------------------
+    // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
+    // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
@@ -4129,7 +4128,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
     }
 
     return result_execOK;
-    }
+}
 
 
 // -----------------------
@@ -4222,7 +4221,16 @@ void  Justina_interpreter::printToString(int width, int precision, bool inputIsS
     Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
 #endif
 
-    if (inputIsString) { sprintf(fcnResult.pStringConst, fmtString, width, precision, ((*value).pStringConst == nullptr) ? "" : (*value).pStringConst, &charsPrinted); }
+    if (inputIsString) {  //// printToString routine gebruikt voor print last value, trace, ft() functie
+        if (true) {     //// te vervangen door flag (hieronder ook: 2 x)
+            if ((*value).pStringConst != nullptr) {
+                char* pString = (*value).pStringConst;                          // remember pointer to original string
+                expandStringBackslashSequences((*value).pStringConst);          // creates new string: DELETE it immediately after printing
+                delete[] pString;                                               // delete old string
+            }
+        }
+        sprintf(fcnResult.pStringConst, fmtString, width, precision, ((*value).pStringConst == nullptr) ? (true ? "\"\"" : "") : (*value).pStringConst, &charsPrinted);
+    }
     else if (isIntFmt) { sprintf(fcnResult.pStringConst, fmtString, width, precision, (*valueType == value_isLong) ? (*value).longConst : (long)(*value).floatConst, &charsPrinted); }     // hex output for floating point numbers not provided (Arduino)
     else { sprintf(fcnResult.pStringConst, fmtString, width, precision, (*valueType == value_isLong) ? (float)(*value).longConst : (*value).floatConst, &charsPrinted); }
 

@@ -974,9 +974,9 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
     else if (execResult == result_initiateProgramLoad) { resetMachine(false); }
     else if (clearIndicator != 0) {
         _pConsole->println((clearIndicator == 2) ? "clearing memory" : "clearing program"); resetMachine(clearIndicator == 2);       // 1 = clear program, 2 = clear all (including user variables)
-    }    
+    }
 
-// no program error (could be immmediate mode error however): only reset a couple of items here 
+    // no program error (could be immmediate mode error however): only reset a couple of items here 
     else {
         parsingStack.deleteList();
         _blockLevel = 0;
@@ -1237,9 +1237,13 @@ void Justina_interpreter::printVariables(bool userVars) {
 
 Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariable(char* userVarName) {
 
+    bool deleteLastVar = (userVarName == nullptr);
+
     bool varDeleted{ false };
-    for (int index = 0; index < _userVarCount; index++) {
-        if (strcmp(userVarNames[index], userVarName) != 0) { continue; }    // no match yet
+    for (int index = (deleteLastVar ? _userVarCount - 1 : 0); index < _userVarCount; index++) {
+        if (!deleteLastVar) {
+            if (strcmp(userVarNames[index], userVarName) != 0) { continue; }     // no match yet: continue looking for it (if it exists)
+        }
 
         bool userVarUsedInProgram = (userVarType[index] & var_userVarUsedByProgram);
         if (userVarUsedInProgram) { return result_varUsedInProgram; }        // match, but cannot delete (variable used in program)
@@ -1263,8 +1267,8 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
         // ----------------------------------------------------------------------------
         if (isArray && isString) { deleteOneArrayVarStringObjects(userVarValues, index, true, false); }
 
-        // 3. if variable is array: delete array variable
-        // ----------------------------------------------
+        // 3. if variable is an array: delete the array storage
+        // ----------------------------------------------------
         //    NOTE: do this before checking for strings (if both 'var_isArray' and 'value_isStringPointer' bits are set: array of strings, with strings already deleted)
         if (isArray) {       // variable is an array: delete array storage          
         #if printCreateDeleteListHeapObjects
@@ -1272,10 +1276,10 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
         #endif
             delete[]  userVarValues[index].pArray;
             _userArrayObjectCount--;
-    }
+        }
 
-        // 4. if variable is scalar string value: delete string
-        // ----------------------------------------------------
+        // 4. if variable is a scalar string value: delete string
+        // ------------------------------------------------------
         else if (isString) {       // variable is a scalar containing a string
             if (userVarValues[index].pStringConst != nullptr) {
             #if printCreateDeleteListHeapObjects
@@ -1283,12 +1287,12 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
             #endif
                 delete[]  userVarValues[index].pStringConst;
                 _userVarStringObjectCount--;
+            }
         }
-}
 
-        // 5. move up other user variables one place
-        //    if a user variable is used in program: adapt index in program storage
-        // ------------------------------------------------------------------------
+        // 5. move up next user variables one place
+        //    if a user variable is used in currently loaded program: adapt index in program storage
+        // -----------------------------------------------------------------------------------------
         for (int i = index; i < _userVarCount - 1; i++) {
             userVarNames[i] = userVarNames[i + 1];
             userVarValues[i] = userVarValues[i + 1];

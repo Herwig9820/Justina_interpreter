@@ -1143,8 +1143,9 @@ class Justina_interpreter {
     bool _isClearProgCmd = false;
     bool _isClearAllCmd = false;
     bool _isForCommand = false;
+    
     bool _initiateProgramLoad = false;
-
+    bool _userVarUnderConstruction=false;                       // user variable is created, but process is not terminated
 
     bool _isDeclCBcmd = false;
     bool _isClearCBcmd = false;
@@ -1541,7 +1542,7 @@ private:
     bool processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, int clearIndicator);
     void traceAndPrintDebugInfo();
     void printVariables(bool userVars);
-    parseTokenResult_type deleteUserVariable(char* userVarName);
+    parseTokenResult_type deleteUserVariable(char* userVarName=nullptr);
 
 };
 
