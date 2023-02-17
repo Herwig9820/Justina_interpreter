@@ -442,7 +442,7 @@ void Justina_interpreter::initInterpreterVariables(bool withUserVariables) {
     _printNumSpecifier[0] = 'G'; _printNumSpecifier[1] = '\0';
 
     // display output settings
-    _promptAndEcho = 2, _printLastResult = true;
+    _promptAndEcho = 2, _printLastResult = 1;
 }
 
 
@@ -3033,6 +3033,7 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
                     testNextForPostfix = true;     // no break here: fall into generic name handling
                 }
             }
+            // NO break here
 
             case tok_isGenericName:
             {
@@ -3152,7 +3153,7 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
 // *   expand backslash sequence in string   *
 // -------------------------------------------
 
-// note: this routine may create a character string on the heap; it must be deleted afterwards
+// note: this routine creates a character string on the heap; it must be deleted afterwards
 
 void Justina_interpreter::expandStringBackslashSequences(char*& stringValue) {
     int occurences{ 0 };                   // count '\' and '"' characters within string

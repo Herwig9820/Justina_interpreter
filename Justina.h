@@ -1260,8 +1260,8 @@ class Justina_interpreter {
     char _printNumSpecifier[2] = "G";      // room for 1 character and an extra terminating \0 (initialized during reset)
 
     // display output settings
-    int _promptAndEcho{ 2 };              // output prompt and echo of input
-    bool _printLastResult{ true };
+    int _promptAndEcho{ 2 };                // print prompt and print input echo
+    int _printLastResult{ 1 };              // print last result: 0 = do not print, 1 = print, 2 = print and expand backslash sequences in string constants  
 
     char _statement[MAX_STATEMENT_LEN + 1] = "";
     bool _programMode{ false };

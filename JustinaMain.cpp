@@ -289,6 +289,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"var",             cmdcod_var,             cmd_noRestrictions | cmd_skipDuringExec,            0,0,    cmdPar_111,     cmdBlockNone},
     {"const",           cmdcod_constVar,        cmd_noRestrictions | cmd_skipDuringExec,            0,0,    cmdPar_111,     cmdBlockNone},
     {"static",          cmdcod_static,          cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_111,     cmdBlockNone},
+
     {"delVar",          cmdcod_deleteVar,       cmd_onlyImmediateOutsideBlock | cmd_skipDuringExec, 0,0,    cmdPar_110,     cmdBlockNone},
     {"clearAll",        cmdcod_clearAll,        cmd_onlyImmediateOutsideBlock | cmd_skipDuringExec, 0,0,    cmdPar_102,     cmdBlockNone},
     {"clearProg",       cmdcod_clearProg,       cmd_onlyImmediateOutsideBlock | cmd_skipDuringExec, 0,0,    cmdPar_102,     cmdBlockNone},
@@ -973,7 +974,24 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
     if ((_programMode) && (result != result_tokenFound)) { resetMachine(false); }
     else if (execResult == result_initiateProgramLoad) { resetMachine(false); }
     else if (clearIndicator != 0) {
-        _pConsole->println((clearIndicator == 2) ? "clearing memory" : "clearing program"); resetMachine(clearIndicator == 2);       // 1 = clear program, 2 = clear all (including user variables)
+        do {
+            char s[50];
+            sprintf(s, "===== Clear %s ? (please answer Y or N) =====", ((clearIndicator == 2) ? "memory" : "program"));
+            _pConsole->println(s);
+
+            // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
+            // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
+            bool doAbort{ false }, doStop{ false }, doCancel{ false }, doDefault{ false };      // not used but mandatory
+            int length{ 0 };
+            char input[MAX_USER_INPUT_LEN + 1] = "";                                                                          // init: empty string
+            if (readText(doAbort, doStop, doCancel, doDefault, input, length)) { return result_kill; }  // kill request from caller ?
+
+            bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
+            if (validAnswer) {
+                if (tolower(input[0]) == 'y') { _pConsole->println((clearIndicator == 2) ? "clearing memory" : "clearing program"); resetMachine(clearIndicator == 2);}       // 1 = clear program, 2 = clear all (including user variables)
+                break;
+            }
+        } while (true);
     }
 
     // no program error (could be immmediate mode error however): only reset a couple of items here 
@@ -1276,7 +1294,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
         #endif
             delete[]  userVarValues[index].pArray;
             _userArrayObjectCount--;
-        }
+    }
 
         // 4. if variable is a scalar string value: delete string
         // ------------------------------------------------------
@@ -1287,7 +1305,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
             #endif
                 delete[]  userVarValues[index].pStringConst;
                 _userVarStringObjectCount--;
-            }
+}
         }
 
         // 5. move up next user variables one place

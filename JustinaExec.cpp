@@ -732,7 +732,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
     if (!_parsingExecutingTraceString) {
         if (!_atLineStart) { _pConsole->println(); _atLineStart = true; }
-        if (_lastValueIsStored && _printLastResult) {
+        if (_lastValueIsStored && (_printLastResult > 0)) {
 
             // print last result
             bool isLong = (lastResultTypeFiFo[0] == value_isLong);
@@ -918,12 +918,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
             else {      // keep in memory when quitting, cancel: ask user
                 _appFlags |= appFlag_waitingForUser;    // bit b6 set: waiting for user interaction
+
                 do {
                     _pConsole->println("===== Quit Justina: keep in memory ? (please answer Y, N or \\c to cancel) =====");
 
                     // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
                     // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
-                    bool doAbort{ false }, doStop{ false }, doCancel{ false }, doDefault{ false }, backslashFound{ false }, answerIsNo{ false }, quitNow{ false };
+                    bool doAbort{ false }, doStop{ false }, doCancel{ false }, doDefault{ false };
                     int length{ 0 };
                     char input[MAX_USER_INPUT_LEN + 1] = "";                                                                          // init: empty string
                     if (readText(doAbort, doStop, doCancel, doDefault, input, length)) { return result_kill; }  // kill request from caller ? 
@@ -937,6 +938,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         return result_quit;                        // Justina Quit command executed 
                     }
                 } while (true);
+
             }
 
             _appFlags &= ~appFlag_waitingForUser;    // bit b6 reset: NOT waiting for user interaction
@@ -1117,12 +1119,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 Serial.print("+++++ (system var str) "); Serial.println((uint32_t)pString - RAMSTART);
             #endif
 
-            }
+        }
 
             // clean up
             clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
-        }
+    }
         break;
 
 
@@ -1310,7 +1312,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
                 // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
                 // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
-                bool doAbort{ false }, doStop{ false }, doCancel{ false }, doDefault{ false }, backslashFound{ false }, answerIsNo{ false }, quitNow{ false };
+                bool doAbort{ false }, doStop{ false }, doCancel{ false }, doDefault{ false };
                 int length{ 0 };
                 char input[MAX_USER_INPUT_LEN + 1] = "";                                                                          // init: empty string
                 if (readText(doAbort, doStop, doCancel, doDefault, input, length)) { execResult = result_kill; return execResult; }
@@ -1321,6 +1323,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 else if (doStop) { userRequestsStop = true; }                                           // '\s': stop a running program (do not produce stop event yet, wait until program statement executed)
 
                 // if request to stop ('\s') received, first handle input data
+                bool  answerIsNo{ false };
                 answerValid = true;                                                                                             // init
                 if (!doAbort && !doCancel && !doDefault) {                                                                      // doStop: continue execution for now (stop when current statement is executed)
                     if (isInfoWithYesNo) {                                                                                      // check validity of answer ('y' or 'n')
@@ -1556,7 +1559,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         case cmdcod_dispmod:      // takes two arguments: width & flags
         {
             // mandatory argument 1: 0 = do not print prompt and do not echo user input; 1 = print prompt but no not echo user input; 2 = print prompt and echo user input 
-            // mandatory argument 2: 0 = do not print last result; 1 = print last result
+            // mandatory argument 2: 0 = do not print last result; 1 = print last result; 2 = expand escape sequences and print last result
 
             bool argIsVar[2];
             bool argIsArray[2];
@@ -1571,8 +1574,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 if (!(argIsLong || argIsFloat)) { execResult = result_arg_numValueExpected; return execResult; }
 
                 if (argIsFloat) { args[i].longConst = (int)args[i].floatConst; }
-                if ((args[i].longConst != 0) && (args[i].longConst != 1) && ((i == 0) ? (args[i].longConst != 2) : true)) { execResult = result_arg_invalid; return execResult; };
+                if ((args[i].longConst < 0) || (args[i].longConst > 2)) { execResult = result_arg_invalid; return execResult; };
             }
+            if ((args[0].longConst == 0) && (args[1].longConst == 0)) { execResult = result_arg_invalid; return execResult; };   // no prompt AND no last result print: do not allow
 
             // if last result printing switched back on, then prevent printing pending last result (if any)
             _lastValueIsStored = false;               // prevent printing last result (if any)
@@ -1677,15 +1681,15 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         (varScope[i] == var_isUser) ? _userVarStringObjectCount-- : ((varScope[i] == var_isGlobal) || (varScope[i] == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount-- : _localVarStringObjectCount--;
                         *pStackLvl->varOrConst.value.ppStringConst = nullptr;                           // change pointer to string (in variable) to null pointer
                     }
-                }
+                    }
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-            }
+                }
 
 
             // clean up
             clearEvalStackLevels(cmdParamCount);                                                        // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
-        }
+            }
         break;
 
 
@@ -1934,7 +1938,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         }
         break;
 
-    }       // end switch
+        }       // end switch
 
     return result_execOK;
 }
@@ -2192,7 +2196,7 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
             delete[] lastvalue.value.pStringConst;
             _intermediateStringObjectCount--;
         }
-    }
+}
 
     // store new last value type
     lastResultTypeFiFo[0] = sourceValueType;               // value type
@@ -2321,9 +2325,9 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
                         delete[] _activeFunctionData.ppSourceVarTypes;
                         _localVarValueAreaCount--;
                     }
-                }
-                if (!isInitialLoop) { --_callStackDepth; }
             }
+                if (!isInitialLoop) { --_callStackDepth; }
+        }
 
             else if (blockType == block_eval) {
                 // no need to copy flow control stack level to _activeFunctionData
@@ -2341,8 +2345,8 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
 
             if (pFlowCtrlStackLvl == nullptr) { break; }       // all done
             isInitialLoop = false;
-        } while (true);
-    }
+    } while (true);
+}
 
     _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
     _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackTop);
@@ -2373,7 +2377,7 @@ void Justina_interpreter::clearImmediateCmdStack(int n) {
     #if printParsedStatementStack
         Serial.print("  >> POP parsed statements (clr imm cmd stack): last step: "); Serial.println(_lastUserCmdStep - (_programStorage + PROG_MEM_SIZE));
     #endif
-    }
+}
 
     // do NOT delete parsed string constants for original command line (last copied to program storage) - handled later 
 }
@@ -2507,13 +2511,13 @@ void Justina_interpreter::makeIntermediateConstant(LE_evalStack* pEvalStackLvl) 
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)result.pStringConst - RAMSTART);
 
         #endif
-        }
+    }
         pEvalStackLvl->varOrConst.value = result;                        // float or pointer to string (type: no change)
         pEvalStackLvl->varOrConst.valueType = valueType;
         pEvalStackLvl->varOrConst.tokenType = tok_isConstant;              // use generic constant type
         pEvalStackLvl->varOrConst.valueAttributes = constIsIntermediate;             // is an intermediate result (intermediate constant strings must be deleted when not needed any more)
         pEvalStackLvl->varOrConst.sourceVarScopeAndFlags = 0x00;                  // not an array, not an array element (it's a constant) 
-    }
+}
 }
 
 
@@ -2802,8 +2806,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
                 #if printCreateDeleteListHeapObjects
                     Serial.print("+++++ (Intermd str) ");   Serial.print((uint32_t)opResult.pStringConst - RAMSTART); Serial.print(", string: "); Serial.println(opResult.pStringConst);
                 #endif
-                }
             }
+    }
 
             else {
                 opResultLong ? opResult.longConst = operand1.longConst + operand2.longConst : opResult.floatConst = operand1.floatConst + operand2.floatConst;
@@ -2909,12 +2913,12 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
         case termcod_ne:
             opResult.longConst = opResultLong ? (operand1.longConst != operand2.longConst) : (operand1.floatConst != operand2.floatConst);
             break;
-    }       // switch
+}       // switch
 
 
 
-    // (6) store result in variable, if operation is a (pure or compound) assignment
-    // -----------------------------------------------------------------------------
+// (6) store result in variable, if operation is a (pure or compound) assignment
+// -----------------------------------------------------------------------------
 
     if (operationIncludesAssignment) {    // assign the value (parsed constant, variable value or intermediate result) to the variable
         // if variable currently holds a non-empty string (indicated by a nullptr), delete char string object
@@ -3167,7 +3171,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
             #endif            
             }
-        }
+            }
         break;
 
 
@@ -3294,7 +3298,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             bool fcnResultIsFloat = (lastResultTypeFiFo[FiFoElement] == value_isFloat);
             if (fcnResultIsLong || fcnResultIsFloat || (!fcnResultIsLong && !fcnResultIsFloat && (lastResultValueFiFo[FiFoElement].pStringConst == nullptr))) {
                 fcnResult = lastResultValueFiFo[FiFoElement];
-            }
+        }
             else {                              // string
                 fcnResult.pStringConst = new char[strlen(lastResultValueFiFo[FiFoElement].pStringConst + 1)];
                 _intermediateStringObjectCount++;
@@ -3429,14 +3433,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                     fcnResult.pStringConst = new char[strlen(args[0].pStringConst) + 1];
                     _intermediateStringObjectCount++;
                     strcpy(fcnResult.pStringConst, args[0].pStringConst);       // just copy the string provided as argument
-                }
-            }
+        }
+    }
             if (fcnResult.pStringConst != nullptr) {
             #if printCreateDeleteListHeapObjects
                 Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
             #endif
             }
-        }
+}
         break;
 
         // math functions 
@@ -3900,7 +3904,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         #if printCreateDeleteListHeapObjects
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
         #endif            
-        }
+            }
         break;
 
 
@@ -3974,7 +3978,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         #if printCreateDeleteListHeapObjects
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
         #endif            
-        }
+            }
         break;
 
 
@@ -4093,21 +4097,21 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                         Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst - RAMSTART);
                     #endif
                     }
-                }
+            }
                 break;
 
                 default: return result_arg_invalid; break;
-            }       // switch (sysVal)
+        }       // switch (sysVal)
         }
         break;
 
 
 
-    }       // end switch
+        }       // end switch
 
 
-    // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
-    // -------------------------------------------------------------------------------------------------------------------
+        // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
+        // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
@@ -4222,14 +4226,14 @@ void  Justina_interpreter::printToString(int width, int precision, bool inputIsS
 #endif
 
     if (inputIsString) {  //// printToString routine gebruikt voor print last value, trace, ft() functie
-        if (true) {     //// te vervangen door flag (hieronder ook: 2 x)
+        if (_printLastResult == 2) {
             if ((*value).pStringConst != nullptr) {
                 char* pString = (*value).pStringConst;                          // remember pointer to original string
                 expandStringBackslashSequences((*value).pStringConst);          // creates new string: DELETE it immediately after printing
                 delete[] pString;                                               // delete old string
             }
         }
-        sprintf(fcnResult.pStringConst, fmtString, width, precision, ((*value).pStringConst == nullptr) ? (true ? "\"\"" : "") : (*value).pStringConst, &charsPrinted);
+        sprintf(fcnResult.pStringConst, fmtString, width, precision, ((*value).pStringConst == nullptr) ? ((_printLastResult == 2) ? "\"\"" : "") : (*value).pStringConst, &charsPrinted);
     }
     else if (isIntFmt) { sprintf(fcnResult.pStringConst, fmtString, width, precision, (*valueType == value_isLong) ? (*value).longConst : (long)(*value).floatConst, &charsPrinted); }     // hex output for floating point numbers not provided (Arduino)
     else { sprintf(fcnResult.pStringConst, fmtString, width, precision, (*valueType == value_isLong) ? (float)(*value).longConst : (*value).floatConst, &charsPrinted); }
@@ -4322,12 +4326,12 @@ Justina_interpreter::execResult_type Justina_interpreter::copyValueArgsFromStack
                 #if printCreateDeleteListHeapObjects
                     Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)args[i].pStringConst - RAMSTART);
                 #endif
-                }
             }
         }
+    }
 
         pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-    }
+}
 
     return result_execOK;
 }
@@ -4370,7 +4374,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchExternalFunctio
     #if printCreateDeleteListHeapObjects
         Serial.print("+++++ (LOCAL STORAGE) ");   Serial.println((uint32_t)_activeFunctionData.pLocalVarValues - RAMSTART);
     #endif
-    }
+}
 
 
     // init local variables: parameters with supplied arguments (scalar and array var refs) and with default values (scalars only), local variables (scalar and array)
@@ -4733,12 +4737,12 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
                         #if printCreateDeleteListHeapObjects
                             Serial.print("+++++ (loc var str) "); Serial.println((uint32_t)pVarString - RAMSTART);
                         #endif
-                        }
-                    }
                 }
+            }
+        }
 
                 tokenType = jumpTokens(1, pStep, terminalCode);       // comma or semicolon
-            }
+    }
 
             else {  // no initializer: if array, initialize it now (scalar has been initialized already)
                 if ((_activeFunctionData.pVariableAttributes[count] & var_isArray) == var_isArray) {
@@ -4748,7 +4752,7 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
             }
             count++;
 
-        } while (terminalCode == termcod_comma);
+} while (terminalCode == termcod_comma);
 
     }
 };
