@@ -30,6 +30,9 @@
 #define _JUSTINA_h
 
 #include "arduino.h"
+#include <SPI.h>
+#include <SD.h>
+
 #include <stdlib.h>
 #include <memory>
 
@@ -123,7 +126,7 @@ class MyParser;
 
 class Justina_interpreter {
 
-    static constexpr int PROG_MEM_SIZE{ 2000 };             // size, in bytes, of program memory (stores parsed program)
+    ////static constexpr int _progMemorySize{ 2000 };             // size, in bytes, of program memory (stores parsed program)
     static constexpr int IMM_MEM_SIZE{ 300 };               // size, in bytes, of user command memory (stores parsed user statements)
 
     static constexpr int MAX_USERVARNAMES{ 255 };           // max. user variables allowed. Absolute parser limit: 255
@@ -141,18 +144,49 @@ class Justina_interpreter {
     static constexpr int MAX_USER_INPUT_LEN{ 100 };         // max. length of text a user can enter with an input statement. Absolute limit: 255
 
     static constexpr int MAX_STATEMENT_LEN{ 300 };          // max. length of a single user statement 
-    
-    static constexpr int DEFAULT_PRINT_WIDTH {30};          // default width of the print field.
-    static constexpr int DEFAULT_NUM_PRECISION {3};         // default numeric precision.
-    static constexpr int DEFAULT_STRCHAR_TO_PRINT {30};     // default # alphanumeric characters to print
 
-    static constexpr long GETCHAR_TIMEOUT{200};              // milli seconds
+    static constexpr int DEFAULT_PRINT_WIDTH{ 30 };          // default width of the print field.
+    static constexpr int DEFAULT_NUM_PRECISION{ 3 };         // default numeric precision.
+    static constexpr int DEFAULT_STRCHAR_TO_PRINT{ 30 };     // default # alphanumeric characters to print
+
+    static constexpr long GETCHAR_TIMEOUT{ 200 };              // milli seconds
+
+    static constexpr int MAX_OPEN_SD_FILES{ 5 };            // SD card: max. concurrent open files
 
     const int MAX_PRINT_WIDTH = 255;                        // max. width of the print field. Absolute limit: 255. With as defined as in c++ printf 'format.width' sub-specifier
     const int MAX_NUM_PRECISION = 8;                        // max. numeric precision. Precision as defined as in c++ printf 'format.precision' sub-specifier
     const int MAX_STRCHAR_TO_PRINT = 255;                   // max. # of alphanumeric characters to print. Absolute limit: 255. Defined as in c++ printf 'format.precision' sub-specifier
 
 
+    // these values are grouped in a CmdBlockDef structure and are shared between multiple commands
+    enum blockType_type {
+        // value 1: block type
+        block_none,                                             // command is not a block command
+        block_extFunction,
+        block_for,
+        block_while,
+        block_if,
+        block_alterFlow,                                        // alter flow in specific open block types
+        block_genericEnd,                                       // ends anytype of open block
+
+        block_eval,                                             // execution only, signals execution of eval() string 
+
+        // value 2, 3, 4: position in open block, min & max position of previous block command within same block level
+        block_na,                                               // not applicable
+        block_startPos,                                         // command starts an open block
+        block_midPos1,                                          // command only allowed in open block  
+        block_midPos2,                                          // command only allowed in open block
+        block_endPos,                                           // command ends an open block
+        block_inOpenFunctionBlock,                              // command can only occur if currently a function block is open
+        block_inOpenLoopBlock,                                   // command can only occur if at least one loop block is open
+
+        // alternative for value 2: type of command (only if block type = block_none)
+        cmd_program,
+        cmd_globalVar,
+        cmd_localVar,
+        cmd_staticVar,
+        cmd_deleteVar
+    };
 
 
     // unique identification code of a command
@@ -203,38 +237,13 @@ class Justina_interpreter {
         cmdcod_clearCB,
         cmdcod_callback,
         cmdcod_receiveProg,
+        cmdcod_listFiles,
+        cmdcod_initSD,
+        cmdcod_ejectSD,
+        cmdcod_closeFile,
         cmdcod_test //// test
     };
 
-    // these values are grouped in a CmdBlockDef structure and are shared between multiple commands
-    enum blockType_type {
-        // value 1: block type
-        block_none,                                             // command is not a block command
-        block_extFunction,
-        block_for,
-        block_while,
-        block_if,
-        block_alterFlow,                                        // alter flow in specific open block types
-        block_genericEnd,                                       // ends anytype of open block
-
-        block_eval,                                             // execution only, signals execution of eval() string 
-
-        // value 2, 3, 4: position in open block, min & max position of previous block command within same block level
-        block_na,                                               // not applicable
-        block_startPos,                                         // command starts an open block
-        block_midPos1,                                          // command only allowed in open block  
-        block_midPos2,                                          // command only allowed in open block
-        block_endPos,                                           // command ends an open block
-        block_inOpenFunctionBlock,                              // command can only occur if currently a function block is open
-        block_inOpenLoopBlock,                                   // command can only occur if at least one loop block is open
-
-        // alternative for value 2: type of command (only if block type = block_none)
-        cmd_program,
-        cmd_globalVar,
-        cmd_localVar,
-        cmd_staticVar,
-        cmd_deleteVar
-    };
 
     enum func_code {
         fnccod_ifte,
@@ -341,7 +350,9 @@ class Justina_interpreter {
         fnccod_isPunct,
         fnccod_isSpace,
         fnccod_isUpperCase,
-        fnccod_isWhitespace
+        fnccod_isWhitespace,
+
+        fnccod_openFile,
     };
 
     enum termin_code {
@@ -526,10 +537,10 @@ class Justina_interpreter {
         result_onlyInProgOutsideFunction,
         result_onlyImmediateEndOfLine,////
 
-        
+
         result_event_endParsing,
-        
-        
+
+
         result_noOpenBlock,
         result_noBlockEnd,
         result_noOpenLoop,
@@ -601,10 +612,19 @@ class Justina_interpreter {
         result_eval_nothingToEvaluate = 3500,
         result_eval_parsingError,
 
+        // SD card
+        result_SD_noCardOrCardError = 3600,
+        result_SD_couldNotOpenFile,
+        result_SD_fileIsNotOpen,
+        result_SD_fileAlreadyOpen,
+        result_SD_invalidFileNumber,
+        result_SD_maxOpenFilesReached,
+
+
         // **************************************************
         // *** MANDATORY =>LAST<= range of errors: events ***
         // **************************************************
-        result_startOfEvents = 4000,
+        result_startOfEvents = 9000,
 
         // abort, kill, quit, stop, skip debug: EVENTS (first handled as errors - which they are not - initially following the same flow)
         result_stopForDebug = result_startOfEvents,    // 'Stop' command executed (from inside a program only): this enters debug mode
@@ -1099,6 +1119,11 @@ class Justina_interpreter {
         OpenCmdBlockLvl openBlock;
     };
 
+    struct OpenFile {
+        File file;
+        bool fileNumberInUse;                                   // file number = position in structure (base 0) + 1
+    };
+
     // block commands only (FOR, END, etc.): type of block, position in block, sequence check in block: allowed previous block commands 
     static constexpr CmdBlockDef cmdBlockExtFunction{ block_extFunction,block_startPos,block_na,block_na };                // 'IF' block mid position 2, min & max previous position is block start & block position 1, resp.
     static constexpr CmdBlockDef cmdBlockWhile{ block_while,block_startPos,block_na,block_na };                            // 'WHILE' block start
@@ -1119,14 +1144,20 @@ class Justina_interpreter {
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na,block_na,block_na };                                   // not a 'block' command
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[45];                          // keyword names
-    static const FuncDef _functions[98];                            // function names with min & max arguments allowed
+    static const ResWordDef _resWords[47];                          // keyword names
+    static const FuncDef _functions[101];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
 
     // ---------
     // variables
     // ---------
+
+    OpenFile openFiles[MAX_OPEN_SD_FILES];                      // open files: file paths and attributed file numbers
+    
+    int _openFileCount = 0;
+    int _activeFileNum = 0;                                   // console is active for I/O
+    bool _SDinitOK = false;
 
     int _resWordCount;                                          // index into list of keywords
     int _functionCount;                                         // index into list of internal (intrinsic) functions
@@ -1143,9 +1174,9 @@ class Justina_interpreter {
     bool _isClearProgCmd = false;
     bool _isClearAllCmd = false;
     bool _isForCommand = false;
-    
+
     bool _initiateProgramLoad = false;
-    bool _userVarUnderConstruction=false;                       // user variable is created, but process is not terminated
+    bool _userVarUnderConstruction = false;                       // user variable is created, but process is not terminated
 
     bool _isDeclCBcmd = false;
     bool _isClearCBcmd = false;
@@ -1159,7 +1190,7 @@ class Justina_interpreter {
     int _functionIndex{ 0 };
     int _variableNameIndex{ 0 };
     int _variableScope{ 0 };
-    bool _varIsConstant{0};
+    bool _varIsConstant{ 0 };
 
     int _tokenIndex{ 0 };
 
@@ -1305,18 +1336,19 @@ class Justina_interpreter {
     char _programName[MAX_IDENT_NAME_LEN + 1];
 
     Stream* _pConsole{ nullptr };
+    long _progMemorySize{};////
     Stream** _pTerminal{ nullptr };
     int _definedTerminals{ 0 };
 
     // program storage
-    char _programStorage[PROG_MEM_SIZE + IMM_MEM_SIZE];
+    ////char _programStorage[_progMemorySize + IMM_MEM_SIZE];
+    char* _programStorage;
+
+    Sd2Card _SDcard;
 
 
-    MyParser* _pmyParser;
-
-
-    // variable storage
-    // ----------------
+    // Justina variable storage
+    // ------------------------
 
     // variable scope: global (program variables and user variables), local within function (including function parameters), static within function     
 
@@ -1437,7 +1469,7 @@ class Justina_interpreter {
     // ------------------------------------
 
 public:
-    Justina_interpreter(Stream* const pConsole);               // constructor
+    Justina_interpreter(Stream* const pConsole, long progMemSize);               // constructor
     ~Justina_interpreter();               // deconstructor
     bool setMainLoopCallback(void (*func)(bool& requistQuit, long& appFlags));                   // set callback functions
     bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType, const int argCount));
@@ -1520,7 +1552,7 @@ private:
     execResult_type deleteVarStringObject(LE_evalStack* pStackLvl);
     execResult_type deleteIntermStringObject(LE_evalStack* pStackLvl);
 
-    execResult_type copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, bool* argIsArray, char* valueType, Val* args, bool passVarRefOrConst = false, Val* dummyArgs=nullptr);
+    execResult_type copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, bool* argIsArray, char* valueType, Val* args, bool passVarRefOrConst = false, Val* dummyArgs = nullptr);
 
     int findTokenStep(char*& pStep, int tokenTypeToFind, char tokenCodeToFind, char tokenCode2ToFind = -1);
     int jumpTokens(int n, char*& pStep, int& tokenCode);
@@ -1542,8 +1574,13 @@ private:
     bool processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, int clearIndicator);
     void traceAndPrintDebugInfo();
     void printVariables(bool userVars);
-    parseTokenResult_type deleteUserVariable(char* userVarName=nullptr);
+    parseTokenResult_type deleteUserVariable(char* userVarName = nullptr);
 
+    execResult_type open(int& fileNumber, char* filePath, int mod = FILE_WRITE);
+    execResult_type close(int fileNumber);
+    execResult_type initSD();
+    execResult_type ejectSD();
+    execResult_type listFiles();
 };
 
 #endif

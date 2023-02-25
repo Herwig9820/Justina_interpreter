@@ -46,7 +46,7 @@ void Justina_interpreter::deleteIdentifierNameObjects(char** pIdentNameArray, in
     int index = 0;          // points to last variable in use
     while (index < identifiersInUse) {                       // points to variable in use
     #if printCreateDeleteListHeapObjects
-        Serial.print(isUserVar ? "----- (usrvar name) " : "----- (ident name ) "); Serial.println((uint32_t) * (pIdentNameArray + index) - RAMSTART);
+        Serial.print(isUserVar ? "----- (usrvar name) " : "----- (ident name ) "); Serial.println((uint32_t) * (pIdentNameArray + index), HEX);
     #endif
         delete[] * (pIdentNameArray + index);
         isUserVar ? _userVarNameStringObjectCount-- : _identifierNameStringObjectCount--;
@@ -77,7 +77,7 @@ void Justina_interpreter::deleteStringArrayVarsStringObjects(Justina_interpreter
                     uint32_t stringPointerAddress = (uint32_t) & (((char**)pArrayStorage)[arrayElem]);
                     if (pString != nullptr) {
                     #if printCreateDeleteListHeapObjects
-                        Serial.print(isUserVar ? "----- (usr arr str) " : isLocalVar ? "-----(loc arr str)" : "----- (arr string ) "); Serial.println((uint32_t)pString - RAMSTART);     // applicable to string and array (same pointer)
+                        Serial.print(isUserVar ? "----- (usr arr str) " : isLocalVar ? "-----(loc arr str)" : "----- (arr string ) "); Serial.println((uint32_t)pString, HEX);     // applicable to string and array (same pointer)
                     #endif
                         delete[]  pString;                                  // applicable to string and array (same pointer)
                         isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
@@ -110,7 +110,7 @@ void Justina_interpreter::deleteOneArrayVarStringObjects(Justina_interpreter::Va
         uint32_t stringPointerAddress = (uint32_t) & (((char**)pArrayStorage)[arrayElem]);
         if (pString != nullptr) {
         #if printCreateDeleteListHeapObjects
-            Serial.print(isUserVar ? "----- (usr arr str) " : isLocalVar ? "-----(loc arr str)" : "----- (arr string ) "); Serial.println((uint32_t)pString - RAMSTART);     // applicable to string and array (same pointer)
+            Serial.print(isUserVar ? "----- (usr arr str) " : isLocalVar ? "-----(loc arr str)" : "----- (arr string ) "); Serial.println((uint32_t)pString, HEX);     // applicable to string and array (same pointer)
         #endif
             delete[]  pString;                                  // applicable to string and array (same pointer)
             isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
@@ -133,7 +133,7 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
             // check for arrays before checking for strings (if both 'var_isArray' and 'value_isStringPointer' bits are set: array of strings, with strings already deleted)
             if (((varType[index] & value_typeMask) != value_isVarRef) && (varType[index] & var_isArray)) {       // variable is an array: delete array storage          
             #if printCreateDeleteListHeapObjects
-                Serial.print(isUserVar ? "----- (usr ar stor) " : isLocalVar ? "----- (loc ar stor) " : "----- (array stor ) "); Serial.println((uint32_t)varValues[index].pStringConst - RAMSTART);
+                Serial.print(isUserVar ? "----- (usr ar stor) " : isLocalVar ? "----- (loc ar stor) " : "----- (array stor ) "); Serial.println((uint32_t)varValues[index].pStringConst, HEX);
             #endif
                 delete[]  varValues[index].pArray;
                 isUserVar ? _userArrayObjectCount-- : isLocalVar ? _localArrayObjectCount-- : _globalStaticArrayObjectCount--;
@@ -141,7 +141,7 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
             else if ((varType[index] & value_typeMask) == value_isStringPointer) {       // variable is a scalar containing a string
                 if (varValues[index].pStringConst != nullptr) {
                 #if printCreateDeleteListHeapObjects
-                    Serial.print(isUserVar ? "----- (usr var str) " : isLocalVar ? "----- (loc var str)" : "----- (var string ) "); Serial.println((uint32_t)varValues[index].pStringConst - RAMSTART);
+                    Serial.print(isUserVar ? "----- (usr var str) " : isLocalVar ? "----- (loc var str)" : "----- (var string ) "); Serial.println((uint32_t)varValues[index].pStringConst, HEX);
                 #endif
                     delete[]  varValues[index].pStringConst;
                     isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
@@ -164,7 +164,7 @@ void Justina_interpreter::deleteLastValueFiFoStringObjects() {
         bool isNonEmptyString = (lastResultTypeFiFo[i] == value_isStringPointer) ? (lastResultValueFiFo[i].pStringConst != nullptr) : false;
         if (isNonEmptyString) {
         #if printCreateDeleteListHeapObjects
-            Serial.print("----- (FiFo string) "); Serial.println((uint32_t)lastResultValueFiFo[i].pStringConst - RAMSTART);
+            Serial.print("----- (FiFo string) "); Serial.println((uint32_t)lastResultValueFiFo[i].pStringConst, HEX);
         #endif
             delete[] lastResultValueFiFo[i].pStringConst;
             _lastValuesStringObjectCount--;
@@ -193,7 +193,7 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
             memcpy(&pAnum, prgmCnt.pCstToken->cstValue.pStringConst, sizeof(pAnum));                         // pointer not necessarily aligned with word size: copy memory instead
             if (pAnum != nullptr) {
             #if printCreateDeleteListHeapObjects
-                Serial.print("----- (parsed str ) ");   Serial.print((uint32_t)pAnum - RAMSTART); Serial.print(", string: "); Serial.println(pAnum);
+                Serial.print("----- (parsed str ) ");   Serial.print((uint32_t)pAnum, HEX); Serial.print(", string: "); Serial.println(pAnum);
             #endif
                 delete[] pAnum;
                 _parsedStringConstObjectCount--;
@@ -240,7 +240,7 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
 
         if (_pTraceString != nullptr) {        // internal trace 'variable'
         #if printCreateDeleteListHeapObjects
-            Serial.print("----- (system var str) "); Serial.println((uint32_t)_pTraceString - RAMSTART);
+            Serial.print("----- (system var str) "); Serial.println((uint32_t)_pTraceString, HEX);
         #endif
             delete[] _pTraceString; _pTraceString = nullptr;      // old trace string
             _systemVarStringObjectCount--;
@@ -253,7 +253,7 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
 
     clearImmediateCmdStack(immModeCommandStack.getElementCount());      // including parsed string constants
     deleteConstStringObjects(_programStorage);
-    deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
+    deleteConstStringObjects(_programStorage + _progMemorySize);
 
     // delete all elements of the flow control stack 
     // in the process, delete all local variable areas referenced in elements of the flow control stack referring to functions, including local variable string and array values
@@ -385,8 +385,8 @@ void Justina_interpreter::initInterpreterVariables(bool withUserVariables) {
     _userCBprocAliasSet_count = 0;   // note: _userCBprocStartSet_count: only reset when starting interpreter
 
     *_programStorage = tok_no_token;                                                        //  set as current end of program 
-    *(_programStorage + PROG_MEM_SIZE) = tok_no_token;                                      //  set as current end of program (immediate mode)
-    _programCounter = _programStorage + PROG_MEM_SIZE;                          // start of 'immediate mode' program area
+    *(_programStorage + _progMemorySize) = tok_no_token;                                      //  set as current end of program (immediate mode)
+    _programCounter = _programStorage + _progMemorySize;                          // start of 'immediate mode' program area
 
     _programName[0] = '\0';
 
@@ -422,6 +422,8 @@ void Justina_interpreter::initInterpreterVariables(bool withUserVariables) {
         _systemVarStringObjectCount = 0;
 
         _lastValuesStringObjectCount = 0;
+
+        _openFileCount = 0;
     }
 
 
@@ -475,7 +477,7 @@ int Justina_interpreter::getIdentifier(char** pIdentNameArray, int& identifiersI
         pIdentifierName = new char[MAX_IDENT_NAME_LEN + 1 + 1];                      // create standard length char array on the heap, including '\0' and an extra character 
         isUserVar ? _userVarNameStringObjectCount++ : _identifierNameStringObjectCount++;
     #if printCreateDeleteListHeapObjects
-        Serial.print(isUserVar ? "+++++ (usrvar name) " : "+++++ (ident name ) "); Serial.println((uint32_t)pIdentifierName - RAMSTART);
+        Serial.print(isUserVar ? "+++++ (usrvar name) " : "+++++ (ident name ) "); Serial.println((uint32_t)pIdentifierName, HEX);
     #endif
         strncpy(pIdentifierName, pIdentNameToCheck, identLength);                            // store identifier name in newly created character array
         pIdentifierName[identLength] = '\0';                                                 // string terminating '\0'
@@ -544,7 +546,7 @@ bool Justina_interpreter::initVariable(uint16_t varTokenStep, uint16_t constToke
                 char* pVarAlphanumValue = new char[length + 1];          // create char array on the heap to store alphanumeric constant, including terminating '\0'
                 isUserVar ? _userVarStringObjectCount++ : _globalStaticVarStringObjectCount++;
             #if printCreateDeleteListHeapObjects
-                Serial.print(isUserVar ? "+++++ (usr var str) " : "+++++ (var string ) "); Serial.println((uint32_t)pVarAlphanumValue - RAMSTART);
+                Serial.print(isUserVar ? "+++++ (usr var str) " : "+++++ (var string ) "); Serial.println((uint32_t)pVarAlphanumValue, HEX);
             #endif
                 // store alphanumeric constant in newly created character array
                 strcpy(pVarAlphanumValue, pString);              // including terminating \0
@@ -587,7 +589,7 @@ void Justina_interpreter::parseAndExecTraceString() {
 
     // trace string expressions will be parsed and executed from immediate mode program storage: 
     // before overwriting user statements that were just parsed and executed, delete parsed strings
-    deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);
+    deleteConstStringObjects(_programStorage + _progMemorySize);
 
     bool valuePrinted{ false };
     char* pTraceParsingInput = _pTraceString;  // copy pointer to start of trace string
@@ -596,8 +598,8 @@ void Justina_interpreter::parseAndExecTraceString() {
     _pConsole->print("TRACE ==>> ");
     do {
         // init
-        *(_programStorage + PROG_MEM_SIZE) = tok_no_token;          // in case no valid tokens will be stored
-        _programCounter = _programStorage + PROG_MEM_SIZE;                     // start of 'immediate mode' program area
+        *(_programStorage + _progMemorySize) = tok_no_token;          // in case no valid tokens will be stored
+        _programCounter = _programStorage + _progMemorySize;                     // start of 'immediate mode' program area
 
         // skip any spaces and semi-colons in the input stream
         while ((pTraceParsingInput[0] == ' ') || (pTraceParsingInput[0] == term_semicolon[0])) { pTraceParsingInput++; }
@@ -626,14 +628,14 @@ void Justina_interpreter::parseAndExecTraceString() {
         // if parsing went OK: execute ONE parsed expression (just parsed now)
         execResult_type execResult{ result_execOK };
         if (result == result_tokenFound) {
-            execResult = exec(_programStorage + PROG_MEM_SIZE);        // note: value or exec. error is printed from inside exec()
+            execResult = exec(_programStorage + _progMemorySize);        // note: value or exec. error is printed from inside exec()
         }
 
         valuePrinted = true;
 
         // execution finished: delete parsed strings in imm mode command (they are on the heap and not needed any more)
-        deleteConstStringObjects(_programStorage + PROG_MEM_SIZE);  // always
-        *(_programStorage + PROG_MEM_SIZE) = tok_no_token;                                      //  current end of program (immediate mode)
+        deleteConstStringObjects(_programStorage + _progMemorySize);  // always
+        *(_programStorage + _progMemorySize) = tok_no_token;                                      //  current end of program (immediate mode)
 
     } while (*pTraceParsingInput != '\0');                                              // exit loop if all expressions handled
 
@@ -738,7 +740,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
             // if a function returns true, then either proceed OR skip reminder of loop ('continue') if 'result' indicates a token has been found
             // if a function returns false, then break with 'result' containing the error
 
-            char* lastProgramByte = _programStorage + PROG_MEM_SIZE + (_programMode ? 0 : IMM_MEM_SIZE) - 1;
+            char* lastProgramByte = _programStorage + _progMemorySize + (_programMode ? 0 : IMM_MEM_SIZE) - 1;
             if ((_programCounter + sizeof(TokenIsConstant) + 1) > lastProgramByte) { result = result_progMemoryFull; break; };
 
             if (!parseAsResWord(pNext, result)) { break; } if (result == result_tokenFound) { break; }             // check before checking for identifier  
@@ -1255,7 +1257,7 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
             pDestin++[0] = pSource++[0];
         }
     #if printCreateDeleteListHeapObjects
-        Serial.print("+++++ (parsed str ) "); Serial.print((uint32_t)pStringCst - RAMSTART); Serial.print(", string: "); Serial.println(pStringCst);
+        Serial.print("+++++ (parsed str ) "); Serial.print((uint32_t)pStringCst, HEX); Serial.print(", string: "); Serial.println(pStringCst);
     #endif
     }
     pNext++;                                                                            // skip closing quote
@@ -1290,7 +1292,7 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
 
     if (result == result_arrayInit_emptyStringExpected) {
     #if printCreateDeleteListHeapObjects
-        Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pStringCst - RAMSTART);
+        Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pStringCst, HEX);
     #endif
         delete[] pStringCst;
         _parsedStringConstObjectCount--;
@@ -1662,7 +1664,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                     isUserVar ? _userArrayObjectCount++ : _globalStaticArrayObjectCount++;
 
                 #if printCreateDeleteListHeapObjects
-                    Serial.print(isUserVar ? "+++++ (usr ar stor) " : "+++++ (array stor ) "); Serial.println((uint32_t)pArray - RAMSTART);
+                    Serial.print(isUserVar ? "+++++ (usr ar stor) " : "+++++ (array stor ) "); Serial.println((uint32_t)pArray, HEX);
                 #endif
                     // only now, the array flag can be set, because only now the object exists
                     if (isUserVar) {
@@ -2601,11 +2603,11 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
 
                     int blockType = _activeFunctionData.blockType;
                     void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;       // one level below _activeFunctionData
-                    bool isDebugCmdLevel = (blockType == block_extFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + PROG_MEM_SIZE)) : false;
+                    bool isDebugCmdLevel = (blockType == block_extFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + _progMemorySize)) : false;
                     if (!isDebugCmdLevel) {       // find debug level in flow control stack instead
                         do {
                             blockType = *(char*)pFlowCtrlStackLvl;
-                            isDebugCmdLevel = (blockType == block_extFunction) ? (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + PROG_MEM_SIZE)) : false;
+                            isDebugCmdLevel = (blockType == block_extFunction) ? (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + _progMemorySize)) : false;
                             pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                         } while (!isDebugCmdLevel);          // stack level for open function found immediate below debug line found (always match)
                     }
@@ -2863,7 +2865,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
     char* pIdentifierName = new char[pNext - pch + 1];                    // create char array on the heap to store identifier name, including terminating '\0'
     _parsedStringConstObjectCount++;
 #if printCreateDeleteListHeapObjects
-    Serial.print("+++++ (parsed str ) "); Serial.println((uint32_t)pIdentifierName - RAMSTART);
+    Serial.print("+++++ (parsed str ) "); Serial.println((uint32_t)pIdentifierName, HEX);
 #endif
     strncpy(pIdentifierName, pch, pNext - pch);                            // store identifier name in newly created character array
     pIdentifierName[pNext - pch] = '\0';                                                 // string terminating '\0'
@@ -2881,7 +2883,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
 
         if ((result == result_allUserCBAliasesSet || result == result_userCBAliasRedeclared)) {
         #if printCreateDeleteListHeapObjects
-            Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pIdentifierName - RAMSTART);
+            Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pIdentifierName, HEX);
         #endif
             delete[] pIdentifierName;
             _parsedStringConstObjectCount--;
@@ -2894,7 +2896,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
         result = deleteUserVariable(pIdentifierName);
         if (result != result_tokenFound) {
         #if printCreateDeleteListHeapObjects
-            Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pIdentifierName - RAMSTART);
+            Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pIdentifierName, HEX);
         #endif
             delete[] pIdentifierName;
             _parsedStringConstObjectCount--;
@@ -2938,7 +2940,7 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
 
     // input: stored tokens
     TokenPointer progCnt;
-    progCnt.pTokenChars = (startToken == nullptr) ? _programStorage + PROG_MEM_SIZE : startToken;
+    progCnt.pTokenChars = (startToken == nullptr) ? _programStorage + _progMemorySize : startToken;
     int tokenType = *progCnt.pTokenChars & 0x0F;
     int lastTokenType = tok_no_token;
     bool lastHasTrailingSpace = false, testForPostfix = false, testForPrefix = false;
@@ -3198,7 +3200,7 @@ void Justina_interpreter::printParsingResult(parseTokenResult_type result, int f
     if (result == result_tokenFound) {                                                // prepare message with parsing result
         if (_programMode) {
             if (_lastProgramStep == _programStorage) { strcpy(parsingInfo, "\r\nNo program loaded"); }
-            else { sprintf(parsingInfo, "\r\nProgram parsed without errors. %ld %% of program memory used", (long)(((_lastProgramStep - _programStorage + 1) * 100) / PROG_MEM_SIZE)); }
+            else { sprintf(parsingInfo, "\r\nProgram parsed without errors. %ld %% of program memory used", (long)(((_lastProgramStep - _programStorage + 1) * 100) / _progMemorySize)); }
         }
     }
 

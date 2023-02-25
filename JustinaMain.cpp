@@ -27,8 +27,6 @@
 
 
 #include "Justina.h"
-////#include "math.h"
-////#include <avr/dtostrf.h>  & dotostrf() functie toevoegen (bug in sprintf)        
 
 #define printCreateDeleteListHeapObjects 0
 #define debugPrint 0
@@ -90,7 +88,7 @@ char* LinkedList::appendListElement(int size) {
     Serial.print(", stack: "); Serial.print(_listName);
     if (p == nullptr) { Serial.println("- list elem adres: nullptr"); }
     else {
-        Serial.print(", list elem address: "); Serial.println((uint32_t)p - RAMSTART);
+        Serial.print(", list elem address: "); Serial.println((uint32_t)p, HEX);
     }
 #endif
     return (char*)(p + 1);                                          // pointer to payload of newly created element
@@ -123,7 +121,7 @@ char* LinkedList::deleteListElement(void* pPayload) {                           
     Serial.print("(LIST) Delete elem # "); Serial.print(i); Serial.print(" (new # "); Serial.print(_listElementCount - 1);
     Serial.print("), list ID "); Serial.print(_listID);
     Serial.print(", stack: "); Serial.print(_listName);
-    Serial.print(", list elem address: "); Serial.println((uint32_t)pElem - RAMSTART);
+    Serial.print(", list elem address: "); Serial.println((uint32_t)pElem, HEX);
 #endif
 
     // before deleting object, remove from list:
@@ -321,6 +319,11 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"dispMod",         cmdcod_dispmod,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_105,     cmdBlockNone},
     {"pause",           cmdcod_pause,           cmd_onlyInFunctionBlock,                            0,0,    cmdPar_106,     cmdBlockNone},
     {"halt",            cmdcod_halt,            cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},
+    {"initSD",          cmdcod_initSD,          cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"ejectSD",         cmdcod_ejectSD,         cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"closeFile",       cmdcod_closeFile,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockNone},
+    {"listFiles",       cmdcod_listFiles,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockNone},
+
 
     // debugging commands
     // ------------------
@@ -346,7 +349,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
 
     {"declareCB",       cmdcod_declCB,          cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_110,     cmdBlockNone},
     {"clearCB",         cmdcod_clearCB,         cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_102,     cmdBlockNone},
-    {"callcpp",         cmdcod_callback,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_101,     cmdBlockNone},
+    {"callcpp",         cmdcod_callback,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_101,     cmdBlockNone}
 };
 
 
@@ -415,7 +418,9 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     {"digitalWrite",            fnccod_digitalWrite,            2,2,    0b0},
     {"pinMode",                 fnccod_pinMode,                 2,2,    0b0},
     {"analogRead",              fnccod_analogRead,              1,1,    0b0},
+#if !defined(ARDUINO_ARCH_RP2040)                                                                                               // Arduino RP2040: prevent linker error
     {"analogReference",         fnccod_analogReference,         1,1,    0b0},
+#endif
     {"analogWrite",             fnccod_analogWrite,             2,2,    0b0},
     {"analogReadResolution",    fnccod_analogReadResolution,    1,1,    0b0},
     {"analogWriteResolution",   fnccod_analogWriteResolution,   1,1,    0b0},
@@ -475,6 +480,9 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     {"isPunct",                 fnccod_isPunct,                 1,2,    0b0},
     {"isSpace",                 fnccod_isSpace,                 1,2,    0b0},
     {"isWhitespace",            fnccod_isWhitespace,            1,2,    0b0},
+
+    // SD card
+    {"openFile",                fnccod_openFile,                1,2,    0b0},
 };
 
 
@@ -548,7 +556,7 @@ const Justina_interpreter::TerminalDef Justina_interpreter::_terminals[]{
     {term_bitXorAssign,     termcod_bitXorAssign,       0x00,               0x01 | op_RtoL | op_long,   0x00},
 
     {term_bitShLeftAssign,  termcod_bitShLeftAssign,    0x00,               0x01 | op_RtoL | op_long,   0x00},
-    {term_bitShRightAssign, termcod_bitShRightAssign,   0x00,               0x01 | op_RtoL | op_long,   0x00},
+    {term_bitShRightAssign, termcod_bitShRightAssign,   0x00,               0x01 | op_RtoL | op_long,   0x00}
 };
 
 
@@ -556,7 +564,7 @@ const Justina_interpreter::TerminalDef Justina_interpreter::_terminals[]{
 // *   constructor   *
 // -------------------
 
-Justina_interpreter::Justina_interpreter(Stream* const pConsole) : _pConsole(pConsole) {
+Justina_interpreter::Justina_interpreter(Stream* const pConsole, long progMemSize) : _pConsole(pConsole), _progMemorySize(progMemSize) {
 
     // settings to be initialized when cold starting interpreter only
     // --------------------------------------------------------------
@@ -584,8 +592,9 @@ Justina_interpreter::Justina_interpreter(Stream* const pConsole) : _pConsole(pCo
     flowCtrlStack.setListName("flowCtrl");
     immModeCommandStack.setListName("cmd line");
 
-    // initialize interpreter object fields
-    // ------------------------------------
+    _progMemorySize = progMemSize;
+
+    _programStorage = new char[_progMemorySize + IMM_MEM_SIZE];
 
     initInterpreterVariables(true);
 };
@@ -599,6 +608,7 @@ Justina_interpreter::~Justina_interpreter() {
     if (!_keepInMemory) {
         resetMachine(true);             // delete all objects created on the heap: with = with user variables and FiFo stack
         _housekeepingCallback = nullptr;
+        delete[] _programStorage;
     }
     _pConsole->println("\r\nJustina: bye\r\n");
 };
@@ -624,7 +634,6 @@ bool Justina_interpreter::setUserFcnCallback(void(*func) (const void** data, con
     _callbackUserProcStart[_userCBprocStartSet_count++] = func;
     return true; // success
 }
-
 
 
 // ----------------------------
@@ -653,6 +662,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 
 
     //// start temp test
+    /*
     uint8_t* testptr = (uint8_t*)0x20000000;
 
     typedef union {
@@ -685,22 +695,17 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     Serial.println(testptr[2], HEX);
     Serial.println(testptr[3], HEX);
 
-
-
     uint32_t* tstp = (uint32_t*)(testptr);
     Serial.println(*tstp, HEX);
     Serial.print("word: "); Serial.println(abc.reg, HEX);
 
-
     testptr = (uint8_t*)0x20000000;
     testptr[1];
 
-
-
     uint8_t* REG8_PORT_DIRCLR0 = (uint8_t*)(&REG_PORT_DIRCLR0);        // 8 bit port register acces
     REG8_PORT_DIRCLR0[2];
+    */
     //// end temp test
-
 
 
     bool redundantSemiColon = false;
@@ -720,8 +725,8 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     _appFlags = 0x0000L;                            // init application flags (for communication with Justina caller, using callbacks)
 
     _programMode = false;
-    _programCounter = _programStorage + PROG_MEM_SIZE;
-    *(_programStorage + PROG_MEM_SIZE) = tok_no_token;                                      //  current end of program (immediate mode)
+    _programCounter = _programStorage + _progMemorySize;
+    *(_programStorage + _progMemorySize) = tok_no_token;                                      //  current end of program (immediate mode)
     _pConsole = pConsole;
     _isPrompt = false;                 // end of parsing
     _pTerminal = pTerminal;
@@ -729,6 +734,8 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 
     _coldStart = false;             // can be used if needed in this procedure, to determine whether this was a cold or warm start
 
+    if (initSD() == result_execOK) { _pConsole->println("SD card initialised"); }
+    else { _pConsole->println("No SD card present or card could not be initialised"); }               // info only (is no error)
 
     do {
         // when loading a program, as soon as first printable character of a PROGRAM is read, each subsequent character needs to follow after the previous one within a fixed time delay, handled by getKey().
@@ -813,6 +820,9 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     if (kill) { _keepInMemory = false; _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
     if (_keepInMemory) { _pConsole->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
     _quitJustina = false;         // if interpreter stays in memory: re-init
+
+    if (ejectSD() == result_execOK) { _pConsole->println("SD card ejected"); }
+    else { _pConsole->print("SD card ejected with errors - check the SD card for errors"); }               // info only (not handled as an error)
 
     return _keepInMemory;           // return to calling program
 }
@@ -956,7 +966,7 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
     // ----------------------------------------------------
     execResult_type execResult{ result_execOK };
     if (!_programMode && (result == result_tokenFound)) {
-        execResult = exec(_programStorage + PROG_MEM_SIZE);                                             // execute parsed user statements
+        execResult = exec(_programStorage + _progMemorySize);                                             // execute parsed user statements
 
         if ((execResult == result_kill) || (execResult == result_quit)) { _quitJustina = true; }
         if (execResult == result_kill) { kill = true; }
@@ -988,7 +998,7 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
 
             bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
             if (validAnswer) {
-                if (tolower(input[0]) == 'y') { _pConsole->println((clearIndicator == 2) ? "clearing memory" : "clearing program"); resetMachine(clearIndicator == 2);}       // 1 = clear program, 2 = clear all (including user variables)
+                if (tolower(input[0]) == 'y') { _pConsole->println((clearIndicator == 2) ? "clearing memory" : "clearing program"); resetMachine(clearIndicator == 2); }       // 1 = clear program, 2 = clear all (including user variables)
                 break;
             }
         } while (true);
@@ -1005,14 +1015,14 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
     // execution finished (not stopping in debug mode), with or without error: delete parsed strings in imm mode command : they are on the heap and not needed any more. Identifiers must stay avaialble
     // -> if stopping a program for debug, do not delete parsed strings (in imm. mode command), because that command line has now been pushed on  ...
      // the parsed command line stack and included parsed constants will be deleted later (resetMachine routine)
-    if (execResult != result_stopForDebug) { deleteConstStringObjects(_programStorage + PROG_MEM_SIZE); } // always
+    if (execResult != result_stopForDebug) { deleteConstStringObjects(_programStorage + _progMemorySize); } // always
 
 
     // finalize
     // --------
     _programMode = false;
-    _programCounter = _programStorage + PROG_MEM_SIZE;                 // start of 'immediate mode' program area
-    *(_programStorage + PROG_MEM_SIZE) = tok_no_token;                                      //  current end of program (immediate mode)
+    _programCounter = _programStorage + _progMemorySize;                 // start of 'immediate mode' program area
+    *(_programStorage + _progMemorySize) = tok_no_token;                                      //  current end of program (immediate mode)
 
     if (execResult == result_initiateProgramLoad) {
         _programMode = true;
@@ -1276,7 +1286,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
         // 1. delete variable name object
         // ------------------------------
     #if printCreateDeleteListHeapObjects
-        Serial.print("----- (usrvar name) "); Serial.println((uint32_t) * (pIdentNameArray + index) - RAMSTART);
+        Serial.print("----- (usrvar name) "); Serial.println((uint32_t) * (pIdentNameArray + index), HEX);
     #endif
         delete[] * (userVarNames + index);
         _userVarNameStringObjectCount--;
@@ -1290,7 +1300,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
         //    NOTE: do this before checking for strings (if both 'var_isArray' and 'value_isStringPointer' bits are set: array of strings, with strings already deleted)
         if (isArray) {       // variable is an array: delete array storage          
         #if printCreateDeleteListHeapObjects
-            Serial.print(isUserVar ? "----- (usr ar stor) " : isLocalVar ? "----- (loc ar stor) " : "----- (array stor ) "); Serial.println((uint32_t)varValues[index].pStringConst - RAMSTART);
+            Serial.print(isUserVar ? "----- (usr ar stor) " : isLocalVar ? "----- (loc ar stor) " : "----- (array stor ) "); Serial.println((uint32_t)varValues[index].pStringConst, HEX);
         #endif
             delete[]  userVarValues[index].pArray;
             _userArrayObjectCount--;
@@ -1301,12 +1311,12 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
         else if (isString) {       // variable is a scalar containing a string
             if (userVarValues[index].pStringConst != nullptr) {
             #if printCreateDeleteListHeapObjects
-                Serial.print(isUserVar ? "----- (usr var str) " : isLocalVar ? "----- (loc var str)" : "----- (var string ) "); Serial.println((uint32_t)varValues[index].pStringConst - RAMSTART);
+                Serial.print(isUserVar ? "----- (usr var str) " : isLocalVar ? "----- (loc var str)" : "----- (var string ) "); Serial.println((uint32_t)varValues[index].pStringConst, HEX);
             #endif
                 delete[]  userVarValues[index].pStringConst;
                 _userVarStringObjectCount--;
-}
         }
+}
 
         // 5. move up next user variables one place
         //    if a user variable is used in currently loaded program: adapt index in program storage

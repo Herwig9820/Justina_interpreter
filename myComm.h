@@ -28,9 +28,14 @@
 #ifndef _MYCOMM_h
 #define _MYCOMM_h
 
-#include "arduino.h"
+#if defined(ARDUINO_ARCH_RP2040)
+#include <WiFiNINA_Generic.h>
+
+#else
 #include <WiFiNINA.h>
-////#include <WiFiNINA_Generic.h>
+#endif
+
+#include "arduino.h"
 
 
 enum connectionState_type {

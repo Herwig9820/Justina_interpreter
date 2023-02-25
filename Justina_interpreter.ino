@@ -46,11 +46,11 @@ bool quitRequested = false;
 // Global constants, variables and objects
 // ---------------------------------------
 
-constexpr pin_size_t HEARTBEAT_PIN{ 9 }; ////                                               // indicator leds
-constexpr pin_size_t ERROR_PIN{ 10 };
-constexpr pin_size_t STATUS_A_PIN{ 11 };
-constexpr pin_size_t STATUS_B_PIN{ 12 };
-constexpr pin_size_t WAIT_FOR_USER_PIN{ 13 };
+constexpr int HEARTBEAT_PIN{ 9 }; ////                                               // indicator leds
+constexpr int ERROR_PIN{ 10 };
+constexpr int STATUS_A_PIN{ 11 };
+constexpr int STATUS_B_PIN{ 12 };
+constexpr int WAIT_FOR_USER_PIN{ 13 };
 
 #if withTCP
 constexpr pin_size_t WiFi_CONNECTED_PIN{ 11 };
@@ -80,18 +80,18 @@ Justina_interpreter* pJustina{ nullptr };                                       
 // connect as TCP server: create class object myTCPconnection
 TCPconnection myTCPconnection(SSID, PASS, serverAddress, gatewayAddress, subnetMask, DNSaddress, serverPort, conn_2_TCPconnected);
 Stream* pTerminal[terminalCount]{ (Stream*)&Serial, myTCPconnection.getClient() };
+void switchConsole();
+void onConnStateChange(connectionState_type  connectionState);
 #else
 Stream* pTerminal[terminalCount]{ (Stream*)&Serial };
 #endif
 
 
-// Forward declarations
-// --------------------
-
-#if withTCP
-void switchConsole();
-void onConnStateChange(connectionState_type  connectionState);
-#endif
+#ifdef ARDUINO_ARCH_RP2040
+long progMemSize = 30000;
+#else
+long progMemSize = 2000;
+#endif 
 
 unsigned long heartbeatPeriod{ 500 };
 void heartbeat();
@@ -106,19 +106,22 @@ void setup() {
 
     // define output pins
     pinMode(HEARTBEAT_PIN, OUTPUT);                                                   // blinking led for heartbeat
+    /*
     pinMode(ERROR_PIN, OUTPUT);                                                         // error
     pinMode(STATUS_A_PIN, OUTPUT);                                                         // error
     pinMode(STATUS_B_PIN, OUTPUT);                                                         // error
     pinMode(WAIT_FOR_USER_PIN, OUTPUT);                                                         // error
+    */
+
 #if withTCP
     pinMode(WiFi_CONNECTED_PIN, OUTPUT);                                              // 'TCP connected' led
     pinMode(TCP_CONNECTED_PIN, OUTPUT);                                               // 'TCP connected' led
 #endif
 
     digitalWrite(HEARTBEAT_PIN, HIGH);                                                // while waiting for Serial to be ready
-    delay(4000);                                                                      // 'while(!Serial) {}' does not work
+    delay(5000);                                                                      // Non-native USB ports: 'while(!Serial) {}' does not work
     digitalWrite(HEARTBEAT_PIN, LOW);
-
+    while (!Serial);                                                                    // wait for serial port to connect. Needed for native USB port only 
 
 #if withTCP
     Serial.println("Starting server");
@@ -132,7 +135,7 @@ void setup() {
 
     // not functionaly used, but required to circumvent a bug in sprintf function with %F, %E, %G specifiers 
     char s[10];
-    dtostrf(1.0, 4, 1, s);   // not used, but needed to circumvent a bug in sprintf function with %F, %E, %G specifiers
+    dtostrf(1.0, 4, 1, s);   // not used, but needed to circumvent a bug in sprintf function with %F, %E, %G specifiers    //// nog nodig ???
 
     // print sample / simple main menu for the user
     pConsole->println(menu);
@@ -238,12 +241,18 @@ void loop() {
                 //// test
                 startTime = millis();
                 quitRequested = false;
+                //// end test
+
+            #if !defined(ARDUINO_SAMD_NANO_33_IOT) && !defined(ARDUINO_ARCH_RP2040)
+                pConsole->println("interpreter does not run on this processor");            // interpreter does not run on this processor
+                break;
+            #endif
 
                 // start interpreter: control will not return to here until the user quits, because it has its own 'main loop'
                 heartbeatPeriod = 250;
                 withinApplication = true;                                                   // flag that control will be transferred to an 'application'
                 if (!interpreterInMemory) {
-                    pJustina = new  Justina_interpreter(pConsole);// if interpreter not running: create an interpreter object on the heap
+                    pJustina = new  Justina_interpreter(pConsole, progMemSize);         // if interpreter not running: create an interpreter object on the heap
 
                     // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
                     // this callback function will be called regularly, e.g. every time the interpreter reads a character
@@ -342,22 +351,23 @@ void onConnStateChange(connectionState_type  connectionState) {
 // in this program, this callback function is called at regular intervals from within the interpreter main loop  
 
 void housekeeping(bool& requestQuit, long& appFlags) {
-    
+
     // application flag bits:flags signaling specific Justina status conditions
     constexpr long appFlag_errorConditionBit = 0x01L;       // bit 0: a Justina parsing or execution error has occured
     constexpr long appFlag_statusAbit = 0x10L;              // status bits A and B: bits 5 and 4. Justina status (see below)
     constexpr long appFlag_statusBbit = 0x20L;
     constexpr long appFlag_waitingForUser = 0x40L;
 
-     bool& forceLocal = requestQuit;                                                     // reference variable
+    bool& forceLocal = requestQuit;                                                     // reference variable
 
     heartbeat();                                                                        // blink a led to show program is running
 
+    /*
     if (errorCondition ^ (appFlags & appFlag_errorConditionBit)) { errorCondition = (appFlags & appFlag_errorConditionBit);  digitalWrite(ERROR_PIN, errorCondition); }  // only write if change detected
     if (statusA ^ (appFlags & appFlag_statusAbit)) { statusA = (appFlags & appFlag_statusAbit);  digitalWrite(STATUS_A_PIN, statusA); }  // only write if change detected
     if (statusB ^ (appFlags & appFlag_statusBbit)) { statusB = (appFlags & appFlag_statusBbit);  digitalWrite(STATUS_B_PIN, statusB); }  // only write if change detected
     if (waitingForUser ^ (appFlags & appFlag_waitingForUser)) { waitingForUser = (appFlags & appFlag_waitingForUser);  digitalWrite(WAIT_FOR_USER_PIN, waitingForUser); }  // only write if change detected
-
+    */
 
     //// test 'force quit' vanuit main: 
     ////if (!quitRequested && ((startTime + 20000) < millis())) { quitRequested = true; forceLocal = true;  }
@@ -476,7 +486,7 @@ void userFcn_readPort(const void** pdata, const char* valueType, const int argCo
             if (strlen(pText) >= 10) { pText[7] = '\0'; }  // do NOT increase the length of strings
             if (strlen(pText) >= 5) { pText[3] = pText[4]; pText[4] = '>'; }  // do NOT increase the length of strings
             else if (strlen(pText) >= 2) { pText[0] = '\0'; }       // change non-empty string into empty string 
-            else if (strlen(pText) == 0) { }        // it is NOT allowed to increase the length of a string: you cannot change an empty string
+            else if (strlen(pText) == 0) {}        // it is NOT allowed to increase the length of a string: you cannot change an empty string
         }
 
         // print a value
