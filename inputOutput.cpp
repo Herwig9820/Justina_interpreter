@@ -41,12 +41,64 @@
 //
 // --------------------------------
 
+Justina_interpreter::execResult_type  Justina_interpreter::initSD() {
+
+    if (_SDinitOK) { result_execOK; }          // card is present: nothing to do
+
+    _SDinitOK = false;                        // init
+    _openFileCount = 0;
+    _activeFileNum = 0;                     // console is active for I/O
+
+    for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) { openFiles->fileNumberInUse = false; }
+
+    if (!_SDcard.init(SPI_HALF_SPEED, _SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
+    if (!SD.begin(SD_CHIP_SELECT_PIN)) { return result_SD_noCardOrCardError; }
+
+    _SDinitOK = true;
+    return result_execOK;
+}
+
+
+// --------------------------------
+//
+// --------------------------------
+
+Justina_interpreter::execResult_type  Justina_interpreter::ejectSD() {
+    // always (never mind if card is not present)
+
+    for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
+        if (openFiles[i].fileNumberInUse) {
+            openFiles[i].fileNumberInUse = false;                                   // slot is open again
+            openFiles[i].file.close();                                              // does not return errors
+        }
+    }
+
+    _openFileCount = 0;
+    _activeFileNum = 0;                // console is active for I/O
+
+    _SDinitOK = false;
+    SD.end();
+    return result_execOK;
+}
+
+
+// --------------------------------
+//
+// --------------------------------
+
 Justina_interpreter::execResult_type Justina_interpreter::open(int& fileNumber, char* filePath, int mode) {
 
     fileNumber = 0;                                                     // init: no file number yet
 
     if (!_SDinitOK) { return result_SD_noCardOrCardError; }
     if (_openFileCount == MAX_OPEN_SD_FILES) { return result_SD_maxOpenFilesReached; }                               // max. open files reached
+
+    // currently open files ? Check that the same file is not opened twice
+    if (_openFileCount > 0) {
+        for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
+            if (strcmp(openFiles[i].file.name(), filePath) == 0) { return result_SD_fileAlreadyOpen; }
+        }
+    }
 
     File f = SD.open(filePath, mode);
     if (!f) { return result_SD_couldNotOpenFile; }                                              // could not open file
@@ -88,52 +140,6 @@ Justina_interpreter::execResult_type Justina_interpreter::close(int fileNumber) 
 }
 
 
-// --------------------------------
-//
-// --------------------------------
-
-Justina_interpreter::execResult_type  Justina_interpreter::initSD() {
-
-    if (_SDinitOK) { result_execOK; }          // card is present: nothing to do
-
-    _SDinitOK = false;                        // init
-    _openFileCount = 0;
-    _activeFileNum = 0;                     // console is active for I/O
-
-    for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) { openFiles->fileNumberInUse = false; }
-
-    // SD card chip select = pin 10 //// define as constant in c++
-    if (!_SDcard.init(SPI_HALF_SPEED, 10)) { return result_SD_noCardOrCardError; }
-    if (!SD.begin(/*10*/)) { return result_SD_noCardOrCardError; }
-
-    _SDinitOK = true;
-    return result_execOK;
-}
-
-
-// --------------------------------
-//
-// --------------------------------
-
-Justina_interpreter::execResult_type  Justina_interpreter::ejectSD() {
-    // always (never mind if card is not present)
-
-    for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
-        if (openFiles[i].fileNumberInUse) {
-            openFiles[i].fileNumberInUse = false;                                   // slot is open again
-            openFiles[i].file.close();                                              // does not return errors
-        }
-    }
-
-    _openFileCount = 0;
-    _activeFileNum = 0;                // console is active for I/O
-
-    _SDinitOK = false;
-    SD.end();
-    return result_execOK;
-}
-
-
 // ------------------------------------------------------------
 // list all files in the card with date and size TO SERIAL PORT
 // ------------------------------------------------------------
@@ -144,7 +150,7 @@ Justina_interpreter::execResult_type Justina_interpreter::listFiles() {
 
     if (!_SDinitOK) { return result_SD_noCardOrCardError; }
 
-    _pConsole->println("\nSD card file list (name, date, size in bytes): ");
+    _pConsole->println("\nSD card: files (name, date, size in bytes): ");
 
     volume.init(_SDcard);
     root.openRoot(volume);
@@ -152,3 +158,57 @@ Justina_interpreter::execResult_type Justina_interpreter::listFiles() {
 
     return result_execOK;
 }
+
+
+// ------------------------------------------
+// read one character from console or SD file
+// ------------------------------------------
+
+Justina_interpreter::execResult_type Justina_interpreter::readChar(int fileNumber, char& c, bool allowWaitTime) {
+    Stream* pStream{};
+
+    c = 0xFF;                                                                                              // init: no character read
+
+    if (fileNumber == 0) { pStream = _pConsole; }
+    else {                                                                  // can still be a file: check
+        if (!_SDinitOK) { return result_SD_noCardOrCardError; }
+        if ((fileNumber < 1) || (fileNumber > MAX_OPEN_SD_FILES)) { return result_SD_invalidFileNumber; }
+        if (!openFiles[fileNumber - 1].fileNumberInUse) { return result_SD_fileIsNotOpen; }
+        pStream = (Stream*)(&(openFiles[fileNumber - 1].file));
+    }
+
+    // read a character, if available in buffer
+    long startWaitForReadTime = millis();
+    bool readCharWindowExpired{};
+
+    do {
+        if (pStream->available() > 0) {c = pStream->read();return result_execOK; }                                          
+
+        // try to read character only once or keep trying until timeout occurs ?
+        readCharWindowExpired = (!allowWaitTime || (startWaitForReadTime + GETCHAR_TIMEOUT < millis()));
+    } while (!readCharWindowExpired);
+
+    return result_execOK;
+}
+
+
+// ----------------------------
+// read characters from SD file
+// ----------------------------
+
+Justina_interpreter::execResult_type Justina_interpreter::readcharsUntil(int fileNumber, char* buffer, char& length, char terminator) {
+    Stream* pStream{};
+
+    if (fileNumber == 0) { pStream = _pConsole; }
+    else {                                                                  // can still be a file: check
+        if (!_SDinitOK) { return result_SD_noCardOrCardError; }
+        if ((fileNumber < 1) || (fileNumber > MAX_OPEN_SD_FILES)) { return result_SD_invalidFileNumber; }
+        if (!openFiles[fileNumber - 1].fileNumberInUse) { return result_SD_fileIsNotOpen; }
+        pStream = (Stream*)(&(openFiles[fileNumber - 1].file));
+    }
+
+    length = pStream->readBytesUntil(terminator, buffer, length);
+}
+
+
+

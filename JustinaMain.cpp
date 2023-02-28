@@ -321,7 +321,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"halt",            cmdcod_halt,            cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},
     {"initSD",          cmdcod_initSD,          cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
     {"ejectSD",         cmdcod_ejectSD,         cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"closeFile",       cmdcod_closeFile,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockNone},
+    {"close",           cmdcod_closeFile,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockNone},
     {"listFiles",       cmdcod_listFiles,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockNone},
 
 
@@ -482,7 +482,11 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     {"isWhitespace",            fnccod_isWhitespace,            1,2,    0b0},
 
     // SD card
-    {"openFile",                fnccod_openFile,                1,2,    0b0},
+    { "open",                    fnccod_openFile,               1,2,    0b0 },
+    { "read",                    fnccod_read,                   1,1,    0b0 },
+    { "readBytes",               fnccod_readBytes,              2,2,    0b0 },
+    { "readBytesUntil",          fnccod_readBytesUntil,         3,3,    0b0 },
+    { "readLine",                fnccod_readLine,               2,2,    0b0 },
 };
 
 
@@ -564,7 +568,8 @@ const Justina_interpreter::TerminalDef Justina_interpreter::_terminals[]{
 // *   constructor   *
 // -------------------
 
-Justina_interpreter::Justina_interpreter(Stream* const pConsole, long progMemSize) : _pConsole(pConsole), _progMemorySize(progMemSize) {
+Justina_interpreter::Justina_interpreter(Stream* const pConsole, long progMemSize, int _SDcardChipSelectPin) : 
+    _pConsole(pConsole), _progMemorySize(progMemSize), _SDcardChipSelectPin(_SDcardChipSelectPin) {
 
     // settings to be initialized when cold starting interpreter only
     // --------------------------------------------------------------
@@ -657,7 +662,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     // local variables 
     bool kill{ false };                                       // kill is true: request from caller, kill is false: quit command executed
     bool quitNow{ false };
-    char c;
+    char c{};
 
 
 
@@ -735,15 +740,19 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     _coldStart = false;             // can be used if needed in this procedure, to determine whether this was a cold or warm start
 
     if (initSD() == result_execOK) { _pConsole->println("SD card initialised"); }
-    else { _pConsole->println("No SD card present or card could not be initialised"); }               // info only (is no error)
+    else { _pConsole->println("\r\nNo SD card present or card could not be initialised"); }               // info only (is no error)
 
     do {
         // when loading a program, as soon as first printable character of a PROGRAM is read, each subsequent character needs to follow after the previous one within a fixed time delay, handled by getKey().
         // program reading ends when no character is read within this time window.
         // when processing immediate mode statements (single line), reading ends when a New Line terminating character is received
         bool allowTimeOut = _programMode && !_initiateProgramLoad;          // _initiateProgramLoad is set during execution of the command to read a program source file from the console
-        if (getKey(c, allowTimeOut)) { kill = true; break; }                // return true if kill request received from calling program
-        if (c < 0xFF) { _initiateProgramLoad = false; }                     // reset _initiateProgramLoad after each printable character received
+
+        // get a key (character from console) if available and perform a regular housekeeping callback as well
+        c = getKey(kill, allowTimeOut);     // while parsing a program, set allowTimeOut to true to make sure the program is received completely              
+        if (kill) { break; }                // return true if kill request received from calling program
+
+        if (c < 0xFF) { _initiateProgramLoad = false; }                     // reset _initiateProgramLoad after each character received
         bool programOrStatementRead = _programMode ? ((c == 0xFF) && allowTimeOut) : (c == '\n');
         if ((c == 0xFF) && !programOrStatementRead) { continue; }                // no character (except when program or imm. mode line is read): start next loop
 
@@ -765,7 +774,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 
             bool statementComplete = !bufferOverrun && (isStatementSeparator || (programOrStatementRead && (statementCharCount > 0)));
 
-            int clearIndicator{ 0 };
+            int clearIndicator{ 0 };                                    // 1 = clear program cmd, 2 = clear all cmd
             if (statementComplete && !_quitJustina) {                   // if quitting anyway, just skip                                               
                 _appFlags &= ~appFlag_errorConditionBit;              // clear error condition flag 
                 _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_parsing;     // status 'parsing'
@@ -775,7 +784,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
                 char* pStatement = _statement;                                                 // because passed by reference 
                 char* pDummy{};
                 _parsingExecutingTraceString = false; _parsingEvalString = false;
-                result = parseStatement(pStatement, pDummy, clearIndicator = 0);                                 // parse ONE statement only 
+                result = parseStatement(pStatement, pDummy, clearIndicator = 0);          // parse ONE statement only 
                 pErrorPos = pStatement;                                                      // in case of error
 
                 if (result != result_tokenFound) { flushAllUntilEOF = true; }
@@ -983,7 +992,7 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
     // if program parsing error: reset machine, because variable storage might not be consistent with program any more
     if ((_programMode) && (result != result_tokenFound)) { resetMachine(false); }
     else if (execResult == result_initiateProgramLoad) { resetMachine(false); }
-    else if (clearIndicator != 0) {
+    else if (clearIndicator != 0) {                     // 1 = clear program cmd, 2 = clear all cmd 
         do {
             char s[50];
             sprintf(s, "===== Clear %s ? (please answer Y or N) =====", ((clearIndicator == 2) ? "memory" : "program"));
@@ -1041,11 +1050,14 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
     (_appFlags &= ~appFlag_statusMask);
     (_openDebugLevels > 0) ? (_appFlags |= appFlag_stoppedInDebug) : (_appFlags |= appFlag_idle);     // status 'debug mode' or 'idle'
 
-
     // parsing error occured ? wait until no more characters received (important if received from Serial)
-    if ((result != result_tokenFound) && (_pConsole->available() > 0)) {     // no characters in buffer: skip (probably not reading from file: fast response towards user)
-        char c;
-        do { if (_quitJustina = getKey(c, true)) { break; }; } while (c != 0xFF);        // assignment, not a comparison operator
+    if ((result != result_tokenFound) && (_pConsole->available() > 0)) {
+        char c{};
+        do {
+            if (_quitJustina) { break; };       // could be set before loop starts
+            c = getKey(_quitJustina, true);     // set allowWaitTime to true: wait a little before deciding no more characters come in
+
+        } while (c != 0xFF);        // assignment, not a comparison operator
     }
 
     // print new prompt and exit
@@ -1098,39 +1110,44 @@ void Justina_interpreter::traceAndPrintDebugInfo() {
 }
 
 
-// --------------------------------------------------
-// *   read character from keyboard, if available   *
-// --------------------------------------------------
+//--------------------------------------
+// execute regular housekeeping callback
+// -------------------------------------
 
-bool Justina_interpreter::getKey(char& c, bool enableTimeOut) {     // default: no time out
-
-    // enable time out = false: only check once for character, exit anyway
-    //                   true: continue checking for character, exit after time out if no character is read
-
-    bool quitNow{ false };
-
-    // read a character, if available in buffer
-    long startWaitForReadTime = millis();
-    bool readCharWindowExpired{};
-    do {
-        // do a housekeeping callback at regular intervals (if callback function defined)
-        if (_housekeepingCallback != nullptr) {
-            _currenttime = millis();
-            _previousTime = _currenttime;
-            // note: also handles millis() overflow after about 47 days
-            if ((_lastCallBackTime + callbackPeriod < _currenttime) || (_currenttime < _previousTime)) {            // while executing, limit calls to housekeeping callback routine 
-                _lastCallBackTime = _currenttime;
-                _housekeepingCallback(quitNow, _appFlags);                                                           // execute housekeeping callback
-                if (quitNow) { while (_pConsole->available() > 0) { _pConsole->read(); } return true; }             // flush buffer and flag 'quit (request from Justina caller)'
+void Justina_interpreter::checkTimeAndExecHousekeeping(bool& killNow) {
+    // do a housekeeping callback at regular intervals (if callback function defined)
+    killNow = false;
+    if (_housekeepingCallback != nullptr) {
+        _currenttime = millis();
+        _previousTime = _currenttime;
+        // note: also handles millis() overflow after about 47 days
+        if ((_lastCallBackTime + callbackPeriod < _currenttime) || (_currenttime < _previousTime)) {            // while executing, limit calls to housekeeping callback routine 
+            _lastCallBackTime = _currenttime;
+            _housekeepingCallback(killNow, _appFlags);                                                           // execute housekeeping callback
+            if (killNow) {
+                while (_pConsole->available() > 0) { _pConsole->read(); }                                        // flush buffer and flag 'kill' (request from Justina caller)
             }
         }
+    }
+}
 
-        if (_pConsole->available() > 0) { c = _pConsole->read(); return false; }                                          // if terminal character available for reading
-        // try to read character only once or keep tryng until timeout occurs ?
-        readCharWindowExpired = (!enableTimeOut || (startWaitForReadTime + GETCHAR_TIMEOUT < millis()));
-    } while (!readCharWindowExpired);
-    c = 0xFF;                                                                                                 // no character read
-    return false;                                                                                           // do not quit
+
+// -------------------------------------------------------------------------------------------------
+// *   read character from keyboard, if available, and regularly perfoem a housekeeping callback   *
+// -------------------------------------------------------------------------------------------------
+
+char Justina_interpreter::getKey(bool& killNow, bool allowWaitTime) {     // default: no time out
+
+    // enable time out = false: only check once for a character
+    //                   true: allow a certain time for the character to arrive   
+
+    checkTimeAndExecHousekeeping(killNow);
+    if (killNow) { while (_pConsole->available() > 0) { _pConsole->read(); } return 0xFF; }
+    // read a character, if available in buffer
+    char c{};
+    readChar(0, c, allowWaitTime);                                                                               // 0: console (if console, readChar() will not produce error)
+    return c;
+
 }
 
 // ---------------------------------------------------------
@@ -1147,8 +1164,10 @@ bool Justina_interpreter::readText(bool& doAbort, bool& doStop, bool& doCancel, 
     length = 0;  // init
     do {                                                                                                            // until new line character encountered
         // read a character, if available in buffer
-        char c{ 0xFF };                                                           // init: no character available
-        if (getKey(c)) { return true; }      // return value true: kill Justina interpreter (buffer is now flushed until next line character)
+        char c{ };                                                           // init: no character available
+        bool kill{ false };
+        c = getKey(kill);               // get a key (character from console) if available and perform a regular housekeeping callback as well
+        if (kill) { return true; }      // return value true: kill Justina interpreter (buffer is now flushed until next line character)
 
         if (c != 0xFF) {                                                                           // terminal character available for reading ?
             if (c == '\n') { break; }                                                                               // read until new line character
@@ -1315,7 +1334,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
             #endif
                 delete[]  userVarValues[index].pStringConst;
                 _userVarStringObjectCount--;
-        }
+}
 }
 
         // 5. move up next user variables one place

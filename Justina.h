@@ -353,6 +353,10 @@ class Justina_interpreter {
         fnccod_isWhitespace,
 
         fnccod_openFile,
+        fnccod_read,
+        fnccod_readBytes,
+        fnccod_readBytesUntil,
+        fnccod_readLine,
     };
 
     enum termin_code {
@@ -585,7 +589,6 @@ class Justina_interpreter {
         result_array_dimNumberNonInteger = 3200,
         result_array_dimNumberInvalid,
         result_arg_varExpected,
-        result_numericVariableExpected,
         result_aliasNotDeclared,
 
         // numbers and strings
@@ -863,7 +866,7 @@ class Justina_interpreter {
     static constexpr char passCopyToCallback = 0x40;       // flag: string is an empty string 
 
 
-    static constexpr unsigned long callbackPeriod = 10;      // in ms; should be considerably less than any heartbeat period defined in main program
+    static constexpr unsigned long callbackPeriod = 100;      // in ms; should be considerably less than any heartbeat period defined in main program
 
 
 
@@ -1145,7 +1148,7 @@ class Justina_interpreter {
 
     // sizes MUST be specified AND must be exact
     static const ResWordDef _resWords[47];                          // keyword names
-    static const FuncDef _functions[101];                            // function names with min & max arguments allowed
+    static const FuncDef _functions[104];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
 
@@ -1154,9 +1157,10 @@ class Justina_interpreter {
     // ---------
 
     OpenFile openFiles[MAX_OPEN_SD_FILES];                      // open files: file paths and attributed file numbers
-    
+
     int _openFileCount = 0;
     int _activeFileNum = 0;                                   // console is active for I/O
+    int _SDcardChipSelectPin=10;
     bool _SDinitOK = false;
 
     int _resWordCount;                                          // index into list of keywords
@@ -1469,7 +1473,7 @@ class Justina_interpreter {
     // ------------------------------------
 
 public:
-    Justina_interpreter(Stream* const pConsole, long progMemSize);               // constructor
+    Justina_interpreter(Stream* const pConsole, long progMemSize, int SDcardChipSelectPin=SD_CHIP_SELECT_PIN);               // constructor
     ~Justina_interpreter();               // deconstructor
     bool setMainLoopCallback(void (*func)(bool& requistQuit, long& appFlags));                   // set callback functions
     bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType, const int argCount));
@@ -1565,8 +1569,9 @@ private:
     void pushConstant(int& tokenType);
     void pushVariable(int& tokenType);
 
+    void checkTimeAndExecHousekeeping(bool& killNow);
 
-    bool getKey(char& c, bool enableTimeOut = false);
+    char  getKey( bool& killNow, bool enableTimeOut = false);
     bool readText(bool& doAbort, bool& doStop, bool& doCancel, bool& doDefault, char* input, int& length);
 
     bool addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool& withinMultiLineComment,
@@ -1581,6 +1586,10 @@ private:
     execResult_type initSD();
     execResult_type ejectSD();
     execResult_type listFiles();
+
+    execResult_type readChar(int fileNumber, char& c, bool allowWaitTime = false);
+    execResult_type readchars(int fileNumber, char* buffer, char& bufferLength, char terminator);
+    execResult_type readcharsUntil(int fileNumber, char* buffer, char& bufferLength, char terminator=0xFF);
 };
 
 #endif

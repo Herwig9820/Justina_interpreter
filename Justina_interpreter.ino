@@ -93,7 +93,7 @@ long progMemSize = 30000;
 long progMemSize = 2000;
 #endif 
 
-unsigned long heartbeatPeriod{ 500 };
+unsigned long heartbeatPeriod{ 500 };                                               // do not go lower than 500 ms
 void heartbeat();
 
 
