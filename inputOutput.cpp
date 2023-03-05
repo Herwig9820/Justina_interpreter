@@ -43,9 +43,8 @@
 
 Justina_interpreter::execResult_type  Justina_interpreter::initSD() {
 
-    if (_SDinitOK) { result_execOK; }          // card is present: nothing to do
+    if (_SDinitOK) { result_execOK; }          // card is initialised: nothing to do
 
-    _SDinitOK = false;                        // init
     _openFileCount = 0;
     _activeFileNum = 0;                     // console is active for I/O
 
@@ -64,7 +63,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::initSD() {
 // --------------------------------
 
 Justina_interpreter::execResult_type  Justina_interpreter::ejectSD() {
-    // always (never mind if card is not present)
+
+    if (!_SDinitOK) { result_execOK; }          // card is NOT initialised: nothing to do
 
     for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
         if (openFiles[i].fileNumberInUse) {
@@ -158,57 +158,3 @@ Justina_interpreter::execResult_type Justina_interpreter::listFiles() {
 
     return result_execOK;
 }
-
-
-// ------------------------------------------
-// read one character from console or SD file
-// ------------------------------------------
-
-Justina_interpreter::execResult_type Justina_interpreter::readChar(int fileNumber, char& c, bool allowWaitTime) {
-    Stream* pStream{};
-
-    c = 0xFF;                                                                                              // init: no character read
-
-    if (fileNumber == 0) { pStream = _pConsole; }
-    else {                                                                  // can still be a file: check
-        if (!_SDinitOK) { return result_SD_noCardOrCardError; }
-        if ((fileNumber < 1) || (fileNumber > MAX_OPEN_SD_FILES)) { return result_SD_invalidFileNumber; }
-        if (!openFiles[fileNumber - 1].fileNumberInUse) { return result_SD_fileIsNotOpen; }
-        pStream = (Stream*)(&(openFiles[fileNumber - 1].file));
-    }
-
-    // read a character, if available in buffer
-    long startWaitForReadTime = millis();
-    bool readCharWindowExpired{};
-
-    do {
-        if (pStream->available() > 0) {c = pStream->read();return result_execOK; }                                          
-
-        // try to read character only once or keep trying until timeout occurs ?
-        readCharWindowExpired = (!allowWaitTime || (startWaitForReadTime + GETCHAR_TIMEOUT < millis()));
-    } while (!readCharWindowExpired);
-
-    return result_execOK;
-}
-
-
-// ----------------------------
-// read characters from SD file
-// ----------------------------
-
-Justina_interpreter::execResult_type Justina_interpreter::readcharsUntil(int fileNumber, char* buffer, char& length, char terminator) {
-    Stream* pStream{};
-
-    if (fileNumber == 0) { pStream = _pConsole; }
-    else {                                                                  // can still be a file: check
-        if (!_SDinitOK) { return result_SD_noCardOrCardError; }
-        if ((fileNumber < 1) || (fileNumber > MAX_OPEN_SD_FILES)) { return result_SD_invalidFileNumber; }
-        if (!openFiles[fileNumber - 1].fileNumberInUse) { return result_SD_fileIsNotOpen; }
-        pStream = (Stream*)(&(openFiles[fileNumber - 1].file));
-    }
-
-    length = pStream->readBytesUntil(terminator, buffer, length);
-}
-
-
-

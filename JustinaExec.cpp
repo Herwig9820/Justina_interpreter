@@ -1219,32 +1219,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         break;
 
 
-        // -------------------
-        // SD card: close file
-        // -------------------
-
-        case cmdcod_closeFile:
-        {
-            execResult_type execResult = result_execOK;             // init
-            bool operandIsVar = (pStackLvl->varOrConst.tokenType == tok_isVariable);
-            char valueType = operandIsVar ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
-            Val value;
-            value.floatConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pFloatConst) : pStackLvl->varOrConst.value.floatConst); // line is valid for all value types  
-
-            bool opIsLong = ((uint8_t)valueType == value_isLong);
-            bool opIsFloat = ((uint8_t)valueType == value_isFloat);
-            if (!opIsLong && !opIsFloat) { return result_arg_numberExpected; }                   // value is numeric ? (no prefix / postfix operators for strings)
-            int fileNumber = opIsLong ? value.longConst : value.floatConst;
-
-            execResult = close(fileNumber);  // close file
-            if (execResult != result_execOK) { return execResult; }
-
-            // clean up
-            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
-        }
-        break;
-
-
         // ----------------
         // Print call stack
         // ----------------
@@ -3171,9 +3145,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
     switch (functionCode) {
 
         // SD card: open file
-        // // ---------------
+        // ------------------
 
-        case fnccod_openFile:
+        case fnccod_open:
         {
             fcnResultValueType = value_isLong;
             fcnResult.longConst = 0;                                                                                                    // init
@@ -3183,8 +3157,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             if (!(argIsStringBits & (0x1 << 0))) { return result_stringExpected; }
 
             // mode:
-            long mode = FILE_WRITE;      // init: open for reading only
-
+            long mode = FILE_WRITE;      // init: open for reading and writing; create file if nonexistent; append records written////
+            
             if (suppliedArgCount == 2) {
                 if (!(argIsLongBits & (0x1 << 1)) && !(argIsFloatBits & (0x1 << 1))) { return result_arg_numberExpected; }
                 mode = (argIsLongBits & (0x1 << 1)) ? args[1].longConst : args[1].floatConst;
@@ -3194,6 +3168,27 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             execResult_type execResult = open(newFileNumber, args[0].pStringConst, mode);
             if (execResult != result_execOK) { return execResult; }
             fcnResult.longConst = newFileNumber;
+        }
+        break;
+
+
+        // SD card: close file
+        // -------------------
+
+        case fnccod_close:
+        {
+            // file number must be a number
+            if ((!(argIsLongBits & (0x1 << 0))) && (!(argIsFloatBits & (0x1 << 0)))) { return result_numberExpected; }
+            int fileNumber = (argIsLongBits & (0x1 << 0)) ? args[0].longConst : args[0].floatConst;
+            
+            if (!_SDinitOK) { return result_SD_noCardOrCardError; }
+            if ((fileNumber < 1) || (fileNumber > MAX_OPEN_SD_FILES)) { return result_SD_invalidFileNumber; }
+
+            execResult_type execResult = close(fileNumber);  // close file
+            if (execResult != result_execOK) { return execResult; }
+
+            fcnResultValueType = value_isLong;
+            fcnResult.longConst = 0;        
         }
         break;
 
@@ -3211,9 +3206,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             int fileNumber = (argIsLongBits & (0x1 << 0)) ? args[0].longConst : args[0].floatConst;
 
             // read character from file now (if file number is 0, read from console)
-            char c{};
-            execResult_type execResult = readChar(fileNumber, c, true);
-            if (execResult != result_execOK) { return execResult; }
+            if (!_SDinitOK) { return result_SD_noCardOrCardError; }
+            if ((fileNumber < 1) || (fileNumber > MAX_OPEN_SD_FILES)) { return result_SD_invalidFileNumber; }
+            if (!openFiles[fileNumber - 1].fileNumberInUse) { return result_SD_fileIsNotOpen; }
+            File file = openFiles[fileNumber - 1].file;
+
+            char c{0xFF};                                                                                         // init: no character read
+            if (file.available() > 0) { c = file.read(); }
 
             fcnResultValueType = value_isStringPointer;
             if (c == 0xFF) { fcnResult.pStringConst = nullptr; }        // empty string
@@ -3274,31 +3273,39 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             int maxLineLength = (argIsLongBits & (0x1 << lengthArgIndex)) ? (args[lengthArgIndex].longConst) : (args[lengthArgIndex].floatConst);
             if ((maxLineLength < 1) || (maxLineLength > MAX_USER_INPUT_LEN)) { return result_arg_outsideRange; }
 
-            //// to do:
-            //// - chars read: toekennen aan variabele
-            ////  -> test op CONST var of constant literal -> niet bewaren, zonder error
-            ////  -> test op array: is zeker numeric, maar kan float zijn -> bewaren als float
-            //// - als chars read < max line length, dan copy buffer naar new buffer van gepaste lengte en delete[] originele buffer ??? of zoals return van user functie: string kan ingekort worden
-
             // prepare to read characters
             Stream* pStream = (Stream*)(&(openFiles[fileNumber - 1].file));
-            char* buffer = new char[maxLineLength + 1];                     // buffer, long enough to receive maximum line length (create AFTER last error check)
-            for (int i = 0; i < (maxLineLength); ++i) { buffer[i] = '-'; } //// safety (test)
-            
+            char* buffer = new char[maxLineLength + 1];                     // buffer, long enough to receive maximum line length + null (create AFTER last error check)
+            for (int i = 0; i < (maxLineLength); ++i) { buffer[i] = '-'; } //// safety (test) mag weg
+
             _intermediateStringObjectCount++;
         #if printCreateDeleteListHeapObjects
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)buffer, HEX);
         #endif
 
             // read characters now
-            int& charsRead = maxLineLength;
+            int charsRead = maxLineLength;
             if (functionCode == fnccod_readBytes) {
                 charsRead = pStream->readBytes(buffer, maxLineLength);
             }
             else {
                 charsRead = pStream->readBytesUntil(target, buffer, maxLineLength);
             }
-            buffer[charsRead] = '\0';
+            buffer[charsRead] = '\0';       // add terminating '\0'
+            
+            // return number of characters read into last argument, if it's not a constant
+            bool isConstant = (!(argIsVarBits & (0x1 << suppliedArgCount - 1)) || (_pEvalStackTop->varOrConst.sourceVarScopeAndFlags & var_isConstantVar));         // constant ?
+            if (!isConstant) { // if last argument is constant: skip saving value in last argument WITHOUT error  
+                // save value in variable now, and set variable value type to long (if array, then keep (numeric) variable type, because it's fixed)
+                bool returnArgIsArray = (_pEvalStackTop->varOrConst.sourceVarScopeAndFlags & var_isArray);
+                if ((argIsFloatBits & (0x1 << suppliedArgCount - 1)) && returnArgIsArray) {        // convert value to float (to match with array's fixed value type)
+                    *_pEvalStackTop->varOrConst.value.pFloatConst = (float)charsRead;
+                }
+                else {      // either variable has integer type, or the variable is scalar (any numeric type): store integer value in it, and set type 
+                    *_pEvalStackTop->varOrConst.value.pLongConst = charsRead;
+                    *_pEvalStackTop->varOrConst.varTypeAddress = (*_pEvalStackTop->varOrConst.varTypeAddress & ~value_typeMask) | value_isLong;     // if not yet long
+                }
+            }
 
             // save result
             fcnResultValueType = value_isStringPointer;
@@ -3309,6 +3316,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 delete[] buffer;
                 _intermediateStringObjectCount--;
                 fcnResult.pStringConst = nullptr;
+            }
+            else if (charsRead < maxLineLength) {       // to save space, move string to a smaller character array
+                char* smallerBuffer = new char[charsRead + 1]; // including space for terminating '\0'
+                strcpy(smallerBuffer, buffer);
+                delete[] buffer;
+                fcnResult.pStringConst = smallerBuffer;
             }
             else { fcnResult.pStringConst = buffer; }
         }
@@ -3389,8 +3402,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             #if printCreateDeleteListHeapObjects
                 Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
             #endif            
-            }
-            }
+        }
+    }
         break;
 
 
@@ -3417,8 +3430,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             #if printCreateDeleteListHeapObjects
                 Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
             #endif            
-            }
-            }
+        }
+}
         break;
 
 
@@ -3526,7 +3539,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
             #endif            
             }
-            }
+        }
         break;
 
 
@@ -3659,7 +3672,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
             #endif
             }
-            }
+        }
         break;
 
         // math functions 
@@ -4237,7 +4250,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 #if printCreateDeleteListHeapObjects
                     Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
                 #endif
-                }
+            }
                 break;
 
                 case 10: fcnResult.longConst = _promptAndEcho; break;
@@ -4254,7 +4267,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 #if printCreateDeleteListHeapObjects
                     Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
                 #endif
-                }
+        }
                 break;
 
                 case 15:    // product name
@@ -4297,7 +4310,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                             min(999, _globalStaticVarStringObjectCount), min(999, _globalStaticArrayObjectCount), min(999, _userVarStringObjectCount), min(999, _userArrayObjectCount),
                             min(999, _localVarStringObjectCount), min(999, _localArrayObjectCount), min(999, _localVarValueAreaCount), min(999, _intermediateStringObjectCount),
                             min(999, _systemVarStringObjectCount));
-                }
+                    }
                     else {     // print heap object create/delete errors
                         sprintf(fcnResult.pStringConst, "%0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d",
                             min(999, _identifierNameStringObjectErrors), min(999, _userVarNameStringObjectErrors), min(999, _parsedStringConstObjectErrors), min(999, _lastValuesStringObjectErrors),
@@ -4319,22 +4332,22 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                     #if printCreateDeleteListHeapObjects
                         Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
                     #endif
-                    }
-                    }
+                }
+                }
                 break;
 
                 default: return result_arg_invalid; break;
-                }       // switch (sysVal)
-                }
+            }       // switch (sysVal)
+        }
         break;
 
 
 
-                }       // end switch
+        }       // end switch
 
 
-                // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
-                // -------------------------------------------------------------------------------------------------------------------
+        // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
+        // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
@@ -4462,7 +4475,7 @@ void  Justina_interpreter::printToString(int width, int precision, bool inputIsS
     else { sprintf(fcnResult.pStringConst, fmtString, width, precision, (*valueType == value_isLong) ? (float)(*value).longConst : (*value).floatConst, &charsPrinted); }
 
     return;
-}
+    }
 
 
 // -------------------------------
@@ -4550,14 +4563,14 @@ Justina_interpreter::execResult_type Justina_interpreter::copyValueArgsFromStack
                     Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)args[i].pStringConst, HEX);
                 #endif
                 }
-                }
             }
-
-        pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
         }
 
-    return result_execOK;
+        pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
     }
+
+    return result_execOK;
+}
 
 // --------------------------------
 // *   launch external function   *
@@ -4597,7 +4610,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchExternalFunctio
     #if printCreateDeleteListHeapObjects
         Serial.print("+++++ (LOCAL STORAGE) ");   Serial.println((uint32_t)_activeFunctionData.pLocalVarValues, HEX);
     #endif
-    }
+}
 
 
     // init local variables: parameters with supplied arguments (scalar and array var refs) and with default values (scalars only), local variables (scalar and array)
@@ -4627,7 +4640,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchExternalFunctio
     _activeFunctionData.errorProgramCounter = calledFunctionTokenStep;
 
     return  result_execOK;
-    }
+}
 
 
 // ------------------------------------------------
@@ -4782,16 +4795,16 @@ void Justina_interpreter::initFunctionParamVarWithSuppliedArg(int suppliedArgCou
                     #if printCreateDeleteListHeapObjects
                         Serial.print("+++++ (loc var str) ");   Serial.println((uint32_t)_activeFunctionData.pLocalVarValues[i].pStringConst, HEX);
                     #endif
-                    }
-                    };
                 }
+            };
+        }
 
             // if intermediate constant string, then delete char string object (tested within called routine)            
             deleteIntermStringObject(pStackLvl);
             pStackLvl = (LE_evalStack*)evalStack.deleteListElement(pStackLvl);                                              // argument saved: remove argument from stack and point to next argument
-            }
-        }
     }
+}
+}
 
 
 // ------------------------------------------------------------------------------------------------------------
@@ -4839,15 +4852,15 @@ void Justina_interpreter::initFunctionDefaultParamVariables(char*& pStep, int su
                 #if printCreateDeleteListHeapObjects
                     Serial.print("+++++ (loc var str) ");   Serial.println((uint32_t)_activeFunctionData.pLocalVarValues[count].pStringConst, HEX);
                 #endif
-                }
-                }
-            count++;
             }
         }
+            count++;
+    }
+}
 
     // skip (remainder of) function definition
     findTokenStep(pStep, tok_isTerminalGroup1, termcod_semicolon);
-    };
+};
 
 
 
@@ -4911,7 +4924,7 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
                 ((char*)pArray)[3] = dimCount;        // (note: for param arrays, set to max dimension count during parsing)
 
                 tokenType = jumpTokens(1, pStep, terminalCode);       // assignment, comma or semicolon
-            }
+                }
 
 
             // handle initialisation (if initializer provided)
@@ -4960,12 +4973,12 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
                         #if printCreateDeleteListHeapObjects
                             Serial.print("+++++ (loc var str) "); Serial.println((uint32_t)pVarString, HEX);
                         #endif
-                        }
-                        }
                     }
+                }
+            }
 
                 tokenType = jumpTokens(1, pStep, terminalCode);       // comma or semicolon
-                }
+            }
 
             else {  // no initializer: if array, initialize it now (scalar has been initialized already)
                 if ((_activeFunctionData.pVariableAttributes[count] & var_isArray) == var_isArray) {
@@ -4975,10 +4988,10 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
             }
             count++;
 
-            } while (terminalCode == termcod_comma);
+        } while (terminalCode == termcod_comma);
 
-        }
-    };
+    }
+};
 
 
 // -----------------------------------
@@ -5014,7 +5027,7 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateExternalFunct
         delete[] _activeFunctionData.pVariableAttributes;
         delete[] _activeFunctionData.ppSourceVarTypes;
         _localVarValueAreaCount--;
-    }
+}
     char blockType = block_none;            // init
     do {
         blockType = *(char*)_pFlowCtrlStackTop;            // always at least one level present for caller (because returning to it)

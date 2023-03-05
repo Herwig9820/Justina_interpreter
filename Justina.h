@@ -240,7 +240,6 @@ class Justina_interpreter {
         cmdcod_listFiles,
         cmdcod_initSD,
         cmdcod_ejectSD,
-        cmdcod_closeFile,
         cmdcod_test //// test
     };
 
@@ -352,11 +351,20 @@ class Justina_interpreter {
         fnccod_isUpperCase,
         fnccod_isWhitespace,
 
-        fnccod_openFile,
+        fnccod_open,
+        fnccod_close,
         fnccod_read,
         fnccod_readBytes,
         fnccod_readBytesUntil,
         fnccod_readLine,
+        fnccod_position,
+        fnccod_seek,
+        fnccod_size,
+        fnccod_name,
+        fnccod_available,
+        fnccod_peek,
+        fnccod_setTimeout,
+        fnccod_flush
     };
 
     enum termin_code {
@@ -1148,7 +1156,7 @@ class Justina_interpreter {
 
     // sizes MUST be specified AND must be exact
     static const ResWordDef _resWords[47];                          // keyword names
-    static const FuncDef _functions[104];                            // function names with min & max arguments allowed
+    static const FuncDef _functions[112];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
 

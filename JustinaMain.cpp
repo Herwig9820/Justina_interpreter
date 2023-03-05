@@ -321,7 +321,6 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"halt",            cmdcod_halt,            cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},
     {"initSD",          cmdcod_initSD,          cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
     {"ejectSD",         cmdcod_ejectSD,         cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"close",           cmdcod_closeFile,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockNone},
     {"listFiles",       cmdcod_listFiles,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockNone},
 
 
@@ -481,12 +480,21 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     {"isSpace",                 fnccod_isSpace,                 1,2,    0b0},
     {"isWhitespace",            fnccod_isWhitespace,            1,2,    0b0},
 
-    // SD card
-    { "open",                    fnccod_openFile,               1,2,    0b0 },
+    // Arduino SD card library
+    { "open",                    fnccod_open,                   1,2,    0b0 },
+    { "close",                   fnccod_close,                  1,1,    0b0 },
     { "read",                    fnccod_read,                   1,1,    0b0 },
     { "readBytes",               fnccod_readBytes,              2,2,    0b0 },
     { "readBytesUntil",          fnccod_readBytesUntil,         3,3,    0b0 },
     { "readLine",                fnccod_readLine,               2,2,    0b0 },
+    { "position",                fnccod_position,               0,0,    0b0 },
+    { "size",                    fnccod_size,                   0,0,    0b0 },
+    { "seek",                    fnccod_seek,                   1,1,    0b0 },
+    { "name",                    fnccod_name,                   0,0,    0b0 },
+    { "available",               fnccod_available,              0,0,    0b0 },
+    { "peek",                    fnccod_peek,                   0,0,    0b0 },
+    { "setTimeout",              fnccod_setTimeout,             0,0,    0b0 },
+    { "flush",                   fnccod_flush,                  0,0,    0b0 },
 };
 
 
@@ -827,11 +835,12 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     _housekeepingCallback(quitNow, _appFlags);      // pass application flags to caller immediately
 
     if (kill) { _keepInMemory = false; _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
-    if (_keepInMemory) { _pConsole->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
-    _quitJustina = false;         // if interpreter stays in memory: re-init
-
+    
     if (ejectSD() == result_execOK) { _pConsole->println("SD card ejected"); }
     else { _pConsole->print("SD card ejected with errors - check the SD card for errors"); }               // info only (not handled as an error)
+
+    if (_keepInMemory) { _pConsole->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
+    _quitJustina = false;         // if interpreter stays in memory: re-init
 
     return _keepInMemory;           // return to calling program
 }
@@ -1142,10 +1151,21 @@ char Justina_interpreter::getKey(bool& killNow, bool allowWaitTime) {     // def
     //                   true: allow a certain time for the character to arrive   
 
     checkTimeAndExecHousekeeping(killNow);
-    if (killNow) { while (_pConsole->available() > 0) { _pConsole->read(); } return 0xFF; }
+    if (killNow) { while (_pConsole->available() > 0) { _pConsole->read(); } return 0xFF; }     // empty buffer before quitting
+    
     // read a character, if available in buffer
-    char c{};
-    readChar(0, c, allowWaitTime);                                                                               // 0: console (if console, readChar() will not produce error)
+    char c = 0xFF;                                                                                              // init: no character read
+
+    // read a character, if available in buffer
+    long startWaitForReadTime = millis();
+    bool readCharWindowExpired{};
+
+    do {
+        if (_pConsole->available() > 0) { c = _pConsole->read(); break; }
+        // try to read character only once or keep trying until timeout occurs ?
+        readCharWindowExpired = (!allowWaitTime || (startWaitForReadTime + GETCHAR_TIMEOUT < millis()));
+    } while (!readCharWindowExpired);
+
     return c;
 
 }

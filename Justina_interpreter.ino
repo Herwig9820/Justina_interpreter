@@ -25,6 +25,8 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ***************************************************************************************/
 
+#include <SD.h>
+
 #define withTCP 0
 
 // includes
@@ -103,7 +105,7 @@ void heartbeat();
 
 void setup() {
     Serial.begin(1000000);
-
+    
     // define output pins
     pinMode(HEARTBEAT_PIN, OUTPUT);                                                   // blinking led for heartbeat
     /*
