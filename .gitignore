@@ -345,6 +345,3 @@ ASALocalRun/
 
 # BeatPulse healthcheck temp database
 healthchecksdb
-/JustinaMain.cpp
-/.gitignore
-/.gitignore
