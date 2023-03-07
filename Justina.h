@@ -231,6 +231,9 @@ class Justina_interpreter {
         cmdcod_info,
         cmdcod_input,
         cmdcod_print,
+        cmdcod_printLine,
+        cmdcod_printTo,
+        cmdcod_printLineTo,
         cmdcod_dispfmt,
         cmdcod_dispmod,
         cmdcod_declCB,
@@ -357,6 +360,9 @@ class Justina_interpreter {
         fnccod_readBytes,
         fnccod_readBytesUntil,
         fnccod_readLine,
+        fnccod_find,
+        fnccod_findUntil,
+
         fnccod_position,
         fnccod_seek,
         fnccod_size,
@@ -364,7 +370,10 @@ class Justina_interpreter {
         fnccod_available,
         fnccod_peek,
         fnccod_setTimeout,
-        fnccod_flush
+        fnccod_flush,
+        fnccod_isDirectory,
+        fnccod_rewindDirectory,
+        fnccod_openNextFile
     };
 
     enum termin_code {
@@ -630,6 +639,9 @@ class Justina_interpreter {
         result_SD_fileAlreadyOpen,
         result_SD_invalidFileNumber,
         result_SD_maxOpenFilesReached,
+        result_SD_fileSeekError,
+        result_SD_directoryExpected,
+        result_SD_directoryNotAllowed,
 
 
         // **************************************************
@@ -1155,8 +1167,8 @@ class Justina_interpreter {
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na,block_na,block_na };                                   // not a 'block' command
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[47];                          // keyword names
-    static const FuncDef _functions[112];                            // function names with min & max arguments allowed
+    static const ResWordDef _resWords[49];                          // keyword names
+    static const FuncDef _functions[117];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
 
@@ -1167,8 +1179,7 @@ class Justina_interpreter {
     OpenFile openFiles[MAX_OPEN_SD_FILES];                      // open files: file paths and attributed file numbers
 
     int _openFileCount = 0;
-    int _activeFileNum = 0;                                   // console is active for I/O
-    int _SDcardChipSelectPin=10;
+    int _SDcardChipSelectPin = 10;
     bool _SDinitOK = false;
 
     int _resWordCount;                                          // index into list of keywords
@@ -1289,7 +1300,7 @@ class Justina_interpreter {
     int _localVarValueAreaCount = 0, _localVarValueAreaErrors = 0;
 
 
-    bool _atLineStart = true;
+    bool _consoleAtLineStart = true;
     bool _lastValueIsStored = false;
 
     // calculation result print
@@ -1481,7 +1492,7 @@ class Justina_interpreter {
     // ------------------------------------
 
 public:
-    Justina_interpreter(Stream* const pConsole, long progMemSize, int SDcardChipSelectPin=SD_CHIP_SELECT_PIN);               // constructor
+    Justina_interpreter(Stream* const pConsole, long progMemSize, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);               // constructor
     ~Justina_interpreter();               // deconstructor
     bool setMainLoopCallback(void (*func)(bool& requistQuit, long& appFlags));                   // set callback functions
     bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType, const int argCount));
@@ -1544,7 +1555,7 @@ private:
         int& width, int& precision, int& flags);
     void makeFormatString(int flags, bool isIntFmt, char* numFmt, char* fmtString);
     void printToString(int width, int precision, bool isFmtString, bool isIntFmt, char* valueType, Val* operands, char* fmtString,
-        Val& fcnResult, int& charsPrinted);
+        Val& fcnResult, int& charsPrinted, bool expandStrings = false);
 
     void initFunctionParamVarWithSuppliedArg(int suppliedArgCount, LE_evalStack*& pFirstArgStackLvl);
     void initFunctionDefaultParamVariables(char*& calledFunctionTokenStep, int suppliedArgCount, int paramCount);
@@ -1579,7 +1590,7 @@ private:
 
     void checkTimeAndExecHousekeeping(bool& killNow);
 
-    char  getKey( bool& killNow, bool enableTimeOut = false);
+    char  getKey(bool& killNow, bool enableTimeOut = false);
     bool readText(bool& doAbort, bool& doStop, bool& doCancel, bool& doDefault, char* input, int& length);
 
     bool addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool& withinMultiLineComment,
@@ -1589,15 +1600,14 @@ private:
     void printVariables(bool userVars);
     parseTokenResult_type deleteUserVariable(char* userVarName = nullptr);
 
-    execResult_type open(int& fileNumber, char* filePath, int mod = FILE_WRITE);
-    execResult_type close(int fileNumber);
     execResult_type initSD();
-    execResult_type ejectSD();
+    void ejectSD();
+    execResult_type open(int& fileNumber, char* filePath, int mod = O_READ);
+    execResult_type openNext(int& fileNumber, File directory, int mod = O_READ);
+    void close(int fileNumber);
     execResult_type listFiles();
-
-    execResult_type readChar(int fileNumber, char& c, bool allowWaitTime = false);
-    execResult_type readchars(int fileNumber, char* buffer, char& bufferLength, char terminator);
-    execResult_type readcharsUntil(int fileNumber, char* buffer, char& bufferLength, char terminator=0xFF);
+    execResult_type fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File& file, int allowFileTypes = 1);
+    execResult_type fileChecks(bool argIsLong, bool argIsFloat, Val arg, File& file,  int allowFileTypes = 1);
 };
 
 #endif

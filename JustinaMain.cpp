@@ -315,6 +315,9 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"info",            cmdcod_info,            cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_114,     cmdBlockNone},
     {"input",           cmdcod_input,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_113,     cmdBlockNone},
     {"print",           cmdcod_print,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},
+    {"printLine",       cmdcod_printLine,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},
+    {"printTo",         cmdcod_printTo,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"printLineTo",     cmdcod_printLineTo,     cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
     {"dispFmt",         cmdcod_dispfmt,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
     {"dispMod",         cmdcod_dispmod,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_105,     cmdBlockNone},
     {"pause",           cmdcod_pause,           cmd_onlyInFunctionBlock,                            0,0,    cmdPar_106,     cmdBlockNone},
@@ -483,18 +486,23 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     // Arduino SD card library
     { "open",                    fnccod_open,                   1,2,    0b0 },
     { "close",                   fnccod_close,                  1,1,    0b0 },
-    { "read",                    fnccod_read,                   1,1,    0b0 },
+    { "read",                    fnccod_read,                   1,2,    0b0 },
     { "readBytes",               fnccod_readBytes,              2,2,    0b0 },
     { "readBytesUntil",          fnccod_readBytesUntil,         3,3,    0b0 },
     { "readLine",                fnccod_readLine,               2,2,    0b0 },
-    { "position",                fnccod_position,               0,0,    0b0 },
-    { "size",                    fnccod_size,                   0,0,    0b0 },
-    { "seek",                    fnccod_seek,                   1,1,    0b0 },
-    { "name",                    fnccod_name,                   0,0,    0b0 },
-    { "available",               fnccod_available,              0,0,    0b0 },
-    { "peek",                    fnccod_peek,                   0,0,    0b0 },
-    { "setTimeout",              fnccod_setTimeout,             0,0,    0b0 },
-    { "flush",                   fnccod_flush,                  0,0,    0b0 },
+    { "find",                    fnccod_find,                   2,2,    0b0 },
+    { "findUntil",               fnccod_findUntil,              3,3,    0b0 },
+    { "peek",                    fnccod_peek,                   1,1,    0b0 },
+    { "position",                fnccod_position,               1,1,    0b0 },
+    { "size",                    fnccod_size,                   1,1,    0b0 },
+    { "available",               fnccod_available,              1,1,    0b0 },
+    { "name",                    fnccod_name,                   1,1,    0b0 },
+    { "flush",                   fnccod_flush,                  1,1,    0b0 },
+    { "seek",                    fnccod_seek,                   2,2,    0b0 },
+    { "setTimeout",              fnccod_setTimeout,             2,2,    0b0 },
+    { "isDirectory",             fnccod_isDirectory,            1,1,    0b0 },
+    { "rewindDirectory",         fnccod_rewindDirectory,        1,1,    0b0 },
+    { "openNextFile",            fnccod_openNextFile,           1,1,    0b0 },
 };
 
 
@@ -735,6 +743,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     _pConsole->print("    Version: "); _pConsole->print(ProductVersion); _pConsole->print(" ("); _pConsole->print(BuildDate); _pConsole->println(")");
     for (int i = 0; i < 48; i++) { _pConsole->print("*"); } _pConsole->println();
 
+
     _appFlags = 0x0000L;                            // init application flags (for communication with Justina caller, using callbacks)
 
     _programMode = false;
@@ -746,9 +755,6 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     _definedTerminals = definedTerms;
 
     _coldStart = false;             // can be used if needed in this procedure, to determine whether this was a cold or warm start
-
-    if (initSD() == result_execOK) { _pConsole->println("SD card initialised"); }
-    else { _pConsole->println("\r\nNo SD card present or card could not be initialised"); }               // info only (is no error)
 
     do {
         // when loading a program, as soon as first printable character of a PROGRAM is read, each subsequent character needs to follow after the previous one within a fixed time delay, handled by getKey().
@@ -836,8 +842,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 
     if (kill) { _keepInMemory = false; _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
     
-    if (ejectSD() == result_execOK) { _pConsole->println("SD card ejected"); }
-    else { _pConsole->print("SD card ejected with errors - check the SD card for errors"); }               // info only (not handled as an error)
+    ejectSD() ;         // safety (in case an SD card is present: close all files and stop SD
 
     if (_keepInMemory) { _pConsole->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
     _quitJustina = false;         // if interpreter stays in memory: re-init
