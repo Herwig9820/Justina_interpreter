@@ -241,8 +241,8 @@ class Justina_interpreter {
         cmdcod_callback,
         cmdcod_receiveProg,
         cmdcod_listFiles,
-        cmdcod_initSD,
-        cmdcod_ejectSD,
+        cmdcod_startSD,
+        cmdcod_stopSD,
         cmdcod_test //// test
     };
 
@@ -299,6 +299,7 @@ class Justina_interpreter {
         fnccod_repchar,
         fnccod_strstr,
         fnccod_strcmp,
+        fnccod_strcasecmp,
 
         fnccod_cint,
         fnccod_cfloat,
@@ -373,7 +374,13 @@ class Justina_interpreter {
         fnccod_flush,
         fnccod_isDirectory,
         fnccod_rewindDirectory,
-        fnccod_openNextFile
+        fnccod_openNextFile,
+        fnccod_isOpenFile,
+        fnccod_closeAll,
+        fnccod_exists,
+        fnccod_mkdir,
+        fnccod_rmdir,
+        fnccod_remove
     };
 
     enum termin_code {
@@ -1168,7 +1175,7 @@ class Justina_interpreter {
 
     // sizes MUST be specified AND must be exact
     static const ResWordDef _resWords[49];                          // keyword names
-    static const FuncDef _functions[117];                            // function names with min & max arguments allowed
+    static const FuncDef _functions[124];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
 
@@ -1600,14 +1607,16 @@ private:
     void printVariables(bool userVars);
     parseTokenResult_type deleteUserVariable(char* userVarName = nullptr);
 
-    execResult_type initSD();
-    void ejectSD();
-    execResult_type open(int& fileNumber, char* filePath, int mod = O_READ);
-    execResult_type openNext(int& fileNumber, File directory, int mod = O_READ);
-    void close(int fileNumber);
-    execResult_type listFiles();
-    execResult_type fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File& file, int allowFileTypes = 1);
-    execResult_type fileChecks(bool argIsLong, bool argIsFloat, Val arg, File& file,  int allowFileTypes = 1);
+    execResult_type startSD();
+    void SD_closeAllFiles();
+    execResult_type SD_open(int& fileNumber, char* filePath, int mod = O_READ);
+    execResult_type SD_openNext(int& fileNumber, File directory, int mod = O_READ);
+    void SD_closeFile(int fileNumber);
+    execResult_type SD_listFiles();
+    execResult_type SD_fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File& file, int allowFileTypes = 1);
+    execResult_type SD_fileChecks(bool argIsLong, bool argIsFloat, Val arg, File& file,  int allowFileTypes = 1);
+    execResult_type SD_fileChecks(File& file, int fileNumber, int allowFileTypes=1);
+    
 };
 
 #endif

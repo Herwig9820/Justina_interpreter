@@ -47,17 +47,15 @@
 //
 // --------------------------------
 
-Justina_interpreter::execResult_type  Justina_interpreter::initSD() {
+Justina_interpreter::execResult_type  Justina_interpreter::startSD() {
 
-    if (_SDinitOK) { result_execOK; }          // card is initialised: nothing to do
+    if (_SDinitOK) {return result_execOK; }          // card is initialised: nothing to do
+    
+    if (!_SDcard.init(SPI_HALF_SPEED, _SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
+    if (!SD.begin(_SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
 
     _openFileCount = 0;
-
     for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) { openFiles->fileNumberInUse = false; }
-
-    if (!_SDcard.init(SPI_HALF_SPEED, _SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
-    if (!SD.begin(SD_CHIP_SELECT_PIN)) { return result_SD_noCardOrCardError; }
-
     _SDinitOK = true;
     return result_execOK;
 }
@@ -67,7 +65,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::initSD() {
 //
 // --------------------------------
 
-void  Justina_interpreter::ejectSD() {
+void  Justina_interpreter::SD_closeAllFiles() {
 
     if (!_SDinitOK) { return; }          // card is NOT initialised: nothing to do
 
@@ -77,11 +75,7 @@ void  Justina_interpreter::ejectSD() {
             openFiles[i].file.close();                                              // does not return errors
         }
     }
-
     _openFileCount = 0;
-
-    _SDinitOK = false;
-    SD.end();
 }
 
 
@@ -89,80 +83,94 @@ void  Justina_interpreter::ejectSD() {
 //
 // --------------------------------
 
-Justina_interpreter::execResult_type Justina_interpreter::open(int& fileNumber, char* filePath, int mode) {
+Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumber, char* filePath, int mode) {
 
     fileNumber = 0;                                                     // init: no file number yet
 
     if (!_SDinitOK) { return result_SD_noCardOrCardError; }
     if (_openFileCount == MAX_OPEN_SD_FILES) { return result_SD_maxOpenFilesReached; }                               // max. open files reached
 
-    // currently open files ? Check that the same file is not opened twice
+    // create temp string
+    int len = strlen(filePath);
+    char* filePathInCapitals = new char[len + 1];                                                                                 // same length as original, space for terminating 
+    strcpy(filePathInCapitals, filePath);   // copy original string
+    for (int i = 0; i < len; i++) { filePathInCapitals[i] = toupper(filePathInCapitals[i]); }
+
+    // currently open files ? Check that the same file is not open already
     if (_openFileCount > 0) {
         for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
             if (openFiles[i].fileNumberInUse) {
-                if (strcmp(openFiles[i].file.name(), filePath) == 0) { return result_SD_fileAlreadyOpen; }
-            }
-        }
-    }
-
-    File f = SD.open(filePath, mode);
-    if (!f) { return result_SD_couldNotOpenFile; }                                              // could not open file
-
-    // find a free file number 
-    for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
-        if (!openFiles[i].fileNumberInUse) {
-            openFiles[i].fileNumberInUse = true;
-            openFiles[i].file = f;
-            fileNumber = i + 1;
-            break;
-        }
-    }
-
-    ++_openFileCount;
-
-    return result_execOK;
-}
-
-
-// --------------------------------
-//
-// --------------------------------
-
-Justina_interpreter::execResult_type Justina_interpreter::openNext(int& fileNumber, File directory, int mode) {
-
-    fileNumber = 0;                                                     // init: no file number yet
-
-    if (!_SDinitOK) { return result_SD_noCardOrCardError; }
-    if (_openFileCount == MAX_OPEN_SD_FILES) { return result_SD_maxOpenFilesReached; }                               // max. open files reached
-    
-    // it's not possible to check whether the next file is open already, because we don't know which file will be opened as next
-    File f = directory.openNextFile(mode);
-    if (!f) { return result_SD_couldNotOpenFile; }                                              // could not open file
-
-    // find a free file number 
-    for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
-        if (!openFiles[i].fileNumberInUse) {
-            openFiles[i].fileNumberInUse = true;
-            openFiles[i].file = f;
-            fileNumber = i + 1;
-            break;
-        }
-    }
-
-    // currently older open files ? If the same file is open already, close the older version of the open file
-    if (_openFileCount > 1) {
-        for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
-            if ((i + 1) != fileNumber) {
-                if (openFiles[i].file == f) {
-                    openFiles[i].file.close();                                             // close older file
-                    openFiles[i].fileNumberInUse = false;
-                    --_openFileCount;
+                if (strcasecmp(openFiles[i].file.name(), filePath) == 0) {
+                    delete[] filePathInCapitals;
+                    return result_SD_fileAlreadyOpen;                                           
                 }
             }
         }
     }
 
+    File f = SD.open(filePathInCapitals, mode);
+    delete[] filePathInCapitals;                                                            // delete temp string
+    if (!f) { return result_SD_couldNotOpenFile; }                                              // could not open file (in case caller ignores this error, file number returned is 0)
+
+    // find a free file number 
+    for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
+        if (!openFiles[i].fileNumberInUse) {
+            openFiles[i].fileNumberInUse = true;
+            openFiles[i].file = f;
+            fileNumber = i + 1;
+            break;
+        }
+    }
+
     ++_openFileCount;
+
+    return result_execOK;
+}
+
+
+// --------------------------------
+//
+// --------------------------------
+
+Justina_interpreter::execResult_type Justina_interpreter::SD_openNext(int& fileNumber, File directory, int mode) {
+
+    fileNumber = 0;                                                     // init: no next file opened
+
+    if (!_SDinitOK) { return result_SD_noCardOrCardError; }
+    if (_openFileCount == MAX_OPEN_SD_FILES) { return result_SD_maxOpenFilesReached; }                               // max. open files reached
+
+    // it's not possible to check whether the next file is open already, because we don't know which file will be opened as next. We'll check afterwards
+    File f = directory.openNextFile(mode);
+
+    // file evaluates to false: assume last file in directory is currently open and no more files are available. Do not return error, file number 0 indicates 'last file reached'
+    if (!f) { return result_execOK; }
+    // find a free file number and assign it to this file
+    for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
+        if (!openFiles[i].fileNumberInUse) {
+            openFiles[i].fileNumberInUse = true;
+            openFiles[i].file = f;
+            fileNumber = i + 1;
+            break;
+        }
+    }
+
+    ++_openFileCount;
+
+    // currently older open files ? Check that the same file is not opened twice now
+    if (_openFileCount > 1) {
+        for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
+            if (openFiles[i].fileNumberInUse) {
+                if (i + 1 != fileNumber) {
+                    if (strcasecmp(openFiles[i].file.name(), f.name()) == 0) {        // comparing file refs won't work: compare file names
+                        openFiles[fileNumber - 1].file.close();                                             // close newer file ref again
+                        openFiles[fileNumber - 1].fileNumberInUse = false;
+                        --_openFileCount;
+                        return result_SD_fileAlreadyOpen;                                                   // return with error
+                    }
+                }
+            }
+        }
+    }
 
     return result_execOK;
 }
@@ -173,7 +181,7 @@ Justina_interpreter::execResult_type Justina_interpreter::openNext(int& fileNumb
 //
 // --------------------------------
 
-void Justina_interpreter::close(int fileNumber) {
+void Justina_interpreter::SD_closeFile(int fileNumber) {
 
     // checks must have been done before calling this function
     openFiles[fileNumber - 1].file.close();                                             // does not return errors
@@ -186,7 +194,7 @@ void Justina_interpreter::close(int fileNumber) {
 // list all files in the card with date and size TO SERIAL PORT
 // ------------------------------------------------------------
 
-Justina_interpreter::execResult_type Justina_interpreter::listFiles() {
+Justina_interpreter::execResult_type Justina_interpreter::SD_listFiles() {
     SdVolume volume{};
     SdFile root{};
 
@@ -206,35 +214,35 @@ Justina_interpreter::execResult_type Justina_interpreter::listFiles() {
 // perform file checks before executing file method
 // ------------------------------------------------
 
-Justina_interpreter::execResult_type Justina_interpreter::fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File& file, int allowFileTypes)
+Justina_interpreter::execResult_type Justina_interpreter::SD_fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File& file, int allowFileTypes)
 {
     // check file number (also perform related file and SD card object checks)
     if ((!(argIsLongBits & (0x1 << argIndex))) && (!(argIsFloatBits & (0x1 << argIndex)))) { return result_numberExpected; }                      // file number
     int fileNumber = (argIsLongBits & (0x1 << argIndex)) ? arg.longConst : arg.floatConst;
-    if (!_SDinitOK) { return result_SD_noCardOrCardError; }
-    if ((fileNumber < 1) || (fileNumber > MAX_OPEN_SD_FILES)) { return result_SD_invalidFileNumber; }
-    if (!openFiles[fileNumber - 1].fileNumberInUse) { return result_SD_fileIsNotOpen; }
-    file = openFiles[fileNumber - 1].file;
-    if (allowFileTypes > 0) {       // 0: allow files and directories, 1: allow files, 2: allow directories
-        if (file.isDirectory() != (allowFileTypes == 2)) { return result_SD_directoryNotAllowed; }
-    }
-    return result_execOK;
+
+    execResult_type execResult = SD_fileChecks(file, fileNumber, allowFileTypes);
+    return execResult;
 }
 
-Justina_interpreter::execResult_type Justina_interpreter::fileChecks(bool argIsLong, bool argIsFloat, Val arg, File& file, int allowFileTypes)
+Justina_interpreter::execResult_type Justina_interpreter::SD_fileChecks(bool argIsLong, bool argIsFloat, Val arg, File& file, int allowFileTypes)
 {
     // check file number (also perform related file and SD card object checks)
     if ((!argIsLong) && (!argIsFloat)) { return result_numberExpected; }                      // file number
     int fileNumber = argIsLong ? arg.longConst : arg.floatConst;
+
+    execResult_type execResult = SD_fileChecks(file, fileNumber, allowFileTypes);
+    return execResult;
+}
+
+Justina_interpreter::execResult_type Justina_interpreter::SD_fileChecks(File& file, int fileNumber, int allowFileTypes)
+{
+    // check file number (also perform related file and SD card object checks)
     if (!_SDinitOK) { return result_SD_noCardOrCardError; }
     if ((fileNumber < 1) || (fileNumber > MAX_OPEN_SD_FILES)) { return result_SD_invalidFileNumber; }
     if (!openFiles[fileNumber - 1].fileNumberInUse) { return result_SD_fileIsNotOpen; }
     file = openFiles[fileNumber - 1].file;
-    if (file.isDirectory()) { return result_SD_directoryNotAllowed; }
     if (allowFileTypes > 0) {       // 0: allow files and directories, 1: allow files, 2: allow directories
         if (file.isDirectory() != (allowFileTypes == 2)) { return result_SD_directoryNotAllowed; }
     }
-
     return result_execOK;
 }
-

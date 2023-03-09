@@ -319,11 +319,11 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"printTo",         cmdcod_printTo,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
     {"printLineTo",     cmdcod_printLineTo,     cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
     {"dispFmt",         cmdcod_dispfmt,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
-    {"dispMod",         cmdcod_dispmod,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_105,     cmdBlockNone},
+    {"dispMode",        cmdcod_dispmod,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_105,     cmdBlockNone},
     {"pause",           cmdcod_pause,           cmd_onlyInFunctionBlock,                            0,0,    cmdPar_106,     cmdBlockNone},
     {"halt",            cmdcod_halt,            cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},
-    {"initSD",          cmdcod_initSD,          cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"ejectSD",         cmdcod_ejectSD,         cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"startSD",         cmdcod_startSD,         cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"stopSD",          cmdcod_stopSD,          cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
     {"listFiles",       cmdcod_listFiles,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockNone},
 
 
@@ -467,7 +467,8 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     {"space",                   fnccod_space,                   1,1,    0b0},
     {"repChar",                 fnccod_repchar,                 2,2,    0b0},
     {"strStr",                  fnccod_strstr,                  2,3,    0b0},
-    {"strCmp",                  fnccod_strcmp,                  2,2,    0b0},
+    {"strCmp",                  fnccod_strcmp,                  2,2,    0b0 },
+    {"strCaseCmp",              fnccod_strcasecmp,              2,2,    0b0 },
 
     {"isAlpha",                 fnccod_isAlpha,                 1,2,    0b0},
     {"isAlphaNumeric",          fnccod_isAlphaNumeric,          1,2,    0b0},
@@ -486,7 +487,7 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     // Arduino SD card library
     { "open",                    fnccod_open,                   1,2,    0b0 },
     { "close",                   fnccod_close,                  1,1,    0b0 },
-    { "read",                    fnccod_read,                   1,2,    0b0 },
+    { "read",                    fnccod_read,                   1,1,    0b0 },
     { "readBytes",               fnccod_readBytes,              2,2,    0b0 },
     { "readBytesUntil",          fnccod_readBytesUntil,         3,3,    0b0 },
     { "readLine",                fnccod_readLine,               2,2,    0b0 },
@@ -503,6 +504,14 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     { "isDirectory",             fnccod_isDirectory,            1,1,    0b0 },
     { "rewindDirectory",         fnccod_rewindDirectory,        1,1,    0b0 },
     { "openNextFile",            fnccod_openNextFile,           1,1,    0b0 },
+    { "exists",                  fnccod_exists,                 1,1,    0b0 },
+    { "createDir",               fnccod_mkdir,                  1,1,    0b0 },
+    { "removeDir",               fnccod_rmdir,                  1,1,    0b0 },
+    { "remove",                  fnccod_remove,                 1,1,    0b0 },
+
+    // extra Justina SD card functions
+    { "isOpenFile",              fnccod_isOpenFile,             1,1,    0b0 },
+    { "closeAll",                fnccod_closeAll,               0,0,    0b0 },
 };
 
 
@@ -842,7 +851,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 
     if (kill) { _keepInMemory = false; _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
     
-    ejectSD() ;         // safety (in case an SD card is present: close all files and stop SD
+    SD_closeAllFiles() ;         // safety (in case an SD card is present: close all files and stop SD
 
     if (_keepInMemory) { _pConsole->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
     _quitJustina = false;         // if interpreter stays in memory: re-init
