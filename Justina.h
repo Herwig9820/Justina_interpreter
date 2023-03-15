@@ -232,8 +232,10 @@ class Justina_interpreter {
         cmdcod_input,
         cmdcod_print,
         cmdcod_printLine,
+        cmdcod_printList,
         cmdcod_printTo,
         cmdcod_printLineTo,
+        cmdcod_printListTo,
         cmdcod_dispfmt,
         cmdcod_dispmod,
         cmdcod_declCB,
@@ -357,10 +359,14 @@ class Justina_interpreter {
 
         fnccod_open,
         fnccod_close,
+        fnccod_write,
         fnccod_read,
-        fnccod_readBytes,
-        fnccod_readBytesUntil,
-        fnccod_readLine,
+
+        fnccod_inputFrom,
+        fnccod_inputLineFrom,
+        fnccod_parseListFromFile,
+        fnccod_parseListFromString,
+
         fnccod_find,
         fnccod_findUntil,
 
@@ -375,6 +381,7 @@ class Justina_interpreter {
         fnccod_isDirectory,
         fnccod_rewindDirectory,
         fnccod_openNextFile,
+        fnccod_fileNumber,
         fnccod_isOpenFile,
         fnccod_closeAll,
         fnccod_exists,
@@ -479,6 +486,7 @@ class Justina_interpreter {
         result_variableNameExpected,
         result_functionDefExpected,
         result_assignmentOrTerminatorExpected,
+        result_separatorExpected,
 
         // used memory errors
         result_maxVariableNamesReached = 1300,
@@ -635,9 +643,11 @@ class Justina_interpreter {
         result_notWithinBlock,
         result_skipNotAllowedHere,
 
-        // evaluation function errors
+        // evaluation and list parsing function errors
         result_eval_nothingToEvaluate = 3500,
         result_eval_parsingError,
+        result_list_parsingError,
+        result_list_missingVarArgs,
 
         // SD card
         result_SD_noCardOrCardError = 3600,
@@ -707,8 +717,9 @@ class Justina_interpreter {
     static constexpr uint8_t res_long = 0x20;                // result is long (operators can be long or float)
 
 
-    // terminals - should NOT start and end with an alphanumeric character or with an underscore
-    // note: if a termnal is designated as 'single character', then other terminals should not contain this character
+    //  terminals - should NOT start and end with an alphanumeric character or with an underscore
+    
+    // non-operator terminals: ONE character only, character should NOT appear in operator names
     static constexpr char* term_semicolon = ";";        // must be single character
     static constexpr char* term_comma = ",";            // must be single character
     static constexpr char* term_leftPar = "(";          // must be single character
@@ -716,6 +727,8 @@ class Justina_interpreter {
 
 
     // operators
+    
+    // assignment operator: ONE character only, character should NOT appear in any other operator name, except compound operator names (but NOT as first character)
     static constexpr char* term_assign = "=";
     static constexpr char* term_plusAssign = "+=";
     static constexpr char* term_minusAssign = "-=";
@@ -1174,8 +1187,8 @@ class Justina_interpreter {
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na,block_na,block_na };                                   // not a 'block' command
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[49];                          // keyword names
-    static const FuncDef _functions[124];                            // function names with min & max arguments allowed
+    static const ResWordDef _resWords[51];                          // keyword names
+    static const FuncDef _functions[131];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
 
@@ -1607,6 +1620,9 @@ private:
     void printVariables(bool userVars);
     parseTokenResult_type deleteUserVariable(char* userVarName = nullptr);
 
+    bool parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueType, parseTokenResult_type& result);
+    bool parseString(char*& pNext, char*& pch, char*& string, char& valueType, parseTokenResult_type& result);
+
     execResult_type startSD();
     void SD_closeAllFiles();
     execResult_type SD_open(int& fileNumber, char* filePath, int mod = O_READ);
@@ -1614,9 +1630,9 @@ private:
     void SD_closeFile(int fileNumber);
     execResult_type SD_listFiles();
     execResult_type SD_fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File& file, int allowFileTypes = 1);
-    execResult_type SD_fileChecks(bool argIsLong, bool argIsFloat, Val arg, File& file,  int allowFileTypes = 1);
-    execResult_type SD_fileChecks(File& file, int fileNumber, int allowFileTypes=1);
-    
+    execResult_type SD_fileChecks(bool argIsLong, bool argIsFloat, Val arg, File& file, int allowFileTypes = 1);
+    execResult_type SD_fileChecks(File& file, int fileNumber, int allowFileTypes = 1);
+
 };
 
 #endif

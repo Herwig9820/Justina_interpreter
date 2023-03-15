@@ -65,25 +65,6 @@ void Justina_interpreter::deleteStringArrayVarsStringObjects(Justina_interpreter
         if (!checkIfGlobalValue || (sourceVarScopeAndFlags[index] & (var_nameHasGlobalValue))) { // if only for global values: is it a global value ?
 
             if ((sourceVarScopeAndFlags[index] & (var_isArray | value_typeMask)) == (var_isArray | value_isStringPointer)) {              // array of strings
-                /*
-                void* pArrayStorage = varValues[index].pArray;        // void pointer to an array of string pointers; element 0 contains dimensions and dimension count
-                int dimensions = (((char*)pArrayStorage)[3]);  // can range from 1 to MAX_ARRAY_DIMS
-                int arrayElements = 1;                                  // determine array size
-                for (int dimCnt = 0; dimCnt < dimensions; dimCnt++) { arrayElements *= (int)((((char*)pArrayStorage)[dimCnt])); }
-
-                // delete non-empty strings
-                for (int arrayElem = 1; arrayElem <= arrayElements; arrayElem++) {  // array element 0 contains dimensions and count
-                    char* pString = ((char**)pArrayStorage)[arrayElem];
-                    uint32_t stringPointerAddress = (uint32_t) & (((char**)pArrayStorage)[arrayElem]);
-                    if (pString != nullptr) {
-                    #if printCreateDeleteListHeapObjects
-                        Serial.print(isUserVar ? "----- (usr arr str) " : isLocalVar ? "-----(loc arr str)" : "----- (arr string ) "); Serial.println((uint32_t)pString, HEX);     // applicable to string and array (same pointer)
-                    #endif
-                        delete[]  pString;                                  // applicable to string and array (same pointer)
-                        isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
-                    }
-                }
-                */ ////
                 deleteOneArrayVarStringObjects(varValues, index, isUserVar, isLocalVar);
             }
         }
@@ -1089,42 +1070,14 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parseTokenResult_type& res
     result = result_tokenNotFound;                                                      // init: flag 'no token found'
     char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
 
-    // all numbers will be positive, because leading '-' or '+' characters are parsed separately as prefix operators
-    // this is important if next infix operator (power) has higher priority then this prefix operator: -2^4 <==> -(2^4) <==> -16, AND NOT (-2)^4 <==> 16 
-    // exception: variable declarations with initializers: prefix operators are not parsed separately
-
-    // check if number (if valid) will be stored as long or float
-
-    char* pNumStart = pNext;
-    float f{ 0 }; long l{ 0 };
-    bool isLong{ false };
-    int i{ 0 };
-
-    int base = ((pNumStart[0] == '0') && ((pNumStart[1] == 'x') || (pNumStart[1] == 'X'))) ? 16 : ((pNumStart[0] == '0') && ((pNumStart[1] == 'b') || (pNumStart[1] == 'B'))) ? 2 : 10;
-
-    if (base == 10) {      // base 10
-        while (isDigit(pNumStart[++i]));
-        isLong = ((i > 0) && (pNumStart[i] != '.') && (pNumStart[i] != 'E') && (pNumStart[i] != 'e'));        // no decimal point, no exponent and minimum one digit
-    }
-
-    else {       // binary or hexadecimal
-        pNumStart += 2;      // skip "0b" or "0x" and start looking for digits at next position
-        while ((base == 16) ? isxdigit(pNumStart[++i]) : ((pNumStart[i] == '0') || (pNumStart[i] == '1'))) { ++i; }
-        isLong = (i > 0);        // minimum one digit
-        if (!isLong) { pNext = pch; result = result_numberInvalidFormat; return false; }  // not a long constant, but not a float either
-    }
-
-    if (isLong) {                                                       // token can be parsed as long ?
-        l = strtoul(pNumStart, &pNext, base);                       // string to UNSIGNED long before assigning to (signed) long -> 0xFFFFFFFF will be stored as -1, as it should (all bits set)
-        if (_initVarOrParWithUnaryOp == -1) { l = -l; }
-    }
-    else {
-        f = strtof(pNumStart, &pNext);
-        if (_initVarOrParWithUnaryOp == -1) { f = -f; }
-    }                                                    // token can be parsed as float ?
-
-    if (pNumStart == pNext) { return true; }                                                // token is not a number if pointer pNext was not moved
-
+    // try to parse as number (int or float)
+    Val value; char valueType{};
+    bool isNotANumber = parseIntFloat(pNext, pch, value, valueType, result);
+    if (isNotANumber) { return true; }                                                             // not a number: can still be another token type
+    else if (result != result_tokenFound) { return false; }
+    float flt{ 0 }; long lng{ 0 };
+    if (valueType == value_isLong) { lng = value.longConst; }
+    else { flt = value.floatConst; }
 
     // is valid number: continue processing
 
@@ -1134,7 +1087,7 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parseTokenResult_type& res
     if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp) { pNext = pch; result = result_numConstNotAllowedHere; return false; }
 
     // overflow ? (underflow is not detected with strtof() ) 
-    if (!isLong) { if (!isfinite(f)) { pNext = pch; result = result_parse_overflow; return false; } }
+    if (valueType == value_isFloat) { if (!isfinite(flt)) { pNext = pch; result = result_parse_overflow; return false; } }
 
     // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
     bool tokenAllowed = (_isCommand || (!_programMode) || _extFunctionBlockOpen);
@@ -1153,8 +1106,8 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parseTokenResult_type& res
     // array declaration: dimensions must be number constants (global, static, local arrays)
     bool isArrayDimSpec = _isAnyVarCmd && (_parenthesisLevel > 0);
     if (isArrayDimSpec) {
-        if (isLong && (l < 1)) { pNext = pch; result = result_arrayDimNotValid; return false; }
-        else if ((!isLong) && ((f != int(f)) || (f < 1))) { pNext = pch; result = result_arrayDimNotValid; return false; }
+        if (valueType == value_isLong && (lng < 1)) { pNext = pch; result = result_arrayDimNotValid; return false; }
+        else if ((valueType == value_isFloat) && ((flt != int(flt)) || (flt < 1))) { pNext = pch; result = result_arrayDimNotValid; return false; }
     }
 
     // token is a number, and it's allowed here
@@ -1167,9 +1120,9 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parseTokenResult_type& res
     _lvl0_withinExpression = true;
 
     TokenIsConstant* pToken = (TokenIsConstant*)_programCounter;
-    pToken->tokenType = tok_isConstant | ((isLong ? value_isLong : value_isFloat) << 4);
-    if (isLong) { memcpy(pToken->cstValue.longConst, &l, sizeof(l)); }
-    else { memcpy(pToken->cstValue.floatConst, &f, sizeof(f)); }                                           // float not necessarily aligned with word size: copy memory instead
+    pToken->tokenType = tok_isConstant | (valueType << 4);
+    if (valueType == value_isLong) { memcpy(pToken->cstValue.longConst, &lng, sizeof(lng)); }
+    else { memcpy(pToken->cstValue.floatConst, &flt, sizeof(flt)); }                                           // float not necessarily aligned with word size: copy memory instead
     _lastTokenStep = _programCounter - _programStorage;             // before referencing _lastTokenStep
 
     _lastTokenType = tok_isConstant;
@@ -1179,8 +1132,8 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parseTokenResult_type& res
     if (doNonLocalVarInit) { initVariable(_lastVariableTokenStep, _lastTokenStep); }     // initialisation of global / static variable ? (operator: is always assignment)
 
 #if printParsedTokens
-    Serial.print("parsing number : address is "); Serial.print(_lastTokenStep); Serial.print(" ["); if (isLong) { Serial.print(l); }
-    else { Serial.print(f); }  Serial.println("]");
+    Serial.print("parsing number : address is "); Serial.print(_lastTokenStep); Serial.print(" ["); if (valueType == value_isLong) { Serial.print(lng); }
+    else { Serial.print(flt); }  Serial.println("]");
 #endif
 
     _programCounter += sizeof(TokenIsConstant);
@@ -1197,10 +1150,8 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parseTokenResult_type& res
 bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_type& result) {
     result = result_tokenNotFound;                                                      // init: flag 'no token found'
     char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
-    int escChars = 0;
 
     if ((pNext[0] != '\"')) { return true; }                                         // no opening quote ? Is not an alphanumeric cst (it can still be something else)
-    pNext++;                                                                            // skip opening quote
 
     if (_programCounter == _programStorage) { pNext = pch; result = result_programCmdMissing; return false; }  // program mode and no PROGRAM command
 
@@ -1229,38 +1180,12 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
 
     if (_leadingSpaceCheck) { pNext = pch; result = result_spaceMissing; return false; }
 
-    while (pNext[0] != '\"') {                                                       // do until closing quote, if any
-        // if no closing quote found, an invalid escape sequence or a control character detected, reset pointer to first character to parse, indicate error and return
-        if (pNext[0] == '\0') { pNext = pch; result = result_alphaClosingQuoteMissing; return false; }
-        if (pNext[0] < ' ') { pNext = pch; result = result_alphaNoCtrlCharAllowed; return false; }
-        if (pNext[0] == '\\') {
-            if ((pNext[1] == '\\') || (pNext[1] == '\"')) { pNext++; escChars++; }  // valid escape sequences: ' \\ ' (add backslash) and ' \" ' (add double quote)
-            else { pNext = pch; result = result_alphaConstInvalidEscSeq; return false; }
-        }
-        pNext++;
-    };
-
-    // if alphanumeric constant is too long, reset pointer to first character to parse, indicate error and return
-    if (pNext - (pch + 1) - escChars > MAX_ALPHA_CONST_LEN) { pNext = pch; result = result_alphaConstTooLong; return false; }
-
+    // try to parse as string now
     char* pStringCst = nullptr;                 // init: is empty string (prevent creating a string object to conserve memory)
-    if (pNext - (pch + 1) - escChars > 0) {    // not an empty string: create string object 
-
-        // token is an alphanumeric constant, and it's allowed here
-        pStringCst = new char[pNext - (pch + 1) - escChars + 1];                                // create char array on the heap to store alphanumeric constant, including terminating '\0'
-        _parsedStringConstObjectCount++;
-        // store alphanumeric constant in newly created character array
-        pStringCst[pNext - (pch + 1) - escChars] = '\0';                                 // store string terminating '\0' (pch + 1 points to character after opening quote, pNext points to closing quote)
-        char* pSource = pch + 1, * pDestin = pStringCst;                                  // pSource points to character after opening quote
-        while (pSource + escChars < pNext) {                                              // store alphanumeric constant in newly created character array (terminating '\0' already added)
-            if (pSource[0] == '\\') { pSource++; escChars--; }                           // if escape sequences found: skip first escape sequence character (backslash)
-            pDestin++[0] = pSource++[0];
-        }
-    #if printCreateDeleteListHeapObjects
-        Serial.print("+++++ (parsed str ) "); Serial.print((uint32_t)pStringCst, HEX); Serial.print(", string: "); Serial.println(pStringCst);
-    #endif
-    }
-    pNext++;                                                                            // skip closing quote
+    char valueType; //dummy
+    bool isNotAString = parseString(pNext, pch, pStringCst, valueType, result);
+    if (isNotAString) { return true; }                                                             // not a string constant: can still be another token type
+    else if (result != result_tokenFound) { return false; }
 
     // expression syntax check 
     _thisLvl_lastIsVariable = false;

@@ -55,7 +55,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::startSD() {
     if (!SD.begin(_SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
 
     _openFileCount = 0;
-    for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) { openFiles->fileNumberInUse = false; }
+    for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) { openFiles[i].fileNumberInUse = false; }
     _SDinitOK = true;
     return result_execOK;
 }
