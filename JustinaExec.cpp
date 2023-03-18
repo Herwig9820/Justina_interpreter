@@ -1512,18 +1512,40 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         case cmdcod_print:
         case cmdcod_printLine:
         case cmdcod_printList:
-        case cmdcod_printTo:
-        case cmdcod_printLineTo:
-        case cmdcod_printListTo:
+        case cmdcod_printToF:
+        case cmdcod_printLineToF:
+        case cmdcod_printListToF:
+        case cmdcod_printToS:
+        case cmdcod_printLineToS:
+        case cmdcod_printListToS:
         {
-            bool isFilePrint = ((_activeFunctionData.activeCmd_ResWordCode == cmdcod_printTo) || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printLineTo)
-                || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printListTo));
-            bool doPrintList = ((_activeFunctionData.activeCmd_ResWordCode == cmdcod_printList) || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printListTo));
-            bool doPrintLineEnd = ((_activeFunctionData.activeCmd_ResWordCode == cmdcod_printLine) || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printLineTo)
-                || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printList) || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printListTo));
-            int firstValueIndex = isFilePrint ? 2 : 1;
+            // print to console, file or string ?
+            bool isFilePrint = ((_activeFunctionData.activeCmd_ResWordCode == cmdcod_printToF) || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printLineToF)
+                || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printListToF));
+            bool isStringPrint = ((_activeFunctionData.activeCmd_ResWordCode == cmdcod_printToS) || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printLineToS)
+                || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printListToS));
+            bool isConsolePrint = !(isFilePrint || isStringPrint);
+            int firstValueIndex = isConsolePrint ? 1 : 2;        // print to file or string: first argument is file or string
+
+            // normal or list print ?
+            bool doPrintList = ((_activeFunctionData.activeCmd_ResWordCode == cmdcod_printList) || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printListToF)
+                || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printListToS));
+
+            // print new line sequence ?
+            bool doPrintLineEnd = ((_activeFunctionData.activeCmd_ResWordCode == cmdcod_printLine) || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printLineToF)
+                || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printLineToS)
+                || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printList) || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printListToF)
+                || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printListToS));
+
 
             File file{};
+            char argSep[4] = "   "; argSep[1] = term_comma[0];
+            Stream* pOut = isFilePrint ? &file : isConsolePrint ? _pConsole : nullptr;
+
+            char* assembledString{ nullptr };       // if printing to strings
+            int assembledLen{ 0 };
+            LE_evalStack* pFirstArgStackLvl = pStackLvl;
+
 
             for (int i = 1; i <= cmdParamCount; i++) {
                 bool operandIsVar = (pStackLvl->varOrConst.tokenType == tok_isVariable);
@@ -1532,17 +1554,28 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 bool opIsFloat = ((uint8_t)valueType == value_isFloat);
                 bool opIsString = ((uint8_t)valueType == value_isStringPointer);
                 char* printString = nullptr;
-
                 Val operand;
+
                 // next line is valid for values of all types (same memory locations are copied)
                 operand.floatConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pFloatConst) : pStackLvl->varOrConst.value.floatConst);
 
-                if (isFilePrint && (i == 1)) {     // file number
-                    execResult_type execResult = SD_fileChecks(opIsLong, opIsFloat, operand, file);        // operand: file number
-                    if (execResult != result_execOK) { return execResult; }
+                // print to file or print to stream: first argument is file number or receiving variable
+                if (i < firstValueIndex) {
+                    if (isFilePrint) {     // file number
+                        execResult_type execResult = SD_fileChecks(opIsLong, opIsFloat, operand, file);        // operand: file number
+                        if (execResult != result_execOK) { return execResult; }
+                    }
+
+                    else {      // receiving variable
+                        if (!operandIsVar) { return result_arg_varExpected; }
+                        bool isArray = (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_isArray);
+                        if (isArray && !opIsString) { return result_array_valueTypeIsFixed; }
+                    }
                 }
 
-                else {      // value to print
+                // value to print
+                else {
+                    // prepare one value for printing
                     if (opIsLong || opIsFloat) {
                         char s[20];  // largely long enough to print long values, or float values with "G" specifier, without leading characters
                         printString = s;    // pointer
@@ -1558,30 +1591,102 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         if (doPrintList) { expandStringBackslashSequences(printString); }
                     }
 
-                    // NOTE that there is no limit on the number of characters printed here (MAX_PRINT_WIDTH not checked)
-                    Stream* pOut = isFilePrint ? &file : _pConsole;
+                    // print one value
 
-                    if ((i > (isFilePrint ? 2 : 1)) && doPrintList) { pOut->print(" "); pOut->print(term_comma); pOut->print(" "); };
-                    if (printString != nullptr) { pOut->print(printString); }
+                    // NOTE that there is no limit on the number of characters printed here (MAX_PRINT_WIDTH not checked)
+                    //      if printing to string: is intermediate string, so length is not constrained to MAX_ALPHA_CONST_LEN either
+
+                    if (isStringPrint) {        // print to string ?
+                        // remember 'old' string length and pointer to 'old' string
+                        char* oldAssembString = assembledString;
+
+                        // calculate length of new string: provide room for argument AND
+                        // - if print list: for all value arguments except the last one: sufficient room for argument separator 
+                        // - if print new line: if last argument, provide room for new line sequence
+                        if (printString != nullptr) { assembledLen += strlen(printString); }            // provide room for new string
+                        if (doPrintList && (i < cmdParamCount)) { assembledLen += strlen(argSep); }   // provide room for argument separator
+                        if (doPrintLineEnd && (i == cmdParamCount)) { assembledLen += 5; }            // provide room for '\r\n' line end characters
+
+                        // create new string object with sufficient room for argument AND extras (arg. separator and new line sequence, if applicable)
+                        if (assembledLen > 0) {
+                            assembledString = new char[assembledLen + 1]; assembledString[0] = '\0';
+                            _intermediateStringObjectCount++;
+                        #if printCreateDeleteListHeapObjects
+                            Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)assembledString, HEX);
+                        #endif
+                        }
+
+                        // copy string with all previous arguments (if not empty)
+                        if (oldAssembString != nullptr) strcpy(assembledString, oldAssembString);
+                        if (printString != nullptr) { strcat(assembledString, printString); }
+                        // if applicable, copy argument separator or new line sequence
+                        if (doPrintList && (i < cmdParamCount)) { strcat(assembledString, argSep); }
+                        if (doPrintLineEnd && (i == cmdParamCount)) { strcat(assembledString, "\r\n"); }
+
+                        // delete previous assembled string
+                        if (oldAssembString != nullptr) {
+                        #if printCreateDeleteListHeapObjects
+                            Serial.print("----- (Intermd str) "); Serial.println((uint32_t)oldAssembStringt, HEX);
+                        #endif
+                            delete[] oldAssembString;
+                            _intermediateStringObjectCount--;
+                        }
+                    }
+
+                    else {      // print to file or console ?
+                        if (printString != nullptr) { pOut->print(printString); }
+                        if ((i < cmdParamCount) && doPrintList) { pOut->print(argSep); }
+                        if (doPrintLineEnd && (i == cmdParamCount)) { pOut->println(); }
+                    }
+
 
                     // console print only: is print position at line start ? 
-                    if (!isFilePrint) {
-                        if (doPrintList) { _consoleAtLineStart = true; }     // ending quote printed last
+                    if (isConsolePrint) {
+                        if (doPrintLineEnd) { _consoleAtLineStart = true; }     // ending quote printed last
                         else if (printString != nullptr) { _consoleAtLineStart = (printString[strlen(printString) - 1] == '\n'); }
                     }
 
-                    if (opIsString && doPrintList) { delete[] printString; }       // created above in expandStringBackslashSequences()
+                    if (opIsString && doPrintList) { delete[] printString; }     // created above in expandStringBackslashSequences() without incrementing object counter
+
+
                 }
 
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
             }
-            if (doPrintLineEnd) {
-                if (isFilePrint) { file.println(); }
-                else {
-                    _pConsole->println();
-                    _consoleAtLineStart = true;
+
+
+
+
+            // finalise
+            if (isStringPrint) {        // print to string ? save in variable
+                // receiving argument is a variable, and if it's an array element, it has string type 
+
+                // if currently the variable contains a string object, delete it
+                deleteVarStringObject(pFirstArgStackLvl);     // if not empty; checks done above (is variable, is not a numeric array)      //// return value gebruiken
+
+                // save new string in variable 
+                *pFirstArgStackLvl->varOrConst.value.ppStringConst = assembledString;
+                *pFirstArgStackLvl->varOrConst.varTypeAddress = (*pFirstArgStackLvl->varOrConst.varTypeAddress & ~value_typeMask) | value_isStringPointer;
+
+                // if the new value is a non-empty (intermediate) string, adapt object counters
+                if (assembledString != nullptr) {
+                    _intermediateStringObjectCount--;        // but do not delete the object: it became a variable string
+                    char varScope = (pFirstArgStackLvl->varOrConst.sourceVarScopeAndFlags & var_scopeMask);
+                    (varScope == var_isUser) ? _userVarStringObjectCount++ : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount++ : _localVarStringObjectCount++;
+
+                #if printCreateDeleteListHeapObjects
+                    Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)assembledStringc, HEX);
+                    Serial.print((varScope == var_isUser) ? "+++++ (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "+++++ (var string ) " : "+++++ (loc var str) ");
+                    Serial.println((uint32_t)*pFirstArgStackLvl->varOrConst.value.ppStringConst, HEX);
+                #endif
+
+
                 }
             }
+
+
+
+
 
             // clean up
             clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings
@@ -3517,8 +3622,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         // - terminate if buffer is full, time out occurs or a '\n' (new line) character is read
         // ---------------------------------------------------------------------------------------------------------
 
-        case fnccod_inputFrom:
-        case fnccod_inputLineFrom:
+        case fnccod_inputFromFile:
+        case fnccod_inputLineFromFile:
         {
             // arguments:
             // - input:      file number[, terminator character], length (number of bytes to read - upon return:chars read)
@@ -3543,12 +3648,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             }
 
             // check length (optional argument)
-            int maxLineLength = MAX_USER_INPUT_LEN;
-            if ((functionCode == fnccod_inputFrom) || (functionCode == fnccod_read)) {     // last argument specifies maximum length
+            int maxLineLength = MAX_ALPHA_CONST_LEN;
+            if ((functionCode == fnccod_inputFromFile) || (functionCode == fnccod_read)) {     // last argument specifies maximum length
                 int lengthArgIndex = suppliedArgCount - 1;            // base 0
                 if ((!(argIsLongBits & (0x1 << lengthArgIndex))) && (!(argIsFloatBits & (0x1 << lengthArgIndex)))) { return result_numberExpected; }      // number of bytes to read
                 maxLineLength = (argIsLongBits & (0x1 << lengthArgIndex)) ? (args[lengthArgIndex].longConst) : (args[lengthArgIndex].floatConst);
-                if ((maxLineLength < 1) || (maxLineLength > MAX_USER_INPUT_LEN)) { return result_arg_outsideRange; }
+                if ((maxLineLength < 1) || (maxLineLength > MAX_ALPHA_CONST_LEN)) { return result_arg_outsideRange; }
             }
 
             // prepare to read characters
@@ -3561,7 +3666,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // read characters now
             int charsRead{};                          // init: set count of characters read to max. number of characters that can be read
             if (functionCode == fnccod_read) { charsRead = file.read(buffer, maxLineLength); }                      // read: no timeout !
-            else if (functionCode == fnccod_inputFrom) {    // read number of characters or read line
+            else if (functionCode == fnccod_inputFromFile) {    // read number of characters or read line
                 charsRead = (suppliedArgCount == 2) ? file.readBytes(buffer, maxLineLength) : file.readBytesUntil(terminator, buffer, maxLineLength);
             }
             else { charsRead = file.readBytesUntil(terminator, buffer, maxLineLength); }        // input line function
@@ -3612,11 +3717,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // arguments: file number or string, variable[, variable ...]
 
             char* buffer{};
-            execResult_type execResult {result_execOK};
-            int valuesSaved{0};
+            execResult_type execResult{ result_execOK };
+            int valuesSaved{ 0 };
 
-            // check next arguments: must be variables
-            for (int i = 1; i < suppliedArgCount; ++i) { if (!(argIsVarBits & (1 << i))) { return result_arg_varExpected; } }   // i=1: second argument, ...
+            // check receiving arguments: must be variables
+            for (int argIndex = 1; argIndex < suppliedArgCount; ++argIndex) { if (!(argIsVarBits & (1 << argIndex))) { return result_arg_varExpected; } }   // i=1: second argument, ...
 
             if (functionCode == fnccod_parseListFromFile) {
                 // check file number (also perform related file and SD card object checks)
@@ -3625,19 +3730,19 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 if (execResult != result_execOK) { return execResult; }
 
                 // prepare to read characters
-                buffer = new char[MAX_USER_INPUT_LEN + 1];                     // buffer, long enough to receive maximum line length + null (create AFTER last error check)
+                buffer = new char[MAX_ALPHA_CONST_LEN + 1];                     // buffer, long enough to receive maximum line length + null (create AFTER last error check)
                 _intermediateStringObjectCount++;
             #if printCreateDeleteListHeapObjects
                 Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)buffer, HEX);
             #endif
 
                 // read line from file
-                int charsRead = file.readBytesUntil('\n', buffer, MAX_USER_INPUT_LEN);      // note: empty strings: buffer contains one character ('\0')
+                int charsRead = file.readBytesUntil('\n', buffer, MAX_ALPHA_CONST_LEN);      // note: empty strings: buffer contains one character ('\0')
                 buffer[charsRead] = '\0';       // add terminating '\0'
             }
             else {      // parse from string
-                if(!(argIsStringBits& (1 << 0))) {return result_stringExpected; };
-                buffer = (argIsVarBits & (1 << 0)) ? *pFirstArgStackLvl->varOrConst.value.ppStringConst : pFirstArgStackLvl->varOrConst.value.pStringConst ;
+                if (!(argIsStringBits & (1 << 0))) { return result_arg_stringExpected; };
+                buffer = (argIsVarBits & (1 << 0)) ? *pFirstArgStackLvl->varOrConst.value.ppStringConst : pFirstArgStackLvl->varOrConst.value.pStringConst;
             }
 
             // parse constants in buffer
@@ -3646,70 +3751,94 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             char* pNext = buffer;   // init
             bool nowLookForSeparator{ false };
             int commaLength = strlen(term_comma);
-
+            bool intermediateStringCreated{ false };
+            Val value; char valueType{};
             LE_evalStack* pStackLvl = pFirstArgStackLvl;                                // now points to file number argument
 
-            do {
+
+            // iterate through all value-receiving variables and separators between them
+            // -------------------------------------------------------------------------
+
+            for (int argIndex = 1; argIndex < suppliedArgCount; ++argIndex) {              // i=1: second argument, ...
+                intermediateStringCreated = false;                          // not yet within current loop
+
                 // move to the first non-space character of next token 
                 while ((pNext[0] == ' ') || (pNext[0] == '\r') || (pNext[0] == '\n')) { pNext++; }                                         // skip leading spaces
                 if (pNext[0] == '\0') { break; }                // end of instruction: prepare to quit parsing  
 
                 char* pch = pNext;
-                Val value; char valueType{};
 
-                do {
-                    if (nowLookForSeparator) {
+                do {    // one loop only
+                    if (nowLookForSeparator) {      // look for a separator now
                         // do not look for trailing space, to use strncmp() wih number of non-space characters found, because a space is not required after an operator
                         bool isComma = (strncmp(term_comma, pch, commaLength) == 0);      // token corresponds to terminal name ? Then exit loop    
                         if (!isComma) { parsingResult = result_separatorExpected;  break; }
                         pNext += commaLength;                                                                            // move to next character
                     }
 
-                    else {
+                    else {  // look for a value now
                         // parsing functions below return...
-                        //  - true: no error. If parsingResult == result_tokenFound, then parsed. Otherwise: is not this token type, continue parsing
-                        //  - false: parsingResult contains parsing error  
+                        //  - true: no parsing error. parsingResult determines whether token recognised (result_tokenFound) or not (result_tokenNotFound) - in which case it can still be another token type
+                        //  - false: parsing error. parsingResult indicates which error.
 
                         // float or integer ?
-                        if (!parseIntFloat(pNext, pch, value, valueType, parsingResult)) { break; }     // break with error
-                        if (parsingResult == result_tokenFound) { break; }                                                                      // is this token type: look no further
+                        _initVarOrParWithUnaryOp = 0;       // needs to be zero before calling parseIntFloat()
+                        if (!parseIntFloat(pNext, pch, value, valueType, parsingResult)) { break; }                                     // break with error
+                        if (parsingResult == result_tokenFound) { break; }                                                              // is this token type: look no further
                         // string ?
-                        if (!parseString(pNext, pch, value.pStringConst, valueType, parsingResult)) { break; }
-                        if (parsingResult == result_tokenFound) { break; }
+                        if (!parseString(pNext, pch, value.pStringConst, valueType, parsingResult, true)) { break; }                    // break with error
+                        if (parsingResult == result_tokenFound) { break; }                                                              // is this token type: look no further
 
                         parsingResult = result_token_not_recognised;
                     }
                 } while (false);        // one loop only
 
-                if (parsingResult != result_tokenFound) { execResult = result_list_parsingError;   break; }                                   // exit loop if token error (syntax, ...). Checked before checking command syntax
+                if (parsingResult != result_tokenFound) { execResult = result_list_parsingError;   break; }                             // exit loop if token error (syntax, ...)
 
-                // parsing OK
+                if ((valueType == value_isStringPointer) && (value.pStringConst != nullptr)) { intermediateStringCreated = true; }      // parsed string is created on the heap
 
-                // retrieve stack level for receiving variable
+
+                // parsing OK: assign value to receiving variable
+                // ----------------------------------------------
+
                 if (!nowLookForSeparator) {     // looking for value: move to next receiving variable argument
+                    // retrieve stack level for receiving variable
                     pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);         // now ponts to variable argument to receive a value (or nullptr if last was reached before)
                     // reached last variable and input buffer not completely parsed ? break with error
                     if (pStackLvl == nullptr) { break; }        // no more variables to save values into: quit parsing remainder of string / file
 
                     // if variable is an array element, it's variable type is fixed. Compatible with provided value ?
                     bool returnArgIsArray = (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_isArray);
-                    bool returnArgIsString = (argIsStringBits & (0x1 << (suppliedArgCount - 1)));
-                    if (returnArgIsArray && (returnArgIsString != (valueType == value_isStringPointer))) { execResult = result_array_valueTypeIsFixed; break; }
+                    bool oldArgIsLong = (argIsLongBits & (0x1 << argIndex));
+                    bool oldArgIsFloat = (argIsFloatBits & (0x1 << argIndex));
+                    bool oldArgIsString = (argIsStringBits & (0x1 << argIndex));
+                    char oldArgValueType = (oldArgIsLong ? value_isLong : oldArgIsFloat ? value_isFloat : value_isStringPointer);
+
+                    // if receiving variable is array, both of the old and new values must be string OR both must be numeric (array value type is fixed)
+                    if (returnArgIsArray && (oldArgIsString != (valueType == value_isStringPointer))) { execResult = result_array_valueTypeIsFixed; break; }
 
                     // if currently the variable contains a string object, delete it
-                    if (returnArgIsString) { execResult = deleteVarStringObject(pStackLvl); if (execResult != result_execOK) { break; } }      // (if not empty)
+                    if (oldArgIsString) { execResult = deleteVarStringObject(pStackLvl); if (execResult != result_execOK) { break; } }      // (if not empty)
 
-                    // save value and value type
-                    *pStackLvl->varOrConst.value.ppStringConst = value.pStringConst;                    // valid for all value types
-                    *pStackLvl->varOrConst.varTypeAddress = (*pStackLvl->varOrConst.varTypeAddress & ~value_typeMask) | valueType;
-                    ++valuesSaved;
+                    // save new value and value type
+                    if (!returnArgIsArray || (oldArgValueType == valueType)) {
+                        *pStackLvl->varOrConst.value.pLongConst = value.longConst;                    // valid for all value types
+                        *pStackLvl->varOrConst.varTypeAddress = (*pStackLvl->varOrConst.varTypeAddress & ~value_typeMask) | valueType;
+                    }
+                    else {      // is array and new and old value have different numeric types: convert to array value type
+                        if (oldArgValueType == value_isLong) { *pStackLvl->varOrConst.value.pLongConst = value.floatConst; }
+                        else { *pStackLvl->varOrConst.value.pFloatConst = value.longConst; }
+                    }
 
-                    // if the new value is a non-empty (intermediate) string, adapt object counters
+                    ++valuesSaved;      // numberof values saved will be returned
+
+                    // if the new value is a non-empty (intermediate) string, adapt object counters 
                     if ((valueType == value_isStringPointer) && (value.pStringConst != nullptr)) {
+                        intermediateStringCreated = false;                                               // it's going to be deleted now
                     #if printCreateDeleteListHeapObjects
-                        Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)value.pStringConst, HEX);
+                        Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)value.pStringConst, HEX);
                     #endif
-                        _parsedStringConstObjectCount--;        // but do not delete the object: it became a variable string
+                        _intermediateStringObjectCount--;        // but do not delete the object: it became a variable string
 
                         char varScope = (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_scopeMask);
                     #if printCreateDeleteListHeapObjects
@@ -3721,26 +3850,36 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 }
 
                 nowLookForSeparator = !nowLookForSeparator;             // for next loop
-            } while (true);
-
-            // delete input temporary buffer
-        #if printCreateDeleteListHeapObjects
-            Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)buffer, HEX);
-        #endif
-            if (functionCode == fnccod_parseListFromFile) {
-            delete[] buffer;
-            _intermediateStringObjectCount--;
             }
 
-            if (execResult != result_execOK) {                  // execution error ?
-                _evalParseErrorCode = parsingResult;            // in case a parsing error occured
+            // delete input temporary buffer
+            if (functionCode == fnccod_parseListFromFile) {
+                delete[] buffer;
+                _intermediateStringObjectCount--;
+            #if printCreateDeleteListHeapObjects
+                Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)buffer, HEX);
+            #endif
+            }
+
+            if (intermediateStringCreated) {
+                delete[] value.pStringConst;
+            #if printCreateDeleteListHeapObjects
+                Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)value.pStringConst, HEX);
+            #endif
+                _intermediateStringObjectCount--;
+
+            }
+
+            // execution error ?
+            if (execResult != result_execOK) {
+                _evalParseErrorCode = parsingResult;            // only relevant in case a parsing error occured
                 return execResult;
             }
 
-            // save result
+            // save result: number of values that were actually saved 
             fcnResultValueType = value_isLong;
             fcnResult.longConst = valuesSaved;
-            }
+        }
         break;
 
 
@@ -3829,7 +3968,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
         case fnccod_choose:
         {
-            // arguments: expression, test expression 1, test expression 2 [... [, test expression 7]...]
+            // arguments: expression, test expression 1, test expression 2 [... [, test expression 15]]
             // no preliminary restriction on type of arguments
 
             // the first expression is an index into the test expressions: return  
@@ -3847,7 +3986,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             #if printCreateDeleteListHeapObjects
                 Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
             #endif            
-        }
+            }
         }
         break;
 
@@ -3857,7 +3996,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
         case fnccod_index:
         {
-            // arguments : expression, test expression 1, test expression 2 [... [, test expression 15]...]
+            // arguments : expression, test expression 1, test expression 2 [... [, test expression 15]]
             // no preliminary restriction on type of arguments
 
             fcnResultValueType = value_isLong;
@@ -3955,8 +4094,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             #if printCreateDeleteListHeapObjects
                 Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
             #endif            
+            }
         }
-    }
         break;
 
 
@@ -4089,7 +4228,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
             #endif
             }
-                }
+        }
         break;
 
         // math functions 
@@ -4635,6 +4774,31 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         }
         break;
 
+        case fnccod_quote:
+        {
+            fcnResultValueType = value_isStringPointer;                                                                                 // init
+            fcnResult.pStringConst = nullptr;
+
+            if ((argIsLongBits & (0x1 << 0)) || (argIsFloatBits & (0x1 << 0))) {
+                fcnResult.pStringConst = new char[30];                                                                                  // provide sufficient length to store a number
+                _intermediateStringObjectCount++;
+                (argIsLongBits & (0x1 << 0)) ? sprintf(fcnResult.pStringConst, "%ld", args[0].longConst) : sprintf(fcnResult.pStringConst, "%G", args[0].floatConst);
+            }
+
+            else if (argIsStringBits & (0x1 << 0)) {
+                fcnResult.pStringConst = args[0].pStringConst;
+                expandStringBackslashSequences(fcnResult.pStringConst);     // returns a new intermediate string on the heap
+                // object counter stills need to be incremented
+                _intermediateStringObjectCount++;
+            }
+            if (fcnResult.pStringConst != nullptr) {
+            #if printCreateDeleteListHeapObjects
+                Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
+            #endif            
+            }
+        }
+        break;
+
 
         // retrieve a system variable
         // --------------------------
@@ -4736,7 +4900,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                             min(999, _localVarStringObjectErrors), min(999, _localArrayObjectErrors), min(999, _localVarValueAreaErrors), min(999, _intermediateStringObjectErrors),
                             min(999, _systemVarStringObjectErrors));
                     }
-            }
+                }
                 break;
 
                 case 25:                                                                                                                // trace string
@@ -4750,8 +4914,15 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                     #if printCreateDeleteListHeapObjects
                         Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
                     #endif
+                    }
                 }
-        }
+                break;
+
+                case 26:
+                {
+                    fcnResultValueType = value_isLong;
+                    fcnResult.longConst = evalStack.getCreatedObjectCount();        // pick any list: count is across lists
+                }
                 break;
 
                 default: return result_arg_invalid; break;
@@ -4759,11 +4930,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         }
         break;
 
-}       // end switch
+    }       // end switch
 
 
-    // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
-    // -------------------------------------------------------------------------------------------------------------------
+        // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
+        // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
@@ -4784,7 +4955,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
     }
 
     return result_execOK;
-            }
+}
 
 
 // -----------------------
@@ -5092,7 +5263,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
 
     // create a temporary string to hold expressions to parse, with an extra semicolon added at the end (in case it's missing)
     char* pEvalParsingInput = new char[strlen(parsingInput) + 2]; // room for additional semicolon (in case string is not ending with it) and terminating '\0'
-    _intermediateStringObjectCount++;
+    _systemVarStringObjectCount++;
     strcpy(pEvalParsingInput, parsingInput);              // copy the actual string
 
     pEvalParsingInput[strlen(parsingInput)] = term_semicolon[0];
@@ -5105,7 +5276,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
     int dummy{};
     parseTokenResult_type result = parseStatement(pParsingInput_temp, pDummy, dummy);           // parse all eval() expressions in ONE go (which is not the case for standard parsing and trace string parsing)
     delete[] pEvalParsingInput;
-    _intermediateStringObjectCount--;
+    _systemVarStringObjectCount--;
 #if printCreateDeleteListHeapObjects
     Serial.print("----- (system var str) "); Serial.println((uint32_t)pEvalParsingInput, HEX);
 #endif
@@ -5442,7 +5613,7 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateExternalFunct
         delete[] _activeFunctionData.pVariableAttributes;
         delete[] _activeFunctionData.ppSourceVarTypes;
         _localVarValueAreaCount--;
-}
+    }
     char blockType = block_none;            // init
     do {
         blockType = *(char*)_pFlowCtrlStackTop;            // always at least one level present for caller (because returning to it)

@@ -114,7 +114,7 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
             // check for arrays before checking for strings (if both 'var_isArray' and 'value_isStringPointer' bits are set: array of strings, with strings already deleted)
             if (((varType[index] & value_typeMask) != value_isVarRef) && (varType[index] & var_isArray)) {       // variable is an array: delete array storage          
             #if printCreateDeleteListHeapObjects
-                Serial.print(isUserVar ? "----- (usr ar stor) " : isLocalVar ? "----- (loc ar stor) " : "----- (array stor ) "); Serial.println((uint32_t)varValues[index].pStringConst, HEX);
+                Serial.print(isUserVar ? "----- (usr ar stor) " : isLocalVar ? "----- (loc ar stor) " : "----- (array stor ) "); Serial.println((uint32_t)varValues[index].pArray, HEX);
             #endif
                 delete[]  varValues[index].pArray;
                 isUserVar ? _userArrayObjectCount-- : isLocalVar ? _localArrayObjectCount-- : _globalStaticArrayObjectCount--;
@@ -1183,7 +1183,7 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
     // try to parse as string now
     char* pStringCst = nullptr;                 // init: is empty string (prevent creating a string object to conserve memory)
     char valueType; //dummy
-    bool isNotAString = parseString(pNext, pch, pStringCst, valueType, result);
+    bool isNotAString = parseString(pNext, pch, pStringCst, valueType, result, false);
     if (isNotAString) { return true; }                                                             // not a string constant: can still be another token type
     else if (result != result_tokenFound) { return false; }
 
@@ -1573,7 +1573,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                 bool arrayWithoutInitializer = (nextTermIndex < 0) ? false : ((_terminals[nextTermIndex].terminalCode == termcod_comma) || (_terminals[nextTermIndex].terminalCode == termcod_semicolon));
                 if (!arrayWithAssignmentOp && !arrayWithoutInitializer) {
                     if (isUserVar) {
-                        --_userVarCount; // consider user variable not created (relevant for user variables only, because program variables are destroyed anyway if parsing fails)
+                        _userVarCount--; // consider user variable not created (relevant for user variables only, because program variables are destroyed anyway if parsing fails)
                         _userVarUnderConstruction = false;
                     }
                     pNext = pch; result = result_assignmentOrTerminatorExpected; return false;
@@ -3076,9 +3076,9 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
 }
 
 
-// -------------------------------------------
-// *   expand backslash sequence in string   *
-// -------------------------------------------
+// -----------------------------------------------------------------------
+// *   add surrounding quotes and expand backslash sequences in string   *
+// -----------------------------------------------------------------------
 
 // note: this routine creates a character string on the heap; it must be deleted afterwards
 
@@ -3090,6 +3090,7 @@ void Justina_interpreter::expandStringBackslashSequences(char*& stringValue) {
     int oldLen = (stringValue == nullptr) ? 0 : strlen(stringValue);
 
     // !!! new char* created without augmenting an object counter: make sure no error occurs between this creation and later deletion (as soon as possible)
+    // !!! if not immediately deleted, augment object counter immediately after return of this procedure
     char* output = new char[oldLen + occurences + 2 + 1];       // provide room for expanded \ and " characters, 2 string terminating " and terminator
     output[0] = '"';                                                          // add starting string terminator
 

@@ -81,12 +81,13 @@ class LinkedList {
     // -----------------
 
 
+    static int _listIDcounter;                                  // number of lists created
+    static long _createdListObjectCounter;                          // count of created objects accross lists
 
-    static int _listIDcounter;                               // number of lists created
+    long _listElementCount;                                     // linked list length (number of objects in list)
 
-    ListElemHead* _pFirstElement = nullptr;                      // pointers to first and last list element
+    ListElemHead* _pFirstElement = nullptr;                     // pointers to first and last list element
     ListElemHead* _pLastElement = nullptr;
-    int _listElementCount{ 0 };                                // list element count (currently not used)
     listType_type _listType{};
 
     char _listName[listNameSize] = "";                                         // includes terminating '\0'
@@ -112,6 +113,7 @@ public:
     int getListID();
     void setListName(char* listName);
     char* getListName();
+    long getCreatedObjectCount();
 };
 
 
@@ -127,7 +129,7 @@ class MyParser;
 class Justina_interpreter {
 
     ////static constexpr int _progMemorySize{ 2000 };             // size, in bytes, of program memory (stores parsed program)
-    static constexpr int IMM_MEM_SIZE{ 300 };               // size, in bytes, of user command memory (stores parsed user statements)
+    static constexpr int IMM_MEM_SIZE{ 400 };               // size, in bytes, of user command memory (stores parsed user statements)
 
     static constexpr int MAX_USERVARNAMES{ 255 };           // max. user variables allowed. Absolute parser limit: 255
     static constexpr int MAX_PROGVARNAMES{ 255 };           // max. program variable NAMES allowed (same name may be reused for global, static, local & parameter variables). Absolute limit: 255
@@ -233,9 +235,12 @@ class Justina_interpreter {
         cmdcod_print,
         cmdcod_printLine,
         cmdcod_printList,
-        cmdcod_printTo,
-        cmdcod_printLineTo,
-        cmdcod_printListTo,
+        cmdcod_printToF,
+        cmdcod_printLineToF,
+        cmdcod_printListToF,
+        cmdcod_printToS,
+        cmdcod_printLineToS,
+        cmdcod_printListToS,
         cmdcod_dispfmt,
         cmdcod_dispmod,
         cmdcod_declCB,
@@ -303,6 +308,8 @@ class Justina_interpreter {
         fnccod_strcmp,
         fnccod_strcasecmp,
 
+        fnccod_quote,
+
         fnccod_cint,
         fnccod_cfloat,
         fnccod_cstr,
@@ -362,8 +369,8 @@ class Justina_interpreter {
         fnccod_write,
         fnccod_read,
 
-        fnccod_inputFrom,
-        fnccod_inputLineFrom,
+        fnccod_inputFromFile,
+        fnccod_inputLineFromFile,
         fnccod_parseListFromFile,
         fnccod_parseListFromString,
 
@@ -1187,7 +1194,7 @@ class Justina_interpreter {
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na,block_na,block_na };                                   // not a 'block' command
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[51];                          // keyword names
+    static const ResWordDef _resWords[54];                          // keyword names
     static const FuncDef _functions[131];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
@@ -1621,7 +1628,7 @@ private:
     parseTokenResult_type deleteUserVariable(char* userVarName = nullptr);
 
     bool parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueType, parseTokenResult_type& result);
-    bool parseString(char*& pNext, char*& pch, char*& string, char& valueType, parseTokenResult_type& result);
+    bool parseString(char*& pNext, char*& pch, char*& string, char& valueType, parseTokenResult_type& result, bool isIntermediateString);
 
     execResult_type startSD();
     void SD_closeAllFiles();
