@@ -28,7 +28,7 @@
 
 #include "Justina.h"
 
-#define printCreateDeleteListHeapObjects 0
+#define printHeapObjectCreationDeletion 0
 #define printProcessedTokens 0
 #define debugPrint 0
 #define printParsedStatementStack 0
@@ -749,11 +749,11 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             _pConsole->println(toPrint.pStringConst);
 
             if (toPrint.pStringConst != nullptr) {
-            #if printCreateDeleteListHeapObjects
+            #if printHeapObjectCreationDeletion
                 Serial.print("----- (Intermd str) "); Serial.println((uint32_t)toPrint.pStringConst, HEX);
             #endif
-                delete[] toPrint.pStringConst;
                 _intermediateStringObjectCount--;
+                delete[] toPrint.pStringConst;
             }
         }
     }
@@ -820,11 +820,11 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         if (toPrint.pStringConst == nullptr) { _pConsole->println(); }
         else {
             _pConsole->print(toPrint.pStringConst);
-        #if printCreateDeleteListHeapObjects
+        #if printHeapObjectCreationDeletion
             Serial.print("----- (Intermd str) "); Serial.println((uint32_t)toPrint.pStringConst, HEX);
         #endif
-            delete[] toPrint.pStringConst;
             _intermediateStringObjectCount--;
+            delete[] toPrint.pStringConst;
         }
 
 
@@ -1103,24 +1103,25 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
             char* pString = _pTraceString;      // current trace string (will be replaced now)
             if (pString != nullptr) {
-            #if printCreateDeleteListHeapObjects
+            #if printHeapObjectCreationDeletion
                 Serial.print("----- (system var str) "); Serial.println((uint32_t)pString, HEX);
             #endif
+                _systemVarStringObjectCount--;
                 delete[] pString;
                 _pTraceString = nullptr;      // old trace or eval string
-                _systemVarStringObjectCount--;
             }
 
             if (value.pStringConst != nullptr) {                           // new trace string
                 _systemVarStringObjectCount++;
                 pString = new char[strlen(value.pStringConst) + 2]; // room for additional semicolon (in case string is not ending with it) and terminating '\0'
+            #if printHeapObjectCreationDeletion
+                Serial.print("+++++ (system var str) "); Serial.println((uint32_t)pString, HEX);
+            #endif
+
                 strcpy(pString, value.pStringConst);              // copy the actual string
                 pString[strlen(value.pStringConst)] = term_semicolon[0];
                 pString[strlen(value.pStringConst) + 1] = '\0';
                 _pTraceString = pString;
-            #if printCreateDeleteListHeapObjects
-                Serial.print("+++++ (system var str) "); Serial.println((uint32_t)pString, HEX);
-            #endif
 
             }
 
@@ -1393,16 +1394,17 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                             // note that for reference variables, the variable type fetched is the SOURCE variable type
                             int varScope = pStackLvl->varOrConst.sourceVarScopeAndFlags & var_scopeMask;
                             int stringlen = min(strlen(input), MAX_ALPHA_CONST_LEN);
+
                             (varScope == var_isUser) ? _userVarStringObjectCount++ : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount++ : _localVarStringObjectCount++;
-
                             args[1].pStringConst = new char[stringlen + 1];
-                            memcpy(args[1].pStringConst, input, stringlen);                                                     // copy the actual string (not the pointer); do not use strcpy
-                            args[1].pStringConst[stringlen] = '\0';
-
-                        #if printCreateDeleteListHeapObjects
+                        #if printHeapObjectCreationDeletion
                             Serial.print((varScope == var_isUser) ? "+++++ (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "+++++ (var string ) " : "+++++ (loc var str) ");
                             Serial.println((uint32_t)args[1].pStringConst, HEX);
                         #endif
+
+                            memcpy(args[1].pStringConst, input, stringlen);                                                     // copy the actual string (not the pointer); do not use strcpy
+                            args[1].pStringConst[stringlen] = '\0';
+
                         }
                         *pStackLvl->varOrConst.value.ppStringConst = args[1].pStringConst;
                         *pStackLvl->varOrConst.varTypeAddress = (*pStackLvl->varOrConst.varTypeAddress & ~value_typeMask) | value_isStringPointer;
@@ -1588,7 +1590,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         operand.pStringConst = operandIsVar ? (*pStackLvl->varOrConst.value.ppStringConst) : pStackLvl->varOrConst.value.pStringConst;
                         // no need to copy string - just print the original, directly from stack (it's still there)
                         printString = operand.pStringConst;     // attention: null pointers not transformed into zero-length strings here
-                        if (doPrintList) { expandStringBackslashSequences(printString); }
+                        if (doPrintList) { quoteAndExpandEscSeq(printString); }
                     }
 
                     // print one value
@@ -1609,9 +1611,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
                         // create new string object with sufficient room for argument AND extras (arg. separator and new line sequence, if applicable)
                         if (assembledLen > 0) {
-                            assembledString = new char[assembledLen + 1]; assembledString[0] = '\0';
                             _intermediateStringObjectCount++;
-                        #if printCreateDeleteListHeapObjects
+                            assembledString = new char[assembledLen + 1]; assembledString[0] = '\0';
+                        #if printHeapObjectCreationDeletion
                             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)assembledString, HEX);
                         #endif
                         }
@@ -1625,11 +1627,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
                         // delete previous assembled string
                         if (oldAssembString != nullptr) {
-                        #if printCreateDeleteListHeapObjects
-                            Serial.print("----- (Intermd str) "); Serial.println((uint32_t)oldAssembStringt, HEX);
+                        #if printHeapObjectCreationDeletion
+                            Serial.print("----- (Intermd str) "); Serial.println((uint32_t)oldAssembString, HEX);
                         #endif
-                            delete[] oldAssembString;
                             _intermediateStringObjectCount--;
+                            delete[] oldAssembString;
                         }
                     }
 
@@ -1646,7 +1648,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         else if (printString != nullptr) { _consoleAtLineStart = (printString[strlen(printString) - 1] == '\n'); }
                     }
 
-                    if (opIsString && doPrintList) { delete[] printString; }     // created above in expandStringBackslashSequences() without incrementing object counter
+                    if (opIsString && doPrintList) {                            // created above in quoteAndExpandEscSeq(): never a nullptr
+                    #if printHeapObjectCreationDeletion
+                        Serial.print("----- (Intermd str) "); Serial.println((uint32_t)printString, HEX);
+                    #endif
+                        _intermediateStringObjectCount--;
+                        delete[] printString;
+                    }
 
 
                 }
@@ -1674,8 +1682,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     char varScope = (pFirstArgStackLvl->varOrConst.sourceVarScopeAndFlags & var_scopeMask);
                     (varScope == var_isUser) ? _userVarStringObjectCount++ : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount++ : _localVarStringObjectCount++;
 
-                #if printCreateDeleteListHeapObjects
-                    Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)assembledStringc, HEX);
+                #if printHeapObjectCreationDeletion
+                    Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)assembledString, HEX);
                     Serial.print((varScope == var_isUser) ? "+++++ (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "+++++ (var string ) " : "+++++ (loc var str) ");
                     Serial.println((uint32_t)*pFirstArgStackLvl->varOrConst.value.ppStringConst, HEX);
                 #endif
@@ -1855,14 +1863,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             pStackLvl = pStackLvlFirstValueArg;                                                         // set stack level again to first value argument
             for (int i = 0; i < 8; i++) {
                 if ((valueType[i] & value_typeMask) == value_isStringPointer) {
-                    // string argument was a constant (including a CONST variable) OR it was empty (null pointer) ?  
+                    // string argument was a constant (including a CONST variable) - OR it was empty (null pointer) ?  
                     // => a string copy or a new string solely consisting of a '\0' terminator (intermediate string) was passed to user routine and needs to be deleted 
                     if (valueType[i] & passCopyToCallback) {
-                    #if printCreateDeleteListHeapObjects
+                    #if printHeapObjectCreationDeletion
                         Serial.print("----- (Intermd str) "); Serial.println((uint32_t)args[i].pStringConst, HEX);
                     #endif
-                        delete[] args[i].pStringConst;                                                  // delete temporary string
                         _intermediateStringObjectCount--;
+                        delete[] args[i].pStringConst;                                                  // delete temporary string
                     }
 
                     // string argument was a (NON-CONSTANT) variable string: no copy was made, the string itself was passed to the user routine
@@ -1870,12 +1878,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     // then this variable string object needs to be deleted and the pointer to it needs to be replaced by a null pointer (Justnia convention)
                     else if (strlen(args[i].pStringConst) == 0) {
 
-                    #if printCreateDeleteListHeapObjects 
+                    #if printHeapObjectCreationDeletion 
                         Serial.print((varScope[i] == var_isUser) ? "----- (usr var str) " : ((varScope[i] == var_isGlobal) || (varScope[i] == var_isStaticInFunc)) ? "----- (var string ) " : "----- (loc var str) ");
                         Serial.println((uint32_t)args[i].pStringConst, HEX);
                     #endif
-                        delete[]args[i].pStringConst;                                                   // delete original variable string
                         (varScope[i] == var_isUser) ? _userVarStringObjectCount-- : ((varScope[i] == var_isGlobal) || (varScope[i] == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount-- : _localVarStringObjectCount--;
+                        delete[]args[i].pStringConst;                                                   // delete original variable string
                         *pStackLvl->varOrConst.value.ppStringConst = nullptr;                           // change pointer to string (in variable) to null pointer
                     }
                 }
@@ -2337,12 +2345,11 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
         if (lastResultTypeFiFo[itemToRemove] == value_isStringPointer) {
 
             if (lastResultValueFiFo[itemToRemove].pStringConst != nullptr) {
-            #if printCreateDeleteListHeapObjects
+            #if printHeapObjectCreationDeletion
                 Serial.print("----- (FiFo string) ");   Serial.println((uint32_t)lastResultValueFiFo[itemToRemove].pStringConst, HEX);
             #endif 
-                // note: this is always an intermediate string
-                delete[] lastResultValueFiFo[itemToRemove].pStringConst;
                 _lastValuesStringObjectCount--;
+                delete[] lastResultValueFiFo[itemToRemove].pStringConst;                // note: this is always an intermediate string
             }
         }
     }
@@ -2377,21 +2384,21 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
     // new last value is a non-empty string: make a copy of the string and store a reference to this new string
     else {
         int stringlen = min(strlen(lastvalue.value.pStringConst), MAX_ALPHA_CONST_LEN);        // excluding terminating \0
-        lastResultValueFiFo[0].pStringConst = new char[stringlen + 1];
         _lastValuesStringObjectCount++;
-        memcpy(lastResultValueFiFo[0].pStringConst, lastvalue.value.pStringConst, stringlen);        // copy the actual string (not the pointer); do not use strcpy
-        lastResultValueFiFo[0].pStringConst[stringlen] = '\0';
-
-    #if printCreateDeleteListHeapObjects
+        lastResultValueFiFo[0].pStringConst = new char[stringlen + 1];
+    #if printHeapObjectCreationDeletion
         Serial.print("+++++ (FiFo string) ");   Serial.println((uint32_t)lastResultValueFiFo[0].pStringConst, HEX);
     #endif            
 
+        memcpy(lastResultValueFiFo[0].pStringConst, lastvalue.value.pStringConst, stringlen);        // copy the actual string (not the pointer); do not use strcpy
+        lastResultValueFiFo[0].pStringConst[stringlen] = '\0';
+
         if (lastValueIntermediate) {
-        #if printCreateDeleteListHeapObjects
+        #if printHeapObjectCreationDeletion
             Serial.print("----- (intermd str) ");   Serial.println((uint32_t)lastvalue.value.pStringConst, HEX);
         #endif
-            delete[] lastvalue.value.pStringConst;
             _intermediateStringObjectCount--;
+            delete[] lastvalue.value.pStringConst;
         }
     }
 
@@ -2510,17 +2517,17 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
                     int paramOnlyCount = extFunctionData[functionIndex].paramOnlyCountInFunction;
 
                     if (localVarCount > 0) {
-                    #if printCreateDeleteListHeapObjects
-                        Serial.print("----- (LOCAL STORAGE) ");   Serial.println((uint32_t)(_activeFunctionData.pLocalVarValues), HEX);
-                    #endif
                         deleteStringArrayVarsStringObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, paramOnlyCount, false, false, true);
                         deleteVariableValueObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, paramOnlyCount, false, false, true);
 
+                    #if printHeapObjectCreationDeletion
+                        Serial.print("----- (LOCAL STORAGE) ");   Serial.println((uint32_t)(_activeFunctionData.pLocalVarValues), HEX);
+                    #endif
+                        _localVarValueAreaCount--;
                         // release local variable storage for function that has been called
                         delete[] _activeFunctionData.pLocalVarValues;
                         delete[] _activeFunctionData.pVariableAttributes;
                         delete[] _activeFunctionData.ppSourceVarTypes;
-                        _localVarValueAreaCount--;
                     }
                 }
                 if (!isInitialLoop) { --_callStackDepth; }
@@ -2559,7 +2566,6 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, e
 // the parameter n specifies the number of stack levels to pop
 
 void Justina_interpreter::clearImmediateCmdStack(int n) {
-
     // note: ensure that only entries are cleared for eval() levels for currently running program (if there is one) and current debug level (if at least one program is stopped)
     _pImmediateCmdStackTop = immModeCommandStack.getLastListElement();
 
@@ -2701,13 +2707,13 @@ void Justina_interpreter::makeIntermediateConstant(LE_evalStack* pEvalStackLvl) 
         }
         else {
             int stringlen = strlen(operand.pStringConst);
-            result.pStringConst = new char[stringlen + 1];
             _intermediateStringObjectCount++;
-            strcpy(result.pStringConst, operand.pStringConst);        // copy the actual strings 
-        #if printCreateDeleteListHeapObjects
+            result.pStringConst = new char[stringlen + 1];
+        #if printHeapObjectCreationDeletion
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)result.pStringConst, HEX);
-
         #endif
+
+            strcpy(result.pStringConst, operand.pStringConst);        // copy the actual strings 
         }
         pEvalStackLvl->varOrConst.value = result;                        // float or pointer to string (type: no change)
         pEvalStackLvl->varOrConst.valueType = valueType;
@@ -2995,14 +3001,14 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
 
                 if (stringlen == 0) { opResult.pStringConst = nullptr; }                                // empty strings are represented by a nullptr (conserve heap space)
                 else {                                                                                  // string to be assigned is not empty
-                    opResult.pStringConst = new char[stringlen + 1];
                     _intermediateStringObjectCount++;
+                    opResult.pStringConst = new char[stringlen + 1];
+                #if printHeapObjectCreationDeletion
+                    Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)opResult.pStringConst, HEX);
+                #endif
                     opResult.pStringConst[0] = '\0';                                                    // init: in case first operand is nullptr
                     if (!op1emptyString) { strcpy(opResult.pStringConst, operand1.pStringConst); }
                     if (!op2emptyString) { strcat(opResult.pStringConst, operand2.pStringConst); }
-                #if printCreateDeleteListHeapObjects
-                    Serial.print("+++++ (Intermd str) ");   Serial.print((uint32_t)opResult.pStringConst, HEX); Serial.print(", string: "); Serial.println(opResult.pStringConst);
-                #endif
                 }
             }
 
@@ -3146,22 +3152,23 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
             // because the value will be stored in a variable, limit to the maximum allowed string length
             char* pUnclippedResultString = opResult.pStringConst;
             int stringlen = min(strlen(pUnclippedResultString), MAX_ALPHA_CONST_LEN);
-            opResult.pStringConst = new char[stringlen + 1];
             (varScope == var_isUser) ? _userVarStringObjectCount++ : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount++ : _localVarStringObjectCount++;
-            memcpy(opResult.pStringConst, pUnclippedResultString, stringlen);        // copy the actual string (not the pointer); do not use strcpy
-            opResult.pStringConst[stringlen] = '\0';                                         // add terminating \0
-        #if printCreateDeleteListHeapObjects
+            opResult.pStringConst = new char[stringlen + 1];
+        #if printHeapObjectCreationDeletion
             Serial.print((varScope == var_isUser) ? "+++++ (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "+++++ (var string ) " : "+++++ (loc var str) ");
             Serial.println((uint32_t)opResult.pStringConst, HEX);
         #endif
 
+            memcpy(opResult.pStringConst, pUnclippedResultString, stringlen);        // copy the actual string (not the pointer); do not use strcpy
+            opResult.pStringConst[stringlen] = '\0';                                         // add terminating \0
+
             // compound statement ? then an intermediate string has been created (not pushed to the stack) and needs to be deleted now
             if (operatorCode != termcod_assign) {
-            #if printCreateDeleteListHeapObjects
-                Serial.print("----- (Intermd str) "); Serial.print((uint32_t)pUnclippedResultString, HEX); Serial.print(", string: "); Serial.println(pUnclippedResultString);
+            #if printHeapObjectCreationDeletion
+                Serial.print("----- (Intermd str) "); Serial.println((uint32_t)pUnclippedResultString, HEX);
             #endif
-                delete[] pUnclippedResultString;     // compound assignment: pointing to the unclipped result WHICH IS NON-EMPTY: so it's a heap object and must be deleted now
                 _intermediateStringObjectCount--;
+                delete[] pUnclippedResultString;     // compound assignment: pointing to the unclipped result WHICH IS NON-EMPTY: so it's a heap object and must be deleted now
             }
         }
 
@@ -3336,7 +3343,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // create temp string (make sure it gets deleted again !)
             char* filePath = args[0].pStringConst;
             int len = strlen(filePath);
+
+            _intermediateStringObjectCount++;
             char* filePathInCapitals = new char[len + 1];                                                                    // same length as original, space for terminating 
+        #if printHeapObjectCreationDeletion
+            Serial.print("+++++ (Intermd str) "); Serial.println((uint32_t)filePathInCapitals, HEX);
+        #endif            
+
             strcpy(filePathInCapitals, filePath);   // copy original string
             for (int i = 0; i < len; i++) { filePathInCapitals[i] = toupper(filePathInCapitals[i]); }
 
@@ -3347,6 +3360,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // file exists check only: return 0 or 1;
             if (functionCode == fnccod_exists) {
                 fcnResult.longConst = fileExists;
+            #if printHeapObjectCreationDeletion
+                Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)filePathInCapitals, HEX);
+            #endif
+                _intermediateStringObjectCount--;
                 delete[] filePathInCapitals;        // delete temp string
                 break;
             }
@@ -3354,6 +3371,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // make directory ? check that the file does not exist yet  
             if (functionCode == fnccod_mkdir) {
                 fcnResult.longConst = fileExists ? 0 : (long)SD.mkdir(filePathInCapitals);
+            #if printHeapObjectCreationDeletion
+                Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)filePathInCapitals, HEX);
+            #endif
+                _intermediateStringObjectCount--;
                 delete[] filePathInCapitals;        // delete temp string
                 break;
             }
@@ -3371,6 +3392,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // check for open file ? return 1 if open, 0 if not
             if (functionCode == fnccod_fileNumber) {
                 fcnResult.longConst = fileIsOpen;
+            #if printHeapObjectCreationDeletion
+                Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)filePathInCapitals, HEX);
+            #endif
+                _intermediateStringObjectCount--;
                 delete[] filePathInCapitals;        // delete temp string
                 break;
             }
@@ -3378,6 +3403,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // remove directory or file ? return 1 if success, 0 if not
             if (functionCode == fnccod_rmdir) { fcnResult.longConst = fileIsOpen ? 0 : (long)SD.rmdir(filePathInCapitals); }
             else if (functionCode == fnccod_remove) { fcnResult.longConst = fileIsOpen ? 0 : (long)SD.remove(filePathInCapitals); }
+        #if printHeapObjectCreationDeletion
+            Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)filePathInCapitals, HEX);
+        #endif
+            _intermediateStringObjectCount--;
             delete[] filePathInCapitals;        // delete temp string
         }
         break;
@@ -3509,12 +3538,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // retrieve file name and save
             fcnResultValueType = value_isStringPointer;
             int len = strlen(file.name());  // always longer than 0 characters
-            fcnResult.pStringConst = new char[len + 1];
             _intermediateStringObjectCount++;
-            strcpy(fcnResult.pStringConst, file.name());
-        #if printCreateDeleteListHeapObjects
+            fcnResult.pStringConst = new char[len + 1];
+        #if printHeapObjectCreationDeletion
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
         #endif            
+            strcpy(fcnResult.pStringConst, file.name());
         }
         break;
 
@@ -3578,7 +3607,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
         case fnccod_read:
         case fnccod_peek:
-
         {
             // arguments:
             // - read(): filenumber [, length]
@@ -3601,12 +3629,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 fcnResultValueType = value_isStringPointer;
                 if (c == 0xFF) { fcnResult.pStringConst = nullptr; }        // empty string
                 else {
-                    fcnResult.pStringConst = new char[2];
                     _intermediateStringObjectCount++;
+                    fcnResult.pStringConst = new char[2];
+                #if printHeapObjectCreationDeletion
+                    Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
                     fcnResult.pStringConst[0] = c;
                     fcnResult.pStringConst[1] = '\0';                                                                                           // terminating \0
-                #if printCreateDeleteListHeapObjects
-                    Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
                 #endif            
                 }
 
@@ -3657,9 +3685,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             }
 
             // prepare to read characters
-            char* buffer = new char[maxLineLength + 1];                     // buffer, long enough to receive maximum line length + null (create AFTER last error check)
             _intermediateStringObjectCount++;
-        #if printCreateDeleteListHeapObjects
+            char* buffer = new char[maxLineLength + 1];                     // buffer, long enough to receive maximum line length + null (create AFTER last error check)
+        #if printHeapObjectCreationDeletion
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)buffer, HEX);
         #endif
 
@@ -3688,18 +3716,31 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             }
 
             // save result
+            // -----------
             fcnResultValueType = value_isStringPointer;
+
+            // no characters read ? simply delete buffer
             if (charsRead == 0) {
-            #if printCreateDeleteListHeapObjects
+            #if printHeapObjectCreationDeletion
                 Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)buffer, HEX);
             #endif
-                delete[] buffer;
                 _intermediateStringObjectCount--;
+                delete[] buffer;
                 fcnResult.pStringConst = nullptr;
             }
-            else if (charsRead < maxLineLength) {       // to save space, move string to a smaller character array
+
+            // less characters read than maximum ? move string to a smaller character array to save space
+            else if (charsRead < maxLineLength) {
+                _intermediateStringObjectCount++;
                 char* smallerBuffer = new char[charsRead + 1]; // including space for terminating '\0'
+            #if printHeapObjectCreationDeletion
+                Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)smallerBuffer, HEX);
+            #endif
                 strcpy(smallerBuffer, buffer);
+            #if printHeapObjectCreationDeletion
+                Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)buffer, HEX);
+            #endif
+                _intermediateStringObjectCount--;
                 delete[] buffer;
                 fcnResult.pStringConst = smallerBuffer;
             }
@@ -3715,7 +3756,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         case fnccod_parseListFromString:
         {
             // arguments: file number or string, variable[, variable ...]
-
             char* buffer{};
             execResult_type execResult{ result_execOK };
             int valuesSaved{ 0 };
@@ -3730,9 +3770,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 if (execResult != result_execOK) { return execResult; }
 
                 // prepare to read characters
-                buffer = new char[MAX_ALPHA_CONST_LEN + 1];                     // buffer, long enough to receive maximum line length + null (create AFTER last error check)
                 _intermediateStringObjectCount++;
-            #if printCreateDeleteListHeapObjects
+                buffer = new char[MAX_ALPHA_CONST_LEN + 1];                     // buffer, long enough to receive maximum line length + null (create AFTER last error check)
+            #if printHeapObjectCreationDeletion
                 Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)buffer, HEX);
             #endif
 
@@ -3749,7 +3789,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             parseTokenResult_type parsingResult{ result_tokenFound };
 
             char* pNext = buffer;   // init
-            bool nowLookForSeparator{ false };
             int commaLength = strlen(term_comma);
             bool intermediateStringCreated{ false };
             Val value; char valueType{};
@@ -3759,116 +3798,113 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // iterate through all value-receiving variables and separators between them
             // -------------------------------------------------------------------------
 
-            for (int argIndex = 1; argIndex < suppliedArgCount; ++argIndex) {              // i=1: second argument, ...
-                intermediateStringCreated = false;                          // not yet within current loop
+            for (int argIndex = 1; argIndex < suppliedArgCount; ++argIndex, intermediateStringCreated = false) {              // i=1: second argument, ... last argument
 
                 // move to the first non-space character of next token 
-                while ((pNext[0] == ' ') || (pNext[0] == '\r') || (pNext[0] == '\n')) { pNext++; }                                         // skip leading spaces
+                while (pNext[0] == ' ')  { pNext++; }                                         // skip leading spaces
                 if (pNext[0] == '\0') { break; }                // end of instruction: prepare to quit parsing  
 
                 char* pch = pNext;
 
                 do {    // one loop only
-                    if (nowLookForSeparator) {      // look for a separator now
+                    if (argIndex > 1) {      // first look for a separator
                         // do not look for trailing space, to use strncmp() wih number of non-space characters found, because a space is not required after an operator
                         bool isComma = (strncmp(term_comma, pch, commaLength) == 0);      // token corresponds to terminal name ? Then exit loop    
                         if (!isComma) { parsingResult = result_separatorExpected;  break; }
                         pNext += commaLength;                                                                            // move to next character
+                        while (pNext[0] == ' ')  { pNext++; }                                         // skip leading spaces
+                        if (pNext[0] == '\0'){parsingResult = result_parseList_stringNotComplete; break;}
                     }
 
-                    else {  // look for a value now
-                        // parsing functions below return...
-                        //  - true: no parsing error. parsingResult determines whether token recognised (result_tokenFound) or not (result_tokenNotFound) - in which case it can still be another token type
-                        //  - false: parsing error. parsingResult indicates which error.
+                    // parsing functions below return...
+                    //  - true: no parsing error. parsingResult determines whether token recognised (result_tokenFound) or not (result_tokenNotFound) - in which case it can still be another token type
+                    //  - false: parsing error. parsingResult indicates which error.
 
-                        // float or integer ?
-                        _initVarOrParWithUnaryOp = 0;       // needs to be zero before calling parseIntFloat()
-                        if (!parseIntFloat(pNext, pch, value, valueType, parsingResult)) { break; }                                     // break with error
-                        if (parsingResult == result_tokenFound) { break; }                                                              // is this token type: look no further
-                        // string ?
-                        if (!parseString(pNext, pch, value.pStringConst, valueType, parsingResult, true)) { break; }                    // break with error
-                        if (parsingResult == result_tokenFound) { break; }                                                              // is this token type: look no further
-
-                        parsingResult = result_token_not_recognised;
-                    }
+                    // float or integer ?
+                    _initVarOrParWithUnaryOp = 0;       // needs to be zero before calling parseIntFloat()
+                    if (!parseIntFloat(pNext, pch, value, valueType, parsingResult)) { break; }                                     // break with error
+                    if (parsingResult == result_tokenFound) { break; }                                                              // is this token type: look no further
+                    // string ? if string and net empty, a string object is created by routine parseString()
+                    if (!parseString(pNext, pch, value.pStringConst, valueType, parsingResult, true)) { break; }                    // break with error
+                    if (parsingResult == result_tokenFound) {  break; }                                                              // is this token type: look no further
+                    parsingResult = result_token_not_recognised;
                 } while (false);        // one loop only
 
                 if (parsingResult != result_tokenFound) { execResult = result_list_parsingError;   break; }                             // exit loop if token error (syntax, ...)
 
+                // if a valid token was parsed: if it's a non-empty string (stored in value.pString), remember thar it will have to be deleted in case an errors occurs in what follows
                 if ((valueType == value_isStringPointer) && (value.pStringConst != nullptr)) { intermediateStringCreated = true; }      // parsed string is created on the heap
 
 
                 // parsing OK: assign value to receiving variable
                 // ----------------------------------------------
 
-                if (!nowLookForSeparator) {     // looking for value: move to next receiving variable argument
                     // retrieve stack level for receiving variable
-                    pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);         // now ponts to variable argument to receive a value (or nullptr if last was reached before)
-                    // reached last variable and input buffer not completely parsed ? break with error
-                    if (pStackLvl == nullptr) { break; }        // no more variables to save values into: quit parsing remainder of string / file
+                pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);         // now ponts to variable argument to receive a value (or nullptr if last was reached before)
+                // reached last variable and input buffer not completely parsed ? break with error
+                if (pStackLvl == nullptr) { break; }        // no more variables to save values into: quit parsing remainder of string / file
 
-                    // if variable is an array element, it's variable type is fixed. Compatible with provided value ?
-                    bool returnArgIsArray = (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_isArray);
-                    bool oldArgIsLong = (argIsLongBits & (0x1 << argIndex));
-                    bool oldArgIsFloat = (argIsFloatBits & (0x1 << argIndex));
-                    bool oldArgIsString = (argIsStringBits & (0x1 << argIndex));
-                    char oldArgValueType = (oldArgIsLong ? value_isLong : oldArgIsFloat ? value_isFloat : value_isStringPointer);
+                // if variable is an array element, it's variable type is fixed. Compatible with provided value ?
+                bool returnArgIsArray = (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_isArray);
+                bool oldArgIsLong = (argIsLongBits & (0x1 << argIndex));
+                bool oldArgIsFloat = (argIsFloatBits & (0x1 << argIndex));
+                bool oldArgIsString = (argIsStringBits & (0x1 << argIndex));
+                char oldArgValueType = (oldArgIsLong ? value_isLong : oldArgIsFloat ? value_isFloat : value_isStringPointer);
 
-                    // if receiving variable is array, both of the old and new values must be string OR both must be numeric (array value type is fixed)
-                    if (returnArgIsArray && (oldArgIsString != (valueType == value_isStringPointer))) { execResult = result_array_valueTypeIsFixed; break; }
+                // if receiving variable is array, both of the old and new values must be string OR both must be numeric (array value type is fixed)
+                if (returnArgIsArray && (oldArgIsString != (valueType == value_isStringPointer))) { execResult = result_array_valueTypeIsFixed; break; }
 
-                    // if currently the variable contains a string object, delete it
-                    if (oldArgIsString) { execResult = deleteVarStringObject(pStackLvl); if (execResult != result_execOK) { break; } }      // (if not empty)
+                // if currently the variable contains a string object, delete it
+                if (oldArgIsString) { execResult = deleteVarStringObject(pStackLvl); if (execResult != result_execOK) { break; } }      // (if not empty)
 
-                    // save new value and value type
-                    if (!returnArgIsArray || (oldArgValueType == valueType)) {
-                        *pStackLvl->varOrConst.value.pLongConst = value.longConst;                    // valid for all value types
-                        *pStackLvl->varOrConst.varTypeAddress = (*pStackLvl->varOrConst.varTypeAddress & ~value_typeMask) | valueType;
-                    }
-                    else {      // is array and new and old value have different numeric types: convert to array value type
-                        if (oldArgValueType == value_isLong) { *pStackLvl->varOrConst.value.pLongConst = value.floatConst; }
-                        else { *pStackLvl->varOrConst.value.pFloatConst = value.longConst; }
-                    }
-
-                    ++valuesSaved;      // numberof values saved will be returned
-
-                    // if the new value is a non-empty (intermediate) string, adapt object counters 
-                    if ((valueType == value_isStringPointer) && (value.pStringConst != nullptr)) {
-                        intermediateStringCreated = false;                                               // it's going to be deleted now
-                    #if printCreateDeleteListHeapObjects
-                        Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)value.pStringConst, HEX);
-                    #endif
-                        _intermediateStringObjectCount--;        // but do not delete the object: it became a variable string
-
-                        char varScope = (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_scopeMask);
-                    #if printCreateDeleteListHeapObjects
-                        Serial.print((varScope == var_isUser) ? "+++++ (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "+++++ (var string ) " : "+++++ (loc var str) ");
-                        Serial.println((uint32_t)*pStackLvl->varOrConst.value.ppStringConst, HEX);
-                    #endif
-                        (varScope == var_isUser) ? _userVarStringObjectCount++ : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount++ : _localVarStringObjectCount++;
-                    }
+                // save new value and value type
+                if (!returnArgIsArray || (oldArgValueType == valueType)) {
+                    *pStackLvl->varOrConst.value.pLongConst = value.longConst;                    // valid for all value types
+                    *pStackLvl->varOrConst.varTypeAddress = (*pStackLvl->varOrConst.varTypeAddress & ~value_typeMask) | valueType;
+                }
+                else {      // is array and new and old value have different numeric types: convert to array value type
+                    if (oldArgValueType == value_isLong) { *pStackLvl->varOrConst.value.pLongConst = value.floatConst; }
+                    else { *pStackLvl->varOrConst.value.pFloatConst = value.longConst; }
                 }
 
-                nowLookForSeparator = !nowLookForSeparator;             // for next loop
+                ++valuesSaved;      // numberof values saved will be returned
+
+                // if the new value is a non-empty (intermediate) string, simply reference it in the Justina variable 
+                if ((valueType == value_isStringPointer) && (value.pStringConst != nullptr)) {
+                    intermediateStringCreated = false;                                               // it's becoming a Justina variable value now
+                #if printHeapObjectCreationDeletion
+                    Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)value.pStringConst, HEX);
+                #endif
+                    _intermediateStringObjectCount--;
+                    // do NOT delete the object: it became a variable string
+
+                    char varScope = (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_scopeMask);
+                #if printHeapObjectCreationDeletion
+                    Serial.print((varScope == var_isUser) ? "+++++ (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "+++++ (var string ) " : "+++++ (loc var str) ");
+                    Serial.println((uint32_t)*pStackLvl->varOrConst.value.ppStringConst, HEX);
+                #endif
+                    (varScope == var_isUser) ? _userVarStringObjectCount++ : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount++ : _localVarStringObjectCount++;
+                }
             }
 
             // delete input temporary buffer
             if (functionCode == fnccod_parseListFromFile) {
-                delete[] buffer;
-                _intermediateStringObjectCount--;
-            #if printCreateDeleteListHeapObjects
+            #if printHeapObjectCreationDeletion
                 Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)buffer, HEX);
             #endif
+                _intermediateStringObjectCount--;
+                delete[] buffer;
             }
 
             if (intermediateStringCreated) {
-                delete[] value.pStringConst;
-            #if printCreateDeleteListHeapObjects
+            #if printHeapObjectCreationDeletion
                 Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)value.pStringConst, HEX);
             #endif
                 _intermediateStringObjectCount--;
+                delete[] value.pStringConst;
 
             }
+
 
             // execution error ?
             if (execResult != result_execOK) {
@@ -3952,12 +3988,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // result is a non-empty string ? an object still has to be created on the heap
             if ((fcnResultValueType == value_isStringPointer) && (fcnResult.pStringConst != nullptr)) {
                 int resultIndex = match ? matchIndex + 1 : suppliedArgCount - 1;
-                fcnResult.pStringConst = new char[strlen(args[resultIndex].pStringConst) + 1];
                 _intermediateStringObjectCount++;
-                strcpy(fcnResult.pStringConst, args[resultIndex].pStringConst);
-            #if printCreateDeleteListHeapObjects
+                fcnResult.pStringConst = new char[strlen(args[resultIndex].pStringConst) + 1];
+            #if printHeapObjectCreationDeletion
                 Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
             #endif            
+                strcpy(fcnResult.pStringConst, args[resultIndex].pStringConst);
             }
         }
         break;
@@ -3980,12 +4016,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
             // result is a non-empty string ? an object still has to be created on the heap
             if ((fcnResultValueType == value_isStringPointer) && (fcnResult.pStringConst != nullptr)) {
-                fcnResult.pStringConst = new char[strlen(args[index].pStringConst) + 1];
                 _intermediateStringObjectCount++;
-                strcpy(fcnResult.pStringConst, args[index].pStringConst);
-            #if printCreateDeleteListHeapObjects
+                fcnResult.pStringConst = new char[strlen(args[index].pStringConst) + 1];
+            #if printHeapObjectCreationDeletion
                 Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
             #endif            
+                strcpy(fcnResult.pStringConst, args[index].pStringConst);
             }
         }
         break;
@@ -4088,12 +4124,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 fcnResult = lastResultValueFiFo[FiFoElement];
             }
             else {                              // string
-                fcnResult.pStringConst = new char[strlen(lastResultValueFiFo[FiFoElement].pStringConst + 1)];
                 _intermediateStringObjectCount++;
-                strcpy(fcnResult.pStringConst, lastResultValueFiFo[FiFoElement].pStringConst);
-            #if printCreateDeleteListHeapObjects
+                fcnResult.pStringConst = new char[strlen(lastResultValueFiFo[FiFoElement].pStringConst + 1)];
+            #if printHeapObjectCreationDeletion
                 Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
             #endif            
+                strcpy(fcnResult.pStringConst, lastResultValueFiFo[FiFoElement].pStringConst);
             }
         }
         break;
@@ -4211,20 +4247,20 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             fcnResultValueType = value_isStringPointer;                                                                                 // init
             fcnResult.pStringConst = nullptr;
             if ((argIsLongBits & (0x1 << 0)) || (argIsFloatBits & (0x1 << 0))) {
-                fcnResult.pStringConst = new char[30];                                                                                  // provide sufficient length to store a number
                 _intermediateStringObjectCount++;
+                fcnResult.pStringConst = new char[30];                                                                                  // provide sufficient length to store a number
                 (argIsLongBits & (0x1 << 0)) ? sprintf(fcnResult.pStringConst, "%ld", args[0].longConst) : sprintf(fcnResult.pStringConst, "%G", args[0].floatConst);
 
             }
             else if ((argIsStringBits & (0x1 << 0))) {
                 if (args[0].pStringConst != nullptr) {
-                    fcnResult.pStringConst = new char[strlen(args[0].pStringConst) + 1];
                     _intermediateStringObjectCount++;
+                    fcnResult.pStringConst = new char[strlen(args[0].pStringConst) + 1];
                     strcpy(fcnResult.pStringConst, args[0].pStringConst);       // just copy the string provided as argument
                 }
             }
             if (fcnResult.pStringConst != nullptr) {
-            #if printCreateDeleteListHeapObjects
+            #if printHeapObjectCreationDeletion
                 Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
             #endif
             }
@@ -4558,13 +4594,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
             // result is string
             fcnResultValueType = value_isStringPointer;
-            fcnResult.pStringConst = new char[2];
             _intermediateStringObjectCount++;
-            fcnResult.pStringConst[0] = asciiCode;
-            fcnResult.pStringConst[1] = '\0';                                                                                           // terminating \0
-        #if printCreateDeleteListHeapObjects
+            fcnResult.pStringConst = new char[2];
+        #if printHeapObjectCreationDeletion
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
         #endif            
+            fcnResult.pStringConst[0] = asciiCode;
+            fcnResult.pStringConst[1] = '\0';                                                                                           // terminating \0
         }
         break;
 
@@ -4583,15 +4619,15 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         {
             // result is string
             fcnResultValueType = value_isStringPointer;
-            fcnResult.pStringConst = new char[3];
             _intermediateStringObjectCount++;
+            fcnResult.pStringConst = new char[3];
+        #if printHeapObjectCreationDeletion
+            Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
+        #endif            
             fcnResult.pStringConst[0] = '\r';
             fcnResult.pStringConst[1] = '\n';
             fcnResult.pStringConst[2] = '\0';                                                                                           // terminating \0
         }
-    #if printCreateDeleteListHeapObjects
-        Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
-    #endif            
         break;
 
         case fnccod_space:                                                                                                              // create a string with n spaces
@@ -4613,13 +4649,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             if ((len <= 0) || (len > MAX_ALPHA_CONST_LEN)) { return result_outsideRange; }
 
             // create new string
-            fcnResult.pStringConst = new char[len + 1];                                                                                 // space for terminating '0'
             _intermediateStringObjectCount++;
-            for (int i = 0; i <= len - 1; ++i) { fcnResult.pStringConst[i] = c; }
-            fcnResult.pStringConst[len] = '\0';
-        #if printCreateDeleteListHeapObjects
+            fcnResult.pStringConst = new char[len + 1];                                                                                 // space for terminating '0'
+        #if printHeapObjectCreationDeletion
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
         #endif            
+
+            for (int i = 0; i <= len - 1; ++i) { fcnResult.pStringConst[i] = c; }
+            fcnResult.pStringConst[len] = '\0';
         }
         break;
 
@@ -4690,13 +4727,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             if ((first > last) || (first < 0) || (last >= len)) { return result_arg_outsideRange; }
 
             // create new string
-            fcnResult.pStringConst = new char[len + 1];                                                                                 // same length as original, space for terminating 
             _intermediateStringObjectCount++;
-            strcpy(fcnResult.pStringConst, args[0].pStringConst);   // copy original string
-            for (int i = first; i <= last; i++) { fcnResult.pStringConst[i] = ((functionCode == fnccod_toupper) ? toupper(fcnResult.pStringConst[i]) : tolower(fcnResult.pStringConst[i])); }
-        #if printCreateDeleteListHeapObjects
+            fcnResult.pStringConst = new char[len + 1];                                                                                 // same length as original, space for terminating 
+        #if printHeapObjectCreationDeletion
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
         #endif            
+            strcpy(fcnResult.pStringConst, args[0].pStringConst);   // copy original string
+            for (int i = first; i <= last; i++) { fcnResult.pStringConst[i] = ((functionCode == fnccod_toupper) ? toupper(fcnResult.pStringConst[i]) : tolower(fcnResult.pStringConst[i])); }
         }
         break;
 
@@ -4724,13 +4761,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             if ((first > last) || (first < 0) || (last >= len)) { return result_arg_outsideRange; }
 
             // create new string
-            fcnResult.pStringConst = new char[last - first + 1];                                                                        // space for terminating '0'
             _intermediateStringObjectCount++;
-            memcpy(fcnResult.pStringConst, args[0].pStringConst + first, last - first + 1);
-            fcnResult.pStringConst[last - first + 1] = '\0';
-        #if printCreateDeleteListHeapObjects
+            fcnResult.pStringConst = new char[last - first + 1];                                                                        // space for terminating '0'
+        #if printHeapObjectCreationDeletion
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
         #endif            
+            memcpy(fcnResult.pStringConst, args[0].pStringConst + first, last - first + 1);
+            fcnResult.pStringConst[last - first + 1] = '\0';
         }
         break;
 
@@ -4764,13 +4801,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             }
 
             // create new string
-            fcnResult.pStringConst = new char[len - spaceCnt + 1];                                                                      // space for terminating '0'
             _intermediateStringObjectCount++;
-            memcpy(fcnResult.pStringConst, p, len - spaceCnt);
-            fcnResult.pStringConst[len - spaceCnt] = '\0';
-        #if printCreateDeleteListHeapObjects
+            fcnResult.pStringConst = new char[len - spaceCnt + 1];                                                                      // space for terminating '0'
+        #if printHeapObjectCreationDeletion
             Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
         #endif            
+            memcpy(fcnResult.pStringConst, p, len - spaceCnt);
+            fcnResult.pStringConst[len - spaceCnt] = '\0';
         }
         break;
 
@@ -4780,21 +4817,17 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             fcnResult.pStringConst = nullptr;
 
             if ((argIsLongBits & (0x1 << 0)) || (argIsFloatBits & (0x1 << 0))) {
-                fcnResult.pStringConst = new char[30];                                                                                  // provide sufficient length to store a number
                 _intermediateStringObjectCount++;
+                fcnResult.pStringConst = new char[30];                                                                                  // provide sufficient length to store a number
+            #if printHeapObjectCreationDeletion
+                Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
+            #endif            
                 (argIsLongBits & (0x1 << 0)) ? sprintf(fcnResult.pStringConst, "%ld", args[0].longConst) : sprintf(fcnResult.pStringConst, "%G", args[0].floatConst);
             }
 
             else if (argIsStringBits & (0x1 << 0)) {
                 fcnResult.pStringConst = args[0].pStringConst;
-                expandStringBackslashSequences(fcnResult.pStringConst);     // returns a new intermediate string on the heap
-                // object counter stills need to be incremented
-                _intermediateStringObjectCount++;
-            }
-            if (fcnResult.pStringConst != nullptr) {
-            #if printCreateDeleteListHeapObjects
-                Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
-            #endif            
+                quoteAndExpandEscSeq(fcnResult.pStringConst);     // returns a new intermediate string on the heap (never a null pointer)
             }
         }
         break;
@@ -4826,12 +4859,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 case 9:
                 {
                     fcnResultValueType = value_isStringPointer;
-                    fcnResult.pStringConst = new char[2];
                     _intermediateStringObjectCount++;
-                    strcpy(fcnResult.pStringConst, (sysVal == 4) ? _dispNumSpecifier : _printNumSpecifier);
-                #if printCreateDeleteListHeapObjects
+                    fcnResult.pStringConst = new char[2];
+                #if printHeapObjectCreationDeletion
                     Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
                 #endif
+                    strcpy(fcnResult.pStringConst, (sysVal == 4) ? _dispNumSpecifier : _printNumSpecifier);
                 }
                 break;
 
@@ -4843,12 +4876,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 case 14:
                 {
                     fcnResultValueType = value_isStringPointer;
-                    fcnResult.pStringConst = new char[MAX_IDENT_NAME_LEN + 1];
                     _intermediateStringObjectCount++;
-                    strcpy(fcnResult.pStringConst, _programName);
-                #if printCreateDeleteListHeapObjects
+                    fcnResult.pStringConst = new char[MAX_IDENT_NAME_LEN + 1];
+                #if printHeapObjectCreationDeletion
                     Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
                 #endif
+                    strcpy(fcnResult.pStringConst, _programName);
                 }
                 break;
 
@@ -4858,12 +4891,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 case 18:    // build date
                 {
                     fcnResultValueType = value_isStringPointer;
-                    fcnResult.pStringConst = new char[((sysVal == 15) ? strlen(ProductName) : (sysVal == 16) ? strlen(LegalCopyright) : (sysVal == 17) ? strlen(ProductVersion) : strlen(BuildDate)) + 1];
                     _intermediateStringObjectCount++;
-                    strcpy(fcnResult.pStringConst, (sysVal == 15) ? ProductName : (sysVal == 16) ? LegalCopyright : (sysVal == 17) ? ProductVersion : BuildDate);
-                #if printCreateDeleteListHeapObjects
+                    fcnResult.pStringConst = new char[((sysVal == 15) ? strlen(ProductName) : (sysVal == 16) ? strlen(LegalCopyright) : (sysVal == 17) ? strlen(ProductVersion) : strlen(BuildDate)) + 1];
+                #if printHeapObjectCreationDeletion
                     Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
                 #endif
+                    strcpy(fcnResult.pStringConst, (sysVal == 15) ? ProductName : (sysVal == 16) ? LegalCopyright : (sysVal == 17) ? ProductVersion : BuildDate);
                 }
                 break;
 
@@ -4878,9 +4911,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 case 1001:                                                                  // current accumulated object count errors since cold start
                 {
                     fcnResultValueType = value_isStringPointer;
-                    fcnResult.pStringConst = new char[13 * 5];                              // includes place for 13 times 5 characters (3 digits max. for each number, max. 2 extra in between) and terminating \0
                     _intermediateStringObjectCount++;
-                #if printCreateDeleteListHeapObjects
+                    fcnResult.pStringConst = new char[13 * 5];                              // includes place for 13 times 5 characters (3 digits max. for each number, max. 2 extra in between) and terminating \0
+                #if printHeapObjectCreationDeletion
                     Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
                 #endif
                     if (sysVal == 24) {     // print heap object counts
@@ -4903,22 +4936,22 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 }
                 break;
 
-                case 25:                                                                                                                // trace string
+                case 25:                                                                                                                // return trace string
                 {
                     fcnResultValueType = value_isStringPointer;
                     fcnResult.pStringConst = nullptr;                                                                                   // init (empty string)
                     if (_pTraceString != nullptr) {
-                        fcnResult.pStringConst = new char[strlen(_pTraceString) + 1];
                         _intermediateStringObjectCount++;
-                        strcpy(fcnResult.pStringConst, _pTraceString);
-                    #if printCreateDeleteListHeapObjects
+                        fcnResult.pStringConst = new char[strlen(_pTraceString) + 1];
+                    #if printHeapObjectCreationDeletion
                         Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
                     #endif
+                        strcpy(fcnResult.pStringConst, _pTraceString);
                     }
                 }
                 break;
 
-                case 26:
+                case 26:                                        // created list object count (across linked lists)
                 {
                     fcnResultValueType = value_isLong;
                     fcnResult.longConst = evalStack.getCreatedObjectCount();        // pick any list: count is across lists
@@ -5040,10 +5073,9 @@ void  Justina_interpreter::printToString(int width, int precision, bool inputIsS
         resultStrLen = max(width + 10, 30);         // 30: ensure length is sufficient to print a formatted nummber
     }
 
-    fcnResult.pStringConst = new char[resultStrLen + 1];
     _intermediateStringObjectCount++;
-
-#if printCreateDeleteListHeapObjects
+    fcnResult.pStringConst = new char[resultStrLen + 1];
+#if printHeapObjectCreationDeletion
     Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
 #endif
 
@@ -5051,7 +5083,11 @@ void  Justina_interpreter::printToString(int width, int precision, bool inputIsS
         if (expandStrings) {
             if ((*value).pStringConst != nullptr) {
                 char* pString = (*value).pStringConst;                          // remember pointer to original string
-                expandStringBackslashSequences((*value).pStringConst);          // creates new string: DELETE it immediately after printing
+                quoteAndExpandEscSeq((*value).pStringConst);                    // creates new string
+            #if printHeapObjectCreationDeletion
+                Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)pString, HEX);
+            #endif
+                _intermediateStringObjectCount--;
                 delete[] pString;                                               // delete old string
             }
         }
@@ -5078,12 +5114,12 @@ Justina_interpreter::execResult_type Justina_interpreter::deleteVarStringObject(
     char varScope = (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_scopeMask);
 
     // delete variable string object
-#if printCreateDeleteListHeapObjects
+#if printHeapObjectCreationDeletion
     Serial.print((varScope == var_isUser) ? "----- (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "----- (var string ) " : "----- (loc var str) ");
     Serial.println((uint32_t)*pStackLvl->varOrConst.value.ppStringConst, HEX);
 #endif
-    delete[] * pStackLvl->varOrConst.value.ppStringConst;
     (varScope == var_isUser) ? _userVarStringObjectCount-- : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount-- : _localVarStringObjectCount--;
+    delete[] * pStackLvl->varOrConst.value.ppStringConst;
     return result_execOK;
 }
 
@@ -5099,11 +5135,11 @@ Justina_interpreter::execResult_type Justina_interpreter::deleteIntermStringObje
     if ((pStackLvl->varOrConst.valueAttributes & constIsIntermediate) != constIsIntermediate) { return result_execOK; }       // not an intermediate constant
     if (pStackLvl->varOrConst.valueType != value_isStringPointer) { return result_execOK; }                                   // not a string object
     if (pStackLvl->varOrConst.value.pStringConst == nullptr) { return result_execOK; }
-#if printCreateDeleteListHeapObjects
+#if printHeapObjectCreationDeletion
     Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)_pEvalStackTop->varOrConst.value.pStringConst, HEX);
 #endif
-    delete[] pStackLvl->varOrConst.value.pStringConst;
     _intermediateStringObjectCount--;
+    delete[] pStackLvl->varOrConst.value.pStringConst;
 
     return result_execOK;
 }
@@ -5141,13 +5177,15 @@ Justina_interpreter::execResult_type Justina_interpreter::copyValueArgsFromStack
                 if ((args[i].pStringConst == nullptr) || argIsConstant) {               // note: non-empty variable strings (only): pointer keeps pointing to variable string (no copy)           
                     valueType[i] |= passCopyToCallback;                                 // flag that a copy has been made (it will have to be deleted afterwards))
                     strLength = (args[i].pStringConst == nullptr) ? 0 : strlen(args[i].pStringConst);
-                    args[i].pStringConst = new char[strLength + 1];                     // change pointer to copy of string
+
                     _intermediateStringObjectCount++;                                   // temporary string object will be deleted right after return from call to user callback routine
-                    if (strLength == 0) { args[i].pStringConst[0] = '\0'; }             // empty string (sole character is null-character as terminator)
-                    else { strcpy(args[i].pStringConst, pOriginalArg); }                // non-empty constant string
-                #if printCreateDeleteListHeapObjects
+                    args[i].pStringConst = new char[strLength + 1];                     // change pointer to copy of string
+                #if printHeapObjectCreationDeletion
                     Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)args[i].pStringConst, HEX);
                 #endif
+
+                    if (strLength == 0) { args[i].pStringConst[0] = '\0'; }             // empty string (sole character is null-character as terminator)
+                    else { strcpy(args[i].pStringConst, pOriginalArg); }                // non-empty constant string
                 }
             }
         }
@@ -5188,12 +5226,12 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchExternalFunctio
     int paramCount = extFunctionData[_activeFunctionData.functionIndex].paramOnlyCountInFunction;
 
     if (localVarCount > 0) {
+        _localVarValueAreaCount++;
         _activeFunctionData.pLocalVarValues = new Val[localVarCount];              // local variable value: real, pointer to string or array, or (if reference): pointer to 'source' (referenced) variable
         _activeFunctionData.ppSourceVarTypes = new char* [localVarCount];           // only if local variable is reference to variable or array element: pointer to 'source' variable value type  
         _activeFunctionData.pVariableAttributes = new char[localVarCount];         // local variable: value type (float, local string or reference); 'source' (if reference) or local variable scope (user, global, static; local, param) 
-        _localVarValueAreaCount++;
 
-    #if printCreateDeleteListHeapObjects
+    #if printHeapObjectCreationDeletion
         Serial.print("+++++ (LOCAL STORAGE) ");   Serial.println((uint32_t)_activeFunctionData.pLocalVarValues, HEX);
     #endif
     }
@@ -5262,24 +5300,24 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
     _parsingEvalString = true;
 
     // create a temporary string to hold expressions to parse, with an extra semicolon added at the end (in case it's missing)
-    char* pEvalParsingInput = new char[strlen(parsingInput) + 2]; // room for additional semicolon (in case string is not ending with it) and terminating '\0'
     _systemVarStringObjectCount++;
-    strcpy(pEvalParsingInput, parsingInput);              // copy the actual string
-
-    pEvalParsingInput[strlen(parsingInput)] = term_semicolon[0];
-    pEvalParsingInput[strlen(parsingInput) + 1] = '\0';
-#if printCreateDeleteListHeapObjects
+    char* pEvalParsingInput = new char[strlen(parsingInput) + 2]; // room for additional semicolon (in case string is not ending with it) and terminating '\0'
+#if printHeapObjectCreationDeletion
     Serial.print("+++++ (system var str) "); Serial.println((uint32_t)pEvalParsingInput, HEX);
 #endif
+
+    strcpy(pEvalParsingInput, parsingInput);              // copy the actual string
+    pEvalParsingInput[strlen(parsingInput)] = term_semicolon[0];
+    pEvalParsingInput[strlen(parsingInput) + 1] = '\0';
     char* pParsingInput_temp = pEvalParsingInput;        // temp, because value will be changed upon return (preserve original pointer value)
     // note: application flags are not adapted (would not be passed to caller immediately)
     int dummy{};
     parseTokenResult_type result = parseStatement(pParsingInput_temp, pDummy, dummy);           // parse all eval() expressions in ONE go (which is not the case for standard parsing and trace string parsing)
-    delete[] pEvalParsingInput;
-    _systemVarStringObjectCount--;
-#if printCreateDeleteListHeapObjects
+#if printHeapObjectCreationDeletion
     Serial.print("----- (system var str) "); Serial.println((uint32_t)pEvalParsingInput, HEX);
 #endif
+    _systemVarStringObjectCount--;
+    delete[] pEvalParsingInput;
 
     // last step of just parsed eval() string. Note: adding sizeof(tok_no_token) because not yet added
     _lastUserCmdStep = ((result == result_tokenFound) ? _programCounter + sizeof(tok_no_token) : nullptr);    // if parsing error, store nullptr as last token position
@@ -5375,12 +5413,12 @@ void Justina_interpreter::initFunctionParamVarWithSuppliedArg(int suppliedArgCou
                     tempString = operandIsVariable ? *pStackLvl->varOrConst.value.ppStringConst : pStackLvl->varOrConst.value.pStringConst;
                     if (tempString != nullptr) {
                         int stringlen = strlen(tempString);
-                        _activeFunctionData.pLocalVarValues[i].pStringConst = new char[stringlen + 1];
                         _localVarStringObjectCount++;
-                        strcpy(_activeFunctionData.pLocalVarValues[i].pStringConst, tempString);
-                    #if printCreateDeleteListHeapObjects
+                        _activeFunctionData.pLocalVarValues[i].pStringConst = new char[stringlen + 1];
+                    #if printHeapObjectCreationDeletion
                         Serial.print("+++++ (loc var str) ");   Serial.println((uint32_t)_activeFunctionData.pLocalVarValues[i].pStringConst, HEX);
                     #endif
+                        strcpy(_activeFunctionData.pLocalVarValues[i].pStringConst, tempString);
                     }
                 };
             }
@@ -5432,12 +5470,12 @@ void Justina_interpreter::initFunctionDefaultParamVariables(char*& pStep, int su
                 _activeFunctionData.pLocalVarValues[count].pStringConst = nullptr;   // init (if empty string)
                 if (s != nullptr) {
                     int stringlen = strlen(s);
-                    _activeFunctionData.pLocalVarValues[count].pStringConst = new char[stringlen + 1];
                     _localVarStringObjectCount++;
-                    strcpy(_activeFunctionData.pLocalVarValues[count].pStringConst, s);
-                #if printCreateDeleteListHeapObjects
+                    _activeFunctionData.pLocalVarValues[count].pStringConst = new char[stringlen + 1];
+                #if printHeapObjectCreationDeletion
                     Serial.print("+++++ (loc var str) ");   Serial.println((uint32_t)_activeFunctionData.pLocalVarValues[count].pStringConst, HEX);
                 #endif
+                    strcpy(_activeFunctionData.pLocalVarValues[count].pStringConst, s);
                 }
             }
             count++;
@@ -5495,9 +5533,9 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
                 } while (terminalCode != termcod_rightPar);
 
                 // create array (init later)
-                float* pArray = new float[arrayElements + 1];
                 _localArrayObjectCount++;
-            #if printCreateDeleteListHeapObjects
+                float* pArray = new float[arrayElements + 1];
+            #if printHeapObjectCreationDeletion
                 Serial.print("+++++ (loc ar stor) "); Serial.println((uint32_t)pArray, HEX);
             #endif
                 _activeFunctionData.pLocalVarValues[count].pArray = pArray;
@@ -5551,14 +5589,15 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
                     else {
                         if (length == 0) { _activeFunctionData.pLocalVarValues[count].pStringConst = nullptr; }       // an empty string does not create a heap object
                         else { // create string object and store string
+                            _localVarStringObjectCount++;
                             char* pVarString = new char[length + 1];          // create char array on the heap to store alphanumeric constant, including terminating '\0'
+                        #if printHeapObjectCreationDeletion
+                            Serial.print("+++++ (loc var str) "); Serial.println((uint32_t)pVarString, HEX);
+                        #endif
+
                             // store alphanumeric constant in newly created character array
                             strcpy(pVarString, pString);              // including terminating \0
                             _activeFunctionData.pLocalVarValues[count].pStringConst = pVarString;       // store pointer to string
-                            _localVarStringObjectCount++;
-                        #if printCreateDeleteListHeapObjects
-                            Serial.print("+++++ (loc var str) "); Serial.println((uint32_t)pVarString, HEX);
-                        #endif
                         }
                     }
                 }
@@ -5605,14 +5644,14 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateExternalFunct
         deleteStringArrayVarsStringObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, paramOnlyCount, false, false, true);
         deleteVariableValueObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, paramOnlyCount, false, false, true);
 
-    #if printCreateDeleteListHeapObjects
+    #if printHeapObjectCreationDeletion
         Serial.print("----- (LOCAL STORAGE) ");   Serial.println((uint32_t)_activeFunctionData.pLocalVarValues, HEX);
     #endif
+        _localVarValueAreaCount--;
         // release local variable storage for function that has been called
         delete[] _activeFunctionData.pLocalVarValues;
         delete[] _activeFunctionData.pVariableAttributes;
         delete[] _activeFunctionData.ppSourceVarTypes;
-        _localVarValueAreaCount--;
     }
     char blockType = block_none;            // init
     do {

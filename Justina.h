@@ -84,7 +84,7 @@ class LinkedList {
     static int _listIDcounter;                                  // number of lists created
     static long _createdListObjectCounter;                          // count of created objects accross lists
 
-    long _listElementCount;                                     // linked list length (number of objects in list)
+    long _listElementCount=0;                                     // linked list length (number of objects in list)
 
     ListElemHead* _pFirstElement = nullptr;                     // pointers to first and last list element
     ListElemHead* _pLastElement = nullptr;
@@ -578,10 +578,9 @@ class Justina_interpreter {
         result_onlyOutsideFunction,
         result_onlyImmediateOrInFunction,
         result_onlyInProgOutsideFunction,
-        result_onlyImmediateEndOfLine,////
+        result_onlyImmediateEndOfLine,
 
 
-        result_event_endParsing,
 
 
         result_noOpenBlock,
@@ -590,11 +589,12 @@ class Justina_interpreter {
         result_notAllowedInThisOpenBlock,
         result_wrongBlockSequence,
 
-        // tracing and eval() parsing errors
+        // tracing, eval() and other parsing errors during execution phase
         result_trace_eval_resWordNotAllowed = 2100,
         result_trace_eval_genericNameNotAllowed,
         result_trace_userFunctonNotAllowed,             // tracing restriction only
         result_trace_evalFunctonNotAllowed,             // tracing restriction only
+        result_parseList_stringNotComplete,
 
         // other program errors
         result_progMemoryFull = 2200,
@@ -1559,7 +1559,7 @@ private:
     void prettyPrintStatements(int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
     void printParsingResult(parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* pErrorPos);
 
-    void expandStringBackslashSequences(char*& input);
+    void quoteAndExpandEscSeq(char*& input);
 
     void* fetchVarBaseAddress(TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& sourceVarScopeAndFlags);
     void* arrayElemAddress(void* varBaseAddress, int* dims);

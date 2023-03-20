@@ -28,7 +28,8 @@
 
 #include "Justina.h"
 
-#define printCreateDeleteListHeapObjects 0
+#define printListObjectCreationDeletion 0
+#define printHeapObjectCreationDeletion 0
 #define debugPrint 0
 
 
@@ -50,7 +51,8 @@ long LinkedList::_createdListObjectCounter = 0;
 
 LinkedList::LinkedList() {
     _listID = _listIDcounter;
-    _listIDcounter++;       // static variable
+    _listIDcounter++;           // static variable: number of linked lists created
+    _listElementCount = 0;
     _pFirstElement = nullptr;
     _pLastElement = nullptr;
 }
@@ -85,7 +87,7 @@ char* LinkedList::appendListElement(int size) {
     _listElementCount++;
     _createdListObjectCounter++;
 
-#if printCreateDeleteListHeapObjects
+#if printListObjectCreationDeletion
     Serial.print("(LIST) Create elem # "); Serial.print(_listElementCount);
     Serial.print(", list ID "); Serial.print(_listID);
     Serial.print(", stack: "); Serial.print(_listName);
@@ -112,7 +114,7 @@ char* LinkedList::deleteListElement(void* pPayload) {                           
 
     ListElemHead* p = pElem->pNext;                                                     // remember return value
 
-#if printCreateDeleteListHeapObjects
+#if printListObjectCreationDeletion
     // determine list element # by counting from the list start
     ListElemHead* q = _pFirstElement;
     int i{};
@@ -307,7 +309,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     // ---------------------------------
     {"program",         cmdcod_program,         cmd_onlyProgramTop | cmd_skipDuringExec,            0,0,    cmdPar_103,     cmdBlockNone},        //// non-block commands: cmdBlockNone ?
     {"function",        cmdcod_function,        cmd_onlyInProgram | cmd_skipDuringExec,             0,0,    cmdPar_108,     cmdBlockExtFunction},
-    
+
     {"for",             cmdcod_for,             cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_109,     cmdBlockFor},
     {"while",           cmdcod_while,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockWhile},
     {"if",              cmdcod_if,              cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockIf},
@@ -318,14 +320,14 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"break",           cmdcod_break,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockOpenBlock_loop},        // allowed if at least one open loop block (any level) 
     {"continue",        cmdcod_continue,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockOpenBlock_loop },       // allowed if at least one open loop block (any level) 
     {"return",          cmdcod_return,          cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockOpenBlock_function},    // allowed if currently an open function definition block 
-    
+
     {"pause",           cmdcod_pause,           cmd_onlyInFunctionBlock,                            0,0,    cmdPar_106,     cmdBlockNone},
     {"halt",            cmdcod_halt,            cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},
 
     // input and output commands
     // -------------------------
     {"receiveProg",     cmdcod_receiveProg,     cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    
+
     {"info",            cmdcod_info,            cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_114,     cmdBlockNone},
     {"input",           cmdcod_input,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_113,     cmdBlockNone},
 
@@ -806,8 +808,8 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
         // get a key (character from console) if available and perform a regular housekeeping callback as well
         c = getKey(kill, allowTimeOut);     // while parsing a program, set allowTimeOut to true to make sure the program is received completely              
         if (kill) { break; }                // return true if kill request received from calling program
-
         if (c < 0xFF) { _initiateProgramLoad = false; }                     // reset _initiateProgramLoad after each character received
+
         bool programOrStatementRead = _programMode ? ((c == 0xFF) && allowTimeOut) : (c == '\n');
         if ((c == 0xFF) && !programOrStatementRead) { continue; }                // no character (except when program or imm. mode line is read): start next loop
 
@@ -1002,6 +1004,7 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
 
     // all statements (in program or imm. mode line) have been parsed: finalise
     // ------------------------------------------------------------------------
+
     int funcNotDefIndex;
     if (result == result_tokenFound) {
         // checks at the end of parsing: any undefined functions (program mode only) ?  any open blocks ?
@@ -1025,13 +1028,11 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
     else { printParsingResult(result, funcNotDefIndex, _statement, lineCount, pErrorPos); }                 // parsing error occured: print error message
 
 
-
     // if not in program mode and no parsing error: execute
     // ----------------------------------------------------
     execResult_type execResult{ result_execOK };
     if (!_programMode && (result == result_tokenFound)) {
         execResult = exec(_programStorage + _progMemorySize);                                             // execute parsed user statements
-
         if ((execResult == result_kill) || (execResult == result_quit)) { _quitJustina = true; }
         if (execResult == result_kill) { kill = true; }
     }
@@ -1074,7 +1075,6 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
         _blockLevel = 0;
         _extFunctionBlockOpen = false;
     }
-
 
     // execution finished (not stopping in debug mode), with or without error: delete parsed strings in imm mode command : they are on the heap and not needed any more. Identifiers must stay avaialble
     // -> if stopping a program for debug, do not delete parsed strings (in imm. mode command), because that command line has now been pushed on  ...
@@ -1329,8 +1329,12 @@ void Justina_interpreter::printVariables(bool userVars) {
                     else if (isFloat) { _pConsole->println(varValues[i].floatConst); }
                     else if (isString) {
                         char* pString = varValues[i].pStringConst;
-                        expandStringBackslashSequences(pString);        // creates new string: DELETE it immediately after printing
+                        quoteAndExpandEscSeq(pString);        // creates new string
                         _pConsole->println(pString);
+                    #if printHeapObjectCreationDeletion
+                        Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)pString, HEX);
+                    #endif
+                        _intermediateStringObjectCount--;
                         delete[] pString;
                     }
                     else { _pConsole->println("????"); }
@@ -1370,11 +1374,11 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
 
         // 1. delete variable name object
         // ------------------------------
-    #if printCreateDeleteListHeapObjects
+    #if printHeapObjectCreationDeletion
         Serial.print("----- (usrvar name) "); Serial.println((uint32_t) * (userVarNames + index), HEX);
     #endif
-        delete[] * (userVarNames + index);
         _userVarNameStringObjectCount--;
+        delete[] * (userVarNames + index);
 
         // 2. if variable is an array of strings: delete all non-empty strings in array
         // ----------------------------------------------------------------------------
@@ -1384,7 +1388,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
         // ----------------------------------------------------
         //    NOTE: do this before checking for strings (if both 'var_isArray' and 'value_isStringPointer' bits are set: array of strings, with strings already deleted)
         if (isArray) {       // variable is an array: delete array storage          
-        #if printCreateDeleteListHeapObjects
+        #if printHeapObjectCreationDeletion
             Serial.print("----- (usr ar stor)"); Serial.println((uint32_t)userVarValues[index].pArray, HEX);
         #endif
             delete[]  userVarValues[index].pArray;
@@ -1395,11 +1399,11 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
         // ------------------------------------------------------
         else if (isString) {       // variable is a scalar containing a string
             if (userVarValues[index].pStringConst != nullptr) {
-            #if printCreateDeleteListHeapObjects
+            #if printHeapObjectCreationDeletion
                 Serial.print("----- (usr var str) "); Serial.println((uint32_t)userVarValues[index].pStringConst, HEX);
             #endif
-                delete[]  userVarValues[index].pStringConst;
                 _userVarStringObjectCount--;
+                delete[]  userVarValues[index].pStringConst;
             }
         }
 
@@ -1469,7 +1473,7 @@ bool Justina_interpreter::parseIntFloat(char*& pNext, char*& pch, Val& value, ch
     if (isLong) {                                                       // token can be parsed as long ?
         valueType = value_isLong;
         value.longConst = strtoul(pNumStart, &pNext, base);                       // string to UNSIGNED long before assigning to (signed) long -> 0xFFFFFFFF will be stored as -1, as it should (all bits set)
-        if (_initVarOrParWithUnaryOp == -1) { value.longConst = -value.longConst; }    
+        if (_initVarOrParWithUnaryOp == -1) { value.longConst = -value.longConst; }
     }
     else {
         valueType = value_isFloat;
@@ -1478,8 +1482,8 @@ bool Justina_interpreter::parseIntFloat(char*& pNext, char*& pch, Val& value, ch
     }                                                    // token can be parsed as float ?
 
     bool isValidNumber = (pNumStart != pNext);              // is a number if pointer pNext was not moved (is NO error - possibly it's another valid token type)
-    if (isValidNumber) { result = result_tokenFound; }
-    return (!isValidNumber);     //  true: token is not a number (but it can stiil be something else)
+    if(isValidNumber ) {result = result_tokenFound;}
+    return true;                                             // no error; result indicates whether valid token was found or search for valid token needs to be continued
 }
 
 
@@ -1495,7 +1499,7 @@ bool Justina_interpreter::parseString(char*& pNext, char*& pch, char*& pStringCs
     if ((pNext[0] != '\"')) { return true; }                                         // no opening quote ? Is not an alphanumeric cst (it can still be something else)
     pNext++;                                                                            // skip opening quote
     int escChars = 0;
-
+    pStringCst = nullptr;               // init
     while (pNext[0] != '\"') {                                                       // do until closing quote, if any
         // if no closing quote found, an invalid escape sequence or a control character detected, reset pointer to first character to parse, indicate error and return
         if (pNext[0] == '\0') { pNext = pch; result = result_alphaClosingQuoteMissing; return false; }
@@ -1510,10 +1514,13 @@ bool Justina_interpreter::parseString(char*& pNext, char*& pch, char*& pStringCs
     // if alphanumeric constant is too long, reset pointer to first character to parse, indicate error and return
     if (pNext - (pch + 1) - escChars > MAX_ALPHA_CONST_LEN) { pNext = pch; result = result_alphaConstTooLong; return false; }
 
+    // token is an alphanumeric constant, and it's allowed here
     if (pNext - (pch + 1) - escChars > 0) {    // not an empty string: create string object 
-
-        // token is an alphanumeric constant, and it's allowed here
+        isIntermediateString ? _intermediateStringObjectCount++ : _parsedStringConstObjectCount++;
         pStringCst = new char[pNext - (pch + 1) - escChars + 1];                                // create char array on the heap to store alphanumeric constant, including terminating '\0'
+    #if printHeapObjectCreationDeletion
+        Serial.print(isIntermediateString ? "+++++ (Intermd str) " : "+++++ (parsed str ) "); Serial.println((uint32_t)pStringCst, HEX);
+    #endif
         // store alphanumeric constant in newly created character array
         pStringCst[pNext - (pch + 1) - escChars] = '\0';                                 // store string terminating '\0' (pch + 1 points to character after opening quote, pNext points to closing quote)
         char* pSource = pch + 1, * pDestin = pStringCst;                                  // pSource points to character after opening quote
@@ -1521,14 +1528,10 @@ bool Justina_interpreter::parseString(char*& pNext, char*& pch, char*& pStringCs
             if (pSource[0] == '\\') { pSource++; escChars--; }                           // if escape sequences found: skip first escape sequence character (backslash)
             pDestin++[0] = pSource++[0];
         }
-        isIntermediateString ? _intermediateStringObjectCount++ : _parsedStringConstObjectCount++;
-    #if printCreateDeleteListHeapObjects
-        Serial.print(isIntermediateString ? "+++++ (Intermd str) " : "+++++ (parsed str ) "); Serial.print((uint32_t)pStringCst, HEX); Serial.print(", string: "); Serial.println(pStringCst);
-    #endif
     }
     pNext++;                                                                            // skip closing quote
 
     valueType = value_isStringPointer;
     result = result_tokenFound;
-    return false;
+    return true;                                                                        // valid string
 }
