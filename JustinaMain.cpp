@@ -491,8 +491,9 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     {"space",                   fnccod_space,                   1,1,    0b0},
     {"repChar",                 fnccod_repchar,                 2,2,    0b0},
     {"strStr",                  fnccod_strstr,                  2,3,    0b0},
-    {"strCmp",                  fnccod_strcmp,                  2,2,    0b0 },
-    {"strCaseCmp",              fnccod_strcasecmp,              2,2,    0b0 },
+    {"strCmp",                  fnccod_strcmp,                  2,2,    0b0},
+    {"strCaseCmp",              fnccod_strcasecmp,              2,2,    0b0},
+    {"strHex",                  fnccod_strhex,                  1,1,    0b0},
     {"quote",                   fnccod_quote,                   1,1,    0b0},
 
     {"isAlpha",                 fnccod_isAlpha,                 1,2,    0b0},
@@ -513,10 +514,9 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     { "open",                    fnccod_open,                   1,2,    0b0 },
     { "close",                   fnccod_close,                  1,1,    0b0 },
 
-    { "write",                   fnccod_write,                  2,3,    0b0 },      //// to do
-    { "read",                    fnccod_read,                   1,2,    0b0 },      //// to revise
+    { "read",                    fnccod_read,                   1,2,    0b0 },      
 
-    { "input_f",                 fnccod_inputFromFile,          2,3,    0b0 },
+    { "input_f",                 fnccod_inputFromFile,          2,2,    0b0 },
     { "inputLine_f",             fnccod_inputLineFromFile,      1,1,    0b0 },
     { "parseList_f",             fnccod_parseListFromFile,      2,16,   0b0 },
 

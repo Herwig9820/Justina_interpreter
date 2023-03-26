@@ -174,7 +174,7 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
             memcpy(&pAnum, prgmCnt.pCstToken->cstValue.pStringConst, sizeof(pAnum));                         // pointer not necessarily aligned with word size: copy memory instead
             if (pAnum != nullptr) {
             #if printHeapObjectCreationDeletion
-                Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pAnum, HEX); 
+                Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pAnum, HEX);
             #endif
                 _parsedStringConstObjectCount--;
                 delete[] pAnum;
@@ -224,7 +224,7 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
             Serial.print("----- (system var str) "); Serial.println((uint32_t)_pTraceString, HEX);
         #endif
             _systemVarStringObjectCount--;
-            delete[] _pTraceString; 
+            delete[] _pTraceString;
             _pTraceString = nullptr;      // old trace string
         }
     }
@@ -1073,9 +1073,9 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parseTokenResult_type& res
 
     // try to parse as number (int or float)
     Val value; char valueType{};
-    if(! parseIntFloat(pNext, pch, value, valueType, result)) {return false;}                  // return with error, 'result' contains error number
+    if (!parseIntFloat(pNext, pch, value, valueType, result)) { return false; }                  // return with error, 'result' contains error number
     if (result != result_tokenFound) { return true; }                                           // is not a number, but can still be another valid token
-    
+
     float flt{ 0 }; long lng{ 0 };
     if (valueType == value_isLong) { lng = value.longConst; }
     else { flt = value.floatConst; }
@@ -1184,8 +1184,8 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
     char* pStringCst = nullptr;                 // init: is empty string (prevent creating a string object to conserve memory)
     char valueType; //dummy
 
-    if (!parseString(pNext, pch, pStringCst, valueType, result, false)) {  return false; };                   // return with error, 'result' contains error number
-    if (result != result_tokenFound) {  return true; }                                           // is not a number, but can still be another valid token
+    if (!parseString(pNext, pch, pStringCst, valueType, result, false)) { return false; };                   // return with error, 'result' contains error number
+    if (result != result_tokenFound) { return true; }                                           // is not a number, but can still be another valid token
 
     // expression syntax check 
     _thisLvl_lastIsVariable = false;
@@ -1395,7 +1395,8 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
 
     switch (_terminals[termIndex].terminalCode) {
 
-        case termcod_leftPar: {
+        case termcod_leftPar:
+        {
             // -------------------------------------
             // Case 1: is token a left parenthesis ?
             // -------------------------------------
@@ -1485,10 +1486,12 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             _pParsingStack->openPar.variableScope = _variableScope;
 
             _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
-            break; }
+        }
+        break;
 
 
-        case termcod_rightPar: {
+        case termcod_rightPar:
+        {
             // --------------------------------------
             // Case 2: is token a right parenthesis ?
             // --------------------------------------
@@ -1702,11 +1705,12 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             if (_blockLevel + _parenthesisLevel > 0) { _pParsingStack = (LE_parsingStack*)parsingStack.getLastListElement(); }
 
             _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
-            break;
         }
+        break;
 
 
-        case termcod_comma: {
+        case termcod_comma:
+        {
             // ------------------------------------
             // Case 3: is token a comma separator ?
             // ------------------------------------
@@ -1814,11 +1818,12 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
 
             if (_parenthesisLevel == 0) { _userVarUnderConstruction = false; }        // if a var was under construction, it has been created now without errors
 
-            break;
         }
+        break;
 
 
-        case termcod_semicolon: {
+        case termcod_semicolon:
+        {
             // ----------------------------------------
             // Case 4: is token a semicolon separator ?
             // ----------------------------------------
@@ -1847,9 +1852,8 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             _lvl0_isVarWithAssignment = false;
 
             _userVarUnderConstruction = false;        // if a var was under construction, it has been created now without errors
-
-            break;
         }
+        break;
 
 
         default:
@@ -2893,7 +2897,8 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
         char prettyToken[maxCharsPrettyToken] = "";         // used for all tokens except string values; must be long enough for the longest token in text
         char* pPrettyToken{ prettyToken };                  // init: for all tokens except string values
 
-        switch (tokenType) {
+        switch (tokenType)
+        {
             case tok_isReservedWord:
             {
                 TokenIsResWord* pToken = (TokenIsResWord*)progCnt.pTokenChars;
@@ -2907,8 +2912,8 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
 
                 sprintf(prettyToken, nextIsSemicolon ? "%s" : "%s ", _resWords[progCnt.pResW->tokenIndex]._resWordName);
                 hasTrailingSpace = true;
-                break;
             }
+            break;
 
             case tok_isInternFunction:
                 strcpy(prettyToken, _functions[progCnt.pIntFnc->tokenIndex].funcName);
@@ -2919,8 +2924,8 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
                 int identNameIndex = (int)progCnt.pExtFnc->identNameIndex;   // external function list element
                 char* identifierName = extFunctionNames[identNameIndex];
                 strcpy(prettyToken, identifierName);
-                break;
             }
+            break;
 
             case tok_isVariable:
             {
@@ -2930,8 +2935,8 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
                 char* identifierName = isUserVar ? userVarNames[identNameIndex] : programVarNames[identNameIndex];
                 sprintf(prettyToken, "%s%s", (isForcedFunctionVar ? "#" : ""), identifierName);
                 testNextForPostfix = true;
-                break;
             }
+            break;
 
             case tok_isConstant:
             {
@@ -2980,8 +2985,8 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
                     strcpy(prettyToken, pAnum); strcat(prettyToken, " ");       // generic token: just add a space at the end
                 }
                 hasTrailingSpace = !testNextForPostfix;
-                break;
             }
+            break;
 
             default:  // terminal
             {
@@ -3030,7 +3035,8 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
                 strcat(prettyToken, _terminals[index].terminalName);         // concatenate with empty string or single-space string
                 strcat(prettyToken, trailing);
                 isSemicolon = (_terminals[index].terminalCode == termcod_semicolon);
-                break; }
+            }
+            break;
         }
 
 

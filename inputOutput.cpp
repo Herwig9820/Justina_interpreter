@@ -41,16 +41,10 @@
 //
 // --------------------------------
 
+Justina_interpreter::execResult_type Justina_interpreter::startSD() {
 
+    if (_SDinitOK) { return result_execOK; }          // card is initialised: nothing to do
 
-// --------------------------------
-//
-// --------------------------------
-
-Justina_interpreter::execResult_type  Justina_interpreter::startSD() {
-
-    if (_SDinitOK) {return result_execOK; }          // card is initialised: nothing to do
-    
     if (!_SDcard.init(SPI_HALF_SPEED, _SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
     if (!SD.begin(_SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
 
@@ -102,7 +96,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumbe
             if (openFiles[i].fileNumberInUse) {
                 if (strcasecmp(openFiles[i].file.name(), filePath) == 0) {
                     delete[] filePathInCapitals;
-                    return result_SD_fileAlreadyOpen;                                           
+                    return result_SD_fileAlreadyOpen;
                 }
             }
         }
@@ -144,6 +138,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_openNext(int& fileN
 
     // file evaluates to false: assume last file in directory is currently open and no more files are available. Do not return error, file number 0 indicates 'last file reached'
     if (!f) { return result_execOK; }
+
     // find a free file number and assign it to this file
     for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
         if (!openFiles[i].fileNumberInUse) {
@@ -194,17 +189,59 @@ void Justina_interpreter::SD_closeFile(int fileNumber) {
 // list all files in the card with date and size TO SERIAL PORT
 // ------------------------------------------------------------
 
+void Justina_interpreter::printDirectory(File dir, int indentLevel) {
+    constexpr int step{ 2 }, defaultSizeAttrColumn{ 20 }, minimumColumnSpacing{ 4 };
+
+    while (true) {
+
+        File entry = dir.openNextFile();
+        if (!entry) {
+            // no more files
+            break;
+        }
+        for (uint8_t i = 1; i <= indentLevel * step; i++) {
+            _pConsole->print(" ");
+        }
+        _pConsole->print(entry.name());
+        if (entry.isDirectory()) {
+            _pConsole->println("/");
+            printDirectory(entry, indentLevel + 1);
+        }
+        else {
+            // files have sizes, directories do not
+            int len = indentLevel * step + strlen(entry.name());
+            if (len < defaultSizeAttrColumn - minimumColumnSpacing) {      // 
+                for (int i = len; i < defaultSizeAttrColumn; i++) { _pConsole->print(" "); }
+            }
+            else {
+                for (int i = 0; i < minimumColumnSpacing; i++) { _pConsole->print(" "); }
+            }
+            _pConsole->println(entry.size());
+
+        }
+        entry.close();
+    }
+}
+
 Justina_interpreter::execResult_type Justina_interpreter::SD_listFiles() {
+    if (!_SDinitOK) { return result_SD_noCardOrCardError; }
+
+    /*
+    // print to SERIAL (fixed) but include date and time stamp
     SdVolume volume{};
     SdFile root{};
 
-    if (!_SDinitOK) { return result_SD_noCardOrCardError; }
-
-    _pConsole->println("\nSD card: files (name, date, size in bytes): ");
+    Serial.println("\nSD card: files (name, date, size in bytes): ");
 
     volume.init(_SDcard);
     root.openRoot(volume);
     root.ls(LS_R | LS_DATE | LS_SIZE);      // to SERIAL (not to _console)
+    */
+
+    // print to console but without date and time stamp
+    SDLib::File SDroot = SD.open("/");
+    _pConsole->println("\nSD card: files (name, size in bytes): ");
+    printDirectory(SDroot, 0);
 
     return result_execOK;
 }
@@ -246,3 +283,4 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_fileChecks(File& fi
     }
     return result_execOK;
 }
+

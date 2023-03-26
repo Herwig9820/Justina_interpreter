@@ -42,6 +42,7 @@
 #define BuildDate "December 8, 2022"
 
 
+
 // ******************************************************************
 // ***                      class LinkedList                      ***
 // ******************************************************************
@@ -84,7 +85,7 @@ class LinkedList {
     static int _listIDcounter;                                  // number of lists created
     static long _createdListObjectCounter;                          // count of created objects accross lists
 
-    long _listElementCount=0;                                     // linked list length (number of objects in list)
+    long _listElementCount = 0;                                     // linked list length (number of objects in list)
 
     ListElemHead* _pFirstElement = nullptr;                     // pointers to first and last list element
     ListElemHead* _pLastElement = nullptr;
@@ -113,7 +114,7 @@ public:
     int getListID();
     void setListName(char* listName);
     char* getListName();
-    long getCreatedObjectCount();
+    static long getCreatedObjectCount();
 };
 
 
@@ -142,18 +143,18 @@ class Justina_interpreter {
     static constexpr int MAX_LAST_RESULT_DEPTH{ 10 };       // max. depth of 'last results' FiFo
 
     static constexpr int MAX_IDENT_NAME_LEN{ 20 };          // max length of identifier names, excluding terminating '\0'
-    static constexpr int MAX_ALPHA_CONST_LEN{ 255 };        // max length of character strings, excluding terminating '\0' (also if stored in variables). Absolute limit: 255
+    static constexpr int MAX_ALPHA_CONST_LEN{ 255 };        // max length of character strings stored in variables, excluding terminating '\0',. Absolute limit: 255
     static constexpr int MAX_USER_INPUT_LEN{ 100 };         // max. length of text a user can enter with an input statement. Absolute limit: 255
 
     static constexpr int MAX_STATEMENT_LEN{ 300 };          // max. length of a single user statement 
 
-    static constexpr int DEFAULT_PRINT_WIDTH{ 30 };          // default width of the print field.
-    static constexpr int DEFAULT_NUM_PRECISION{ 3 };         // default numeric precision.
-    static constexpr int DEFAULT_STRCHAR_TO_PRINT{ 30 };     // default # alphanumeric characters to print
-
     static constexpr long GETCHAR_TIMEOUT{ 200 };              // milli seconds
 
     static constexpr int MAX_OPEN_SD_FILES{ 5 };            // SD card: max. concurrent open files
+
+    static constexpr int DEFAULT_PRINT_WIDTH{ 30 };          // default width of the print field.
+    static constexpr int DEFAULT_NUM_PRECISION{ 3 };         // default numeric precision.
+    static constexpr int DEFAULT_STRCHAR_TO_PRINT{ 30 };     // default # alphanumeric characters to print
 
     const int MAX_PRINT_WIDTH = 255;                        // max. width of the print field. Absolute limit: 255. With as defined as in c++ printf 'format.width' sub-specifier
     const int MAX_NUM_PRECISION = 8;                        // max. numeric precision. Precision as defined as in c++ printf 'format.precision' sub-specifier
@@ -197,10 +198,9 @@ class Justina_interpreter {
 
         cmdcod_program,
         cmdcod_deleteVar,
-        cmdcod_clear,
-        cmdcod_printVars,
         cmdcod_clearAll,
         cmdcod_clearProg,
+        cmdcod_printVars,
         cmdcod_printCallSt,
         cmdcod_function,
         cmdcod_static,
@@ -250,7 +250,6 @@ class Justina_interpreter {
         cmdcod_listFiles,
         cmdcod_startSD,
         cmdcod_stopSD,
-        cmdcod_test //// test
     };
 
 
@@ -307,7 +306,7 @@ class Justina_interpreter {
         fnccod_strstr,
         fnccod_strcmp,
         fnccod_strcasecmp,
-
+        fnccod_strhex,
         fnccod_quote,
 
         fnccod_cint,
@@ -366,7 +365,6 @@ class Justina_interpreter {
 
         fnccod_open,
         fnccod_close,
-        fnccod_write,
         fnccod_read,
 
         fnccod_inputFromFile,
@@ -595,6 +593,7 @@ class Justina_interpreter {
         result_trace_userFunctonNotAllowed,             // tracing restriction only
         result_trace_evalFunctonNotAllowed,             // tracing restriction only
         result_parseList_stringNotComplete,
+        result_parseList_valueToParseExpected,
 
         // other program errors
         result_progMemoryFull = 2200,
@@ -725,7 +724,7 @@ class Justina_interpreter {
 
 
     //  terminals - should NOT start and end with an alphanumeric character or with an underscore
-    
+
     // non-operator terminals: ONE character only, character should NOT appear in operator names
     static constexpr char* term_semicolon = ";";        // must be single character
     static constexpr char* term_comma = ",";            // must be single character
@@ -734,7 +733,7 @@ class Justina_interpreter {
 
 
     // operators
-    
+
     // assignment operator: ONE character only, character should NOT appear in any other operator name, except compound operator names (but NOT as first character)
     static constexpr char* term_assign = "=";
     static constexpr char* term_plusAssign = "+=";
@@ -1195,7 +1194,7 @@ class Justina_interpreter {
 
     // sizes MUST be specified AND must be exact
     static const ResWordDef _resWords[54];                          // keyword names
-    static const FuncDef _functions[131];                            // function names with min & max arguments allowed
+    static const FuncDef _functions[128];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
 
@@ -1639,7 +1638,7 @@ private:
     execResult_type SD_fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File& file, int allowFileTypes = 1);
     execResult_type SD_fileChecks(bool argIsLong, bool argIsFloat, Val arg, File& file, int allowFileTypes = 1);
     execResult_type SD_fileChecks(File& file, int fileNumber, int allowFileTypes = 1);
-
+    void printDirectory(File dir, int numTabs);
 };
 
 #endif

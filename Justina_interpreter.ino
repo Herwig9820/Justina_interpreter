@@ -25,8 +25,6 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ***************************************************************************************/
 
-#include <SD.h>
-
 #define withTCP 0
 
 // includes
@@ -141,6 +139,9 @@ void setup() {
 
     // print sample / simple main menu for the user
     pConsole->println(menu);
+
+    SdFile::dateTimeCallback((dateTime));
+    
 }
 
 
@@ -283,6 +284,29 @@ void loop() {
 }                                                                                       // loop()
 
 
+// --------------------------------------
+// Blink a led to show program is running 
+// --------------------------------------
+
+void heartbeat() {
+    // note: this is not a clock because it does not measure the passing of fixed time intervals
+    // but the passing of minimum time intervals (the millis() function itself is a clock)
+
+    static bool ledOn{ false };
+    static uint32_t lastHeartbeat{ 0 };                                           // last heartbeat time in ms
+    static uint32_t previousTime{ 0 };
+
+    uint32_t currentTime = millis();
+    // also handle millis() overflow after about 47 days
+    if ((lastHeartbeat + heartbeatPeriod < currentTime) || (currentTime < previousTime)) {               // time passed OR millis() overflow: switch led state
+        lastHeartbeat = currentTime;
+        ledOn = !ledOn;
+        digitalWrite(HEARTBEAT_PIN, ledOn);
+    }
+    previousTime = currentTime;
+}
+
+
 #if withTCP
 
 // ---------------------------------------------------------------------------------
@@ -340,6 +364,26 @@ void onConnStateChange(connectionState_type  connectionState) {
 #endif
 
 
+// ------------------------------------------------------------
+// *   SD library callback function to adapt file date and time
+// ------------------------------------------------------------
+
+// this callback function is called by the SD library
+
+void dateTime(uint16_t* date, uint16_t* time)
+{
+    unsigned int year = 1980;
+    byte month = 8;
+    byte day = 8;
+    byte hour = 1;
+    byte minute = 2;
+    byte second = 3;
+
+    *date = FAT_DATE(year, month, day);
+    *time = FAT_TIME(hour, minute, second);
+}
+
+
 // -----------------------------------------------------------------------------------------------------------------------------
 // *   callback function to be called at regular intervals from any application not returning immediately to Arduino main loop()
 // -----------------------------------------------------------------------------------------------------------------------------
@@ -395,29 +439,6 @@ void housekeeping(bool& requestQuit, long& appFlags) {
         }
     }
 #endif
-}
-
-
-// --------------------------------------
-// Blink a led to show program is running 
-// --------------------------------------
-
-void heartbeat() {
-    // note: this is not a clock because it does not measure the passing of fixed time intervals
-    // but the passing of minimum time intervals (the millis() function itself is a clock)
-
-    static bool ledOn{ false };
-    static uint32_t lastHeartbeat{ 0 };                                           // last heartbeat time in ms
-    static uint32_t previousTime{ 0 };
-
-    uint32_t currentTime = millis();
-    // also handle millis() overflow after about 47 days
-    if ((lastHeartbeat + heartbeatPeriod < currentTime) || (currentTime < previousTime)) {               // time passed OR millis() overflow: switch led state
-        lastHeartbeat = currentTime;
-        ledOn = !ledOn;
-        digitalWrite(HEARTBEAT_PIN, ledOn);
-    }
-    previousTime = currentTime;
 }
 
 
