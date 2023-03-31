@@ -33,6 +33,7 @@
 #define debugPrint 0
 #define printParsedStatementStack 0
 
+
 // *****************************************************************
 // ***        class Justina_interpreter - implementation         ***
 // *****************************************************************
@@ -555,7 +556,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             char c{};                                                           // init: no character available
             bool kill{ false };
             do {
-                c = getKey(kill);                                               // get a key (character from console) if available, and perform a regular housekeeping callback as well
+                c = getCharacter(_pConsole, kill);                                               // get a key (character from console) if available, and perform a regular housekeeping callback as well
                 if (kill) { execResult = result_kill; return execResult; }      // kill Justina interpreter ? (buffer is now flushed until next line character)
 
                 if (c != 0xFF) {                                                                           // terminal character available for reading ?
@@ -1162,11 +1163,164 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         // read and parse program from console
         // -----------------------------------
 
-        case cmdcod_receiveProg:
+        case cmdcod_loadProg:
         {
-            return result_initiateProgramLoad;
+            _loadProgFromFileNo = 0;        // init: load from console 
+            if (cmdParamCount == 1) {       // file name specified
+                bool argIsVar[1];
+                bool argIsArray[1];
+                char valueType[1];
+                Val args[1];
+                copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
+                if (valueType[0] != value_isStringPointer) { return result_arg_stringExpected; }
+
+                // open file and retrieve file number
+                execResult_type execResult = SD_open(_loadProgFromFileNo, args[0].pStringConst, O_READ);    // this performs a few card & file checks as well
+                if (execResult == result_SD_couldNotOpenFile) {
+                    if (!SD.exists(args[0].pStringConst)) { execResult = result_SD_fileNotFound; }        // replace error code for clarity
+                }
+                if (execResult != result_execOK) { return execResult; }
+            }
+
+            return result_initiateProgramLoad;              // not an error but an 'event'
 
             // no clean up to do (return statement executed already)
+        }
+        break;
+
+
+        // ------------------------------------------------
+        // send a file from SD card to console
+        // ------------------------------------------------
+
+        case cmdcod_sendFile:
+        {
+            bool argIsVar[1];
+            bool argIsArray[1];
+            char valueType[1];
+            Val args[1];
+            copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
+            if (valueType[0] != value_isStringPointer) { return result_arg_stringExpected; }
+
+            int fileNumber{ 0 };
+            execResult_type execResult = SD_open(fileNumber, args[0].pStringConst, O_READ);     // this performs a few card & file checks as well
+            if (execResult == result_SD_couldNotOpenFile) {
+                if (!SD.exists(args[0].pStringConst)) { execResult = result_SD_fileNotFound; }        // replace error code for clarity
+            }
+            if (execResult != result_execOK) { return execResult; }
+
+            File file = openFiles[fileNumber - 1].file;
+
+            char c{};
+            bool kill{ false };
+
+            _pConsole->println("\r\nSending file... please wait\r\n");
+            while (file.available() > 0) {
+                char  a = file.read(); _pConsole->write(a);     // read and write, byte per byte
+                c = getCharacter(_pConsole, kill);          // keep console input buffer empty and perform a regular housekeeping callback as well
+                if (kill) { return result_kill; }  // kill request from caller ?
+            }
+
+            SD_closeFile(fileNumber);
+            _pConsole->println("\r\nFile sent");
+
+            _pConsole->println();       // blank line
+
+            // clean up
+            clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
+            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
+        }
+        break;
+
+
+        // ------------------------------------------------
+        // receive a file from console and store on SD card
+        // ------------------------------------------------
+
+        case cmdcod_receiveFile:
+        {
+            bool argIsVar[1];
+            bool argIsArray[1];
+            char valueType[1];
+            Val args[1];
+            copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
+            if (valueType[0] != value_isStringPointer) { return result_arg_stringExpected; }
+
+            if (!_SDinitOK) { return result_SD_noCardOrCardError; }
+            if (!pathValid(args[0].pStringConst)) { return result_SD_pathIsNotValid; }
+            
+            if (SD.exists(args[0].pStringConst)) {
+                // ask if overwrite is OK
+                bool doReceive{ false };
+                do {
+                    char s[70] = "===== File exists already. Overwrite ? (please answer Y or N) =====";
+                    _pConsole->println(s);
+                    // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
+                    // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
+                    bool doAbort{ false }, doStop{ false }, doCancel{ false }, doDefault{ false };      // not used but mandatory
+                    int length{ 0 };
+                    char input[MAX_USER_INPUT_LEN + 1] = "";                                                                          // init: empty string
+                    if (readText(doAbort, doStop, doCancel, doDefault, input, length)) { return result_kill; }  // kill request from caller ?
+
+                    bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
+                    if (validAnswer) { doReceive = (tolower(input[0]) == 'y'); break; }
+                } while (true);
+                if (!doReceive) { break; }
+            }
+            else {  // file does not yet exist: check if directory exists. If not, create without asking
+                char* dirPath = new char[strlen(args[0].pStringConst) + 1];
+                strcpy(dirPath, args[0].pStringConst);
+                int pos{ 0 };
+                bool dirCreated{ true };      // init
+                Serial.print(">1> "); Serial.print(dirPath); Serial.println(" <");
+                for (pos = strlen(args[0].pStringConst) - 1; pos >= 0; pos--) { if (dirPath[pos] == '/') { dirPath[pos] = '\0'; break; } }      // isolate path
+                Serial.print(">2> "); Serial.print(dirPath); Serial.println(" <");
+
+                if (pos > 0) {    // pos > 0: is NOT a root folder file (pos = 0: root '/' character found; pos=-1: no root '/' character found)
+                    Serial.println("O");
+                    if (!SD.exists(dirPath)) {   // if (sub-)directory path does not exist, create it now
+                        Serial.println("*** A");
+                        dirCreated = SD.mkdir(dirPath);
+                        Serial.println("*** B");
+                    }
+                    Serial.println("*** C");
+                }
+                delete[]dirPath;
+                if (!dirCreated) { return result_SD_couldNotCreateFileDir; }      // no success ? error
+            }
+
+            Serial.println("*** D");
+            int fileNumber{ 0 };
+            execResult_type execResult = SD_open(fileNumber, args[0].pStringConst, O_WRITE + O_CREAT + O_TRUNC);
+            if (execResult != result_execOK) { return execResult; }
+            File file = openFiles[fileNumber - 1].file;
+
+            _pConsole->println("\r\nWaiting for file... press ENTER to cancel");
+            char c{};
+            bool kill{ false };
+
+            bool waitForFirstChar = true;
+            do {
+                c = getCharacter(_pConsole, kill, true);          // get a key (character from console) if available and perform a regular housekeeping callback as well
+                if (kill) { return result_kill; }  // kill request from caller ?
+                if (c == 0xff) {
+                    if (waitForFirstChar) { continue; }
+                    else { break; }
+                }
+
+                if (waitForFirstChar) {
+                    _pConsole->println("\r\nReceiving file... please wait");
+                    waitForFirstChar = false;
+                }
+                file.write(c);          // write character to file
+            } while (true);
+
+            SD_closeFile(fileNumber);
+            _pConsole->println("\r\nFile stored on SD card");
+
+            // clean up
+            clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
+            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
         }
         break;
 
@@ -1467,7 +1621,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             do {                                                                                                            // until new line character encountered
                 char c{};
                 bool kill{ false };
-                c = getKey(kill);                                               // get a key (character from console) if available and perform a regular housekeeping callback as well
+                c = getCharacter(_pConsole, kill);                                               // get a key (character from console) if available and perform a regular housekeeping callback as well
                 if (kill) { execResult = result_kill; return execResult; }      // kill Justina interpreter ? (buffer is now flushed until next line character)
 
                 if (c != 0xFF) {                                                                           // terminal character available for reading ?
@@ -1629,7 +1783,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                             _intermediateStringObjectCount--;
                             delete[] oldAssembString;
                         }
-                    }
+                        }
 
                     else {      // print to file or console ?
                         if (printString != nullptr) { pOut->print(printString); }
@@ -1653,10 +1807,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     }
 
 
-                }
+                    }
 
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-            }
+                }
 
             // finalise
             if (isStringPrint) {        // print to string ? save in variable
@@ -1702,12 +1856,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 }
 
                 if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) { delete[] assembledString; }
-            }
+                }
 
             // clean up
             clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
-        }
+            }
         break;
 
 
@@ -2151,10 +2305,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         }
         break;
 
-    }       // end switch
+            }       // end switch
 
     return result_execOK;
-}
+        }
 
 
 // -------------------------------
@@ -2591,7 +2745,7 @@ void Justina_interpreter::clearImmediateCmdStack(int n) {
     }
 
     // do NOT delete parsed string constants for original command line (last copied to program storage) - handled later 
-}
+    }
 
 
 // --------------------------------------------------------------------------------------------------------------------------
@@ -3317,9 +3471,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         {
             int newFileNumber{};
             // file path must be string
-            if (!(argIsStringBits & (0x1 << 0))) { return result_stringExpected; }
+            if (!(argIsStringBits & (0x1 << 0))) { return result_stringExpected; }          // file full name including path
 
-            // mode:
+            // access mode
             long mode = O_READ;      // init: open for reading
             if (suppliedArgCount == 2) {
                 if (!(argIsLongBits & (0x1 << 1)) && !(argIsFloatBits & (0x1 << 1))) { return result_arg_numberExpected; }
@@ -3348,53 +3502,35 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         {
             // checks
             if (!_SDinitOK) { return result_SD_noCardOrCardError; }
-            if (!(argIsStringBits & (0x1 << 0))) { return result_stringExpected; }
-
-            // create temp string (make sure it gets deleted again !)
+            if (!(argIsStringBits & (0x1 << 0))) { return result_stringExpected; }          // file path
             char* filePath = args[0].pStringConst;
-            int len = strlen(filePath);
-
-            _intermediateStringObjectCount++;
-            char* filePathInCapitals = new char[len + 1];                                                                    // same length as original, space for terminating 
-        #if printHeapObjectCreationDeletion
-            Serial.print("+++++ (Intermd str) "); Serial.println((uint32_t)filePathInCapitals, HEX);
-        #endif            
-
-            strcpy(filePathInCapitals, filePath);   // copy original string
-            for (int i = 0; i < len; i++) { filePathInCapitals[i] = toupper(filePathInCapitals[i]); }
+            if (!pathValid(filePath)) { return result_SD_pathIsNotValid; }        // is not a complete check, but it remedies a few plaws in SD library
 
             // first, check whether the file exists
             fcnResultValueType = value_isLong;
-            bool fileExists = (long)SD.exists(filePathInCapitals);
+            bool fileExists = (long)SD.exists(filePath);
 
             // file exists check only: return 0 or 1;
             if (functionCode == fnccod_exists) {
                 fcnResult.longConst = fileExists;
-            #if printHeapObjectCreationDeletion
-                Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)filePathInCapitals, HEX);
-            #endif
-                _intermediateStringObjectCount--;
-                delete[] filePathInCapitals;        // delete temp string
                 break;
             }
 
             // make directory ? check that the file does not exist yet  
             if (functionCode == fnccod_mkdir) {
-                fcnResult.longConst = fileExists ? 0 : (long)SD.mkdir(filePathInCapitals);
-            #if printHeapObjectCreationDeletion
-                Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)filePathInCapitals, HEX);
-            #endif
-                _intermediateStringObjectCount--;
-                delete[] filePathInCapitals;        // delete temp string
+                fcnResult.longConst = fileExists ? 0 : (long)SD.mkdir(filePath);
                 break;
             }
 
             // check whether the file is open
             bool fileIsOpen{ false };
             if (_openFileCount > 0) {
+                bool givenStartsWithSlash = (filePath[0] == '/');
                 for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
                     if (openFiles[i].fileNumberInUse) {
-                        if (strcasecmp(openFiles[i].file.name(), filePath) == 0) { fileIsOpen = true; break; }      // break inner loop only
+                        // skip starting slash (always present) in stored file path if file path argument doesn't start with a slash
+                        Serial.println(givenStartsWithSlash);
+                        if (strcasecmp(openFiles[i].filePath + (givenStartsWithSlash ? 0 : 1), filePath) == 0) { fileIsOpen = true; break; }      // break inner loop only
                     }
                 }
             }
@@ -3402,22 +3538,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // check for open file ? return 1 if open, 0 if not
             if (functionCode == fnccod_fileNumber) {
                 fcnResult.longConst = fileIsOpen;
-            #if printHeapObjectCreationDeletion
-                Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)filePathInCapitals, HEX);
-            #endif
-                _intermediateStringObjectCount--;
-                delete[] filePathInCapitals;        // delete temp string
                 break;
             }
 
             // remove directory or file ? return 1 if success, 0 if not
-            if (functionCode == fnccod_rmdir) { fcnResult.longConst = fileIsOpen ? 0 : (long)SD.rmdir(filePathInCapitals); }
-            else if (functionCode == fnccod_remove) { fcnResult.longConst = fileIsOpen ? 0 : (long)SD.remove(filePathInCapitals); }
-        #if printHeapObjectCreationDeletion
-            Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)filePathInCapitals, HEX);
-        #endif
-            _intermediateStringObjectCount--;
-            delete[] filePathInCapitals;        // delete temp string
+            // the SD library function itself will test for correct file type (lib or file)  
+            if (functionCode == fnccod_rmdir) { fcnResult.longConst = fileIsOpen ? 0 : (long)SD.rmdir(filePath); }
+            else if (functionCode == fnccod_remove) { fcnResult.longConst = fileIsOpen ? 0 : (long)SD.remove(filePath); }
         }
         break;
 
@@ -3429,11 +3556,18 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         case fnccod_rewindDirectory:
         case fnccod_openNextFile:
         {
-            // check file number (also perform related file and SD card object checks)
+            // check directory file number (also perform related file and SD card object checks)
             File file{};
             int allowedFileTypes = (functionCode == fnccod_isDirectory) ? 0 : 2;        // 0: all file types allowed, 2: directories only
             execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, file, allowedFileTypes);
             if (execResult != result_execOK) { return execResult; }
+
+            // access mode (openNextFile only)
+            long mode = O_READ;      // init: open for reading
+            if (suppliedArgCount == 2) {
+                if (!(argIsLongBits & (0x1 << 1)) && !(argIsFloatBits & (0x1 << 1))) { return result_arg_numberExpected; }
+                mode = (argIsLongBits & (0x1 << 1)) ? args[1].longConst : args[1].floatConst;
+            }
 
             // execute function
             fcnResult.longConst = 0;                        // init
@@ -3448,8 +3582,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
             else {          // open next file in directory
                 // open file and retrieve file number
+                int dirFileNumber = (argIsLongBits & (0x1 << 0)) ? (args[0].longConst) : (args[0].floatConst);      // cast directory file number to integer
                 int newFileNumber{ 0 };
-                execResult_type execResult = SD_openNext(newFileNumber, file, O_READ);     // file could be open already: to be safe, open in read only mode here
+                execResult_type execResult = SD_openNext(dirFileNumber, newFileNumber, file, mode);     // file could be open already: to be safe, open in read only mode here
                 if (execResult != result_execOK) { return execResult; }
                 fcnResult.longConst = newFileNumber;
             }
@@ -3469,7 +3604,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // check file number (also perform related file and SD card object checks)
             if ((!(argIsLongBits & (0x1 << 0))) && (!(argIsFloatBits & (0x1 << 0)))) { return result_numberExpected; }                      // file number
             int fileNumber = (argIsLongBits & (0x1 << 0)) ? args[0].longConst : args[0].floatConst;
-            execResult_type execResult = SD_fileChecks(file, fileNumber, 0);
+            execResult_type execResult = SD_fileChecks(file, fileNumber, 0);            // all file types
             if (execResult != result_execOK) { return execResult; }
 
             if (functionCode == fnccod_flush) { file.flush(); }
@@ -3499,7 +3634,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         case fnccod_isOpenFile:
         {
             File file{};
-            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, file, 0);        // all file types
+            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, file, 0);        // file number (all file types)
             // do not produce error if file is not open; all other errors result in error being reported
             if ((execResult != result_execOK) && (execResult != result_SD_fileIsNotOpen)) { return execResult; }
 
@@ -3519,7 +3654,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         {
             // check file number (also perform related file and SD card object checks)
             File file{};
-            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, file);
+            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, file); // do not allow file type 'directory'
             if (execResult != result_execOK) { return execResult; }
 
             // retrieve value and save
@@ -3535,29 +3670,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
 
 
-        // SD: return file name
-        // --------------------
-
-        case fnccod_name:
-        {
-            // check file number (also perform related file and SD card object checks)
-            File file{};
-            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, file, 0);        // all file types
-            if (execResult != result_execOK) { return execResult; }
-
-            // retrieve file name and save
-            fcnResultValueType = value_isStringPointer;
-            int len = strlen(file.name());  // always longer than 0 characters
-            _intermediateStringObjectCount++;
-            fcnResult.pStringConst = new char[len + 1];
-        #if printHeapObjectCreationDeletion
-            Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
-        #endif            
-            strcpy(fcnResult.pStringConst, file.name());
-        }
-        break;
-
-
         // SD: set file position, set time out
         // -----------------------------------
 
@@ -3566,7 +3678,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         {
             // check file number (also perform related file and SD card object checks)
             File file{};
-            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, file);
+            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, file); // do not allow file type 'directory'
             if (execResult != result_execOK) { return execResult; }
 
             // check second argument: timeout OR position in file name to seek 
@@ -3582,6 +3694,33 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         break;
 
 
+        // SD: return file name
+        // --------------------
+
+        case fnccod_name:
+        case fnccod_fullName:
+        {
+            // check file number (also perform related file and SD card object checks)
+            File file{};
+            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, file, 0);        // all file types
+            if (execResult != result_execOK) { return execResult; }
+
+            int fileNumber = (argIsLongBits & (0x1 << 0)) ? (args[0].longConst) : (args[0].floatConst);
+
+            // retrieve file name or full name and save
+            fcnResultValueType = value_isStringPointer;
+
+            int len = strlen((functionCode == fnccod_name) ? file.name() : openFiles[fileNumber - 1].filePath);  // always longer than 0 characters
+            _intermediateStringObjectCount++;
+            fcnResult.pStringConst = new char[len + 1];
+        #if printHeapObjectCreationDeletion
+            Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
+        #endif            
+            strcpy(fcnResult.pStringConst, (functionCode == fnccod_name) ? file.name() : openFiles[fileNumber - 1].filePath);
+        }
+        break;
+
+
         // SD: find a target character sequence in characters read from an SD file. Two forms:
         // - //// doc
         // -----------------------------------------------------------------------------------
@@ -3591,7 +3730,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         {
             // check file number (also perform related file and SD card object checks)
             File file{};
-            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, file);
+            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, file);  // do not allow file type 'directory'
             if (execResult != result_execOK) { return execResult; }
 
             // check target string 
@@ -3615,11 +3754,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         // SD: read one or multiple bytes from file; peek character from file
         // ------------------------------------------------------------------
 
-        case fnccod_read:
+        case fnccod_readOneCharFromFile:
         case fnccod_peek:
         {
             // arguments:
             // - read(): filenumber [, length]
+            //   => although optional length argument is foreseen in code below, to avoid confusion, it's not allowed in _functions[] array (definition of internal functions) 
             // - peek(): filenumber
             // read() does not wait if no (more) characters are available but 
 
@@ -3627,12 +3767,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             if (suppliedArgCount == 1) {
                 // check file number (also perform related file and SD card object checks)
                 File file{};
-                execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, file);
+                execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, file);  // do not allow file type 'directory'
                 if (execResult != result_execOK) { return execResult; }
 
                 // read character from file now 
                 char c{};                                                                                         // init: no character read
-                if (functionCode == fnccod_read) { c = file.read(); }
+                if (functionCode == fnccod_readOneCharFromFile) { c = file.read(); }
                 else { c = file.peek(); }
 
                 // save result
@@ -3649,9 +3789,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 }
 
                 break;
+                }
             }
-        }
-        // NO BREAK here: if (read() with two arguments, continue
+        // NO BREAK here: if (read() with two arguments, continue 
 
 
         // SD: read multiple characters from an SD file. Three forms exist:  
@@ -3674,7 +3814,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
             // check file number (also perform related file and SD card object checks)
             File file{};
-            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, file);
+            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, file);  // do not allow file type 'directory'
             if (execResult != result_execOK) { return execResult; }
 
             // check terminator charachter: character string with at least one character 
@@ -3688,7 +3828,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // limit string length, because variable for it is created on the heap
             int maxLineLength = MAX_ALPHA_CONST_LEN - 1;        // init: input line -> line terminator '('\n') will be added as well
             // input & read: check length (optional argument)
-            if ((functionCode == fnccod_inputFromFile) || (functionCode == fnccod_read)) {     // last argument supplied (specifies maximum length)
+            if ((functionCode == fnccod_inputFromFile) || (functionCode == fnccod_readOneCharFromFile)) {     // last argument supplied (specifies maximum length)
                 int lengthArgIndex = suppliedArgCount - 1;            // base 0
                 if ((!(argIsLongBits & (0x1 << lengthArgIndex))) && (!(argIsFloatBits & (0x1 << lengthArgIndex)))) { return result_numberExpected; }      // number of bytes to read
                 maxLineLength = (argIsLongBits & (0x1 << lengthArgIndex)) ? (args[lengthArgIndex].longConst) : (args[lengthArgIndex].floatConst);
@@ -3705,7 +3845,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
             // read characters now
             int charsRead{};                          // init: set count of characters read to max. number of characters that can be read
-            if (functionCode == fnccod_read) { charsRead = file.read(buffer, maxLineLength); }                      // read: no timeout !
+            if (functionCode == fnccod_readOneCharFromFile) { charsRead = file.read(buffer, maxLineLength); }                      // read: no timeout !
             else if (functionCode == fnccod_inputFromFile) {    // read number of characters or read line
                 charsRead = (suppliedArgCount == 2) ? file.readBytes(buffer, maxLineLength) : file.readBytesUntil(terminator, buffer, maxLineLength);
             }
@@ -3779,7 +3919,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             if (functionCode == fnccod_parseListFromFile) {
                 // check file number (also perform related file and SD card object checks)
                 File file{};
-                execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, file);
+                execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, file);  // do not allow file type 'directory'
                 if (execResult != result_execOK) { return execResult; }
 
                 // prepare to read characters
@@ -4279,7 +4419,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
             #endif
             }
-        }
+            }
         break;
 
         // math functions 
@@ -4962,7 +5102,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                             min(999, _globalStaticVarStringObjectCount), min(999, _globalStaticArrayObjectCount), min(999, _userVarStringObjectCount), min(999, _userArrayObjectCount),
                             min(999, _localVarStringObjectCount), min(999, _localArrayObjectCount), min(999, _localVarValueAreaCount), min(999, _intermediateStringObjectCount),
                             min(999, _systemVarStringObjectCount));
-                    }
+                }
                     else {     // print heap object create/delete errors
                         sprintf(fcnResult.pStringConst, "%0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d",
                             min(999, _identifierNameStringObjectErrors), min(999, _userVarNameStringObjectErrors), min(999, _parsedStringConstObjectErrors), min(999, _lastValuesStringObjectErrors),
@@ -4970,7 +5110,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                             min(999, _localVarStringObjectErrors), min(999, _localArrayObjectErrors), min(999, _localVarValueAreaErrors), min(999, _intermediateStringObjectErrors),
                             min(999, _systemVarStringObjectErrors));
                     }
-                }
+            }
                 break;
 
                 case 25:                                                                                                                // return trace string
@@ -4996,15 +5136,15 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 break;
 
                 default: return result_arg_invalid; break;
-            }       // switch (sysVal)
+        }       // switch (sysVal)
         }
         break;
 
-    }       // end switch
+        }       // end switch
 
 
-        // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
-        // -------------------------------------------------------------------------------------------------------------------
+            // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
+            // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
@@ -5025,7 +5165,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
     }
 
     return result_execOK;
-}
+    }
 
 
 // -----------------------
@@ -5301,7 +5441,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchExternalFunctio
     _activeFunctionData.errorProgramCounter = calledFunctionTokenStep;
 
     return  result_execOK;
-}
+    }
 
 
 // ------------------------------------------------

@@ -59,24 +59,6 @@ Justina_interpreter::execResult_type Justina_interpreter::startSD() {
 //
 // --------------------------------
 
-void  Justina_interpreter::SD_closeAllFiles() {
-
-    if (!_SDinitOK) { return; }          // card is NOT initialised: nothing to do
-
-    for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
-        if (openFiles[i].fileNumberInUse) {
-            openFiles[i].fileNumberInUse = false;                                   // slot is open again
-            openFiles[i].file.close();                                              // does not return errors
-        }
-    }
-    _openFileCount = 0;
-}
-
-
-// --------------------------------
-//
-// --------------------------------
-
 Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumber, char* filePath, int mode) {
 
     fileNumber = 0;                                                     // init: no file number yet
@@ -85,32 +67,33 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumbe
     if (_openFileCount == MAX_OPEN_SD_FILES) { return result_SD_maxOpenFilesReached; }                               // max. open files reached
 
     // create temp string
+    if (!pathValid(filePath)) { return result_SD_pathIsNotValid; }        // is not a complete check, but it remedies a few plaws in SD library
+
     int len = strlen(filePath);
-    char* filePathInCapitals = new char[len + 1];                                                                                 // same length as original, space for terminating 
-    strcpy(filePathInCapitals, filePath);   // copy original string
-    for (int i = 0; i < len; i++) { filePathInCapitals[i] = toupper(filePathInCapitals[i]); }
+    // provide space for starting '/' if missing                 
+    char* filePathInCapitals = new char[((filePath[0]=='/') ? 0:1) + len + 1];                 // not counted for memory leak testing
+    if(filePath[0] != '/'){filePathInCapitals[0]='/'; }
+    strcpy(filePathInCapitals+ ((filePath[0] == '/') ? 0 : 1), filePath);   // copy original string
+    for (int i = 0; i < strlen(filePathInCapitals); i++) { filePathInCapitals[i] = toupper(filePathInCapitals[i]); }
 
     // currently open files ? Check that the same file is not open already
-    if (_openFileCount > 0) {
-        for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
-            if (openFiles[i].fileNumberInUse) {
-                if (strcasecmp(openFiles[i].file.name(), filePath) == 0) {
-                    delete[] filePathInCapitals;
-                    return result_SD_fileAlreadyOpen;
-                }
-            }
-        }
+    if (fileIsOpen(filePathInCapitals)) {
+        delete[] filePathInCapitals;                // not counted for memory leak testing
+        return result_SD_fileAlreadyOpen;
     }
 
     File f = SD.open(filePathInCapitals, mode);
-    delete[] filePathInCapitals;                                                            // delete temp string
-    if (!f) { return result_SD_couldNotOpenFile; }                                              // could not open file (in case caller ignores this error, file number returned is 0)
+    if (!f) {
+        delete[] filePathInCapitals;                // not counted for memory leak testing
+        return result_SD_couldNotOpenFile;
+    }                                              // could not open file (in case caller ignores this error, file number returned is 0)
 
-    // find a free file number 
+// find a free file number 
     for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
         if (!openFiles[i].fileNumberInUse) {
             openFiles[i].fileNumberInUse = true;
             openFiles[i].file = f;
+            openFiles[i].filePath = filePathInCapitals;                          // delete when file is closed
             fileNumber = i + 1;
             break;
         }
@@ -126,7 +109,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumbe
 //
 // --------------------------------
 
-Justina_interpreter::execResult_type Justina_interpreter::SD_openNext(int& fileNumber, File directory, int mode) {
+Justina_interpreter::execResult_type Justina_interpreter::SD_openNext(int dirFileNumber, int& fileNumber, File directory, int mode) {
 
     fileNumber = 0;                                                     // init: no next file opened
 
@@ -139,11 +122,19 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_openNext(int& fileN
     // file evaluates to false: assume last file in directory is currently open and no more files are available. Do not return error, file number 0 indicates 'last file reached'
     if (!f) { return result_execOK; }
 
+    char* dirPath = openFiles[dirFileNumber - 1].filePath;            // path for the directory
+    int dirPathLength = strlen(dirPath);
+
     // find a free file number and assign it to this file
     for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
         if (!openFiles[i].fileNumberInUse) {
             openFiles[i].fileNumberInUse = true;
             openFiles[i].file = f;
+            // room for full name, '/' between path and name, '\0' terminator
+            openFiles[i].filePath = new char[dirPathLength + 1 + strlen(f.name()) + 1];                  // not counted for memory leak testing     
+            strcpy(openFiles[i].filePath, dirPath);
+            strcat(openFiles[i].filePath, "/");
+            strcat(openFiles[i].filePath, f.name());
             fileNumber = i + 1;
             break;
         }
@@ -152,16 +143,16 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_openNext(int& fileN
     ++_openFileCount;
 
     // currently older open files ? Check that the same file is not opened twice now
-    if (_openFileCount > 1) {
-        for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
-            if (openFiles[i].fileNumberInUse) {
-                if (i + 1 != fileNumber) {
-                    if (strcasecmp(openFiles[i].file.name(), f.name()) == 0) {        // comparing file refs won't work: compare file names
-                        openFiles[fileNumber - 1].file.close();                                             // close newer file ref again
-                        openFiles[fileNumber - 1].fileNumberInUse = false;
-                        --_openFileCount;
-                        return result_SD_fileAlreadyOpen;                                                   // return with error
-                    }
+    for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
+        if (openFiles[i].fileNumberInUse) {
+            if (i + 1 != fileNumber) {
+                // compare the filepath for the newly opened file with the previously opened open file
+                if (strcasecmp(openFiles[i].filePath, openFiles[fileNumber - 1].filePath) == 0) {        // comparing file refs doesn't work (why?): compare file paths + names
+                    openFiles[fileNumber - 1].file.close();                                             // close newer file ref again
+                    openFiles[fileNumber - 1].fileNumberInUse = false;
+                    delete[] openFiles[fileNumber - 1].filePath;                // not counted for memory leak testing
+                    --_openFileCount;
+                    return result_SD_fileAlreadyOpen;                                                   // return with error
                 }
             }
         }
@@ -179,9 +170,30 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_openNext(int& fileN
 void Justina_interpreter::SD_closeFile(int fileNumber) {
 
     // checks must have been done before calling this function
+
     openFiles[fileNumber - 1].file.close();                                             // does not return errors
     openFiles[fileNumber - 1].fileNumberInUse = false;
+    delete[] openFiles[fileNumber - 1].filePath;                // not counted for memory leak testing
     --_openFileCount;
+}
+
+
+// --------------------------------
+//
+// --------------------------------
+
+void  Justina_interpreter::SD_closeAllFiles() {
+
+    if (!_SDinitOK) { return; }          // card is NOT initialised: nothing to do
+
+    for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
+        if (openFiles[i].fileNumberInUse) {
+            openFiles[i].fileNumberInUse = false;                                   // slot is open again
+            delete openFiles[i].filePath;
+            openFiles[i].file.close();                                              // does not return errors
+        }
+    }
+    _openFileCount = 0;
 }
 
 
@@ -256,7 +268,6 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_fileChecks(long arg
     // check file number (also perform related file and SD card object checks)
     if ((!(argIsLongBits & (0x1 << argIndex))) && (!(argIsFloatBits & (0x1 << argIndex)))) { return result_numberExpected; }                      // file number
     int fileNumber = (argIsLongBits & (0x1 << argIndex)) ? arg.longConst : arg.floatConst;
-
     execResult_type execResult = SD_fileChecks(file, fileNumber, allowFileTypes);
     return execResult;
 }
@@ -273,7 +284,8 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_fileChecks(bool arg
 
 Justina_interpreter::execResult_type Justina_interpreter::SD_fileChecks(File& file, int fileNumber, int allowFileTypes)
 {
-    // check file number (also perform related file and SD card object checks)
+    // check that SD card is initialised, file is open and file type (directory, file) is OK
+
     if (!_SDinitOK) { return result_SD_noCardOrCardError; }
     if ((fileNumber < 1) || (fileNumber > MAX_OPEN_SD_FILES)) { return result_SD_invalidFileNumber; }
     if (!openFiles[fileNumber - 1].fileNumberInUse) { return result_SD_fileIsNotOpen; }
@@ -282,5 +294,46 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_fileChecks(File& fi
         if (file.isDirectory() != (allowFileTypes == 2)) { return result_SD_directoryNotAllowed; }
     }
     return result_execOK;
+}
+
+// ----------
+//
+// ----------
+
+bool Justina_interpreter::pathValid(char* path) {
+
+    // SD library allows to run into issues if path is not valid (hanging, nivalid creation of directories / files)
+    // this routine performs a few basic checks: 
+    // - path should start with a space
+    // - path should NOT end with a '/' or a space
+    // - never two '/' in a row
+
+    if (path == nullptr) { return false; }  // empty path is not valid
+
+    if ((path[0] == ' ') || (path[strlen(path) - 1] == '/') || (path[strlen(path) - 1] == ' ')) { return false; }
+
+    bool previousIsSlash{ true }, currentIsSlash{ false };
+    char* p{};
+    for (p = path + 1; p < path + strlen(path); p++) {          // skip first character in test 
+        currentIsSlash = (p[0] == '/');
+        if (previousIsSlash && currentIsSlash) { break; }
+        previousIsSlash = currentIsSlash;
+    }
+    return (p == path + strlen(path));      // if loop ended normally, then no issues found
+}
+
+
+// ----------
+//
+// ----------
+
+bool Justina_interpreter::fileIsOpen(char* path) {
+    // currently open files ? Check that the same file is not open already
+    for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
+        if (openFiles[i].fileNumberInUse) {
+            if (strcasecmp(openFiles[i].filePath, path) == 0) { return true; }
+        }
+    }
+    return false;
 }
 

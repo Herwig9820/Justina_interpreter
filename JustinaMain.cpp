@@ -326,7 +326,9 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
 
     // input and output commands
     // -------------------------
-    {"receiveProg",     cmdcod_receiveProg,     cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"loadProg",        cmdcod_loadProg,        cmd_onlyImmediate,                                  0,0,    cmdPar_106,     cmdBlockNone},
+    {"receiveFile",     cmdcod_receiveFile,     cmd_onlyImmediate,                                  0,0,    cmdPar_104,     cmdBlockNone},
+    {"sendFile",        cmdcod_sendFile,        cmd_onlyImmediate,                                  0,0,    cmdPar_104,     cmdBlockNone},
 
     {"info",            cmdcod_info,            cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_114,     cmdBlockNone},
     {"input",           cmdcod_input,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_113,     cmdBlockNone},
@@ -335,17 +337,17 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"printLine",       cmdcod_printLine,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},
     {"printList",       cmdcod_printList,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},
 
-    {"print_f",         cmdcod_printToF,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
-    {"printLine_f",     cmdcod_printLineToF,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
-    {"printList_f",     cmdcod_printListToF,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"printF",          cmdcod_printToF,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"printLineF",      cmdcod_printLineToF,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"printListF",      cmdcod_printListToF,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
 
-    {"print_s",         cmdcod_printToS,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
-    {"printLine_s",     cmdcod_printLineToS,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
-    {"printList_s",     cmdcod_printListToS,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"printS",          cmdcod_printToS,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"printLineS",      cmdcod_printLineToS,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"printListS",      cmdcod_printListToS,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
 
     {"startSD",         cmdcod_startSD,         cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
     {"stopSD",          cmdcod_stopSD,          cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"listFiles",       cmdcod_listFiles,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockNone},      //// to revise
+    {"listFiles",       cmdcod_listFiles,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockNone},
 
     {"dispFmt",         cmdcod_dispfmt,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
     {"dispMode",        cmdcod_dispmod,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_105,     cmdBlockNone},
@@ -514,13 +516,12 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     { "open",                    fnccod_open,                   1,2,    0b0 },
     { "close",                   fnccod_close,                  1,1,    0b0 },
 
-    { "read",                    fnccod_read,                   1,2,    0b0 },      
+    { "inputCharF",              fnccod_readOneCharFromFile,    1,1,    0b0 },      // without timeout
+    { "inputF",                  fnccod_inputFromFile,          2,2,    0b0 },      // with timeout
+    { "inputLineF",              fnccod_inputLineFromFile,      1,1,    0b0 },      // with timeout
+    { "parseListF",              fnccod_parseListFromFile,      2,16,   0b0 },      // with timeout
 
-    { "input_f",                 fnccod_inputFromFile,          2,2,    0b0 },
-    { "inputLine_f",             fnccod_inputLineFromFile,      1,1,    0b0 },
-    { "parseList_f",             fnccod_parseListFromFile,      2,16,   0b0 },
-
-    { "parseList_s",             fnccod_parseListFromString,    2,16,   0b0 },
+    { "parseListS",              fnccod_parseListFromString,    2,16,   0b0 },
 
 
     { "find",                    fnccod_find,                   2,2,    0b0 },
@@ -530,12 +531,13 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     { "size",                    fnccod_size,                   1,1,    0b0 },
     { "available",               fnccod_available,              1,1,    0b0 },
     { "name",                    fnccod_name,                   1,1,    0b0 },
+    { "fullName",                fnccod_fullName,               1,1,    0b0 },
     { "flush",                   fnccod_flush,                  1,1,    0b0 },
     { "seek",                    fnccod_seek,                   2,2,    0b0 },
     { "setTimeout",              fnccod_setTimeout,             2,2,    0b0 },
     { "isDirectory",             fnccod_isDirectory,            1,1,    0b0 },
     { "rewindDirectory",         fnccod_rewindDirectory,        1,1,    0b0 },
-    { "openNext",                fnccod_openNextFile,           1,1,    0b0 },
+    { "openNext",                fnccod_openNextFile,           1,2,    0b0 },
     { "exists",                  fnccod_exists,                 1,1,    0b0 },
     { "createDirectory",         fnccod_mkdir,                  1,1,    0b0 },
     { "removeDirectory",         fnccod_rmdir,                  1,1,    0b0 },
@@ -775,6 +777,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     bool redundantSemiColon = false;
     bool isCommentStartChar = (c == '$');                               // character can also be part of comment
 
+    _pConsole = pConsole;
     _pConsole->println();
     for (int i = 0; i < 13; i++) { _pConsole->print("*"); } _pConsole->print("____");
     for (int i = 0; i < 4; i++) { _pConsole->print("*"); } _pConsole->print("__");
@@ -792,21 +795,22 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     _programMode = false;
     _programCounter = _programStorage + _progMemorySize;
     *(_programStorage + _progMemorySize) = tok_no_token;                                      //  current end of program (immediate mode)
-    _pConsole = pConsole;
-    _isPrompt = false;                 // end of parsing
+    _isPrompt = false;
     _pTerminal = pTerminal;
     _definedTerminals = definedTerms;
 
     _coldStart = false;             // can be used if needed in this procedure, to determine whether this was a cold or warm start
 
+    Stream* pStatementInputStream = _pConsole;            // init: load program from console
+
     do {
-        // when loading a program, as soon as first printable character of a PROGRAM is read, each subsequent character needs to follow after the previous one within a fixed time delay, handled by getKey().
+        // when loading a program, as soon as first printable character of a PROGRAM is read, each subsequent character needs to follow after the previous one within a fixed time delay, handled by getCharacter().
         // program reading ends when no character is read within this time window.
         // when processing immediate mode statements (single line), reading ends when a New Line terminating character is received
         bool allowTimeOut = _programMode && !_initiateProgramLoad;          // _initiateProgramLoad is set during execution of the command to read a program source file from the console
 
-        // get a key (character from console) if available and perform a regular housekeeping callback as well
-        c = getKey(kill, allowTimeOut);     // while parsing a program, set allowTimeOut to true to make sure the program is received completely              
+        // get a character if available and perform a regular housekeeping callback as well
+        c = getCharacter(pStatementInputStream, kill, allowTimeOut);     // while parsing a program, set allowTimeOut to true to make sure the program is received completely              
         if (kill) { break; }                // return true if kill request received from calling program
         if (c < 0xFF) { _initiateProgramLoad = false; }                     // reset _initiateProgramLoad after each character received
 
@@ -831,7 +835,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 
             bool statementComplete = !bufferOverrun && (isStatementSeparator || (programOrStatementRead && (statementCharCount > 0)));
 
-            int clearIndicator{ 0 };                                    // 1 = clear program cmd, 2 = clear all cmd
+            int clearCmdIndicator{ 0 };                                    // 1 = clear program cmd, 2 = clear all cmd
             if (statementComplete && !_quitJustina) {                   // if quitting anyway, just skip                                               
                 _appFlags &= ~appFlag_errorConditionBit;              // clear error condition flag 
                 _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_parsing;     // status 'parsing'
@@ -841,7 +845,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
                 char* pStatement = _statement;                                                 // because passed by reference 
                 char* pDummy{};
                 _parsingExecutingTraceString = false; _parsingEvalString = false;
-                result = parseStatement(pStatement, pDummy, clearIndicator = 0);          // parse ONE statement only 
+                result = parseStatement(pStatement, pDummy, clearCmdIndicator = 0);          // parse ONE statement only 
                 pErrorPos = pStatement;                                                      // in case of error
 
                 if (result != result_tokenFound) { flushAllUntilEOF = true; }
@@ -856,7 +860,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
             if (programOrStatementRead) {       // program mode: complete program read and parsed / imm. mode: 1 statement read and parsed (with or without error)
                 _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_idle;     // status 'idle'
 
-                quitNow = processAndExec(result, kill, lineCount, pErrorPos, clearIndicator);  // return value: quit Justina now
+                quitNow = processAndExec(result, kill, lineCount, pErrorPos, clearCmdIndicator, pStatementInputStream);  // return value: quit Justina now
 
                 // parsing error occured ? reset input controlling variables
                 if (result != result_tokenFound) {
@@ -912,7 +916,7 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
     bufferOverrun = false;
     if ((c < ' ') && (c != '\n')) { return false; }          // skip control-chars except new line and EOF character
 
-    // when a program or imm. mode line is completely read and the last character (part of the last statement) received from input stream is not a semicolon, add it
+    // when a imm. mode line or program is completely read and the last character (part of the last statement) received from input stream is not a semicolon, add it
     if (ImmModeLineOrProgramRead) {
         if (_statementCharCount > 0) {
             if (_statement[_statementCharCount - 1] != ';') {
@@ -1000,7 +1004,7 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
 // * finalise parsing, execute if no errors, if in debug mode, trace and print debug info, re-init machine state and exit *
 // ------------------------------------------------------------------------------------------------------------------------
 
-bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, int clearIndicator) {
+bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, int clearIndicator, Stream*& pStatementInputStream) {
 
     // all statements (in program or imm. mode line) have been parsed: finalise
     // ------------------------------------------------------------------------
@@ -1081,22 +1085,26 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
      // the parsed command line stack and included parsed constants will be deleted later (resetMachine routine)
     if (execResult != result_stopForDebug) { deleteConstStringObjects(_programStorage + _progMemorySize); } // always
 
-
-    // finalize
-    // --------
+    // finalize: last actions before 'ready' mode (prompt displayed depending on settings)
+    // -----------------------------------------------------------------------------------
     _programMode = false;
     _programCounter = _programStorage + _progMemorySize;                 // start of 'immediate mode' program area
     *(_programStorage + _progMemorySize) = tok_no_token;                                      //  current end of program (immediate mode)
 
-    if (execResult == result_initiateProgramLoad) {
+    if (execResult == result_initiateProgramLoad) {     // initiate program load 
         _programMode = true;
         _programCounter = _programStorage;
 
         if (_isPrompt) { _pConsole->println(); }
-        _pConsole->print("Waiting for program...\r\n");
+        _pConsole->print((_loadProgFromFileNo > 0) ? "Loading program...\r\n" : "Waiting for program... press ENTER to cancel\r\n");
         _isPrompt = false;
 
+        pStatementInputStream = (_loadProgFromFileNo == 0) ? _pConsole : &openFiles[_loadProgFromFileNo-1].file;            // loading program from file or from console ?
         _initiateProgramLoad = true;
+    }
+    else {      // with or without parsing or execution error
+        pStatementInputStream = _pConsole;
+        if (_loadProgFromFileNo > 0) { SD_closeFile(_loadProgFromFileNo); _loadProgFromFileNo = 0; }
     }
 
     // has an error occured ? (exclude 'events' reported as an error)
@@ -1105,14 +1113,14 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
     (_appFlags &= ~appFlag_statusMask);
     (_openDebugLevels > 0) ? (_appFlags |= appFlag_stoppedInDebug) : (_appFlags |= appFlag_idle);     // status 'debug mode' or 'idle'
 
-    // parsing error occured ? wait until no more characters received (important if received from Serial)
+    // parsing error occured ? wait until no more characters received from console (important if received from Serial)
     if ((result != result_tokenFound) && (_pConsole->available() > 0)) {
         char c{};
         do {
             if (_quitJustina) { break; };       // could be set before loop starts
-            c = getKey(_quitJustina, true);     // set allowWaitTime to true: wait a little before deciding no more characters come in
+            c = getCharacter(_pConsole, _quitJustina, true);     // set allowWaitTime to true: wait a little before concluding no more characters come in
 
-        } while (c != 0xFF);        // assignment, not a comparison operator
+        } while (c != 0xFF);
     }
 
     // print new prompt and exit
@@ -1191,13 +1199,12 @@ void Justina_interpreter::checkTimeAndExecHousekeeping(bool& killNow) {
 // *   read character from keyboard, if available, and regularly perfoem a housekeeping callback   *
 // -------------------------------------------------------------------------------------------------
 
-char Justina_interpreter::getKey(bool& killNow, bool allowWaitTime) {     // default: no time out
+char Justina_interpreter::getCharacter(Stream* pInputStream, bool& killNow, bool allowWaitTime) {     // default: no time out, input from console
 
     // enable time out = false: only check once for a character
     //                   true: allow a certain time for the character to arrive   
 
     checkTimeAndExecHousekeeping(killNow);
-    if (killNow) { while (_pConsole->available() > 0) { _pConsole->read(); } return 0xFF; }     // empty buffer before quitting
 
     // read a character, if available in buffer
     char c = 0xFF;                                                                                              // init: no character read
@@ -1207,7 +1214,8 @@ char Justina_interpreter::getKey(bool& killNow, bool allowWaitTime) {     // def
     bool readCharWindowExpired{};
 
     do {
-        if (_pConsole->available() > 0) { c = _pConsole->read(); break; }
+        if (pInputStream->available() > 0) { c = pInputStream->read(); break; }
+        
         // try to read character only once or keep trying until timeout occurs ?
         readCharWindowExpired = (!allowWaitTime || (startWaitForReadTime + GETCHAR_TIMEOUT < millis()));
     } while (!readCharWindowExpired);
@@ -1232,7 +1240,7 @@ bool Justina_interpreter::readText(bool& doAbort, bool& doStop, bool& doCancel, 
         // read a character, if available in buffer
         char c{ };                                                           // init: no character available
         bool kill{ false };
-        c = getKey(kill);               // get a key (character from console) if available and perform a regular housekeeping callback as well
+        c = getCharacter(_pConsole, kill);               // get a key (character from console) if available and perform a regular housekeeping callback as well
         if (kill) { return true; }      // return value true: kill Justina interpreter (buffer is now flushed until next line character)
 
         if (c != 0xFF) {                                                                           // terminal character available for reading ?
@@ -1482,7 +1490,7 @@ bool Justina_interpreter::parseIntFloat(char*& pNext, char*& pch, Val& value, ch
     }                                                    // token can be parsed as float ?
 
     bool isValidNumber = (pNumStart != pNext);              // is a number if pointer pNext was not moved (is NO error - possibly it's another valid token type)
-    if(isValidNumber ) {result = result_tokenFound;}
+    if (isValidNumber) { result = result_tokenFound; }
     return true;                                             // no error; result indicates whether valid token was found or search for valid token needs to be continued
 }
 

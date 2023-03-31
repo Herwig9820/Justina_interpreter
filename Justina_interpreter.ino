@@ -103,7 +103,7 @@ void heartbeat();
 
 void setup() {
     Serial.begin(1000000);
-    
+
     // define output pins
     pinMode(HEARTBEAT_PIN, OUTPUT);                                                   // blinking led for heartbeat
     /*
@@ -140,8 +140,9 @@ void setup() {
     // print sample / simple main menu for the user
     pConsole->println(menu);
 
+#ifdef RTClock
     SdFile::dateTimeCallback((dateTime));
-    
+#endif
 }
 
 
@@ -370,6 +371,7 @@ void onConnStateChange(connectionState_type  connectionState) {
 
 // this callback function is called by the SD library
 
+#ifdef RTClock
 void dateTime(uint16_t* date, uint16_t* time)
 {
     unsigned int year = 1980;
@@ -382,7 +384,7 @@ void dateTime(uint16_t* date, uint16_t* time)
     *date = FAT_DATE(year, month, day);
     *time = FAT_TIME(hour, minute, second);
 }
-
+#endif
 
 // -----------------------------------------------------------------------------------------------------------------------------
 // *   callback function to be called at regular intervals from any application not returning immediately to Arduino main loop()
