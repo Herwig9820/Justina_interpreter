@@ -55,15 +55,14 @@ constexpr int WAIT_FOR_USER_PIN{ 13 };
 #if withTCP
 constexpr pin_size_t WiFi_CONNECTED_PIN{ 11 };
 constexpr pin_size_t TCP_CONNECTED_PIN{ 12 };
-constexpr int terminalCount{ 2 };
 constexpr char SSID[] = SERVER_SSID, PASS[] = SERVER_PASS;                            // WiFi SSID and password                           
 constexpr char menu[] = "+++ Please select:\r\n  '0' (Re-)start WiFi\r\n  '1' Disable WiFi\r\n  '2' Enable TCP\r\n  '3' Disable TCP\r\n  '4' Verbose TCP\r\n  '5' Silent TCP\r\n  '6' Remote console\r\n  '7' Local console\r\n  '8' Start Justina interpreter\r\n";
 
 #else
-constexpr int terminalCount{ 1 };
 constexpr char menu[] = "+++ Please select:\r\n  '8' Start Justina interpreter\r\n";
 #endif
 
+constexpr int terminalCount{ 2 };
 
 bool TCP_enabled{ false };
 bool console_isRemoteTerm{ false };                                                    // init: console is currently local terminal (Serial) 

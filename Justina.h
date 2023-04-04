@@ -234,15 +234,15 @@ class Justina_interpreter {
         cmdcod_quit,
         cmdcod_info,
         cmdcod_input,
-        cmdcod_cout,
-        cmdcod_coutLine,
-        cmdcod_coutList,
+        cmdcod_printCons,
+        cmdcod_printLineCons,
+        cmdcod_printListCons,
         cmdcod_print,
         cmdcod_printLine,
         cmdcod_printList,
-        cmdcod_printToS,
-        cmdcod_printLineToS,
-        cmdcod_printListToS,
+        cmdcod_printToVar,
+        cmdcod_printLineToVar,
+        cmdcod_printListToVar,
         cmdcod_dispfmt,
         cmdcod_dispmod,
         cmdcod_declCB,
@@ -369,12 +369,12 @@ class Justina_interpreter {
 
         fnccod_open,
         fnccod_close,
-        fnccod_readOneCharFromStream,
+        fnccod_readOneChar,
 
-        fnccod_readFromStream,
-        fnccod_readLineFromStream,
-        fnccod_parseListFromStream,
-        fnccod_parseListFromString,
+        fnccod_readChars,
+        fnccod_readLine,
+        fnccod_parseList,
+        fnccod_parseListFromVar,
 
         fnccod_find,
         fnccod_findUntil,
@@ -1644,17 +1644,18 @@ private:
     execResult_type startSD();
     void SD_closeAllFiles();
     execResult_type SD_open(int& fileNumber, char* filePath, int mod = O_READ);
-    execResult_type SD_openNext(int dirFileNumber, int& fileNumber, File directory, int mod = O_READ);
+    execResult_type SD_openNext(int dirFileNumber, int& fileNumber, File* pDirectory, int mod = O_READ);
     void SD_closeFile(int fileNumber);
     execResult_type SD_listFiles(Stream* pOut);
-    execResult_type SD_fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File& file, int allowFileTypes = 1);
-    execResult_type SD_fileChecks(bool argIsLong, bool argIsFloat, Val arg, File& file, int allowFileTypes = 1);
-    execResult_type SD_fileChecks(File& file, int fileNumber, int allowFileTypes = 1);
+    execResult_type SD_fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File*& pFile, int allowFileTypes = 1);
+    execResult_type SD_fileChecks(bool argIsLong, bool argIsFloat, Val arg, File*& pFile, int allowFileTypes = 1);
+    execResult_type SD_fileChecks(File* &pFile , int fileNumber, int allowFileTypes = 1);
+    execResult_type checkStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, Stream* &pStream,  int &streamNumber);
+    
     void printDirectory(Stream* pOut,File dir, int numTabs);
 
     bool pathValid(char* path);
     bool fileIsOpen(char* path);
-    execResult_type checkStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File& file, HardwareSerial& serial, int &streamNumber);
 };
 
 

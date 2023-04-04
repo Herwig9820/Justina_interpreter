@@ -335,20 +335,20 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"receiveFile",     cmdcod_receiveFile,     cmd_onlyImmediate,                                  0,0,    cmdPar_115,     cmdBlockNone},
     {"sendFile",        cmdcod_sendFile,        cmd_onlyImmediate,                                  0,0,    cmdPar_115,     cmdBlockNone},
 
-    {"cout",            cmdcod_cout,            cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},  //// weg
-    {"coutLine",        cmdcod_coutLine,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},  //// weg
-    {"coutList",        cmdcod_coutList,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},  //// weg
+    {"cprint",          cmdcod_printCons,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},  //// weg
+    {"cprintLine",      cmdcod_printLineCons,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},  //// weg
+    {"cprintList",      cmdcod_printListCons,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},  //// weg
 
     {"print",           cmdcod_print,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
     {"printLine",       cmdcod_printLine,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
     {"printList",       cmdcod_printList,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
 
-    {"printS",          cmdcod_printToS,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
-    {"printLineS",      cmdcod_printLineToS,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
-    {"printListS",      cmdcod_printListToS,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"vprint",          cmdcod_printToVar,      cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"vprintLine",      cmdcod_printLineToVar,  cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"vrintList",       cmdcod_printListToVar,  cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
 
-    {"printVars",       cmdcod_printVars,       cmd_onlyImmediate,                                  0,0,    cmdPar_106,     cmdBlockNone},
-    {"printCallSt",     cmdcod_printCallSt,     cmd_onlyImmediate,                                  0,0,    cmdPar_106,     cmdBlockNone},
+    {"listVars",        cmdcod_printVars,       cmd_onlyImmediate,                                  0,0,    cmdPar_106,     cmdBlockNone},
+    {"listCallSt",      cmdcod_printCallSt,     cmd_onlyImmediate,                                  0,0,    cmdPar_106,     cmdBlockNone},
     {"listFiles",       cmdcod_listFiles,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockNone},
 
     // debugging commands
@@ -514,13 +514,11 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     { "open",                    fnccod_open,                   1,2,    0b0 },
     { "close",                   fnccod_close,                  1,1,    0b0 },
 
-    { "read1",                   fnccod_readOneCharFromStream,  1,1,    0b0 },      // without timeout
-    { "read",                    fnccod_readFromStream,         2,3,    0b0 },      // with timeout
-    { "readLine" ,               fnccod_readLineFromStream,     1,1,    0b0 },      // with timeout
-    { "readList",                fnccod_parseListFromStream,    2,16,   0b0 },      // with timeout
-
-    { "readListS",               fnccod_parseListFromString,    2,16,   0b0 },
-
+    { "read1",                   fnccod_readOneChar,            1,1,    0b0 },      // without timeout
+    { "read",                    fnccod_readChars,              2,3,    0b0 },      // with timeout
+    { "readLine" ,               fnccod_readLine,               1,1,    0b0 },      // with timeout
+    { "readList",                fnccod_parseList,              2,16,   0b0 },      // with timeout
+    { "vreadList",               fnccod_parseListFromVar,       2,16,   0b0 },
 
     { "find",                    fnccod_find,                   2,2,    0b0 },
     { "findUntil",               fnccod_findUntil,              3,3,    0b0 },
@@ -799,7 +797,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 
     _coldStart = false;             // can be used if needed in this procedure, to determine whether this was a cold or warm start
 
-    Stream* pStatementInputStream = _pConsole;            // init: load program from console
+    Stream* pStatementInputStream = static_cast<Stream*>(_pConsole);            // init: load program from console
 
     do {
         // when loading a program, as soon as first printable character of a PROGRAM is read, each subsequent character needs to follow after the previous one within a fixed time delay, handled by getCharacter().
@@ -1097,12 +1095,12 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
         _pConsole->print((_loadProgFromFileNo > 0) ? "Loading program...\r\n" : "Waiting for program... press ENTER to cancel\r\n");
         _isPrompt = false;
 
-        pStatementInputStream = (_loadProgFromFileNo == 0) ? _pConsole : (_loadProgFromFileNo == -1) ? _pAlternateIO :
+        pStatementInputStream = (_loadProgFromFileNo == 0) ? static_cast<Stream*>(_pConsole) : (_loadProgFromFileNo == -1) ? static_cast<Stream*>(_pAlternateIO) :
             &openFiles[_loadProgFromFileNo - 1].file;            // loading program from file or from console ?
         _initiateProgramLoad = true;
     }
     else {      // with or without parsing or execution error
-        pStatementInputStream = _pConsole;          // set to console again
+        pStatementInputStream = static_cast<Stream*>(_pConsole);          // set to console again
         if (_loadProgFromFileNo > 0) { SD_closeFile(_loadProgFromFileNo); _loadProgFromFileNo = 0; }
     }
 
@@ -1117,7 +1115,7 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
         char c{};
         do {
             if (_quitJustina) { break; };       // could be set before loop starts
-            c = getCharacter(_pConsole, _quitJustina, true);     // set allowWaitTime to true: wait a little before concluding no more characters come in
+            c = getCharacter(static_cast<Stream*>(_pConsole), _quitJustina, true);     // set allowWaitTime to true: wait a little before concluding no more characters come in
 
         } while (c != 0xFF);
     }
@@ -1239,7 +1237,7 @@ bool Justina_interpreter::readText(bool& doAbort, bool& doStop, bool& doCancel, 
         // read a character, if available in buffer
         char c{ };                                                           // init: no character available
         bool kill{ false };
-        c = getCharacter(_pConsole, kill);               // get a key (character from console) if available and perform a regular housekeeping callback as well
+        c = getCharacter(static_cast<Stream*>(_pConsole), kill);               // get a key (character from console) if available and perform a regular housekeeping callback as well
         if (kill) { return true; }      // return value true: kill Justina interpreter (buffer is now flushed until next line character)
 
         if (c != 0xFF) {                                                                           // terminal character available for reading ?
