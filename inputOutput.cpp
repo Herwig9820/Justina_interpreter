@@ -71,9 +71,9 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumbe
 
     int len = strlen(filePath);
     // provide space for starting '/' if missing                 
-    char* filePathInCapitals = new char[((filePath[0]=='/') ? 0:1) + len + 1];                 // not counted for memory leak testing
-    if(filePath[0] != '/'){filePathInCapitals[0]='/'; }
-    strcpy(filePathInCapitals+ ((filePath[0] == '/') ? 0 : 1), filePath);   // copy original string
+    char* filePathInCapitals = new char[((filePath[0] == '/') ? 0 : 1) + len + 1];                 // not counted for memory leak testing
+    if (filePath[0] != '/') { filePathInCapitals[0] = '/'; }
+    strcpy(filePathInCapitals + ((filePath[0] == '/') ? 0 : 1), filePath);   // copy original string
     for (int i = 0; i < strlen(filePathInCapitals); i++) { filePathInCapitals[i] = toupper(filePathInCapitals[i]); }
 
     // currently open files ? Check that the same file is not open already
@@ -119,7 +119,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_openNext(int dirFil
     // it's not possible to check whether the next file is open already, because we don't know which file will be opened as next. We'll check afterwards
     File f = directory.openNextFile(mode);
 
-    // file evaluates to false: assume last file in directory is currently open and no more files are available. Do not return error, file number 0 indicates 'last file reached'
+    // file evaluates to false: assume last file in directory is currently open (if any) and no more files are available. Do not return error, file number 0 indicates 'last file reached'
     if (!f) { return result_execOK; }
 
     char* dirPath = openFiles[dirFileNumber - 1].filePath;            // path for the directory
@@ -201,7 +201,7 @@ void  Justina_interpreter::SD_closeAllFiles() {
 // list all files in the card with date and size TO SERIAL PORT
 // ------------------------------------------------------------
 
-void Justina_interpreter::printDirectory(File dir, int indentLevel) {
+void Justina_interpreter::printDirectory(Stream* pOut, File dir, int indentLevel) {
     constexpr int step{ 2 }, defaultSizeAttrColumn{ 20 }, minimumColumnSpacing{ 4 };
 
     while (true) {
@@ -212,30 +212,31 @@ void Justina_interpreter::printDirectory(File dir, int indentLevel) {
             break;
         }
         for (uint8_t i = 1; i <= indentLevel * step; i++) {
-            _pConsole->print(" ");
+            pOut->print(" ");
         }
-        _pConsole->print(entry.name());
+        pOut->print(entry.name());
         if (entry.isDirectory()) {
-            _pConsole->println("/");
-            printDirectory(entry, indentLevel + 1);
+            pOut->println("/");
+            printDirectory(pOut,entry, indentLevel + 1);
         }
         else {
             // files have sizes, directories do not
             int len = indentLevel * step + strlen(entry.name());
             if (len < defaultSizeAttrColumn - minimumColumnSpacing) {      // 
-                for (int i = len; i < defaultSizeAttrColumn; i++) { _pConsole->print(" "); }
+                for (int i = len; i < defaultSizeAttrColumn; i++) { pOut->print(" "); }
             }
             else {
-                for (int i = 0; i < minimumColumnSpacing; i++) { _pConsole->print(" "); }
+                for (int i = 0; i < minimumColumnSpacing; i++) { pOut->print(" "); }
             }
-            _pConsole->println(entry.size());
+            pOut->println(entry.size());
 
         }
         entry.close();
     }
 }
 
-Justina_interpreter::execResult_type Justina_interpreter::SD_listFiles() {
+Justina_interpreter::execResult_type Justina_interpreter::SD_listFiles(Stream* pOut) {
+
     if (!_SDinitOK) { return result_SD_noCardOrCardError; }
 
     /*
@@ -252,16 +253,16 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_listFiles() {
 
     // print to console but without date and time stamp
     SDLib::File SDroot = SD.open("/");
-    _pConsole->println("\nSD card: files (name, size in bytes): ");
-    printDirectory(SDroot, 0);
+    pOut->println("\nSD card: files (name, size in bytes): ");
+    printDirectory(pOut,SDroot, 0);
 
     return result_execOK;
 }
 
 
-// ------------------------------------------------
-// perform file checks before executing file method
-// ------------------------------------------------
+// -----------------------------------------------------------
+// perform file checks prior to performing actions on the file
+// -----------------------------------------------------------
 
 Justina_interpreter::execResult_type Justina_interpreter::SD_fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File& file, int allowFileTypes)
 {
@@ -285,7 +286,6 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_fileChecks(bool arg
 Justina_interpreter::execResult_type Justina_interpreter::SD_fileChecks(File& file, int fileNumber, int allowFileTypes)
 {
     // check that SD card is initialised, file is open and file type (directory, file) is OK
-
     if (!_SDinitOK) { return result_SD_noCardOrCardError; }
     if ((fileNumber < 1) || (fileNumber > MAX_OPEN_SD_FILES)) { return result_SD_invalidFileNumber; }
     if (!openFiles[fileNumber - 1].fileNumberInUse) { return result_SD_fileIsNotOpen; }
@@ -295,6 +295,26 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_fileChecks(File& fi
     }
     return result_execOK;
 }
+
+
+// -----------------------------------------------------------------------------------
+// check for valid stream number (file or I/O) prior to performing actions on the file 
+// -----------------------------------------------------------------------------------
+
+Justina_interpreter::execResult_type Justina_interpreter::checkStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File& file, HardwareSerial &serial, int &streamNumber) {
+    // check file number (also perform related file and SD card object checks)
+    if ((!(argIsLongBits & (0x1 << argIndex))) && (!(argIsFloatBits & (0x1 << argIndex)))) { return result_numberExpected; }                      // file number
+    streamNumber = (argIsLongBits & (0x1 << argIndex)) ? arg.longConst : arg.floatConst;
+
+    if (streamNumber == FILENUM_CONSOLE) { serial = *((HardwareSerial*) _pConsole); }
+    else if (streamNumber == FILENUM_ALTERNATE) { serial = *((HardwareSerial*)_pAlternateIO); }
+    else {      // file
+        execResult_type execResult = SD_fileChecks(file, streamNumber);    // operand: file number
+        if (execResult != result_execOK) { return execResult; }
+    }
+    return result_execOK;
+}
+
 
 // ----------
 //
@@ -309,7 +329,7 @@ bool Justina_interpreter::pathValid(char* path) {
     // - never two '/' in a row
 
     if (path == nullptr) { return false; }  // empty path is not valid
-
+    if (strlen(path) == 1) { return (path[0] != ' '); }
     if ((path[0] == ' ') || (path[strlen(path) - 1] == '/') || (path[strlen(path) - 1] == ' ')) { return false; }
 
     bool previousIsSlash{ true }, currentIsSlash{ false };
@@ -336,4 +356,3 @@ bool Justina_interpreter::fileIsOpen(char* path) {
     }
     return false;
 }
-

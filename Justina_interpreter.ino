@@ -73,6 +73,7 @@ bool interpreterInMemory{ false };                                              
 bool errorCondition = false, statusA = false, statusB = false, waitingForUser = false;
 
 Stream* pConsole = (Stream*)&Serial;                                                   // init pointer to Serial or TCP terminal
+Stream* pAlternate = (Stream*)&Serial;
 
 Justina_interpreter* pJustina{ nullptr };                                                    // pointer to Justina_interpreter object
 
@@ -256,7 +257,7 @@ void loop() {
                 heartbeatPeriod = 250;
                 withinApplication = true;                                                   // flag that control will be transferred to an 'application'
                 if (!interpreterInMemory) {
-                    pJustina = new  Justina_interpreter(pConsole, progMemSize);         // if interpreter not running: create an interpreter object on the heap
+                    pJustina = new  Justina_interpreter(pConsole,pAlternate, progMemSize);         // if interpreter not running: create an interpreter object on the heap
 
                     // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
                     // this callback function will be called regularly, e.g. every time the interpreter reads a character

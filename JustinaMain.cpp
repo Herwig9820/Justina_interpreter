@@ -279,6 +279,7 @@ const char Justina_interpreter::cmdPar_111[4]{ cmdPar_varOptAssignment,         
 const char Justina_interpreter::cmdPar_112[4]{ cmdPar_expression,                             cmdPar_expression | cmdPar_multipleFlag,         cmdPar_none,                                    cmdPar_none };
 const char Justina_interpreter::cmdPar_113[4]{ cmdPar_expression,                             cmdPar_varOptAssignment,                         cmdPar_varOptAssignment,                        cmdPar_none };
 const char Justina_interpreter::cmdPar_114[4]{ cmdPar_expression,                             cmdPar_varOptAssignment | cmdPar_optionalFlag,   cmdPar_none,                                    cmdPar_none };
+const char Justina_interpreter::cmdPar_115[4]{ cmdPar_expression,                             cmdPar_expression | cmdPar_optionalFlag,         cmdPar_none,                                    cmdPar_none };
 const char Justina_interpreter::cmdPar_999[4]{ cmdPar_varNoAssignment,                        cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };////test var no assignment
 
 
@@ -299,11 +300,6 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"delVar",          cmdcod_deleteVar,       cmd_onlyImmediateOutsideBlock | cmd_skipDuringExec, 0,0,    cmdPar_110,     cmdBlockNone},
     {"clearAll",        cmdcod_clearAll,        cmd_onlyImmediateOutsideBlock | cmd_skipDuringExec, 0,0,    cmdPar_102,     cmdBlockNone},
     {"clearProg",       cmdcod_clearProg,       cmd_onlyImmediateOutsideBlock | cmd_skipDuringExec, 0,0,    cmdPar_102,     cmdBlockNone},
-
-    // print system info
-    // -----------------
-    {"vars",            cmdcod_printVars,       cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"callStack",       cmdcod_printCallSt,     cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
 
     // program and flow control commands
     // ---------------------------------
@@ -326,32 +322,34 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
 
     // input and output commands
     // -------------------------
-    {"loadProg",        cmdcod_loadProg,        cmd_onlyImmediate,                                  0,0,    cmdPar_106,     cmdBlockNone},
-    {"receiveFile",     cmdcod_receiveFile,     cmd_onlyImmediate,                                  0,0,    cmdPar_104,     cmdBlockNone},
-    {"sendFile",        cmdcod_sendFile,        cmd_onlyImmediate,                                  0,0,    cmdPar_104,     cmdBlockNone},
+    {"dispFmt",         cmdcod_dispfmt,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"dispMode",        cmdcod_dispmod,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_105,     cmdBlockNone},
 
     {"info",            cmdcod_info,            cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_114,     cmdBlockNone},
     {"input",           cmdcod_input,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_113,     cmdBlockNone},
 
-    {"print",           cmdcod_print,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},
-    {"printLine",       cmdcod_printLine,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},
-    {"printList",       cmdcod_printList,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},
+    {"startSD",         cmdcod_startSD,         cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"stopSD",          cmdcod_stopSD,          cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
 
-    {"printF",          cmdcod_printToF,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
-    {"printLineF",      cmdcod_printLineToF,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
-    {"printListF",      cmdcod_printListToF,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"loadProg",        cmdcod_loadProg,        cmd_onlyImmediate,                                  0,0,    cmdPar_106,     cmdBlockNone},
+    {"receiveFile",     cmdcod_receiveFile,     cmd_onlyImmediate,                                  0,0,    cmdPar_115,     cmdBlockNone},
+    {"sendFile",        cmdcod_sendFile,        cmd_onlyImmediate,                                  0,0,    cmdPar_115,     cmdBlockNone},
+
+    {"cout",            cmdcod_cout,            cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},  //// weg
+    {"coutLine",        cmdcod_coutLine,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},  //// weg
+    {"coutList",        cmdcod_coutList,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},  //// weg
+
+    {"print",           cmdcod_print,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"printLine",       cmdcod_printLine,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"printList",       cmdcod_printList,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
 
     {"printS",          cmdcod_printToS,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
     {"printLineS",      cmdcod_printLineToS,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
     {"printListS",      cmdcod_printListToS,    cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
 
-    {"startSD",         cmdcod_startSD,         cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"stopSD",          cmdcod_stopSD,          cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"listFiles",       cmdcod_listFiles,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockNone},
-
-    {"dispFmt",         cmdcod_dispfmt,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
-    {"dispMode",        cmdcod_dispmod,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_105,     cmdBlockNone},
-
+    {"printVars",       cmdcod_printVars,       cmd_onlyImmediate,                                  0,0,    cmdPar_106,     cmdBlockNone},
+    {"printCallSt",     cmdcod_printCallSt,     cmd_onlyImmediate,                                  0,0,    cmdPar_106,     cmdBlockNone},
+    {"listFiles",       cmdcod_listFiles,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockNone},
 
     // debugging commands
     // ------------------
@@ -516,20 +514,20 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     { "open",                    fnccod_open,                   1,2,    0b0 },
     { "close",                   fnccod_close,                  1,1,    0b0 },
 
-    { "inputCharF",              fnccod_readOneCharFromFile,    1,1,    0b0 },      // without timeout
-    { "inputF",                  fnccod_inputFromFile,          2,2,    0b0 },      // with timeout
-    { "inputLineF",              fnccod_inputLineFromFile,      1,1,    0b0 },      // with timeout
-    { "parseListF",              fnccod_parseListFromFile,      2,16,   0b0 },      // with timeout
+    { "read1",                   fnccod_readOneCharFromStream,  1,1,    0b0 },      // without timeout
+    { "read",                    fnccod_readFromStream,         2,3,    0b0 },      // with timeout
+    { "readLine" ,               fnccod_readLineFromStream,     1,1,    0b0 },      // with timeout
+    { "readList",                fnccod_parseListFromStream,    2,16,   0b0 },      // with timeout
 
-    { "parseListS",              fnccod_parseListFromString,    2,16,   0b0 },
+    { "readListS",               fnccod_parseListFromString,    2,16,   0b0 },
 
 
     { "find",                    fnccod_find,                   2,2,    0b0 },
     { "findUntil",               fnccod_findUntil,              3,3,    0b0 },
     { "peek",                    fnccod_peek,                   1,1,    0b0 },
+    { "available",               fnccod_available,              1,1,    0b0 },
     { "position",                fnccod_position,               1,1,    0b0 },
     { "size",                    fnccod_size,                   1,1,    0b0 },
-    { "available",               fnccod_available,              1,1,    0b0 },
     { "name",                    fnccod_name,                   1,1,    0b0 },
     { "fullName",                fnccod_fullName,               1,1,    0b0 },
     { "flush",                   fnccod_flush,                  1,1,    0b0 },
@@ -629,8 +627,8 @@ const Justina_interpreter::TerminalDef Justina_interpreter::_terminals[]{
 // *   constructor   *
 // -------------------
 
-Justina_interpreter::Justina_interpreter(Stream* const pConsole, long progMemSize, int _SDcardChipSelectPin) :
-    _pConsole(pConsole), _progMemorySize(progMemSize), _SDcardChipSelectPin(_SDcardChipSelectPin) {
+Justina_interpreter::Justina_interpreter(Stream* const pConsole, Stream* const pAlternate, long progMemSize, int _SDcardChipSelectPin) :
+    _pConsole(pConsole), _pAlternateIO(pAlternate), _progMemorySize(progMemSize), _SDcardChipSelectPin(_SDcardChipSelectPin) {
 
     // settings to be initialized when cold starting interpreter only
     // --------------------------------------------------------------
@@ -1099,11 +1097,12 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
         _pConsole->print((_loadProgFromFileNo > 0) ? "Loading program...\r\n" : "Waiting for program... press ENTER to cancel\r\n");
         _isPrompt = false;
 
-        pStatementInputStream = (_loadProgFromFileNo == 0) ? _pConsole : &openFiles[_loadProgFromFileNo-1].file;            // loading program from file or from console ?
+        pStatementInputStream = (_loadProgFromFileNo == 0) ? _pConsole : (_loadProgFromFileNo == -1) ? _pAlternateIO :
+            &openFiles[_loadProgFromFileNo - 1].file;            // loading program from file or from console ?
         _initiateProgramLoad = true;
     }
     else {      // with or without parsing or execution error
-        pStatementInputStream = _pConsole;
+        pStatementInputStream = _pConsole;          // set to console again
         if (_loadProgFromFileNo > 0) { SD_closeFile(_loadProgFromFileNo); _loadProgFromFileNo = 0; }
     }
 
@@ -1114,7 +1113,7 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
     (_openDebugLevels > 0) ? (_appFlags |= appFlag_stoppedInDebug) : (_appFlags |= appFlag_idle);     // status 'debug mode' or 'idle'
 
     // parsing error occured ? wait until no more characters received from console (important if received from Serial)
-    if ((result != result_tokenFound) && (_pConsole->available() > 0)) {
+    if ((result != result_tokenFound) && (_pConsole->available() > 0)) {        //// te testen met file source = alternate
         char c{};
         do {
             if (_quitJustina) { break; };       // could be set before loop starts
@@ -1188,7 +1187,7 @@ void Justina_interpreter::checkTimeAndExecHousekeeping(bool& killNow) {
             _lastCallBackTime = _currenttime;
             _housekeepingCallback(killNow, _appFlags);                                                           // execute housekeeping callback
             if (killNow) {
-                while (_pConsole->available() > 0) { _pConsole->read(); }                                        // flush buffer and flag 'kill' (request from Justina caller)
+                while (_pConsole->available() > 0) { _pConsole->read(); }                                        // flush console input buffer and flag 'kill' (request from Justina caller)
             }
         }
     }
@@ -1215,7 +1214,7 @@ char Justina_interpreter::getCharacter(Stream* pInputStream, bool& killNow, bool
 
     do {
         if (pInputStream->available() > 0) { c = pInputStream->read(); break; }
-        
+
         // try to read character only once or keep trying until timeout occurs ?
         readCharWindowExpired = (!allowWaitTime || (startWaitForReadTime + GETCHAR_TIMEOUT < millis()));
     } while (!readCharWindowExpired);
@@ -1283,14 +1282,14 @@ bool Justina_interpreter::readText(bool& doAbort, bool& doStop, bool& doCancel, 
 // user variables only: indicate whether they are used in the currently parsed program (if any)
 // arrays: indicate dimensions and number of elements
 
-void Justina_interpreter::printVariables(bool userVars) {
+void Justina_interpreter::printVariables(Stream* pOut, bool userVars) {
 
     // print table header
     char line[MAX_IDENT_NAME_LEN + 30];     // sufficient length for all line elements except the variable value itself
     sprintf(line, ("%-*s %-2c%-8s%-7svalue"), MAX_IDENT_NAME_LEN, (userVars ? "user variable       " : "global prog variable"), (userVars ? 'U' : ' '), "type", "qual");
-    _pConsole->println(line);
+    pOut->println(line);
     sprintf(line, "%-*s %-2c%-8s%-7s-----", MAX_IDENT_NAME_LEN, (userVars ? "-------------" : "--------------------"), (userVars ? '-' : ' '), "----", "----");
-    _pConsole->println(line);
+    pOut->println(line);
 
     // print table
     int varCount = userVars ? _userVarCount : _programVarNameCount;
@@ -1319,7 +1318,7 @@ void Justina_interpreter::printVariables(bool userVars) {
                     strcpy(type, isLong ? "long" : isFloat ? "float" : isString ? "string" : "????");
 
                     sprintf(line, "%-*s %-2c%-8s%-7s", MAX_IDENT_NAME_LEN, *(varName + i), (userVarUsedInProgram ? 'x' : ' '), type, (isConst ? "const  " : "       "));
-                    _pConsole->print(line);
+                    pOut->print(line);
 
                     if (isArray) {
                         uint8_t* dims = (uint8_t*)varValues[i].pArray;
@@ -1330,31 +1329,77 @@ void Justina_interpreter::printVariables(bool userVars) {
                         if (dimCount == 3) { sprintf(arrayText, "%sx%d", arrayText, dims[2]); }
                         if (dimCount >= 2) { sprintf(arrayText, "%s = %d", arrayText, int(dims[0]) * int(dims[1]) * int(dimCount == 3 ? dims[2] : 1)); }
                         strcat(arrayText, " elem)");
-                        _pConsole->println(arrayText);
+                        pOut->println(arrayText);
                     }
 
-                    else if (isLong) { _pConsole->println(varValues[i].longConst); }
-                    else if (isFloat) { _pConsole->println(varValues[i].floatConst); }
+                    else if (isLong) { pOut->println(varValues[i].longConst); }
+                    else if (isFloat) { pOut->println(varValues[i].floatConst); }
                     else if (isString) {
                         char* pString = varValues[i].pStringConst;
                         quoteAndExpandEscSeq(pString);        // creates new string
-                        _pConsole->println(pString);
+                        pOut->println(pString);
                     #if printHeapObjectCreationDeletion
                         Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)pString, HEX);
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] pString;
                     }
-                    else { _pConsole->println("????"); }
+                    else { pOut->println("????"); }
 
                     linesPrinted = true;
                 }
             }
         }
     }
-    if (!linesPrinted) { _pConsole->println("    (none)"); }
-    _pConsole->println();
+    if (!linesPrinted) { pOut->println("    (none)"); }
+    pOut->println();
+    _consoleAtLineStart = true;
 }
+
+
+// ---------------------------------------------------------------------------------------------
+// print a list of global program variables and user variables with name, type, qualifier, value
+// ---------------------------------------------------------------------------------------------
+
+void Justina_interpreter::printCallStack(Stream* pOut) {
+    pOut->println();
+    if (_callStackDepth > 0) {      // including eval() stack levels but excluding open block (for, if, ...) stack levels
+        int indent = 0;
+        void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                    int blockType = block_none;
+        for (int i = 0; i < flowCtrlStack.getElementCount(); ++i) {
+            char s[MAX_IDENT_NAME_LEN + 1] = "";
+            blockType = *(char*)pFlowCtrlStackLvl;
+            if (blockType == block_eval) {
+                for (int space = 0; space < indent - 4; ++space) { pOut->print(" "); }
+                if (indent > 0) { pOut->print("|__ "); }
+                pOut->println("eval() string");
+                indent += 4;
+            }
+            else if (blockType == block_extFunction) {
+                if (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep < (_programStorage + _progMemorySize)) {
+                    for (int space = 0; space < indent - 4; ++space) { pOut->print(" "); }
+                    if (indent > 0) { pOut->print("|__ "); }
+                    int index = ((OpenFunctionData*)pFlowCtrlStackLvl)->functionIndex;              // print function name
+                    sprintf(s, "%s()", extFunctionNames[index]);
+                    pOut->println(s);
+                    indent += 4;
+                }
+                else {
+                    for (int space = 0; space < indent - 4; ++space) { pOut->print(" "); }
+                    if (indent > 0) { pOut->print("|__ "); }
+                    pOut->println((i < flowCtrlStack.getElementCount() - 1) ? "debugging command line" : "command line");       // command line
+                    indent = 0;
+                }
+            }
+            pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
+        }
+    }
+    else  pOut->println("(no program running)");
+
+    pOut->println();
+    _consoleAtLineStart = true;
+}
+
 
 // ----------------------
 // delete a user variable

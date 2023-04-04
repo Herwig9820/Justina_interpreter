@@ -160,6 +160,8 @@ class Justina_interpreter {
     const int MAX_NUM_PRECISION = 8;                        // max. numeric precision. Precision as defined as in c++ printf 'format.precision' sub-specifier
     const int MAX_STRCHAR_TO_PRINT = 255;                   // max. # of alphanumeric characters to print. Absolute limit: 255. Defined as in c++ printf 'format.precision' sub-specifier
 
+    static constexpr int FILENUM_CONSOLE=0;
+    static constexpr int FILENUM_ALTERNATE=-1;
 
     // these values are grouped in a CmdBlockDef structure and are shared between multiple commands
     enum blockType_type {
@@ -232,12 +234,12 @@ class Justina_interpreter {
         cmdcod_quit,
         cmdcod_info,
         cmdcod_input,
+        cmdcod_cout,
+        cmdcod_coutLine,
+        cmdcod_coutList,
         cmdcod_print,
         cmdcod_printLine,
         cmdcod_printList,
-        cmdcod_printToF,
-        cmdcod_printLineToF,
-        cmdcod_printListToF,
         cmdcod_printToS,
         cmdcod_printLineToS,
         cmdcod_printListToS,
@@ -367,11 +369,11 @@ class Justina_interpreter {
 
         fnccod_open,
         fnccod_close,
-        fnccod_readOneCharFromFile,
+        fnccod_readOneCharFromStream,
 
-        fnccod_inputFromFile,
-        fnccod_inputLineFromFile,
-        fnccod_parseListFromFile,
+        fnccod_readFromStream,
+        fnccod_readLineFromStream,
+        fnccod_parseListFromStream,
         fnccod_parseListFromString,
 
         fnccod_find,
@@ -812,6 +814,7 @@ class Justina_interpreter {
     static const char cmdPar_112[4];
     static const char cmdPar_113[4];
     static const char cmdPar_114[4];
+    static const char cmdPar_115[4];
     static const char cmdPar_999[4];////test
 
     // commands parameters: types allowed
@@ -1176,7 +1179,7 @@ class Justina_interpreter {
 
     struct OpenFile {
         File file;
-        char* filePath{nullptr};                                // including file name
+        char* filePath{ nullptr };                                // including file name
         bool fileNumberInUse;                                   // file number = position in structure (base 0) + 1
     };
 
@@ -1392,7 +1395,7 @@ class Justina_interpreter {
 
     char _programName[MAX_IDENT_NAME_LEN + 1];
 
-    Stream* _pConsole{ nullptr };
+    Stream* _pConsole{ nullptr }, * _pAlternateIO{ nullptr };
     long _progMemorySize{};////
     Stream** _pTerminal{ nullptr };
     int _definedTerminals{ 0 };
@@ -1526,7 +1529,7 @@ class Justina_interpreter {
     // ------------------------------------
 
 public:
-    Justina_interpreter(Stream* const pConsole, long progMemSize, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);               // constructor
+    Justina_interpreter(Stream* const pConsole, Stream* const pAlternate, long progMemSize, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);               // constructor
     ~Justina_interpreter();               // deconstructor
     bool setMainLoopCallback(void (*func)(bool& requistQuit, long& appFlags));                   // set callback functions
     bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType, const int argCount));
@@ -1624,14 +1627,15 @@ private:
 
     void checkTimeAndExecHousekeeping(bool& killNow);
 
-    char  getCharacter(Stream* pInputStream, bool& killNow, bool enableTimeOut = false );
+    char  getCharacter(Stream* pInputStream, bool& killNow, bool enableTimeOut = false);
     bool readText(bool& doAbort, bool& doStop, bool& doCancel, bool& doDefault, char* input, int& length);
 
     bool addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool& withinMultiLineComment,
         bool& redundantSemiColon, bool isEndOfFile, bool& bufferOverrun, bool  _flushAllUntilEOF, int& _lineCount, int& _statementCharCount, char c);
-    bool processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, int clearIndicator, Stream* &pStatementInputStream);
+    bool processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, int clearIndicator, Stream*& pStatementInputStream);
     void traceAndPrintDebugInfo();
-    void printVariables(bool userVars);
+    void printVariables(Stream* pOut, bool userVars);
+    void printCallStack(Stream* pOut);
     parseTokenResult_type deleteUserVariable(char* userVarName = nullptr);
 
     bool parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueType, parseTokenResult_type& result);
@@ -1642,14 +1646,15 @@ private:
     execResult_type SD_open(int& fileNumber, char* filePath, int mod = O_READ);
     execResult_type SD_openNext(int dirFileNumber, int& fileNumber, File directory, int mod = O_READ);
     void SD_closeFile(int fileNumber);
-    execResult_type SD_listFiles();
+    execResult_type SD_listFiles(Stream* pOut);
     execResult_type SD_fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File& file, int allowFileTypes = 1);
     execResult_type SD_fileChecks(bool argIsLong, bool argIsFloat, Val arg, File& file, int allowFileTypes = 1);
     execResult_type SD_fileChecks(File& file, int fileNumber, int allowFileTypes = 1);
-    void printDirectory(File dir, int numTabs);
+    void printDirectory(Stream* pOut,File dir, int numTabs);
 
     bool pathValid(char* path);
     bool fileIsOpen(char* path);
+    execResult_type checkStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File& file, HardwareSerial& serial, int &streamNumber);
 };
 
 
