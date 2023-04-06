@@ -62,7 +62,8 @@ constexpr char menu[] = "+++ Please select:\r\n  '0' (Re-)start WiFi\r\n  '1' Di
 constexpr char menu[] = "+++ Please select:\r\n  '8' Start Justina interpreter\r\n";
 #endif
 
-constexpr int terminalCount{ 2 };
+Stream* pTerminals[3]{ };
+constexpr int terminalCount{ 3 };
 
 bool TCP_enabled{ false };
 bool console_isRemoteTerm{ false };                                                    // init: console is currently local terminal (Serial) 
@@ -79,11 +80,11 @@ Justina_interpreter* pJustina{ nullptr };                                       
 #if withTCP
 // connect as TCP server: create class object myTCPconnection
 TCPconnection myTCPconnection(SSID, PASS, serverAddress, gatewayAddress, subnetMask, DNSaddress, serverPort, conn_2_TCPconnected);
-Stream* pTerminal[terminalCount]{ (Stream*)&Serial, myTCPconnection.getClient() };
+Stream* pTerminals[1]{ (Stream*)&Serial, myTCPconnection.getClient() };
 void switchConsole();
 void onConnStateChange(connectionState_type  connectionState);
 #else
-Stream* pTerminal[terminalCount]{ (Stream*)&Serial };
+
 #endif
 
 
@@ -132,6 +133,11 @@ void setup() {
     // set callback function that will be executed when WiFi or TCP connection state changes 
     myTCPconnection.setConnCallback((&onConnStateChange));                            // set callback function
 #endif
+
+    
+    pTerminals[0] = static_cast<Stream*>(&Serial);
+    pTerminals[1] = static_cast<Stream*>(&Serial);
+    pTerminals[2] = static_cast<Stream*>(&Serial);
 
     // not functionaly used, but required to circumvent a bug in sprintf function with %F, %E, %G specifiers 
     char s[10];
@@ -256,7 +262,7 @@ void loop() {
                 heartbeatPeriod = 250;
                 withinApplication = true;                                                   // flag that control will be transferred to an 'application'
                 if (!interpreterInMemory) {
-                    pJustina = new  Justina_interpreter(pConsole,pAlternate, progMemSize);         // if interpreter not running: create an interpreter object on the heap
+                    pJustina = new  Justina_interpreter(pConsole,pTerminals,terminalCount, progMemSize);         // if interpreter not running: create an interpreter object on the heap
 
                     // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
                     // this callback function will be called regularly, e.g. every time the interpreter reads a character
@@ -266,7 +272,7 @@ void loop() {
                     pJustina->setUserFcnCallback((&userFcn_writePort));
                     pJustina->setUserFcnCallback((&userFcn_togglePort));
                 }
-                interpreterInMemory = pJustina->run(pConsole, pTerminal, terminalCount);                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
+                interpreterInMemory = pJustina->run(pConsole, pTerminals, terminalCount);                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
 
                 if (!interpreterInMemory) {                                               // return from interpreter: remove from memory as well ?
                     delete pJustina;                                                     // cleanup and delete calculator object itself

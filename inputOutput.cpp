@@ -28,11 +28,6 @@
 
 #include "Justina.h"
 
-#define printHeapObjectCreationDeletion 0
-#define printProcessedTokens 0
-#define debugPrint 0
-#define printParsedStatementStack 0
-
 // *****************************************************************
 // ***        class Justina_interpreter - implementation         ***
 // *****************************************************************
@@ -47,7 +42,7 @@ Justina_interpreter::execResult_type Justina_interpreter::startSD() {
 
     if (!_SDcard.init(SPI_HALF_SPEED, _SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
     if (!SD.begin(_SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
-
+    
     _openFileCount = 0;
     for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) { openFiles[i].fileNumberInUse = false; }
     _SDinitOK = true;
@@ -304,8 +299,11 @@ Justina_interpreter::execResult_type Justina_interpreter::checkStream(long argIs
     if ((!(argIsLongBits & (0x1 << argIndex))) && (!(argIsFloatBits & (0x1 << argIndex)))) { return result_numberExpected; }                      // file number
     streamNumber = (argIsLongBits & (0x1 << argIndex)) ? arg.longConst : arg.floatConst;
 
-    if (streamNumber == FILENUM_CONSOLE) { pStream = static_cast<Stream*> (_pConsole); }
-    else if (streamNumber == FILENUM_ALTERNATE) { pStream = static_cast<Stream*>(_pAlternateIO); }
+    if (streamNumber == 0) { pStream = static_cast<Stream*> (_pConsole); }
+    else if (streamNumber < 0) {
+        if (( - streamNumber) > _altIOstreamCount) { return result_IO_invalidIOstreamNumber; }              
+        pStream = static_cast<Stream*>(_pAltIOstreams[(-streamNumber) - 1]);     // stream number -1 => array index 0, etc.
+    }
     else {      // file
         File* pFile{};
         execResult_type execResult = SD_fileChecks(pFile, streamNumber);    // operand: file number

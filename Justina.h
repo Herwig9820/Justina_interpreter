@@ -42,7 +42,6 @@
 #define BuildDate "December 8, 2022"
 
 
-
 // ******************************************************************
 // ***                      class LinkedList                      ***
 // ******************************************************************
@@ -159,9 +158,6 @@ class Justina_interpreter {
     const int MAX_PRINT_WIDTH = 255;                        // max. width of the print field. Absolute limit: 255. With as defined as in c++ printf 'format.width' sub-specifier
     const int MAX_NUM_PRECISION = 8;                        // max. numeric precision. Precision as defined as in c++ printf 'format.precision' sub-specifier
     const int MAX_STRCHAR_TO_PRINT = 255;                   // max. # of alphanumeric characters to print. Absolute limit: 255. Defined as in c++ printf 'format.precision' sub-specifier
-
-    static constexpr int FILENUM_CONSOLE=0;
-    static constexpr int FILENUM_ALTERNATE=-1;
 
     // these values are grouped in a CmdBlockDef structure and are shared between multiple commands
     enum blockType_type {
@@ -635,9 +631,7 @@ class Justina_interpreter {
         result_aliasNotDeclared,
 
         // numbers and strings
-        result_outsideRange = 3300,
-        result_numberOutsideRange,
-        result_numberNonInteger,
+        result_numberNonInteger= 3300,
         result_numberExpected,
         result_integerExpected,
         result_stringExpected,
@@ -663,7 +657,7 @@ class Justina_interpreter {
         // SD card
         result_SD_noCardOrCardError = 3600,
         result_SD_fileNotFound,
-        result_SD_couldNotOpenFile,                 // or file does not exist (when opening in readonly mode)
+        result_SD_couldNotOpenFile,                 // or file does not exist 
         result_SD_fileIsNotOpen,
         result_SD_fileAlreadyOpen,
         result_SD_invalidFileNumber,
@@ -673,7 +667,9 @@ class Justina_interpreter {
         result_SD_directoryNotAllowed,
         result_SD_couldNotCreateFileDir,
         result_SD_pathIsNotValid,
-
+        
+        // IO streams
+        result_IO_invalidIOstreamNumber,                         
 
         // **************************************************
         // *** MANDATORY =>LAST<= range of errors: events ***
@@ -815,6 +811,7 @@ class Justina_interpreter {
     static const char cmdPar_113[4];
     static const char cmdPar_114[4];
     static const char cmdPar_115[4];
+    static const char cmdPar_116[4];
     static const char cmdPar_999[4];////test
 
     // commands parameters: types allowed
@@ -1218,9 +1215,9 @@ class Justina_interpreter {
     int _SDcardChipSelectPin = 10;
     bool _SDinitOK = false;
 
-    int _resWordCount;                                          // index into list of keywords
-    int _functionCount;                                         // index into list of internal (intrinsic) functions
-    int _terminalCount;
+    int _resWordCount;                                          // count of keywords in keyword table 
+    int _functionCount;                                         // count of internal (intrinsic) functions in functions table
+    int _termTokenCount;                                        // count of operators and other terminals in terminals table
 
     bool _isProgramCmd = false;
     bool _isExtFunctionCmd = false;                             // FUNCTION command is being parsed (not the complete function)
@@ -1395,10 +1392,11 @@ class Justina_interpreter {
 
     char _programName[MAX_IDENT_NAME_LEN + 1];
 
-    Stream* _pConsole{ nullptr }, * _pAlternateIO{ nullptr };
+    Stream* _pConsole{ nullptr };
+    Stream** _pAltIOstreams{ nullptr };
+    int _altIOstreamCount = 0;
+
     long _progMemorySize{};////
-    Stream** _pTerminal{ nullptr };
-    int _definedTerminals{ 0 };
 
     // program storage
     ////char _programStorage[_progMemorySize + IMM_MEM_SIZE];
@@ -1529,11 +1527,11 @@ class Justina_interpreter {
     // ------------------------------------
 
 public:
-    Justina_interpreter(Stream* const pConsole, Stream* const pAlternate, long progMemSize, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);               // constructor
+    Justina_interpreter(Stream* const pConsole, Stream** const pAltIOstreams, int altIOstreamCount, long progMemSize, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);               // constructor
     ~Justina_interpreter();               // deconstructor
     bool setMainLoopCallback(void (*func)(bool& requistQuit, long& appFlags));                   // set callback functions
     bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType, const int argCount));
-    bool run(Stream* const pConsole, Stream** const pTerminal, int definedTerms);
+    bool run(Stream* const pConsole, Stream** const pAltIOstreams, int definedTerms);
 
 private:
     bool parseAsResWord(char*& pNext, parseTokenResult_type& result);

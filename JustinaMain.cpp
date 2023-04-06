@@ -28,9 +28,11 @@
 
 #include "Justina.h"
 
-#define printListObjectCreationDeletion 0
-#define printHeapObjectCreationDeletion 0
-#define debugPrint 0
+#define STARTSTOP_SD 1                          // set to zero if autostart SD card is not wanted
+
+// for debugging purposes, prints to Serial
+#define PRINT_LLIST_OBJ_CREA_DEL 0
+#define PRINT_HEAP_OBJ_CREA_DEL 0
 
 
 // *****************************************************************
@@ -87,7 +89,7 @@ char* LinkedList::appendListElement(int size) {
     _listElementCount++;
     _createdListObjectCounter++;
 
-#if printListObjectCreationDeletion
+#if PRINT_LLIST_OBJ_CREA_DEL
     Serial.print("(LIST) Create elem # "); Serial.print(_listElementCount);
     Serial.print(", list ID "); Serial.print(_listID);
     Serial.print(", stack: "); Serial.print(_listName);
@@ -114,7 +116,7 @@ char* LinkedList::deleteListElement(void* pPayload) {                           
 
     ListElemHead* p = pElem->pNext;                                                     // remember return value
 
-#if printListObjectCreationDeletion
+#if PRINT_LLIST_OBJ_CREA_DEL
     // determine list element # by counting from the list start
     ListElemHead* q = _pFirstElement;
     int i{};
@@ -280,6 +282,7 @@ const char Justina_interpreter::cmdPar_112[4]{ cmdPar_expression,               
 const char Justina_interpreter::cmdPar_113[4]{ cmdPar_expression,                             cmdPar_varOptAssignment,                         cmdPar_varOptAssignment,                        cmdPar_none };
 const char Justina_interpreter::cmdPar_114[4]{ cmdPar_expression,                             cmdPar_varOptAssignment | cmdPar_optionalFlag,   cmdPar_none,                                    cmdPar_none };
 const char Justina_interpreter::cmdPar_115[4]{ cmdPar_expression,                             cmdPar_expression | cmdPar_optionalFlag,         cmdPar_none,                                    cmdPar_none };
+const char Justina_interpreter::cmdPar_116[4]{ cmdPar_expression,                             cmdPar_expression,                               cmdPar_expression | cmdPar_multipleFlag,        cmdPar_none };
 const char Justina_interpreter::cmdPar_999[4]{ cmdPar_varNoAssignment,                        cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };////test var no assignment
 
 
@@ -303,7 +306,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
 
     // program and flow control commands
     // ---------------------------------
-    {"program",         cmdcod_program,         cmd_onlyProgramTop | cmd_skipDuringExec,            0,0,    cmdPar_103,     cmdBlockNone},        //// non-block commands: cmdBlockNone ?
+    {"program",         cmdcod_program,         cmd_onlyProgramTop | cmd_skipDuringExec,            0,0,    cmdPar_103,     cmdBlockNone},
     {"function",        cmdcod_function,        cmd_onlyInProgram | cmd_skipDuringExec,             0,0,    cmdPar_108,     cmdBlockExtFunction},
 
     {"for",             cmdcod_for,             cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_109,     cmdBlockFor},
@@ -335,17 +338,17 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"receiveFile",     cmdcod_receiveFile,     cmd_onlyImmediate,                                  0,0,    cmdPar_115,     cmdBlockNone},
     {"sendFile",        cmdcod_sendFile,        cmd_onlyImmediate,                                  0,0,    cmdPar_115,     cmdBlockNone},
 
-    {"cprint",          cmdcod_printCons,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},  //// weg
-    {"cprintLine",      cmdcod_printLineCons,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},  //// weg
-    {"cprintList",      cmdcod_printListCons,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},  //// weg
+    {"cout",            cmdcod_printCons,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"coutLine",        cmdcod_printLineCons,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},
+    {"coutList",        cmdcod_printListCons,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
 
-    {"print",           cmdcod_print,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"print",           cmdcod_print,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_116,     cmdBlockNone},
     {"printLine",       cmdcod_printLine,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
-    {"printList",       cmdcod_printList,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"printList",       cmdcod_printList,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_116,     cmdBlockNone},
 
-    {"vprint",          cmdcod_printToVar,      cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"vprint",          cmdcod_printToVar,      cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_116,     cmdBlockNone},
     {"vprintLine",      cmdcod_printLineToVar,  cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
-    {"vrintList",       cmdcod_printListToVar,  cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"vprintList",      cmdcod_printListToVar,  cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_116,     cmdBlockNone},
 
     {"listVars",        cmdcod_printVars,       cmd_onlyImmediate,                                  0,0,    cmdPar_106,     cmdBlockNone},
     {"listCallSt",      cmdcod_printCallSt,     cmd_onlyImmediate,                                  0,0,    cmdPar_106,     cmdBlockNone},
@@ -516,7 +519,7 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
 
     { "read1",                   fnccod_readOneChar,            1,1,    0b0 },      // without timeout
     { "read",                    fnccod_readChars,              2,3,    0b0 },      // with timeout
-    { "readLine" ,               fnccod_readLine,               1,1,    0b0 },      // with timeout
+    { "readLine",                fnccod_readLine,               1,1,    0b0 },      // with timeout
     { "readList",                fnccod_parseList,              2,16,   0b0 },      // with timeout
     { "vreadList",               fnccod_parseListFromVar,       2,16,   0b0 },
 
@@ -541,7 +544,7 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
 
     // extra Justina SD card functions
     { "fileNum",                 fnccod_fileNumber,             1,1,    0b0 },
-    { "isOpen",                  fnccod_isOpenFile,             1,1,    0b0 },
+    { "isInUse",                 fnccod_isOpenFile,             1,1,    0b0 },
     { "closeAll",                fnccod_closeAll,               0,0,    0b0 },
 };
 
@@ -625,8 +628,8 @@ const Justina_interpreter::TerminalDef Justina_interpreter::_terminals[]{
 // *   constructor   *
 // -------------------
 
-Justina_interpreter::Justina_interpreter(Stream* const pConsole, Stream* const pAlternate, long progMemSize, int _SDcardChipSelectPin) :
-    _pConsole(pConsole), _pAlternateIO(pAlternate), _progMemorySize(progMemSize), _SDcardChipSelectPin(_SDcardChipSelectPin) {
+Justina_interpreter::Justina_interpreter(Stream* const pConsole, Stream** const pAltIOstreams, int altIOstreamCount, long progMemSize, int SDcardChipSelectPin) :
+    _pConsole(pConsole), _pAltIOstreams(pAltIOstreams), _altIOstreamCount(altIOstreamCount), _progMemorySize(progMemSize), _SDcardChipSelectPin(SDcardChipSelectPin) {
 
     // settings to be initialized when cold starting interpreter only
     // --------------------------------------------------------------
@@ -639,7 +642,7 @@ Justina_interpreter::Justina_interpreter(Stream* const pConsole, Stream* const p
 
     _resWordCount = (sizeof(_resWords)) / sizeof(_resWords[0]);
     _functionCount = (sizeof(_functions)) / sizeof(_functions[0]);
-    _terminalCount = (sizeof(_terminals)) / sizeof(_terminals[0]);
+    _termTokenCount = (sizeof(_terminals)) / sizeof(_terminals[0]);
 
     _quitJustina = false;
     _isPrompt = false;
@@ -702,7 +705,7 @@ bool Justina_interpreter::setUserFcnCallback(void(*func) (const void** data, con
 // *   interpreter main loop   *
 // ----------------------------
 
-bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, int definedTerms) {
+bool Justina_interpreter::run(Stream* const pConsole, Stream** const pAltIOstreams, int altIOstreamCount) {
 
     bool withinStringEscSequence{ false };
     bool lastCharWasSemiColon{ false };
@@ -774,6 +777,9 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     bool isCommentStartChar = (c == '$');                               // character can also be part of comment
 
     _pConsole = pConsole;
+    _pAltIOstreams = pAltIOstreams;
+    _altIOstreamCount = altIOstreamCount;
+
     _pConsole->println();
     for (int i = 0; i < 13; i++) { _pConsole->print("*"); } _pConsole->print("____");
     for (int i = 0; i < 4; i++) { _pConsole->print("*"); } _pConsole->print("__");
@@ -785,6 +791,10 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     _pConsole->print("    Version: "); _pConsole->print(ProductVersion); _pConsole->print(" ("); _pConsole->print(BuildDate); _pConsole->println(")");
     for (int i = 0; i < 48; i++) { _pConsole->print("*"); } _pConsole->println();
 
+#if STARTSTOP_SD
+    execResult_type execResult = startSD();
+    if (execResult != result_execOK) { _pConsole->println("SD card ERROR: SD card NOT initialised\r\n"); }
+#endif
 
     _appFlags = 0x0000L;                            // init application flags (for communication with Justina caller, using callbacks)
 
@@ -792,8 +802,6 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
     _programCounter = _programStorage + _progMemorySize;
     *(_programStorage + _progMemorySize) = tok_no_token;                                      //  current end of program (immediate mode)
     _isPrompt = false;
-    _pTerminal = pTerminal;
-    _definedTerminals = definedTerms;
 
     _coldStart = false;             // can be used if needed in this procedure, to determine whether this was a cold or warm start
 
@@ -885,7 +893,10 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pTerminal, 
 
     if (kill) { _keepInMemory = false; _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
 
-    SD_closeAllFiles();         // safety (in case an SD card is present: close all files and stop SD
+    SD_closeAllFiles();         // safety (in case an SD card is present: close all files 
+    _SDinitOK = false;
+    SD.end();                   // stop SD card
+
 
     if (_keepInMemory) { _pConsole->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
     _quitJustina = false;         // if interpreter stays in memory: re-init
@@ -1095,7 +1106,8 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
         _pConsole->print((_loadProgFromFileNo > 0) ? "Loading program...\r\n" : "Waiting for program... press ENTER to cancel\r\n");
         _isPrompt = false;
 
-        pStatementInputStream = (_loadProgFromFileNo == 0) ? static_cast<Stream*>(_pConsole) : (_loadProgFromFileNo == -1) ? static_cast<Stream*>(_pAlternateIO) :
+        pStatementInputStream = (_loadProgFromFileNo == 0) ? static_cast<Stream*>(_pConsole) :
+            (_loadProgFromFileNo < 0) ? static_cast<Stream*>(_pAltIOstreams[(-_loadProgFromFileNo) - 1]) :    // stream number -1 => array index 0, etc.
             &openFiles[_loadProgFromFileNo - 1].file;            // loading program from file or from console ?
         _initiateProgramLoad = true;
     }
@@ -1111,7 +1123,7 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
     (_openDebugLevels > 0) ? (_appFlags |= appFlag_stoppedInDebug) : (_appFlags |= appFlag_idle);     // status 'debug mode' or 'idle'
 
     // parsing error occured ? wait until no more characters received from console (important if received from Serial)
-    if ((result != result_tokenFound) && (_pConsole->available() > 0)) {        //// te testen met file source = alternate
+    if ((result != result_tokenFound) && (_pConsole->available() > 0)) {
         char c{};
         do {
             if (_quitJustina) { break; };       // could be set before loop starts
@@ -1336,7 +1348,7 @@ void Justina_interpreter::printVariables(Stream* pOut, bool userVars) {
                         char* pString = varValues[i].pStringConst;
                         quoteAndExpandEscSeq(pString);        // creates new string
                         pOut->println(pString);
-                    #if printHeapObjectCreationDeletion
+                    #if PRINT_HEAP_OBJ_CREA_DEL
                         Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)pString, HEX);
                     #endif
                         _intermediateStringObjectCount--;
@@ -1425,7 +1437,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
 
         // 1. delete variable name object
         // ------------------------------
-    #if printHeapObjectCreationDeletion
+    #if PRINT_HEAP_OBJ_CREA_DEL
         Serial.print("----- (usrvar name) "); Serial.println((uint32_t) * (userVarNames + index), HEX);
     #endif
         _userVarNameStringObjectCount--;
@@ -1439,7 +1451,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
         // ----------------------------------------------------
         //    NOTE: do this before checking for strings (if both 'var_isArray' and 'value_isStringPointer' bits are set: array of strings, with strings already deleted)
         if (isArray) {       // variable is an array: delete array storage          
-        #if printHeapObjectCreationDeletion
+        #if PRINT_HEAP_OBJ_CREA_DEL
             Serial.print("----- (usr ar stor)"); Serial.println((uint32_t)userVarValues[index].pArray, HEX);
         #endif
             delete[]  userVarValues[index].pArray;
@@ -1450,7 +1462,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
         // ------------------------------------------------------
         else if (isString) {       // variable is a scalar containing a string
             if (userVarValues[index].pStringConst != nullptr) {
-            #if printHeapObjectCreationDeletion
+            #if PRINT_HEAP_OBJ_CREA_DEL
                 Serial.print("----- (usr var str) "); Serial.println((uint32_t)userVarValues[index].pStringConst, HEX);
             #endif
                 _userVarStringObjectCount--;
@@ -1569,7 +1581,7 @@ bool Justina_interpreter::parseString(char*& pNext, char*& pch, char*& pStringCs
     if (pNext - (pch + 1) - escChars > 0) {    // not an empty string: create string object 
         isIntermediateString ? _intermediateStringObjectCount++ : _parsedStringConstObjectCount++;
         pStringCst = new char[pNext - (pch + 1) - escChars + 1];                                // create char array on the heap to store alphanumeric constant, including terminating '\0'
-    #if printHeapObjectCreationDeletion
+    #if PRINT_HEAP_OBJ_CREA_DEL
         Serial.print(isIntermediateString ? "+++++ (Intermd str) " : "+++++ (parsed str ) "); Serial.println((uint32_t)pStringCst, HEX);
     #endif
         // store alphanumeric constant in newly created character array
