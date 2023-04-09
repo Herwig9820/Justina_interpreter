@@ -293,7 +293,6 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     //  name            id code                 where allowed              padding (boundary alignment)     param key      control info
     //  ----            -------                 -------------              ----------------------------     ---------      ------------   
 
-
     // declare variables
     // -----------------
     {"var",             cmdcod_var,             cmd_noRestrictions | cmd_skipDuringExec,            0,0,    cmdPar_111,     cmdBlockNone},
@@ -392,7 +391,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
 const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     //  name                    id code                         #par    array pattern
     //  ----                    -------                         ----    -------------   
-
+    
     // logical functions
     {"ifte",                    fnccod_ifte,                    3,16,   0b0},
     {"switch",                  fnccod_switch,                  3,16,   0b0},
@@ -473,10 +472,11 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     {"maskedBitWrite",          fnccod_bitsMaskedWrite,         3,3,    0b0},
     {"byteRead",                fnccod_byteRead,                2,2,    0b0},
     {"byteWrite",               fnccod_byteWrite,               3,3,    0b0},
-    {"reg32Read",               fnccod_reg32Read,               1,1,    0b0},
-    {"reg8Read",                fnccod_reg8Read,                2,2,    0b0},
-    {"reg32Write",              fnccod_reg32Write,              2,2,    0b0},
-    {"reg8Write",               fnccod_reg8Write,               3,3,    0b0},
+    
+    {"mem32Read",               fnccod_mem32Read,               1,1,    0b0},
+    {"mem32Write",              fnccod_mem32Write,              2,2,    0b0},
+    {"mem8Read",                fnccod_mem8Read,                2,2,    0b0},
+    {"mem8Write",               fnccod_mem8Write,               3,3,    0b0},
 
     // string and 'character' functions
     {"char",                    fnccod_char,                    1,1,    0b0},
@@ -546,6 +546,84 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     { "fileNum",                 fnccod_fileNumber,             1,1,    0b0 },
     { "isInUse",                 fnccod_isOpenFile,             1,1,    0b0 },
     { "closeAll",                fnccod_closeAll,               0,0,    0b0 },
+};
+
+
+// symbolic constants
+// -------------------
+
+// these symbolic names can be used in Justina programs instead of the values themselves
+
+const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
+
+    // name                 // value                    // value type
+    // ----                 --------                    // ----------
+
+    {"E",                   "2.7182818284590452354",    value_isFloat},
+    {"PI",                  "3.14159265358979323846",   value_isFloat},
+    {"HALF_PI",             "1.57079632679489661923",   value_isFloat},
+    {"QUART_PI",            "0.78539816339744830962",   value_isFloat},
+    {"TWO_PI",              "6.28318530718",            value_isFloat},
+
+    {"DEG_TO_RAD",          "0.01745329251994329577",   value_isFloat},
+    {"RAD_TO_DEG",          "57.2957795130823208768",   value_isFloat},
+
+    {"FALSE",               "0",                        value_isLong},
+    {"TRUE",                "0",                        value_isLong},
+                                                        
+    {"FALSE",               "0",                        value_isLong},
+    {"TRUE",                "1",                        value_isLong},
+                                                        
+    {"LONG_TYP",            "1",                        value_isLong},
+    {"FLOAT_TYP",           "2",                        value_isLong},
+    {"STRING_TYP",          "3",                        value_isLong},
+
+    {"LOW",                 "0",                        value_isLong},
+    {"HIGH",                "1",                        value_isLong},
+    
+    {"INPUT",               "0x0",                      value_isLong},
+    {"OUTPUT",              "0x1",                      value_isLong},
+    {"INPUT_PULLUP",        "0x2",                      value_isLong},
+    {"INPUT_PULLDOWN",      "0x3",                      value_isLong},
+
+    {"CONSOLE",             "0",                        value_isLong},
+    {"ALT_IO_1",            "-1",                       value_isLong},
+    {"ALT_IO_2",            "-2",                       value_isLong},
+    {"ALT_IO_3",            "-3",                       value_isLong},
+    {"FILE_1",              "1",                        value_isLong},
+    {"FILE_2",              "2",                        value_isLong},
+    {"FILE_3",              "3",                        value_isLong},
+    {"FILE_4",              "4",                        value_isLong},
+    {"FILE_5",              "5",                        value_isLong},
+
+    {"NO_PROMPT",           "0",                        value_isLong},  // do not print prompt and do not echo user input
+    {"PROMPT",              "1",                        value_isLong},  // print prompt but no not echo user input
+    {"ECHO",                "2",                        value_isLong},  // print prompt and echo user input
+    
+    {"NO_LAST",             "0",                        value_isLong},  // do not print last result
+    {"PRINT_LAST",          "1",                        value_isLong},  // print last result
+    {"QUOTE_LAST",          "2",                        value_isLong},  // print last result, quote string results 
+
+    {"LEFT",                "0x1",                      value_isLong},  // left justify
+    {"SIGN",                "0x2",                      value_isLong},  // force sign
+    {"SPACE_IF_POS",        "0x4",                      value_isLong},  // insert a space if no sign
+    {"DEC_POINT",           "0x8",                      value_isLong},  // used with 'F', 'E', 'G' specifiers: always add a decimal point, even if no digits follow
+    {"START_0X",            "0x8",                      value_isLong},  // used with 'X' (hex) specifier: preceed non-zero numbers with '0x'
+    {"PAD_ZERO",            "0x10",                     value_isLong},  // pad with zeros
+    
+    {"INFO_ENTER",          "0",                        value_isLong},  // confirmation required by pressing ENTER (any preceding characters are skipped)
+    {"INFO_ENTER_CANC",     "1",                        value_isLong},  // idem, but if '\c' encountered in input stream the operation is canceled by user 
+    {"INFO_YN",             "2",                        value_isLong},  // only yes or no answer allowed, by pressing 'y' or 'n' followed by ENTER   
+    {"INFO_YN_CANC",        "3",                        value_isLong},  // idem, but if '\c' encountered in input stream the operation is canceled by user 
+
+    {"INPUT_NO_DEF",        "0",                        value_isLong},  // '\d' sequences ('default') in the input stream are ignored
+    {"INPUT_ALLOW_DEF",     "1",                        value_isLong},  // if '\d' sequence is encountered in the input stream, default value is returned
+    
+    {"OP_CANCELED",         "0",                        value_isLong},  // operation was canceled by user (\c sequence encountered)
+    {"OP_SUCCESS",          "1",                        value_isLong},  // operation was NOT canceled by user
+
+    {"KEEP_MEM",            "0",                        value_isLong},  // keep Justina in memory on quitting
+    {"RELEASE_MEM",         "1",                        value_isLong},  // release memory on quitting
 };
 
 
@@ -643,6 +721,7 @@ Justina_interpreter::Justina_interpreter(Stream* const pConsole, Stream** const 
     _resWordCount = (sizeof(_resWords)) / sizeof(_resWords[0]);
     _functionCount = (sizeof(_functions)) / sizeof(_functions[0]);
     _termTokenCount = (sizeof(_terminals)) / sizeof(_terminals[0]);
+    _symbvalueCount = (sizeof(_symbNumConsts)) / sizeof(_symbNumConsts[0]);
 
     _quitJustina = false;
     _isPrompt = false;
@@ -651,7 +730,7 @@ Justina_interpreter::Justina_interpreter(Stream* const pConsole, Stream** const 
     _currenttime = millis();
     _previousTime = _currenttime;
     _lastCallBackTime = _currenttime;
-
+    true;
     parsingStack.setListName("parsing ");
     evalStack.setListName("eval    ");
     flowCtrlStack.setListName("flowCtrl");
@@ -1019,8 +1098,8 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
     int funcNotDefIndex;
     if (result == result_tokenFound) {
         // checks at the end of parsing: any undefined functions (program mode only) ?  any open blocks ?
-        if (_programMode && (!allExternalFunctionsDefined(funcNotDefIndex))) { result = result_undefinedFunctionOrArray; }
-        if (_blockLevel > 0) { result = result_noBlockEnd; }
+        if (_programMode && (!allExternalFunctionsDefined(funcNotDefIndex))) { result = result_function_undefinedFunctionOrArray; }
+        if (_blockLevel > 0) { result = result_block_noBlockEnd; }
     }
 
     (_programMode ? _lastProgramStep : _lastUserCmdStep) = _programCounter;
@@ -1426,7 +1505,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
         }
 
         bool userVarUsedInProgram = (userVarType[index] & var_userVarUsedByProgram);
-        if (userVarUsedInProgram) { return result_varUsedInProgram; }        // match, but cannot delete (variable used in program)
+        if (userVarUsedInProgram) { return result_var_usedInProgram; }        // match, but cannot delete (variable used in program)
 
         int valueType = (userVarType[index] & value_typeMask);
         bool isLong = (valueType == value_isLong);
@@ -1495,7 +1574,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
         varDeleted = true;
     }
 
-    if (!varDeleted) { return result_varNotDeclared; }
+    if (!varDeleted) { return result_var_notDeclared; }
 
     return result_tokenFound;
 }
@@ -1509,42 +1588,65 @@ bool Justina_interpreter::parseIntFloat(char*& pNext, char*& pch, Val& value, ch
     result = result_tokenNotFound;                                                      // init: flag 'no token found'
     pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
 
+    // first, check for symbolic number
+    char* tokenStart = pNext;
+    if (isalpha(pNext[0])) {                                      // first character is a letter ? could be symbolic constant
+        while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }     // position as if symbolic constant was found, for now
+
+        for (int index = _symbvalueCount - 1; index >= 0; index--) {                  // for all defined symbolic names: check against alphanumeric token (NOT ending by '\0')
+            if (strlen(_symbNumConsts[index].symbolName) != pNext - pch) { continue; }   // token has correct length ? If not, skip remainder of loop ('continue')                            
+            if (strncmp(_symbNumConsts[index].symbolName, pch, pNext - pch) != 0) { continue; }      // token corresponds to symbolic name ? If not, skip remainder of loop ('continue')    
+            // symbol found: 
+            bool isNumber = ((_symbNumConsts[index].valueType == value_isLong) || (_symbNumConsts[index].valueType == value_isFloat));
+            if (isNumber) {
+                if ((_symbNumConsts[index].valueType == value_isLong)) { value.longConst = strtol(_symbNumConsts[index].symbolValue, nullptr, 0); }
+                else { value.floatConst = strtof(_symbNumConsts[index].symbolValue, nullptr); }
+                valueType = _symbNumConsts[index].valueType;
+                result = result_tokenFound;
+            }
+            else {pNext = pch;}
+            return true;                                           // no error; result indicates whether token for numeric value symbol was found or search for valid token needs to be continued
+        }
+        pNext = pch; return true;                                                // no match: no error, search for valid token needs to be continued
+    }
+
+    // is not a symbolic number: numeric literal ?
+
     // all numbers will be positive, because leading '-' or '+' characters are parsed separately as prefix operators
     // this is important if next infix operator (power) has higher priority then this prefix operator: -2^4 <==> -(2^4) <==> -16, AND NOT (-2)^4 <==> 16 
     // exception: variable declarations with initializers: prefix operators are not parsed separately
 
-    // check if number (if valid) will be stored as long or float
-
-    char* pNumStart = pNext;
+    pNext = tokenStart;
+;
     bool isLong{ false };
     int i{ 0 };
 
-    int base = ((pNumStart[0] == '0') && ((pNumStart[1] == 'x') || (pNumStart[1] == 'X'))) ? 16 : ((pNumStart[0] == '0') && ((pNumStart[1] == 'b') || (pNumStart[1] == 'B'))) ? 2 : 10;
+    int base = ((tokenStart[0] == '0') && ((tokenStart[1] == 'x') || (tokenStart[1] == 'X'))) ? 16 : ((tokenStart[0] == '0') && ((tokenStart[1] == 'b') || (tokenStart[1] == 'B'))) ? 2 : 10;
 
     if (base == 10) {      // base 10
-        while (isDigit(pNumStart[++i]));
-        isLong = ((i > 0) && (pNumStart[i] != '.') && (pNumStart[i] != 'E') && (pNumStart[i] != 'e'));        // no decimal point, no exponent and minimum one digit
+        while (isDigit(tokenStart[++i]));
+        isLong = ((i > 0) && (tokenStart[i] != '.') && (tokenStart[i] != 'E') && (tokenStart[i] != 'e'));        // no decimal point, no exponent and minimum one digit
     }
 
     else {       // binary or hexadecimal
-        pNumStart += 2;      // skip "0b" or "0x" and start looking for digits at next position
-        while ((base == 16) ? isxdigit(pNumStart[++i]) : ((pNumStart[i] == '0') || (pNumStart[i] == '1'))) { ++i; }
+        tokenStart += 2;      // skip "0b" or "0x" and start looking for digits at next position
+        while ((base == 16) ? isxdigit(tokenStart[++i]) : ((tokenStart[i] == '0') || (tokenStart[i] == '1'))) { ++i; }
         isLong = (i > 0);        // minimum one digit
         if (!isLong) { pNext = pch; result = result_numberInvalidFormat; return false; }  // not a long constant, but not a float either 
     }
 
     if (isLong) {                                                       // token can be parsed as long ?
         valueType = value_isLong;
-        value.longConst = strtoul(pNumStart, &pNext, base);                       // string to UNSIGNED long before assigning to (signed) long -> 0xFFFFFFFF will be stored as -1, as it should (all bits set)
+        value.longConst = strtoul(tokenStart, &pNext, base);                       // string to UNSIGNED long before assigning to (signed) long -> 0xFFFFFFFF will be stored as -1, as it should (all bits set)
         if (_initVarOrParWithUnaryOp == -1) { value.longConst = -value.longConst; }
     }
     else {
         valueType = value_isFloat;
-        value.floatConst = strtof(pNumStart, &pNext);
+        value.floatConst = strtof(tokenStart, &pNext);
         if (_initVarOrParWithUnaryOp == -1) { value.floatConst = -value.floatConst; }
     }                                                    // token can be parsed as float ?
 
-    bool isValidNumber = (pNumStart != pNext);              // is a number if pointer pNext was not moved (is NO error - possibly it's another valid token type)
+    bool isValidNumber = (tokenStart != pNext);              // is a number if pointer pNext was not moved (is NO error - possibly it's another valid token type)
     if (isValidNumber) { result = result_tokenFound; }
     return true;                                             // no error; result indicates whether valid token was found or search for valid token needs to be continued
 }

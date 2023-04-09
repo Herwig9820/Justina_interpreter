@@ -301,7 +301,7 @@ Justina_interpreter::execResult_type Justina_interpreter::checkStream(long argIs
 
     if (streamNumber == 0) { pStream = static_cast<Stream*> (_pConsole); }
     else if (streamNumber < 0) {
-        if (( - streamNumber) > _altIOstreamCount) { return result_IO_invalidIOstreamNumber; }              
+        if (( - streamNumber) > _altIOstreamCount) { return result_IO_invalidStreamNumber; }              
         pStream = static_cast<Stream*>(_pAltIOstreams[(-streamNumber) - 1]);     // stream number -1 => array index 0, etc.
     }
     else {      // file

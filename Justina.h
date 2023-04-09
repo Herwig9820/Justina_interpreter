@@ -151,7 +151,8 @@ class Justina_interpreter {
 
     static constexpr int MAX_OPEN_SD_FILES{ 5 };            // SD card: max. concurrent open files
 
-    static constexpr int DEFAULT_PRINT_WIDTH{ 30 };          // default width of the print field.
+    static constexpr int DEFAULT_CALC_RESULT_PRINT_WIDTH{ 30 };  // calculation results: default width of the print field.
+    static constexpr int DEFAULT_PRINT_WIDTH{ 0 };         // default width of the print field.
     static constexpr int DEFAULT_NUM_PRECISION{ 3 };         // default numeric precision.
     static constexpr int DEFAULT_STRCHAR_TO_PRINT{ 30 };     // default # alphanumeric characters to print
 
@@ -179,7 +180,7 @@ class Justina_interpreter {
         block_midPos2,                                          // command only allowed in open block
         block_endPos,                                           // command ends an open block
         block_inOpenFunctionBlock,                              // command can only occur if currently a function block is open
-        block_inOpenLoopBlock,                                   // command can only occur if at least one loop block is open
+        block_inOpenLoopBlock,                                  // command can only occur if at least one loop block is open
 
         // alternative for value 2: type of command (only if block type = block_none)
         cmd_program,
@@ -344,10 +345,10 @@ class Justina_interpreter {
         fnccod_bitsMaskedWrite,
         fnccod_byteRead,
         fnccod_byteWrite,
-        fnccod_reg32Read,
-        fnccod_reg8Read,
-        fnccod_reg32Write,
-        fnccod_reg8Write,
+        fnccod_mem32Read,
+        fnccod_mem8Read,
+        fnccod_mem32Write,
+        fnccod_mem8Write,
 
         fnccod_isAlpha,
         fnccod_isAlphaNumeric,
@@ -468,7 +469,6 @@ class Justina_interpreter {
         // incomplete expression errors
         result_statementTooLong = 1000,
         result_tokenNotFound,
-        result_expressionNotComplete,
         result_missingLeftParenthesis,
         result_missingRightParenthesis,
 
@@ -490,8 +490,7 @@ class Justina_interpreter {
         // token expected errors
         result_constantValueExpected = 1200,
         result_variableNameExpected,
-        result_functionDefExpected,
-        result_assignmentOrTerminatorExpected,
+        result_assignmentOrSeparatorExpected,
         result_separatorExpected,
 
         // used memory errors
@@ -499,6 +498,7 @@ class Justina_interpreter {
         result_maxLocalVariablesReached,
         result_maxStaticVariablesReached,
         result_maxExtFunctionsReached,
+        result_progMemoryFull,
 
         // token errors
         result_identifierTooLong = 1400,
@@ -509,86 +509,80 @@ class Justina_interpreter {
         result_alphaNoCtrlCharAllowed,
         result_alphaClosingQuoteMissing,
         result_numberInvalidFormat,
-        result_parse_overflow,                // underflow not detected during parsing
+        result_parse_overflow,                // note: underflow conditions are not detected during parsing
 
         // function definition or call errors
-        result_nameInUseForVariable = 1500,
-        result_wrong_arg_count,
-        result_functionAlreadyDefinedBefore,
-        result_mandatoryArgFoundAfterOptionalArgs,
-        result_functionDefMaxArgsExceeded,
-        result_prevCallsWrongArgCount,
-        result_functionDefsCannotBeNested,
-        result_fcnScalarAndArrayArgOrderNotConsistent,
-        result_scalarArgExpected,
-        result_arrayArgExpected,
-        result_redefiningIntFunctionNotAllowed,
-        result_undefinedFunctionOrArray,
-        result_arrayParamMustHaveEmptyDims,
-        result_constantArrayNotAllowed,
-        result_functionNeedsParentheses,
+        result_function_wrongArgCount = 1500,
+        result_function_redefinitionNotAllowed,
+        result_function_mandatoryArgFoundAfterOptionalArgs,
+        result_function_maxArgsExceeded,
+        result_function_prevCallsWrongArgCount,
+        result_function_defsCannotBeNested,
+        result_function_scalarAndArrayArgOrderNotConsistent,
+        result_function_scalarArgExpected,
+        result_function_arrayArgExpected,
+        result_function_redefiningNotAllowed,
+        result_function_undefinedFunctionOrArray,
+        result_function_arrayParamMustHaveEmptyDims,
+        result_function_needsParentheses,
 
         // variable errors
-        result_varNameInUseForFunction = 1600,
-        result_varNotDeclared,
-        result_varRedeclared,
-        result_varDefinedAsArray,
-        result_varDefinedAsScalar,
-        result_varControlVarInUse,
-        result_controlVarIsConstant,
-        result_illegalInDeclaration,
-        result_illegalInProgram,
-        result_noOpenFunction,
-        result_varUsedInProgram,
+        result_var_nameInUseForFunction = 1600,
+        result_var_notDeclared,
+        result_var_redeclared,
+        result_var_definedAsScalar,
+        result_var_definedAsArray,
+        result_var_constantArrayNotAllowed,
+        result_var_ControlVarInUse,
+        result_var_controlVarIsConstant,
+        result_var_illegalInDeclaration,
+        result_var_illegalInProgram,
+        result_var_usedInProgram,
 
         // array errors
-        result_arrayDefNoDims = 1700,
-        result_arrayDefNegativeDim,
-        result_arrayDefDimTooLarge,
-        result_arrayDefMaxDimsExceeded,
-        result_arrayDefMaxElementsExceeded,
-        result_arrayUseNoDims,
-        result_arrayUseWrongDimCount,
-        result_arrayParamExpected,
-        result_arrayInit_emptyStringExpected,
-        result_arrayDimNotValid,
-        result_noValidInitializer,
+        result_arrayDef_noDims = 1700,
+        result_arrayDef_negativeDim,
+        result_arrayDef_dimTooLarge,
+        result_arrayDef_maxDimsExceeded,
+        result_arrayDef_maxElementsExceeded,
+        result_arrayDef_emptyInitStringExpected,
+        result_arrayDef_dimNotValid,
+        result_arrayUse_noDims,
+        result_arrayUse_wrongDimCount,
 
-        // command errors 
-        result_resWordExpectedAsCmdPar = 1800,
-        result_expressionExpectedAsCmdPar,
-        result_varWithoutAssignmentExpectedAsCmdPar,
-        result_varWithOptionalAssignmentExpectedAsCmdPar,
-        result_variableExpectedAsCmdPar,
-        result_identExpectedAsCmdPar,
-        result_cmdParameterMissing,
-        result_cmdHasTooManyParameters,
+        // command errors and command argument errors
+        result_cmd_programCmdMissing = 1800,
+        result_cmd_onlyProgramStart,
+        result_cmd_onlyImmediateMode,
+        result_cmd_onlyInsideProgram,
+        result_cmd_onlyInsideFunction,
+        result_cmd_onlyOutsideFunction,
+        result_cmd_onlyImmediateOrInFunction,
+        result_cmd_onlyInProgOutsideFunction,
+        result_cmd_onlyImmediateEndOfLine,
+
+        result_cmd_resWordExpectedAsPar,
+        result_cmd_expressionExpectedAsPar,
+        result_cmd_varWithoutAssignmentExpectedAsPar,
+        result_cmd_varWithOptionalAssignmentExpectedAsPar,
+        result_cmd_variableExpectedAsPar,
+        result_cmd_identExpectedAsPar,
+        result_cmd_parameterMissing,
+        result_cmd_tooManyParameters,
 
         // generic identifier errors
-        result_allUserCBAliasesSet = 1900,
-        result_userCBAliasRedeclared,
+        result_userCB_allAliasesSet = 1900,
+        result_userCB_aliasRedeclared,
 
         // block command errors
-        result_programCmdMissing = 2000,
-        result_onlyImmediateMode,
-        result_onlyProgramStart,
-        result_onlyInsideProgram,
-        result_onlyInsideFunction,
-        result_onlyOutsideFunction,
-        result_onlyImmediateOrInFunction,
-        result_onlyInProgOutsideFunction,
-        result_onlyImmediateEndOfLine,
+        result_block_noBlockEnd = 2000,
+        result_block_noOpenBlock,
+        result_block_noOpenLoop,
+        result_block_noOpenFunction,
+        result_block_notAllowedInThisOpenBlock,
+        result_block_wrongBlockSequence,
 
-
-
-
-        result_noOpenBlock,
-        result_noBlockEnd,
-        result_noOpenLoop,
-        result_notAllowedInThisOpenBlock,
-        result_wrongBlockSequence,
-
-        // tracing, eval() and other parsing errors during execution phase
+        // tracing, eval() and other parsing errors during EXECUTION phase
         result_trace_eval_resWordNotAllowed = 2100,
         result_trace_eval_genericNameNotAllowed,
         result_trace_userFunctonNotAllowed,             // tracing restriction only
@@ -597,8 +591,7 @@ class Justina_interpreter {
         result_parseList_valueToParseExpected,
 
         // other program errors
-        result_progMemoryFull = 2200,
-        result_parse_kill
+        result_parse_kill = 2200
     };
 
 
@@ -612,36 +605,30 @@ class Justina_interpreter {
         result_array_dimCountInvalid,
         result_array_valueTypeIsFixed,
 
-        // internal functions
+        // internal function arguments
         result_arg_outsideRange = 3100,
         result_arg_integerTypeExpected,
         result_arg_numberExpected,
+        result_arg_stringExpected,
+        result_arg_nonEmptyStringExpected,
+        result_arg_varExpected,
         result_arg_invalid,
         result_arg_integerDimExpected,
         result_arg_dimNumberInvalid,
-        result_arg_stringExpected,
-        result_arg_numValueExpected,
         result_arg_tooManyArgs,
-        result_arg_nonEmptyStringExpected,
-        result_arg_testexpr_numberExpected,
 
-        result_array_dimNumberNonInteger = 3200,
-        result_array_dimNumberInvalid,
-        result_arg_varExpected,
-        result_aliasNotDeclared,
+        // generic identifiers
+        result_userCB_aliasNotDeclared = 3200,
 
         // numbers and strings
-        result_numberNonInteger= 3300,
+        result_integerTypeExpected = 3300,
         result_numberExpected,
-        result_integerExpected,
-        result_stringExpected,
         result_operandsNumOrStringExpected,
         result_undefined,
         result_overflow,
         result_underflow,
         result_divByZero,
         result_testexpr_numberExpected,
-        result_stringTooLong,
 
         // abort, kill, quit, debug
         result_noProgramStopped = 3400,        // 'go' command not allowed because not in debug mode
@@ -652,7 +639,6 @@ class Justina_interpreter {
         result_eval_nothingToEvaluate = 3500,
         result_eval_parsingError,
         result_list_parsingError,
-        result_list_missingVarArgs,
 
         // SD card
         result_SD_noCardOrCardError = 3600,
@@ -667,9 +653,9 @@ class Justina_interpreter {
         result_SD_directoryNotAllowed,
         result_SD_couldNotCreateFileDir,
         result_SD_pathIsNotValid,
-        
+
         // IO streams
-        result_IO_invalidIOstreamNumber,                         
+        result_IO_invalidStreamNumber,
 
         // **************************************************
         // *** MANDATORY =>LAST<= range of errors: events ***
@@ -1204,6 +1190,14 @@ class Justina_interpreter {
     static const FuncDef _functions[129];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
+    struct SymbNumConsts {//// verplaats
+        const char* symbolName;
+        const char* symbolValue;
+        char valueType;                                             // float or long
+    };
+
+    static const SymbNumConsts _symbNumConsts[51];
+
 
     // ---------
     // variables
@@ -1217,6 +1211,7 @@ class Justina_interpreter {
 
     int _resWordCount;                                          // count of keywords in keyword table 
     int _functionCount;                                         // count of internal (intrinsic) functions in functions table
+    int _symbvalueCount;
     int _termTokenCount;                                        // count of operators and other terminals in terminals table
 
     bool _isProgramCmd = false;
@@ -1647,10 +1642,10 @@ private:
     execResult_type SD_listFiles(Stream* pOut);
     execResult_type SD_fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File*& pFile, int allowFileTypes = 1);
     execResult_type SD_fileChecks(bool argIsLong, bool argIsFloat, Val arg, File*& pFile, int allowFileTypes = 1);
-    execResult_type SD_fileChecks(File* &pFile , int fileNumber, int allowFileTypes = 1);
-    execResult_type checkStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, Stream* &pStream,  int &streamNumber);
-    
-    void printDirectory(Stream* pOut,File dir, int numTabs);
+    execResult_type SD_fileChecks(File*& pFile, int fileNumber, int allowFileTypes = 1);
+    execResult_type checkStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, Stream*& pStream, int& streamNumber);
+
+    void printDirectory(Stream* pOut, File dir, int numTabs);
 
     bool pathValid(char* path);
     bool fileIsOpen(char* path);

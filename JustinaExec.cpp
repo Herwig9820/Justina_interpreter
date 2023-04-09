@@ -915,7 +915,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 Val args[1];
 
                 copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);            // copy arguments from stack
-                if (((uint8_t)(valueType[0]) != value_isLong) && ((uint8_t)(valueType[0]) != value_isFloat)) { return result_arg_numValueExpected; }
+                if (((uint8_t)(valueType[0]) != value_isLong) && ((uint8_t)(valueType[0]) != value_isFloat)) { return result_arg_numberExpected; }
                 if ((uint8_t)(valueType[0]) == value_isFloat) { args[0].longConst = (int)args[0].floatConst; }
                 _keepInMemory = (args[0].longConst == 0);       // silent mode (even not possible to cancel)
                 return result_quit;
@@ -1175,8 +1175,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 // external source specified ?
                 else if ((valueType[0] == value_isLong) || (valueType[0] == value_isFloat)) {      // external source specified: console or alternate input
                     _loadProgFromFileNo = ((valueType[0] == value_isLong) ? args[0].longConst : args[0].floatConst);
-                    if (_loadProgFromFileNo > 0) { return result_IO_invalidIOstreamNumber; }
-                    else if ((-_loadProgFromFileNo) > _altIOstreamCount) { return result_IO_invalidIOstreamNumber; }
+                    if (_loadProgFromFileNo > 0) { return result_IO_invalidStreamNumber; }
+                    else if ((-_loadProgFromFileNo) > _altIOstreamCount) { return result_IO_invalidStreamNumber; }
                 }
             }
 
@@ -1204,8 +1204,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             if (cmdParamCount == 2) {       // destination specified as first argument
                 if ((valueType[0] == value_isLong) || (valueType[0] == value_isFloat)) {      // external source specified: console or alternate input
                     int destination = ((valueType[0] == value_isLong) ? args[0].longConst : (long)args[0].floatConst);      // zero or negative
-                    if (destination > 0) { return result_IO_invalidIOstreamNumber; }
-                    else if ((-destination) > _altIOstreamCount) { return result_IO_invalidIOstreamNumber; }
+                    if (destination > 0) { return result_IO_invalidStreamNumber; }
+                    else if ((-destination) > _altIOstreamCount) { return result_IO_invalidStreamNumber; }
                     else if (destination == 0) { pOut = static_cast<Stream*> (_pConsole); }
                     else pOut = static_cast<Stream*>(_pAltIOstreams[(-destination) - 1]);     // stream number -1 => array index 0, etc.
                 }
@@ -1263,8 +1263,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             if (cmdParamCount == 2) {       // destination specified as first argument
                 if ((valueType[0] == value_isLong) || (valueType[0] == value_isFloat)) {      // external source specified: console or alternate input
                     int destination = ((valueType[0] == value_isLong) ? args[0].longConst : (long)args[0].floatConst);
-                    if (destination > 0) { return result_IO_invalidIOstreamNumber; }
-                    else if ((-destination) > _altIOstreamCount) { return result_IO_invalidIOstreamNumber; }
+                    if (destination > 0) { return result_IO_invalidStreamNumber; }
+                    else if ((-destination) > _altIOstreamCount) { return result_IO_invalidStreamNumber; }
                     else if (destination == 0) { pOut = static_cast<Stream*> (_pConsole); }
                     else pOut = static_cast<Stream*>(_pAltIOstreams[(-destination) - 1]);     // stream number -1 => array index 0, etc.
                 }
@@ -1446,7 +1446,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
             do {                                                                                                                // until valid answer typed
                 if (isInput) {                                                                                                  // input command
-                    if (((uint8_t)(valueType[2]) != value_isLong) && ((uint8_t)(valueType[2]) != value_isFloat)) { return result_arg_numValueExpected; }    // flag: with default 
+                    if (((uint8_t)(valueType[2]) != value_isLong) && ((uint8_t)(valueType[2]) != value_isFloat)) { return result_arg_numberExpected; }    // flag: with default 
                     checkForDefault = (((uint8_t)(valueType[2]) == value_isLong) ? args[2].longConst != 0 : args[2].floatConst != 0.);
                     checkForCancel = true;
 
@@ -1462,7 +1462,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
                 else {                                                                                                          // info command
                     if (cmdParamCount == 2) {
-                        if (((uint8_t)(valueType[1]) != value_isLong) && ((uint8_t)(valueType[1]) != value_isFloat)) { return result_arg_numValueExpected; }
+                        if (((uint8_t)(valueType[1]) != value_isLong) && ((uint8_t)(valueType[1]) != value_isFloat)) { return result_arg_numberExpected; }
                         if ((uint8_t)(valueType[1]) == value_isFloat) { args[1].longConst = (int)args[1].floatConst; }
                         if ((args[1].longConst < 0) || (args[1].longConst > 3)) { execResult = result_arg_invalid; return execResult; };
 
@@ -1569,7 +1569,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 Val args[1];
                 copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
 
-                if ((valueType[0] != value_isLong) && (valueType[0] != value_isFloat)) { return result_arg_numValueExpected; }
+                if ((valueType[0] != value_isLong) && (valueType[0] != value_isFloat)) { return result_arg_numberExpected; }
                 pauseTime = (valueType[0] == value_isLong) ? args[0].longConst : (int)args[0].floatConst;    // in seconds
                 if (pauseTime < 1) { pauseTime = 1; }
                 else if (pauseTime > 10) { pauseTime = 10; };
@@ -1683,11 +1683,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 if (i < firstValueIndex) {
                     if (isStreamPrint) {     // print to file number
                         // check file number (also perform related file and SD card object checks)
-                        if ((!opIsLong) && (!opIsFloat)) { return result_numberExpected; }                      // file number
+                        if ((!opIsLong) && (!opIsFloat)) { return result_arg_numberExpected; }                      // file number
                         int streamNumber = opIsLong ? operand.longConst : operand.floatConst;
 
                         if (streamNumber == 0) { pOut = static_cast<Stream*> (_pConsole); isConsolePrint = true; }
-                        else if ((-streamNumber) > _altIOstreamCount) { return result_IO_invalidIOstreamNumber; }
+                        else if ((-streamNumber) > _altIOstreamCount) { return result_IO_invalidStreamNumber; }
                         else if (streamNumber < 0) {                                                                // external IO
                             pOut = static_cast<Stream*>(_pAltIOstreams[(-streamNumber) - 1]);     // stream number -1 => array index 0, etc.
                             if (pOut == _pConsole) { isConsolePrint = true; }
@@ -1877,7 +1877,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 streamNumber = (valueType[0] == value_isLong) ? args[0].longConst : args[0].floatConst;
 
                 if (streamNumber == 0) { pOut = static_cast<Stream*> (_pConsole); }
-                else if ((-streamNumber) > _altIOstreamCount) { return result_IO_invalidIOstreamNumber; }
+                else if ((-streamNumber) > _altIOstreamCount) { return result_IO_invalidStreamNumber; }
                 else if (streamNumber < 0) {
                     pOut = static_cast<Stream*>(_pAltIOstreams[(-streamNumber) - 1]);    // external IO (stream number -1 => array index 0, etc.)
                 }
@@ -1980,7 +1980,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             for (int i = 0; i < cmdParamCount; i++) {           // always 2 parameters
                 bool argIsLong = (valueType[i] == value_isLong);
                 bool argIsFloat = (valueType[i] == value_isFloat);
-                if (!(argIsLong || argIsFloat)) { execResult = result_arg_numValueExpected; return execResult; }
+                if (!(argIsLong || argIsFloat)) { execResult = result_arg_numberExpected; return execResult; }
 
                 if (argIsFloat) { args[i].longConst = (int)args[i].floatConst; }
                 if ((args[i].longConst < 0) || (args[i].longConst > 2)) { execResult = result_arg_invalid; return execResult; };
@@ -2017,7 +2017,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 // both strings are NOT empty: no nullpointers 
                 if (strcmp(_callbackUserProcAlias[index], alias) == 0) { isDeclared = true; break; }
             }
-            if (!isDeclared) { execResult = result_aliasNotDeclared; return execResult; }
+            if (!isDeclared) { execResult = result_userCB_aliasNotDeclared; return execResult; }
 
             LE_evalStack* pStackLvlFirstValueArg = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
             pStackLvl = pStackLvlFirstValueArg;
@@ -3043,7 +3043,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execUnaryOperation(bo
     execResult_type execResult = result_execOK;         // init  
 
     if (!opIsLong && !opIsFloat) { execResult = result_numberExpected; }                   // value is numeric ? (no prefix / postfix operators for strings)
-    if (!opIsLong && requiresLongOp) { execResult = result_integerExpected; }              // only integer value type allowed
+    if (!opIsLong && requiresLongOp) { execResult = result_integerTypeExpected; }              // only integer value type allowed
     if (execResult != result_execOK) { return execResult; }
 
     // (3) fetch operand - note that line is valid for long integers as well
@@ -3148,7 +3148,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
     // main if...else level conditions: only include operatorCode tests
     if (operatorCode == termcod_assign) { if ((op1isString != op2isString) && (_pEvalStackMinus2->varOrConst.sourceVarScopeAndFlags & var_isArray)) { return result_array_valueTypeIsFixed; } }
     else if (((operatorCode == termcod_plus) || (operatorCode == termcod_plusAssign))) { if (op1isString != op2isString) { return result_operandsNumOrStringExpected; } }
-    else if (requiresLongOp) { if (!op1isLong || !op2isLong) { return result_integerExpected; } }
+    else if (requiresLongOp) { if (!op1isLong || !op2isLong) { return result_integerTypeExpected; } }
     else { if (op1isString || op2isString) { return result_numberExpected; } }
 
 
@@ -3517,7 +3517,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         {
             int newFileNumber{};
             // file path must be string
-            if (!(argIsStringBits & (0x1 << 0))) { return result_stringExpected; }          // file full name including path
+            if (!(argIsStringBits & (0x1 << 0))) { return result_arg_stringExpected; }          // file full name including path
 
             // access mode
             long mode = O_READ;      // init: open for reading
@@ -3548,7 +3548,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         {
             // checks
             if (!_SDinitOK) { return result_SD_noCardOrCardError; }
-            if (!(argIsStringBits & (0x1 << 0))) { return result_stringExpected; }          // file path
+            if (!(argIsStringBits & (0x1 << 0))) { return result_arg_stringExpected; }          // file path
             char* filePath = args[0].pStringConst;
             if (!pathValid(filePath)) { return result_SD_pathIsNotValid; }        // is not a complete check, but it remedies a few plaws in SD library
 
@@ -3648,7 +3648,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             File* pFile{};
 
             // check file number (also perform related file and SD card object checks)
-            if ((!(argIsLongBits & (0x1 << 0))) && (!(argIsFloatBits & (0x1 << 0)))) { return result_numberExpected; }                      // file number
+            if ((!(argIsLongBits & (0x1 << 0))) && (!(argIsFloatBits & (0x1 << 0)))) { return result_arg_numberExpected; }                      // file number
             int fileNumber = (argIsLongBits & (0x1 << 0)) ? args[0].longConst : args[0].floatConst;
             execResult_type execResult = SD_fileChecks(pFile, fileNumber, 0);            // all file types
             if (execResult != result_execOK) { return execResult; }
@@ -3733,7 +3733,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             if (execResult != result_execOK) { return execResult; }
 
             // check second argument: timeout in milliseconds
-            if ((!(argIsLongBits & (0x1 << 1))) && (!(argIsFloatBits & (0x1 << 1)))) { return result_numberExpected; }      // number of bytes to read
+            if ((!(argIsLongBits & (0x1 << 1))) && (!(argIsFloatBits & (0x1 << 1)))) { return result_arg_numberExpected; }      // number of bytes to read
             long arg2 = (argIsLongBits & (0x1 << 1)) ? (args[1].longConst) : (args[1].floatConst);
 
             pStream->setTimeout(arg2);
@@ -3755,7 +3755,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             if (execResult != result_execOK) { return execResult; }
 
             // check second argument: position in file to seek 
-            if ((!(argIsLongBits & (0x1 << 1))) && (!(argIsFloatBits & (0x1 << 1)))) { return result_numberExpected; }      // number of bytes to read
+            if ((!(argIsLongBits & (0x1 << 1))) && (!(argIsFloatBits & (0x1 << 1)))) { return result_arg_numberExpected; }      // number of bytes to read
             long arg2 = (argIsLongBits & (0x1 << 1)) ? (args[1].longConst) : (args[1].floatConst);
 
             if (!pFile->seek(arg2)) { return result_SD_fileSeekError; }
@@ -3809,12 +3809,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             if (execResult != result_execOK) { return execResult; }
 
             // check target string 
-            if (!(argIsStringBits & (0x1 << 1))) { return result_stringExpected; }
+            if (!(argIsStringBits & (0x1 << 1))) { return result_arg_stringExpected; }
             if (args[1].pStringConst == nullptr) { return result_arg_nonEmptyStringExpected; }
 
             // check terminator string
             if (functionCode == fnccod_findUntil) {
-                if (!(argIsStringBits & (0x1 << 2))) { return result_stringExpected; }
+                if (!(argIsStringBits & (0x1 << 2))) { return result_arg_stringExpected; }
                 if (args[2].pStringConst == nullptr) { return result_arg_nonEmptyStringExpected; }
             }
 
@@ -3890,7 +3890,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // check terminator charachter: first character in char * 
             char terminator{ '\n' };                                // init (if read line)
             if (suppliedArgCount == 3) {                // if 3 arguments supplied, then second argument is terminator (not for read line)
-                if (!(argIsStringBits & (0x1 << 1))) { return result_stringExpected; }
+                if (!(argIsStringBits & (0x1 << 1))) { return result_arg_stringExpected; }
                 if (args[1].pStringConst == nullptr) { return result_arg_nonEmptyStringExpected; }
                 terminator = args[1].pStringConst[0];
             }
@@ -3900,7 +3900,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // input & read: check length (optional argument)
             if (functionCode == fnccod_readChars) {     // last argument supplied (specifies maximum length)
                 int lengthArgIndex = suppliedArgCount - 1;            // base 0
-                if ((!(argIsLongBits & (0x1 << lengthArgIndex))) && (!(argIsFloatBits & (0x1 << lengthArgIndex)))) { return result_numberExpected; }      // number of bytes to read
+                if ((!(argIsLongBits & (0x1 << lengthArgIndex))) && (!(argIsFloatBits & (0x1 << lengthArgIndex)))) { return result_arg_numberExpected; }      // number of bytes to read
                 maxLineLength = (argIsLongBits & (0x1 << lengthArgIndex)) ? (args[lengthArgIndex].longConst) : (args[lengthArgIndex].floatConst);
                 if ((maxLineLength < 1) || (maxLineLength > MAX_ALPHA_CONST_LEN)) { return result_arg_outsideRange; }
             }
@@ -4151,7 +4151,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         case fnccod_eval:
         {
             // only one argument possible (eval() string)
-            if (!(argIsStringBits & (0x1 << 0))) { return result_stringExpected; }
+            if (!(argIsStringBits & (0x1 << 0))) { return result_arg_stringExpected; }
             char resultValueType;
             execResult_type execResult = launchEval(pFunctionStackLvl, args[0].pStringConst);
             if (execResult != result_execOK) { return execResult; }
@@ -4199,7 +4199,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                     }
                 }
                 else {
-                    if (!(argIsLongBits & (0x1 << matchIndex)) && !(argIsFloatBits & (0x1 << matchIndex))) { return result_arg_testexpr_numberExpected; }               // test value and match value are both strings
+                    if (!(argIsLongBits & (0x1 << matchIndex)) && !(argIsFloatBits & (0x1 << matchIndex))) { return result_testexpr_numberExpected; }               // test value and match value are both strings
                     match = ((argIsFloatBits & (0x1 << matchIndex)) ? (args[matchIndex].floatConst != 0.) : (args[matchIndex].longConst == !0));
                 }
 
@@ -4303,11 +4303,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         // -----------------
         case fnccod_ubound:
         {
-            if (!(argIsLongBits & (0x1 << 1)) && !(argIsFloatBits & (0x1 << 1))) { return result_arg_integerDimExpected; }
+            if (!(argIsLongBits & (0x1 << 1)) && !(argIsFloatBits & (0x1 << 1))) { return result_arg_numberExpected; }
             void* pArray = *pFirstArgStackLvl->varOrConst.value.ppArray;
             int arrayDimCount = ((char*)pArray)[3];
             int dimNo = (argIsLongBits & (0x1 << 1)) ? args[1].longConst : int(args[1].floatConst);
-            if ((argIsFloatBits & (0x1 << 1))) { if (args[1].floatConst != dimNo) { return result_arg_integerDimExpected; } }
+            if ((argIsFloatBits & (0x1 << 1))) { if (args[1].floatConst != dimNo) { return result_arg_integerDimExpected; } }   // if float, fractional part should be zero
             if ((dimNo < 1) || (dimNo > arrayDimCount)) { return result_arg_dimNumberInvalid; }
 
             fcnResultValueType = value_isLong;
@@ -4518,7 +4518,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         case fnccod_fmod:
         {
             for (int i = 0; i < suppliedArgCount; ++i) {
-                if (!(argIsLongBits & (0x1 << i)) && !(argIsFloatBits & (0x1 << i))) { return result_numberExpected; }
+                if (!(argIsLongBits & (0x1 << i)) && !(argIsFloatBits & (0x1 << i))) { return result_arg_numberExpected; }
             }
             float arg1float = (argIsLongBits & (0x1 << 0)) ? (float)args[0].longConst : args[0].floatConst;                                             // keep original value in args[0]
 
@@ -4652,10 +4652,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         // intended to directly read and write to memory locations mapped to peripheral registers (I/O, counters, ...)
         // !!! dangerous if you don't know what you're doing 
 
-        case    fnccod_reg32Read:
-        case    fnccod_reg8Read:
-        case    fnccod_reg32Write:
-        case    fnccod_reg8Write:
+        case    fnccod_mem32Read:
+        case    fnccod_mem32Write:
+        case    fnccod_mem8Read:
+        case    fnccod_mem8Write:
         {
             if (!(argIsLongBits & (0x1 << 0))) { return result_arg_integerTypeExpected; }           // memory address must be integer
             for (int i = 1; i < suppliedArgCount; ++i) {
@@ -4663,7 +4663,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 if ((argIsFloatBits & (0x1 << i))) { args[i].longConst = (long)args[i].floatConst; }          // all arguments have long type now
             }
 
-            if (((functionCode == fnccod_reg8Read) || (functionCode == fnccod_reg8Write)) && ((args[1].longConst < 0) || (args[1].longConst > 3))) { return result_arg_outsideRange; }
+            if (((functionCode == fnccod_mem8Read) || (functionCode == fnccod_mem8Write)) && ((args[1].longConst < 0) || (args[1].longConst > 3))) { return result_arg_outsideRange; }
 
             fcnResultValueType = value_isLong;                                                                                          // init: return a long
             fcnResult.longConst = 0;                                                                                                    // init: return 0 if the Arduino function doesn't return anything
@@ -4672,10 +4672,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
             // write functions: the memory / peripheral register location is not read afterwards (because this could trigger a specific hardware action),
             // so write functions return zero)  
-            if (functionCode == fnccod_reg32Read) { fcnResult.longConst = *(uint32_t*)args[0].longConst; }                              // 32 bit register value is returned
-            else if (functionCode == fnccod_reg8Read) { fcnResult.longConst = ((uint8_t*)(args[0].longConst))[args[1].longConst]; }     // 8 bit register value is returned
-            else if (functionCode == fnccod_reg32Write) { *(uint32_t*)args[0].longConst = args[1].longConst; }                          // register contents has not been read: zero is returned
-            else if (functionCode == fnccod_reg8Write) { ((uint8_t*)(args[0].longConst))[args[1].longConst] = args[2].longConst; }      // register contents has not been read: zero is returned
+            if (functionCode == fnccod_mem32Read) { fcnResult.longConst = *(uint32_t*)args[0].longConst; }                              // 32 bit register value is returned
+            else if (functionCode == fnccod_mem8Read) { fcnResult.longConst = ((uint8_t*)(args[0].longConst))[args[1].longConst]; }     // 8 bit register value is returned
+            else if (functionCode == fnccod_mem32Write) { *(uint32_t*)args[0].longConst = args[1].longConst; }                          // register contents has not been read: zero is returned
+            else if (functionCode == fnccod_mem8Write) { ((uint8_t*)(args[0].longConst))[args[1].longConst] = args[2].longConst; }      // register contents has not been read: zero is returned
 
         }
         break;
@@ -4863,7 +4863,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
             char c{ ' ' };                                                                                                              // init
             if (functionCode == fnccod_repchar) {
-                if (!(argIsStringBits & (0x1 << 0))) { return result_stringExpected; }
+                if (!(argIsStringBits & (0x1 << 0))) { return result_arg_stringExpected; }
                 if (args[0].pStringConst == nullptr) { return result_arg_nonEmptyStringExpected; }
                 c = args[0].pStringConst[0];                                                                                            // only first character in string will be repeated
             }
@@ -5263,7 +5263,7 @@ Justina_interpreter::execResult_type Justina_interpreter::checkFmtSpecifiers(boo
 
         // Width, precision flags ? Numeric arguments expected
         else if (argNo != (hasSpecifierArg ? 6 : 5)) {      // (exclude optional argument returning #chars printed from tests)
-            if ((valueType[argNo - 1] != value_isLong) && (valueType[argNo - 1] != value_isFloat)) { return result_arg_numValueExpected; }                                               // numeric ?
+            if ((valueType[argNo - 1] != value_isLong) && (valueType[argNo - 1] != value_isFloat)) { return result_arg_numberExpected; }                                               // numeric ?
             if ((valueType[argNo - 1] == value_isLong) ? operands[argNo - 1].longConst < 0 : operands[argNo - 1].floatConst < 0.) { return result_arg_outsideRange; }                                           // positive ?
             int argValue = (valueType[argNo - 1] == value_isLong) ? operands[argNo - 1].longConst : (long)operands[argNo - 1].floatConst;
             ((argNo == (isDispFmt ? 1 : 2)) ? width : (argNo == (isDispFmt ? 2 : 3)) ? precision : flags) = argValue;                             // set with, precision, flags to respective argument
