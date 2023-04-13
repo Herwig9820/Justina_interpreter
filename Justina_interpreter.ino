@@ -62,9 +62,6 @@ constexpr char menu[] = "+++ Please select:\r\n  '0' (Re-)start WiFi\r\n  '1' Di
 constexpr char menu[] = "+++ Please select:\r\n  '8' Start Justina interpreter\r\n";
 #endif
 
-Stream* pTerminals[3]{ };
-constexpr int terminalCount{ 3 };
-
 bool TCP_enabled{ false };
 bool console_isRemoteTerm{ false };                                                    // init: console is currently local terminal (Serial) 
 bool withinApplication{ false };                                                       // init: currently not within an application
@@ -72,15 +69,18 @@ bool interpreterInMemory{ false };                                              
 
 bool errorCondition = false, statusA = false, statusB = false, waitingForUser = false;
 
-Stream* pConsole = (Stream*)&Serial;                                                   // init pointer to Serial or TCP terminal
-Stream* pAlternate = (Stream*)&Serial;
+Stream* pConsoleInput = (Stream*)&Serial;                                                        // init pointer to IO port designated 'console'
+Stream* pConsoleOutput = (Stream*)&Serial;                                                        // init pointer to IO port designated 'console'
+Stream* pAltInput[3]{ };                                                                   // alternative IO ports, if defined
+Stream* pAltOutput[3]{ };                                                                   // alternative IO ports, if defined
+constexpr int terminalCount{ 3 };
 
 Justina_interpreter* pJustina{ nullptr };                                                    // pointer to Justina_interpreter object
 
 #if withTCP
 // connect as TCP server: create class object myTCPconnection
 TCPconnection myTCPconnection(SSID, PASS, serverAddress, gatewayAddress, subnetMask, DNSaddress, serverPort, conn_2_TCPconnected);
-Stream* pTerminals[1]{ (Stream*)&Serial, myTCPconnection.getClient() };
+Stream* pAltInput[1]{ (Stream*)&Serial, myTCPconnection.getClient() };
 void switchConsole();
 void onConnStateChange(connectionState_type  connectionState);
 #else
@@ -135,16 +135,19 @@ void setup() {
 #endif
 
     
-    pTerminals[0] = static_cast<Stream*>(&Serial);
-    pTerminals[1] = static_cast<Stream*>(&Serial);
-    pTerminals[2] = static_cast<Stream*>(&Serial);
+    pAltInput[0] = static_cast<Stream*>(&Serial);
+    pAltInput[1] = static_cast<Stream*>(&Serial);
+    pAltInput[2] = static_cast<Stream*>(&Serial);
+    pAltOutput[0] = static_cast<Stream*>(&Serial);
+    pAltOutput[1] = static_cast<Stream*>(&Serial);
+    pAltOutput[2] = static_cast<Stream*>(&Serial);
 
     // not functionaly used, but required to circumvent a bug in sprintf function with %F, %E, %G specifiers 
     char s[10];
     dtostrf(1.0, 4, 1, s);   // not used, but needed to circumvent a bug in sprintf function with %F, %E, %G specifiers    //// nog nodig ???
 
     // print sample / simple main menu for the user
-    pConsole->println(menu);
+    pConsoleInput->println(menu);
 
 #ifdef RTClock
     SdFile::dateTimeCallback((dateTime));
@@ -205,44 +208,44 @@ void loop() {
         #if withTCP
             case '0':
                 myTCPconnection.requestAction(action_1_restartWiFi);
-                pConsole->println("(Re-)starting WiFi...");
+                pConsoleInput->println("(Re-)starting WiFi...");
                 break;
 
             case '1':
                 myTCPconnection.requestAction(action_0_disableWiFi);
-                pConsole->println("Disabling WiFi...");
+                pConsoleInput->println("Disabling WiFi...");
                 break;
 
             case '2':
                 myTCPconnection.requestAction(action_2_TCPkeepAlive);
-                pConsole->println("Enabling TCP...");                                     // needs WiFi to be enabled and connected
+                pConsoleInput->println("Enabling TCP...");                                     // needs WiFi to be enabled and connected
                 break;
 
             case '3':
-                if (console_isRemoteTerm) { pConsole->println("Cannot disable TCP while console is remote"); }
+                if (console_isRemoteTerm) { pConsoleInput->println("Cannot disable TCP while console is remote"); }
                 else {
                     myTCPconnection.requestAction(action_4_TCPdisable);
-                    pConsole->println("Disabling TCP...");
+                    pConsoleInput->println("Disabling TCP...");
                 }
                 break;
 
             case '4':                                                                       // set TCP server to verbose
                 myTCPconnection.setVerbose(true);
-                pConsole->println("TCP server: verbose");
+                pConsoleInput->println("TCP server: verbose");
                 break;
 
             case '5':                                                                       // set TCP server to silent
                 myTCPconnection.setVerbose(false);
-                pConsole->println("TCP server: silent");
+                pConsoleInput->println("TCP server: silent");
                 break;
 
             case '6':                                                                       // if console is currently local terminal, switch to remote
-                if (console_isRemoteTerm) { pConsole->println("Nothing to do"); }
+                if (console_isRemoteTerm) { pConsoleInput->println("Nothing to do"); }
                 else { switchConsole(); }
                 break;
 
             case '7':                                                                       // if console is currently remote terminal, switch to local
-                if (!console_isRemoteTerm) { pConsole->println("Nothing to do"); }
+                if (!console_isRemoteTerm) { pConsoleInput->println("Nothing to do"); }
                 else { switchConsole(); }
 
                 break;
@@ -254,7 +257,7 @@ void loop() {
                 //// end test
 
             #if !defined(ARDUINO_SAMD_NANO_33_IOT) && !defined(ARDUINO_ARCH_RP2040)
-                pConsole->println("interpreter does not run on this processor");            // interpreter does not run on this processor
+                pConsoleInput->println("interpreter does not run on this processor");            // interpreter does not run on this processor
                 break;
             #endif
 
@@ -262,7 +265,7 @@ void loop() {
                 heartbeatPeriod = 250;
                 withinApplication = true;                                                   // flag that control will be transferred to an 'application'
                 if (!interpreterInMemory) {
-                    pJustina = new  Justina_interpreter(pConsole,pTerminals,terminalCount, progMemSize);         // if interpreter not running: create an interpreter object on the heap
+                    pJustina = new  Justina_interpreter(pConsoleInput, pConsoleOutput, pAltInput,pAltOutput, terminalCount, progMemSize);         // if interpreter not running: create an interpreter object on the heap
 
                     // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
                     // this callback function will be called regularly, e.g. every time the interpreter reads a character
@@ -272,7 +275,7 @@ void loop() {
                     pJustina->setUserFcnCallback((&userFcn_writePort));
                     pJustina->setUserFcnCallback((&userFcn_togglePort));
                 }
-                interpreterInMemory = pJustina->run(pConsole, pTerminals, terminalCount);                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
+                interpreterInMemory = pJustina->run(pConsoleInput, pConsoleOutput, pAltInput, pAltOutput, terminalCount);                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
 
                 if (!interpreterInMemory) {                                               // return from interpreter: remove from memory as well ?
                     delete pJustina;                                                     // cleanup and delete calculator object itself
@@ -284,9 +287,9 @@ void loop() {
                 break;
 
             default:
-                pConsole->println("This is not a valid choice");
+                pConsoleInput->println("This is not a valid choice");
         }
-        pConsole->println(menu);                                                      // show menu again
+        pConsoleInput->println(menu);                                                      // show menu again
     } while (false);
 }                                                                                       // loop()
 
@@ -321,14 +324,14 @@ void heartbeat() {
 // ---------------------------------------------------------------------------------
 
 void switchConsole() {
-    if (console_isRemoteTerm) { pConsole->println("Disconnecting terminal...\r\n-------------------------\r\n"); }               // inform the remote user
+    if (console_isRemoteTerm) { pConsoleInput->println("Disconnecting terminal...\r\n-------------------------\r\n"); }               // inform the remote user
 
     console_isRemoteTerm = !console_isRemoteTerm;
     // set client connection timeout (long if console is remote terminal (TCP connection), short if local terminal (Serial) but keep TCP enabled
     myTCPconnection.requestAction(console_isRemoteTerm ? action_2_TCPkeepAlive : action_3_TCPdoNotKeepAlive);
 
     // set pointer to Serial or TCP client (both belong to Stream class)
-    pConsole = (console_isRemoteTerm) ? myTCPconnection.getClient() : (Stream*)&Serial;
+    pConsoleInput = (console_isRemoteTerm) ? myTCPconnection.getClient() : (Stream*)&Serial;
     char s[40]; sprintf(s, "Console is now %s ", console_isRemoteTerm ? "remote terminal" : "local");
     Serial.println(s);
     if (console_isRemoteTerm) {
@@ -358,7 +361,7 @@ void onConnStateChange(connectionState_type  connectionState) {
 
     if (TCPconnected) {
         Serial.println("TCP connection established\r\n");
-        if (!withinApplication) { pConsole->println(menu); }                        // if not within an application, print main menu on remote terminal
+        if (!withinApplication) { pConsoleInput->println(menu); }                        // if not within an application, print main menu on remote terminal
     }                   // remote client just got connected: show on main terminal
 
     else if (holdTCPconnected) {                                                      // previous status was 'client connected'
@@ -441,7 +444,7 @@ void housekeeping(bool& requestQuit, long& appFlags) {
             c = Serial.read();
             forceLocal = (c == 0x01);                                                   // character read from Serial is 0x01 ? force switch to local console
             if (forceLocal) {
-                pConsole->println("Disconnecting remote terminal...");                // inform remote user, in case he's still there
+                pConsoleInput->println("Disconnecting remote terminal...");                // inform remote user, in case he's still there
                 switchConsole();                                                        // set console to local
             }
         }
@@ -490,7 +493,7 @@ void housekeeping(bool& requestQuit, long& appFlags) {
 
 void userFcn_readPort(const void** pdata, const char* valueType, const int argCount) {     // data: can be anything, as long as user function knows what to expect
 
-    pConsole->print("=== control is now in user c++ callback function: arg count = "); pConsole->println(argCount);
+    pConsoleInput->print("=== control is now in user c++ callback function: arg count = "); pConsoleInput->println(argCount);
 
     for (int i = 0; i < argCount; i++) {
         // data available ?
@@ -521,13 +524,13 @@ void userFcn_readPort(const void** pdata, const char* valueType, const int argCo
         }
 
         // print a value
-        pConsole->print("    adapted value (argument "); pConsole->print(i); pConsole->print(") is now: ");      // but value
-        if (isLong) { pConsole->println(*pLong); }
-        else if (isFloat) { pConsole->println(*pFloat); }
-        else { pConsole->println(pText); }
+        pConsoleInput->print("    adapted value (argument "); pConsoleInput->print(i); pConsoleInput->print(") is now: ");      // but value
+        if (isLong) { pConsoleInput->println(*pLong); }
+        else if (isFloat) { pConsoleInput->println(*pFloat); }
+        else { pConsoleInput->println(pText); }
 
     };
-    pConsole->println("=== leaving user c++ callback function");
+    pConsoleInput->println("=== leaving user c++ callback function");
     return;
 }
 
@@ -537,12 +540,12 @@ void userFcn_readPort(const void** pdata, const char* valueType, const int argCo
 // --------------------------------------
 
 void userFcn_writePort(const void** pdata, const char* valueType, const int argCount) {
-    pConsole->println("*** Justina was here too ***");
+    pConsoleInput->println("*** Justina was here too ***");
     // do your thing here
 };
 
 
 void userFcn_togglePort(const void** pdata, const char* valueType, const int argCount) {
-    pConsole->println("*** Justina just passed by ***");
+    pConsoleInput->println("*** Justina just passed by ***");
     // do your thing here
 };

@@ -290,94 +290,93 @@ const char Justina_interpreter::cmdPar_999[4]{ cmdPar_varNoAssignment,          
 // ----------------------------------
 
 const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
-    //  name            id code                 where allowed              padding (boundary alignment)     param key      control info
-    //  ----            -------                 -------------              ----------------------------     ---------      ------------   
+    //  name            id code                 where allowed                  padding (boundary alignment)     param key      control info
+    //  ----            -------                 -------------                  ----------------------------     ---------      ------------   
 
-    // declare variables
-    // -----------------
-    {"var",             cmdcod_var,             cmd_noRestrictions | cmd_skipDuringExec,            0,0,    cmdPar_111,     cmdBlockNone},
-    {"const",           cmdcod_constVar,        cmd_noRestrictions | cmd_skipDuringExec,            0,0,    cmdPar_111,     cmdBlockNone},
-    {"static",          cmdcod_static,          cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_111,     cmdBlockNone},
+    // declare and delete variables
+    // ----------------------------
+    {"var",             cmdcod_var,             cmd_noRestrictions | cmd_skipDuringExec,                0,0,    cmdPar_111,     cmdBlockNone},
+    {"const",           cmdcod_constVar,        cmd_noRestrictions | cmd_skipDuringExec,                0,0,    cmdPar_111,     cmdBlockNone},
+    {"static",          cmdcod_static,          cmd_onlyInFunctionBlock | cmd_skipDuringExec,           0,0,    cmdPar_111,     cmdBlockNone},
 
-    {"delVar",          cmdcod_deleteVar,       cmd_onlyImmediateOutsideBlock | cmd_skipDuringExec, 0,0,    cmdPar_110,     cmdBlockNone},
-    {"clearAll",        cmdcod_clearAll,        cmd_onlyImmediateOutsideBlock | cmd_skipDuringExec, 0,0,    cmdPar_102,     cmdBlockNone},
-    {"clearProg",       cmdcod_clearProg,       cmd_onlyImmediateOutsideBlock | cmd_skipDuringExec, 0,0,    cmdPar_102,     cmdBlockNone},
+    {"delVar",          cmdcod_deleteVar,       cmd_onlyImmediateNotWithinBlock | cmd_skipDuringExec,   0,0,    cmdPar_110,     cmdBlockNone},
+    {"clearAll",        cmdcod_clearAll,        cmd_onlyImmediateNotWithinBlock | cmd_skipDuringExec,   0,0,    cmdPar_102,     cmdBlockNone},
+    {"clearProg",       cmdcod_clearProg,       cmd_onlyImmediateNotWithinBlock | cmd_skipDuringExec,   0,0,    cmdPar_102,     cmdBlockNone},
 
     // program and flow control commands
     // ---------------------------------
-    {"program",         cmdcod_program,         cmd_onlyProgramTop | cmd_skipDuringExec,            0,0,    cmdPar_103,     cmdBlockNone},
-    {"function",        cmdcod_function,        cmd_onlyInProgram | cmd_skipDuringExec,             0,0,    cmdPar_108,     cmdBlockExtFunction},
+    {"program",         cmdcod_program,         cmd_onlyProgramTop | cmd_skipDuringExec,                0,0,    cmdPar_103,     cmdBlockNone},
+    {"function",        cmdcod_function,        cmd_onlyInProgram | cmd_skipDuringExec,                 0,0,    cmdPar_108,     cmdBlockExtFunction},
 
-    {"for",             cmdcod_for,             cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_109,     cmdBlockFor},
-    {"while",           cmdcod_while,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockWhile},
-    {"if",              cmdcod_if,              cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockIf},
-    {"elseif",          cmdcod_elseif,          cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockIf_elseIf},
-    {"else",            cmdcod_else,            cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockIf_else},
-    {"end",             cmdcod_end,             cmd_noRestrictions,                                 0,0,    cmdPar_102,     cmdBlockGenEnd},                // closes inner open command block
+    {"for",             cmdcod_for,             cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_109,     cmdBlockFor},
+    {"while",           cmdcod_while,           cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_104,     cmdBlockWhile},
+    {"if",              cmdcod_if,              cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_104,     cmdBlockIf},
+    {"elseif",          cmdcod_elseif,          cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_104,     cmdBlockIf_elseIf},
+    {"else",            cmdcod_else,            cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_102,     cmdBlockIf_else},
+    {"end",             cmdcod_end,             cmd_noRestrictions,                                     0,0,    cmdPar_102,     cmdBlockGenEnd},                // closes inner open command block
 
-    {"break",           cmdcod_break,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockOpenBlock_loop},        // allowed if at least one open loop block (any level) 
-    {"continue",        cmdcod_continue,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_102,     cmdBlockOpenBlock_loop },       // allowed if at least one open loop block (any level) 
-    {"return",          cmdcod_return,          cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockOpenBlock_function},    // allowed if currently an open function definition block 
+    {"break",           cmdcod_break,           cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_102,     cmdBlockOpenBlock_loop},        // allowed if at least one open loop block (any level) 
+    {"continue",        cmdcod_continue,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_102,     cmdBlockOpenBlock_loop },       // allowed if at least one open loop block (any level) 
+    {"return",          cmdcod_return,          cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_106,     cmdBlockOpenBlock_function},    // allowed if currently an open function definition block 
 
-    {"pause",           cmdcod_pause,           cmd_onlyInFunctionBlock,                            0,0,    cmdPar_106,     cmdBlockNone},
-    {"halt",            cmdcod_halt,            cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},
+    {"pause",           cmdcod_pause,           cmd_onlyInFunctionBlock,                                0,0,    cmdPar_106,     cmdBlockNone},
+    {"halt",            cmdcod_halt,            cmd_onlyInFunctionBlock,                                0,0,    cmdPar_102,     cmdBlockNone},
 
     // input and output commands
     // -------------------------
-    {"dispFmt",         cmdcod_dispfmt,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
-    {"dispMode",        cmdcod_dispmod,         cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_105,     cmdBlockNone},
+    {"dispFmt",         cmdcod_dispfmt,         cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
+    {"dispMode",        cmdcod_dispmod,         cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_105,     cmdBlockNone},
 
-    {"info",            cmdcod_info,            cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_114,     cmdBlockNone},
-    {"input",           cmdcod_input,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_113,     cmdBlockNone},
+    {"info",            cmdcod_info,            cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_114,     cmdBlockNone},
+    {"input",           cmdcod_input,           cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_113,     cmdBlockNone},
 
-    {"startSD",         cmdcod_startSD,         cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"stopSD",          cmdcod_stopSD,          cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"startSD",         cmdcod_startSD,         cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
+    {"stopSD",          cmdcod_stopSD,          cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
 
-    {"loadProg",        cmdcod_loadProg,        cmd_onlyImmediate,                                  0,0,    cmdPar_106,     cmdBlockNone},
-    {"receiveFile",     cmdcod_receiveFile,     cmd_onlyImmediate,                                  0,0,    cmdPar_115,     cmdBlockNone},
-    {"sendFile",        cmdcod_sendFile,        cmd_onlyImmediate,                                  0,0,    cmdPar_115,     cmdBlockNone},
+    {"loadProg",        cmdcod_loadProg,        cmd_onlyImmediateNotWithinBlock,                        0,0,    cmdPar_106,     cmdBlockNone},
+    {"receiveFile",     cmdcod_receiveFile,     cmd_onlyImmediateNotWithinBlock,                        0,0,    cmdPar_115,     cmdBlockNone},
+    {"sendFile",        cmdcod_sendFile,        cmd_onlyImmediateNotWithinBlock,                        0,0,    cmdPar_115,     cmdBlockNone},
 
-    {"cout",            cmdcod_printCons,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
-    {"coutLine",        cmdcod_printLineCons,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_107,     cmdBlockNone},
-    {"coutList",        cmdcod_printListCons,   cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
+    {"cout",            cmdcod_cout,       cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
+    {"coutLine",        cmdcod_coutLine,   cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_107,     cmdBlockNone},
+    {"coutList",        cmdcod_coutList,   cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
 
-    {"print",           cmdcod_print,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_116,     cmdBlockNone},
-    {"printLine",       cmdcod_printLine,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
-    {"printList",       cmdcod_printList,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_116,     cmdBlockNone},
+    {"print",           cmdcod_print,           cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_116,     cmdBlockNone},
+    {"printLine",       cmdcod_printLine,       cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
+    {"printList",       cmdcod_printList,       cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_116,     cmdBlockNone},
 
-    {"vprint",          cmdcod_printToVar,      cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_116,     cmdBlockNone},
-    {"vprintLine",      cmdcod_printLineToVar,  cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_112,     cmdBlockNone},
-    {"vprintList",      cmdcod_printListToVar,  cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_116,     cmdBlockNone},
+    {"vprint",          cmdcod_printToVar,      cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_116,     cmdBlockNone},
+    {"vprintLine",      cmdcod_printLineToVar,  cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
+    {"vprintList",      cmdcod_printListToVar,  cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_116,     cmdBlockNone},
 
-    {"listVars",        cmdcod_printVars,       cmd_onlyImmediate,                                  0,0,    cmdPar_106,     cmdBlockNone},
-    {"listCallSt",      cmdcod_printCallSt,     cmd_onlyImmediate,                                  0,0,    cmdPar_106,     cmdBlockNone},
-    {"listFiles",       cmdcod_listFiles,       cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockNone},
+    {"listVars",        cmdcod_printVars,       cmd_onlyImmediate,                                      0,0,    cmdPar_106,     cmdBlockNone},
+    {"listCallSt",      cmdcod_printCallSt,     cmd_onlyImmediate,                                      0,0,    cmdPar_106,     cmdBlockNone},
+    {"listFiles",       cmdcod_listFiles,       cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_106,     cmdBlockNone},
 
     // debugging commands
     // ------------------
-    {"stop",            cmdcod_stop,            cmd_onlyInFunctionBlock,                            0,0,    cmdPar_102,     cmdBlockNone},
-    {"nop",             cmdcod_nop,             cmd_onlyInFunctionBlock | cmd_skipDuringExec,       0,0,    cmdPar_102,     cmdBlockNone},                  // insert two bytes in program, do nothing
+    {"stop",            cmdcod_stop,            cmd_onlyInFunctionBlock,                                0,0,    cmdPar_102,     cmdBlockNone},
+    {"nop",             cmdcod_nop,             cmd_onlyInFunctionBlock | cmd_skipDuringExec,           0,0,    cmdPar_102,     cmdBlockNone},                  // insert two bytes in program, do nothing
 
-    {"go",              cmdcod_go,              cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"step",            cmdcod_step,            cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"stepOut",         cmdcod_stepOut,         cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"stepOver",        cmdcod_stepOver,        cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"blockStepOut",    cmdcod_stepOutOfBlock,  cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"blockStepEnd",    cmdcod_stepToBlockEnd,  cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"skip",            cmdcod_skip,            cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
+    {"go",              cmdcod_go,              cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
+    {"step",            cmdcod_step,            cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
+    {"stepOut",         cmdcod_stepOut,         cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
+    {"stepOver",        cmdcod_stepOver,        cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
+    {"blockStepOut",    cmdcod_stepOutOfBlock,  cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
+    {"blockStepEnd",    cmdcod_stepToBlockEnd,  cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
+    {"skip",            cmdcod_skip,            cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
 
-    {"trace",           cmdcod_trace,           cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_104,     cmdBlockNone},
+    {"trace",           cmdcod_trace,           cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_104,     cmdBlockNone},
 
-    {"abort",           cmdcod_abort,           cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"debug",           cmdcod_debug,           cmd_onlyImmediate,                                  0,0,    cmdPar_102,     cmdBlockNone},
-    {"quit",            cmdcod_quit,            cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_106,     cmdBlockNone},
+    {"abort",           cmdcod_abort,           cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
+    {"debug",           cmdcod_debug,           cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
+    {"quit",            cmdcod_quit,            cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_106,     cmdBlockNone},
 
     // user callback functions
     // -----------------------
-
-    {"declareCB",       cmdcod_declCB,          cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_110,     cmdBlockNone},
-    {"clearCB",         cmdcod_clearCB,         cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,  0,0,    cmdPar_102,     cmdBlockNone},
-    {"callcpp",         cmdcod_callback,        cmd_onlyImmOrInsideFuncBlock,                       0,0,    cmdPar_101,     cmdBlockNone}
+    {"declareCB",       cmdcod_declCB,          cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,      0,0,    cmdPar_110,     cmdBlockNone},
+    {"clearCB",         cmdcod_clearCB,         cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,      0,0,    cmdPar_102,     cmdBlockNone},
+    {"callcpp",         cmdcod_callback,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_101,     cmdBlockNone}
 };
 
 
@@ -391,7 +390,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
 const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     //  name                    id code                         #par    array pattern
     //  ----                    -------                         ----    -------------   
-    
+
     // logical functions
     {"ifte",                    fnccod_ifte,                    3,16,   0b0},
     {"switch",                  fnccod_switch,                  3,16,   0b0},
@@ -472,7 +471,7 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     {"maskedBitWrite",          fnccod_bitsMaskedWrite,         3,3,    0b0},
     {"byteRead",                fnccod_byteRead,                2,2,    0b0},
     {"byteWrite",               fnccod_byteWrite,               3,3,    0b0},
-    
+
     {"mem32Read",               fnccod_mem32Read,               1,1,    0b0},
     {"mem32Write",              fnccod_mem32Write,              2,2,    0b0},
     {"mem8Read",                fnccod_mem8Read,                2,2,    0b0},
@@ -493,7 +492,8 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     {"toLower",                 fnccod_tolower,                 1,3,    0b0},
     {"space",                   fnccod_space,                   1,1,    0b0},
     {"repChar",                 fnccod_repchar,                 2,2,    0b0},
-    {"strStr",                  fnccod_strstr,                  2,3,    0b0},
+    {"findInStr",               fnccod_findsubstr,              2,3,    0b0},
+    {"substInStr",              fnccod_replacesubstr,           3,4,    0b0},
     {"strCmp",                  fnccod_strcmp,                  2,2,    0b0},
     {"strCaseCmp",              fnccod_strcasecmp,              2,2,    0b0},
     {"strHex",                  fnccod_strhex,                  1,1,    0b0},
@@ -513,20 +513,23 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     {"isSpace",                 fnccod_isSpace,                 1,2,    0b0},
     {"isWhitespace",            fnccod_isWhitespace,            1,2,    0b0},
 
-    // Arduino SD card library
+    // based upon Arduino SD card library functions
     { "open",                    fnccod_open,                   1,2,    0b0 },
     { "close",                   fnccod_close,                  1,1,    0b0 },
 
-    { "read1",                   fnccod_readOneChar,            1,1,    0b0 },      // without timeout
-    { "read",                    fnccod_readChars,              2,3,    0b0 },      // with timeout
-    { "readLine",                fnccod_readLine,               1,1,    0b0 },      // with timeout
-    { "readList",                fnccod_parseList,              2,16,   0b0 },      // with timeout
+    { "cin",                     fnccod_cin,                    0,2,    0b0 },
+    { "cinLine",                 fnccod_cinLine,                0,0,    0b0 },
+    { "cinList",                 fnccod_cinParseList,           1,16,   0b0 },
+    { "read",                    fnccod_read,                   1,3,    0b0 },
+    { "readLine",                fnccod_readLine,               1,1,    0b0 },
+    { "readList",                fnccod_parseList,              2,16,   0b0 },
+    
     { "vreadList",               fnccod_parseListFromVar,       2,16,   0b0 },
 
     { "find",                    fnccod_find,                   2,2,    0b0 },
     { "findUntil",               fnccod_findUntil,              3,3,    0b0 },
-    { "peek",                    fnccod_peek,                   1,1,    0b0 },
-    { "available",               fnccod_available,              1,1,    0b0 },
+    { "peek",                    fnccod_peek,                   0,1,    0b0 },
+    { "available",               fnccod_available,              0,1,    0b0 },
     { "position",                fnccod_position,               1,1,    0b0 },
     { "size",                    fnccod_size,                   1,1,    0b0 },
     { "name",                    fnccod_name,                   1,1,    0b0 },
@@ -542,7 +545,6 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     { "removeDirectory",         fnccod_rmdir,                  1,1,    0b0 },
     { "remove",                  fnccod_remove,                 1,1,    0b0 },
 
-    // extra Justina SD card functions
     { "fileNum",                 fnccod_fileNumber,             1,1,    0b0 },
     { "isInUse",                 fnccod_isOpenFile,             1,1,    0b0 },
     { "closeAll",                fnccod_closeAll,               0,0,    0b0 },
@@ -559,47 +561,34 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     // name                 // value                    // value type
     // ----                 --------                    // ----------
 
-    {"E",                   "2.7182818284590452354",    value_isFloat},
-    {"PI",                  "3.14159265358979323846",   value_isFloat},
-    {"HALF_PI",             "1.57079632679489661923",   value_isFloat},
-    {"QUART_PI",            "0.78539816339744830962",   value_isFloat},
-    {"TWO_PI",              "6.28318530718",            value_isFloat},
+    {"EULER",               "2.7182818284590452354",    value_isFloat}, // base of natural logarithm
+    {"PI",                  "3.14159265358979323846",   value_isFloat}, // PI
+    {"HALF_PI",             "1.57079632679489661923",   value_isFloat}, // PI / 2
+    {"QUART_PI",            "0.78539816339744830962",   value_isFloat}, // PI / 4
+    {"TWO_PI",              "6.2831853071795864769",   value_isFloat},  // 2 * PI 
 
-    {"DEG_TO_RAD",          "0.01745329251994329577",   value_isFloat},
-    {"RAD_TO_DEG",          "57.2957795130823208768",   value_isFloat},
+    {"DEG_TO_RAD",          "0.01745329251994329577",   value_isFloat}, // conversion factor: degrees to radians
+    {"RAD_TO_DEG",          "57.2957795130823208768",   value_isFloat}, // radians to degrrees
 
-    {"FALSE",               "0",                        value_isLong},
-    {"TRUE",                "0",                        value_isLong},
-                                                        
-    {"FALSE",               "0",                        value_isLong},
-    {"TRUE",                "1",                        value_isLong},
-                                                        
-    {"LONG_TYP",            "1",                        value_isLong},
-    {"FLOAT_TYP",           "2",                        value_isLong},
-    {"STRING_TYP",          "3",                        value_isLong},
+    {"FALSE",               "0",                        value_isLong},  // value for boolean 'false'
+    {"TRUE",                "1",                        value_isLong},  // value for boolean 'true'
 
-    {"LOW",                 "0",                        value_isLong},
+    {"LONG_TYP",            "1",                        value_isLong},  // value type of a long value
+    {"FLOAT_TYP",           "2",                        value_isLong},  // value type of a float value
+    {"STRING_TYP",          "3",                        value_isLong},  // value type of a string value
+
+    {"LOW",                 "0",                        value_isLong},  // standard ARduino constants for digital I/O
     {"HIGH",                "1",                        value_isLong},
-    
-    {"INPUT",               "0x0",                      value_isLong},
+
+    {"INPUT",               "0x0",                      value_isLong},  // standard ARduino constants for digital I/O
     {"OUTPUT",              "0x1",                      value_isLong},
     {"INPUT_PULLUP",        "0x2",                      value_isLong},
     {"INPUT_PULLDOWN",      "0x3",                      value_isLong},
 
-    {"CONSOLE",             "0",                        value_isLong},
-    {"ALT_IO_1",            "-1",                       value_isLong},
-    {"ALT_IO_2",            "-2",                       value_isLong},
-    {"ALT_IO_3",            "-3",                       value_isLong},
-    {"FILE_1",              "1",                        value_isLong},
-    {"FILE_2",              "2",                        value_isLong},
-    {"FILE_3",              "3",                        value_isLong},
-    {"FILE_4",              "4",                        value_isLong},
-    {"FILE_5",              "5",                        value_isLong},
-
     {"NO_PROMPT",           "0",                        value_isLong},  // do not print prompt and do not echo user input
     {"PROMPT",              "1",                        value_isLong},  // print prompt but no not echo user input
     {"ECHO",                "2",                        value_isLong},  // print prompt and echo user input
-    
+
     {"NO_LAST",             "0",                        value_isLong},  // do not print last result
     {"PRINT_LAST",          "1",                        value_isLong},  // print last result
     {"QUOTE_LAST",          "2",                        value_isLong},  // print last result, quote string results 
@@ -608,9 +597,9 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     {"SIGN",                "0x2",                      value_isLong},  // force sign
     {"SPACE_IF_POS",        "0x4",                      value_isLong},  // insert a space if no sign
     {"DEC_POINT",           "0x8",                      value_isLong},  // used with 'F', 'E', 'G' specifiers: always add a decimal point, even if no digits follow
-    {"START_0X",            "0x8",                      value_isLong},  // used with 'X' (hex) specifier: preceed non-zero numbers with '0x'
+    {"HEX_0X",              "0x8",                      value_isLong},  // used with 'X' (hex) specifier: preceed non-zero numbers with '0x'
     {"PAD_ZERO",            "0x10",                     value_isLong},  // pad with zeros
-    
+
     {"INFO_ENTER",          "0",                        value_isLong},  // confirmation required by pressing ENTER (any preceding characters are skipped)
     {"INFO_ENTER_CANC",     "1",                        value_isLong},  // idem, but if '\c' encountered in input stream the operation is canceled by user 
     {"INFO_YN",             "2",                        value_isLong},  // only yes or no answer allowed, by pressing 'y' or 'n' followed by ENTER   
@@ -618,12 +607,31 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
 
     {"INPUT_NO_DEF",        "0",                        value_isLong},  // '\d' sequences ('default') in the input stream are ignored
     {"INPUT_ALLOW_DEF",     "1",                        value_isLong},  // if '\d' sequence is encountered in the input stream, default value is returned
-    
-    {"OP_CANCELED",         "0",                        value_isLong},  // operation was canceled by user (\c sequence encountered)
-    {"OP_SUCCESS",          "1",                        value_isLong},  // operation was NOT canceled by user
+
+    {"USER_CANCELED",       "0",                        value_isLong},  // operation was canceled by user (\c sequence encountered)
+    {"USER_SUCCESS",        "1",                        value_isLong},  // operation was NOT canceled by user
 
     {"KEEP_MEM",            "0",                        value_isLong},  // keep Justina in memory on quitting
     {"RELEASE_MEM",         "1",                        value_isLong},  // release memory on quitting
+
+    {"CONSOLE",             "0",                        value_isLong},  // IO: read from / print to console
+    {"ALT_IO_1",            "-1",                       value_isLong},  // IO: read from / print to alternative I/O port 1 (if defined)
+    {"ALT_IO_2",            "-2",                       value_isLong},  // IO: read from / print to alternative I/O port 2 (if defined)
+    {"ALT_IO_3",            "-3",                       value_isLong},  // IO: read from / print to alternative I/O port 3 (if defined)
+    {"FILE_1",              "1",                        value_isLong},  // IO: read from / print to open SD file 1
+    {"FILE_2",              "2",                        value_isLong},  // IO: read from / print to open SD file 2 
+    {"FILE_3",              "3",                        value_isLong},  // IO: read from / print to open SD file 3 
+    {"FILE_4",              "4",                        value_isLong},  // IO: read from / print to open SD file 4 
+    {"FILE_5",              "5",                        value_isLong},  // IO: read from / print to open SD file 5 
+
+    {"READ",                "1",                        value_isLong},  // open SD file for read access
+    {"WRITE",               "2",                        value_isLong},  // open SD file for write access
+    {"RDWR",                "3",                        value_isLong},  // open SD file for r/w access
+
+    {"APPEND",              "4",                        value_isLong},  // writes will occur at end of file
+    {"CREATE_OK",           "16",                       value_isLong},  // create new file if non-existent
+    {"CREATE_ONLY",         "48",                       value_isLong},  // create new file only - do not open an existing file
+    {"TRUNC",               "64",                       value_isLong},  // truncate file to zero bytes on open (NOT if file is opened for read access only)
 };
 
 
@@ -706,8 +714,9 @@ const Justina_interpreter::TerminalDef Justina_interpreter::_terminals[]{
 // *   constructor   *
 // -------------------
 
-Justina_interpreter::Justina_interpreter(Stream* const pConsole, Stream** const pAltIOstreams, int altIOstreamCount, long progMemSize, int SDcardChipSelectPin) :
-    _pConsole(pConsole), _pAltIOstreams(pAltIOstreams), _altIOstreamCount(altIOstreamCount), _progMemorySize(progMemSize), _SDcardChipSelectPin(SDcardChipSelectPin) {
+Justina_interpreter::Justina_interpreter(Stream* const pConsoleInput, Stream* const pConsoleOutput, Stream** const pAltInputStreams, Stream** const pAltOutputStreams, int altIOstreamCount, 
+    long progMemSize, int SDcardChipSelectPin) :
+    _pConsoleInput(pConsoleInput), _pAltInputStreams(pAltInputStreams), _altIOstreamCount(altIOstreamCount), _progMemorySize(progMemSize), _SDcardChipSelectPin(SDcardChipSelectPin) {
 
     // settings to be initialized when cold starting interpreter only
     // --------------------------------------------------------------
@@ -754,7 +763,7 @@ Justina_interpreter::~Justina_interpreter() {
         _housekeepingCallback = nullptr;
         delete[] _programStorage;
     }
-    _pConsole->println("\r\nJustina: bye\r\n");
+    _pConsoleInput->println("\r\nJustina: bye\r\n");
 };
 
 
@@ -784,7 +793,7 @@ bool Justina_interpreter::setUserFcnCallback(void(*func) (const void** data, con
 // *   interpreter main loop   *
 // ----------------------------
 
-bool Justina_interpreter::run(Stream* const pConsole, Stream** const pAltIOstreams, int altIOstreamCount) {
+bool Justina_interpreter::run(Stream* const pConsoleInput, Stream* const pConsoleOutput, Stream** const pAltInputStreams, Stream** const pAltOutputStreams, int altIOstreamCount) {
 
     bool withinStringEscSequence{ false };
     bool lastCharWasSemiColon{ false };
@@ -855,24 +864,24 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pAltIOstrea
     bool redundantSemiColon = false;
     bool isCommentStartChar = (c == '$');                               // character can also be part of comment
 
-    _pConsole = pConsole;
-    _pAltIOstreams = pAltIOstreams;
+    _pConsoleInput = pConsoleInput;
+    _pAltInputStreams = pAltInputStreams;
     _altIOstreamCount = altIOstreamCount;
 
-    _pConsole->println();
-    for (int i = 0; i < 13; i++) { _pConsole->print("*"); } _pConsole->print("____");
-    for (int i = 0; i < 4; i++) { _pConsole->print("*"); } _pConsole->print("__");
-    for (int i = 0; i < 14; i++) { _pConsole->print("*"); } _pConsole->print("_");
-    for (int i = 0; i < 10; i++) { _pConsole->print("*"); }_pConsole->println();
+    _pConsoleInput->println();
+    for (int i = 0; i < 13; i++) { _pConsoleInput->print("*"); } _pConsoleInput->print("____");
+    for (int i = 0; i < 4; i++) { _pConsoleInput->print("*"); } _pConsoleInput->print("__");
+    for (int i = 0; i < 14; i++) { _pConsoleInput->print("*"); } _pConsoleInput->print("_");
+    for (int i = 0; i < 10; i++) { _pConsoleInput->print("*"); }_pConsoleInput->println();
 
-    _pConsole->print("    "); _pConsole->println(ProductName);
-    _pConsole->print("    "); _pConsole->println(LegalCopyright);
-    _pConsole->print("    Version: "); _pConsole->print(ProductVersion); _pConsole->print(" ("); _pConsole->print(BuildDate); _pConsole->println(")");
-    for (int i = 0; i < 48; i++) { _pConsole->print("*"); } _pConsole->println();
+    _pConsoleInput->print("    "); _pConsoleInput->println(ProductName);
+    _pConsoleInput->print("    "); _pConsoleInput->println(LegalCopyright);
+    _pConsoleInput->print("    Version: "); _pConsoleInput->print(ProductVersion); _pConsoleInput->print(" ("); _pConsoleInput->print(BuildDate); _pConsoleInput->println(")");
+    for (int i = 0; i < 48; i++) { _pConsoleInput->print("*"); } _pConsoleInput->println();
 
 #if STARTSTOP_SD
     execResult_type execResult = startSD();
-    if (execResult != result_execOK) { _pConsole->println("SD card ERROR: SD card NOT initialised\r\n"); }
+    if (execResult != result_execOK) { _pConsoleInput->println("SD card ERROR: SD card NOT initialised\r\n"); }
 #endif
 
     _appFlags = 0x0000L;                            // init application flags (for communication with Justina caller, using callbacks)
@@ -884,7 +893,7 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pAltIOstrea
 
     _coldStart = false;             // can be used if needed in this procedure, to determine whether this was a cold or warm start
 
-    Stream* pStatementInputStream = static_cast<Stream*>(_pConsole);            // init: load program from console
+    Stream* pStatementInputStream = static_cast<Stream*>(_pConsoleInput);            // init: load program from console
 
     do {
         // when loading a program, as soon as first printable character of a PROGRAM is read, each subsequent character needs to follow after the previous one within a fixed time delay, handled by getCharacter().
@@ -970,14 +979,14 @@ bool Justina_interpreter::run(Stream* const pConsole, Stream** const pAltIOstrea
     _appFlags = 0x0000L;                            // clear all application flags
     _housekeepingCallback(quitNow, _appFlags);      // pass application flags to caller immediately
 
-    if (kill) { _keepInMemory = false; _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
+    if (kill) { _keepInMemory = false; _pConsoleInput->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
 
     SD_closeAllFiles();         // safety (in case an SD card is present: close all files 
     _SDinitOK = false;
     SD.end();                   // stop SD card
 
 
-    if (_keepInMemory) { _pConsole->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
+    if (_keepInMemory) { _pConsoleInput->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
     _quitJustina = false;         // if interpreter stays in memory: re-init
 
     return _keepInMemory;           // return to calling program
@@ -1111,8 +1120,8 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
         }
         else {
             // evaluation comes here
-            if (_promptAndEcho == 2) { prettyPrintStatements(0); _pConsole->println(); }                    // immediate mode and result OK: pretty print input line
-            else if (_promptAndEcho == 1) { _pConsole->println(); _isPrompt = false; }
+            if (_promptAndEcho == 2) { prettyPrintStatements(0); _pConsoleInput->println(); }                    // immediate mode and result OK: pretty print input line
+            else if (_promptAndEcho == 1) { _pConsoleInput->println(); _isPrompt = false; }
         }
     }
     else { printParsingResult(result, funcNotDefIndex, _statement, lineCount, pErrorPos); }                 // parsing error occured: print error message
@@ -1142,7 +1151,7 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
         do {
             char s[50];
             sprintf(s, "===== Clear %s ? (please answer Y or N) =====", ((clearIndicator == 2) ? "memory" : "program"));
-            _pConsole->println(s);
+            _pConsoleInput->println(s);
 
             // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
             // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
@@ -1153,7 +1162,7 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
 
             bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
             if (validAnswer) {
-                if (tolower(input[0]) == 'y') { _pConsole->println((clearIndicator == 2) ? "clearing memory" : "clearing program"); resetMachine(clearIndicator == 2); }       // 1 = clear program, 2 = clear all (including user variables)
+                if (tolower(input[0]) == 'y') { _pConsoleInput->println((clearIndicator == 2) ? "clearing memory" : "clearing program"); resetMachine(clearIndicator == 2); }       // 1 = clear program, 2 = clear all (including user variables)
                 break;
             }
         } while (true);
@@ -1181,17 +1190,17 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
         _programMode = true;
         _programCounter = _programStorage;
 
-        if (_isPrompt) { _pConsole->println(); }
-        _pConsole->print((_loadProgFromFileNo > 0) ? "Loading program...\r\n" : "Waiting for program... press ENTER to cancel\r\n");
+        if (_isPrompt) { _pConsoleInput->println(); }
+        _pConsoleInput->print((_loadProgFromFileNo > 0) ? "Loading program...\r\n" : "Waiting for program... press ENTER to cancel\r\n");
         _isPrompt = false;
 
-        pStatementInputStream = (_loadProgFromFileNo == 0) ? static_cast<Stream*>(_pConsole) :
-            (_loadProgFromFileNo < 0) ? static_cast<Stream*>(_pAltIOstreams[(-_loadProgFromFileNo) - 1]) :    // stream number -1 => array index 0, etc.
+        pStatementInputStream = (_loadProgFromFileNo == 0) ? static_cast<Stream*>(_pConsoleInput) :
+            (_loadProgFromFileNo < 0) ? static_cast<Stream*>(_pAltInputStreams[(-_loadProgFromFileNo) - 1]) :    // stream number -1 => array index 0, etc.
             &openFiles[_loadProgFromFileNo - 1].file;            // loading program from file or from console ?
         _initiateProgramLoad = true;
     }
     else {      // with or without parsing or execution error
-        pStatementInputStream = static_cast<Stream*>(_pConsole);          // set to console again
+        pStatementInputStream = static_cast<Stream*>(_pConsoleInput);          // set to console again
         if (_loadProgFromFileNo > 0) { SD_closeFile(_loadProgFromFileNo); _loadProgFromFileNo = 0; }
     }
 
@@ -1202,18 +1211,18 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
     (_openDebugLevels > 0) ? (_appFlags |= appFlag_stoppedInDebug) : (_appFlags |= appFlag_idle);     // status 'debug mode' or 'idle'
 
     // parsing error occured ? wait until no more characters received from console (important if received from Serial)
-    if ((result != result_tokenFound) && (_pConsole->available() > 0)) {
+    if ((result != result_tokenFound) && (_pConsoleInput->available() > 0)) {
         char c{};
         do {
             if (_quitJustina) { break; };       // could be set before loop starts
-            c = getCharacter(static_cast<Stream*>(_pConsole), _quitJustina, true);     // set allowWaitTime to true: wait a little before concluding no more characters come in
+            c = getCharacter(static_cast<Stream*>(_pConsoleInput), _quitJustina, true);     // set allowWaitTime to true: wait a little before concluding no more characters come in
 
         } while (c != 0xFF);
     }
 
     // print new prompt and exit
     // -------------------------
-    if ((_promptAndEcho != 0) && (execResult != result_initiateProgramLoad)) { _pConsole->print("Justina> "); _isPrompt = true; }
+    if ((_promptAndEcho != 0) && (execResult != result_initiateProgramLoad)) { _pConsoleInput->print("Justina> "); _isPrompt = true; }
 
     return _quitJustina;
 }
@@ -1247,16 +1256,16 @@ void Justina_interpreter::traceAndPrintDebugInfo() {
     pDeepestOpenFunction = (OpenFunctionData*)pFlowCtrlStackLvl;        // deepest level of nested functions
     nextStatementPointer = pDeepestOpenFunction->pNextStep;
 
-    _pConsole->println(); for (int i = 1; i <= _dispWidth; i++) { _pConsole->print("-"); } _pConsole->println();
+    _pConsoleInput->println(); for (int i = 1; i <= _dispWidth; i++) { _pConsoleInput->print("-"); } _pConsoleInput->println();
     parseAndExecTraceString();     // trace string may not contain keywords, external functions, generic names
     char msg[150] = "";
     sprintf(msg, "DEBUG ==>> NEXT [%s: ", extFunctionNames[pDeepestOpenFunction->functionIndex]);
-    _pConsole->print(msg);
+    _pConsoleInput->print(msg);
     prettyPrintStatements(10, nextStatementPointer);
 
     if (_openDebugLevels > 1) {
         sprintf(msg, "*** this + %d other programs STOPPED ***", _openDebugLevels - 1);
-        _pConsole->println(msg);
+        _pConsoleInput->println(msg);
     }
 }
 
@@ -1276,7 +1285,7 @@ void Justina_interpreter::checkTimeAndExecHousekeeping(bool& killNow) {
             _lastCallBackTime = _currenttime;
             _housekeepingCallback(killNow, _appFlags);                                                           // execute housekeeping callback
             if (killNow) {
-                while (_pConsole->available() > 0) { _pConsole->read(); }                                        // flush console input buffer and flag 'kill' (request from Justina caller)
+                while (_pConsoleInput->available() > 0) { _pConsoleInput->read(); }                                        // flush console input buffer and flag 'kill' (request from Justina caller)
             }
         }
     }
@@ -1328,7 +1337,7 @@ bool Justina_interpreter::readText(bool& doAbort, bool& doStop, bool& doCancel, 
         // read a character, if available in buffer
         char c{ };                                                           // init: no character available
         bool kill{ false };
-        c = getCharacter(static_cast<Stream*>(_pConsole), kill);               // get a key (character from console) if available and perform a regular housekeeping callback as well
+        c = getCharacter(static_cast<Stream*>(_pConsoleInput), kill);               // get a key (character from console) if available and perform a regular housekeeping callback as well
         if (kill) { return true; }      // return value true: kill Justina interpreter (buffer is now flushed until next line character)
 
         if (c != 0xFF) {                                                                           // terminal character available for reading ?
@@ -1604,7 +1613,7 @@ bool Justina_interpreter::parseIntFloat(char*& pNext, char*& pch, Val& value, ch
                 valueType = _symbNumConsts[index].valueType;
                 result = result_tokenFound;
             }
-            else {pNext = pch;}
+            else { pNext = pch; }
             return true;                                           // no error; result indicates whether token for numeric value symbol was found or search for valid token needs to be continued
         }
         pNext = pch; return true;                                                // no match: no error, search for valid token needs to be continued
@@ -1617,7 +1626,7 @@ bool Justina_interpreter::parseIntFloat(char*& pNext, char*& pch, Val& value, ch
     // exception: variable declarations with initializers: prefix operators are not parsed separately
 
     pNext = tokenStart;
-;
+    ;
     bool isLong{ false };
     int i{ 0 };
 

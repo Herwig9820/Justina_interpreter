@@ -231,9 +231,9 @@ class Justina_interpreter {
         cmdcod_quit,
         cmdcod_info,
         cmdcod_input,
-        cmdcod_printCons,
-        cmdcod_printLineCons,
-        cmdcod_printListCons,
+        cmdcod_cout,
+        cmdcod_coutLine,
+        cmdcod_coutList,
         cmdcod_print,
         cmdcod_printLine,
         cmdcod_printList,
@@ -304,7 +304,8 @@ class Justina_interpreter {
         fnccod_tolower,
         fnccod_space,
         fnccod_repchar,
-        fnccod_strstr,
+        fnccod_findsubstr,
+        fnccod_replacesubstr,
         fnccod_strcmp,
         fnccod_strcasecmp,
         fnccod_strhex,
@@ -366,9 +367,11 @@ class Justina_interpreter {
 
         fnccod_open,
         fnccod_close,
-        fnccod_readOneChar,
 
-        fnccod_readChars,
+        fnccod_cin,
+        fnccod_cinLine,
+        fnccod_cinParseList,
+        fnccod_read,
         fnccod_readLine,
         fnccod_parseList,
         fnccod_parseListFromVar,
@@ -826,7 +829,7 @@ class Justina_interpreter {
     static constexpr char cmd_onlyOutsideFunctionBlock = 0x05;             // command is only allowed outside a function block (so also in immediate mode)
     static constexpr char cmd_onlyImmOrInsideFuncBlock = 0x06;   // command is only allowed inside a function block are in immediare mode
     static constexpr char cmd_onlyProgramTop = 0x07;                        // only as first program statement
-    static constexpr char cmd_onlyImmediateOutsideBlock = 0x08;                        // command is only allowed in immediate mode, and only outside blocks
+    static constexpr char cmd_onlyImmediateNotWithinBlock = 0x08;                        // command is only allowed in immediate mode, and only outside blocks
 
     // bit b7: skip command during execution
     static constexpr char cmd_skipDuringExec = 0x80;
@@ -1120,6 +1123,12 @@ class Justina_interpreter {
         char arrayPattern;                                      // order of arraysand scalars; bit b0 to bit b7 refer to parameter 1 to 8, if a bit is set, an array is expected as argument
     };
 
+    struct SymbNumConsts {
+        const char* symbolName;
+        const char* symbolValue;
+        char valueType;                                             // float or long
+    };
+
     struct TerminalDef {                                        // function names with min & max number of arguments allowed 
         const char* terminalName;
         char terminalCode;
@@ -1187,16 +1196,9 @@ class Justina_interpreter {
 
     // sizes MUST be specified AND must be exact
     static const ResWordDef _resWords[56];                          // keyword names
-    static const FuncDef _functions[129];                            // function names with min & max arguments allowed
+    static const FuncDef _functions[132];                            // function names with min & max arguments allowed
+    static const SymbNumConsts _symbNumConsts[56];
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
-
-    struct SymbNumConsts {//// verplaats
-        const char* symbolName;
-        const char* symbolValue;
-        char valueType;                                             // float or long
-    };
-
-    static const SymbNumConsts _symbNumConsts[51];
 
 
     // ---------
@@ -1387,8 +1389,8 @@ class Justina_interpreter {
 
     char _programName[MAX_IDENT_NAME_LEN + 1];
 
-    Stream* _pConsole{ nullptr };
-    Stream** _pAltIOstreams{ nullptr };
+    Stream* _pConsoleInput{ nullptr }, *_pConsoleOutput{nullptr};
+    Stream** _pAltInputStreams{ nullptr }, ** _pAltOutputStreams{nullptr};
     int _altIOstreamCount = 0;
 
     long _progMemorySize{};////
@@ -1522,11 +1524,12 @@ class Justina_interpreter {
     // ------------------------------------
 
 public:
-    Justina_interpreter(Stream* const pConsole, Stream** const pAltIOstreams, int altIOstreamCount, long progMemSize, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);               // constructor
+    Justina_interpreter(Stream* const pConsoleInput, Stream* const pConsoleOutput, Stream** const pAltInputStreams, Stream** const pAltOutputStreams, int altIOstreamCount,
+        long progMemSize, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);               // constructor
     ~Justina_interpreter();               // deconstructor
     bool setMainLoopCallback(void (*func)(bool& requistQuit, long& appFlags));                   // set callback functions
     bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType, const int argCount));
-    bool run(Stream* const pConsole, Stream** const pAltIOstreams, int definedTerms);
+    bool run(Stream* const pConsoleInput, Stream* const pConsoleOutput, Stream** const pAltInputStreams, Stream** const pAltOutputStreams, int definedTerms);
 
 private:
     bool parseAsResWord(char*& pNext, parseTokenResult_type& result);
