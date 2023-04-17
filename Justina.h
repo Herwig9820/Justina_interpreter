@@ -242,6 +242,8 @@ class Justina_interpreter {
         cmdcod_printListToVar,
         cmdcod_dispfmt,
         cmdcod_dispmod,
+        cmdcod_tabSize,
+        cmdcod_angle,
         cmdcod_declCB,
         cmdcod_clearCB,
         cmdcod_callback,
@@ -303,6 +305,8 @@ class Justina_interpreter {
         fnccod_toupper,
         fnccod_tolower,
         fnccod_space,
+        fnccod_tab,
+        fnccod_gotoColumn,
         fnccod_repchar,
         fnccod_findsubstr,
         fnccod_replacesubstr,
@@ -889,12 +893,16 @@ class Justina_interpreter {
 
 
 
-    // constants used during execution, only stored within the stack for value tokens
+    // constants used during execution, only stored within the stack for constant and variable tokens
 
     // bit b0: intermediate constant (not a parsed constant, not a constant stored in a variable) 
     static constexpr uint8_t constIsIntermediate = 0x01;
     // bit b1: the address is the address of an array element. If this bit is zero, the address is the scalar or array variable base address 
     static constexpr uint8_t var_isArray_pendingSubscripts = 0x02;
+
+    // bits b32: print tab request, set column request. Bits set by tab() resp. col() functions if the function result is an argument of a print command (e.g. cout)
+    static constexpr uint8_t isPrintTabRequest = 0x04;
+    static constexpr uint8_t isPrintColumnRequest = 0x08;
 
     // block statements
     static constexpr uint8_t withinIteration = 0x01;        // flag is set at the start of each iteration and cleared at the end
@@ -1172,7 +1180,8 @@ class Justina_interpreter {
     struct OpenFile {
         File file;
         char* filePath{ nullptr };                                // including file name
-        bool fileNumberInUse;                                   // file number = position in structure (base 0) + 1
+        bool fileNumberInUse{false};                                   // file number = position in structure (base 0) + 1
+        int currentPrintColumn{0};
     };
 
     // block commands only (FOR, END, etc.): type of block, position in block, sequence check in block: allowed previous block commands 
@@ -1195,9 +1204,9 @@ class Justina_interpreter {
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na,block_na,block_na };                                   // not a 'block' command
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[56];                          // keyword names
-    static const FuncDef _functions[132];                            // function names with min & max arguments allowed
-    static const SymbNumConsts _symbNumConsts[56];
+    static const ResWordDef _resWords[58];                          // keyword names
+    static const FuncDef _functions[134];                            // function names with min & max arguments allowed
+    static const SymbNumConsts _symbNumConsts[58];
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
 
@@ -1206,6 +1215,9 @@ class Justina_interpreter {
     // ---------
 
     OpenFile openFiles[MAX_OPEN_SD_FILES];                      // open files: file paths and attributed file numbers
+    int *_pIOprintColumns{};
+    int _tabSize {8};                                           // tab size, default value if not changed by tabSize command 
+    int _angleMode {0};                                       // 0 = radians, 1 = degrees
 
     int _openFileCount = 0;
     int _SDcardChipSelectPin = 10;
@@ -1389,8 +1401,8 @@ class Justina_interpreter {
 
     char _programName[MAX_IDENT_NAME_LEN + 1];
 
-    Stream* _pConsoleInput{ nullptr }, *_pConsoleOutput{nullptr};
-    Stream** _pAltInputStreams{ nullptr }, ** _pAltOutputStreams{nullptr};
+    Stream* _pConsole{ nullptr };
+    Stream** _pAltIOstreams{ nullptr };
     int _altIOstreamCount = 0;
 
     long _progMemorySize{};////
@@ -1524,12 +1536,12 @@ class Justina_interpreter {
     // ------------------------------------
 
 public:
-    Justina_interpreter(Stream* const pConsoleInput, Stream* const pConsoleOutput, Stream** const pAltInputStreams, Stream** const pAltOutputStreams, int altIOstreamCount,
+    Justina_interpreter(Stream* const pConsoleInput, Stream** const pAltInputStreams, int altIOstreamCount,
         long progMemSize, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);               // constructor
     ~Justina_interpreter();               // deconstructor
     bool setMainLoopCallback(void (*func)(bool& requistQuit, long& appFlags));                   // set callback functions
     bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType, const int argCount));
-    bool run(Stream* const pConsoleInput, Stream* const pConsoleOutput, Stream** const pAltInputStreams, Stream** const pAltOutputStreams, int definedTerms);
+    bool run(Stream* const pConsole);
 
 private:
     bool parseAsResWord(char*& pNext, parseTokenResult_type& result);

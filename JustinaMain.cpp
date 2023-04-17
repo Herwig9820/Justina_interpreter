@@ -322,10 +322,15 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"pause",           cmdcod_pause,           cmd_onlyInFunctionBlock,                                0,0,    cmdPar_106,     cmdBlockNone},
     {"halt",            cmdcod_halt,            cmd_onlyInFunctionBlock,                                0,0,    cmdPar_102,     cmdBlockNone},
 
-    // input and output commands
-    // -------------------------
+    // settings
+    // --------
     {"dispFmt",         cmdcod_dispfmt,         cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
     {"dispMode",        cmdcod_dispmod,         cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_105,     cmdBlockNone},
+    {"tabSize",         cmdcod_tabSize,         cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_104,     cmdBlockNone},
+    {"angleMode",       cmdcod_angle,           cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_104,     cmdBlockNone},
+
+    // input and output commands
+    // -------------------------
 
     {"info",            cmdcod_info,            cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_114,     cmdBlockNone},
     {"input",           cmdcod_input,           cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_113,     cmdBlockNone},
@@ -337,9 +342,9 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"receiveFile",     cmdcod_receiveFile,     cmd_onlyImmediateNotWithinBlock,                        0,0,    cmdPar_115,     cmdBlockNone},
     {"sendFile",        cmdcod_sendFile,        cmd_onlyImmediateNotWithinBlock,                        0,0,    cmdPar_115,     cmdBlockNone},
 
-    {"cout",            cmdcod_cout,       cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
-    {"coutLine",        cmdcod_coutLine,   cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_107,     cmdBlockNone},
-    {"coutList",        cmdcod_coutList,   cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
+    {"cout",            cmdcod_cout,            cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
+    {"coutLine",        cmdcod_coutLine,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_107,     cmdBlockNone},
+    {"coutList",        cmdcod_coutList,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
 
     {"print",           cmdcod_print,           cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_116,     cmdBlockNone},
     {"printLine",       cmdcod_printLine,       cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
@@ -491,6 +496,8 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     {"toUpper",                 fnccod_toupper,                 1,3,    0b0},
     {"toLower",                 fnccod_tolower,                 1,3,    0b0},
     {"space",                   fnccod_space,                   1,1,    0b0},
+    {"tab",                     fnccod_tab,                     0,1,    0b0},
+    {"col",                     fnccod_gotoColumn,              1,1,    0b0},
     {"repChar",                 fnccod_repchar,                 2,2,    0b0},
     {"findInStr",               fnccod_findsubstr,              2,3,    0b0},
     {"substInStr",              fnccod_replacesubstr,           3,4,    0b0},
@@ -523,7 +530,7 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     { "read",                    fnccod_read,                   1,3,    0b0 },
     { "readLine",                fnccod_readLine,               1,1,    0b0 },
     { "readList",                fnccod_parseList,              2,16,   0b0 },
-    
+
     { "vreadList",               fnccod_parseListFromVar,       2,16,   0b0 },
 
     { "find",                    fnccod_find,                   2,2,    0b0 },
@@ -569,6 +576,9 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
 
     {"DEG_TO_RAD",          "0.01745329251994329577",   value_isFloat}, // conversion factor: degrees to radians
     {"RAD_TO_DEG",          "57.2957795130823208768",   value_isFloat}, // radians to degrrees
+
+    {"DEGREES",             "0",                        value_isLong},
+    {"RADIANS",             "1",                        value_isLong},
 
     {"FALSE",               "0",                        value_isLong},  // value for boolean 'false'
     {"TRUE",                "1",                        value_isLong},  // value for boolean 'true'
@@ -714,9 +724,9 @@ const Justina_interpreter::TerminalDef Justina_interpreter::_terminals[]{
 // *   constructor   *
 // -------------------
 
-Justina_interpreter::Justina_interpreter(Stream* const pConsoleInput, Stream* const pConsoleOutput, Stream** const pAltInputStreams, Stream** const pAltOutputStreams, int altIOstreamCount, 
+Justina_interpreter::Justina_interpreter(Stream* const pConsole, Stream** const pAltInputStreams, int altIOstreamCount,
     long progMemSize, int SDcardChipSelectPin) :
-    _pConsoleInput(pConsoleInput), _pAltInputStreams(pAltInputStreams), _altIOstreamCount(altIOstreamCount), _progMemorySize(progMemSize), _SDcardChipSelectPin(SDcardChipSelectPin) {
+    _pConsole(pConsole), _pAltIOstreams(pAltInputStreams), _altIOstreamCount(altIOstreamCount), _progMemorySize(progMemSize), _SDcardChipSelectPin(SDcardChipSelectPin) {
 
     // settings to be initialized when cold starting interpreter only
     // --------------------------------------------------------------
@@ -763,7 +773,7 @@ Justina_interpreter::~Justina_interpreter() {
         _housekeepingCallback = nullptr;
         delete[] _programStorage;
     }
-    _pConsoleInput->println("\r\nJustina: bye\r\n");
+    _pConsole->println("\r\nJustina: bye\r\n");
 };
 
 
@@ -793,7 +803,7 @@ bool Justina_interpreter::setUserFcnCallback(void(*func) (const void** data, con
 // *   interpreter main loop   *
 // ----------------------------
 
-bool Justina_interpreter::run(Stream* const pConsoleInput, Stream* const pConsoleOutput, Stream** const pAltInputStreams, Stream** const pAltOutputStreams, int altIOstreamCount) {
+bool Justina_interpreter::run(Stream* const pConsole) {
 
     bool withinStringEscSequence{ false };
     bool lastCharWasSemiColon{ false };
@@ -812,8 +822,8 @@ bool Justina_interpreter::run(Stream* const pConsoleInput, Stream* const pConsol
     bool quitNow{ false };
     char c{};
 
-
-
+    _pIOprintColumns = new int[_altIOstreamCount];        // if only console: single element
+    
     //// start temp test
     /*
     uint8_t* testptr = (uint8_t*)0x20000000;
@@ -864,24 +874,22 @@ bool Justina_interpreter::run(Stream* const pConsoleInput, Stream* const pConsol
     bool redundantSemiColon = false;
     bool isCommentStartChar = (c == '$');                               // character can also be part of comment
 
-    _pConsoleInput = pConsoleInput;
-    _pAltInputStreams = pAltInputStreams;
-    _altIOstreamCount = altIOstreamCount;
+    _pConsole = pConsole;           // console can still be changed by the caller
 
-    _pConsoleInput->println();
-    for (int i = 0; i < 13; i++) { _pConsoleInput->print("*"); } _pConsoleInput->print("____");
-    for (int i = 0; i < 4; i++) { _pConsoleInput->print("*"); } _pConsoleInput->print("__");
-    for (int i = 0; i < 14; i++) { _pConsoleInput->print("*"); } _pConsoleInput->print("_");
-    for (int i = 0; i < 10; i++) { _pConsoleInput->print("*"); }_pConsoleInput->println();
+    _pConsole->println();
+    for (int i = 0; i < 13; i++) { _pConsole->print("*"); } _pConsole->print("____");
+    for (int i = 0; i < 4; i++) { _pConsole->print("*"); } _pConsole->print("__");
+    for (int i = 0; i < 14; i++) { _pConsole->print("*"); } _pConsole->print("_");
+    for (int i = 0; i < 10; i++) { _pConsole->print("*"); }_pConsole->println();
 
-    _pConsoleInput->print("    "); _pConsoleInput->println(ProductName);
-    _pConsoleInput->print("    "); _pConsoleInput->println(LegalCopyright);
-    _pConsoleInput->print("    Version: "); _pConsoleInput->print(ProductVersion); _pConsoleInput->print(" ("); _pConsoleInput->print(BuildDate); _pConsoleInput->println(")");
-    for (int i = 0; i < 48; i++) { _pConsoleInput->print("*"); } _pConsoleInput->println();
+    _pConsole->print("    "); _pConsole->println(ProductName);
+    _pConsole->print("    "); _pConsole->println(LegalCopyright);
+    _pConsole->print("    Version: "); _pConsole->print(ProductVersion); _pConsole->print(" ("); _pConsole->print(BuildDate); _pConsole->println(")");
+    for (int i = 0; i < 48; i++) { _pConsole->print("*"); } _pConsole->println();
 
 #if STARTSTOP_SD
     execResult_type execResult = startSD();
-    if (execResult != result_execOK) { _pConsoleInput->println("SD card ERROR: SD card NOT initialised\r\n"); }
+    if (execResult != result_execOK) { _pConsole->println("SD card ERROR: SD card NOT initialised\r\n"); }
 #endif
 
     _appFlags = 0x0000L;                            // init application flags (for communication with Justina caller, using callbacks)
@@ -893,7 +901,7 @@ bool Justina_interpreter::run(Stream* const pConsoleInput, Stream* const pConsol
 
     _coldStart = false;             // can be used if needed in this procedure, to determine whether this was a cold or warm start
 
-    Stream* pStatementInputStream = static_cast<Stream*>(_pConsoleInput);            // init: load program from console
+    Stream* pStatementInputStream = static_cast<Stream*>(_pConsole);            // init: load program from console
 
     do {
         // when loading a program, as soon as first printable character of a PROGRAM is read, each subsequent character needs to follow after the previous one within a fixed time delay, handled by getCharacter().
@@ -979,14 +987,16 @@ bool Justina_interpreter::run(Stream* const pConsoleInput, Stream* const pConsol
     _appFlags = 0x0000L;                            // clear all application flags
     _housekeepingCallback(quitNow, _appFlags);      // pass application flags to caller immediately
 
-    if (kill) { _keepInMemory = false; _pConsoleInput->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
+    if (kill) { _keepInMemory = false; _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
+
+    delete[] _pIOprintColumns;
 
     SD_closeAllFiles();         // safety (in case an SD card is present: close all files 
     _SDinitOK = false;
     SD.end();                   // stop SD card
 
 
-    if (_keepInMemory) { _pConsoleInput->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
+    if (_keepInMemory) { _pConsole->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
     _quitJustina = false;         // if interpreter stays in memory: re-init
 
     return _keepInMemory;           // return to calling program
@@ -1120,8 +1130,8 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
         }
         else {
             // evaluation comes here
-            if (_promptAndEcho == 2) { prettyPrintStatements(0); _pConsoleInput->println(); }                    // immediate mode and result OK: pretty print input line
-            else if (_promptAndEcho == 1) { _pConsoleInput->println(); _isPrompt = false; }
+            if (_promptAndEcho == 2) { prettyPrintStatements(0); _pConsole->println(); }                    // immediate mode and result OK: pretty print input line
+            else if (_promptAndEcho == 1) { _pConsole->println(); _isPrompt = false; }
         }
     }
     else { printParsingResult(result, funcNotDefIndex, _statement, lineCount, pErrorPos); }                 // parsing error occured: print error message
@@ -1151,7 +1161,7 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
         do {
             char s[50];
             sprintf(s, "===== Clear %s ? (please answer Y or N) =====", ((clearIndicator == 2) ? "memory" : "program"));
-            _pConsoleInput->println(s);
+            _pConsole->println(s);
 
             // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
             // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
@@ -1162,7 +1172,7 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
 
             bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
             if (validAnswer) {
-                if (tolower(input[0]) == 'y') { _pConsoleInput->println((clearIndicator == 2) ? "clearing memory" : "clearing program"); resetMachine(clearIndicator == 2); }       // 1 = clear program, 2 = clear all (including user variables)
+                if (tolower(input[0]) == 'y') { _pConsole->println((clearIndicator == 2) ? "clearing memory" : "clearing program"); resetMachine(clearIndicator == 2); }       // 1 = clear program, 2 = clear all (including user variables)
                 break;
             }
         } while (true);
@@ -1190,17 +1200,17 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
         _programMode = true;
         _programCounter = _programStorage;
 
-        if (_isPrompt) { _pConsoleInput->println(); }
-        _pConsoleInput->print((_loadProgFromFileNo > 0) ? "Loading program...\r\n" : "Waiting for program... press ENTER to cancel\r\n");
+        if (_isPrompt) { _pConsole->println(); }
+        _pConsole->print((_loadProgFromFileNo > 0) ? "Loading program...\r\n" : "Waiting for program... press ENTER to cancel\r\n");
         _isPrompt = false;
 
-        pStatementInputStream = (_loadProgFromFileNo == 0) ? static_cast<Stream*>(_pConsoleInput) :
-            (_loadProgFromFileNo < 0) ? static_cast<Stream*>(_pAltInputStreams[(-_loadProgFromFileNo) - 1]) :    // stream number -1 => array index 0, etc.
+        pStatementInputStream = (_loadProgFromFileNo == 0) ? static_cast<Stream*>(_pConsole) :
+            (_loadProgFromFileNo < 0) ? static_cast<Stream*>(_pAltIOstreams[(-_loadProgFromFileNo) - 1]) :    // stream number -1 => array index 0, etc.
             &openFiles[_loadProgFromFileNo - 1].file;            // loading program from file or from console ?
         _initiateProgramLoad = true;
     }
     else {      // with or without parsing or execution error
-        pStatementInputStream = static_cast<Stream*>(_pConsoleInput);          // set to console again
+        pStatementInputStream = static_cast<Stream*>(_pConsole);          // set to console again
         if (_loadProgFromFileNo > 0) { SD_closeFile(_loadProgFromFileNo); _loadProgFromFileNo = 0; }
     }
 
@@ -1211,18 +1221,18 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
     (_openDebugLevels > 0) ? (_appFlags |= appFlag_stoppedInDebug) : (_appFlags |= appFlag_idle);     // status 'debug mode' or 'idle'
 
     // parsing error occured ? wait until no more characters received from console (important if received from Serial)
-    if ((result != result_tokenFound) && (_pConsoleInput->available() > 0)) {
+    if ((result != result_tokenFound) && (_pConsole->available() > 0)) {
         char c{};
         do {
             if (_quitJustina) { break; };       // could be set before loop starts
-            c = getCharacter(static_cast<Stream*>(_pConsoleInput), _quitJustina, true);     // set allowWaitTime to true: wait a little before concluding no more characters come in
+            c = getCharacter(static_cast<Stream*>(_pConsole), _quitJustina, true);     // set allowWaitTime to true: wait a little before concluding no more characters come in
 
         } while (c != 0xFF);
     }
 
     // print new prompt and exit
     // -------------------------
-    if ((_promptAndEcho != 0) && (execResult != result_initiateProgramLoad)) { _pConsoleInput->print("Justina> "); _isPrompt = true; }
+    if ((_promptAndEcho != 0) && (execResult != result_initiateProgramLoad)) { _pConsole->print("Justina> "); _isPrompt = true; }
 
     return _quitJustina;
 }
@@ -1256,16 +1266,16 @@ void Justina_interpreter::traceAndPrintDebugInfo() {
     pDeepestOpenFunction = (OpenFunctionData*)pFlowCtrlStackLvl;        // deepest level of nested functions
     nextStatementPointer = pDeepestOpenFunction->pNextStep;
 
-    _pConsoleInput->println(); for (int i = 1; i <= _dispWidth; i++) { _pConsoleInput->print("-"); } _pConsoleInput->println();
+    _pConsole->println(); for (int i = 1; i <= _dispWidth; i++) { _pConsole->print("-"); } _pConsole->println();
     parseAndExecTraceString();     // trace string may not contain keywords, external functions, generic names
     char msg[150] = "";
     sprintf(msg, "DEBUG ==>> NEXT [%s: ", extFunctionNames[pDeepestOpenFunction->functionIndex]);
-    _pConsoleInput->print(msg);
+    _pConsole->print(msg);
     prettyPrintStatements(10, nextStatementPointer);
 
     if (_openDebugLevels > 1) {
         sprintf(msg, "*** this + %d other programs STOPPED ***", _openDebugLevels - 1);
-        _pConsoleInput->println(msg);
+        _pConsole->println(msg);
     }
 }
 
@@ -1285,7 +1295,7 @@ void Justina_interpreter::checkTimeAndExecHousekeeping(bool& killNow) {
             _lastCallBackTime = _currenttime;
             _housekeepingCallback(killNow, _appFlags);                                                           // execute housekeeping callback
             if (killNow) {
-                while (_pConsoleInput->available() > 0) { _pConsoleInput->read(); }                                        // flush console input buffer and flag 'kill' (request from Justina caller)
+                while (_pConsole->available() > 0) { _pConsole->read(); }                                        // flush console input buffer and flag 'kill' (request from Justina caller)
             }
         }
     }
@@ -1337,7 +1347,7 @@ bool Justina_interpreter::readText(bool& doAbort, bool& doStop, bool& doCancel, 
         // read a character, if available in buffer
         char c{ };                                                           // init: no character available
         bool kill{ false };
-        c = getCharacter(static_cast<Stream*>(_pConsoleInput), kill);               // get a key (character from console) if available and perform a regular housekeeping callback as well
+        c = getCharacter(static_cast<Stream*>(_pConsole), kill);               // get a key (character from console) if available and perform a regular housekeeping callback as well
         if (kill) { return true; }      // return value true: kill Justina interpreter (buffer is now flushed until next line character)
 
         if (c != 0xFF) {                                                                           // terminal character available for reading ?
@@ -1544,7 +1554,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
         #endif
             delete[]  userVarValues[index].pArray;
             _userArrayObjectCount--;
-        }
+    }
 
         // 4. if variable is a scalar string value: delete string
         // ------------------------------------------------------
@@ -1555,8 +1565,8 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
             #endif
                 _userVarStringObjectCount--;
                 delete[]  userVarValues[index].pStringConst;
-            }
         }
+}
 
         // 5. move up next user variables one place
         //    if a user variable is used in currently loaded program: adapt index in program storage

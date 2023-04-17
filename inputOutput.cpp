@@ -88,6 +88,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumbe
 
             openFiles[i].fileNumberInUse = true;
             openFiles[i].filePath = filePathInCapitals;                          // delete when file is closed
+            openFiles[i].currentPrintColumn=0;
             fileNumber = i + 1;
             break;
         }
@@ -128,6 +129,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_openNext(int dirFil
             strcpy(openFiles[i].filePath, dirPath);
             strcat(openFiles[i].filePath, "/");
             strcat(openFiles[i].filePath, openFiles[i].file.name());
+            openFiles[i].currentPrintColumn = 0;
             fileNumber = i + 1;
             break;
         }
@@ -299,10 +301,10 @@ Justina_interpreter::execResult_type Justina_interpreter::checkStream(long argIs
     if ((!(argIsLongBits & (0x1 << argIndex))) && (!(argIsFloatBits & (0x1 << argIndex)))) { return result_numberExpected; }                      // file number
     streamNumber = (argIsLongBits & (0x1 << argIndex)) ? arg.longConst : arg.floatConst;
 
-    if (streamNumber == 0) { pStream = static_cast<Stream*> (_pConsoleInput); }
+    if (streamNumber == 0) { pStream = static_cast<Stream*> (_pConsole); }
     else if (streamNumber < 0) {
         if (( - streamNumber) > _altIOstreamCount) { return result_IO_invalidStreamNumber; }              
-        pStream = static_cast<Stream*>(_pAltInputStreams[(-streamNumber) - 1]);     // stream number -1 => array index 0, etc.
+        pStream = static_cast<Stream*>(_pAltIOstreams[(-streamNumber) - 1]);     // stream number -1 => array index 0, etc.
     }
     else {      // file
         File* pFile{};
