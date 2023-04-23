@@ -299,10 +299,13 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"const",           cmdcod_constVar,        cmd_noRestrictions | cmd_skipDuringExec,                0,0,    cmdPar_111,     cmdBlockNone},
     {"static",          cmdcod_static,          cmd_onlyInFunctionBlock | cmd_skipDuringExec,           0,0,    cmdPar_111,     cmdBlockNone},
 
-    {"delVar",          cmdcod_deleteVar,       cmd_onlyImmediateNotWithinBlock | cmd_skipDuringExec,   0,0,    cmdPar_110,     cmdBlockNone},
-    {"clearAll",        cmdcod_clearAll,        cmd_onlyImmediateNotWithinBlock | cmd_skipDuringExec,   0,0,    cmdPar_102,     cmdBlockNone},
-    {"clearProg",       cmdcod_clearProg,       cmd_onlyImmediateNotWithinBlock | cmd_skipDuringExec,   0,0,    cmdPar_102,     cmdBlockNone},
-
+    {"delete",          cmdcod_deleteVar,       cmd_onlyImmediate | cmd_skipDuringExec,                 0,0,    cmdPar_110,     cmdBlockNone},
+    
+    {"clearAll",        cmdcod_clearAll,        cmd_onlyImmediate | cmd_skipDuringExec,                 0,0,    cmdPar_102,     cmdBlockNone},      // executed AFTER execution phase ends
+    {"clearProg",       cmdcod_clearProg,       cmd_onlyImmediate | cmd_skipDuringExec,                 0,0,    cmdPar_102,     cmdBlockNone},      // executed AFTER execution phase ends
+    
+    {"loadProg",        cmdcod_loadProg,        cmd_onlyImmediate,                                      0,0,    cmdPar_106,     cmdBlockNone},
+    
     // program and flow control commands
     // ---------------------------------
     {"program",         cmdcod_program,         cmd_onlyProgramTop | cmd_skipDuringExec,                0,0,    cmdPar_103,     cmdBlockNone},
@@ -322,42 +325,6 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"pause",           cmdcod_pause,           cmd_onlyInFunctionBlock,                                0,0,    cmdPar_106,     cmdBlockNone},
     {"halt",            cmdcod_halt,            cmd_onlyInFunctionBlock,                                0,0,    cmdPar_102,     cmdBlockNone},
 
-    // settings
-    // --------
-    {"dispFmt",         cmdcod_dispfmt,         cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
-    {"dispMode",        cmdcod_dispmod,         cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_105,     cmdBlockNone},
-    {"tabSize",         cmdcod_tabSize,         cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_104,     cmdBlockNone},
-    {"angleMode",       cmdcod_angle,           cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_104,     cmdBlockNone},
-
-    // input and output commands
-    // -------------------------
-
-    {"info",            cmdcod_info,            cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_114,     cmdBlockNone},
-    {"input",           cmdcod_input,           cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_113,     cmdBlockNone},
-
-    {"startSD",         cmdcod_startSD,         cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
-    {"stopSD",          cmdcod_stopSD,          cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
-
-    {"loadProg",        cmdcod_loadProg,        cmd_onlyImmediateNotWithinBlock,                        0,0,    cmdPar_106,     cmdBlockNone},
-    {"receiveFile",     cmdcod_receiveFile,     cmd_onlyImmediateNotWithinBlock,                        0,0,    cmdPar_115,     cmdBlockNone},
-    {"sendFile",        cmdcod_sendFile,        cmd_onlyImmediateNotWithinBlock,                        0,0,    cmdPar_115,     cmdBlockNone},
-
-    {"cout",            cmdcod_cout,            cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
-    {"coutLine",        cmdcod_coutLine,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_107,     cmdBlockNone},
-    {"coutList",        cmdcod_coutList,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
-
-    {"print",           cmdcod_print,           cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_116,     cmdBlockNone},
-    {"printLine",       cmdcod_printLine,       cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
-    {"printList",       cmdcod_printList,       cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_116,     cmdBlockNone},
-
-    {"vprint",          cmdcod_printToVar,      cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_116,     cmdBlockNone},
-    {"vprintLine",      cmdcod_printLineToVar,  cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
-    {"vprintList",      cmdcod_printListToVar,  cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_116,     cmdBlockNone},
-
-    {"listVars",        cmdcod_printVars,       cmd_onlyImmediate,                                      0,0,    cmdPar_106,     cmdBlockNone},
-    {"listCallSt",      cmdcod_printCallSt,     cmd_onlyImmediate,                                      0,0,    cmdPar_106,     cmdBlockNone},
-    {"listFiles",       cmdcod_listFiles,       cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_106,     cmdBlockNone},
-
     // debugging commands
     // ------------------
     {"stop",            cmdcod_stop,            cmd_onlyInFunctionBlock,                                0,0,    cmdPar_102,     cmdBlockNone},
@@ -376,6 +343,41 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"abort",           cmdcod_abort,           cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
     {"debug",           cmdcod_debug,           cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
     {"quit",            cmdcod_quit,            cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_106,     cmdBlockNone},
+
+    // settings
+    // --------
+    {"dispFmt",         cmdcod_dispfmt,         cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
+    {"dispMode",        cmdcod_dispmod,         cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_105,     cmdBlockNone},
+    {"tabSize",         cmdcod_tabSize,         cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_104,     cmdBlockNone},
+    {"angleMode",       cmdcod_angle,           cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_104,     cmdBlockNone},
+
+    // input and output commands
+    // -------------------------
+
+    {"info",            cmdcod_info,            cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_114,     cmdBlockNone},
+    {"input",           cmdcod_input,           cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_113,     cmdBlockNone},
+
+    {"startSD",         cmdcod_startSD,         cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_102,     cmdBlockNone},
+    {"stopSD",          cmdcod_stopSD,          cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_102,     cmdBlockNone},
+
+    {"receiveFile",     cmdcod_receiveFile,     cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_115,     cmdBlockNone},
+    {"sendFile",        cmdcod_sendFile,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_115,     cmdBlockNone},
+
+    {"cout",            cmdcod_cout,            cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
+    {"coutLine",        cmdcod_coutLine,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_107,     cmdBlockNone},
+    {"coutList",        cmdcod_coutList,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
+
+    {"print",           cmdcod_print,           cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_116,     cmdBlockNone},
+    {"printLine",       cmdcod_printLine,       cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
+    {"printList",       cmdcod_printList,       cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_116,     cmdBlockNone},
+
+    {"vprint",          cmdcod_printToVar,      cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_116,     cmdBlockNone},
+    {"vprintLine",      cmdcod_printLineToVar,  cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
+    {"vprintList",      cmdcod_printListToVar,  cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_116,     cmdBlockNone},
+
+    {"listVars",        cmdcod_printVars,       cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_106,     cmdBlockNone},
+    {"listCallSt",      cmdcod_printCallSt,     cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_106,     cmdBlockNone},
+    {"listFiles",       cmdcod_listFiles,       cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_106,     cmdBlockNone},
 
     // user callback functions
     // -----------------------
@@ -408,7 +410,7 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     {"dims",                    fnccod_dims,                    1,1,    0b00000001},
     {"type",                    fnccod_valueType,               1,1,    0b0},
     {"r",                       fnccod_last,                    0,1,    0b0},               // short label for 'last result'
-    {"ft",                      fnccod_format,                  1,6,    0b0},               // short label for 'system value'
+    {"fmt",                     fnccod_format,                  1,6,    0b0},               // short label for 'system value'
     {"sysval",                  fnccod_sysVal,                  1,1,    0b0},
 
     // math functions
@@ -572,7 +574,7 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     {"PI",                  "3.14159265358979323846",   value_isFloat}, // PI
     {"HALF_PI",             "1.57079632679489661923",   value_isFloat}, // PI / 2
     {"QUART_PI",            "0.78539816339744830962",   value_isFloat}, // PI / 4
-    {"TWO_PI",              "6.2831853071795864769",   value_isFloat},  // 2 * PI 
+    {"TWO_PI",              "6.2831853071795864769",    value_isFloat},  // 2 * PI 
 
     {"DEG_TO_RAD",          "0.01745329251994329577",   value_isFloat}, // conversion factor: degrees to radians
     {"RAD_TO_DEG",          "57.2957795130823208768",   value_isFloat}, // radians to degrrees
@@ -823,7 +825,8 @@ bool Justina_interpreter::run(Stream* const pConsole) {
     char c{};
 
     _pIOprintColumns = new int[_altIOstreamCount];        // if only console: single element
-    
+    for (int i = 0; i < _altIOstreamCount; i++) { _pIOprintColumns[i] = 0; }
+
     //// start temp test
     /*
     uint8_t* testptr = (uint8_t*)0x20000000;
@@ -903,6 +906,8 @@ bool Justina_interpreter::run(Stream* const pConsole) {
 
     Stream* pStatementInputStream = static_cast<Stream*>(_pConsole);            // init: load program from console
 
+    int clearCmdIndicator{ 0 };                                    // 1 = clear program cmd, 2 = clear all cmd
+
     do {
         // when loading a program, as soon as first printable character of a PROGRAM is read, each subsequent character needs to follow after the previous one within a fixed time delay, handled by getCharacter().
         // program reading ends when no character is read within this time window.
@@ -914,14 +919,14 @@ bool Justina_interpreter::run(Stream* const pConsole) {
         if (kill) { break; }                // return true if kill request received from calling program
         if (c < 0xFF) { _initiateProgramLoad = false; }                     // reset _initiateProgramLoad after each character received
 
-        bool programOrStatementRead = _programMode ? ((c == 0xFF) && allowTimeOut) : (c == '\n');
-        if ((c == 0xFF) && !programOrStatementRead) { continue; }                // no character (except when program or imm. mode line is read): start next loop
+        bool allStatementsRead = _programMode ? ((c == 0xFF) && allowTimeOut) : (c == '\n');
+        if ((c == 0xFF) && !allStatementsRead) { continue; }                // no character (except when program or imm. mode line is read): start next loop
 
         quitNow = false;
 
         // if no character added: nothing to do, wait for next
         bool bufferOverrun{ false };                                        // buffer where statement characters are assembled for parsing
-        bool noCharAdded = !addCharacterToInput(lastCharWasSemiColon, withinString, withinStringEscSequence, within1LineComment, withinMultiLineComment, redundantSemiColon, programOrStatementRead,
+        bool noCharAdded = !addCharacterToInput(lastCharWasSemiColon, withinString, withinStringEscSequence, within1LineComment, withinMultiLineComment, redundantSemiColon, allStatementsRead,
             bufferOverrun, flushAllUntilEOF, lineCount, statementCharCount, c);
 
         do {        // one loop only
@@ -931,12 +936,11 @@ bool Justina_interpreter::run(Stream* const pConsole) {
             // if a statement is complete (terminated by a semicolon or end of input), parse it
             // --------------------------------------------------------------------------------
             bool isStatementSeparator = (!withinString) && (!within1LineComment) && (!withinMultiLineComment) && (c == ';') && !redundantSemiColon;
-            isStatementSeparator = isStatementSeparator || (withinString && (c == '\n'));  // new line sent to parser as well
+            isStatementSeparator = isStatementSeparator || (withinString && (c == '\n'));  // a new line character within a string is sent to parser as well
 
-            bool statementComplete = !bufferOverrun && (isStatementSeparator || (programOrStatementRead && (statementCharCount > 0)));
+            bool statementReadyForParsing = !bufferOverrun && (isStatementSeparator || (allStatementsRead && (statementCharCount > 0)));
 
-            int clearCmdIndicator{ 0 };                                    // 1 = clear program cmd, 2 = clear all cmd
-            if (statementComplete && !_quitJustina) {                   // if quitting anyway, just skip                                               
+            if (statementReadyForParsing && !_quitJustina) {                   // if quitting anyway, just skip                                               
                 _appFlags &= ~appFlag_errorConditionBit;              // clear error condition flag 
                 _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_parsing;     // status 'parsing'
 
@@ -945,7 +949,7 @@ bool Justina_interpreter::run(Stream* const pConsole) {
                 char* pStatement = _statement;                                                 // because passed by reference 
                 char* pDummy{};
                 _parsingExecutingTraceString = false; _parsingEvalString = false;
-                result = parseStatement(pStatement, pDummy, clearCmdIndicator = 0);          // parse ONE statement only 
+                result = parseStatement(pStatement, pDummy, clearCmdIndicator);          // parse ONE statement only 
                 pErrorPos = pStatement;                                                      // in case of error
 
                 if (result != result_tokenFound) { flushAllUntilEOF = true; }
@@ -957,7 +961,8 @@ bool Justina_interpreter::run(Stream* const pConsole) {
                 lastCharWasSemiColon = false;
             }
 
-            if (programOrStatementRead) {       // program mode: complete program read and parsed / imm. mode: 1 statement read and parsed (with or without error)
+            // program mode: complete program read and parsed / imm. mode: all statements in command line read and parsed ?
+            if (allStatementsRead) {            // note: if all statements have been read, they also have been parsed
                 _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_idle;     // status 'idle'
 
                 quitNow = processAndExec(result, kill, lineCount, pErrorPos, clearCmdIndicator, pStatementInputStream);  // return value: quit Justina now
@@ -969,11 +974,12 @@ bool Justina_interpreter::run(Stream* const pConsole) {
                     lastCharWasSemiColon = false;
                 }
 
-                // reset after program (or imm. mode line) is read
+                // reset after program (or imm. mode line) is read and processed
                 lineCount = 0;
                 flushAllUntilEOF = false;
-
                 _statement[statementCharCount] = '\0';                            // add string terminator
+
+                clearCmdIndicator = 0;          // reset
                 result = result_tokenFound;
             }
         } while (false);
@@ -1109,7 +1115,7 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
 // * finalise parsing, execute if no errors, if in debug mode, trace and print debug info, re-init machine state and exit *
 // ------------------------------------------------------------------------------------------------------------------------
 
-bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, int clearIndicator, Stream*& pStatementInputStream) {
+bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, int &clearIndicator, Stream*& pStatementInputStream) {
 
     // all statements (in program or imm. mode line) have been parsed: finalise
     // ------------------------------------------------------------------------
@@ -1154,9 +1160,11 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
 
     // re-init or reset interpreter state 
     // ----------------------------------
+
     // if program parsing error: reset machine, because variable storage might not be consistent with program any more
     if ((_programMode) && (result != result_tokenFound)) { resetMachine(false); }
     else if (execResult == result_initiateProgramLoad) { resetMachine(false); }
+    // clearing program / memory: AFTER execution phase ends !
     else if (clearIndicator != 0) {                     // 1 = clear program cmd, 2 = clear all cmd 
         do {
             char s[50];
@@ -1461,6 +1469,7 @@ void Justina_interpreter::printVariables(Stream* pOut, bool userVars) {
     }
     if (!linesPrinted) { pOut->println("    (none)"); }
     pOut->println();
+    _pIOprintColumns[0] = 0;
     _consoleAtLineStart = true;
 }
 
@@ -1505,6 +1514,7 @@ void Justina_interpreter::printCallStack(Stream* pOut) {
     else  pOut->println("(no program running)");
 
     pOut->println();
+    _pIOprintColumns[0] = 0;
     _consoleAtLineStart = true;
 }
 

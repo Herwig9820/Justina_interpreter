@@ -977,9 +977,11 @@ bool Justina_interpreter::checkCommandArgToken(parseTokenResult_type& result, in
         if ((allowedParType != cmdPar_none) && !multipleParameter && !optionalParameter) {    // missing parameters ?
             result = result_cmd_parameterMissing; return false;
         }
+        
         if (_isClearCBcmd) { _userCBprocAliasSet_count = 0; }
-        else if (_isClearProgCmd) { clearIndicator = 1; }     // clear program
-        else if (_isClearAllCmd) { clearIndicator = 2; }      // clear all
+        // NOTE: clear program / memory command will be executed when normal execution ends (before entering idle idle mode, waiting for input)
+        else if (_isClearProgCmd) { clearIndicator = 1; }     // clear program: set flag 
+        else if (_isClearAllCmd) { clearIndicator = 2; }      // clear all: set flag
 
         return true;                                                                    // nothing more to do for this command
     }

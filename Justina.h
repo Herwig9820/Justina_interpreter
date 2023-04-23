@@ -831,7 +831,7 @@ class Justina_interpreter {
     static constexpr char cmd_onlyInFunctionBlock = 0x03;               // command is only allowed inside a function block
     static constexpr char cmd_onlyImmediate = 0x04;                   // command is only allowed in immediate mode
     static constexpr char cmd_onlyOutsideFunctionBlock = 0x05;             // command is only allowed outside a function block (so also in immediate mode)
-    static constexpr char cmd_onlyImmOrInsideFuncBlock = 0x06;   // command is only allowed inside a function block are in immediare mode
+    static constexpr char cmd_onlyImmOrInsideFuncBlock = 0x06;   // command is only allowed inside a function block or in immediare mode
     static constexpr char cmd_onlyProgramTop = 0x07;                        // only as first program statement
     static constexpr char cmd_onlyImmediateNotWithinBlock = 0x08;                        // command is only allowed in immediate mode, and only outside blocks
 
@@ -1640,7 +1640,7 @@ private:
 
     bool addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool& withinMultiLineComment,
         bool& redundantSemiColon, bool isEndOfFile, bool& bufferOverrun, bool  _flushAllUntilEOF, int& _lineCount, int& _statementCharCount, char c);
-    bool processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, int clearIndicator, Stream*& pStatementInputStream);
+    bool processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, int &clearIndicator, Stream*& pStatementInputStream);
     void traceAndPrintDebugInfo();
     void printVariables(Stream* pOut, bool userVars);
     void printCallStack(Stream* pOut);
