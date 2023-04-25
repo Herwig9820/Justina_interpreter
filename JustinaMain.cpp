@@ -283,6 +283,7 @@ const char Justina_interpreter::cmdPar_113[4]{ cmdPar_expression,               
 const char Justina_interpreter::cmdPar_114[4]{ cmdPar_expression,                             cmdPar_varOptAssignment | cmdPar_optionalFlag,   cmdPar_none,                                    cmdPar_none };
 const char Justina_interpreter::cmdPar_115[4]{ cmdPar_expression,                             cmdPar_expression | cmdPar_optionalFlag,         cmdPar_none,                                    cmdPar_none };
 const char Justina_interpreter::cmdPar_116[4]{ cmdPar_expression,                             cmdPar_expression,                               cmdPar_expression | cmdPar_multipleFlag,        cmdPar_none };
+const char Justina_interpreter::cmdPar_117[4]{ cmdPar_expression,                             cmdPar_expression,                               cmdPar_expression | cmdPar_optionalFlag,        cmdPar_none };
 const char Justina_interpreter::cmdPar_999[4]{ cmdPar_varNoAssignment,                        cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };////test var no assignment
 
 
@@ -299,7 +300,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"const",           cmdcod_constVar,        cmd_noRestrictions | cmd_skipDuringExec,                0,0,    cmdPar_111,     cmdBlockNone},
     {"static",          cmdcod_static,          cmd_onlyInFunctionBlock | cmd_skipDuringExec,           0,0,    cmdPar_111,     cmdBlockNone},
 
-    {"delete",          cmdcod_deleteVar,       cmd_onlyImmediate | cmd_skipDuringExec,                 0,0,    cmdPar_110,     cmdBlockNone},
+    {"delete",          cmdcod_deleteVar,       cmd_onlyImmediate | cmd_skipDuringExec,                 0,0,    cmdPar_110,     cmdBlockNone},      // can only delete user variables (imm. mode)
     
     {"clearAll",        cmdcod_clearAll,        cmd_onlyImmediate | cmd_skipDuringExec,                 0,0,    cmdPar_102,     cmdBlockNone},      // executed AFTER execution phase ends
     {"clearProg",       cmdcod_clearProg,       cmd_onlyImmediate | cmd_skipDuringExec,                 0,0,    cmdPar_102,     cmdBlockNone},      // executed AFTER execution phase ends
@@ -360,8 +361,9 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"startSD",         cmdcod_startSD,         cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_102,     cmdBlockNone},
     {"stopSD",          cmdcod_stopSD,          cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_102,     cmdBlockNone},
 
-    {"receiveFile",     cmdcod_receiveFile,     cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_115,     cmdBlockNone},
-    {"sendFile",        cmdcod_sendFile,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_115,     cmdBlockNone},
+    {"receiveFile",     cmdcod_receiveFile,     cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},  
+    {"sendFile",        cmdcod_sendFile,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},  
+    {"copy",            cmdcod_copyFile,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_107,     cmdBlockNone},  
 
     {"cout",            cmdcod_cout,            cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
     {"coutLine",        cmdcod_coutLine,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_107,     cmdBlockNone},
@@ -1174,9 +1176,9 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
             // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
             // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
             bool doAbort{ false }, doStop{ false }, doCancel{ false }, doDefault{ false };      // not used but mandatory
-            int length{ 0 };
-            char input[MAX_USER_INPUT_LEN + 1] = "";                                                                          // init: empty string
-            if (readText(doAbort, doStop, doCancel, doDefault, input, length)) { return result_kill; }  // kill request from caller ?
+            int length{ 1 };
+            char input[1 + 1] = "";                                                                          // init: empty string. Provide room for 1 character + terminating '\0'
+            if (getConsoleCharacters(doAbort, doStop, doCancel, doDefault, input, length, '\n')) { return result_kill; }  // kill request from caller ?
 
             bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
             if (validAnswer) {
@@ -1319,8 +1321,6 @@ char Justina_interpreter::getCharacter(Stream* pInputStream, bool& killNow, bool
     // enable time out = false: only check once for a character
     //                   true: allow a certain time for the character to arrive   
 
-    checkTimeAndExecHousekeeping(killNow);
-
     // read a character, if available in buffer
     char c = 0xFF;                                                                                              // init: no character read
 
@@ -1329,6 +1329,8 @@ char Justina_interpreter::getCharacter(Stream* pInputStream, bool& killNow, bool
     bool readCharWindowExpired{};
 
     do {
+        checkTimeAndExecHousekeeping(killNow);
+
         if (pInputStream->available() > 0) { c = pInputStream->read(); break; }
 
         // try to read character only once or keep trying until timeout occurs ?
@@ -1347,10 +1349,11 @@ char Justina_interpreter::getCharacter(Stream* pInputStream, bool& killNow, bool
 // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
 // return value 'true' indicates kill request from Justina caller
 
-bool Justina_interpreter::readText(bool& doAbort, bool& doStop, bool& doCancel, bool& doDefault, char* input, int& length) {
+bool Justina_interpreter::getConsoleCharacters(bool& doAbort, bool& doStop, bool& doCancel, bool& doDefault, char* input, int& length, char terminator) {
     bool backslashFound{ false }, quitNow{ false };
 
-    length = 0;  // init
+    int maxLength = length;  // init
+    length = 0;
     do {                                                                                                            // until new line character encountered
         // read a character, if available in buffer
         char c{ };                                                           // init: no character available
@@ -1359,7 +1362,7 @@ bool Justina_interpreter::readText(bool& doAbort, bool& doStop, bool& doCancel, 
         if (kill) { return true; }      // return value true: kill Justina interpreter (buffer is now flushed until next line character)
 
         if (c != 0xFF) {                                                                           // terminal character available for reading ?
-            if (c == '\n') { break; }                                                                               // read until new line character
+            if (c == terminator) { break; }                                                         // read until terminator found (if terminator is 0xff (default): no search for a terminator 
             else if (c < ' ') { continue; }                                                                         // skip control-chars except new line (ESC is skipped here as well - flag already set)
 
             // Check for Justina ESCAPE sequence (sent by terminal as individual characters) and cancel input, or use default value, if indicated
@@ -1382,7 +1385,7 @@ bool Justina_interpreter::readText(bool& doAbort, bool& doStop, bool& doCancel, 
                 if (backslashFound) { backslashFound = false; doDefault = true;  continue; }
             }
 
-            if (length >= MAX_USER_INPUT_LEN) { continue; }                                                           // max. input length exceeded: drop character
+            if (length >= maxLength) { continue; }                                                           // max. input length exceeded: drop character
             input[length] = c; input[++length] = '\0';
         }
     } while (true);

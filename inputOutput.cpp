@@ -324,7 +324,7 @@ bool Justina_interpreter::pathValid(char* path) {
 
     // SD library allows to run into issues if path is not valid (hanging, nivalid creation of directories / files)
     // this routine performs a few basic checks: 
-    // - path should start with a space
+    // - path should NOT start with a space
     // - path should NOT end with a '/' or a space
     // - never two '/' in a row
 

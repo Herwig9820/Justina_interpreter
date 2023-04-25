@@ -938,9 +938,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
                     // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
                     bool doAbort{ false }, doStop{ false }, doCancel{ false }, doDefault{ false };
-                    int length{ 0 };
-                    char input[MAX_USER_INPUT_LEN + 1] = "";                                                                          // init: empty string
-                    if (readText(doAbort, doStop, doCancel, doDefault, input, length)) { return result_kill; }  // kill request from caller ? 
+                    int length{ 1 };
+                    char input[1 + 1] = "";                                                                          // init: empty string
+                    if (getConsoleCharacters(doAbort, doStop, doCancel, doDefault, input, length, '\n')) { return result_kill; }  // kill request from caller ? 
                     if (doAbort) { userRequestsAbort = true; break; }    // '\a': abort running code (program or immediate mode statements - highest priority)
                     else if (doStop) { userRequestsStop = true; }       // '\s': stop a running program AFTER next PROGRAM statement (will have no effect anyway, because quitting)
                     else if (doCancel) { break; }                       // '\c': cancel operation (lowest priority)
@@ -1200,160 +1200,170 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         // ------------------------------------------------
 
         case cmdcod_sendFile:
-        {
-            bool argIsVar[2];
-            bool argIsArray[2];
-            char valueType[2];
-            Val args[2];
-            copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
-
-            // destination specified ?
-            Stream* pOut = static_cast<Stream*> (_pConsole);     // init
-            if (cmdParamCount == 2) {       // destination specified as first argument
-                if ((valueType[0] == value_isLong) || (valueType[0] == value_isFloat)) {      // external source specified: console or alternate input
-                    int destination = ((valueType[0] == value_isLong) ? args[0].longConst : (long)args[0].floatConst);      // zero or negative
-                    if (destination > 0) { return result_IO_invalidStreamNumber; }
-                    else if ((-destination) > _altIOstreamCount) { return result_IO_invalidStreamNumber; }
-                    else if (destination == 0) { pOut = static_cast<Stream*> (_pConsole); }
-                    else pOut = static_cast<Stream*>(_pAltIOstreams[(-destination) - 1]);     // stream number -1 => array index 0, etc.
-                }
-                else { return result_arg_numberExpected; }
-            }
-
-            // source file
-            if (valueType[cmdParamCount - 1] != value_isStringPointer) { return result_arg_stringExpected; }      // mandatory file name
-
-            // open source file for reading
-            int fileNumber{ 0 };
-            execResult_type execResult = SD_open(fileNumber, args[cmdParamCount - 1].pStringConst, O_READ);     // this performs a few card & file checks as well
-            if (execResult == result_SD_couldNotOpenFile) {
-                if (!SD.exists(args[cmdParamCount - 1].pStringConst)) { execResult = result_SD_fileNotFound; }        // replace error code for clarity
-            }
-            if (execResult != result_execOK) { return execResult; }
-            File& file = openFiles[fileNumber - 1].file;
-
-            // send file now
-            char c{};
-            bool kill{ false };
-            _pConsole->println("\r\nSending file... please wait\r\n");
-            while (file.available() > 0) {
-                char  a = file.read(); pOut->write(a);     // read and write, byte per byte
-                //c = getCharacter(static_cast<Stream*>(_pConsole), kill);          // keep console input buffer empty and perform a regular housekeeping callback as well
-                checkTimeAndExecHousekeeping(kill);
-                if (kill) { return result_kill; }  // kill request from caller ?
-            }
-
-            SD_closeFile(fileNumber);
-            _pConsole->println("\r\nFile sent");
-
-            _pConsole->println();       // blank line
-
-            // clean up
-            clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
-            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
-        }
-        break;
-
-
-        // ------------------------------------------------
-        // receive a file from console and store on SD card
-        // ------------------------------------------------
-
         case cmdcod_receiveFile:
+        case cmdcod_copyFile:
         {
+            if (cmdParamCount > 3) { return result_arg_tooManyArgs; }
+
             bool argIsVar[2];
             bool argIsArray[2];
             char valueType[2];
             Val args[2];
             copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
 
-            // source specified ?
-            Stream* pIn = static_cast<Stream*> (_pConsole);     // init
-            if (cmdParamCount == 2) {       // destination specified as first argument
-                if ((valueType[0] == value_isLong) || (valueType[0] == value_isFloat)) {      // external source specified: console or alternate input
-                    int destination = ((valueType[0] == value_isLong) ? args[0].longConst : (long)args[0].floatConst);
-                    if (destination > 0) { return result_IO_invalidStreamNumber; }
-                    else if ((-destination) > _altIOstreamCount) { return result_IO_invalidStreamNumber; }
-                    else if (destination == 0) { pIn = static_cast<Stream*> (_pConsole); }
-                    else pIn = static_cast<Stream*>(_pAltIOstreams[(-destination) - 1]);     // stream number -1 => array index 0, etc.
+            if (!_SDinitOK) { return result_SD_noCardOrCardError; }
+
+            bool isSend = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_sendFile);
+            bool isReceive = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_receiveFile);
+            bool isCopy = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_copyFile);
+
+            int sourceStreamNumber{ 0 }, destinationStreamNumber{ 0 };      // init: console
+            Stream* pSourceStream{ static_cast<Stream*> (_pConsole) }, * pDestinationStream{ static_cast<Stream*> (_pConsole) };
+
+            int IOstreamArgIndex = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_sendFile ? 1 : 0);          // init (default for send and receive only, if not specified)
+            Stream* pIOstream = static_cast<Stream*> (_pConsole);
+
+            // send or rerceive file: send or receive data to / from external IO stream 
+            if ((isSend || isReceive) && (cmdParamCount >= 2)) {        // source (receive) / destination (send) specified ?
+                if ((valueType[IOstreamArgIndex] == value_isLong) || (valueType[IOstreamArgIndex] == value_isFloat)) {      // external source/destination specified (console or an alternate I/O stream)
+                    int IOstreamIndex = ((valueType[IOstreamArgIndex] == value_isLong) ? args[IOstreamArgIndex].longConst : (long)args[IOstreamArgIndex].floatConst);      // zero or negative
+                    if (IOstreamIndex > 0) { return result_IO_invalidStreamNumber; }
+                    else if ((-IOstreamIndex) > _altIOstreamCount) { return result_IO_invalidStreamNumber; }
+                    else if (IOstreamIndex == 0) { pIOstream = static_cast<Stream*> (_pConsole); }
+                    else pIOstream = static_cast<Stream*>(_pAltIOstreams[(-IOstreamIndex) - 1]);     // stream number -1 => array index 0, etc.
                 }
+                else { return result_arg_numberExpected; }
+                (isSend ? pDestinationStream : pSourceStream) = pIOstream;
+            }
+
+            // send or copy file: source is a file
+            if ((isSend || isCopy)) {
+                if (valueType[0] != value_isStringPointer) { return result_arg_stringExpected; }      // mandatory file name
+                if (!pathValid(args[0].pStringConst)) { return result_SD_pathIsNotValid; }
+
+                // don't open source file yet: wait until all other checks are done
+            }
+
+            // verbose argument supplied ?
+            bool verbose = true;
+            if (cmdParamCount == 3) {
+                if ((valueType[2] == value_isLong) || (valueType[2] == value_isFloat)) { verbose = (bool)((valueType[2] == value_isLong) ? args[2].longConst : (long)args[2].floatConst); }
                 else { return result_arg_numberExpected; }
             }
 
-            // receiving file name
-            if (valueType[cmdParamCount - 1] != value_isStringPointer) { return result_arg_stringExpected; }      // mandatory file name
 
-            // perform preliminary checks
-            if (!_SDinitOK) { return result_SD_noCardOrCardError; }
-            if (!pathValid(args[cmdParamCount - 1].pStringConst)) { return result_SD_pathIsNotValid; }
+            // receive or copy file: destination is a file
+            if ((isReceive) || (isCopy)) {
+                int receivingFileArgIndex = (cmdParamCount == 1) ? 0 : 1;
+                if (valueType[receivingFileArgIndex] != value_isStringPointer) { return result_arg_stringExpected; }      // mandatory file name
+                if (!pathValid(args[receivingFileArgIndex].pStringConst)) { return result_SD_pathIsNotValid; }
 
+                if (isCopy) {
+                    if (strcmp(args[0].pStringConst, args[1].pStringConst) == 0) { return result_SD_sourceIsDestination; }
+                }
 
-            // if file exists, ask if overwriting it is OK
-            if (SD.exists(args[cmdParamCount - 1].pStringConst)) {
-                bool doReceive{ false };
-                do {
-                    char s[70] = "===== File exists already. Overwrite ? (please answer Y or N) =====";
-                    _pConsole->println(s);
-                    // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
-                    // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
-                    bool doAbort{ false }, doStop{ false }, doCancel{ false }, doDefault{ false };      // not used but mandatory
-                    int length{ 0 };
-                    char input[MAX_USER_INPUT_LEN + 1] = "";                                                                          // init: empty string
-                    if (readText(doAbort, doStop, doCancel, doDefault, input, length)) { return result_kill; }  // kill request from caller ?
-                    // check op abort, stop program
+                // if file exists, ask if overwriting it is OK
+                if (SD.exists(args[receivingFileArgIndex].pStringConst)) {
+                    bool proceed{ true };         // in silent mode, overwrite without asking
+                    if (verbose) {
+                        _appFlags |= appFlag_waitingForUser;    // bit b6 set: waiting for user interaction
+                        do {
+                            char s[70] = "===== File exists already. Overwrite ? (please answer Y or N) =====";
+                            _pConsole->println(s);
+                            // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
+                            // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
+                            bool doAbort{ false }, doStop{ false }, doCancel{ false }, doDefault{ false };      // not used but mandatory
+                            int length{ 1 };
+                            char input[1 + 1] = "";                                                                          // init: empty string
+                            if (getConsoleCharacters(doAbort, doStop, doCancel, doDefault, input, length, '\n')) { return result_kill; }  // kill request from caller ?
+                            // check op abort, stop program
 
-                    bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
-                    if (validAnswer) { doReceive = (tolower(input[0]) == 'y'); break; }
-                } while (true);
-                if (!doReceive) { break; }
+                            bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
+                            if (validAnswer) { proceed = (tolower(input[0]) == 'y'); break; }
+                        } while (true);
+                        _appFlags &= ~appFlag_waitingForUser;    // bit b6 reset: NOT waiting for user interaction
+                    }
+                    if (!proceed) { break; }
+                }
+
+                // file does not yet exist ? check if directory exists. If not, create without asking
+                else {
+                    char* dirPath = new char[strlen(args[receivingFileArgIndex].pStringConst) + 1];
+                    strcpy(dirPath, args[receivingFileArgIndex].pStringConst);
+                    int pos{ 0 };
+                    bool dirCreated{ true };      // init
+                    for (pos = strlen(args[receivingFileArgIndex].pStringConst) - 1; pos >= 0; pos--) { if (dirPath[pos] == '/') { dirPath[pos] = '\0'; break; } }      // isolate path
+
+                    if (pos > 0) {    // pos > 0: is NOT a root folder file (pos = 0: root '/' character found; pos=-1: no root '/' character found)
+                        if (!SD.exists(dirPath)) {   // if (sub-)directory path does not exist, create it now
+                            dirCreated = SD.mkdir(dirPath);
+                        }
+                    }
+                    delete[]dirPath;
+                    if (!dirCreated) { return result_SD_couldNotCreateFileDir; }      // no success ? error
+                }
+
+                // open receiving file for writing. Create it if it doesn't exist yet, truncate it if it does 
+                execResult_type execResult = SD_open(destinationStreamNumber, args[receivingFileArgIndex].pStringConst, O_WRITE + O_CREAT + O_TRUNC);
+                if (execResult != result_execOK) { return execResult; }
+                pDestinationStream = static_cast<Stream*>(&openFiles[destinationStreamNumber - 1].file);
             }
 
-            // file does not yet exist ? check if directory exists. If not, create without asking
-            else {
-                char* dirPath = new char[strlen(args[cmdParamCount - 1].pStringConst) + 1];
-                strcpy(dirPath, args[cmdParamCount - 1].pStringConst);
-                int pos{ 0 };
-                bool dirCreated{ true };      // init
-                for (pos = strlen(args[cmdParamCount - 1].pStringConst) - 1; pos >= 0; pos--) { if (dirPath[pos] == '/') { dirPath[pos] = '\0'; break; } }      // isolate path
+            // send or copy file: source is a file ? open it now
+            if ((isSend || isCopy)) {
+                execResult_type execResult = SD_open(sourceStreamNumber, args[0].pStringConst, O_READ);     // this performs a few card & file checks as well
+                if (execResult == result_SD_couldNotOpenFile) {
+                    if (!SD.exists(args[0].pStringConst)) { execResult = result_SD_fileNotFound; }        // replace error code for clarity
+                }
+                if (execResult != result_execOK) {
+                    if (isCopy) { SD_closeFile(destinationStreamNumber); }                      // error opening source file: close destination file (already open)
+                    return execResult;
+                }
+                pSourceStream = static_cast<Stream*>(&openFiles[sourceStreamNumber - 1].file);
+            }
 
-                if (pos > 0) {    // pos > 0: is NOT a root folder file (pos = 0: root '/' character found; pos=-1: no root '/' character found)
-                    if (!SD.exists(dirPath)) {   // if (sub-)directory path does not exist, create it now
-                        dirCreated = SD.mkdir(dirPath);
+
+            // read and write characters now
+            if (verbose) { _pConsole->println(isSend ? "\r\nSending file... please wait\r\n" : isReceive ? "\r\nReceiving file... please wait\r\n" : "\r\nCopying file...\r\n"); }
+
+            bool kill{ false };
+
+            char c{};
+            char* pBuffer{ nullptr };
+            int bufferCharCount{ 0 };
+            if (isReceive || isCopy) {
+                char buffer[128];
+                pBuffer = buffer;
+            }
+
+            bool waitForFirstChar = isReceive;
+            do {
+                c = getCharacter(pSourceStream, kill, isReceive);            // get a character if available and perform a regular housekeeping callback as well
+                if (kill) { return result_kill; }                           // kill request from caller ?
+                if (c == 0xff) {
+                    if (waitForFirstChar) { continue; }                     // still waiting for first character
+                    else {                                                  // no more characters
+                        if ((isReceive || isCopy) && (bufferCharCount > 0)) {          // still characters in own buffer ? write them
+                            pDestinationStream->write(pBuffer, bufferCharCount);
+                        }
+                        break;
                     }
                 }
-                delete[]dirPath;
-                if (!dirCreated) { return result_SD_couldNotCreateFileDir; }      // no success ? error
-            }
+                else { waitForFirstChar = false; }                          // valid character
 
-            // open destination file for writing. Create it if it doesn't exist yet, truncate it if it does 
-            int fileNumber{ 0 };
-            execResult_type execResult = SD_open(fileNumber, args[cmdParamCount - 1].pStringConst, O_WRITE + O_CREAT + O_TRUNC);
-            if (execResult != result_execOK) { return execResult; }
-            File& file = openFiles[fileNumber - 1].file;
-
-            // receive file now
-            _pConsole->println("\r\nWaiting for file... press ENTER to cancel");
-            char c{};
-            bool kill{ false };
-
-            bool waitForFirstChar = true;
-            do {
-                c = getCharacter(pIn, kill, true);          // get a key (character from console) if available and perform a regular housekeeping callback as well
-                if (kill) { return result_kill; }  // kill request from caller ?
-                if (c == 0xff) {
-                    if (waitForFirstChar) { continue; }
-                    else { break; }
+                // writing to SD: do not write individual characters (speed up by an order of magnitude)
+                if (isReceive || isCopy) {
+                    if (bufferCharCount < 128) { pBuffer[bufferCharCount++] = c; }
+                    if (bufferCharCount == 128) { pDestinationStream->write(pBuffer, bufferCharCount); bufferCharCount = 0; }
                 }
-
-                if (waitForFirstChar) {
-                    _pConsole->println("\r\nReceiving file... please wait");
-                    waitForFirstChar = false;
-                }
-                file.write(c);          // write character to file
+                else { pDestinationStream->write(c); }      // write character to stream
             } while (true);
 
-            SD_closeFile(fileNumber);
-            _pConsole->println("\r\nFile stored on SD card");
+            if (verbose) { _pConsole->println(isSend ? "File sent\r\n" : isReceive ? "File received\r\n" : "File copied\r\n"); }
+
+            // close file(s)
+            if (isSend || isCopy) { SD_closeFile(sourceStreamNumber); }
+            if (isReceive || isCopy) { SD_closeFile(destinationStreamNumber); }
 
             // clean up
             clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
@@ -1466,7 +1476,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     char s[80] = "===== Input (\\c to cancel";                                                                  // title static text
                     char title[80 + MAX_ALPHA_CONST_LEN] = "";                                                                   // title static text + string contents of variable
                     strcat(s, checkForDefault ? ", \\d for default = '%s') =====" : "): =====");
-                    sprintf(title, s, args[1].pStringConst);
+                    sprintf(title, s, (args[1].pStringConst == nullptr) ? "" : args[1].pStringConst);
                     _pConsole->println(title);
                 }
 
@@ -1491,9 +1501,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
                 // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
                 bool doAbort{ false }, doStop{ false }, doCancel{ false }, doDefault{ false };
-                int length{ 0 };
+                int length{ MAX_USER_INPUT_LEN };
                 char input[MAX_USER_INPUT_LEN + 1] = "";                                                                          // init: empty string
-                if (readText(doAbort, doStop, doCancel, doDefault, input, length)) { execResult = result_kill; return execResult; }
+                if (getConsoleCharacters(doAbort, doStop, doCancel, doDefault, input, length, '\n')) { execResult = result_kill; return execResult; }
                 doDefault = checkForDefault && doDefault;        // gate doDefault
                 doCancel = checkForCancel && doCancel;           // gate doCancel
 
@@ -3977,39 +3987,41 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         case fnccod_cinLine:
         case fnccod_readLine:
         {
+
             // cin([terminator character, ] length) :
             // read(stream number, [terminator character, ] length) :
-            //      read characters from stream (file or IO) until the internal buffer is full, the number of characters to read is reached, optional terminator character is found, or time out occurs
+            // -> read characters from stream (file or IO) until the number of characters to read is reached or optional terminator character is found
+            // -> return a string containing the characters read
 
             // cinLine()
             // readLine(stream number)
-            //      read characters from stream (file or IO) until the internal buffer is full, the a '\n' (new line) character is read or time out occurs
+            // -> read characters from stream (file or IO) until the internal buffer is full or the a '\n' (new line) character is read 
 
             // terminator character: first character of 'terminator' string (if empty string: error)
             // if the 'length' argument is a variable, it returns the count of bytes read (read() function only)
             // these functions time out 
             // functions return a character string variable or a nullptr (empty string)
 
-            // NOTE: all these functions will time out (see SetTimeout() function) if no (more) characters are available,
-            // cin([terminator character, ] length) and read(stream number, [terminator character, ] length) return a string and TIME OUT (see SetTimeout() function). 
-
+            // NOTE: external I/O (only): functions will time out (see SetTimeout() function) if no (more) characters are available
+            
 
             // perform checks and set pointer to IO stream or file
             Stream* pStream{ _pConsole };
+            int streamNumber{ 0 };
 
             bool streamArgPresent = ((functionCode == fnccod_read) || (functionCode == fnccod_readLine));
             bool isLineForm = ((functionCode == fnccod_cinLine) || (functionCode == fnccod_readLine));
             bool terminatorArgPresent = (!isLineForm) && (suppliedArgCount == ((functionCode == fnccod_cin) ? 2 : 3));
 
             if (streamArgPresent) {             // if not, stream is console
-                int streamNumber{ 0 };
                 execResult_type execResult = checkStream(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber);            // return stream pointer AND stream number 
                 if (execResult != result_execOK) { return execResult; }
             }
 
             // check terminator charachter: first character in char * 
-            char terminator{ '\n' };                                // init (if read line)
-            if (terminatorArgPresent) {                // terminator argument supplied ?
+            char terminator{ 0xff };                                // init: no terminator
+            if (isLineForm) { terminator = '\n'; }
+            else if (terminatorArgPresent) {                // terminator argument supplied ?
                 int termArgIndex = streamArgPresent ? 1 : 0;
                 if (!(argIsStringBits & (0x1 << (termArgIndex)))) { return result_arg_stringExpected; }   // cin(...): first argument, read(...): second argument
                 if (args[termArgIndex].pStringConst == nullptr) { return result_arg_nonEmptyStringExpected; }
@@ -4035,7 +4047,27 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         #endif
 
             // read characters now (time out applies)
-            int charsRead = (isLineForm || terminatorArgPresent) ? pStream->readBytesUntil(terminator, buffer, maxLineLength) : pStream->readBytes(buffer, maxLineLength);
+            // next line of code is NOT used because while waiting for a time out, call backs do not happen
+            // int charsRead = (isLineForm || terminatorArgPresent) ? pStream->readBytesUntil(terminator, buffer, maxLineLength) : pStream->readBytes(buffer, maxLineLength);
+
+            int charsRead{ 0 };                                                                  // init
+            if ((streamNumber > 0) && (terminator == 0xff)) {                                  // file and NOT searching for a terminator: read all bytes at once
+                charsRead = static_cast <File*>(pStream)->read(buffer, maxLineLength);          // if fewer bytes available, end reading WITHOUT timeout
+            }
+            else {                                                                               // external input OR (all streams) search for terminator 
+                bool kill{ false };
+                for(int i =0; i< maxLineLength; i++) {           
+                    // get a character if available and perform a regular housekeeping callback as well
+                    char c = getCharacter(pStream, kill, (streamNumber <=0));                       // time out only required if external IO
+                    if (kill) {delete[] buffer; return result_kill; }                           // kill request from caller ? 
+
+                    if(c==0xff){ break; }                                       // no more characters ? break
+                    if((terminator != 0xff) && (c==terminator)){break;}                 // terminator found ? break (terminator is not stored in buffer)
+                    buffer[charsRead++]= c;
+                } 
+            }
+
+
             buffer[charsRead] = (isLineForm ? '\n' : '\0');       // add terminating '\0'
             if (isLineForm) { buffer[charsRead + 1] = '\0'; }
 
@@ -4482,7 +4514,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         break;
 
 
-        // format a number or a string into a destination string
+        // format a number or a string into a IOstreamIndex string
         // -----------------------------------------------------
 
         case fnccod_format:

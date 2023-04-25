@@ -47,10 +47,10 @@ bool quitRequested = false;
 // ---------------------------------------
 
 constexpr int HEARTBEAT_PIN{ 9 }; ////                                               // indicator leds
-constexpr int ERROR_PIN{ 10 };
-constexpr int STATUS_A_PIN{ 11 };
-constexpr int STATUS_B_PIN{ 12 };
-constexpr int WAIT_FOR_USER_PIN{ 13 };
+constexpr int ERROR_PIN{ 8 };
+constexpr int STATUS_A_PIN{ 7 };
+constexpr int STATUS_B_PIN{ 6 };
+constexpr int WAIT_FOR_USER_PIN{ 5 };
 
 #if withTCP
 constexpr pin_size_t WiFi_CONNECTED_PIN{ 11 };
@@ -105,12 +105,10 @@ void setup() {
 
     // define output pins
     pinMode(HEARTBEAT_PIN, OUTPUT);                                                   // blinking led for heartbeat
-    /*
-    pinMode(ERROR_PIN, OUTPUT);                                                         // error
-    pinMode(STATUS_A_PIN, OUTPUT);                                                         // error
-    pinMode(STATUS_B_PIN, OUTPUT);                                                         // error
-    pinMode(WAIT_FOR_USER_PIN, OUTPUT);                                                         // error
-    */
+    pinMode(ERROR_PIN, OUTPUT);                                                         
+    pinMode(STATUS_A_PIN, OUTPUT);                                                      
+    pinMode(STATUS_B_PIN, OUTPUT);                                                      
+    pinMode(WAIT_FOR_USER_PIN, OUTPUT);                                                 
 
 #if withTCP
     pinMode(WiFi_CONNECTED_PIN, OUTPUT);                                              // 'TCP connected' led
@@ -414,12 +412,12 @@ void housekeeping(bool& requestQuit, long& appFlags) {
 
     heartbeat();                                                                        // blink a led to show program is running
 
-    /*
+    
     if (errorCondition ^ (appFlags & appFlag_errorConditionBit)) { errorCondition = (appFlags & appFlag_errorConditionBit);  digitalWrite(ERROR_PIN, errorCondition); }  // only write if change detected
     if (statusA ^ (appFlags & appFlag_statusAbit)) { statusA = (appFlags & appFlag_statusAbit);  digitalWrite(STATUS_A_PIN, statusA); }  // only write if change detected
     if (statusB ^ (appFlags & appFlag_statusBbit)) { statusB = (appFlags & appFlag_statusBbit);  digitalWrite(STATUS_B_PIN, statusB); }  // only write if change detected
     if (waitingForUser ^ (appFlags & appFlag_waitingForUser)) { waitingForUser = (appFlags & appFlag_waitingForUser);  digitalWrite(WAIT_FOR_USER_PIN, waitingForUser); }  // only write if change detected
-    */
+    
 
     //// test 'force quit' vanuit main: 
     ////if (!quitRequested && ((startTime + 20000) < millis())) { quitRequested = true; forceLocal = true;  }

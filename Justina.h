@@ -250,6 +250,7 @@ class Justina_interpreter {
         cmdcod_loadProg,
         cmdcod_receiveFile,
         cmdcod_sendFile,
+        cmdcod_copyFile,
         cmdcod_listFiles,
         cmdcod_startSD,
         cmdcod_stopSD,
@@ -660,6 +661,7 @@ class Justina_interpreter {
         result_SD_directoryNotAllowed,
         result_SD_couldNotCreateFileDir,
         result_SD_pathIsNotValid,
+        result_SD_sourceIsDestination,
 
         // IO streams
         result_IO_invalidStreamNumber,
@@ -805,6 +807,7 @@ class Justina_interpreter {
     static const char cmdPar_114[4];
     static const char cmdPar_115[4];
     static const char cmdPar_116[4];
+    static const char cmdPar_117[4];
     static const char cmdPar_999[4];////test
 
     // commands parameters: types allowed
@@ -1204,7 +1207,7 @@ class Justina_interpreter {
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na,block_na,block_na };                                   // not a 'block' command
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[58];                          // keyword names
+    static const ResWordDef _resWords[59];                          // keyword names
     static const FuncDef _functions[134];                            // function names with min & max arguments allowed
     static const SymbNumConsts _symbNumConsts[58];
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
@@ -1636,7 +1639,7 @@ private:
     void checkTimeAndExecHousekeeping(bool& killNow);
 
     char  getCharacter(Stream* pInputStream, bool& killNow, bool enableTimeOut = false);
-    bool readText(bool& doAbort, bool& doStop, bool& doCancel, bool& doDefault, char* input, int& length);
+    bool getConsoleCharacters(bool& doAbort, bool& doStop, bool& doCancel, bool& doDefault, char* input, int& length, char terminator=0xff);
 
     bool addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool& withinMultiLineComment,
         bool& redundantSemiColon, bool isEndOfFile, bool& bufferOverrun, bool  _flushAllUntilEOF, int& _lineCount, int& _statementCharCount, char c);
