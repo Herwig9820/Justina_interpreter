@@ -147,9 +147,10 @@ class Justina_interpreter {
 
     static constexpr int MAX_STATEMENT_LEN{ 300 };          // max. length of a single user statement 
 
-    static constexpr long GETCHAR_TIMEOUT{ 200 };              // milli seconds
-
     static constexpr int MAX_OPEN_SD_FILES{ 5 };            // SD card: max. concurrent open files
+
+    static constexpr long WAIT_FOR_FIRST_CHAR_TIMEOUT{5000};             // milli seconds
+    static constexpr long DEFAULT_READ_TIMEOUT{200};
 
     static constexpr int DEFAULT_CALC_RESULT_PRINT_WIDTH{ 30 };  // calculation results: default width of the print field.
     static constexpr int DEFAULT_PRINT_WIDTH{ 0 };         // default width of the print field.
@@ -392,6 +393,7 @@ class Justina_interpreter {
         fnccod_available,
         fnccod_peek,
         fnccod_setTimeout,
+        fnccod_getTimeout,
         fnccod_flush,
         fnccod_isDirectory,
         fnccod_rewindDirectory,
@@ -1208,7 +1210,7 @@ class Justina_interpreter {
 
     // sizes MUST be specified AND must be exact
     static const ResWordDef _resWords[59];                          // keyword names
-    static const FuncDef _functions[134];                            // function names with min & max arguments allowed
+    static const FuncDef _functions[135];                            // function names with min & max arguments allowed
     static const SymbNumConsts _symbNumConsts[58];
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
 
@@ -1218,10 +1220,9 @@ class Justina_interpreter {
     // ---------
 
     OpenFile openFiles[MAX_OPEN_SD_FILES];                      // open files: file paths and attributed file numbers
-    int *_pIOprintColumns{};
+    int *_pIOprintColumns{};                                    // points to array on the heap
     int _tabSize {8};                                           // tab size, default value if not changed by tabSize command 
     int _angleMode {0};                                       // 0 = radians, 1 = degrees
-
     int _openFileCount = 0;
     int _SDcardChipSelectPin = 10;
     bool _SDinitOK = false;
@@ -1638,7 +1639,7 @@ private:
 
     void checkTimeAndExecHousekeeping(bool& killNow);
 
-    char  getCharacter(Stream* pInputStream, bool& killNow, bool enableTimeOut = false);
+    char  getCharacter(Stream* pInputStream, bool& killNow, bool enableTimeOut = false, bool extraLongTimeout=false);
     bool getConsoleCharacters(bool& doAbort, bool& doStop, bool& doCancel, bool& doDefault, char* input, int& length, char terminator=0xff);
 
     bool addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool& withinMultiLineComment,

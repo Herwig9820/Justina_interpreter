@@ -86,6 +86,9 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumbe
                 return result_SD_couldNotOpenFile;
             }                                              // could not open file (in case caller ignores this error, file number returned is 0)
 
+            File* pFile = &openFiles[i].file;
+
+            openFiles[i].file.setTimeout(DEFAULT_READ_TIMEOUT);
             openFiles[i].fileNumberInUse = true;
             openFiles[i].filePath = filePathInCapitals;                          // delete when file is closed
             openFiles[i].currentPrintColumn=0;
@@ -124,6 +127,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_openNext(int dirFil
             if (!openFiles[i].file) { return result_execOK; }
 
             // room for full name, '/' between path and name, '\0' terminator
+            openFiles[i].file.setTimeout(DEFAULT_READ_TIMEOUT);
             openFiles[i].fileNumberInUse = true;
             openFiles[i].filePath = new char[dirPathLength + 1 + strlen(openFiles[i].file.name()) + 1];                  // not counted for memory leak testing     
             strcpy(openFiles[i].filePath, dirPath);
@@ -141,8 +145,8 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_openNext(int dirFil
     for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
         if (openFiles[i].fileNumberInUse) {
             if (i + 1 != fileNumber) {
-                // compare the filepath for the newly opened file with the previously opened open file
-                if (strcasecmp(openFiles[i].filePath, openFiles[fileNumber - 1].filePath) == 0) {        // comparing file refs doesn't work (why?): compare file paths + names
+                // compare the long filenames (including filepath) for the newly opened file with the previously opened open file (comparing file refs doesn't work)
+                if (strcasecmp(openFiles[i].filePath, openFiles[fileNumber - 1].filePath) == 0) {      // 8.3 file format: NOT case sensitive      
                     openFiles[fileNumber - 1].file.close();                                             // close newer file ref again
                     openFiles[fileNumber - 1].fileNumberInUse = false;
                     delete[] openFiles[fileNumber - 1].filePath;                // not counted for memory leak testing
@@ -351,7 +355,7 @@ bool Justina_interpreter::fileIsOpen(char* path) {
     // currently open files ? Check that the same file is not open already
     for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
         if (openFiles[i].fileNumberInUse) {
-            if (strcasecmp(openFiles[i].filePath, path) == 0) { return true; }
+            if (strcasecmp(openFiles[i].filePath, path) == 0) { return true; }     // 8.3 file format: NOT case sensitive
         }
     }
     return false;

@@ -301,12 +301,12 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"static",          cmdcod_static,          cmd_onlyInFunctionBlock | cmd_skipDuringExec,           0,0,    cmdPar_111,     cmdBlockNone},
 
     {"delete",          cmdcod_deleteVar,       cmd_onlyImmediate | cmd_skipDuringExec,                 0,0,    cmdPar_110,     cmdBlockNone},      // can only delete user variables (imm. mode)
-    
+
     {"clearAll",        cmdcod_clearAll,        cmd_onlyImmediate | cmd_skipDuringExec,                 0,0,    cmdPar_102,     cmdBlockNone},      // executed AFTER execution phase ends
     {"clearProg",       cmdcod_clearProg,       cmd_onlyImmediate | cmd_skipDuringExec,                 0,0,    cmdPar_102,     cmdBlockNone},      // executed AFTER execution phase ends
-    
+
     {"loadProg",        cmdcod_loadProg,        cmd_onlyImmediate,                                      0,0,    cmdPar_106,     cmdBlockNone},
-    
+
     // program and flow control commands
     // ---------------------------------
     {"program",         cmdcod_program,         cmd_onlyProgramTop | cmd_skipDuringExec,                0,0,    cmdPar_103,     cmdBlockNone},
@@ -361,9 +361,9 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"startSD",         cmdcod_startSD,         cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_102,     cmdBlockNone},
     {"stopSD",          cmdcod_stopSD,          cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_102,     cmdBlockNone},
 
-    {"receiveFile",     cmdcod_receiveFile,     cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},  
-    {"sendFile",        cmdcod_sendFile,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},  
-    {"copy",            cmdcod_copyFile,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_107,     cmdBlockNone},  
+    {"receiveFile",     cmdcod_receiveFile,     cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
+    {"sendFile",        cmdcod_sendFile,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
+    {"copy",            cmdcod_copyFile,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_107,     cmdBlockNone},
 
     {"cout",            cmdcod_cout,            cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
     {"coutLine",        cmdcod_coutLine,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_107,     cmdBlockNone},
@@ -548,6 +548,7 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     { "flush",                   fnccod_flush,                  1,1,    0b0 },
     { "seek",                    fnccod_seek,                   2,2,    0b0 },
     { "setTimeout",              fnccod_setTimeout,             2,2,    0b0 },
+    { "getTimeout",              fnccod_getTimeout,             1,1,    0b0 },
     { "isDirectory",             fnccod_isDirectory,            1,1,    0b0 },
     { "rewindDirectory",         fnccod_rewindDirectory,        1,1,    0b0 },
     { "openNext",                fnccod_openNextFile,           1,2,    0b0 },
@@ -827,7 +828,10 @@ bool Justina_interpreter::run(Stream* const pConsole) {
     char c{};
 
     _pIOprintColumns = new int[_altIOstreamCount];        // if only console: single element
-    for (int i = 0; i < _altIOstreamCount; i++) { _pIOprintColumns[i] = 0; }
+    for (int i = 0; i < _altIOstreamCount; i++) {
+        _pAltIOstreams[i]->setTimeout(DEFAULT_READ_TIMEOUT);
+        _pIOprintColumns[i] = 0;
+    }
 
     //// start temp test
     /*
@@ -914,22 +918,25 @@ bool Justina_interpreter::run(Stream* const pConsole) {
         // when loading a program, as soon as first printable character of a PROGRAM is read, each subsequent character needs to follow after the previous one within a fixed time delay, handled by getCharacter().
         // program reading ends when no character is read within this time window.
         // when processing immediate mode statements (single line), reading ends when a New Line terminating character is received
-        bool allowTimeOut = _programMode && !_initiateProgramLoad;          // _initiateProgramLoad is set during execution of the command to read a program source file from the console
+        bool programCharsReceived = _programMode && !_initiateProgramLoad;          // _initiateProgramLoad is set during execution of the command to read a program source file from the console
+        bool waitForFirstProgramCharacter = _initiateProgramLoad;
 
         // get a character if available and perform a regular housekeeping callback as well
-        c = getCharacter(pStatementInputStream, kill, allowTimeOut);     // while parsing a program, set allowTimeOut to true to make sure the program is received completely              
+        c = getCharacter(pStatementInputStream, kill, true,waitForFirstProgramCharacter);     // while waiting for first program character, allow a longer time out              
         if (kill) { break; }                // return true if kill request received from calling program
-        if (c < 0xFF) { _initiateProgramLoad = false; }                     // reset _initiateProgramLoad after each character received
+        _initiateProgramLoad = false;
 
-        bool allStatementsRead = _programMode ? ((c == 0xFF) && allowTimeOut) : (c == '\n');
-        if ((c == 0xFF) && !allStatementsRead) { continue; }                // no character (except when program or imm. mode line is read): start next loop
-
-        quitNow = false;
+        // start processing input buffer when (1) in program mode: time out occurs and at least one character received, or (2) in immediate mode: when a new line character is detected
+        bool allCharsReceived = _programMode ? ((c == 0xFF) && programCharsReceived) : (c == '\n');
+        
+        if ((c == 0xFF) && !allCharsReceived) { continue; }                // no character: keep waiting for input (except when program or imm. mode line is read)
 
         // if no character added: nothing to do, wait for next
         bool bufferOverrun{ false };                                        // buffer where statement characters are assembled for parsing
-        bool noCharAdded = !addCharacterToInput(lastCharWasSemiColon, withinString, withinStringEscSequence, within1LineComment, withinMultiLineComment, redundantSemiColon, allStatementsRead,
+        bool noCharAdded = !addCharacterToInput(lastCharWasSemiColon, withinString, withinStringEscSequence, within1LineComment, withinMultiLineComment, redundantSemiColon, allCharsReceived,
             bufferOverrun, flushAllUntilEOF, lineCount, statementCharCount, c);
+
+        quitNow = false;
 
         do {        // one loop only
             if (bufferOverrun) { result = result_statementTooLong; }
@@ -940,7 +947,7 @@ bool Justina_interpreter::run(Stream* const pConsole) {
             bool isStatementSeparator = (!withinString) && (!within1LineComment) && (!withinMultiLineComment) && (c == ';') && !redundantSemiColon;
             isStatementSeparator = isStatementSeparator || (withinString && (c == '\n'));  // a new line character within a string is sent to parser as well
 
-            bool statementReadyForParsing = !bufferOverrun && (isStatementSeparator || (allStatementsRead && (statementCharCount > 0)));
+            bool statementReadyForParsing = !bufferOverrun && (isStatementSeparator || (allCharsReceived && (statementCharCount > 0)));
 
             if (statementReadyForParsing && !_quitJustina) {                   // if quitting anyway, just skip                                               
                 _appFlags &= ~appFlag_errorConditionBit;              // clear error condition flag 
@@ -964,7 +971,7 @@ bool Justina_interpreter::run(Stream* const pConsole) {
             }
 
             // program mode: complete program read and parsed / imm. mode: all statements in command line read and parsed ?
-            if (allStatementsRead) {            // note: if all statements have been read, they also have been parsed
+            if (allCharsReceived) {            // note: if all statements have been read, they also have been parsed
                 _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_idle;     // status 'idle'
 
                 quitNow = processAndExec(result, kill, lineCount, pErrorPos, clearCmdIndicator, pStatementInputStream);  // return value: quit Justina now
@@ -1211,7 +1218,7 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
         _programCounter = _programStorage;
 
         if (_isPrompt) { _pConsole->println(); }
-        _pConsole->print((_loadProgFromFileNo > 0) ? "Loading program...\r\n" : "Waiting for program... press ENTER to cancel\r\n");
+        _pConsole->print((_loadProgFromFileNo > 0) ? "Loading program...\r\n" : "Loading program... please wait\r\n");
         _isPrompt = false;
 
         pStatementInputStream = (_loadProgFromFileNo == 0) ? static_cast<Stream*>(_pConsole) :
@@ -1313,10 +1320,10 @@ void Justina_interpreter::checkTimeAndExecHousekeeping(bool& killNow) {
 
 
 // -------------------------------------------------------------------------------------------------
-// *   read character from keyboard, if available, and regularly perfoem a housekeeping callback   *
+// *   read character from keyboard, if available, and regularly perform a housekeeping callback   *
 // -------------------------------------------------------------------------------------------------
 
-char Justina_interpreter::getCharacter(Stream* pInputStream, bool& killNow, bool allowWaitTime) {     // default: no time out, input from console
+char Justina_interpreter::getCharacter(Stream* pInputStream, bool& killNow, bool allowWaitTime, bool extraLongTimeout) {     // default: no time out, input from console
 
     // enable time out = false: only check once for a character
     //                   true: allow a certain time for the character to arrive   
@@ -1327,6 +1334,7 @@ char Justina_interpreter::getCharacter(Stream* pInputStream, bool& killNow, bool
     // read a character, if available in buffer
     long startWaitForReadTime = millis();
     bool readCharWindowExpired{};
+    long timeOutValue = pInputStream->getTimeout();
 
     do {
         checkTimeAndExecHousekeeping(killNow);
@@ -1334,7 +1342,7 @@ char Justina_interpreter::getCharacter(Stream* pInputStream, bool& killNow, bool
         if (pInputStream->available() > 0) { c = pInputStream->read(); break; }
 
         // try to read character only once or keep trying until timeout occurs ?
-        readCharWindowExpired = (!allowWaitTime || (startWaitForReadTime + GETCHAR_TIMEOUT < millis()));
+        readCharWindowExpired = (!allowWaitTime || (startWaitForReadTime + (extraLongTimeout ? WAIT_FOR_FIRST_CHAR_TIMEOUT : timeOutValue) < millis()));
     } while (!readCharWindowExpired);
 
     return c;
