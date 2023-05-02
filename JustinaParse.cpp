@@ -36,7 +36,7 @@
 
 
 // *****************************************************************
-// ***        class Justina_interpreter - implemantation         ***
+// ***        class Justina_interpreter - implementation         ***
 // *****************************************************************
 
 // -------------------------------------------------------------------------------------
@@ -179,7 +179,7 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
                 Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pAnum, HEX);
             #endif
                 _parsedStringConstObjectCount--;
-                delete[] pAnum;
+                delete[] pAnum; 
             }
         }
         uint8_t tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) :

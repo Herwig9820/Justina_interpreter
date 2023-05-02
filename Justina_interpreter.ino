@@ -38,19 +38,22 @@
 #endif
 
 
-//// test
-uint32_t startTime = millis();
-bool quitRequested = false;
-
 
 // Global constants, variables and objects
 // ---------------------------------------
 
-constexpr int HEARTBEAT_PIN{ 9 }; ////                                               // indicator leds
+// used I/O pins
+// NOTE: SPI is used for data transfer with the optional SD card, and SPI pins 11, 12, 13 are not available for general I/O
+//       The chip select pin for the SD card can be freely chosen. If not specified, the default (pin 10) will be used 
+
+constexpr int HEARTBEAT_PIN{ 9 };                                                // indicator leds
 constexpr int ERROR_PIN{ 8 };
 constexpr int STATUS_A_PIN{ 7 };
 constexpr int STATUS_B_PIN{ 6 };
 constexpr int WAIT_FOR_USER_PIN{ 5 };
+
+constexpr int STOP_ABORT_PIN{ 4 };
+constexpr int KILL_PIN{ 3 };
 
 #if withTCP
 constexpr pin_size_t WiFi_CONNECTED_PIN{ 11 };
@@ -105,10 +108,14 @@ void setup() {
 
     // define output pins
     pinMode(HEARTBEAT_PIN, OUTPUT);                                                   // blinking led for heartbeat
-    pinMode(ERROR_PIN, OUTPUT);                                                         
-    pinMode(STATUS_A_PIN, OUTPUT);                                                      
-    pinMode(STATUS_B_PIN, OUTPUT);                                                      
-    pinMode(WAIT_FOR_USER_PIN, OUTPUT);                                                 
+    pinMode(ERROR_PIN, OUTPUT);
+    pinMode(STATUS_A_PIN, OUTPUT);
+    pinMode(STATUS_B_PIN, OUTPUT);
+    pinMode(WAIT_FOR_USER_PIN, OUTPUT);
+
+    pinMode(STOP_ABORT_PIN, INPUT_PULLUP);
+    pinMode(KILL_PIN, INPUT_PULLUP);
+
 
 #if withTCP
     pinMode(WiFi_CONNECTED_PIN, OUTPUT);                                              // 'TCP connected' led
@@ -130,7 +137,7 @@ void setup() {
     myTCPconnection.setConnCallback((&onConnStateChange));                            // set callback function
 #endif
 
-    
+
     pAltInput[0] = static_cast<Stream*>(&Serial);
     pAltInput[1] = static_cast<Stream*>(&Serial);
     pAltInput[2] = static_cast<Stream*>(&Serial);
@@ -244,11 +251,6 @@ void loop() {
                 break;
             #endif
             case '8':
-                //// test
-                startTime = millis();
-                quitRequested = false;
-                //// end test
-
             #if !defined(ARDUINO_SAMD_NANO_33_IOT) && !defined(ARDUINO_ARCH_RP2040)
                 pConsole->println("interpreter does not run on this processor");            // interpreter does not run on this processor
                 break;
@@ -258,7 +260,7 @@ void loop() {
                 heartbeatPeriod = 250;
                 withinApplication = true;                                                   // flag that control will be transferred to an 'application'
                 if (!interpreterInMemory) {
-                    pJustina = new  Justina_interpreter(pConsole,  pAltInput, terminalCount, progMemSize);         // if interpreter not running: create an interpreter object on the heap
+                    pJustina = new  Justina_interpreter(pConsole, pAltInput, terminalCount, progMemSize);         // if interpreter not running: create an interpreter object on the heap
 
                     // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
                     // this callback function will be called regularly, e.g. every time the interpreter reads a character
@@ -388,6 +390,68 @@ void dateTime(uint16_t* date, uint16_t* time)
 }
 #endif
 
+// ---------------------------------------------------------------------------------------------------------------------------------------------
+// debounce keys and return key state, key goes down, key goes up, is short press (when key goes up), is long press (while key is still pressed)
+// ---------------------------------------------------------------------------------------------------------------------------------------------
+
+void keyStates(uint8_t pinStates, uint8_t& debounced, uint8_t& wentDown, uint8_t& wentUp, uint8_t& isShortPress, uint8_t& isLongPress) {
+
+    // constants
+    static constexpr int keyCount = 2;
+    static constexpr long debounceTime = 10;           // in ms
+    static constexpr long alternateActionTime = 2000;     // in ms
+
+    // static variables
+    static long pinChangeTimes[2]{ millis(), millis() };
+    static uint8_t oldPinStates{ 0xff };                      // init: assume keys are up
+    static uint8_t debouncedStates{ 0xff };
+    static uint8_t oldDebouncedStates{ 0xff };                                                      // init: assume keys are up
+    static uint8_t enableKeyActions{ 0xff };
+
+    // debounce keys (normally not necessary, because interval between successive callback functions is large enough) 
+    long now = millis();
+    uint8_t pinChanges = pinStates ^ oldPinStates;                           // flag pin changes since previous sample
+
+    for (int i = 0; i < keyCount; i++) {
+        uint8_t pinMask = (1 << i);
+        if (pinChanges & pinMask) { pinChangeTimes[i] = now; }        // pin change ? note the time
+        // pins stable for more than minimum debounce time ? change debounced state
+        else if (pinChangeTimes[i] + debounceTime < now) { debouncedStates = (debouncedStates & ~pinMask) | (pinStates & pinMask); }
+    }
+    oldPinStates = pinStates;
+
+    // determine key actions
+    uint8_t doPrimaryKeyActions{ false }, doAlternateKeyActions{ false };
+    uint8_t debouncedStateChanges = debouncedStates ^ oldDebouncedStates;                           // flag debounced state changes since previous sample
+
+    for (int i = 0; i < keyCount; i++) {
+        uint8_t pinMask = (1 << i);
+        bool keyGoesDown = debouncedStateChanges & (~debouncedStates) & pinMask;
+        bool keyGoesUp = debouncedStateChanges & debouncedStates & pinMask;
+        bool keyIsDown = (~debouncedStates) & pinMask;
+
+        if (keyGoesDown) { enableKeyActions |= pinMask; }
+        else if (keyGoesUp) {
+            if ((enableKeyActions & pinMask) && (pinChangeTimes[i] + alternateActionTime >= now)) { doPrimaryKeyActions |= pinMask; }
+        }
+        else if (keyIsDown) {
+            if ((enableKeyActions & pinMask) && (pinChangeTimes[i] + alternateActionTime < now)) { doAlternateKeyActions |= pinMask; enableKeyActions &= ~pinMask; }
+        }
+    }
+    oldDebouncedStates = debouncedStates;
+
+    // return values
+    debounced = debouncedStates; wentDown = debouncedStateChanges & (~debouncedStates); wentUp = debouncedStateChanges & debouncedStates;
+    isShortPress = doPrimaryKeyActions; isLongPress = doAlternateKeyActions;
+
+    digitalWrite(STATUS_A_PIN, (debouncedStates & 1));////
+    digitalWrite(STATUS_B_PIN, (debouncedStates & 2));////
+
+    return;
+}
+
+
+
 // -----------------------------------------------------------------------------------------------------------------------------
 // *   callback function to be called at regular intervals from any application not returning immediately to Arduino main loop()
 // -----------------------------------------------------------------------------------------------------------------------------
@@ -400,27 +464,44 @@ void dateTime(uint16_t* date, uint16_t* time)
 
 // in this program, this callback function is called at regular intervals from within the interpreter main loop  
 
-void housekeeping(bool& requestQuit, long& appFlags) {
+void housekeeping(long& appFlags) {
 
-    // application flag bits:flags signaling specific Justina status conditions
+    // application flag bits: flags signaling specific Justina status conditions to caller
     constexpr long appFlag_errorConditionBit = 0x01L;       // bit 0: a Justina parsing or execution error has occured
     constexpr long appFlag_statusAbit = 0x10L;              // status bits A and B: bits 5 and 4. Justina status (see below)
     constexpr long appFlag_statusBbit = 0x20L;
     constexpr long appFlag_waitingForUser = 0x40L;
 
-    bool& forceLocal = requestQuit;                                                     // reference variable
+    // application flag bits: flags signaling specific caller status conditions to Justina
+    static constexpr long appFlag_stopRequestBit = 0x0100L;
+    static constexpr long appFlag_abortRequestBit = 0x0200L;
+    static constexpr long appFlag_killRequestBit = 0x0400L;
+
+    bool forceLocal{false};                                                     // reference variable
 
     heartbeat();                                                                        // blink a led to show program is running
 
-    
+
+    // request kill if debounced kill key press is detected 
+    // request stop if debounced stop/abort key release is detected AND debounced key down time is less than the defined alternate function time
+    // request abort if debounced stop/abort key down time is equal or more than the defined 'alternate function' time
+    // --------------------------------------------------------------------------------------------------------------------------------------------
+
+    uint8_t debouncedStates, wentDown, wentUp, isShortPress, isLongPress;
+    uint8_t pinStates = (digitalRead(STOP_ABORT_PIN) << 1) + digitalRead(KILL_PIN);
+    keyStates(pinStates, debouncedStates, wentDown, wentUp, isShortPress, isLongPress);
+
+    // application flags: submit to Justina 
+    appFlags = (appFlags & ~(appFlag_stopRequestBit | appFlag_abortRequestBit | appFlag_killRequestBit));      // reset requests
+    if ((isShortPress | isLongPress) & (1 << 0)) { appFlags |= appFlag_killRequestBit; forceLocal = true; }
+    if (isShortPress & (1 << 1)) { appFlags |= appFlag_stopRequestBit; }
+    if (isLongPress & (1 << 1)) { appFlags |= appFlag_abortRequestBit; }
+
+    // application flags: receive from Justina
     if (errorCondition ^ (appFlags & appFlag_errorConditionBit)) { errorCondition = (appFlags & appFlag_errorConditionBit);  digitalWrite(ERROR_PIN, errorCondition); }  // only write if change detected
     if (statusA ^ (appFlags & appFlag_statusAbit)) { statusA = (appFlags & appFlag_statusAbit);  digitalWrite(STATUS_A_PIN, statusA); }  // only write if change detected
     if (statusB ^ (appFlags & appFlag_statusBbit)) { statusB = (appFlags & appFlag_statusBbit);  digitalWrite(STATUS_B_PIN, statusB); }  // only write if change detected
     if (waitingForUser ^ (appFlags & appFlag_waitingForUser)) { waitingForUser = (appFlags & appFlag_waitingForUser);  digitalWrite(WAIT_FOR_USER_PIN, waitingForUser); }  // only write if change detected
-    
-
-    //// test 'force quit' vanuit main: 
-    ////if (!quitRequested && ((startTime + 20000) < millis())) { quitRequested = true; forceLocal = true;  }
 
 
 #if withTCP
@@ -439,7 +520,7 @@ void housekeeping(bool& requestQuit, long& appFlags) {
             if (forceLocal) {
                 pConsole->println("Disconnecting remote terminal...");                // inform remote user, in case he's still there
                 switchConsole();                                                        // set console to local
-            }
+}
         }
     }
 #endif

@@ -60,7 +60,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
     bool doStopForDebugNow = false;
     bool userRequestsStop = false, userRequestsAbort = false;
-    bool isBackslashStop{ false };
+    bool showStopmessage{ false };
     bool doSingleStep = false;
     bool lastTokenIsSemicolon = false;                   // do not stop a program after an 'empty' statement (occurs when returning to caller)
     bool doSkip = false;
@@ -520,6 +520,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
     #if PRINT_DEBUG_INFO
         Serial.print("** token has been processed: next step = "); Serial.println(_activeFunctionData.pNextStep - _programStorage);
+        Serial.print("                             eval stack depth: "); Serial.print(evalStack.getElementCount()); Serial.print(", list element address: "); Serial.println((uint32_t)_pEvalStackTop - sizeof(LinkedList::ListElemHead), HEX); Serial.println();
     #endif
 
 
@@ -528,9 +529,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
         // this code executes after a statement was executed (simple expression or command)
 
-    #if PRINT_DEBUG_INFO
-        Serial.print("*** token processed: eval stack depth: "); Serial.print(evalStack.getElementCount()); Serial.print(", list element address: "); Serial.println((uint32_t)_pEvalStackTop - sizeof(LinkedList::ListElemHead), HEX); Serial.println();
-    #endif
         if (isEndOfStatementSeparator) {        // after expression AND after command
 
         #if PRINT_PROCESSED_TOKEN        
@@ -538,6 +536,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             Serial.println("**** is 'end of statement separator'\r\n");
         #endif
 
+            // keep track of Justina program counters
+            // --------------------------------------
             programCnt_previousStatementStart = holdProgramCnt_StatementStart;
             holdProgramCnt_StatementStart = _programCounter;
 
@@ -549,42 +549,15 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 }
             }
 
+            // examine kill, stop and abort requests from caller
+            // -------------------------------------------------
 
-            bool kill{};
-            checkTimeAndExecHousekeeping(kill);
+            bool kill, forcedStop{}, forcedAbort{};
+            execPeriodicHousekeeping(&kill, &forcedStop, &forcedAbort);
             if (kill) { execResult = result_kill; return execResult; }      // kill Justina interpreter ? (buffer is now flushed until next line character)
-
-            /*
-            // empty console character buffer and check for '\a' (abort) and '\s' (stop) character sequence (in case program keeps running, e.g. in an endless loop)
-            // -----------------------------------------------------------------------------------------------------------------------------------------------------
-
-            // note: while executing trace string or eval() string, only purpose is character buffer flush
-
-            bool charsFound = false, backslashFound = false, doAbort = false, doStop = false;
-
-            bool kill{ false };
-            char c{};                                                           // init: no character available
-
-            do {
-                c = getCharacter(static_cast<Stream*>(_pConsole), kill);                                               // get a key (character from console) if available, and perform a regular housekeeping callback as well
-                if (kill) { execResult = result_kill; return execResult; }      // kill Justina interpreter ? (buffer is now flushed until next line character)
-
-                if (c != 0xFF) {                                                                           // terminal character available for reading ?
-                    // Check for Justina ESCAPE sequence (sent by terminal as individual characters) and cancel input, or use default value, if indicated
-                    // Note: if Justina ESCAPE sequence is not recognized, then backslash character is simply discarded
-                    if (c == '\\') { backslashFound = !backslashFound; }                                                                                     // backslash character found
-                    else if ((tolower(c) == 'a') || (tolower(c) == 's')) {                                                                    // part of a Justina ESCAPE sequence ? Abort evaluation phase
-                        if (backslashFound) { backslashFound = false;   ((tolower(c) == 'a') ? doAbort : doStop) = true; }
-                    }
-                }
-            } while (c != 0xFF);      // until buffer flushed
-
-            if (doStop) { isBackslashStop = true; }                                           // for error message only
-
-            userRequestsAbort = userRequestsAbort || doAbort;
-            userRequestsStop = userRequestsStop || doStop || _debugCmdExecuted;               // 'backslash S' received from command line, either here ('doStop') or while a command is waiting for user input (e.g. Input)
-            */
-            userRequestsStop = userRequestsStop || _debugCmdExecuted;
+            userRequestsStop = userRequestsStop || forcedStop || _debugCmdExecuted;
+            userRequestsAbort = userRequestsAbort || forcedAbort;
+            if (forcedStop) { showStopmessage = true; }        // relevant for message only
 
 
             // process debugging commands (entered from the command line, or '\a' and '\s' escape sequences entered while a program is running  
@@ -724,7 +697,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             }
             else if (execResult == result_kill) {}      // do nothing
             else if (execResult == result_abort) { _pConsole->print("\r\n+++ Abort: code execution terminated +++\r\n"); }
-            else if (execResult == result_stopForDebug) { if (isBackslashStop) { _pConsole->print("\r\n+++ Program stopped +++\r\n"); } }
+            else if (execResult == result_stopForDebug) { if (showStopmessage) { _pConsole->print("\r\n+++ Program stopped +++\r\n"); } }
             else if (execResult == result_initiateProgramLoad) {}        // (nothing to do here for this event)
 
             _lastValueIsStored = false;              // prevent printing last result (if any)
@@ -933,17 +906,18 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 _appFlags |= appFlag_waitingForUser;    // bit b6 set: waiting for user interaction
 
                 do {
+                    bool doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };
                     _pConsole->println("===== Quit Justina: keep in memory ? (please answer Y, N or \\c to cancel) =====");
 
                     // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
-                    // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
-                    bool doAbort{ false }, doStop{ false }, doCancel{ false }, doDefault{ false };
+                    // return flags doStop, doAbort, doCancel, doDefault if user included corresponding escape sequences in input string.
                     int length{ 1 };
                     char input[1 + 1] = "";                                                                          // init: empty string
-                    if (getConsoleCharacters(doAbort, doStop, doCancel, doDefault, input, length, '\n')) { return result_kill; }  // kill request from caller ? 
-                    if (doAbort) { userRequestsAbort = true; break; }    // '\a': abort running code (program or immediate mode statements - highest priority)
-                    else if (doStop) { userRequestsStop = true; }       // '\s': stop a running program AFTER next PROGRAM statement (will have no effect anyway, because quitting)
-                    else if (doCancel) { break; }                       // '\c': cancel operation (lowest priority)
+                    // NOTE: quitting has higher priority than aborting or stopping, and quitting anyway, so not needed to check abort and stop flags
+                    if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return result_kill; }  // kill request from caller ? 
+                    if (doAbort) { userRequestsAbort = true; break;}                                         // '\a': abort running code (program or immediate mode statements)
+                    else if (doStop) { userRequestsStop = true; }                                           // '\s': stop a running program (do not produce stop event yet, wait until program statement executed)
+                    if (doCancel) { break; }                       // '\c': cancel operation (lowest priority)
 
                     bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
                     if (validAnswer) {
@@ -1119,7 +1093,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 _systemVarStringObjectCount--;
                 delete[] pString;
                 _pTraceString = nullptr;      // old trace or eval string
-            }
+        }
 
             if (value.pStringConst != nullptr) {                           // new trace string
                 _systemVarStringObjectCount++;
@@ -1138,7 +1112,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // clean up
             clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
-        }
+    }
         break;
 
 
@@ -1251,6 +1225,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 else { return result_arg_numberExpected; }
             }
 
+            bool proceed{ true };        // init (in silent mode, overwrite without asking)
+
             // receive or copy file: destination is a file
             if ((isReceive) || (isCopy)) {
                 int receivingFileArgIndex = (cmdParamCount == 1) ? 0 : 1;
@@ -1260,29 +1236,28 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 if (isCopy) {
                     if (strcasecmp(args[0].pStringConst, args[1].pStringConst) == 0) { return result_SD_sourceIsDestination; }      // 8.3 file format: NOT case sensitive
                 }
-
                 // if file exists, ask if overwriting it is OK
                 if (SD.exists(args[receivingFileArgIndex].pStringConst)) {
-                    bool proceed{ true };         // in silent mode, overwrite without asking
                     if (verbose) {
                         _appFlags |= appFlag_waitingForUser;    // bit b6 set: waiting for user interaction
                         do {
                             char s[70] = "===== File exists already. Overwrite ? (please answer Y or N) =====";
                             _pConsole->println(s);
                             // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
-                            // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
-                            bool doAbort{ false }, doStop{ false }, doCancel{ false }, doDefault{ false };      // not used but mandatory
+                            // return flags doStop, doAbort, doCancel, doDefault if user included corresponding escape sequences in input string.
+                            bool doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };      // not used but mandatory
                             int length{ 1 };
                             char input[1 + 1] = "";                                                                          // init: empty string
-                            if (getConsoleCharacters(doAbort, doStop, doCancel, doDefault, input, length, '\n')) { return result_kill; }  // kill request from caller ?
-                            // check op abort, stop program
-
+                            if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return result_kill; }  // kill request from caller ?
+                            if (doAbort) { userRequestsAbort = true; break;}                                         // '\a': abort running code (program or immediate mode statements)
+                            else if (doStop) { userRequestsStop = true; }                                           // '\s': stop a running program (do not produce stop event yet, wait until program statement executed)
+                            else if (doCancel){break;}
+                            
                             bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
-                            if (validAnswer) { proceed = (tolower(input[0]) == 'y'); break; }
+                            if (validAnswer) { proceed = (tolower(input[0]) == 'y');  break; }
                         } while (true);
                         _appFlags &= ~appFlag_waitingForUser;    // bit b6 reset: NOT waiting for user interaction
                     }
-                    if (!proceed) { break; }
                 }
 
                 // file does not yet exist ? check if directory exists. If not, create without asking
@@ -1302,56 +1277,59 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     if (!dirCreated) { return result_SD_couldNotCreateFileDir; }      // no success ? error
                 }
 
-                // open receiving file for writing. Create it if it doesn't exist yet, truncate it if it does 
-                execResult_type execResult = SD_open(destinationStreamNumber, args[receivingFileArgIndex].pStringConst, O_WRITE + O_CREAT + O_TRUNC);
-                if (execResult != result_execOK) { return execResult; }
-                pDestinationStream = static_cast<Stream*>(&openFiles[destinationStreamNumber - 1].file);
+                if (proceed) {
+                    // open receiving file for writing. Create it if it doesn't exist yet, truncate it if it does 
+                    execResult_type execResult = SD_open(destinationStreamNumber, args[receivingFileArgIndex].pStringConst, O_WRITE + O_CREAT + O_TRUNC);
+                    if (execResult != result_execOK) { return execResult; }
+                    pDestinationStream = static_cast<Stream*>(&openFiles[destinationStreamNumber - 1].file);
+                }
             }
 
             // send or copy file: source is a file ? open it now
-            if ((isSend || isCopy)) {
-                execResult_type execResult = SD_open(sourceStreamNumber, args[0].pStringConst, O_READ);     // this performs a few card & file checks as well
-                if (execResult == result_SD_couldNotOpenFile) {
-                    if (!SD.exists(args[0].pStringConst)) { execResult = result_SD_fileNotFound; }        // replace error code for clarity
+            if (proceed) {
+                if ((isSend || isCopy)) {
+                    execResult_type execResult = SD_open(sourceStreamNumber, args[0].pStringConst, O_READ);     // this performs a few card & file checks as well
+                    if (execResult == result_SD_couldNotOpenFile) {
+                        if (!SD.exists(args[0].pStringConst)) { execResult = result_SD_fileNotFound; }        // replace error code for clarity
+                    }
+                    if (execResult != result_execOK) {
+                        if (isCopy) { SD_closeFile(destinationStreamNumber); }                      // error opening source file: close destination file (already open)
+                        return execResult;
+                    }
+                    pSourceStream = static_cast<Stream*>(&openFiles[sourceStreamNumber - 1].file);
                 }
-                if (execResult != result_execOK) {
-                    if (isCopy) { SD_closeFile(destinationStreamNumber); }                      // error opening source file: close destination file (already open)
-                    return execResult;
-                }
-                pSourceStream = static_cast<Stream*>(&openFiles[sourceStreamNumber - 1].file);
+
+                // read and write characters now
+                if (verbose) { _pConsole->println(isSend ? "\r\nSending file... please wait\r\n" : isReceive ? "\r\nReceiving file... please wait\r\n" : "\r\nCopying file...\r\n"); }
+
+                bool kill{ false }, doStop{ false }, doAbort{ false };
+
+                char c{};
+                char* buffer = new char[(isReceive || isCopy) ? 128 : 1];     // sending: buffer will not be used, so keep it small
+                int bufferCharCount{ 0 };
+
+                bool waitForFirstChar = isReceive;
+                long initialWaitTime = millis();
+                do {
+                    c = getCharacter(pSourceStream, kill, doStop, doAbort, isReceive, waitForFirstChar);            // get a character if available and perform a regular housekeeping callback as well
+                    if (kill) { return result_kill; }                                           // kill request from caller ?
+                    if (c == 0xff) { break; }                                                           // no character received
+                    else { waitForFirstChar = false; }                          // valid character
+
+                    // writing to SD: do not write individual characters (speed up by an order of magnitude)
+                    if (isReceive || isCopy) {
+                        if (bufferCharCount < 128) { buffer[bufferCharCount++] = c; }
+                        if (bufferCharCount == 128) { pDestinationStream->write(buffer, bufferCharCount); bufferCharCount = 0; }
+                    }
+                    else { pDestinationStream->write(c); }      // write character to stream
+                } while (true);
+
+                if (verbose) { _pConsole->println(isSend ? "File sent\r\n" : isReceive ? (waitForFirstChar ? "NO file received\r\n" : "File received\r\n") : "File copied\r\n"); }
+
+                // close file(s)
+                if (isSend || isCopy) { SD_closeFile(sourceStreamNumber); }
+                if (isReceive || isCopy) { SD_closeFile(destinationStreamNumber); }
             }
-
-
-            // read and write characters now
-            if (verbose) { _pConsole->println(isSend ? "\r\nSending file... please wait\r\n" : isReceive ? "\r\nReceiving file... please wait\r\n" : "\r\nCopying file...\r\n"); }
-
-            bool kill{ false };
-
-            char c{};
-            char* buffer = new char[(isReceive || isCopy) ? 128 : 1];     // sending: buffer will not be used, so keep it small
-            int bufferCharCount{ 0 };
-
-            bool waitForFirstChar = isReceive;
-            long initialWaitTime = millis();
-            do {
-                c = getCharacter(pSourceStream, kill, isReceive,waitForFirstChar);            // get a character if available and perform a regular housekeeping callback as well
-                if (kill) { return result_kill; }                                           // kill request from caller ?
-                if (c == 0xff) { break; }                                                           // no character received
-                else { waitForFirstChar = false; }                          // valid character
-
-                // writing to SD: do not write individual characters (speed up by an order of magnitude)
-                if (isReceive || isCopy) {
-                    if (bufferCharCount < 128) { buffer[bufferCharCount++] = c; }
-                    if (bufferCharCount == 128) { pDestinationStream->write(buffer, bufferCharCount); bufferCharCount = 0; }
-                }
-                else { pDestinationStream->write(c); }      // write character to stream
-            } while (true);
-
-            if (verbose) { _pConsole->println(isSend ? "File sent\r\n" : isReceive ? (waitForFirstChar ? "NO file received\r\n" : "File received\r\n") : "File copied\r\n"); }
-
-            // close file(s)
-            if (isSend || isCopy) { SD_closeFile(sourceStreamNumber); }
-            if (isReceive || isCopy) { SD_closeFile(destinationStreamNumber); }
 
             // clean up
             clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
@@ -1487,16 +1465,16 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 _pConsole->println(args[0].pStringConst);       // user prompt 
 
                 // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
-                // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
-                bool doAbort{ false }, doStop{ false }, doCancel{ false }, doDefault{ false };
+                // return flags doStop, doAbort, doCancel, doDefault if user included corresponding escape sequences in input string.
+                bool doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };
                 int length{ MAX_USER_INPUT_LEN };
                 char input[MAX_USER_INPUT_LEN + 1] = "";                                                                          // init: empty string
-                if (getConsoleCharacters(doAbort, doStop, doCancel, doDefault, input, length, '\n')) { execResult = result_kill; return execResult; }
+                if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) {  return result_kill; }
+                if (doAbort) { userRequestsAbort = true;break; }                                         // '\a': abort running code (program or immediate mode statements)
+                else if (doStop) { userRequestsStop = true; }                                           // '\s': stop a running program (do not produce stop event yet, wait until program statement executed)
+
                 doDefault = checkForDefault && doDefault;        // gate doDefault
                 doCancel = checkForCancel && doCancel;           // gate doCancel
-
-                if (doAbort) { userRequestsAbort = true; }                                         // '\a': abort running code (program or immediate mode statements)
-                else if (doStop) { userRequestsStop = true; }                                           // '\s': stop a running program (do not produce stop event yet, wait until program statement executed)
 
                 // if request to stop ('\s') received, first handle input data
                 bool  answerIsNo{ false };
@@ -1589,32 +1567,19 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 _pConsole->println(s);
             }
 
-            bool doAbort{ false }, doStop{ false }, backslashFound{ false };
+            bool kill{ false }, doStop{ false }, doAbort{ false };
 
             long startPauseAt = millis();                                                                                   // if pause, not stop;
 
             _appFlags |= appFlag_waitingForUser;    // bit b6 set: waiting for user interaction (or program paused)
             do {                                                                                                            // until new line character encountered
                 char c{};
-                bool kill{ false };
-                c = getCharacter(static_cast<Stream*>(_pConsole), kill);                                               // get a key (character from console) if available and perform a regular housekeeping callback as well
-                if (kill) { execResult = result_kill; return execResult; }      // kill Justina interpreter ? (buffer is now flushed until next line character)
+                c = getCharacter(static_cast<Stream*>(_pConsole), kill, doStop, doAbort);                      // get a key (character from console) if available and perform a regular housekeeping callback as well
+                if (kill) { execResult = result_kill; return execResult; }                                      // kill Justina interpreter ? (buffer is now flushed until next line character)
+                if (doAbort) { execResult = result_abort; return execResult; }                                     // stop a running Justina program (buffer is now flushed until nex line character) 
+                if (doStop) { userRequestsStop = true; break; }                                                     // '\s': stop a running program (do not produce stop event yet, wait until program statement executed)
 
-                if (c != 0xFF) {                                                                           // terminal character available for reading ?
-                    if (c == '\n') { if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_halt) { break; } }
-
-                    /*
-                    // Check for Justina ESCAPE sequence (sent by terminal as individual characters) and cancel input, or use default value, if indicated
-                    // Note: if Justina ESCAPE sequence is not recognized, then backslash character is simply discarded
-                    else if (c == '\\') { backslashFound = !backslashFound; }                                                                                     // backslash character found
-                    else if ((tolower(c) == 'a') || (tolower(c) == 's')) {                                                                    // part of a Justina ESCAPE sequence ? Abort evaluation phase
-                        if (backslashFound) {
-                            backslashFound = false;   ((tolower(c) == 'a') ? doAbort : doStop) = true;
-                            if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_pause) { break; }
-                        }
-                    }
-                    */
-                }
+                if (c == '\n') { break; }                                                                   // after other input characters flushed
 
                 if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_pause) {
                     if (startPauseAt + pauseTime < millis()) { break; }                                                           // if still characters in buffer, buffer will be flushed when processng of statement finalised
@@ -1623,8 +1588,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
             _appFlags &= ~appFlag_waitingForUser;    // bit b6 reset: NOT waiting for user interaction (and program not paused)
 
-            if (doAbort) { execResult = result_abort; return execResult; }                                     // stop a running Justina program (buffer is now flushed until nex line character) 
-            else if (doStop) { userRequestsStop = true; }                                                           // '\s': stop a running program (do not produce stop event yet, wait until program statement executed)
 
             // clean up
             clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
@@ -1810,8 +1773,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         #endif
                             _intermediateStringObjectCount--;
                             delete[] oldAssembString;
-                        }
                     }
+                }
 
                     else {      // print to file or console ?
                         if (printString != nullptr) { *pStreamPrintColumn += pOut->print(printString); }
@@ -1831,11 +1794,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] printString;
-                    }
-                }
+            }
+        }
 
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-            }
+}
 
             // finalise
             if (isPrintToVar) {        // print to string ? save in variable
@@ -1851,9 +1814,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] assembledString;
-                    }
-                    return execResult;
                 }
+                    return execResult;
+            }
 
                 // print line end without supplied arguments for printing: a string object does not exist yet, so create it now
                 if (doPrintLineEnd) {
@@ -1893,7 +1856,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 }
 
                 if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) { delete[] assembledString; }        // not referenced in eval. stack (clippedString is), so will not be deleted as part of cleanup
-            }
+                }
 
             else {      // print to file or console
                 if (doPrintLineEnd) {
@@ -1906,7 +1869,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // clean up
             clearEvalStackLevels(cmdParamCount);      // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
-        }
+                }
         break;
 
 
@@ -2168,7 +2131,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] args[i].pStringConst;                                                  // delete temporary string
-                    }
+                }
 
                     // string argument was a (NON-CONSTANT) variable string: no copy was made, the string itself was passed to the user routine
                     // did the user routine change it to an empty, '\0' terminated string ?
@@ -2183,9 +2146,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         delete[]args[i].pStringConst;                                                   // delete original variable string
                         *pStackLvl->varOrConst.value.ppStringConst = nullptr;                           // change pointer to string (in variable) to null pointer
                     }
-                }
-                pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
             }
+                pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
+        }
 
 
             // clean up
@@ -2440,10 +2403,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         }
         break;
 
-    }       // end switch
+            }       // end switch
 
     return result_execOK;
-}
+                }
 
 
 // -------------------------------
@@ -2647,9 +2610,9 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
             #endif 
                 _lastValuesStringObjectCount--;
                 delete[] lastResultValueFiFo[itemToRemove].pStringConst;                // note: this is always an intermediate string
-            }
         }
     }
+}
     else {
         _lastValuesCount++;     // only adding an item, without removing previous one
     }
@@ -2696,7 +2659,7 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
         #endif
             _intermediateStringObjectCount--;
             delete[] lastvalue.value.pStringConst;
-        }
+    }
     }
 
     // store new last value type
@@ -2729,7 +2692,7 @@ void Justina_interpreter::clearEvalStack() {
     #endif
         _intermediateStringObjectErrors += abs(_intermediateStringObjectCount);
         _intermediateStringObjectCount = 0;
-    }
+}
     return;
 }
 
@@ -3471,8 +3434,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
             #endif
                 _intermediateStringObjectCount--;
                 delete[] pUnclippedResultString;     // compound assignment: pointing to the unclipped result WHICH IS NON-EMPTY: so it's a heap object and must be deleted now
-            }
         }
+    }
 
         // store value in variable and adapt variable value type - next line is valid for long integers as well
         if (opResultLong || opResultFloat) { *_pEvalStackMinus2->varOrConst.value.pFloatConst = opResult.floatConst; }
@@ -3486,7 +3449,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) |
                 (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
         }
-    }
+}
 
 
     // (7) post process
@@ -4020,10 +3983,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 charsRead = static_cast <File*>(pStream)->read(buffer, maxLineLength);          // if fewer bytes available, end reading WITHOUT time out
             }
             else {                                                                               // external input OR (all streams) search for terminator 
-                bool kill{ false };
+                bool kill{ false }, doStop{ false }, doAbort{ false };
                 for (int i = 0; i < maxLineLength; i++) {
                     // get a character if available and perform a regular housekeeping callback as well
-                    char c = getCharacter(pStream, kill, (streamNumber <= 0));                       // time out only required if external IO
+                    char c = getCharacter(pStream, kill, doStop, doAbort, (streamNumber <= 0));                       // time out only required if external IO
                     if (kill) {                                                                 // kill request from caller ? 
                         _intermediateStringObjectCount--;
                         delete[] buffer;
@@ -4036,8 +3999,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                     if (c == 0xff) { break; }                                       // no more characters ? break
                     if ((terminator != 0xff) && (c == terminator)) { break; }                 // terminator found ? break (terminator is not stored in buffer)
                     buffer[charsRead++] = c;
-                    }
                 }
+            }
 
             buffer[charsRead] = (isLineForm ? '\n' : '\0');       // add terminating '\0'
             if (isLineForm) { buffer[charsRead + 1] = '\0'; }
@@ -4067,7 +4030,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 _intermediateStringObjectCount--;
                 delete[] buffer;
                 fcnResult.pStringConst = nullptr;
-            }
+        }
 
             // less characters read than maximum ? move string to a smaller character array to save space
             else if (charsRead < maxLineLength) {
@@ -4085,7 +4048,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 fcnResult.pStringConst = smallerBuffer;
             }
             else { fcnResult.pStringConst = buffer; }
-            }
+    }
         break;
 
 
@@ -4126,11 +4089,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             #endif
 
                 // read line from stream
-                bool kill{ false };
+                bool kill{ false }, doStop{ false }, doAbort{ false };
                 int charsRead{ 0 };
                 for (int i = 0; i < MAX_ALPHA_CONST_LEN; i++) {
                     // get a character if available and perform a regular housekeeping callback as well
-                    char c = getCharacter(pStream, kill, (streamNumber <= 0));                       // time out only required if external IO
+                    char c = getCharacter(pStream, kill, doStop, doAbort, (streamNumber <= 0));                       // time out only required if external IO
                     if (kill) {                            // kill request from caller ? 
                         if (kill) {                                                                 // kill request from caller ? 
                             _intermediateStringObjectCount--;
@@ -4140,14 +4103,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                         #endif
                             return result_kill;
                         }
-                        }
+                    }
 
                     if (c == 0xff) { break; }                                       // no more characters ? break
                     if (c == '\n') { break; }                 // line end found ? break ('terminator'\n' is not stored in buffer)
                     buffer[charsRead++] = c;
-                    }
-                buffer[charsRead] = '\0';       // add terminating '\0'
                 }
+                buffer[charsRead] = '\0';       // add terminating '\0'
+            }
             else {      // parse from string
                 if (!(argIsStringBits & (1 << 0))) { return result_arg_stringExpected; };
                 buffer = (argIsVarBits & (1 << 0)) ? *pFirstArgStackLvl->varOrConst.value.ppStringConst : pFirstArgStackLvl->varOrConst.value.pStringConst;
@@ -4255,7 +4218,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
                 // reached last variable and input buffer not completely parsed ? break with error
                 if (pStackLvl == nullptr) { break; }        // no more variables to save values into: quit parsing remainder of string / file
-                }
+            }
 
             // delete input temporary buffer
             if (functionCode == fnccod_parseList) {
@@ -4264,7 +4227,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             #endif
                 _intermediateStringObjectCount--;
                 delete[] buffer;
-            }
+        }
 
             if (intermediateStringCreated) {
             #if PRINT_HEAP_OBJ_CREA_DEL
@@ -4273,7 +4236,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 _intermediateStringObjectCount--;
                 delete[] value.pStringConst;
 
-            }
+}
 
 
             // execution error ?
@@ -4285,7 +4248,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // save result: number of values that were actually saved 
             fcnResultValueType = value_isLong;
             fcnResult.longConst = valuesSaved;
-            }
+        }
         break;
 
 
@@ -4328,10 +4291,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
             int targetCharsMatched{ 0 }, terminatorCharsMatched{ 0 };
             bool targetFound{ false };
-            bool kill{ false };
+            bool kill{ false }, doStop{ false }, doAbort{ false };
             while (true) {
                 // get a character if available and perform a regular housekeeping callback as well
-                char c = getCharacter(pStream, kill, (streamNumber <= 0));                       // time out only required if external IO
+                char c = getCharacter(pStream, kill, doStop, doAbort, (streamNumber <= 0));                       // time out only required if external IO
                 if (kill) { return result_kill; }                           // kill request from caller ? 
                 if (c == 0xff) { targetFound = false; break; }                       // target was not found
 
@@ -4427,7 +4390,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             #endif            
                 strcpy(fcnResult.pStringConst, args[resultIndex].pStringConst);
             }
-            }
+        }
         break;
 
 
@@ -4455,7 +4418,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             #endif            
                 strcpy(fcnResult.pStringConst, args[index].pStringConst);
             }
-            }
+        }
         break;
 
 
@@ -4563,7 +4526,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             #endif            
                 strcpy(fcnResult.pStringConst, lastResultValueFiFo[FiFoElement].pStringConst);
             }
-            }
+        }
         break;
 
 
@@ -4686,8 +4649,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             #if PRINT_HEAP_OBJ_CREA_DEL
                 Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
             #endif
-            }
         }
+            }
         break;
 
         // math functions 
@@ -5226,7 +5189,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                     else { *_pEvalStackTop->varOrConst.value.pFloatConst = (float)foundStartPos; }
                 }
             }
-        }
+            }
         break;
 
 
@@ -5377,7 +5340,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 fcnResult.pStringConst = args[0].pStringConst;
                 quoteAndExpandEscSeq(fcnResult.pStringConst);     // returns a new intermediate string on the heap (never a null pointer)
             }
-            }
+        }
         break;
 
 
@@ -5473,7 +5436,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                             min(999, _globalStaticVarStringObjectCount), min(999, _globalStaticArrayObjectCount), min(999, _userVarStringObjectCount), min(999, _userArrayObjectCount),
                             min(999, _localVarStringObjectCount), min(999, _localArrayObjectCount), min(999, _localVarValueAreaCount), min(999, _intermediateStringObjectCount),
                             min(999, _systemVarStringObjectCount));
-                }
+                    }
                     else {     // print heap object create/delete errors
                         sprintf(fcnResult.pStringConst, "%0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d",
                             min(999, _identifierNameStringObjectErrors), min(999, _userVarNameStringObjectErrors), min(999, _parsedStringConstObjectErrors), min(999, _lastValuesStringObjectErrors),
@@ -5501,19 +5464,19 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                     #endif
                         strcpy(fcnResult.pStringConst, _pTraceString);
                     }
-                    }
+                }
                 break;
 
                 default: return result_arg_invalid; break;
-                }       // switch (sysVal)
-                }
+            }       // switch (sysVal)
+        }
         break;
 
-                }       // end switch
+        }       // end switch
 
 
-                    // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
-                    // -------------------------------------------------------------------------------------------------------------------
+            // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
+            // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
@@ -5535,7 +5498,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
     }
 
     return result_execOK;
-            }
+}
 
 
 // -----------------------
@@ -5811,7 +5774,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchExternalFunctio
     _activeFunctionData.errorProgramCounter = calledFunctionTokenStep;
 
     return  result_execOK;
-    }
+}
 
 
 // ------------------------------------------------
@@ -5967,15 +5930,15 @@ void Justina_interpreter::initFunctionParamVarWithSuppliedArg(int suppliedArgCou
                     #endif
                         strcpy(_activeFunctionData.pLocalVarValues[i].pStringConst, tempString);
                     }
-                    };
-                }
+                };
+            }
 
             // if intermediate constant string, then delete char string object (tested within called routine)            
             deleteIntermStringObject(pStackLvl);
             pStackLvl = (LE_evalStack*)evalStack.deleteListElement(pStackLvl);                                              // argument saved: remove argument from stack and point to next argument
-            }
         }
     }
+}
 
 
 // ------------------------------------------------------------------------------------------------------------
@@ -6024,14 +5987,14 @@ void Justina_interpreter::initFunctionDefaultParamVariables(char*& pStep, int su
                 #endif
                     strcpy(_activeFunctionData.pLocalVarValues[count].pStringConst, s);
                 }
-                }
-            count++;
             }
+            count++;
         }
+    }
 
     // skip (remainder of) function definition
     findTokenStep(pStep, tok_isTerminalGroup1, termcod_semicolon);
-    };
+};
 
 
 
@@ -6224,7 +6187,7 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateExternalFunct
         #endif
             _localVarValueAreaErrors += abs(_localVarValueAreaCount);
             _localVarValueAreaCount = 0;
-        }
+    }
 
         if (_localVarStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
@@ -6232,7 +6195,7 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateExternalFunct
         #endif
             _localVarStringObjectErrors += abs(_localVarStringObjectCount);
             _localVarStringObjectCount = 0;
-        }
+}
 
         if (_localArrayObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS

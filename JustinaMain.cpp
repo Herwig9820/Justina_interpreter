@@ -786,7 +786,7 @@ Justina_interpreter::~Justina_interpreter() {
 // *   set call back functons   *
 // ------------------------------
 
-bool Justina_interpreter::setMainLoopCallback(void (*func)(bool& requestQuit, long& appFlags)) {
+bool Justina_interpreter::setMainLoopCallback(void (*func)(long& appFlags)) {
 
     // a call from the user program initializes the address of a 'user callback' function.
     // Justina will call this user routine repeatedly and automatically, allowing  the user...
@@ -823,7 +823,7 @@ bool Justina_interpreter::run(Stream* const pConsole) {
     parseTokenResult_type result{ result_tokenFound };    // init
 
     // local variables 
-    bool kill{ false };                                       // kill is true: request from caller, kill is false: quit command executed
+    bool kill{ false }, forcedStop{ false }, forcedAbort{ false };                                       // kill is true: request from caller, kill is false: quit command executed
     bool quitNow{ false };
     char c{};
 
@@ -913,7 +913,6 @@ bool Justina_interpreter::run(Stream* const pConsole) {
     Stream* pStatementInputStream = static_cast<Stream*>(_pConsole);            // init: load program from console
 
     int clearCmdIndicator{ 0 };                                    // 1 = clear program cmd, 2 = clear all cmd
-
     do {
         // when loading a program, as soon as first printable character of a PROGRAM is read, each subsequent character needs to follow after the previous one within a fixed time delay, handled by getCharacter().
         // program reading ends when no character is read within this time window.
@@ -922,13 +921,14 @@ bool Justina_interpreter::run(Stream* const pConsole) {
         bool waitForFirstProgramCharacter = _initiateProgramLoad;
 
         // get a character if available and perform a regular housekeeping callback as well
-        c = getCharacter(pStatementInputStream, kill, true,waitForFirstProgramCharacter);     // while waiting for first program character, allow a longer time out              
+        // NOTE: forcedStop and forcedAbort are dummy arguments here (no program is running)
+        c = getCharacter(pStatementInputStream, kill, forcedStop, forcedAbort, true, waitForFirstProgramCharacter);     // while waiting for first program character, allow a longer time out              
         if (kill) { break; }                // return true if kill request received from calling program
         _initiateProgramLoad = false;
 
         // start processing input buffer when (1) in program mode: time out occurs and at least one character received, or (2) in immediate mode: when a new line character is detected
         bool allCharsReceived = _programMode ? ((c == 0xFF) && programCharsReceived) : (c == '\n');
-        
+
         if ((c == 0xFF) && !allCharsReceived) { continue; }                // no character: keep waiting for input (except when program or imm. mode line is read)
 
         // if no character added: nothing to do, wait for next
@@ -1000,16 +1000,15 @@ bool Justina_interpreter::run(Stream* const pConsole) {
 
     // returning control to Justina caller
     _appFlags = 0x0000L;                            // clear all application flags
-    _housekeepingCallback(quitNow, _appFlags);      // pass application flags to caller immediately
+    _housekeepingCallback(_appFlags);      // pass application flags to caller immediately
 
     if (kill) { _keepInMemory = false; _pConsole->println("\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
 
     delete[] _pIOprintColumns;
-
     SD_closeAllFiles();         // safety (in case an SD card is present: close all files 
     _SDinitOK = false;
     SD.end();                   // stop SD card
-
+    while (_pConsole->available() > 0) { _pConsole->read(); }                // empty console buffer
 
     if (_keepInMemory) { _pConsole->println("\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
     _quitJustina = false;         // if interpreter stays in memory: re-init
@@ -1124,7 +1123,7 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
 // * finalise parsing, execute if no errors, if in debug mode, trace and print debug info, re-init machine state and exit *
 // ------------------------------------------------------------------------------------------------------------------------
 
-bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, int &clearIndicator, Stream*& pStatementInputStream) {
+bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, int& clearIndicator, Stream*& pStatementInputStream) {
 
     // all statements (in program or imm. mode line) have been parsed: finalise
     // ------------------------------------------------------------------------
@@ -1172,34 +1171,44 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
 
     // if program parsing error: reset machine, because variable storage might not be consistent with program any more
     if ((_programMode) && (result != result_tokenFound)) { resetMachine(false); }
+
+    // before loadng a program, clear memory except user variables
     else if (execResult == result_initiateProgramLoad) { resetMachine(false); }
-    // clearing program / memory: AFTER execution phase ends !
-    else if (clearIndicator != 0) {                     // 1 = clear program cmd, 2 = clear all cmd 
-        do {
-            char s[50];
-            sprintf(s, "===== Clear %s ? (please answer Y or N) =====", ((clearIndicator == 2) ? "memory" : "program"));
-            _pConsole->println(s);
 
-            // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
-            // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
-            bool doAbort{ false }, doStop{ false }, doCancel{ false }, doDefault{ false };      // not used but mandatory
-            int length{ 1 };
-            char input[1 + 1] = "";                                                                          // init: empty string. Provide room for 1 character + terminating '\0'
-            if (getConsoleCharacters(doAbort, doStop, doCancel, doDefault, input, length, '\n')) { return result_kill; }  // kill request from caller ?
-
-            bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
-            if (validAnswer) {
-                if (tolower(input[0]) == 'y') { _pConsole->println((clearIndicator == 2) ? "clearing memory" : "clearing program"); resetMachine(clearIndicator == 2); }       // 1 = clear program, 2 = clear all (including user variables)
-                break;
-            }
-        } while (true);
-    }
-
-    // no program error (could be immmediate mode error however): only reset a couple of items here 
+    // no program error (could be immmediate mode error however), not initiating program load: only reset a couple of items here 
     else {
         parsingStack.deleteList();
         _blockLevel = 0;
         _extFunctionBlockOpen = false;
+    }
+
+    // the clear memory / clear all command is executed AFTER the execution phase
+    // --------------------------------------------------------------------------
+
+    // first check there were no parsing or execution errors
+    if ((result == result_tokenFound) && (execResult == result_execOK)) {
+        if (clearIndicator != 0) {                     // 1 = clear program cmd, 2 = clear all cmd 
+            do {
+                char s[50];
+                sprintf(s, "===== Clear %s ? (please answer Y or N) =====", ((clearIndicator == 2) ? "memory" : "program"));
+                _pConsole->println(s);
+
+                // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
+                // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
+                bool doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };      // not used but mandatory
+                int length{ 1 };
+                char input[1 + 1] = "";                                                                          // init: empty string. Provide room for 1 character + terminating '\0'
+                // NOTE: stop, abort, cancel land default arguments have no function here (execution has ended already)
+                if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { kill = true; _quitJustina = true; break; }  // kill request from caller ?
+
+                if (doAbort) { break; }        // avoid a next loop (getConsoleCharacters exits immediately when abort request, not waiting for any characters)
+                bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
+                if (validAnswer) {
+                    if (tolower(input[0]) == 'y') { _pConsole->println((clearIndicator == 2) ? "clearing memory" : "clearing program"); resetMachine(clearIndicator == 2); }       // 1 = clear program, 2 = clear all (including user variables)
+                    break;
+                }
+            } while (true);
+        }
     }
 
     // execution finished (not stopping in debug mode), with or without error: delete parsed strings in imm mode command : they are on the heap and not needed any more. Identifiers must stay avaialble
@@ -1241,8 +1250,10 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
     if ((result != result_tokenFound) && (_pConsole->available() > 0)) {
         char c{};
         do {
-            if (_quitJustina) { break; };       // could be set before loop starts
-            c = getCharacter(static_cast<Stream*>(_pConsole), _quitJustina, true);     // set allowWaitTime to true: wait a little before concluding no more characters come in
+            if (_quitJustina) { break; };       // flag could be set before loop starts
+            // NOTE: forcedStop and forcedAbort are dummy arguments here(no program is running)
+            bool forcedStop, forcedAbort;       // dummy arguments (not needed here)
+            c = getCharacter(static_cast<Stream*>(_pConsole), _quitJustina, forcedStop, forcedAbort, true);     // set allowWaitTime to true: wait a little before concluding no more characters come in
 
         } while (c != 0xFF);
     }
@@ -1301,19 +1312,19 @@ void Justina_interpreter::traceAndPrintDebugInfo() {
 // execute regular housekeeping callback
 // -------------------------------------
 
-void Justina_interpreter::checkTimeAndExecHousekeeping(bool& killNow) {
+void Justina_interpreter::execPeriodicHousekeeping(bool* pKillNow, bool* pForcedStop, bool* pForcedAbort) {
     // do a housekeeping callback at regular intervals (if callback function defined)
-    killNow = false;
+    *pKillNow = false; if (pForcedStop != nullptr) { *pForcedStop = false; } if (pForcedAbort != nullptr) { *pForcedAbort = false; }        // init
     if (_housekeepingCallback != nullptr) {
         _currenttime = millis();
         _previousTime = _currenttime;
         // note: also handles millis() overflow after about 47 days
-        if ((_lastCallBackTime + callbackPeriod < _currenttime) || (_currenttime < _previousTime)) {            // while executing, limit calls to housekeeping callback routine 
+        if ((_lastCallBackTime + CALLBACK_INTERVAL < _currenttime) || (_currenttime < _previousTime)) {            // while executing, limit calls to housekeeping callback routine 
             _lastCallBackTime = _currenttime;
-            _housekeepingCallback(killNow, _appFlags);                                                           // execute housekeeping callback
-            if (killNow) {
-                while (_pConsole->available() > 0) { _pConsole->read(); }                                        // flush console input buffer and flag 'kill' (request from Justina caller)
-            }
+            _housekeepingCallback(_appFlags);                                                           // execute housekeeping callback
+            if (_appFlags & appFlag_killRequestBit) { *pKillNow = true; }
+            if ((_appFlags & appFlag_stopRequestBit) && (pForcedStop != nullptr)) { *pForcedStop = true; }
+            if ((_appFlags & appFlag_abortRequestBit) && (pForcedAbort != nullptr)) { *pForcedAbort = true; }
         }
     }
 }
@@ -1323,7 +1334,7 @@ void Justina_interpreter::checkTimeAndExecHousekeeping(bool& killNow) {
 // *   read character from keyboard, if available, and regularly perform a housekeeping callback   *
 // -------------------------------------------------------------------------------------------------
 
-char Justina_interpreter::getCharacter(Stream* pInputStream, bool& killNow, bool allowWaitTime, bool extraLongTimeout) {     // default: no time out, input from console
+char Justina_interpreter::getCharacter(Stream* pInputStream, bool& kill, bool& forcedStop, bool& forcedAbort, bool allowWaitTime, bool extraLongTimeout) {     // default: no time out, input from console
 
     // enable time out = false: only check once for a character
     //                   true: allow a certain time for the character to arrive   
@@ -1336,8 +1347,12 @@ char Justina_interpreter::getCharacter(Stream* pInputStream, bool& killNow, bool
     bool readCharWindowExpired{};
     long timeOutValue = pInputStream->getTimeout();
 
+    bool stop{ false }, abort{ false };
     do {
-        checkTimeAndExecHousekeeping(killNow);
+        execPeriodicHousekeeping(&kill, &forcedStop, &forcedAbort);
+        if (kill) { return c; }             // flag 'kill' (request from Justina caller) - console character buffer already flushed
+        if (abort) { forcedAbort = true; return c; }
+        if (stop) { forcedStop = true; }
 
         if (pInputStream->available() > 0) { c = pInputStream->read(); break; }
 
@@ -1354,10 +1369,9 @@ char Justina_interpreter::getCharacter(Stream* pInputStream, bool& killNow, bool
 // ---------------------------------------------------------
 
 // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
-// return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
 // return value 'true' indicates kill request from Justina caller
 
-bool Justina_interpreter::getConsoleCharacters(bool& doAbort, bool& doStop, bool& doCancel, bool& doDefault, char* input, int& length, char terminator) {
+bool Justina_interpreter::getConsoleCharacters(bool& forcedStop, bool& forcedAbort, bool& doCancel, bool& doDefault, char* input, int& length, char terminator) {
     bool backslashFound{ false }, quitNow{ false };
 
     int maxLength = length;  // init
@@ -1365,9 +1379,11 @@ bool Justina_interpreter::getConsoleCharacters(bool& doAbort, bool& doStop, bool
     do {                                                                                                            // until new line character encountered
         // read a character, if available in buffer
         char c{ };                                                           // init: no character available
-        bool kill{ false };
-        c = getCharacter(static_cast<Stream*>(_pConsole), kill);               // get a key (character from console) if available and perform a regular housekeeping callback as well
+        bool kill{ false }, stop{ false }, abort{ false };
+        c = getCharacter(static_cast<Stream*>(_pConsole), kill, stop, abort);               // get a key (character from console) if available and perform a regular housekeeping callback as well
         if (kill) { return true; }      // return value true: kill Justina interpreter (buffer is now flushed until next line character)
+        if (abort) { forcedAbort = true; return false; }        // exit immediately
+        if (stop) { forcedStop = true; }
 
         if (c != 0xFF) {                                                                           // terminal character available for reading ?
             if (c == terminator) { break; }                                                         // read until terminator found (if terminator is 0xff (default): no search for a terminator 
@@ -1379,13 +1395,15 @@ bool Justina_interpreter::getConsoleCharacters(bool& doAbort, bool& doStop, bool
                 backslashFound = !backslashFound;
                 if (backslashFound) { continue; }                                                                   // first backslash in a sequence: note and do nothing
             }
-
-            else if (tolower(c) == 'a') {                                                                    // part of a Justina ESCAPE sequence ? Abort evaluation phase 
+            // interrupting running code (stop and abort) is now requested by setting specific application flags (see 'execPeriodicHousekeeping' procedure) 
+            /*
+            else if (tolower(c) == 'a') {                                                                    // part of a Justina ESCAPE sequence ? Abort evaluation phase
                 if (backslashFound) { backslashFound = false;  doAbort = true;  continue; }
             }
-            else if (tolower(c) == 's') {                                                                    // part of a Justina ESCAPE sequence ? Stop and enter debug mode 
+            else if (tolower(c) == 's') {                                                                    // part of a Justina ESCAPE sequence ? Stop and enter debug mode
                 if (backslashFound) { backslashFound = false;  doStop = true;  continue; }
             }
+            */
             else if (tolower(c) == 'c') {                                                                    // part of a Justina ESCAPE sequence ? Cancel if allowed 
                 if (backslashFound) { backslashFound = false;  doCancel = true;  continue; }
             }

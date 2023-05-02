@@ -149,8 +149,8 @@ class Justina_interpreter {
 
     static constexpr int MAX_OPEN_SD_FILES{ 5 };            // SD card: max. concurrent open files
 
-    static constexpr long WAIT_FOR_FIRST_CHAR_TIMEOUT{5000};             // milli seconds
-    static constexpr long DEFAULT_READ_TIMEOUT{200};
+    static constexpr long WAIT_FOR_FIRST_CHAR_TIMEOUT{ 5000 };             // milli seconds
+    static constexpr long DEFAULT_READ_TIMEOUT{ 200 };
 
     static constexpr int DEFAULT_CALC_RESULT_PRINT_WIDTH{ 30 };  // calculation results: default width of the print field.
     static constexpr int DEFAULT_PRINT_WIDTH{ 0 };         // default width of the print field.
@@ -883,11 +883,17 @@ class Justina_interpreter {
     static constexpr uint8_t value_isFloat = 0x02;
     static constexpr uint8_t value_isStringPointer = 0x03;
 
-    // application flag bits:flags signaling specific Justina status conditions
+    // application flag bits:flags signaling specific Justina status conditions to caller
     static constexpr long appFlag_errorConditionBit = 0x01L;       // bit 0: a Justina parsing or execution error has occured
     static constexpr long appFlag_statusAbit = 0x10L;              // status bits A and B: bits 5 and 4. Justina status (see below)
     static constexpr long appFlag_statusBbit = 0x20L;
     static constexpr long appFlag_waitingForUser = 0x40L;
+
+    // application flag bits: flags signaling specific caller status conditions to Justina
+    static constexpr long appFlag_stopRequestBit = 0x0100L;
+    static constexpr long appFlag_abortRequestBit = 0x0200L;
+    static constexpr long appFlag_killRequestBit = 0x0400L;
+
 
     // application flag bits b54: application status
     static constexpr long appFlag_statusMask = 0x30L;
@@ -920,7 +926,7 @@ class Justina_interpreter {
     static constexpr char passCopyToCallback = 0x40;       // flag: string is an empty string 
 
 
-    static constexpr unsigned long callbackPeriod = 100;      // in ms; should be considerably less than any heartbeat period defined in main program
+    static constexpr unsigned long CALLBACK_INTERVAL = 100;      // in ms; should be considerably less than any heartbeat period defined in main program
 
 
 
@@ -1185,8 +1191,8 @@ class Justina_interpreter {
     struct OpenFile {
         File file;
         char* filePath{ nullptr };                                // including file name
-        bool fileNumberInUse{false};                                   // file number = position in structure (base 0) + 1
-        int currentPrintColumn{0};
+        bool fileNumberInUse{ false };                                   // file number = position in structure (base 0) + 1
+        int currentPrintColumn{ 0 };
     };
 
     // block commands only (FOR, END, etc.): type of block, position in block, sequence check in block: allowed previous block commands 
@@ -1220,9 +1226,9 @@ class Justina_interpreter {
     // ---------
 
     OpenFile openFiles[MAX_OPEN_SD_FILES];                      // open files: file paths and attributed file numbers
-    int *_pIOprintColumns{};                                    // points to array on the heap
-    int _tabSize {8};                                           // tab size, default value if not changed by tabSize command 
-    int _angleMode {0};                                       // 0 = radians, 1 = degrees
+    int* _pIOprintColumns{};                                    // points to array on the heap
+    int _tabSize{ 8 };                                           // tab size, default value if not changed by tabSize command 
+    int _angleMode{ 0 };                                       // 0 = radians, 1 = degrees
     int _openFileCount = 0;
     int _SDcardChipSelectPin = 10;
     bool _SDinitOK = false;
@@ -1527,7 +1533,7 @@ class Justina_interpreter {
 
     unsigned long _lastCallBackTime{ 0 }, _currenttime{ 0 }, _previousTime{ 0 };
 
-    void (*_housekeepingCallback)(bool& requestQuit, long& appFlags);                                         // pointer to callback function for heartbeat
+    void (*_housekeepingCallback)(long& appFlags);                                         // pointer to callback function for heartbeat
 
     void (*_callbackUserProcStart[_userCBarrayDepth])(const void** pdata, const char* valueType, const int argCount);             // user functions: pointers to c++ procedures                                   
 
@@ -1543,7 +1549,7 @@ public:
     Justina_interpreter(Stream* const pConsoleInput, Stream** const pAltInputStreams, int altIOstreamCount,
         long progMemSize, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);               // constructor
     ~Justina_interpreter();               // deconstructor
-    bool setMainLoopCallback(void (*func)(bool& requistQuit, long& appFlags));                   // set callback functions
+    bool setMainLoopCallback(void (*func)(long& appFlags));                   // set callback functions
     bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType, const int argCount));
     bool run(Stream* const pConsole);
 
@@ -1637,14 +1643,14 @@ private:
     void pushConstant(int& tokenType);
     void pushVariable(int& tokenType);
 
-    void checkTimeAndExecHousekeeping(bool& killNow);
+    void execPeriodicHousekeeping(bool* pKillNow, bool* pForcedStop = nullptr, bool* pForcedAbort = nullptr);
 
-    char  getCharacter(Stream* pInputStream, bool& killNow, bool enableTimeOut = false, bool extraLongTimeout=false);
-    bool getConsoleCharacters(bool& doAbort, bool& doStop, bool& doCancel, bool& doDefault, char* input, int& length, char terminator=0xff);
+    char  getCharacter(Stream* pInputStream, bool& killNow, bool& forcedStop, bool& forcedAbort, bool enableTimeOut = false, bool extraLongTimeout = false);
+    bool getConsoleCharacters(bool& forcedStop, bool& forcedAbort, bool& doCancel, bool& doDefault, char* input, int& length, char terminator = 0xff);
 
     bool addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool& withinMultiLineComment,
         bool& redundantSemiColon, bool isEndOfFile, bool& bufferOverrun, bool  _flushAllUntilEOF, int& _lineCount, int& _statementCharCount, char c);
-    bool processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, int &clearIndicator, Stream*& pStatementInputStream);
+    bool processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, int& clearIndicator, Stream*& pStatementInputStream);
     void traceAndPrintDebugInfo();
     void printVariables(Stream* pOut, bool userVars);
     void printCallStack(Stream* pOut);
