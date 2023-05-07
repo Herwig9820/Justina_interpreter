@@ -31,7 +31,7 @@
 #define STARTSTOP_SD 1                          // set to zero if autostart SD card is not wanted
 
 // for debugging purposes, prints to Serial
-#define PRINT_LLIST_OBJ_CREA_DEL 0
+#define PRINT_LLIST_OBJ_CREA_DEL 1
 #define PRINT_HEAP_OBJ_CREA_DEL 0
 
 
@@ -90,12 +90,14 @@ char* LinkedList::appendListElement(int size) {
     _createdListObjectCounter++;
 
 #if PRINT_LLIST_OBJ_CREA_DEL
-    Serial.print("(LIST) Create elem # "); Serial.print(_listElementCount);
-    Serial.print(", list ID "); Serial.print(_listID);
-    Serial.print(", stack: "); Serial.print(_listName);
-    if (p == nullptr) { Serial.println("- list elem adres: nullptr"); }
-    else {
-        Serial.print(", list elem address: "); Serial.println((uint32_t)p, HEX);
+    if (_listID == 2) {
+        Serial.print("(LIST) Create elem # "); Serial.print(_listElementCount);
+        Serial.print(", list ID "); Serial.print(_listID);
+        Serial.print(", stack: "); Serial.print(_listName);
+        if (p == nullptr) { Serial.println("- list elem adres: nullptr"); }
+        else {
+            Serial.print(", list elem address: "); Serial.println((uint32_t)p, HEX);
+        }
     }
 #endif
     return (char*)(p + 1);                                          // pointer to payload of newly created element
@@ -117,18 +119,20 @@ char* LinkedList::deleteListElement(void* pPayload) {                           
     ListElemHead* p = pElem->pNext;                                                     // remember return value
 
 #if PRINT_LLIST_OBJ_CREA_DEL
-    // determine list element # by counting from the list start
-    ListElemHead* q = _pFirstElement;
-    int i{};
-    for (i = 1; i <= _listElementCount; ++i) {
-        if (q == pElem) { break; }            // always a match
-        q = q->pNext;
-    }
+    if (_listID == 2) {
+        // determine list element # by counting from the list start
+        ListElemHead* q = _pFirstElement;
+        int i{};
+        for (i = 1; i <= _listElementCount; ++i) {
+            if (q == pElem) { break; }            // always a match
+            q = q->pNext;
+        }
 
-    Serial.print("(LIST) Delete elem # "); Serial.print(i); Serial.print(" (new # "); Serial.print(_listElementCount - 1);
-    Serial.print("), list ID "); Serial.print(_listID);
-    Serial.print(", stack: "); Serial.print(_listName);
-    Serial.print(", list elem address: "); Serial.println((uint32_t)pElem, HEX);
+        Serial.print("(LIST) Delete elem # "); Serial.print(i); Serial.print(" (new # "); Serial.print(_listElementCount - 1);
+        Serial.print("), list ID "); Serial.print(_listID);
+        Serial.print(", stack: "); Serial.print(_listName);
+        Serial.print(", list elem address: "); Serial.println((uint32_t)pElem, HEX);
+    }
 #endif
 
     // before deleting object, remove from list:
@@ -758,7 +762,7 @@ Justina_interpreter::Justina_interpreter(Stream* const pConsole, Stream** const 
     parsingStack.setListName("parsing ");
     evalStack.setListName("eval    ");
     flowCtrlStack.setListName("flowCtrl");
-    immModeCommandStack.setListName("cmd line");
+    parsedCommandLineStack.setListName("cmd line");
 
     _progMemorySize = progMemSize;
 
@@ -1160,11 +1164,9 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
         if (execResult == result_kill) { kill = true; }
     }
 
-
     // if in debug mode, trace expressions (if defined) and print debug info 
     // ---------------------------------------------------------------------
     if ((_openDebugLevels > 0) && (execResult != result_kill) && (execResult != result_quit) && (execResult != result_initiateProgramLoad)) { traceAndPrintDebugInfo(); }
-
 
     // re-init or reset interpreter state 
     // ----------------------------------
@@ -1260,6 +1262,7 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
 
     // print new prompt and exit
     // -------------------------
+    Serial.print("flow ctrl stack levels: "); Serial.println(flowCtrlStack.getElementCount());
     if ((_promptAndEcho != 0) && (execResult != result_initiateProgramLoad)) { _pConsole->print("Justina> "); _isPrompt = true; }
 
     return _quitJustina;
@@ -1285,12 +1288,10 @@ void Justina_interpreter::traceAndPrintDebugInfo() {
     int blockType = block_none;
     do {                                                                // there is at least one open function in the call stack
         blockType = *(char*)pFlowCtrlStackLvl;
-        if (blockType != block_extFunction) {
-            pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
-            continue;
-        };
-        break;
+        if (blockType == block_extFunction) { break; }
+        pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
     } while (true);
+
     pDeepestOpenFunction = (OpenFunctionData*)pFlowCtrlStackLvl;        // deepest level of nested functions
     nextStatementPointer = pDeepestOpenFunction->pNextStep;
 
@@ -1537,6 +1538,14 @@ void Justina_interpreter::printCallStack(Stream* pOut) {
                     indent = 0;
                 }
             }
+            else {          // block commands (while, if, for, ...)                             //// temp of opkuisen
+                /*
+                for (int space = 0; space < indent - 4; ++space) { pOut->print(" "); }
+                if (indent > 0) { pOut->print("    "); }
+                sprintf(s, "(%s)", "block");
+                pOut->println(s);
+                */
+            }
             pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
         }
     }
@@ -1593,7 +1602,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
         #endif
             delete[]  userVarValues[index].pArray;
             _userArrayObjectCount--;
-    }
+        }
 
         // 4. if variable is a scalar string value: delete string
         // ------------------------------------------------------
@@ -1604,8 +1613,8 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
             #endif
                 _userVarStringObjectCount--;
                 delete[]  userVarValues[index].pStringConst;
+            }
         }
-}
 
         // 5. move up next user variables one place
         //    if a user variable is used in currently loaded program: adapt index in program storage

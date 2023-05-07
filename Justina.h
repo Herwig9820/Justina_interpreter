@@ -1526,7 +1526,7 @@ class Justina_interpreter {
 
     // while at least one program is stopped (debug mode), the parsed code of the original command line from where execution started is pushed to a separate stack, and popped again ...
     // ...when the program resumes. If multiple programs are currently stopped (see: flow control stack), this stack will contain multiple entries
-    LinkedList immModeCommandStack;
+    LinkedList parsedCommandLineStack;
 
 
     // callback functions and storage
@@ -1623,8 +1623,8 @@ private:
     void saveLastValue(bool& overWritePrevious);
     void clearEvalStack();
     void clearEvalStackLevels(int n);
-    void clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, execResult_type execResult = result_execOK, bool debugModeError = false);
-    void clearImmediateCmdStack(int n);
+    void clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, bool errorWhileCurrentlyStoppedPrograms = false, bool isAbortCommand = false);
+    void clearParsedCommandLineStack(int n);
 
     void deleteOneArrayVarStringObjects(Justina_interpreter::Val* varValues, int index, bool isUserVar, bool isLocalVar);
     execResult_type deleteVarStringObject(LE_evalStack* pStackLvl);

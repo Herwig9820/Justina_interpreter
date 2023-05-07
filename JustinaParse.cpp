@@ -235,7 +235,7 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
     // (parsed immediate mode statements can be temporarily pushed on the immediate mode stack to be replaced either by parsed debug command lines or parsed eval() strings) 
     // also delete all parsed alphanumeric constants: (1) in the currently parsed program program, (2) in parsed immediate mode statements (including those on the imm.mode parsed statements stack)) 
 
-    clearImmediateCmdStack(immModeCommandStack.getElementCount());      // including parsed string constants
+    clearParsedCommandLineStack(parsedCommandLineStack.getElementCount());      // including parsed string constants
     deleteConstStringObjects(_programStorage);
     deleteConstStringObjects(_programStorage + _progMemorySize);
 

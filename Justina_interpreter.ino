@@ -397,9 +397,9 @@ void dateTime(uint16_t* date, uint16_t* time)
 void keyStates(uint8_t pinStates, uint8_t& debounced, uint8_t& wentDown, uint8_t& wentUp, uint8_t& isShortPress, uint8_t& isLongPress) {
 
     // constants
-    static constexpr int keyCount = 2;
+    static constexpr int keyCount = 2;                  
     static constexpr long debounceTime = 10;           // in ms
-    static constexpr long alternateActionTime = 2000;     // in ms
+    static constexpr long alternateActionTime = 1500;     // in ms
 
     // static variables
     static long pinChangeTimes[2]{ millis(), millis() };
@@ -443,9 +443,6 @@ void keyStates(uint8_t pinStates, uint8_t& debounced, uint8_t& wentDown, uint8_t
     // return values
     debounced = debouncedStates; wentDown = debouncedStateChanges & (~debouncedStates); wentUp = debouncedStateChanges & debouncedStates;
     isShortPress = doPrimaryKeyActions; isLongPress = doAlternateKeyActions;
-
-    digitalWrite(STATUS_A_PIN, (debouncedStates & 1));////
-    digitalWrite(STATUS_B_PIN, (debouncedStates & 2));////
 
     return;
 }
