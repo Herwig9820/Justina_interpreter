@@ -324,7 +324,6 @@ class Justina_interpreter {
         fnccod_millis,
         fnccod_micros,
         fnccod_delay,
-        fnccod_delayMicroseconds,
         fnccod_digitalRead,                 // Arduino functions
         fnccod_digitalWrite,
         fnccod_pinMode,
@@ -548,6 +547,7 @@ class Justina_interpreter {
         result_var_illegalInDeclaration,
         result_var_illegalInProgram,
         result_var_usedInProgram,
+        result_var_deleteSyntaxinvalid,
 
         // array errors
         result_arrayDef_noDims = 1700,
@@ -1216,9 +1216,9 @@ class Justina_interpreter {
 
     // sizes MUST be specified AND must be exact
     static const ResWordDef _resWords[59];                          // keyword names
-    static const FuncDef _functions[135];                            // function names with min & max arguments allowed
-    static const SymbNumConsts _symbNumConsts[58];
+    static const FuncDef _functions[134];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
+    static const SymbNumConsts _symbNumConsts[58];
 
 
     // ---------
@@ -1411,7 +1411,7 @@ class Justina_interpreter {
 
     char _programName[MAX_IDENT_NAME_LEN + 1];
 
-    Stream* _pConsole{ nullptr };
+    Stream* _pConsoleIn{ nullptr }, *_pConsoleOut{nullptr};
     Stream** _pAltIOstreams{ nullptr };
     int _altIOstreamCount = 0;
 
@@ -1546,12 +1546,12 @@ class Justina_interpreter {
     // ------------------------------------
 
 public:
-    Justina_interpreter(Stream* const pConsoleInput, Stream** const pAltInputStreams, int altIOstreamCount,
+    Justina_interpreter(Stream* const pConsoleIn, Stream * const pConsoleOut, Stream** const pAltInputStreams, int altIOstreamCount,
         long progMemSize, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);               // constructor
     ~Justina_interpreter();               // deconstructor
     bool setMainLoopCallback(void (*func)(long& appFlags));                   // set callback functions
     bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType, const int argCount));
-    bool run(Stream* const pConsole);
+    bool run(Stream* const pConsoleIn, Stream* const pConsoleOut);
 
 private:
     bool parseAsResWord(char*& pNext, parseTokenResult_type& result);
@@ -1593,17 +1593,17 @@ private:
     void* arrayElemAddress(void* varBaseAddress, int* dims);
 
     execResult_type  exec(char* startHere);
-    execResult_type  execParenthesesPair(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount);
+    execResult_type  execParenthesesPair(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount, bool& forcedStopRequest, bool& forcedAbortRequest);
     execResult_type  execAllProcessedOperators();
 
     execResult_type  execUnaryOperation(bool isPrefix);
     execResult_type  execInfixOperation();
-    execResult_type  execInternalFunction(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount);
+    execResult_type  execInternalFunction(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount, bool& forcedStopRequest, bool& forcedAbortRequest);
     execResult_type  launchExternalFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount);
     execResult_type  launchEval(LE_evalStack*& pFunctionStackLvl, char* parsingInput);
     execResult_type  terminateExternalFunction(bool addZeroReturnValue = false);
     execResult_type  terminateEval();
-    execResult_type execProcessedCommand(bool& isFunctionReturn, bool& cmdLineRequestsProgramStop, bool& userRequestsAbort);
+    execResult_type execProcessedCommand(bool& isFunctionReturn, bool& forcedStopRequest, bool& forcedAbortRequest);
     execResult_type testForLoopCondition(bool& fail);
 
     execResult_type checkFmtSpecifiers(bool isDispFmt, bool valueIsString, int suppliedArgCount, char* valueType, Val* operands, char& numSpecifier,

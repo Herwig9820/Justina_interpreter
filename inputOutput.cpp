@@ -305,7 +305,7 @@ Justina_interpreter::execResult_type Justina_interpreter::checkStream(long argIs
     if ((!(argIsLongBits & (0x1 << argIndex))) && (!(argIsFloatBits & (0x1 << argIndex)))) { return result_numberExpected; }                      // file number
     streamNumber = (argIsLongBits & (0x1 << argIndex)) ? arg.longConst : arg.floatConst;
 
-    if (streamNumber == 0) { pStream = static_cast<Stream*> (_pConsole); }
+    if (streamNumber == 0) { pStream = static_cast<Stream*> (_pConsoleIn); }  // if console out is wanted: set it AFTER return of this function
     else if (streamNumber < 0) {
         if (( - streamNumber) > _altIOstreamCount) { return result_IO_invalidStreamNumber; }              
         pStream = static_cast<Stream*>(_pAltIOstreams[(-streamNumber) - 1]);     // stream number -1 => array index 0, etc.

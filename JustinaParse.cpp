@@ -179,7 +179,7 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
                 Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pAnum, HEX);
             #endif
                 _parsedStringConstObjectCount--;
-                delete[] pAnum; 
+                delete[] pAnum;
             }
         }
         uint8_t tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) :
@@ -261,7 +261,7 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
     initInterpreterVariables(withUserVariables);
 
 
-    _pConsole->println();
+    _pConsoleOut->println();
 }
 
 
@@ -597,7 +597,7 @@ void Justina_interpreter::parseAndExecTraceString() {
     char* pTraceParsingInput = _pTraceString;  // copy pointer to start of trace string
     _parsingExecutingTraceString = true;
 
-    _pConsole->print("TRACE ==>> ");
+    _pConsoleOut->print("TRACE ==>> ");
     do {
         // init
         *(_programStorage + _progMemorySize) = tok_no_token;          // in case no valid tokens will be stored
@@ -608,20 +608,20 @@ void Justina_interpreter::parseAndExecTraceString() {
         if (*pTraceParsingInput == '\0') { break; } // could occur if semicolons skipped
 
         // parse ONE trace string expression only
-        if (valuePrinted) { _pConsole->print(", "); }                    // separate values (if more than one)
+        if (valuePrinted) { _pConsoleOut->print(", "); }                    // separate values (if more than one)
 
         // note: application flags are not adapted (would not be passed to caller immediately)
         int dummy{};
         parseTokenResult_type result = parseStatement(pTraceParsingInput, pNextParseStatement, dummy);
         if (result == result_tokenFound) {
             prettyPrintStatements(0);         // do NOT pretty print if parsing error, to avoid bad-looking partially printed statements (even if there will be an execution error later)
-            _pConsole->print(": ");                 // resulting value will follow
+            _pConsoleOut->print(": ");                 // resulting value will follow
             pTraceParsingInput = pNextParseStatement;
         }
         else {
             char  errStr[12];                   // includes place for terminating '\0'
             sprintf(errStr, "<ErrP%d>", (int)result);       // if parsing error, print error instead of value AND CONTINUE with next trace expression (if any)
-            _pConsole->print(errStr);
+            _pConsoleOut->print(errStr);
             // pNextParseStatement not yet correctly positioned: set to next statement
             while ((pTraceParsingInput[0] != term_semicolon[0]) && (pTraceParsingInput[0] != '\0')) { ++pTraceParsingInput; }
             if (pTraceParsingInput[0] == term_semicolon[0]) { ++pTraceParsingInput; }
@@ -642,7 +642,7 @@ void Justina_interpreter::parseAndExecTraceString() {
     } while (*pTraceParsingInput != '\0');                                              // exit loop if all expressions handled
 
     _parsingExecutingTraceString = false;
-    _pConsole->println();       // go to next output line
+    _pConsoleOut->println();       // go to next output line
 
     return;
 }
@@ -977,7 +977,7 @@ bool Justina_interpreter::checkCommandArgToken(parseTokenResult_type& result, in
         if ((allowedParType != cmdPar_none) && !multipleParameter && !optionalParameter) {    // missing parameters ?
             result = result_cmd_parameterMissing; return false;
         }
-        
+
         if (_isClearCBcmd) { _userCBprocAliasSet_count = 0; }
         // NOTE: clear program / memory command will be executed when normal execution ends (before entering idle idle mode, waiting for input)
         else if (_isClearProgCmd) { clearIndicator = 1; }     // clear program: set flag 
@@ -2270,7 +2270,6 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
 
 bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
 
-
     if (_isProgramCmd || _isDeleteVarCmd || _isDeclCBcmd) { return true; }                             // looking for an UNQUALIFIED identifier name; prevent it's mistaken for a variable name (same format)
     if (_isCallbackCmd && (_cmdArgNo == 0)) { return true; }
 
@@ -2826,7 +2825,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
         strcpy(_programName, pIdentifierName);
     }
 
-    else if (_isDeclCBcmd) {                                             // !!! maximum 10 user functions !!!    
+    else if (_isDeclCBcmd) {
         if (_userCBprocAliasSet_count >= _userCBprocStartSet_count) { pNext = pch; result = result_userCB_allAliasesSet; } // still need to delete string object
         for (int i = 0; i < _userCBprocAliasSet_count; i++) {                               // alias already declared ?
             if (strcmp(_callbackUserProcAlias[i], pIdentifierName) == 0) { pNext = pch; result = result_userCB_aliasRedeclared; }    // still need to delete string object
@@ -2844,7 +2843,13 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
     }
 
     else if (_isDeleteVarCmd) {
-        result = deleteUserVariable(pIdentifierName);
+        // NOTE: deletion of user varables NEEDS to be done during parsing (before execution starts)  to keep system consistency, because variable creation also occurs during parsing
+        
+        char* p = pNext;
+        while (p[0] == ' ') { p++; }                   // find first non-space character
+        if ((p[0] != term_comma[0]) && (p[0] != term_semicolon[0]) && (p[0] != '\0')) { result = result_var_deleteSyntaxinvalid; }
+        else {result = deleteUserVariable(pIdentifierName);}
+        
         if (result != result_tokenFound) {
         #if PRINT_HEAP_OBJ_CREA_DEL
             Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pIdentifierName, HEX);
@@ -3071,11 +3076,11 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
         int tokenSourceLength = strlen(pPrettyToken);
         if (isSemicolon) {
             if (multipleInstructions && isFirstInstruction) { pPrettyToken[1] = '\0'; }  // no space after semicolon
-            if ((nextTokenType != tok_no_token) && (allInstructions || (instructionCount > 1))) { _pConsole->print(pPrettyToken); }
-            if (isFirstInstruction && multipleInstructions) { _pConsole->print("]   ( ==>> "); }
+            if ((nextTokenType != tok_no_token) && (allInstructions || (instructionCount > 1))) { _pConsoleOut->print(pPrettyToken); }
+            if (isFirstInstruction && multipleInstructions) { _pConsoleOut->print("]   ( ==>> "); }
         }
 
-        else { _pConsole->print(pPrettyToken); }              // not a semicolon
+        else { _pConsoleOut->print(pPrettyToken); }              // not a semicolon
 
         // if printing a fixed number of instructions, return output error position based on token where execution error was produced
         if (!allInstructions) {
@@ -3104,7 +3109,7 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
     }
 
     // exit
-    _pConsole->print(multipleInstructions ? " ...)\r\n" : allInstructions ? "" : "\r\n"); _isPrompt = false;
+    _pConsoleOut->print(multipleInstructions ? " ...)\r\n" : allInstructions ? "" : "\r\n"); _isPrompt = false;
 }
 
 
@@ -3174,17 +3179,17 @@ void Justina_interpreter::printParsingResult(parseTokenResult_type result, int f
         // instruction not parsed (because of error): print source instruction where error is located (can not 'unparse' yet for printing instruction)
         if (result == result_statementTooLong) { pErrorPos = pInstruction; }
 
-        _pConsole->print("\r\n  "); _pConsole->println(pInstruction);
+        _pConsoleOut->print("\r\n  "); _pConsoleOut->println(pInstruction);
         char point[pErrorPos - pInstruction + 3];                               // 2 extra positions for 2 leading spaces, 2 for '^' and '\0' characters
         memset(point, ' ', pErrorPos - pInstruction + 2);
         point[pErrorPos - pInstruction + 2] = '^';
         point[pErrorPos - pInstruction + 3] = '\0';
-        _pConsole->println(point);
+        _pConsoleOut->println(point);
 
         if (_programMode) { sprintf(parsingInfo, "  Parsing error %d: statement ending at line %d", result, lineCount + 1); }
         else { sprintf(parsingInfo, "  Parsing error %d", result); }
     }
 
-    if (strlen(parsingInfo) > 0) { _pConsole->println(parsingInfo); _isPrompt = false; }
+    if (strlen(parsingInfo) > 0) { _pConsoleOut->println(parsingInfo); _isPrompt = false; }
 
 };
