@@ -28,8 +28,6 @@
 
 #include "Justina.h"
 
-#define STARTSTOP_SD 1                          // set to zero if autostart SD card is not wanted
-
 // for debugging purposes, prints to Serial
 #define PRINT_LLIST_OBJ_CREA_DEL 0
 #define PRINT_HEAP_OBJ_CREA_DEL 0
@@ -354,6 +352,10 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
 
     // input and output commands
     // -------------------------
+
+    {"setConsole",      cmdcod_setConsole,      cmd_onlyImmediate,                                      0,0,    cmdPar_104,     cmdBlockNone},
+    {"setConsoleIn",    cmdcod_setConsIn,       cmd_onlyImmediate,                                      0,0,    cmdPar_104,     cmdBlockNone},
+    {"setConsoleOut",   cmdcod_setConsOut,      cmd_onlyImmediate,                                      0,0,    cmdPar_104,     cmdBlockNone},
 
     {"info",            cmdcod_info,            cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_114,     cmdBlockNone},
     {"input",           cmdcod_input,           cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_113,     cmdBlockNone},
@@ -728,14 +730,16 @@ const Justina_interpreter::TerminalDef Justina_interpreter::_terminals[]{
 // *   constructor   *
 // -------------------
 
-Justina_interpreter::Justina_interpreter(Stream* const pConsoleIn, Stream* const pConsoleOut, Stream** const pAltInputStreams, int altIOstreamCount,
+Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int altIOstreamCount,
     long progMemSize, int SDcardChipSelectPin) :
-    _pConsoleIn(pConsoleIn), _pConsoleOut(pConsoleOut), _pAltIOstreams(pAltInputStreams), _altIOstreamCount(altIOstreamCount), _progMemorySize(progMemSize), _SDcardChipSelectPin(SDcardChipSelectPin) {
+    _pAltIOstreams(pAltInputStreams), _altIOstreamCount(altIOstreamCount), _progMemorySize(progMemSize), _SDcardChipSelectPin(SDcardChipSelectPin) {
 
     // settings to be initialized when cold starting interpreter only
     // --------------------------------------------------------------
 
     _coldStart = true;
+
+    _pConsoleIn = _pConsoleOut = pAltInputStreams[0];
 
     _housekeepingCallback = nullptr;
     for (int i = 0; i < _userCBarrayDepth; i++) { _callbackUserProcStart[i] = nullptr; }
@@ -753,14 +757,13 @@ Justina_interpreter::Justina_interpreter(Stream* const pConsoleIn, Stream* const
     _currenttime = millis();
     _previousTime = _currenttime;
     _lastCallBackTime = _currenttime;
-    true;
+
     parsingStack.setListName("parsing ");
     evalStack.setListName("eval    ");
     flowCtrlStack.setListName("flowCtrl");
     parsedCommandLineStack.setListName("cmd line");
 
-    _progMemorySize = progMemSize;
-
+    if(_progMemorySize  + IMM_MEM_SIZE > pow(2,16)) {_progMemorySize = pow(2,16) - IMM_MEM_SIZE;}
     _programStorage = new char[_progMemorySize + IMM_MEM_SIZE];
 
     initInterpreterVariables(true);
@@ -807,7 +810,7 @@ bool Justina_interpreter::setUserFcnCallback(void(*func) (const void** data, con
 // *   interpreter main loop   *
 // ----------------------------
 
-bool Justina_interpreter::run(Stream* const pConsoleIn, Stream* const pConsoleOut) {
+bool Justina_interpreter::run() {
 
     bool withinStringEscSequence{ false };
     bool lastCharWasSemiColon{ false };
@@ -876,9 +879,6 @@ bool Justina_interpreter::run(Stream* const pConsoleIn, Stream* const pConsoleOu
 
     bool redundantSemiColon = false;
 
-    _pConsoleIn = pConsoleIn;           // console can still be changed by the caller
-    _pConsoleOut = pConsoleOut;
-
     _pConsoleOut->println();
     for (int i = 0; i < 13; i++) { _pConsoleOut->print("*"); } _pConsoleOut->print("____");
     for (int i = 0; i < 4; i++) { _pConsoleOut->print("*"); } _pConsoleOut->print("__");
@@ -890,16 +890,11 @@ bool Justina_interpreter::run(Stream* const pConsoleIn, Stream* const pConsoleOu
     _pConsoleOut->print("    Version: "); _pConsoleOut->print(ProductVersion); _pConsoleOut->print(" ("); _pConsoleOut->print(BuildDate); _pConsoleOut->println(")");
     for (int i = 0; i < 48; i++) { _pConsoleOut->print("*"); } _pConsoleOut->println();
 
-#if STARTSTOP_SD
-    execResult_type execResult = startSD();
-    if (execResult != result_execOK) { _pConsoleOut->println("SD card ERROR: SD card NOT initialised\r\n"); }
-#endif
-
     _appFlags = 0x0000L;                            // init application flags (for communication with Justina caller, using callbacks)
 
     _programMode = false;
     _programCounter = _programStorage + _progMemorySize;
-    *(_programStorage + _progMemorySize) = tok_no_token;                                      //  current end of program (immediate mode)
+    *(_programStorage + _progMemorySize) = tok_no_token;                                      //  current end of program (FIRST byte of immediate mode command line)
     _isPrompt = false;
 
     _coldStart = false;             // can be used if needed in this procedure, to determine whether this was a cold or warm start
@@ -908,6 +903,38 @@ bool Justina_interpreter::run(Stream* const pConsoleIn, Stream* const pConsoleOu
     int clearCmdIndicator{ 0 };                                    // 1 = clear program cmd, 2 = clear all cmd
     char c{};
     bool kill{ false };
+    bool loadingStartupProgram{ false }, launchingStartFunction{ false };
+    bool startJustinaWithoutAutostart{ true };
+
+    if (_SDcardChipSelectPin > 0) {
+        _pConsoleOut->print("\r\nLooking for an SD card...\r\n");
+        execResult_type execResult = startSD();
+        _pConsoleOut->print(_SDinitOK ? "SD card found\r\n" : "SD card error: SD card NOT found\r\n");
+
+        // open startup file and retrieve file number (which would be one, normally)
+        _initiateProgramLoad = _SDinitOK;
+        if (_initiateProgramLoad) {
+            _pConsoleOut->println("Looking for 'start.txt' program...");
+            if (!SD.exists("start.txt")) { _initiateProgramLoad = false; _pConsoleOut->println("'start.txt' program NOT found"); }
+        }
+
+        if (_initiateProgramLoad) {
+            execResult = SD_open(_loadProgFromFileNo, "start.txt", O_READ);    // this performs a few card & file checks as well
+            _initiateProgramLoad = (execResult == result_execOK);
+            if (!_initiateProgramLoad) { _pConsoleOut->println("Could not open 'start.txt' program"); }
+        }
+
+        if (_initiateProgramLoad) {
+            resetMachine(false);                // if 'warm' start, previous program (with its variables) may still exist
+            _programMode = true;
+            _programCounter = _programStorage;
+            loadingStartupProgram = true;
+            startJustinaWithoutAutostart = false;
+            pStatementInputStream = &openFiles[_loadProgFromFileNo - 1].file;            // loading program from file 
+            _pConsoleOut->print("Loading program 'start.txt'...\r\n");
+        }
+    }
+
 
     do {
         // when loading a program, as soon as first printable character of a PROGRAM is read, each subsequent character needs to follow after the previous one within a fixed time delay, handled by getCharacter().
@@ -916,25 +943,33 @@ bool Justina_interpreter::run(Stream* const pConsoleIn, Stream* const pConsoleOu
         bool programCharsReceived = _programMode && !_initiateProgramLoad;          // _initiateProgramLoad is set during execution of the command to read a program source file from the console
         bool waitForFirstProgramCharacter = _initiateProgramLoad;
 
-        bool quitNow{ false };
-
         // get a character if available and perform a regular housekeeping callback as well
         // NOTE: forcedStop and forcedAbort are dummy arguments here (no program is running)
-        bool forcedStop{ false }, forcedAbort{ false };                                       // kill is true: request from caller, kill is false: quit command executed
-        c = getCharacter(pStatementInputStream, kill, forcedStop, forcedAbort, true, waitForFirstProgramCharacter);     // while waiting for first program character, allow a longer time out              
+        bool quitNow{ false }, forcedStop{ false }, forcedAbort{ false };                                       // kill is true: request from caller, kill is false: quit command executed
+        bool bufferOverrun{ false };                                        // buffer where statement characters are assembled for parsing
+        bool noCharAdded{ false };
+        bool allCharsReceived{ false };
 
-        if (kill) { break; }                // return true if kill request received from calling program
         _initiateProgramLoad = false;
 
-        // start processing input buffer when (1) in program mode: time out occurs and at least one character received, or (2) in immediate mode: when a new line character is detected
-        bool allCharsReceived = _programMode ? ((c == 0xFF) && programCharsReceived) : (c == '\n');
+        if (startJustinaWithoutAutostart) { allCharsReceived = true; startJustinaWithoutAutostart = false; }
+        else if (launchingStartFunction) {
+            strcpy(_statement, "start()");
+            statementCharCount = strlen(_statement);
+            allCharsReceived = true;                        // ready for parsing
+            launchingStartFunction = false;                 // nothing to prepare any more
+        }
+        else {     // note: while waiting for first program character, allow a longer time out              
+            c = getCharacter(pStatementInputStream, kill, forcedStop, forcedAbort, true, waitForFirstProgramCharacter);
+            if (kill) { break; }                // return true if kill request received from calling program
+            // start processing input buffer when (1) in program mode: time out occurs and at least one character received, or (2) in immediate mode: when a new line character is detected
+            allCharsReceived = _programMode ? ((c == 0xFF) && programCharsReceived) : (c == '\n');
+            if ((c == 0xFF) && !allCharsReceived) { continue; }                // no character: keep waiting for input (except when program or imm. mode line is read)
 
-        if ((c == 0xFF) && !allCharsReceived) { continue; }                // no character: keep waiting for input (except when program or imm. mode line is read)
-
-        // if no character added: nothing to do, wait for next
-        bool bufferOverrun{ false };                                        // buffer where statement characters are assembled for parsing
-        bool noCharAdded = !addCharacterToInput(lastCharWasSemiColon, withinString, withinStringEscSequence, within1LineComment, withinMultiLineComment, redundantSemiColon, allCharsReceived,
-            bufferOverrun, flushAllUntilEOF, lineCount, statementCharCount, c);
+            // if no character added: nothing to do, wait for next
+            noCharAdded = !addCharacterToInput(lastCharWasSemiColon, withinString, withinStringEscSequence, within1LineComment, withinMultiLineComment, redundantSemiColon, allCharsReceived,
+                bufferOverrun, flushAllUntilEOF, lineCount, statementCharCount, c);
+        }
 
         quitNow = false;
 
@@ -977,11 +1012,16 @@ bool Justina_interpreter::run(Stream* const pConsoleIn, Stream* const pConsoleOu
                 quitNow = processAndExec(result, kill, lineCount, pErrorPos, clearCmdIndicator, pStatementInputStream);  // return value: quit Justina now
 
                 // parsing error occured ? reset input controlling variables
-                if (result != result_tokenFound) {
+                if (result == result_tokenFound) {
+                    if (loadingStartupProgram) { launchingStartFunction = true; }
+                }
+                else
+                {
                     statementCharCount = 0;
                     withinString = false; withinStringEscSequence = false; within1LineComment = false; withinMultiLineComment = false;
                     lastCharWasSemiColon = false;
                 }
+                loadingStartupProgram = false;    // if this was a startup program load, then now it's aborted because of parsing error
 
                 // reset after program (or imm. mode line) is read and processed
                 lineCount = 0;
@@ -1261,10 +1301,8 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
 
     // print new prompt and exit
     // -------------------------
-    Serial.print("flow ctrl stack levels: "); Serial.println(flowCtrlStack.getElementCount());////
     while (_pConsoleIn->available() > 0) { _pConsoleIn->read(); }                // empty console buffer first
     if ((_promptAndEcho != 0) && (execResult != result_initiateProgramLoad)) { _pConsoleOut->print("Justina> "); _isPrompt = true; }
-
     return _quitJustina;
 }
 

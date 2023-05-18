@@ -239,7 +239,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_listFiles(Stream* p
     if (!_SDinitOK) { return result_SD_noCardOrCardError; }
 
     /*
-    // print to SERIAL (fixed) but include date and time stamp
+    // print to SERIAL (fixed in SD library) but include date and time stamp
     SdVolume volume{};
     SdFile root{};
 

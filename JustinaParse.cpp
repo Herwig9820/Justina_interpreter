@@ -843,12 +843,13 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
     if (cmdBlockDef.blockPosOrAction == block_startPos) {                        // is a block start command ?                          
         _blockLevel++;                                                          // increment stack counter and create corresponding list element
         _pParsingStack = (LE_parsingStack*)parsingStack.appendListElement(sizeof(LE_parsingStack));
-        _pParsingStack->openBlock.cmdBlockDef = cmdBlockDef;                // store in stack: block type, block position (start), n/a, n/a
+        _pParsingStack->openBlock.cmdBlockDef = cmdBlockDef;                // store in stack: block type, block position ('start'), n/a, n/a
 
-        memcpy(_pParsingStack->openBlock.tokenStep, &_lastTokenStep, sizeof(char[2]));                      // store in stack: pointer to block start command token of open block
+        memcpy(_pParsingStack->openBlock.toTokenStep, &_lastTokenStep, sizeof(char[2]));                      // store in stack: pointer to block start command token of open block
         _blockStartCmdTokenStep = _lastTokenStep;                                     // remember pointer to block start command token of open block
         _blockCmdTokenStep = _lastTokenStep;                                          // remember pointer to last block command token of open block
         _extFunctionBlockOpen = _extFunctionBlockOpen || _isExtFunctionCmd;    // open until block closing END command     
+
         return true;                                                         // nothing more to do
     }
 
@@ -862,14 +863,14 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
             if ((pStackLvl->openBlock.cmdBlockDef.blockType == block_extFunction) &&   // an open external function block has been found (call or definition)
                 (cmdBlockDef.blockPosOrAction == block_inOpenFunctionBlock)) {                // and current flow altering command is allowed in open function block
                 // store pointer from 'alter flow' token (command) to block start command token of compatible open block (from RETURN to FUNCTION token)
-                memcpy(((TokenIsResWord*)(_programStorage + _lastTokenStep))->toTokenStep, pStackLvl->openBlock.tokenStep, sizeof(char[2]));
+                memcpy(((TokenIsResWord*)(_programStorage + _lastTokenStep))->toTokenStep, pStackLvl->openBlock.toTokenStep, sizeof(char[2]));
                 break;                                                                      // -> applicable open block level found
             }
             if (((pStackLvl->openBlock.cmdBlockDef.blockType == block_for) ||
                 (pStackLvl->openBlock.cmdBlockDef.blockType == block_while)) &&         // an open loop block has been found (e.g. FOR ... END block)
                 (cmdBlockDef.blockPosOrAction == block_inOpenLoopBlock)) {                    // and current flow altering command is allowed in open loop block
                 // store pointer from 'alter flow' token (command) to block start command token of compatible open block (e.g. from BREAK to FOR token)
-                memcpy(((TokenIsResWord*)(_programStorage + _lastTokenStep))->toTokenStep, pStackLvl->openBlock.tokenStep, sizeof(char[2]));
+                memcpy(((TokenIsResWord*)(_programStorage + _lastTokenStep))->toTokenStep, pStackLvl->openBlock.toTokenStep, sizeof(char[2]));
                 break;                                                                      // -> applicable open block level found
             }
             pStackLvl = (LE_parsingStack*)parsingStack.getPrevListElement(pStackLvl);
@@ -901,7 +902,7 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
         if (_blockLevel + _parenthesisLevel > 0) { _pParsingStack = (LE_parsingStack*)parsingStack.getLastListElement(); }
         if (_blockLevel > 0) {
             // retrieve pointer to block start command token and last block command token of open block
-            memcpy(&_blockStartCmdTokenStep, _pParsingStack->openBlock.tokenStep, sizeof(char[2]));         // pointer to block start command token of open block       
+            memcpy(&_blockStartCmdTokenStep, _pParsingStack->openBlock.toTokenStep, sizeof(char[2]));         // pointer to block start command token of open block       
             uint16_t tokenStep = _blockStartCmdTokenStep;                            // init pointer to last block command token of open block
             uint16_t tokenStepPointedTo;
             memcpy(&tokenStepPointedTo, ((TokenIsResWord*)(_programStorage + tokenStep))->toTokenStep, sizeof(char[2]));
@@ -1063,7 +1064,7 @@ bool Justina_interpreter::parseAsResWord(char*& pNext, parseTokenResult_type& re
         TokenIsResWord* pToken = (TokenIsResWord*)_programCounter;
         pToken->tokenType = tok_isReservedWord | ((sizeof(TokenIsResWord) - (hasTokenStep ? 0 : 2)) << 4);
         pToken->tokenIndex = resWordIndex;
-        if (hasTokenStep) { pToken->toTokenStep[0] = 0xFF; pToken->toTokenStep[1] = 0xFF; }                  // -1: no token ref. Because uint16_t not necessarily aligned with word size: store as two sep. bytes                            
+        if (hasTokenStep) { pToken->toTokenStep[0] = 0xFF; pToken->toTokenStep[1] = 0xFF; }                  // -1: no token ref. uint16_t not necessarily aligned with word size: store as two sep. bytes                            
 
         _lastTokenStep = _programCounter - _programStorage;
         _lastTokenType = tok_isReservedWord;
@@ -2707,32 +2708,32 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
         // if FOR loop control variable, check it is not in use by a FOR outer loop of SAME function  
         // -----------------------------------------------------------------------------------------
 
-        if (_isForCommand) {
+        if (_isForCommand) {            // within a FOR statement
             if (varIsConstantVar) { pNext = pch; result = result_var_controlVarIsConstant; return false; }
             if (_blockLevel > 1) {     // minimum 1 other (outer) open block
-                TokenPointer prgmCnt;
-                prgmCnt.pTokenChars = _programStorage + _lastTokenStep;  // address of keyword
-                int tokenIndex = prgmCnt.pResW->tokenIndex;
 
-                // check if control variable is in use by a FOR outer loop
-                LE_parsingStack* pStackLvl = (LE_parsingStack*)parsingStack.getLastListElement();        // current open block level
-                do {
-                    pStackLvl = (LE_parsingStack*)parsingStack.getPrevListElement(pStackLvl);    // an outer block stack level
-                    if (pStackLvl == nullptr) { break; }
-                    if (pStackLvl->openBlock.cmdBlockDef.blockType == block_for) {    // outer block is FOR loop as well (could be while, if, ... block)
-                        // find token for control variable for this outer loop
-                        uint16_t tokenStep{ 0 };
-                        memcpy(&tokenStep, pStackLvl->openBlock.tokenStep, sizeof(char[2]));
-                        prgmCnt.pTokenChars = _programStorage + tokenStep;
-                        findTokenStep(prgmCnt.pTokenChars, tok_isVariable, 0);          // always match
+                // check whether this is the control variable (following the 'for' keyword) => this means there are no parenthesis levels to skip, below
+                char tokenType = *(_programStorage + _lastTokenStep);           // step preceding the variable step (which is not yet stored in program memory)
+                if ((tokenType & 0x0f) == tok_isReservedWord) {                 // preceding step can only be a 'for' keyword, because we are in a 'for' command
 
-                        // compare variable qualifier, name index and value index of outer and inner loop control variable
-                        bool isSameControlVariable = ((varScope == uint8_t(prgmCnt.pVar->identInfo & var_scopeMask))
-                            && ((int)prgmCnt.pVar->identNameIndex == varNameIndex)
-                            && ((int)prgmCnt.pVar->identValueIndex == valueIndex));
-                        if (isSameControlVariable) { pNext = pch; result = result_var_ControlVarInUse; return false; }
-                    }
-                } while (true);
+                    // check if control variable is in use by a FOR outer loop
+                    LE_parsingStack* pStackLvl = (LE_parsingStack*)parsingStack.getLastListElement();        // current open block level
+                    do {
+                        pStackLvl = (LE_parsingStack*)parsingStack.getPrevListElement(pStackLvl);    // an outer block stack level
+                        if (pStackLvl == nullptr) { break; }
+
+                        if (pStackLvl->openBlock.cmdBlockDef.blockType == block_for) {    // outer block is FOR loop as well (could be while, if, ... block)
+                            TokenPointer prgmCnt;
+                            uint16_t tokenStep{ 0 };
+                            memcpy(&tokenStep, pStackLvl->openBlock.toTokenStep, sizeof(char[2]));
+                            prgmCnt.pTokenChars = _programStorage + tokenStep + sizeof(TokenIsResWord);              // program step for control variable
+                            bool isSameControlVariable = ((uint8_t(prgmCnt.pVar->identInfo & var_scopeMask) == varScope)
+                                && ((int)prgmCnt.pVar->identNameIndex == varNameIndex)
+                                && ((int)prgmCnt.pVar->identValueIndex == valueIndex));
+                            if (isSameControlVariable) { pNext = pch; result = result_var_ControlVarInUse; return false; }
+                        }
+                    } while (true);
+                }
             }
         }
     }
@@ -2844,12 +2845,12 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
 
     else if (_isDeleteVarCmd) {
         // NOTE: deletion of user varables NEEDS to be done during parsing (before execution starts)  to keep system consistency, because variable creation also occurs during parsing
-        
+
         char* p = pNext;
         while (p[0] == ' ') { p++; }                   // find first non-space character
         if ((p[0] != term_comma[0]) && (p[0] != term_semicolon[0]) && (p[0] != '\0')) { result = result_var_deleteSyntaxinvalid; }
-        else {result = deleteUserVariable(pIdentifierName);}
-        
+        else { result = deleteUserVariable(pIdentifierName); }
+
         if (result != result_tokenFound) {
         #if PRINT_HEAP_OBJ_CREA_DEL
             Serial.print("----- (parsed str ) ");   Serial.println((uint32_t)pIdentifierName, HEX);
@@ -2906,8 +2907,8 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
     bool multipleInstructions = (instructionCount > 1);      // multiple, but not all, instructions
     bool isFirstInstruction = true;
 
-    // output: printable token (text)
-    const int maxCharsPrettyToken{ 100 };           // must be long enough to hold one token in text (e.g. a variable name)
+    // output: printable token (text) - must be long enough to hold one token in text (e.g. a variable name)
+    const int maxCharsPrettyToken{ MAX_ALPHA_CONST_LEN };           // IT IS SUPPOSED THAT A STRING CAN BE LONGER THAN ANY OTHER TOKEN
     const int maxOutputLength{ 200 };
     int outputLength = 0;                       // init: first position
 
@@ -3165,7 +3166,10 @@ void Justina_interpreter::printParsingResult(parseTokenResult_type result, int f
     if (result == result_tokenFound) {                                                // prepare message with parsing result
         if (_programMode) {
             if (_lastProgramStep == _programStorage) { strcpy(parsingInfo, "\r\nNo program loaded"); }
-            else { sprintf(parsingInfo, "\r\nProgram parsed without errors. %ld %% of program memory used", (long)(((_lastProgramStep - _programStorage + 1) * 100) / _progMemorySize)); }
+            else {
+                sprintf(parsingInfo, "\r\nProgram parsed without errors. %lu %% of program memory used (%u bytes)",
+                    (uint32_t)(((_lastProgramStep - _programStorage + 1) * 100) / _progMemorySize), (uint16_t)(_lastProgramStep - _programStorage + 1));
+            }
         }
     }
 

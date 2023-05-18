@@ -30,16 +30,16 @@
 #define _JUSTINA_h
 
 #include "arduino.h"
-#include <SPI.h>
 #include <SD.h>
+#include <SPI.h>
 
 #include <stdlib.h>
 #include <memory>
 
 #define ProductName "Justina: JUST an INterpreter for Arduino"
-#define LegalCopyright "Copyright (C) Herwig Taveirne, 2022"
+#define LegalCopyright "Copyright (C) Herwig Taveirne 2022, 2023"
 #define ProductVersion "1.0.1"
-#define BuildDate "December 8, 2022"
+#define BuildDate "May 16, 2023"
 
 
 // ******************************************************************
@@ -117,8 +117,6 @@ public:
 };
 
 
-class MyParser;
-
 // *****************************************************************
 // ***                class Justina_interpreter                  ***
 // *****************************************************************
@@ -127,9 +125,7 @@ class MyParser;
 
 
 class Justina_interpreter {
-
-    ////static constexpr int _progMemorySize{ 2000 };             // size, in bytes, of program memory (stores parsed program)
-    static constexpr int IMM_MEM_SIZE{ 400 };               // size, in bytes, of user command memory (stores parsed user statements)
+    static constexpr uint16_t IMM_MEM_SIZE{ 400 };               // size, in bytes, of user command memory (stores parsed user statements)
 
     static constexpr int MAX_USERVARNAMES{ 255 };           // max. user variables allowed. Absolute parser limit: 255
     static constexpr int MAX_PROGVARNAMES{ 255 };           // max. program variable NAMES allowed (same name may be reused for global, static, local & parameter variables). Absolute limit: 255
@@ -143,18 +139,17 @@ class Justina_interpreter {
 
     static constexpr int MAX_IDENT_NAME_LEN{ 20 };          // max length of identifier names, excluding terminating '\0'
     static constexpr int MAX_ALPHA_CONST_LEN{ 255 };        // max length of character strings stored in variables, excluding terminating '\0',. Absolute limit: 255
-    static constexpr int MAX_USER_INPUT_LEN{ 100 };         // max. length of text a user can enter with an input statement. Absolute limit: 255
-
+    static constexpr int MAX_USER_INPUT_LEN{ 100 };         // max. length of text a user can enter with an INPUT statement. Absolute limit: 255
     static constexpr int MAX_STATEMENT_LEN{ 300 };          // max. length of a single user statement 
 
-    static constexpr int MAX_OPEN_SD_FILES{ 5 };            // SD card: max. concurrent open files
+    static constexpr int MAX_OPEN_SD_FILES{ 4 };            // SD card: max. concurrent open files
 
     static constexpr long WAIT_FOR_FIRST_CHAR_TIMEOUT{ 5000 };             // milli seconds
     static constexpr long DEFAULT_READ_TIMEOUT{ 200 };
 
     static constexpr int DEFAULT_CALC_RESULT_PRINT_WIDTH{ 30 };  // calculation results: default width of the print field.
     static constexpr int DEFAULT_PRINT_WIDTH{ 0 };         // default width of the print field.
-    static constexpr int DEFAULT_NUM_PRECISION{ 3 };         // default numeric precision.
+    static constexpr int DEFAULT_NUM_PRECISION{ 3 };         // default numeric precision
     static constexpr int DEFAULT_STRCHAR_TO_PRINT{ 30 };     // default # alphanumeric characters to print
 
     const int MAX_PRINT_WIDTH = 255;                        // max. width of the print field. Absolute limit: 255. With as defined as in c++ printf 'format.width' sub-specifier
@@ -255,8 +250,10 @@ class Justina_interpreter {
         cmdcod_listFiles,
         cmdcod_startSD,
         cmdcod_stopSD,
+        cmdcod_setConsole,
+        cmdcod_setConsIn,
+        cmdcod_setConsOut,
     };
-
 
     enum func_code {
         fnccod_ifte,
@@ -935,7 +932,7 @@ class Justina_interpreter {
     // --------------------------
 
         // storage for tokens
-        // note: to avoid boundary alignment of structure members, character placeholders of correct size are used for all structure members
+        // note: to avoid boundary alignment issues of structure members, character placeholders of correct size are used for all structure members
 
     union CstValue {
         char longConst[4];
@@ -1179,9 +1176,10 @@ class Justina_interpreter {
 
     struct OpenCmdBlockLvl {
         CmdBlockDef cmdBlockDef;                                // storage for info about block commands
-        char tokenStep[2];                                     // block commands: step n� of next block command, or to block start command, in open block
+        char toTokenStep[2];                                     // block commands: step number of next block command, or to block start command, in open block
         char fcnBlock_functionIndex;                            // function definition block only: function index
     };
+
 
     union LE_parsingStack {
         OpenParenthesesLvl openPar;
@@ -1215,7 +1213,7 @@ class Justina_interpreter {
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na,block_na,block_na };                                   // not a 'block' command
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[59];                          // keyword names
+    static const ResWordDef _resWords[62];                          // keyword names
     static const FuncDef _functions[134];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
     static const SymbNumConsts _symbNumConsts[58];
@@ -1411,15 +1409,13 @@ class Justina_interpreter {
 
     char _programName[MAX_IDENT_NAME_LEN + 1];
 
-    Stream* _pConsoleIn{ nullptr }, *_pConsoleOut{nullptr};
+    Stream* _pConsoleIn{ nullptr }, * _pConsoleOut{ nullptr };
     Stream** _pAltIOstreams{ nullptr };
     int _altIOstreamCount = 0;
 
-    long _progMemorySize{};////
+    long _progMemorySize{};
 
-    // program storage
-    ////char _programStorage[_progMemorySize + IMM_MEM_SIZE];
-    char* _programStorage;
+    char* _programStorage;                                      // pointer to start of program storage
 
     Sd2Card _SDcard;
 
@@ -1546,12 +1542,11 @@ class Justina_interpreter {
     // ------------------------------------
 
 public:
-    Justina_interpreter(Stream* const pConsoleIn, Stream * const pConsoleOut, Stream** const pAltInputStreams, int altIOstreamCount,
-        long progMemSize, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);               // constructor
+    Justina_interpreter(Stream** const pAltInputStreams, int altIOstreamCount, long progMemSize, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);               // constructor
     ~Justina_interpreter();               // deconstructor
     bool setMainLoopCallback(void (*func)(long& appFlags));                   // set callback functions
     bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType, const int argCount));
-    bool run(Stream* const pConsoleIn, Stream* const pConsoleOut);
+    bool run();
 
 private:
     bool parseAsResWord(char*& pNext, parseTokenResult_type& result);

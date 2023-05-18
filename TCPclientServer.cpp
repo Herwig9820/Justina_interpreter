@@ -23,16 +23,16 @@
 */
 
 
-#include "myComm.h"
+#include "TCPclientServer.h"
 
 
-// *** Class MyTCPconnection ***
+// *** Class TCPconnection ***
 
 // connect as TCP server
-MyTCPconnection::MyTCPconnection( const char SSID [], const char PASS [],
+TCPconnection::TCPconnection( const char SSID [], const char PASS [],
     const IPAddress serverAddress, const IPAddress  gatewayAddress, const IPAddress subnetMask, const IPAddress DNSaddress,
     const int serverPort, connectionState_type initialConnState ) : _server( serverPort ) {                // constructor
-    _SSID = SSID;                                           //// wanneer initializer list gebruiken ?
+    _SSID = SSID;                                           
     _PASS = PASS;
     _serverAddress = serverAddress;
     _gatewayAddress = gatewayAddress;
@@ -48,7 +48,7 @@ MyTCPconnection::MyTCPconnection( const char SSID [], const char PASS [],
 }
 
 // connect as TCP client
-MyTCPconnection::MyTCPconnection( const char SSID [], const char PASS [], const IPAddress serverAddress, const int serverPort, connectionState_type initialConnState ) : _server( serverPort ) {                // constructor
+TCPconnection::TCPconnection( const char SSID [], const char PASS [], const IPAddress serverAddress, const int serverPort, connectionState_type initialConnState ) : _server( serverPort ) {                // constructor
     _SSID = SSID;
     _PASS = PASS;
     _serverAddress = serverAddress;
@@ -63,23 +63,23 @@ MyTCPconnection::MyTCPconnection( const char SSID [], const char PASS [], const 
 }
 
 
-void MyTCPconnection::setVerbose( bool verbose ) { _verbose = verbose; }
+void TCPconnection::setVerbose( bool verbose ) { _verbose = verbose; }
 
-void MyTCPconnection::setConnCallback( void (*func)(connectionState_type connectionState) ) { _callbackFcn = func; }
+void TCPconnection::setConnCallback( void (*func)(connectionState_type connectionState) ) { _callbackFcn = func; }
 
-WiFiServer* MyTCPconnection::getServer() { return &_server; }
+WiFiServer* TCPconnection::getServer() { return &_server; }
 
-WiFiClient* MyTCPconnection::getClient() { return &_client; }
+WiFiClient* TCPconnection::getClient() { return &_client; }
 
-connectionState_type MyTCPconnection::getConnectionState() { return _connectionState; }
+connectionState_type TCPconnection::getConnectionState() { return _connectionState; }
 
-void MyTCPconnection::setKeepAliveTimeout( unsigned long keepAliveTimeOut ) {
+void TCPconnection::setKeepAliveTimeout( unsigned long keepAliveTimeOut ) {
     _keepAliveTimeOut = keepAliveTimeOut;
     _keepAliveUntil = _keepAliveTimeOut + millis();
     _TCPconnTimeoutEnabled = (_keepAliveTimeOut != 0);
 }
 
-void MyTCPconnection::requestAction( connectionAction_type action ) { // only one action may be set
+void TCPconnection::requestAction( connectionAction_type action ) { // only one action may be set
     bool setTimeOut { false };
     unsigned long TCPtimeout;
     _resetWiFi = (action == action_0_disableWiFi) || (action == action_1_restartWiFi);
@@ -104,7 +104,7 @@ void MyTCPconnection::requestAction( connectionAction_type action ) { // only on
     _TCPenabled = _TCPenabled && (!(action == action_4_TCPdisable));
 }
 
-void MyTCPconnection::maintainConnection() {
+void TCPconnection::maintainConnection() {
     // variable 'connectionState' controls proper sequencing of tasks in these procedures:
     maintainWiFiConnection();                                                    // if currently not connected to wifi (or connection lost): (try to re-)connect
     maintainTCPconnection();                                                  // if a client is not connected: (try to re-)connect
@@ -113,7 +113,7 @@ void MyTCPconnection::maintainConnection() {
 
 // *** handle WiFi connection, for client and for server side ***
 
-void MyTCPconnection::maintainWiFiConnection() {
+void TCPconnection::maintainWiFiConnection() {
     switch ( _connectionState ) {                                           // connection state
 
     case conn_0_wifiNotConnected:
@@ -153,7 +153,7 @@ void MyTCPconnection::maintainWiFiConnection() {
 
 // *** handle TCP connection, for client and for server side ***
 
-void MyTCPconnection::maintainTCPconnection() {
+void TCPconnection::maintainTCPconnection() {
     if ( _connectionState < conn_1_wifiConnected ) { return; }              // even no wifi yet ? nothing to do
 
     switch ( _connectionState ) {                                           // connection state
@@ -162,11 +162,9 @@ void MyTCPconnection::maintainTCPconnection() {
         // state: connected to wifi but no TCP connection => start TCP connection
         if ( _TCPenabled && (_lastTCPconnectAttempt + _TCPconnectDelay < millis()) ) {       // time out before next TCP connection attempt reached ?
             if ( !_isClient ) { _client = _server.available(); }            // if server side: attempt to connect to client
-            ////digitalWrite( 8, HIGH );//// indicates stall here
-            ////digitalWrite( 10, HIGH );//// check stall while within _client.connected()
             unsigned int startMeas = millis();
+            // NOTE: occasionally, a stall occurs while IN _client.connect method and the system hangs
             bool isConnected = _isClient ? _client.connect( _serverAddress, _serverPort ) : _client.connected();
-            ////digitalWrite( 10, LOW );////
 
             if ( isConnected ) {
                 // if server immediately needs to recognize client connection, add this line here: if ( _isClient ) { _client.println(""); } 
@@ -177,52 +175,47 @@ void MyTCPconnection::maintainTCPconnection() {
                 changeConnectionState( conn_2_TCPconnected );               // success: TCP connection live
             }
             _lastTCPconnectAttempt = millis();                              // remember time of last TCP connection attempt
-            if ( (millis() - startMeas) > 60000 ) { Serial.println( isConnected ? "TCP connection OK" : "TCP connection NOK" ); }////
         }
         break;
 
     default:
-        // state: TCP connection active => stop TCP connection if client is not active any more OR after timeout OR per user program request
-        ////digitalWrite( 8, LOW );//// indicates stall here
-        ////digitalWrite( 10, HIGH );//// check stall while within _client.connected()
         unsigned int startMeas = millis();
+        // NOTE: occasionally, a stall occurs while IN _client.connected method and the system hangs
         bool clientConnectionEnd = ((!_client.connected()) || (_TCPconnTimeoutEnabled && (_keepAliveUntil < millis())));
-        ////digitalWrite( 10, LOW );////
 
         if ( clientConnectionEnd ) {   // client still connected ? (or still unread data)
             changeConnectionState( conn_1_wifiConnected );
             _client.stop();
             _lastTCPconnectAttempt = millis();                              // remember time of last TCP connection attempt
         }
-        if ( (millis() - startMeas) > 60000 ) { Serial.println( clientConnectionEnd ? "TCP stop" : "TCP stays" ); }////
     }
 }
 
-void MyTCPconnection::changeConnectionState( connectionState_type newState ) {  // *** change connection state and report to serial monitor
+void TCPconnection::changeConnectionState( connectionState_type newState ) {  // *** change connection state and report to serial monitor
     if ( _verbose ) { printConnectionStateInfo( newState ); }            // before _connectionState is changed
     _connectionState = newState;
     if ( _callbackFcn != nullptr ) { ; _callbackFcn( _connectionState ); }
 }
 
-void MyTCPconnection::printConnectionStateInfo( connectionState_type newState ) {
+void TCPconnection::printConnectionStateInfo( connectionState_type newState ) {
     char stateChange [40], reason [40], s [100];
     IPAddress IP;
-    sprintf( stateChange, "[sys] at %ld s: S%d->S%d", millis() / 1000, _connectionState, newState );
+    sprintf( stateChange, "[TCP debug] at %ld s: S%d->S%d", millis() / 1000, _connectionState, newState );
 
     switch ( newState ) {
     case conn_0_wifiNotConnected:
         if ( _connectionState == conn_0_wifiNotConnected ) {
-            sprintf( s, "[sys] at %ld s: S%d Connecting to WiFi, SSID = %s", millis() / 1000, newState, _SSID );
+            sprintf( s, "[TCP debug] at %ld s: S%d Connecting to WiFi, SSID = %s", millis() / 1000, newState, _SSID );
         }
         else {
-            if ( WiFi.status() != WL_CONNECTED ) { strcpy( reason, "WiFi connection lost. Reconnecting in a moment... " ); }   //// strings in progmem
+            if ( WiFi.status() != WL_CONNECTED ) { strcpy( reason, "WiFi connection lost. Reconnecting in a moment... " ); }   
             else { strcpy( reason, "Disabling WiFi" ); }
             sprintf( s, "%s %s", stateChange, reason );
         }
         break;
 
     case conn_11_wifiNoSuccessConnecting:               // status only used as a flag for printing this message
-        sprintf( s, "[sys] at %ld s: S%d Trying again...", millis() / 1000, _connectionState ); // use existing status 
+        sprintf( s, "[TCP debug] at %ld s: S%d Trying again...", millis() / 1000, _connectionState ); // use existing status 
         break;
 
     case conn_1_wifiConnected:
@@ -232,7 +225,7 @@ void MyTCPconnection::printConnectionStateInfo( connectionState_type newState ) 
 
         }
         else {
-            if ( !_client.connected() ) { strcpy( reason, "Other side disconnected" ); }   //// strings in progmem
+            if ( !_client.connected() ) { strcpy( reason, "Other side disconnected" ); }   
             else { strcpy( reason, "Stopping TCP connection" ); }
             sprintf( s, "%s %s", stateChange, reason );
 

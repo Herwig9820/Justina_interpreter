@@ -25,12 +25,11 @@
 */
 
 
-#ifndef _MYCOMM_h
-#define _MYCOMM_h
+#ifndef _TCP_CLIENT_SERVER.h
+#define _TCP_CLIENT_SERVER.h
 
 #if defined(ARDUINO_ARCH_RP2040)
 #include <WiFiNINA_Generic.h>
-
 #else
 #include <WiFiNINA.h>
 #endif
@@ -53,9 +52,9 @@ enum connectionAction_type {
     action_4_TCPdisable
 };
 
-// *** Class MyTCPconnection: declarations ***
+// *** Class TCPconnection: declarations ***
 
-class MyTCPconnection {                                               // class to control connection to wifi and a client, if available
+class TCPconnection {                                               // class to control connection to wifi and a client, if available
 
 private:
     const char* _SSID, * _PASS;
@@ -95,9 +94,9 @@ private:
 
 public:
     // public methods 
-    MyTCPconnection( const char SSID [], const char PASS [],          // constructor: pass IP addresses and server port
+    TCPconnection( const char SSID [], const char PASS [],          // constructor: pass IP addresses and server port
         const IPAddress serverAddress, const IPAddress  gatewayAddress, const IPAddress subnetMask, const IPAddress  DNSaddress, const int serverPort, connectionState_type initialConnState );
-    MyTCPconnection( const char SSID [], const char PASS [], const IPAddress serverAddress, const int serverPort, connectionState_type initialConnState );
+    TCPconnection( const char SSID [], const char PASS [], const IPAddress serverAddress, const int serverPort, connectionState_type initialConnState );
     void maintainConnection();                                              // attempt to (re-)connect to wifi and to a client, if available
 
     void setVerbose( bool verbose );
