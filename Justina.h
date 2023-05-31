@@ -42,6 +42,11 @@
 #define BuildDate "May 16, 2023"
 
 
+namespace Jconst {
+    static constexpr long appFlag_dataInOut = 0x08L;                // external I/O (not to SD) is happening
+}
+
+
 // ******************************************************************
 // ***                      class LinkedList                      ***
 // ******************************************************************
@@ -121,8 +126,22 @@ public:
 // ***                class Justina_interpreter                  ***
 // *****************************************************************
 
+class JustinaIO {
+    int streamNumberIn{}, streamNumberOut{};
+    Stream* _pStreamIn{}, * _pStreamOut{};
 
+    long * _pAppFlags{};
 
+public:
+    int getStreamIn(Stream*& pStreamIn);
+    int getStreamOut(Stream*& pStreamOut);
+
+    size_t println();
+};
+
+// *****************************************************************
+// ***                class Justina_interpreter                  ***
+// *****************************************************************
 
 class Justina_interpreter {
     static constexpr uint16_t IMM_MEM_SIZE{ 400 };               // size, in bytes, of user command memory (stores parsed user statements)
@@ -144,8 +163,8 @@ class Justina_interpreter {
 
     static constexpr int MAX_OPEN_SD_FILES{ 4 };            // SD card: max. concurrent open files
 
-    static constexpr long WAIT_FOR_FIRST_CHAR_TIMEOUT{ 5000 };             // milli seconds
-    static constexpr long DEFAULT_READ_TIMEOUT{ 200 };
+    static constexpr long LONG_WAIT_FOR_CHAR_TIMEOUT{ 5000 };             // milli seconds
+    static constexpr long DEFAULT_READ_TIMEOUT{ 1000 };                 // milliseconds
 
     static constexpr int DEFAULT_CALC_RESULT_PRINT_WIDTH{ 30 };  // calculation results: default width of the print field.
     static constexpr int DEFAULT_PRINT_WIDTH{ 0 };         // default width of the print field.
@@ -598,7 +617,8 @@ class Justina_interpreter {
         result_parseList_valueToParseExpected,
 
         // other program errors
-        result_parse_kill = 2200
+        result_parse_abort = 2200,
+        result_parse_kill,
     };
 
 
@@ -880,24 +900,25 @@ class Justina_interpreter {
     static constexpr uint8_t value_isFloat = 0x02;
     static constexpr uint8_t value_isStringPointer = 0x03;
 
-    // application flag bits:flags signaling specific Justina status conditions to caller
-    static constexpr long appFlag_errorConditionBit = 0x01L;       // bit 0: a Justina parsing or execution error has occured
-    static constexpr long appFlag_statusAbit = 0x10L;              // status bits A and B: bits 5 and 4. Justina status (see below)
-    static constexpr long appFlag_statusBbit = 0x20L;
-    static constexpr long appFlag_waitingForUser = 0x40L;
 
-    // application flag bits: flags signaling specific caller status conditions to Justina
-    static constexpr long appFlag_stopRequestBit = 0x0100L;
-    static constexpr long appFlag_abortRequestBit = 0x0200L;
-    static constexpr long appFlag_killRequestBit = 0x0400L;
+    // application flag bits
+    //----------------------
+    // bits 3-0: flags signaling specific Justina status conditions to caller
+    static constexpr long appFlag_errorConditionBit = 0x01L;       // Justina parsing or execution error has occured
 
+    static constexpr long appFlag_statusMask = 0x06L;               // status bits mask
+    static constexpr long appFlag_idle = 0x00L;                     // idle status
+    static constexpr long appFlag_parsing = 0x02L;                  // parsing status
+    static constexpr long appFlag_executing = 0x04L;                // executing status
+    static constexpr long appFlag_stoppedInDebug = 0x06L;           // stopped in debug status
 
-    // application flag bits b54: application status
-    static constexpr long appFlag_statusMask = 0x30L;
-    static constexpr long appFlag_idle = 0x00L;
-    static constexpr long appFlag_parsing = 0x10L;
-    static constexpr long appFlag_executing = 0x20L;
-    static constexpr long appFlag_stoppedInDebug = 0x30L;
+////    static constexpr long appFlag_dataInOut = 0x08L;                // external I/O (not to SD) is happening
+
+    // bits 11-8: flags signaling specific caller status conditions to Justina
+    static constexpr long appFlag_consoleRequestBit = 0x0100L;
+    static constexpr long appFlag_killRequestBit = 0x0200L;
+    static constexpr long appFlag_stopRequestBit = 0x0400L;
+    static constexpr long appFlag_abortRequestBit = 0x0800L;
 
 
 
@@ -1194,23 +1215,23 @@ class Justina_interpreter {
     };
 
     // block commands only (FOR, END, etc.): type of block, position in block, sequence check in block: allowed previous block commands 
-    static constexpr CmdBlockDef cmdBlockExtFunction{ block_extFunction,block_startPos,block_na,block_na };                // 'IF' block mid position 2, min & max previous position is block start & block position 1, resp.
-    static constexpr CmdBlockDef cmdBlockWhile{ block_while,block_startPos,block_na,block_na };                            // 'WHILE' block start
-    static constexpr CmdBlockDef cmdBlockFor{ block_for, block_startPos,block_na,block_na };                               // 'FOR' block start
-    static constexpr CmdBlockDef cmdBlockIf{ block_if,block_startPos,block_na,block_na };                                  // 'IF' block start
-    static constexpr CmdBlockDef cmdBlockIf_elseIf{ block_if,block_midPos1,block_startPos,block_midPos1 };                 // 'IF' block mid position 1, min & max previous position is block start & block position 1, resp.
-    static constexpr CmdBlockDef cmdBlockIf_else{ block_if,block_midPos2,block_startPos,block_midPos1 };                   // 'IF' block mid position 2, min & max previous position is block start & block position 1, resp.
+    static constexpr CmdBlockDef cmdBlockExtFunction{ block_extFunction, block_startPos, block_na, block_na };                // 'IF' block mid position 2, min & max previous position is block start & block position 1, resp.
+    static constexpr CmdBlockDef cmdBlockWhile{ block_while, block_startPos, block_na, block_na };                            // 'WHILE' block start
+    static constexpr CmdBlockDef cmdBlockFor{ block_for, block_startPos, block_na, block_na };                               // 'FOR' block start
+    static constexpr CmdBlockDef cmdBlockIf{ block_if, block_startPos, block_na, block_na };                                  // 'IF' block start
+    static constexpr CmdBlockDef cmdBlockIf_elseIf{ block_if, block_midPos1, block_startPos, block_midPos1 };                 // 'IF' block mid position 1, min & max previous position is block start & block position 1, resp.
+    static constexpr CmdBlockDef cmdBlockIf_else{ block_if, block_midPos2, block_startPos, block_midPos1 };                   // 'IF' block mid position 2, min & max previous position is block start & block position 1, resp.
 
     // 'alter flow' block commands require an open block of a specific type, NOT necessary in the current inner open block 
     // the second value ('position in block') is specified to indicate which type of open block is required (e.g. a RETURN command can only occur within a FUNCTION...END block)
-    static constexpr CmdBlockDef cmdBlockOpenBlock_loop{ block_alterFlow,block_inOpenLoopBlock,block_na,block_na };        // only if an open FOR or WHILE block 
-    static constexpr CmdBlockDef cmdBlockOpenBlock_function{ block_alterFlow,block_inOpenFunctionBlock,block_na,block_na };// only if an open FUNCTION definition block 
+    static constexpr CmdBlockDef cmdBlockOpenBlock_loop{ block_alterFlow, block_inOpenLoopBlock, block_na, block_na };        // only if an open FOR or WHILE block 
+    static constexpr CmdBlockDef cmdBlockOpenBlock_function{ block_alterFlow, block_inOpenFunctionBlock, block_na, block_na };// only if an open FUNCTION definition block 
 
     // used to close any type of currently open inner block
-    static constexpr CmdBlockDef cmdBlockGenEnd{ block_genericEnd,block_endPos,block_na,block_endPos };            // all block types: block end 
+    static constexpr CmdBlockDef cmdBlockGenEnd{ block_genericEnd, block_endPos, block_na, block_endPos };            // all block types: block end 
 
     // other commands: first value indicates it's not a block command, other positions not used
-    static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na,block_na,block_na };                                   // not a 'block' command
+    static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na, block_na, block_na };                                   // not a 'block' command
 
     // sizes MUST be specified AND must be exact
     static const ResWordDef _resWords[62];                          // keyword names
@@ -1224,6 +1245,7 @@ class Justina_interpreter {
     // ---------
 
     OpenFile openFiles[MAX_OPEN_SD_FILES];                      // open files: file paths and attributed file numbers
+    int _consolePrintColumn{ 0 };
     int* _pIOprintColumns{};                                    // points to array on the heap
     int _tabSize{ 8 };                                           // tab size, default value if not changed by tabSize command 
     int _angleMode{ 0 };                                       // 0 = radians, 1 = degrees
@@ -1249,7 +1271,7 @@ class Justina_interpreter {
     bool _isForCommand = false;
 
     bool _initiateProgramLoad = false;
-    int _loadProgFromFileNo = 0;                                // 0: receive file (console)
+    int _loadProgFromStreamNo = 0;                                // 0: receive file (console)
     bool _userVarUnderConstruction = false;                       // user variable is created, but process is not terminated
 
     bool _isDeclCBcmd = false;
@@ -1370,7 +1392,6 @@ class Justina_interpreter {
 
     char _statement[MAX_STATEMENT_LEN + 1] = "";
     bool _programMode{ false };
-    bool _quitJustina{ false };
     bool _keepInMemory{ true };
     bool _isPrompt{ false };
 
@@ -1412,6 +1433,9 @@ class Justina_interpreter {
     Stream* _pConsoleIn{ nullptr }, * _pConsoleOut{ nullptr };
     Stream** _pAltIOstreams{ nullptr };
     int _altIOstreamCount = 0;
+
+    Stream* _pStreamIn{ nullptr }, * _pStreamOut{ nullptr };
+    int _streamNumberIn{ 0 }, _streamNumberOut{ 0 };
 
     long _progMemorySize{};
 
@@ -1548,6 +1572,62 @@ public:
     bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType, const int argCount));
     bool run();
 
+    int readFrom(int streamNumber);
+    int readFrom(int streamNumber, char* buffer, int length);
+
+    size_t writeTo(int streamNumber, char c);
+    size_t writeTo(int streamNumber, char* s, int size);
+
+    size_t printTo(int streamNumber, char c);
+    size_t printTo(int streamNumber, unsigned char c);
+    size_t printTo(int streamNumber, int i);
+    size_t printTo(int streamNumber, unsigned int i);
+    size_t printTo(int streamNumber, long l);
+    size_t printTo(int streamNumber, unsigned long l);
+    size_t printTo(int streamNumber, double d);
+    size_t printTo(int streamNumber, char* s);
+    size_t printTo(int streamNumber, const char* s);
+
+    size_t printlnTo(int streamNumber, char c);
+    size_t printlnTo(int streamNumber, unsigned char c);
+    size_t printlnTo(int streamNumber, int i);
+    size_t printlnTo(int streamNumber, unsigned int i);
+    size_t printlnTo(int streamNumber, long l);
+    size_t printlnTo(int streamNumber, unsigned long l);
+    size_t printlnTo(int streamNumber, double d);
+    size_t printlnTo(int streamNumber, char* s);
+    size_t printlnTo(int streamNumber, const char* s);
+    size_t printlnTo(int streamNumber);
+
+
+    int read();
+    int read(char* buffer, int length);
+
+    size_t write(char c);
+    size_t write(char* s, int size);
+
+    size_t print(char c);
+    size_t print(unsigned char c);
+    size_t print(int i);
+    size_t print(unsigned int i);
+    size_t print(long l);
+    size_t print(unsigned long l);
+    size_t print(double d);
+    size_t print(char* s);
+    size_t print(const char* s);
+
+    size_t println(char c);
+    size_t println(unsigned char c);
+    size_t println(int i);
+    size_t println(unsigned int i);
+    size_t println(long l);
+    size_t println(unsigned long l);
+    size_t println(double d);
+    size_t println(char* s);
+    size_t println(const char* s);
+    size_t println();
+
+
 private:
     bool parseAsResWord(char*& pNext, parseTokenResult_type& result);
     bool parseAsNumber(char*& pNext, parseTokenResult_type& result);
@@ -1640,15 +1720,15 @@ private:
 
     void execPeriodicHousekeeping(bool* pKillNow, bool* pForcedStop = nullptr, bool* pForcedAbort = nullptr);
 
-    char  getCharacter(Stream* pInputStream, bool& killNow, bool& forcedStop, bool& forcedAbort, bool enableTimeOut = false, bool extraLongTimeout = false);
+    char getCharacter(bool& killNow, bool& forcedStop, bool& forcedAbort, bool enableTimeOut = false, bool useLongTimeout = false);
     bool getConsoleCharacters(bool& forcedStop, bool& forcedAbort, bool& doCancel, bool& doDefault, char* input, int& length, char terminator = 0xff);
 
     bool addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool& withinMultiLineComment,
         bool& redundantSemiColon, bool isEndOfFile, bool& bufferOverrun, bool  _flushAllUntilEOF, int& _lineCount, int& _statementCharCount, char c);
-    bool processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, int& clearIndicator, Stream*& pStatementInputStream);
+    bool processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, int& clearIndicator, Stream*& pStatementInputStream, int& statementInputStreamNumber);
     void traceAndPrintDebugInfo();
-    void printVariables(Stream* pOut, bool userVars);
-    void printCallStack(Stream* pOut);
+    void printVariables(bool userVars);
+    void printCallStack();
     parseTokenResult_type deleteUserVariable(char* userVarName = nullptr);
 
     bool parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueType, parseTokenResult_type& result);
@@ -1659,17 +1739,23 @@ private:
     execResult_type SD_open(int& fileNumber, char* filePath, int mod = O_READ);
     execResult_type SD_openNext(int dirFileNumber, int& fileNumber, File* pDirectory, int mod = O_READ);
     void SD_closeFile(int fileNumber);
-    execResult_type SD_listFiles(Stream* pOut);
+    execResult_type SD_listFiles();
     execResult_type SD_fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File*& pFile, int allowFileTypes = 1);
     execResult_type SD_fileChecks(bool argIsLong, bool argIsFloat, Val arg, File*& pFile, int allowFileTypes = 1);
     execResult_type SD_fileChecks(File*& pFile, int fileNumber, int allowFileTypes = 1);
-    execResult_type checkStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, Stream*& pStream, int& streamNumber);
+    execResult_type setStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, Stream*& pStream, int& streamNumber, bool forOutput = false);
+    execResult_type setStream(int streamNumber, bool forOutput = false);
+    execResult_type setStream(int streamNumber, Stream*& pStream, bool forOutput = false);
+    execResult_type determineStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, Stream*& pStream, int& streamNumber, bool forOutput = false);
+    execResult_type determineStream(int streamNumber, Stream** pStream, bool forOutput = false);
 
-    void printDirectory(Stream* pOut, File dir, int numTabs);
+    void printDirectory(File dir, int numTabs);
 
     bool pathValid(char* path);
     bool fileIsOpen(char* path);
+
 };
+
 
 
 #endif

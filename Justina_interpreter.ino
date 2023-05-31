@@ -47,10 +47,10 @@
 // NOTE: SPI is used for data transfer with the optional SD card, and SPI pins 11, 12, 13 are not available for general I/O
 //       The chip select pin for the SD card can be freely chosen. If not specified, the default (pin 10) will be used 
 
-constexpr int KILL_PIN{ 3 };
+constexpr int KILL_PIN{ 3 };            // INPUTS
 constexpr int STOP_ABORT_PIN{ 4 };
 
-constexpr int WAIT_FOR_USER_PIN{ 5 };
+constexpr int DATA_IO_PIN{ 5 };   // OUTPUTS
 constexpr int STATUS_B_PIN{ 6 };
 constexpr int STATUS_A_PIN{ 7 };
 constexpr int ERROR_PIN{ 8 };
@@ -60,12 +60,13 @@ constexpr int HEARTBEAT_PIN{ 9 };                                               
 #if withTCP
 constexpr pin_size_t WiFi_CONNECTED_PIN{ 14 };
 constexpr pin_size_t TCP_CONNECTED_PIN{ 15 };
+
 constexpr char SSID[] = SERVER_SSID, PASS[] = SERVER_PASS;                            // WiFi SSID and password                           
 // connect as TCP server: create class object myTCPconnection
 TCPconnection myTCPconnection(SSID, PASS, serverAddress, gatewayAddress, subnetMask, DNSaddress, serverPort, conn_2_TCPconnected);
 
 void onConnStateChange(connectionState_type  connectionState);
-constexpr char menu[] = "+++ Please select:\r\n  '0' (Re-)start WiFi\r\n  '1' Disable WiFi\r\n  '2' Enable TCP\r\n  '3' Disable TCP\r\n  '4' Verbose TCP\r\n  'J' Start Justina interpreter\r\n";
+constexpr char menu[] = "+++ Please select:\r\n  'H' Help\r\n  '0' (Re-)start WiFi\r\n  '1' Disable WiFi\r\n  '2' Enable TCP\r\n  '3' Disable TCP\r\n  '4' Verbose TCP\r\n  '5' Silent TCP\r\n  'J' Start Justina interpreter\r\n";
 
 #else
 constexpr char menu[] = "+++ Please select:\r\n  'J' Start Justina interpreter\r\n";
@@ -74,24 +75,24 @@ constexpr char menu[] = "+++ Please select:\r\n  'J' Start Justina interpreter\r
 bool withinApplication{ false };                                                       // init: currently not within an application
 bool interpreterInMemory{ false };                                                     // init: interpreter is not in memory
 
-bool errorCondition = false, statusA = false, statusB = false, waitingForUser = false;
+bool errorCondition = false, statusA = false, statusB = false, dataInOut = false;
 
 Stream* pAlternativeIO[3]{ static_cast<Stream*>(&Serial) ,                                                                  // alternative IO ports, if defined
                         static_cast<Stream*>(&Serial) ,
-                        static_cast<Stream*>(&Serial) }; 
+                        static_cast<Stream*>(&Serial) };
 constexpr int terminalCount{ 3 };
 
 Justina_interpreter* pJustina{ nullptr };                                                    // pointer to Justina_interpreter object
 
 #ifdef ARDUINO_ARCH_RP2040
-long progMemSize = pow(2,16);
+long progMemSize = pow(2, 16);
 #else
 long progMemSize = 2000;
 #endif 
 
 unsigned long heartbeatPeriod{ 500 };                                               // do not go lower than 500 ms
 void heartbeat();
-
+void execAction(char c);
 
 // -------------------------------
 // *   Arduino setup() routine   *
@@ -105,7 +106,7 @@ void setup() {
     pinMode(ERROR_PIN, OUTPUT);
     pinMode(STATUS_A_PIN, OUTPUT);
     pinMode(STATUS_B_PIN, OUTPUT);
-    pinMode(WAIT_FOR_USER_PIN, OUTPUT);
+    pinMode(DATA_IO_PIN, OUTPUT);
 
     pinMode(STOP_ABORT_PIN, INPUT_PULLUP);
     pinMode(KILL_PIN, INPUT_PULLUP);
@@ -121,7 +122,7 @@ void setup() {
     while (!Serial);                                                                    // native USB port only 
     long tEnd = millis();
     digitalWrite(ERROR_PIN, LOW);                                                      // high during wait for serial
-    if(tEnd - tStart < 2000){delay(2000 - (tEnd - tStart));}                            
+    if (tEnd - tStart < 2000) { delay(2000 - (tEnd - tStart)); }
     digitalWrite(HEARTBEAT_PIN, LOW);                                                   // high during (minimum) 2 seconds                                                      
 
 #if withTCP
@@ -160,92 +161,102 @@ void loop() {
     myTCPconnection.maintainConnection();                                               // maintain TCP connection
 #endif
 
-    // loop only once, to alow breaks
-    do {
-        bool found = false;
-        char c;
+    char c;
 
-        // read character from remote terminal (TCP client), if a character is available
-        if (Serial.available() > 0) { found = true; c = Serial.read(); }
-        if (!found || (c < ' ')) { break; }                                           // no character to process (also discard control characters)
+    // read character from remote terminal (TCP client), if a character is available
+    c = Serial.read();
+    if (c != 0xff) {
+        execAction(c);                                           // no character to process (also discard control characters)
+        delay(100);
+        while (Serial.available() > 0) { Serial.read(); }       // empty character buffer
+    }
+}
 
 
-        // 2. Perform a action according to selected option (menu is displayed)
-        // --------------------------------------------------------------------
+// ---------------------------------------------------------------
+// Perform action according to selected option (menu is displayed)
+// ---------------------------------------------------------------
 
-        switch (tolower(c)) {
+void execAction(char c) {
+    bool printMenu{ true };
+    switch (tolower(c)) {
 
-        #if withTCP
-            case '0':
-                myTCPconnection.requestAction(action_1_restartWiFi);
-                Serial.println("(Re-)starting WiFi...");
-                break;
+    #if withTCP
+        // !!!!! NOTE: RP2040 MBED OS crashes if '0' or '1' menu options are entered twice in succession
+        case '0':
+            myTCPconnection.requestAction(action_1_restartWiFi);
+            Serial.println("(Re-)starting WiFi...");
+            break;
 
-            case '1':
-                myTCPconnection.requestAction(action_0_disableWiFi);
-                Serial.println("Disabling WiFi...");
-                break;
+        case '1':
+            myTCPconnection.requestAction(action_0_disableWiFi);
+            Serial.println("Disabling WiFi...");
+            break;
 
-            case '2':
-                myTCPconnection.requestAction(action_2_TCPkeepAlive);
-                Serial.println("Enabling TCP...");                                     // needs WiFi to be enabled and connected
-                Serial.println("On the remote terminal, press ENTER to connect");
-                break;
+        case '2':
+            myTCPconnection.requestAction(action_2_TCPkeepAlive);
+            Serial.println("Enabling TCP...");                                     // needs WiFi to be enabled and connected
+            Serial.println("On the remote terminal, press ENTER to connect");
+            break;
 
-            case '3':
-                myTCPconnection.requestAction(action_4_TCPdisable);
-                Serial.println("Disabling TCP...");
-                break;
+        case '3':
+            myTCPconnection.requestAction(action_4_TCPdisable);
+            Serial.println("Disabling TCP...");
+            break;
 
-            case '4':                                                                       // set TCP server to verbose
-                myTCPconnection.setVerbose(true);
-                Serial.println("TCP server: verbose");
-                break;
+        case '4':                                                                       // set TCP server to verbose
+            myTCPconnection.setVerbose(true);
+            Serial.println("TCP server: verbose");
+            break;
 
-            case '5':                                                                       // set TCP server to silent
-                myTCPconnection.setVerbose(false);
-                Serial.println("TCP server: silent");
-                break;
+        case '5':                                                                       // set TCP server to silent
+            myTCPconnection.setVerbose(false);
+            Serial.println("TCP server: silent");
+            break;
 
-            #endif
-            case 'j':
-            #if !defined(ARDUINO_SAMD_NANO_33_IOT) && !defined(ARDUINO_ARCH_RP2040)
-                Serial.println("interpreter does not run on this processor");            // interpreter does not run on this processor
-                break;
-            #endif
+        #endif
+        case 'j':
+        #if !defined(ARDUINO_SAMD_NANO_33_IOT) && !defined(ARDUINO_ARCH_RP2040)
+            Serial.println("interpreter does not run on this processor");            // interpreter does not run on this processor
+            break;
+        #endif
 
-                // start interpreter: control will not return to here until the user quits, because it has its own 'main loop'
-                heartbeatPeriod = 200;
-                withinApplication = true;                                                   // flag that control will be transferred to an 'application'
-                if (!interpreterInMemory) {
-                    pJustina = new  Justina_interpreter(pAlternativeIO, terminalCount, progMemSize);         // if interpreter not running: create an interpreter object on the heap
+            // start interpreter: control will not return to here until the user quits, because it has its own 'main loop'
+            heartbeatPeriod = 200;
+            withinApplication = true;                                                   // flag that control will be transferred to an 'application'
+            if (!interpreterInMemory) {
+                pJustina = new  Justina_interpreter(pAlternativeIO, terminalCount, progMemSize);         // if interpreter not running: create an interpreter object on the heap
 
-                    // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
-                    // this callback function will be called regularly, e.g. every time the interpreter reads a character
-                    pJustina->setMainLoopCallback((&Justina_housekeeping));                    // set callback function to Justina_housekeeping routine in this .ino file (pass 'Justina_housekeeping' routine address to Justina_interpreter library)
+                // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
+                // this callback function will be called regularly, e.g. every time the interpreter reads a character
+                pJustina->setMainLoopCallback((&Justina_housekeeping));                    // set callback function to Justina_housekeeping routine in this .ino file (pass 'Justina_housekeeping' routine address to Justina_interpreter library)
 
-                    pJustina->setUserFcnCallback((&userFcn_readPort));                // pass user function addresses to Justina_interpreter library (return value 'true' indicates success)
-                    pJustina->setUserFcnCallback((&userFcn_writePort));
-                    pJustina->setUserFcnCallback((&userFcn_togglePort));
-                }
-                interpreterInMemory = pJustina->run();                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
+                pJustina->setUserFcnCallback((&userFcn_readPort));                // pass user function addresses to Justina_interpreter library (return value 'true' indicates success)
+                pJustina->setUserFcnCallback((&userFcn_writePort));
+                pJustina->setUserFcnCallback((&userFcn_togglePort));
+            }
+            interpreterInMemory = pJustina->run();                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
 
-                if (!interpreterInMemory) {                                               // return from interpreter: remove from memory as well ?
-                    delete pJustina;                                                     // cleanup and delete calculator object itself
-                    pJustina = nullptr;                                                  // only to indicate memory is released
-                }
+            if (!interpreterInMemory) {                                               // return from interpreter: remove from memory as well ?
+                delete pJustina;                                                     // cleanup and delete calculator object itself
+                pJustina = nullptr;                                                  // only to indicate memory is released
+            }
 
-                heartbeatPeriod = 500;
-                withinApplication = false;                                                  // return from application
-                break;
+            heartbeatPeriod = 500;
+            withinApplication = false;                                                  // return from application
+            break;
 
-            default:
-                Serial.println("This is not a valid choice");
-        }
-        Serial.println(menu);                                                      // show menu again
-    } while (false);
-}                                                                                       // loop()
+        case 'h':
+            printMenu = true;
+            break;
 
+        default:
+            Serial.println("This is not a valid choice (enter 'H' for help)");
+            printMenu = false;
+            break;
+    }
+    if (printMenu) { Serial.println(menu); }                                                      // show menu again
+}
 
 // --------------------------------------
 // Blink a led to show program is running 
@@ -276,7 +287,7 @@ void heartbeat() {
 // *   Callback function executed when WiFi or TCP connection state changes   * 
 // ----------------------------------------------------------------------------
 
-// this routine is called from within TCPconnection.maintainConnection() at every change in connection state
+// this callback routine is called from within TCPconnection.maintainConnection() at every change in connection state
 // it allows the main program to take specific custom actions (in this case: printing messages and controlling a led)
 
 void onConnStateChange(connectionState_type  connectionState) {
@@ -291,11 +302,13 @@ void onConnStateChange(connectionState_type  connectionState) {
     TCPconnected = (connectionState == conn_2_TCPconnected);
     digitalWrite(TCP_CONNECTED_PIN, TCPconnected);                                    // led indicates 'client connected' status 
 
+    /* //// interfereert met Justina prompt : beter niet
     if (TCPconnected) { Serial.println("TCP connection established\r\n"); }                   // remote client just got connected: show on main terminal
     else if (holdTCPconnected) {                                                      // previous status was 'client connected'
-        Serial.println("TCP connection lost or timed out");                   // inform local terminal about it 
+        Serial.println("TCP connection lost or timed out");                   // inform local terminal about it
         Serial.println("On the remote terminal, press ENTER to reconnect");
     }
+    */
 }
 #endif
 
@@ -394,17 +407,24 @@ void keyStates(uint8_t pinStates, uint8_t& debounced, uint8_t& wentDown, uint8_t
 
 void Justina_housekeeping(long& appFlags) {
 
-    // application flag bits: flags signaling specific Justina status conditions to caller
-    constexpr long appFlag_errorConditionBit = 0x01L;       // bit 0: a Justina parsing or execution error has occured
-    constexpr long appFlag_statusAbit = 0x10L;              // status bits A and B: bits 5 and 4. Justina status (see below)
-    constexpr long appFlag_statusBbit = 0x20L;
-    constexpr long appFlag_waitingForUser = 0x40L;
+    // bits 3-0: flags signaling specific Justina status conditions to caller
+    constexpr long appFlag_errorConditionBit = 0x01L;       // Justina parsing or execution error has occured
 
-    // application flag bits: flags signaling specific caller status conditions to Justina
-    static constexpr long appFlag_stopRequestBit = 0x0100L;
-    static constexpr long appFlag_abortRequestBit = 0x0200L;
-    static constexpr long appFlag_killRequestBit = 0x0400L;
+    constexpr long appFlag_statusMask = 0x06L;               // status bits mask: status bits A and B
+    constexpr long appFlag_statusAbit = 0x02L;               // status bits A and B: 4 different statuses (see below)
+    constexpr long appFlag_statusBbit = 0x04L;
+    constexpr long appFlag_idle = 0x00L;                     // idle status
+    constexpr long appFlag_parsing = 0x02L;                  // parsing status
+    constexpr long appFlag_executing = 0x04L;                // executing status
+    constexpr long appFlag_stoppedInDebug = 0x06L;           // stopped in debug status
 
+    constexpr long appFlag_dataInOut = 0x08L;                // external I/O (not to SD) is happening
+
+    // bits 11-8: flags signaling specific calle    r status conditions to Justina
+    constexpr long appFlag_consoleRequestBit = 0x0100L;
+    constexpr long appFlag_killRequestBit = 0x0200L;
+    constexpr long appFlag_stopRequestBit = 0x0400L;
+    constexpr long appFlag_abortRequestBit = 0x0800L;
 
     heartbeat();                                                                        // blink a led to show program is running
 #if withTCP
@@ -421,18 +441,23 @@ void Justina_housekeeping(long& appFlags) {
     keyStates(pinStates, debouncedStates, wentDown, wentUp, isShortPress, isLongPress); // wentDown, wentUp, isShortPress, isLongPress: all one shot
 
     // application flags: submit to Justina 
-    appFlags = (appFlags & ~(appFlag_stopRequestBit | appFlag_abortRequestBit | appFlag_killRequestBit));      // reset requests
+    appFlags = (appFlags & ~(appFlag_consoleRequestBit | appFlag_killRequestBit | appFlag_stopRequestBit | appFlag_abortRequestBit));      // reset requests
     // short press: key goes up (edge) while time is less than threshold
     // long press: time passes threshold (edge) while key is still down
-    if ((isShortPress | isLongPress) & (1 << 0)) { appFlags |= appFlag_killRequestBit; }
+    if (isShortPress & (1 << 0)) { appFlags |= appFlag_consoleRequestBit; }
+    if (isLongPress & (1 << 0)) { appFlags |= appFlag_killRequestBit; }
     if (isShortPress & (1 << 1)) { appFlags |= appFlag_stopRequestBit; }
-    else if (isLongPress & (1 << 1)) { appFlags |= appFlag_abortRequestBit; }
+    else if (isLongPress & (1 << 1)) { appFlags |= appFlag_abortRequestBit; Serial.print('A'); }
 
     // application flags: receive from Justina
     if (errorCondition ^ (appFlags & appFlag_errorConditionBit)) { errorCondition = (appFlags & appFlag_errorConditionBit);  digitalWrite(ERROR_PIN, errorCondition); }  // only write if change detected
     if (statusA ^ (appFlags & appFlag_statusAbit)) { statusA = (appFlags & appFlag_statusAbit);  digitalWrite(STATUS_A_PIN, statusA); }  // only write if change detected
     if (statusB ^ (appFlags & appFlag_statusBbit)) { statusB = (appFlags & appFlag_statusBbit);  digitalWrite(STATUS_B_PIN, statusB); }  // only write if change detected
-    if (waitingForUser ^ (appFlags & appFlag_waitingForUser)) { waitingForUser = (appFlags & appFlag_waitingForUser);  digitalWrite(WAIT_FOR_USER_PIN, waitingForUser); }  // only write if change detected
+
+    bool newDataLedState{false};
+    static bool dataLedState {false};
+    if (appFlags & appFlag_dataInOut) { newDataLedState = !dataLedState; } else { newDataLedState =false;}      // if data, toggle state, otherwise reset state
+    if (newDataLedState != dataLedState) { dataLedState = newDataLedState;  digitalWrite(DATA_IO_PIN, dataLedState); }  // only write if change detected
 }
 
 

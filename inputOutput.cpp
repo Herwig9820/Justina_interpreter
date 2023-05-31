@@ -42,7 +42,7 @@ Justina_interpreter::execResult_type Justina_interpreter::startSD() {
 
     if (!_SDcard.init(SPI_HALF_SPEED, _SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
     if (!SD.begin(_SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
-    
+
     _openFileCount = 0;
     for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) { openFiles[i].fileNumberInUse = false; }
     _SDinitOK = true;
@@ -91,7 +91,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumbe
             openFiles[i].file.setTimeout(DEFAULT_READ_TIMEOUT);
             openFiles[i].fileNumberInUse = true;
             openFiles[i].filePath = filePathInCapitals;                          // delete when file is closed
-            openFiles[i].currentPrintColumn=0;
+            openFiles[i].currentPrintColumn = 0;
             fileNumber = i + 1;
             break;
         }
@@ -200,8 +200,10 @@ void  Justina_interpreter::SD_closeAllFiles() {
 // list all files in the card with date and size
 // ---------------------------------------------
 
-void Justina_interpreter::printDirectory(Stream* pOut, File dir, int indentLevel) {
+void Justina_interpreter::printDirectory(File dir, int indentLevel) {
     constexpr int step{ 2 }, defaultSizeAttrColumn{ 20 }, minimumColumnSpacing{ 4 };
+
+    // before calling this function, output stream must be set by function 'setStream(...)'
 
     while (true) {
 
@@ -211,30 +213,30 @@ void Justina_interpreter::printDirectory(Stream* pOut, File dir, int indentLevel
             break;
         }
         for (uint8_t i = 1; i <= indentLevel * step; i++) {
-            pOut->print(" ");
+            print(" ");
         }
-        pOut->print(entry.name());
+        print(entry.name());
         if (entry.isDirectory()) {
-            pOut->println("/");
-            printDirectory(pOut, entry, indentLevel + 1);
+            println("/");
+            printDirectory(entry, indentLevel + 1);
         }
         else {
             // files have sizes, directories do not
             int len = indentLevel * step + strlen(entry.name());
             if (len < defaultSizeAttrColumn - minimumColumnSpacing) {      // 
-                for (int i = len; i < defaultSizeAttrColumn; i++) { pOut->print(" "); }
+                for (int i = len; i < defaultSizeAttrColumn; i++) { print(" "); }
             }
             else {
-                for (int i = 0; i < minimumColumnSpacing; i++) { pOut->print(" "); }
+                for (int i = 0; i < minimumColumnSpacing; i++) { print(" "); }
             }
-            pOut->println(entry.size());
+            println(entry.size());
 
         }
         entry.close();
     }
 }
 
-Justina_interpreter::execResult_type Justina_interpreter::SD_listFiles(Stream* pOut) {
+Justina_interpreter::execResult_type Justina_interpreter::SD_listFiles() {
 
     if (!_SDinitOK) { return result_SD_noCardOrCardError; }
 
@@ -250,72 +252,14 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_listFiles(Stream* p
     root.ls(LS_R | LS_DATE | LS_SIZE);      // to SERIAL (not to _console)
     */
 
+
     // print to console but without date and time stamp
+    // before calling this function, output stream must be set by function 'setStream(...)'
+
     SDLib::File SDroot = SD.open("/");
-    pOut->println("\nSD card: files (name, size in bytes): ");
-    printDirectory(pOut, SDroot, 0);
+    println("\nSD card: files (name, size in bytes): ");
+    printDirectory(SDroot, 0);
 
-    return result_execOK;
-}
-
-
-// -----------------------------------------------------------
-// perform file checks prior to performing actions on the file
-// -----------------------------------------------------------
-
-Justina_interpreter::execResult_type Justina_interpreter::SD_fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File*& pFile, int allowFileTypes)
-{
-    // check file number (also perform related file and SD card object checks)
-    if ((!(argIsLongBits & (0x1 << argIndex))) && (!(argIsFloatBits & (0x1 << argIndex)))) { return result_numberExpected; }                      // file number
-    int fileNumber = (argIsLongBits & (0x1 << argIndex)) ? arg.longConst : arg.floatConst;
-    execResult_type execResult = SD_fileChecks(pFile, fileNumber, allowFileTypes);
-    return execResult;
-}
-
-Justina_interpreter::execResult_type Justina_interpreter::SD_fileChecks(bool argIsLong, bool argIsFloat, Val arg, File*& pFile, int allowFileTypes)
-{
-    // check file number (also perform related file and SD card object checks)
-    if ((!argIsLong) && (!argIsFloat)) { return result_numberExpected; }                      // file number
-    int fileNumber = argIsLong ? arg.longConst : arg.floatConst;
-
-    execResult_type execResult = SD_fileChecks(pFile, fileNumber, allowFileTypes);
-    return execResult;
-}
-
-Justina_interpreter::execResult_type Justina_interpreter::SD_fileChecks(File*& pFile, int fileNumber, int allowFileTypes)
-{
-    // check that SD card is initialised, file is open and file type (directory, file) is OK
-    if (!_SDinitOK) { return result_SD_noCardOrCardError; }
-    if ((fileNumber < 1) || (fileNumber > MAX_OPEN_SD_FILES)) { return result_SD_invalidFileNumber; }
-    if (!openFiles[fileNumber - 1].fileNumberInUse) { return result_SD_fileIsNotOpen; }
-    pFile = &(openFiles[fileNumber - 1].file);
-    if (allowFileTypes > 0) {       // 0: allow files and directories, 1: allow files, 2: allow directories
-        if (pFile->isDirectory() != (allowFileTypes == 2)) { return result_SD_directoryNotAllowed; }
-    }
-    return result_execOK;
-}
-
-
-// -----------------------------------------------------------------------------------
-// check for valid stream number (file or I/O) prior to performing actions on the file 
-// -----------------------------------------------------------------------------------
-
-Justina_interpreter::execResult_type Justina_interpreter::checkStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, Stream*& pStream, int& streamNumber) {
-    // check file number (also perform related file and SD card object checks)
-    if ((!(argIsLongBits & (0x1 << argIndex))) && (!(argIsFloatBits & (0x1 << argIndex)))) { return result_numberExpected; }                      // file number
-    streamNumber = (argIsLongBits & (0x1 << argIndex)) ? arg.longConst : arg.floatConst;
-
-    if (streamNumber == 0) { pStream = static_cast<Stream*> (_pConsoleIn); }  // if console out is wanted: set it AFTER return of this function
-    else if (streamNumber < 0) {
-        if (( - streamNumber) > _altIOstreamCount) { return result_IO_invalidStreamNumber; }              
-        pStream = static_cast<Stream*>(_pAltIOstreams[(-streamNumber) - 1]);     // stream number -1 => array index 0, etc.
-    }
-    else {      // file
-        File* pFile{};
-        execResult_type execResult = SD_fileChecks(pFile, streamNumber);    // operand: file number
-        if (execResult != result_execOK) { return execResult; }
-        pStream = static_cast<Stream*> (pFile);
-    }
     return result_execOK;
 }
 
@@ -359,4 +303,419 @@ bool Justina_interpreter::fileIsOpen(char* path) {
         }
     }
     return false;
+}
+
+// -----------------------------------------------------------
+// perform file checks prior to performing actions on the file
+// -----------------------------------------------------------
+
+Justina_interpreter::execResult_type Justina_interpreter::SD_fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File*& pFile, int allowFileTypes)
+{
+    // check file number (also perform related file and SD card object checks)
+    if ((!(argIsLongBits & (0x1 << argIndex))) && (!(argIsFloatBits & (0x1 << argIndex)))) { return result_numberExpected; }                      // file number
+    int fileNumber = (argIsLongBits & (0x1 << argIndex)) ? arg.longConst : arg.floatConst;
+    execResult_type execResult = SD_fileChecks(pFile, fileNumber, allowFileTypes);
+    return execResult;
+}
+
+Justina_interpreter::execResult_type Justina_interpreter::SD_fileChecks(bool argIsLong, bool argIsFloat, Val arg, File*& pFile, int allowFileTypes)
+{
+    // check file number (also perform related file and SD card object checks)
+    if ((!argIsLong) && (!argIsFloat)) { return result_numberExpected; }                      // file number
+    int fileNumber = argIsLong ? arg.longConst : arg.floatConst;
+
+    execResult_type execResult = SD_fileChecks(pFile, fileNumber, allowFileTypes);
+    return execResult;
+}
+
+Justina_interpreter::execResult_type Justina_interpreter::SD_fileChecks(File*& pFile, int fileNumber, int allowFileTypes)
+{
+    // check that SD card is initialised, file is open and file type (directory, file) is OK
+    if (!_SDinitOK) { return result_SD_noCardOrCardError; }
+    if ((fileNumber < 1) || (fileNumber > MAX_OPEN_SD_FILES)) { return result_SD_invalidFileNumber; }
+    if (!openFiles[fileNumber - 1].fileNumberInUse) { return result_SD_fileIsNotOpen; }
+    pFile = &(openFiles[fileNumber - 1].file);
+    if (allowFileTypes > 0) {       // 0: allow files and directories, 1: allow files, 2: allow directories
+        if (pFile->isDirectory() != (allowFileTypes == 2)) { return result_SD_directoryNotAllowed; }
+    }
+    return result_execOK;
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// set either _streamNumberIn, _pStreamIn or _streamNumberOut, _pStreamOut for future IO operations
+// ------------------------------------------------------------------------------------------------
+
+Justina_interpreter::execResult_type Justina_interpreter::setStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, Stream*& pStream, int& streamNumber, bool forOutput) {
+    // check file number (also perform related file and SD card object checks)
+    if ((!(argIsLongBits & (0x1 << argIndex))) && (!(argIsFloatBits & (0x1 << argIndex)))) { return result_numberExpected; }                      // file number
+    streamNumber = (argIsLongBits & (0x1 << argIndex)) ? arg.longConst : arg.floatConst;
+
+    setStream(streamNumber, forOutput);
+    return result_execOK;
+}
+
+
+Justina_interpreter::execResult_type Justina_interpreter::setStream(int streamNumber, bool forOutput) {
+    
+    Stream* pTemp;
+
+    execResult_type execResult = determineStream(streamNumber, &pTemp, forOutput); if (execResult != result_execOK) { return execResult; }
+    (forOutput ? _streamNumberOut : _streamNumberIn) = streamNumber;
+    (forOutput ? _pStreamOut : _pStreamIn) = pTemp;         // set global variables instead (forOutput argument doesn't play)
+
+    return result_execOK;
+}
+
+Justina_interpreter::execResult_type Justina_interpreter::setStream(int streamNumber, Stream*& pStream, bool forOutput) {
+
+    execResult_type execResult = determineStream(streamNumber, &pStream, forOutput); if (execResult != result_execOK) { return execResult; }
+    (forOutput ? _streamNumberOut : _streamNumberIn) = streamNumber;
+    (forOutput ? _pStreamOut : _pStreamIn) = pStream;         // set global variables instead (forOutput argument doesn't play)
+
+    return result_execOK;
+}
+
+
+// -----------------------------------------------------------------------------------------------------------------------
+// return pointer to a stream based on stream number (for console only, this will depend on value of argument 'forOutput') 
+// NOTE: this does NOT set _streamNumberIn, _pStreamIn or _streamNumberOut, _pStreamOut
+// -----------------------------------------------------------------------------------------------------------------------
+
+Justina_interpreter::execResult_type Justina_interpreter::determineStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, Stream*& pStream, int& streamNumber, bool forOutput) {
+    // check file number (also perform related file and SD card object checks)
+    if ((!(argIsLongBits & (0x1 << argIndex))) && (!(argIsFloatBits & (0x1 << argIndex)))) { return result_numberExpected; }                      // file number
+    streamNumber = (argIsLongBits & (0x1 << argIndex)) ? arg.longConst : arg.floatConst;
+
+    return determineStream(streamNumber, &pStream, forOutput);
+}
+
+
+Justina_interpreter::execResult_type  Justina_interpreter::determineStream(int streamNumber, Stream** ppStream, bool forOutput) {
+
+    if (streamNumber == 0) { *ppStream = forOutput ? _pConsoleOut : _pConsoleIn; }  // init: assume console
+    else if ((-_streamNumberOut) > _altIOstreamCount) { return result_IO_invalidStreamNumber; }
+    else if (_streamNumberOut < 0) { *ppStream = _pAltIOstreams[(-_streamNumberOut) - 1]; }    // external IO: stream number -1 => array index 0, etc.
+    else {
+        File* pFile{};
+        execResult_type execResult = SD_fileChecks(pFile, streamNumber);    // operand: file number
+        if (execResult != result_execOK) { return execResult; }
+        *ppStream = static_cast<Stream*> (pFile);
+    }
+    return result_execOK;
+}
+
+
+// ----------------------------------------------------------------
+//
+// ----------------------------------------------------------------
+
+// streamNumber supplied as argument: the stream is determined here 
+// global variables _pStreamIn, _pStreamOut and _streamNumberOut are NOT affected
+// ------------------------------------------------------------------------------
+
+int Justina_interpreter::readFrom(int streamNumber) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return pStream->read();
+}
+
+int Justina_interpreter::readFrom(int streamNumber, char* buffer, int length) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }                  // but this won't happen (stream MUST be a file)
+    return static_cast<File*>(pStream)->read(buffer, length);                   // NOTE: stream MUST be a file
+}
+
+
+
+size_t Justina_interpreter::writeTo(int streamNumber, char c) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return pStream->write(c);
+}
+
+size_t Justina_interpreter::writeTo(int streamNumber, char* s, int size) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return pStream->write(s);
+}
+
+
+size_t Justina_interpreter::printTo(int streamNumber, char c) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return pStream->print(c);
+}
+
+size_t Justina_interpreter::printTo(int streamNumber, unsigned char c) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return pStream->print(c);
+}
+
+size_t Justina_interpreter::printTo(int streamNumber, int i) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return pStream->print(i);
+}
+
+size_t Justina_interpreter::printTo(int streamNumber, unsigned int i) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return pStream->print(i);
+}
+
+size_t Justina_interpreter::printTo(int streamNumber, long l) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return pStream->print(l);
+}
+
+size_t Justina_interpreter::printTo(int streamNumber, unsigned long l) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return pStream->print(l);
+}
+
+size_t Justina_interpreter::printTo(int streamNumber, double d) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return pStream->print(d);
+}
+
+size_t Justina_interpreter::printTo(int streamNumber, char* s) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return pStream->print(s);
+}
+
+size_t Justina_interpreter::printTo(int streamNumber, const char* s) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return pStream->print(s);
+}
+
+
+size_t Justina_interpreter::printlnTo(int streamNumber, char c) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return pStream->println(c);
+}
+
+size_t Justina_interpreter::printlnTo(int streamNumber, unsigned char c) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return pStream->println(c);
+}
+
+size_t Justina_interpreter::printlnTo(int streamNumber, int i) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return pStream->println(i);
+}
+
+size_t Justina_interpreter::printlnTo(int streamNumber, unsigned int i) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return pStream->println(i);
+}
+
+size_t Justina_interpreter::printlnTo(int streamNumber, long l) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return pStream->println(l);
+}
+
+size_t Justina_interpreter::printlnTo(int streamNumber, unsigned long l) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return pStream->println(l);
+}
+
+size_t Justina_interpreter::printlnTo(int streamNumber, double d) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return pStream->println(d);
+}
+
+size_t Justina_interpreter::printlnTo(int streamNumber, char* s) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return pStream->println(s);
+}
+
+size_t Justina_interpreter::printlnTo(int streamNumber, const char* s) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return pStream->println(s);
+}
+
+
+size_t Justina_interpreter::printlnTo(int streamNumber) {
+    Stream* pStream{ nullptr };
+    if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
+    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return pStream->println();
+}
+
+
+// output is sent to stream _pStreamIn (read) or _pStreamOut (write)
+// The stream should be set first, by calling 'determineStream'
+// -------------------------------------------------------------------
+
+int Justina_interpreter::read() {
+    if (_streamNumberIn <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return _pStreamIn->read();
+}
+
+int Justina_interpreter::read(char* buffer, int length) {
+    if (_streamNumberIn <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }           // but this won't happen (stream MUST be a file)
+    return (static_cast <File*>(_pStreamIn))->read(buffer, length);         // Note: stream MUST be a file
+}
+
+
+
+size_t Justina_interpreter::write(char* s, int size) {
+    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return _pStreamOut->write(s, size);
+}
+
+size_t Justina_interpreter::write(char c) {
+    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return _pStreamOut->write(c);
+}
+
+
+
+size_t Justina_interpreter::print(unsigned char c) {
+    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return _pStreamOut->print(c);
+}
+
+size_t Justina_interpreter::print(int i) {
+    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return _pStreamOut->print(i);
+}
+
+size_t Justina_interpreter::print(unsigned int i) {
+    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return _pStreamOut->print(i);
+}
+
+size_t Justina_interpreter::print(long l) {
+    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return _pStreamOut->print(l);
+}
+
+size_t Justina_interpreter::print(unsigned long l) {
+    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return _pStreamOut->print(l);
+}
+
+size_t Justina_interpreter::print(double d) {
+    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return _pStreamOut->print(d);
+}
+
+size_t Justina_interpreter::print(char* s) {
+    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return _pStreamOut->print(s);
+}
+
+size_t Justina_interpreter::print(const char* s) {
+    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return _pStreamOut->print(s);
+}
+
+
+
+
+size_t Justina_interpreter::println(char c) {
+    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return _pStreamOut->println(c);
+}
+
+size_t Justina_interpreter::println(unsigned char c) {
+    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return _pStreamOut->println(c);
+}
+
+size_t Justina_interpreter::println(int i) {
+    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return _pStreamOut->println(i);
+}
+
+size_t Justina_interpreter::println(unsigned int i) {
+    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return _pStreamOut->println(i);
+}
+
+size_t Justina_interpreter::println(long l) {
+    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return _pStreamOut->println(l);
+}
+
+size_t Justina_interpreter::println(unsigned long l) {
+    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return _pStreamOut->println(l);
+}
+
+size_t Justina_interpreter::println(double d) {
+    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return _pStreamOut->println(d);
+}
+
+size_t Justina_interpreter::println(char* s) {
+    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return _pStreamOut->println(s);
+}
+
+size_t Justina_interpreter::println(const char* s) {
+    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return _pStreamOut->println(s);
+}
+
+size_t Justina_interpreter::println() {
+    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    return _pStreamOut->println();
+}
+
+
+
+
+int JustinaIO::getStreamIn(Stream*& pStreamIn) {
+    pStreamIn = _pStreamIn;
+    return streamNumberIn;
+}; 
+
+int JustinaIO::getStreamOut(Stream*& pStreamOut) {
+    pStreamOut = _pStreamOut;
+    return streamNumberOut;
+};
+
+size_t JustinaIO::println() {
+    if (streamNumberOut <= 0) { *_pAppFlags |= Jconst::appFlag_dataInOut; }
+    return _pStreamOut->println();
 }
