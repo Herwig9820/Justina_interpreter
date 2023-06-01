@@ -42,7 +42,8 @@
 #define BuildDate "May 16, 2023"
 
 
-namespace Jconst {
+//// WEG
+ namespace Jconst {
     static constexpr long appFlag_dataInOut = 0x08L;                // external I/O (not to SD) is happening
 }
 
@@ -912,7 +913,7 @@ class Justina_interpreter {
     static constexpr long appFlag_executing = 0x04L;                // executing status
     static constexpr long appFlag_stoppedInDebug = 0x06L;           // stopped in debug status
 
-////    static constexpr long appFlag_dataInOut = 0x08L;                // external I/O (not to SD) is happening
+    static constexpr long appFlag_dataInOut = 0x08L;                // external I/O (not to SD) is happening
 
     // bits 11-8: flags signaling specific caller status conditions to Justina
     static constexpr long appFlag_consoleRequestBit = 0x0100L;

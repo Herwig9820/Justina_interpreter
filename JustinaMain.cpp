@@ -1357,7 +1357,7 @@ void Justina_interpreter::execPeriodicHousekeeping(bool* pKillNow, bool* pForced
             if ((_appFlags & appFlag_stopRequestBit) && (pForcedStop != nullptr)) { *pForcedStop = true; }
             if ((_appFlags & appFlag_abortRequestBit) && (pForcedAbort != nullptr)) { *pForcedAbort = true; }
 
-            _appFlags &= ~Jconst::appFlag_dataInOut;        // reset 'external IO' flag 
+            _appFlags &= ~appFlag_dataInOut;        // reset 'external IO' flag 
         }
     }
 }

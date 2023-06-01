@@ -394,8 +394,8 @@ Justina_interpreter::execResult_type Justina_interpreter::determineStream(long a
 Justina_interpreter::execResult_type  Justina_interpreter::determineStream(int streamNumber, Stream** ppStream, bool forOutput) {
 
     if (streamNumber == 0) { *ppStream = forOutput ? _pConsoleOut : _pConsoleIn; }  // init: assume console
-    else if ((-_streamNumberOut) > _altIOstreamCount) { return result_IO_invalidStreamNumber; }
-    else if (_streamNumberOut < 0) { *ppStream = _pAltIOstreams[(-_streamNumberOut) - 1]; }    // external IO: stream number -1 => array index 0, etc.
+    else if ((-streamNumber) > _altIOstreamCount) { return result_IO_invalidStreamNumber; }
+    else if (streamNumber < 0) { *ppStream = _pAltIOstreams[(-streamNumber) - 1]; }    // external IO: stream number -1 => array index 0, etc.
     else {
         File* pFile{};
         execResult_type execResult = SD_fileChecks(pFile, streamNumber);    // operand: file number
@@ -704,7 +704,8 @@ size_t Justina_interpreter::println() {
 
 
 
-
+//// WEG
+/*
 int JustinaIO::getStreamIn(Stream*& pStreamIn) {
     pStreamIn = _pStreamIn;
     return streamNumberIn;
@@ -719,3 +720,4 @@ size_t JustinaIO::println() {
     if (streamNumberOut <= 0) { *_pAppFlags |= Jconst::appFlag_dataInOut; }
     return _pStreamOut->println();
 }
+*/
