@@ -1759,8 +1759,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         if ((!opIsLong) && (!opIsFloat)) { return result_arg_numberExpected; }                      // file number
                         streamNumber = opIsLong ? operand.longConst : operand.floatConst;
 
-                        execResult = setStream(streamNumber, true); if (execResult != result_execOK) { return execResult; }       // stream for output
-                        if (_pStreamOut == _pConsoleOut) { isConsolePrint = true; }                       // !!! also for streams < 0, if they point to console
+                        Stream* p{};
+                        execResult = setStream(streamNumber,p, true); if (execResult != result_execOK) { return execResult; }       // stream for output
+                        if (p == _pConsoleOut) { isConsolePrint = true; }                       // !!! also for streams < 0, if they point to console
                         pStreamPrintColumn = (streamNumber == 0) ? &_consolePrintColumn : (streamNumber < 0) ? _pIOprintColumns + (-streamNumber) - 1 : &(openFiles[streamNumber - 1].currentPrintColumn);
                     }
 
