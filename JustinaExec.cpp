@@ -1212,7 +1212,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     if (validAnswer) {
                         if (tolower(input[0]) == 'y') {
                             strcpy(streamTypes, setConsIn ? "for input" : setConsOut ? "for output" : "");
-                            sprintf(msg, "---------- Changing console now %s ----------", streamTypes);
+                            sprintf(msg, "---------- Changing console now %s ----------\r\n", streamTypes);
                             printlnTo(0, msg);
                             if (!setConsOut) { _pConsoleIn = static_cast<Stream*>(_pAltIOstreams[(-streamNumber) - 1]); }    // external IO (stream number -1 => array index 0, etc.)
                             if (!setConsIn) { _pConsoleOut = static_cast<Stream*>(_pAltIOstreams[(-streamNumber) - 1]); }    // external IO (stream number -1 => array index 0, etc.)
@@ -1361,7 +1361,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 execResult = setStream(sourceStreamNumber); if (execResult != result_execOK) { return execResult; }                     // set stream for output
                 execResult = setStream(destinationStreamNumber, true); if (execResult != result_execOK) { return execResult; }          // set stream for output
 
-                bool kill{ false }, doStop{ false }, doAbort{ false };
+                bool kill{ false }, doStop{ false }, doAbort{ false }, stdConsDummy{ false };
                 char c{};
                 char buffer[128];
                 int bufferCharCount{ 0 };
@@ -1381,7 +1381,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     }
                     else {        
                         // receive: get a character if available and perform a regular housekeeping callback as well
-                        c = getCharacter(kill, doStop, doAbort, isReceive, waitForFirstChar);
+                        c = getCharacter(kill, doStop, doAbort,stdConsDummy, isReceive, waitForFirstChar);
                         newData = (c != 0xff);
                         if (newData) { buffer[bufferCharCount++] = c; progressDotsByteCount++; totalByteCount++; }
                         waitForFirstChar = false;                           // for all next characters
@@ -1663,7 +1663,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 printlnTo(0, s);
             }
 
-            bool kill{ false }, doStop{ false }, doAbort{ false };
+            bool kill{ false }, doStop{ false }, doAbort{ false }, stdConsDummy{ false };
 
             long startPauseAt = millis();                                                                                   // if pause, not stop;
 
@@ -1671,7 +1671,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             while (_pConsoleIn->available() > 0) { read(); }                // empty console buffer first (to allow the user to type in a 'single' character)
             do {                                                                                                            // until new line character encountered
                 char c{};
-                c = getCharacter(kill, doStop, doAbort);                      // get a key (character from console) if available and perform a regular housekeeping callback as well
+                c = getCharacter(kill, doStop, doAbort, stdConsDummy);                      // get a key (character from console) if available and perform a regular housekeeping callback as well
                 if (kill) { execResult = result_kill; return execResult; }                                      // kill Justina interpreter ? (buffer is now flushed until next line character)
                 if (doAbort) { forcedAbortRequest = true; break; }                                     // stop a running Justina program (buffer is now flushed until nex line character) 
                 if (doStop) { forcedStopRequest = true; }                                                     // stop a running program (do not produce stop event yet, wait until program statement executed)
@@ -1960,9 +1960,33 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         break;
 
 
-        // ---------------------------------------------------
-        // print all variables (global and user) or call stack
-        // ---------------------------------------------------
+        // ---------------------------------------------------------
+        // print all SD files, with 'last modified' dates, to Serial
+        // ---------------------------------------------------------
+
+        case cmdcod_listFilesToSer:
+        {
+            if (!_SDinitOK) { return result_SD_noCardOrCardError; }
+
+            // print to SERIAL (fixed in SD library), including date and time stamp
+            SdVolume volume{};
+            SdFile root{};
+
+            Serial.println("\nSD card: files (name, date, size in bytes): ");
+
+            volume.init(_SDcard);
+            root.openRoot(volume);
+            root.ls(LS_R | LS_DATE | LS_SIZE);      // to SERIAL (not to _console)
+
+            // clean up
+            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
+        }
+        break;
+
+
+        // -------------------------------------------------------------
+        // print all variables (global and user), call stack or SD files
+        // -------------------------------------------------------------
 
         case cmdcod_printVars:
         case cmdcod_printCallSt:
@@ -1986,8 +2010,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
             if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printVars) {
                 println();
-                printVariables(true);       // user variables
-                printVariables(false);      // global program variables
+                printVariables(true);       // print user variables
+                printVariables(false);      // print global program variables
             }
             else if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printCallSt) { printCallStack(); }
 
@@ -4036,11 +4060,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 charsRead = read(buffer, maxLineLength);          // if fewer bytes available, end reading WITHOUT time out; read() uses stream set by 'setStream()'
             }
             else {                                                                               // external input OR (all streams) search for terminator 
-                bool kill{ false }, doStop{ false }, doAbort{ false };
+                bool kill{ false }, doStop{ false }, doAbort{ false }, stdConsDummy{ false };
 
                 for (int i = 0; i < maxLineLength; i++) {
                     // get a character if available and perform a regular housekeeping callback as well
-                    char c = getCharacter(kill, doStop, doAbort, (streamNumber <= 0));                       // time out only required if external IO
+                    char c = getCharacter(kill, doStop, doAbort,stdConsDummy, (streamNumber <= 0));                       // time out only required if external IO
                     if (kill) {                                                                 // kill request from caller ? 
                         _intermediateStringObjectCount--;
                         delete[] buffer;
@@ -4145,12 +4169,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             #endif
 
                 // read line from stream
-                bool kill{ false }, doStop{ false }, doAbort{ false };
+                bool kill{ false }, doStop{ false }, doAbort{ false }, stdConsDummy{ false };
                 int charsRead{ 0 };
 
                 for (int i = 0; i < MAX_ALPHA_CONST_LEN; i++) {
                     // get a character if available and perform a regular housekeeping callback as well
-                    char c = getCharacter(kill, doStop, doAbort, (streamNumber <= 0));                       // time out only required if external IO
+                    char c = getCharacter(kill, doStop, doAbort,stdConsDummy, (streamNumber <= 0));                       // time out only required if external IO
                     if (kill) {                            // kill request from caller ? 
                         if (kill) {                                                                 // kill request from caller ? 
                             _intermediateStringObjectCount--;
@@ -4352,11 +4376,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
             int targetCharsMatched{ 0 }, terminatorCharsMatched{ 0 };
             bool targetFound{ false };
-            bool kill{ false }, doStop{ false }, doAbort{ false };
+            bool kill{ false }, doStop{ false }, doAbort{ false }, stdConsDummy{ false };
 
             while (true) {
                 // get a character if available and perform a regular housekeeping callback as well
-                char c = getCharacter(kill, doStop, doAbort, (streamNumber <= 0));                       // time out only required if external IO
+                char c = getCharacter(kill, doStop, doAbort,stdConsDummy, (streamNumber <= 0));                       // time out only required if external IO
                 if (kill) { return result_kill; }                           // kill request from caller ? 
                 if (doAbort) { forcedAbortRequest = true; break; }                                     // stop a running Justina program 
                 if (doStop) { forcedStopRequest = true; }                                                     // stop a running program (do not produce stop event yet, wait until program statement executed)
@@ -5475,11 +5499,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 {
                     fcnResultValueType = value_isStringPointer;
                     _intermediateStringObjectCount++;
-                    fcnResult.pStringConst = new char[((sysVal == 15) ? strlen(ProductName) : (sysVal == 16) ? strlen(LegalCopyright) : (sysVal == 17) ? strlen(ProductVersion) : strlen(BuildDate)) + 1];
+                    fcnResult.pStringConst = new char[((sysVal == 15) ? strlen(J_productName) : (sysVal == 16) ? strlen(J_legalCopyright) : (sysVal == 17) ? strlen(J_productVersion) : strlen(J_buildDate)) + 1];
                 #if PRINT_HEAP_OBJ_CREA_DEL
                     Serial.print("+++++ (Intermd str) ");   Serial.println((uint32_t)fcnResult.pStringConst, HEX);
                 #endif
-                    strcpy(fcnResult.pStringConst, (sysVal == 15) ? ProductName : (sysVal == 16) ? LegalCopyright : (sysVal == 17) ? ProductVersion : BuildDate);
+                    strcpy(fcnResult.pStringConst, (sysVal == 15) ? J_productName : (sysVal == 16) ? J_legalCopyright : (sysVal == 17) ? J_productVersion : J_buildDate);
                 }
                 break;
 

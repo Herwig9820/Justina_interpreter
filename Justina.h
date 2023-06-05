@@ -36,16 +36,10 @@
 #include <stdlib.h>
 #include <memory>
 
-#define ProductName "Justina: JUST an INterpreter for Arduino"
-#define LegalCopyright "Copyright (C) Herwig Taveirne 2022, 2023"
-#define ProductVersion "1.0.1"
-#define BuildDate "May 16, 2023"
-
-
-//// WEG
- namespace Jconst {
-    static constexpr long appFlag_dataInOut = 0x08L;                // external I/O (not to SD) is happening
-}
+#define J_productName "Justina: JUST an INterpreter for Arduino"
+#define J_legalCopyright "Copyright (C) Herwig Taveirne 2022, 2023"
+#define J_productVersion "1.0.1"
+#define J_buildDate "June 5, 2023"
 
 
 // ******************************************************************
@@ -122,23 +116,6 @@ public:
     static long getCreatedObjectCount();
 };
 
-
-// *****************************************************************
-// ***                class Justina_interpreter                  ***
-// *****************************************************************
-
-class JustinaIO {
-    int streamNumberIn{}, streamNumberOut{};
-    Stream* _pStreamIn{}, * _pStreamOut{};
-
-    long * _pAppFlags{};
-
-public:
-    int getStreamIn(Stream*& pStreamIn);
-    int getStreamOut(Stream*& pStreamOut);
-
-    size_t println();
-};
 
 // *****************************************************************
 // ***                class Justina_interpreter                  ***
@@ -267,6 +244,7 @@ class Justina_interpreter {
         cmdcod_receiveFile,
         cmdcod_sendFile,
         cmdcod_copyFile,
+        cmdcod_listFilesToSer,
         cmdcod_listFiles,
         cmdcod_startSD,
         cmdcod_stopSD,
@@ -619,6 +597,7 @@ class Justina_interpreter {
 
         // other program errors
         result_parse_abort = 2200,
+        result_parse_stdConsole,
         result_parse_kill,
     };
 
@@ -809,7 +788,7 @@ class Justina_interpreter {
     static constexpr uint8_t varIsConstantBit{ B10000000 };
 
 
-    // commands (FUNCTION, FOR, ...): allowed command parameters (naming: cmdPar_<n[nnn]> with A'=variable with (optional) assignment, 'E'=expression, 'E'=expression, 'R'=keyword
+    // commands (FUNCTION, FOR, ...): allowed command parameters
     static const char cmdPar_100[4];
     static const char cmdPar_101[4];
     static const char cmdPar_102[4];
@@ -902,12 +881,16 @@ class Justina_interpreter {
     static constexpr uint8_t value_isStringPointer = 0x03;
 
 
+public:
     // application flag bits
     //----------------------
     // bits 3-0: flags signaling specific Justina status conditions to caller
     static constexpr long appFlag_errorConditionBit = 0x01L;       // Justina parsing or execution error has occured
 
     static constexpr long appFlag_statusMask = 0x06L;               // status bits mask
+    static constexpr long appFlag_statusAbit = 0x02L;               // status A bit 
+    static constexpr long appFlag_statusBbit = 0x04L;               // status B bit
+
     static constexpr long appFlag_idle = 0x00L;                     // idle status
     static constexpr long appFlag_parsing = 0x02L;                  // parsing status
     static constexpr long appFlag_executing = 0x04L;                // executing status
@@ -916,6 +899,7 @@ class Justina_interpreter {
     static constexpr long appFlag_dataInOut = 0x08L;                // external I/O (not to SD) is happening
 
     // bits 11-8: flags signaling specific caller status conditions to Justina
+    static constexpr long appFlag_requestMask = 0x0f00;
     static constexpr long appFlag_consoleRequestBit = 0x0100L;
     static constexpr long appFlag_killRequestBit = 0x0200L;
     static constexpr long appFlag_stopRequestBit = 0x0400L;
@@ -1235,7 +1219,7 @@ class Justina_interpreter {
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na, block_na, block_na };                                   // not a 'block' command
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[62];                          // keyword names
+    static const ResWordDef _resWords[63];                          // keyword names
     static const FuncDef _functions[134];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
     static const SymbNumConsts _symbNumConsts[58];
@@ -1435,6 +1419,7 @@ class Justina_interpreter {
     Stream** _pAltIOstreams{ nullptr };
     int _altIOstreamCount = 0;
 
+    int _SDcardConstraints{0};
     Stream* _pStreamIn{ nullptr }, * _pStreamOut{ nullptr };
     int _streamNumberIn{ 0 }, _streamNumberOut{ 0 };
 
@@ -1567,7 +1552,7 @@ class Justina_interpreter {
     // ------------------------------------
 
 public:
-    Justina_interpreter(Stream** const pAltInputStreams, int altIOstreamCount, long progMemSize, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);               // constructor
+    Justina_interpreter(Stream** const pAltInputStreams, int altIOstreamCount, long progMemSize, int SDcardConstraints=0, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);               // constructor
     ~Justina_interpreter();               // deconstructor
     bool setMainLoopCallback(void (*func)(long& appFlags));                   // set callback functions
     bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType, const int argCount));
@@ -1719,9 +1704,8 @@ private:
     void pushConstant(int& tokenType);
     void pushVariable(int& tokenType);
 
-    void execPeriodicHousekeeping(bool* pKillNow, bool* pForcedStop = nullptr, bool* pForcedAbort = nullptr);
-
-    char getCharacter(bool& killNow, bool& forcedStop, bool& forcedAbort, bool enableTimeOut = false, bool useLongTimeout = false);
+    void execPeriodicHousekeeping(bool* pKillNow, bool* pForcedStop = nullptr, bool* pForcedAbort = nullptr, bool* pSetStdConsole = nullptr);
+    char getCharacter(bool& killNow, bool& forcedStop, bool& forcedAbort, bool& setStdConsole, bool enableTimeOut = false, bool useLongTimeout = false);
     bool getConsoleCharacters(bool& forcedStop, bool& forcedAbort, bool& doCancel, bool& doDefault, char* input, int& length, char terminator = 0xff);
 
     bool addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool& withinMultiLineComment,

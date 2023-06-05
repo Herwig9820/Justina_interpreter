@@ -66,7 +66,7 @@ constexpr char SSID[] = SERVER_SSID, PASS[] = SERVER_PASS;                      
 TCPconnection myTCPconnection(SSID, PASS, serverAddress, gatewayAddress, subnetMask, DNSaddress, serverPort, conn_2_TCPconnected);
 
 void onConnStateChange(connectionState_type  connectionState);
-constexpr char menu[] = "+++ Please select:\r\n  'H' Help\r\n  '0' (Re-)start WiFi\r\n  '1' Disable WiFi\r\n  '2' Enable TCP\r\n  '3' Disable TCP\r\n  '4' Verbose TCP\r\n  '5' Silent TCP\r\n  'J' Start Justina interpreter\r\n";
+constexpr char menu[] = "+++ Please select:\r\n  'H' Help\r\n  '0' (Re-)start WiFi\r\n  '1' Disable WiFi\r\n  '2' Enable TCP\r\n  '3' Disable TCP\r\n  '4' Verbose TCP\r\n  '5' Silent TCP\r\n  '6' Print remote IP\r\n  'J' Start Justina interpreter\r\n";
 
 #else
 constexpr char menu[] = "+++ Please select:\r\n  'J' Start Justina interpreter\r\n";
@@ -77,9 +77,7 @@ bool interpreterInMemory{ false };                                              
 
 bool errorCondition = false, statusA = false, statusB = false, dataInOut = false;
 
-Stream* pAlternativeIO[3]{ static_cast<Stream*>(&Serial) ,                                                                  // alternative IO ports, if defined
-                        static_cast<Stream*>(&Serial) ,
-                        static_cast<Stream*>(&Serial) };
+Stream* pAlternativeIO[3]{ &Serial , &Serial , &Serial};                                                            // alternative IO ports, if defined
 constexpr int terminalCount{ 3 };
 
 Justina_interpreter* pJustina{ nullptr };                                                    // pointer to Justina_interpreter object
@@ -110,6 +108,7 @@ void setup() {
 
     pinMode(STOP_ABORT_PIN, INPUT_PULLUP);
     pinMode(KILL_PIN, INPUT_PULLUP);
+
 
 #if withTCP
     pinMode(WiFi_CONNECTED_PIN, OUTPUT);                                              // 'TCP connected' led
@@ -167,8 +166,8 @@ void loop() {
     c = Serial.read();
     if (c != 0xff) {
         execAction(c);                                           // no character to process (also discard control characters)
-        delay(100);
-        while (Serial.available() > 0) { Serial.read(); }       // empty character buffer
+        ////delay(100);
+        ////while (Serial.available() > 0) { Serial.read(); }       // empty character buffer
     }
 }
 
@@ -214,6 +213,10 @@ void execAction(char c) {
             Serial.println("TCP server: silent");
             break;
 
+        case '6':                                                                       // set TCP server to silent
+            myTCPconnection.printRemoteIP();
+            break;
+
         #endif
         case 'j':
         #if !defined(ARDUINO_SAMD_NANO_33_IOT) && !defined(ARDUINO_ARCH_RP2040)
@@ -224,8 +227,10 @@ void execAction(char c) {
             // start interpreter: control will not return to here until the user quits, because it has its own 'main loop'
             heartbeatPeriod = 200;
             withinApplication = true;                                                   // flag that control will be transferred to an 'application'
-            if (!interpreterInMemory) {
-                pJustina = new  Justina_interpreter(pAlternativeIO, terminalCount, progMemSize);         // if interpreter not running: create an interpreter object on the heap
+            if (!interpreterInMemory) {                                                 // if interpreter not running: create an interpreter object on the heap
+                
+                // SD card constraints argument:  0 = no card reader, 1 = card reader present, do not yet initialise, 2 = initialise card now, 3 = run start.txt functon start() now
+                pJustina = new  Justina_interpreter(pAlternativeIO, terminalCount, progMemSize,3);            
 
                 // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
                 // this callback function will be called regularly, e.g. every time the interpreter reads a character
@@ -407,26 +412,8 @@ void keyStates(uint8_t pinStates, uint8_t& debounced, uint8_t& wentDown, uint8_t
 
 void Justina_housekeeping(long& appFlags) {
 
-    // bits 3-0: flags signaling specific Justina status conditions to caller
-    constexpr long appFlag_errorConditionBit = 0x01L;       // Justina parsing or execution error has occured
-
-    constexpr long appFlag_statusMask = 0x06L;               // status bits mask: status bits A and B
-    constexpr long appFlag_statusAbit = 0x02L;               // status bits A and B: 4 different statuses (see below)
-    constexpr long appFlag_statusBbit = 0x04L;
-    constexpr long appFlag_idle = 0x00L;                     // idle status
-    constexpr long appFlag_parsing = 0x02L;                  // parsing status
-    constexpr long appFlag_executing = 0x04L;                // executing status
-    constexpr long appFlag_stoppedInDebug = 0x06L;           // stopped in debug status
-
-    constexpr long appFlag_dataInOut = 0x08L;                // external I/O (not to SD) is happening
-
-    // bits 11-8: flags signaling specific calle    r status conditions to Justina
-    constexpr long appFlag_consoleRequestBit = 0x0100L;
-    constexpr long appFlag_killRequestBit = 0x0200L;
-    constexpr long appFlag_stopRequestBit = 0x0400L;
-    constexpr long appFlag_abortRequestBit = 0x0800L;
-
     heartbeat();                                                                        // blink a led to show program is running
+
 #if withTCP
     myTCPconnection.maintainConnection();                                               // maintain TCP connection
 #endif
@@ -441,22 +428,22 @@ void Justina_housekeeping(long& appFlags) {
     keyStates(pinStates, debouncedStates, wentDown, wentUp, isShortPress, isLongPress); // wentDown, wentUp, isShortPress, isLongPress: all one shot
 
     // application flags: submit to Justina 
-    appFlags = (appFlags & ~(appFlag_consoleRequestBit | appFlag_killRequestBit | appFlag_stopRequestBit | appFlag_abortRequestBit));      // reset requests
+    appFlags = (appFlags & ~Justina_interpreter::appFlag_requestMask);      // reset requests
     // short press: key goes up (edge) while time is less than threshold
     // long press: time passes threshold (edge) while key is still down
-    if (isShortPress & (1 << 0)) { appFlags |= appFlag_consoleRequestBit; }
-    if (isLongPress & (1 << 0)) { appFlags |= appFlag_killRequestBit; }
-    if (isShortPress & (1 << 1)) { appFlags |= appFlag_stopRequestBit; }
-    else if (isLongPress & (1 << 1)) { appFlags |= appFlag_abortRequestBit; Serial.print('A'); }
+    if (isShortPress & (1 << 0)) { appFlags |= Justina_interpreter::appFlag_consoleRequestBit; }
+    if (isLongPress & (1 << 0)) { appFlags |= Justina_interpreter::appFlag_killRequestBit; }
+    if (isShortPress & (1 << 1)) { appFlags |= Justina_interpreter::appFlag_stopRequestBit; }
+    else if (isLongPress & (1 << 1)) { appFlags |= Justina_interpreter::appFlag_abortRequestBit;  }
 
-    // application flags: receive from Justina
-    if (errorCondition ^ (appFlags & appFlag_errorConditionBit)) { errorCondition = (appFlags & appFlag_errorConditionBit);  digitalWrite(ERROR_PIN, errorCondition); }  // only write if change detected
-    if (statusA ^ (appFlags & appFlag_statusAbit)) { statusA = (appFlags & appFlag_statusAbit);  digitalWrite(STATUS_A_PIN, statusA); }  // only write if change detected
-    if (statusB ^ (appFlags & appFlag_statusBbit)) { statusB = (appFlags & appFlag_statusBbit);  digitalWrite(STATUS_B_PIN, statusB); }  // only write if change detected
+    // application flags: receive flags from Justina and set indicator leds (only set on/off if change detected)
+    if (errorCondition ^ (appFlags & Justina_interpreter::appFlag_errorConditionBit)) { errorCondition = (appFlags & Justina_interpreter::appFlag_errorConditionBit);  digitalWrite(ERROR_PIN, errorCondition); }  // only write if change detected
+    if (statusA ^ (appFlags & Justina_interpreter::appFlag_statusAbit)) { statusA = (appFlags & Justina_interpreter::appFlag_statusAbit);  digitalWrite(STATUS_A_PIN, statusA); }  
+    if (statusB ^ (appFlags & Justina_interpreter::appFlag_statusBbit)) { statusB = (appFlags & Justina_interpreter::appFlag_statusBbit);  digitalWrite(STATUS_B_PIN, statusB); }  
 
     bool newDataLedState{false};
     static bool dataLedState {false};
-    if (appFlags & appFlag_dataInOut) { newDataLedState = !dataLedState; } else { newDataLedState =false;}      // if data, toggle state, otherwise reset state
+    if (appFlags & Justina_interpreter::appFlag_dataInOut) { newDataLedState = !dataLedState; } else { newDataLedState =false;}      // if data, toggle state, otherwise reset state
     if (newDataLedState != dataLedState) { dataLedState = newDataLedState;  digitalWrite(DATA_IO_PIN, dataLedState); }  // only write if change detected
 }
 

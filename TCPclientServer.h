@@ -100,6 +100,7 @@ public:
     void maintainConnection();                                              // attempt to (re-)connect to wifi and to a client, if available
 
     void setVerbose( bool verbose );
+    void printRemoteIP();
     void setConnCallback( void (*func)(connectionState_type connectionState) );                   // set callback function for connection state change
     void setKeepAliveTimeout(unsigned long keepAliveTimeOut);
     void requestAction( connectionAction_type action );

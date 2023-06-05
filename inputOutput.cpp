@@ -37,9 +37,10 @@
 // --------------------------------
 
 Justina_interpreter::execResult_type Justina_interpreter::startSD() {
-
+    
     if (_SDinitOK) { return result_execOK; }          // card is initialised: nothing to do
 
+    if(_SDcardConstraints ==0){return result_SD_noCardOrCardError;}
     if (!_SDcard.init(SPI_HALF_SPEED, _SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
     if (!SD.begin(_SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
 
@@ -201,7 +202,7 @@ void  Justina_interpreter::SD_closeAllFiles() {
 // ---------------------------------------------
 
 void Justina_interpreter::printDirectory(File dir, int indentLevel) {
-    constexpr int step{ 2 }, defaultSizeAttrColumn{ 20 }, minimumColumnSpacing{ 4 };
+    constexpr int step{ 2 }, defaultSizeAttrColumn{ 30 }, minimumColumnSpacing{ 4 };
 
     // before calling this function, output stream must be set by function 'setStream(...)'
 
@@ -240,24 +241,11 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_listFiles() {
 
     if (!_SDinitOK) { return result_SD_noCardOrCardError; }
 
-    /*
-    // print to SERIAL (fixed in SD library) but include date and time stamp
-    SdVolume volume{};
-    SdFile root{};
-
-    Serial.println("\nSD card: files (name, date, size in bytes): ");
-
-    volume.init(_SDcard);
-    root.openRoot(volume);
-    root.ls(LS_R | LS_DATE | LS_SIZE);      // to SERIAL (not to _console)
-    */
-
-
-    // print to console but without date and time stamp
+    // print to console (default), or to any other defined I/O device, or to a file, but without date and time stamp (unfortunately fixed in SD library)
     // before calling this function, output stream must be set by function 'setStream(...)'
 
     SDLib::File SDroot = SD.open("/");
-    println("\nSD card: files (name, size in bytes): ");
+    println("\r\nSD card: files (name, size in bytes): ");
     printDirectory(SDroot, 0);
 
     return result_execOK;
@@ -417,14 +405,14 @@ Justina_interpreter::execResult_type  Justina_interpreter::determineStream(int s
 int Justina_interpreter::readFrom(int streamNumber) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->read();
 }
 
 int Justina_interpreter::readFrom(int streamNumber, char* buffer, int length) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }                  // but this won't happen (stream MUST be a file)
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }                  // but this won't happen (stream MUST be a file)
     return static_cast<File*>(pStream)->read(buffer, length);                   // NOTE: stream MUST be a file
 }
 
@@ -433,14 +421,14 @@ int Justina_interpreter::readFrom(int streamNumber, char* buffer, int length) {
 size_t Justina_interpreter::writeTo(int streamNumber, char c) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->write(c);
 }
 
 size_t Justina_interpreter::writeTo(int streamNumber, char* s, int size) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->write(s);
 }
 
@@ -448,63 +436,63 @@ size_t Justina_interpreter::writeTo(int streamNumber, char* s, int size) {
 size_t Justina_interpreter::printTo(int streamNumber, char c) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->print(c);
 }
 
 size_t Justina_interpreter::printTo(int streamNumber, unsigned char c) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->print(c);
 }
 
 size_t Justina_interpreter::printTo(int streamNumber, int i) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->print(i);
 }
 
 size_t Justina_interpreter::printTo(int streamNumber, unsigned int i) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->print(i);
 }
 
 size_t Justina_interpreter::printTo(int streamNumber, long l) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->print(l);
 }
 
 size_t Justina_interpreter::printTo(int streamNumber, unsigned long l) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->print(l);
 }
 
 size_t Justina_interpreter::printTo(int streamNumber, double d) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->print(d);
 }
 
 size_t Justina_interpreter::printTo(int streamNumber, char* s) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->print(s);
 }
 
 size_t Justina_interpreter::printTo(int streamNumber, const char* s) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->print(s);
 }
 
@@ -512,63 +500,63 @@ size_t Justina_interpreter::printTo(int streamNumber, const char* s) {
 size_t Justina_interpreter::printlnTo(int streamNumber, char c) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->println(c);
 }
 
 size_t Justina_interpreter::printlnTo(int streamNumber, unsigned char c) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->println(c);
 }
 
 size_t Justina_interpreter::printlnTo(int streamNumber, int i) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->println(i);
 }
 
 size_t Justina_interpreter::printlnTo(int streamNumber, unsigned int i) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->println(i);
 }
 
 size_t Justina_interpreter::printlnTo(int streamNumber, long l) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->println(l);
 }
 
 size_t Justina_interpreter::printlnTo(int streamNumber, unsigned long l) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->println(l);
 }
 
 size_t Justina_interpreter::printlnTo(int streamNumber, double d) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->println(d);
 }
 
 size_t Justina_interpreter::printlnTo(int streamNumber, char* s) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->println(s);
 }
 
 size_t Justina_interpreter::printlnTo(int streamNumber, const char* s) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->println(s);
 }
 
@@ -576,7 +564,7 @@ size_t Justina_interpreter::printlnTo(int streamNumber, const char* s) {
 size_t Justina_interpreter::printlnTo(int streamNumber) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, &pStream, true) != result_execOK) { return 0; }   // if error, zero characters written but error is not returned to caller
-    if (streamNumber <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->println();
 }
 
@@ -586,66 +574,66 @@ size_t Justina_interpreter::printlnTo(int streamNumber) {
 // -------------------------------------------------------------------
 
 int Justina_interpreter::read() {
-    if (_streamNumberIn <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (_streamNumberIn <= 0) { _appFlags |= appFlag_dataInOut; }
     return _pStreamIn->read();
 }
 
 int Justina_interpreter::read(char* buffer, int length) {
-    if (_streamNumberIn <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }           // but this won't happen (stream MUST be a file)
+    if (_streamNumberIn <= 0) { _appFlags |= appFlag_dataInOut; }           // but this won't happen (stream MUST be a file)
     return (static_cast <File*>(_pStreamIn))->read(buffer, length);         // Note: stream MUST be a file
 }
 
 
 
 size_t Justina_interpreter::write(char* s, int size) {
-    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (_streamNumberOut <= 0) { _appFlags |= appFlag_dataInOut; }
     return _pStreamOut->write(s, size);
 }
 
 size_t Justina_interpreter::write(char c) {
-    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (_streamNumberOut <= 0) { _appFlags |= appFlag_dataInOut; }
     return _pStreamOut->write(c);
 }
 
 
 
 size_t Justina_interpreter::print(unsigned char c) {
-    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (_streamNumberOut <= 0) { _appFlags |= appFlag_dataInOut; }
     return _pStreamOut->print(c);
 }
 
 size_t Justina_interpreter::print(int i) {
-    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (_streamNumberOut <= 0) { _appFlags |= appFlag_dataInOut; }
     return _pStreamOut->print(i);
 }
 
 size_t Justina_interpreter::print(unsigned int i) {
-    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (_streamNumberOut <= 0) { _appFlags |= appFlag_dataInOut; }
     return _pStreamOut->print(i);
 }
 
 size_t Justina_interpreter::print(long l) {
-    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (_streamNumberOut <= 0) { _appFlags |= appFlag_dataInOut; }
     return _pStreamOut->print(l);
 }
 
 size_t Justina_interpreter::print(unsigned long l) {
-    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (_streamNumberOut <= 0) { _appFlags |= appFlag_dataInOut; }
     return _pStreamOut->print(l);
 }
 
 size_t Justina_interpreter::print(double d) {
-    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (_streamNumberOut <= 0) { _appFlags |= appFlag_dataInOut; }
     return _pStreamOut->print(d);
 }
 
 size_t Justina_interpreter::print(char* s) {
-    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (_streamNumberOut <= 0) { _appFlags |= appFlag_dataInOut; }
     return _pStreamOut->print(s);
 }
 
 size_t Justina_interpreter::print(const char* s) {
-    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (_streamNumberOut <= 0) { _appFlags |= appFlag_dataInOut; }
     return _pStreamOut->print(s);
 }
 
@@ -653,52 +641,52 @@ size_t Justina_interpreter::print(const char* s) {
 
 
 size_t Justina_interpreter::println(char c) {
-    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (_streamNumberOut <= 0) { _appFlags |= appFlag_dataInOut; }
     return _pStreamOut->println(c);
 }
 
 size_t Justina_interpreter::println(unsigned char c) {
-    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (_streamNumberOut <= 0) { _appFlags |= appFlag_dataInOut; }
     return _pStreamOut->println(c);
 }
 
 size_t Justina_interpreter::println(int i) {
-    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (_streamNumberOut <= 0) { _appFlags |= appFlag_dataInOut; }
     return _pStreamOut->println(i);
 }
 
 size_t Justina_interpreter::println(unsigned int i) {
-    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (_streamNumberOut <= 0) { _appFlags |= appFlag_dataInOut; }
     return _pStreamOut->println(i);
 }
 
 size_t Justina_interpreter::println(long l) {
-    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (_streamNumberOut <= 0) { _appFlags |= appFlag_dataInOut; }
     return _pStreamOut->println(l);
 }
 
 size_t Justina_interpreter::println(unsigned long l) {
-    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (_streamNumberOut <= 0) { _appFlags |= appFlag_dataInOut; }
     return _pStreamOut->println(l);
 }
 
 size_t Justina_interpreter::println(double d) {
-    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (_streamNumberOut <= 0) { _appFlags |= appFlag_dataInOut; }
     return _pStreamOut->println(d);
 }
 
 size_t Justina_interpreter::println(char* s) {
-    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (_streamNumberOut <= 0) { _appFlags |= appFlag_dataInOut; }
     return _pStreamOut->println(s);
 }
 
 size_t Justina_interpreter::println(const char* s) {
-    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (_streamNumberOut <= 0) { _appFlags |= appFlag_dataInOut; }
     return _pStreamOut->println(s);
 }
 
 size_t Justina_interpreter::println() {
-    if (_streamNumberOut <= 0) { _appFlags |= Jconst::appFlag_dataInOut; }
+    if (_streamNumberOut <= 0) { _appFlags |= appFlag_dataInOut; }
     return _pStreamOut->println();
 }
 
@@ -717,7 +705,7 @@ int JustinaIO::getStreamOut(Stream*& pStreamOut) {
 };
 
 size_t JustinaIO::println() {
-    if (streamNumberOut <= 0) { *_pAppFlags |= Jconst::appFlag_dataInOut; }
+    if (streamNumberOut <= 0) { *_pAppFlags |= appFlag_dataInOut; }
     return _pStreamOut->println();
 }
 */

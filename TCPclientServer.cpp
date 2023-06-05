@@ -65,6 +65,13 @@ TCPconnection::TCPconnection( const char SSID [], const char PASS [], const IPAd
 
 void TCPconnection::setVerbose( bool verbose ) { _verbose = verbose; }
 
+void TCPconnection::printRemoteIP(){
+    IPAddress IP = _client.remoteIP();
+    char s [100];
+    sprintf(s, "Remote IP %d.%d.%d.%d", IP[0], IP[1], IP[2], IP[3]);
+    Serial.println(s);
+}
+
 void TCPconnection::setConnCallback( void (*func)(connectionState_type connectionState) ) { _callbackFcn = func; }
 
 WiFiServer* TCPconnection::getServer() { return &_server; }
