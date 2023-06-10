@@ -39,7 +39,7 @@
 #define J_productName "Justina: JUST an INterpreter for Arduino"
 #define J_legalCopyright "Copyright (C) Herwig Taveirne 2022, 2023"
 #define J_productVersion "1.0.1"
-#define J_buildDate "June 5, 2023"
+#define J_buildDate "June 10, 2023"
 
 
 // ******************************************************************
@@ -1378,7 +1378,7 @@ public:
     char _statement[MAX_STATEMENT_LEN + 1] = "";
     bool _programMode{ false };
     bool _keepInMemory{ true };
-    bool _isPrompt{ false };
+    bool _lastPrintedIsPrompt{ false };
 
     int _userVarCount{ 0 };                                        // counts number of user variables (names and values) 
     int _programVarNameCount{ 0 };                                 // counts number of variable names (global variables: also stores values) 
@@ -1419,7 +1419,7 @@ public:
     Stream** _pAltIOstreams{ nullptr };
     int _altIOstreamCount = 0;
 
-    int _SDcardConstraints{0};
+    int _JustinaConstraints{0};
     Stream* _pStreamIn{ nullptr }, * _pStreamOut{ nullptr };
     int _streamNumberIn{ 0 }, _streamNumberOut{ 0 };
 

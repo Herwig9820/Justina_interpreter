@@ -77,10 +77,12 @@ bool interpreterInMemory{ false };                                              
 
 bool errorCondition = false, statusA = false, statusB = false, dataInOut = false;
 
-Stream* pAlternativeIO[3]{ &Serial , &Serial , &Serial};                                                            // alternative IO ports, if defined
+Stream* pAlternativeIO[3]{ &Serial , &Serial , &Serial };                                                            // alternative IO ports, if defined
 constexpr int terminalCount{ 3 };
 
 Justina_interpreter* pJustina{ nullptr };                                                    // pointer to Justina_interpreter object
+
+char lastCharRead{ 255 };////
 
 #ifdef ARDUINO_ARCH_RP2040
 long progMemSize = pow(2, 16);
@@ -128,7 +130,7 @@ void setup() {
     Serial.println("Starting TCP server");
     Serial.print("WiFi firmware version  "); Serial.println(WiFi.firmwareVersion()); Serial.println();
     myTCPconnection.setVerbose(false);                                                // disable debug messages from within myTCPconnection
-    myTCPconnection.setKeepAliveTimeout(20 * 60 * 1000);                                // 20 minutes
+    myTCPconnection.setKeepAliveTimeout(1 * 60 * 1000);                                // 1 minute
     Serial.println("On the remote terminal, press ENTER to connect\r\n");
     // set callback function that will be executed when WiFi or TCP connection state changes 
     myTCPconnection.setConnCallback((&onConnStateChange));                            // set callback function
@@ -164,11 +166,7 @@ void loop() {
 
     // read character from remote terminal (TCP client), if a character is available
     c = Serial.read();
-    if (c != 0xff) {
-        execAction(c);                                           // no character to process (also discard control characters)
-        ////delay(100);
-        ////while (Serial.available() > 0) { Serial.read(); }       // empty character buffer
-    }
+    if (c != 0xff) { execAction(c); }                                         // no character to process (also discard control characters)
 }
 
 
@@ -177,7 +175,7 @@ void loop() {
 // ---------------------------------------------------------------
 
 void execAction(char c) {
-    bool printMenu{ true };
+    bool printMenu{ false };
     switch (tolower(c)) {
 
     #if withTCP
@@ -218,6 +216,18 @@ void execAction(char c) {
             break;
 
         #endif
+
+            //// temp
+        case 'r':       // print last character sent by tcp client
+            lastCharRead = myTCPconnection.getClient()->read();
+            if (lastCharRead != 0xff) {
+                if (lastCharRead < ' ') { myTCPconnection.getClient()->print("(ctrl char) ");  myTCPconnection.getClient()->println(int(lastCharRead)); }
+                else if (lastCharRead <= 0x7f) { myTCPconnection.getClient()->print(lastCharRead); myTCPconnection.getClient()->println(); }
+                else { myTCPconnection.getClient()->print("(>0x7f) ");  myTCPconnection.getClient()->println(int(lastCharRead)); }
+                lastCharRead = 0xff;
+            }
+            break;
+
         case 'j':
         #if !defined(ARDUINO_SAMD_NANO_33_IOT) && !defined(ARDUINO_ARCH_RP2040)
             Serial.println("interpreter does not run on this processor");            // interpreter does not run on this processor
@@ -228,9 +238,11 @@ void execAction(char c) {
             heartbeatPeriod = 200;
             withinApplication = true;                                                   // flag that control will be transferred to an 'application'
             if (!interpreterInMemory) {                                                 // if interpreter not running: create an interpreter object on the heap
-                
-                // SD card constraints argument:  0 = no card reader, 1 = card reader present, do not yet initialise, 2 = initialise card now, 3 = run start.txt functon start() now
-                pJustina = new  Justina_interpreter(pAlternativeIO, terminalCount, progMemSize,3);            
+
+                // SD card constraints argument:
+                // bits 1..0 = 0b00:no card reader, 0b01 = card reader present, do not yet initialise, 0b10 = initialise card now, 0b11 = run start.txt functon start() now
+                // bit 2     = 0b0: do not allow retaining data when quitting Justina, 0b1 = allow  
+                pJustina = new  Justina_interpreter(pAlternativeIO, terminalCount, progMemSize, 0b0111);    // allow quitting Justina with data retained; init SD card on start and run start program (if available)        
 
                 // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
                 // this callback function will be called regularly, e.g. every time the interpreter reads a character
@@ -256,8 +268,10 @@ void execAction(char c) {
             break;
 
         default:
-            Serial.println("This is not a valid choice (enter 'H' for help)");
-            printMenu = false;
+            if (c >= ' ') {
+                Serial.println("This is not a valid choice (enter 'H' for help)");
+                printMenu = false;
+            }
             break;
     }
     if (printMenu) { Serial.println(menu); }                                                      // show menu again
@@ -416,6 +430,7 @@ void Justina_housekeeping(long& appFlags) {
 
 #if withTCP
     myTCPconnection.maintainConnection();                                               // maintain TCP connection
+
 #endif
 
     // request kill if debounced kill key press is detected 
@@ -434,16 +449,17 @@ void Justina_housekeeping(long& appFlags) {
     if (isShortPress & (1 << 0)) { appFlags |= Justina_interpreter::appFlag_consoleRequestBit; }
     if (isLongPress & (1 << 0)) { appFlags |= Justina_interpreter::appFlag_killRequestBit; }
     if (isShortPress & (1 << 1)) { appFlags |= Justina_interpreter::appFlag_stopRequestBit; }
-    else if (isLongPress & (1 << 1)) { appFlags |= Justina_interpreter::appFlag_abortRequestBit;  }
+    else if (isLongPress & (1 << 1)) { appFlags |= Justina_interpreter::appFlag_abortRequestBit; }
 
     // application flags: receive flags from Justina and set indicator leds (only set on/off if change detected)
     if (errorCondition ^ (appFlags & Justina_interpreter::appFlag_errorConditionBit)) { errorCondition = (appFlags & Justina_interpreter::appFlag_errorConditionBit);  digitalWrite(ERROR_PIN, errorCondition); }  // only write if change detected
-    if (statusA ^ (appFlags & Justina_interpreter::appFlag_statusAbit)) { statusA = (appFlags & Justina_interpreter::appFlag_statusAbit);  digitalWrite(STATUS_A_PIN, statusA); }  
-    if (statusB ^ (appFlags & Justina_interpreter::appFlag_statusBbit)) { statusB = (appFlags & Justina_interpreter::appFlag_statusBbit);  digitalWrite(STATUS_B_PIN, statusB); }  
+    if (statusA ^ (appFlags & Justina_interpreter::appFlag_statusAbit)) { statusA = (appFlags & Justina_interpreter::appFlag_statusAbit);  digitalWrite(STATUS_A_PIN, statusA); }
+    if (statusB ^ (appFlags & Justina_interpreter::appFlag_statusBbit)) { statusB = (appFlags & Justina_interpreter::appFlag_statusBbit);  digitalWrite(STATUS_B_PIN, statusB); }
 
-    bool newDataLedState{false};
-    static bool dataLedState {false};
-    if (appFlags & Justina_interpreter::appFlag_dataInOut) { newDataLedState = !dataLedState; } else { newDataLedState =false;}      // if data, toggle state, otherwise reset state
+    bool newDataLedState{ false };
+    static bool dataLedState{ false };
+    if (appFlags & Justina_interpreter::appFlag_dataInOut) { newDataLedState = !dataLedState; }
+    else { newDataLedState = false; }      // if data, toggle state, otherwise reset state
     if (newDataLedState != dataLedState) { dataLedState = newDataLedState;  digitalWrite(DATA_IO_PIN, dataLedState); }  // only write if change detected
 }
 

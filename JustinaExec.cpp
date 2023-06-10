@@ -892,7 +892,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         {
 
             // optional argument 1 clear all
-            // - value is 0: keep interpreter in memory on quitting, value is 1: clear all and exit Justina 
+            // - value is 1: keep interpreter in memory on quitting (retain data), value is 0: clear all and exit Justina 
             // 'quit' behaves as if an error occured, in order to follow the same processing logic  
 
             if (cmdParamCount != 0) {                                                                                           // 'Quit' command only                                                                                      
@@ -904,34 +904,40 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);            // copy arguments from stack
                 if (((uint8_t)(valueType[0]) != value_isLong) && ((uint8_t)(valueType[0]) != value_isFloat)) { return result_arg_numberExpected; }
                 if ((uint8_t)(valueType[0]) == value_isFloat) { args[0].longConst = (int)args[0].floatConst; }
-                _keepInMemory = (args[0].longConst == 0);       // silent mode (even not possible to cancel)
+                // specifying 'retain data' or 'release memory' argument: silent mode. Note: 'retain data' will only set if allowed by _JustinaConstraints 
+                _keepInMemory = ((args[0].longConst != 0) && ((_JustinaConstraints & 0b0100) == 0b0100));       // silent mode (even not possible to cancel)
                 return result_quit;
             }
 
             else {      // keep in memory when quitting, cancel: ask user
-                while (_pConsoleIn->available() > 0) { readFrom(0); }                // empty console buffer first (to allow the user to start with an empty line)
+                if ((_JustinaConstraints & 0b0100) == 0b0100) {                         // retaining data is allowed: ask question and note answer
+                    while (_pConsoleIn->available() > 0) { readFrom(0); }                // empty console buffer first (to allow the user to start with an empty line)
 
-                do {
-                    bool doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };
-                    printlnTo(0, "===== Quit Justina: keep in memory ? (please answer Y, N or \\c to cancel) =====");
+                    do {
+                        bool doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };
+                        printlnTo(0, "===== Quit Justina: keep in memory ? (please answer Y, N or \\c to cancel) =====");
 
-                    // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
-                    // return flags doStop, doAbort, doCancel, doDefault if user included corresponding escape sequences in input string.
-                    int length{ 1 };
-                    char input[1 + 1] = "";                                                                          // init: empty string
-                    // NOTE: quitting has higher priority than aborting or stopping, and quitting anyway, so not needed to check abort and stop flags
-                    if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return result_kill; }  // kill request from caller ? 
-                    if (doAbort) { forcedAbortRequest = true; break; }                                         // abort running code (program or immediate mode statements)
-                    else if (doStop) { forcedStopRequest = true; }                                           // stop a running program (do not produce stop event yet, wait until program statement executed)
-                    if (doCancel) { break; }                       // '\c': cancel operation (lowest priority)
+                        // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
+                        // return flags doStop, doAbort, doCancel, doDefault if user included corresponding escape sequences in input string.
+                        int length{ 1 };
+                        char input[1 + 1] = "";                                                                          // init: empty string
+                        // NOTE: quitting has higher priority than aborting or stopping, and quitting anyway, so not needed to check abort and stop flags
+                        if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return result_kill; }  // kill request from caller ? 
+                        if (doAbort) { forcedAbortRequest = true; break; }                                         // abort running code (program or immediate mode statements)
+                        else if (doStop) { forcedStopRequest = true; }                                           // stop a running program (do not produce stop event yet, wait until program statement executed)
+                        if (doCancel) { break; }                       // '\c': cancel operation (lowest priority)
 
-                    bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
-                    if (validAnswer) {
-                        _keepInMemory = (tolower(input[0]) == 'y');
-                        return result_quit;                        // Justina Quit command executed 
-                    }
-                } while (true);
-
+                        bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
+                        if (validAnswer) {
+                            _keepInMemory = (tolower(input[0]) == 'y');
+                            return result_quit;                        // Justina Quit command executed 
+                        }
+                    } while (true);
+                }
+                else {
+                    _keepInMemory = false;      // do not retain data on quitting (it's not allwed by caller)
+                    return result_quit;
+                }
             }
 
             // clean up
@@ -1264,7 +1270,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     int IOstreamNumber = ((valueType[IOstreamArgIndex] == value_isLong) ? args[IOstreamArgIndex].longConst : (long)args[IOstreamArgIndex].floatConst);      // zero or negative
                     if (IOstreamNumber > 0) { return result_IO_invalidStreamNumber; }
                     else if ((-IOstreamNumber) > _altIOstreamCount) { return result_IO_invalidStreamNumber; }
-                    else {(isReceive ? sourceStreamNumber: destinationStreamNumber) = IOstreamNumber; }
+                    else { (isReceive ? sourceStreamNumber : destinationStreamNumber) = IOstreamNumber; }
                 }
                 else { return result_arg_numberExpected; }
             }
@@ -1304,7 +1310,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                             char s[70] = "===== File exists already. Overwrite ? (please answer Y or N) =====";
                             printlnTo(0, s);
                             // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
-                            bool doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };                                  
+                            bool doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };
                             int length{ 1 };
                             char input[1 + 1] = "";                                                                                         // init: empty string
                             if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return result_kill; }    // kill request from caller ?
@@ -1323,7 +1329,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     char* dirPath = new char[strlen(args[receivingFileArgIndex].pStringConst) + 1];
                     strcpy(dirPath, args[receivingFileArgIndex].pStringConst);
                     int pos{ 0 };
-                    bool dirCreated{ true };      
+                    bool dirCreated{ true };
                     for (pos = strlen(args[receivingFileArgIndex].pStringConst) - 1; pos >= 0; pos--) { if (dirPath[pos] == '/') { dirPath[pos] = '\0'; break; } }      // isolate path
 
                     if (pos > 0) {    // pos > 0: is NOT a root folder file (pos = 0: root '/' character found; pos=-1: no root '/' character found)
@@ -1357,7 +1363,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
                 // copy data from source stream to destination stream
                 if (verbose) { printlnTo(0, isSend ? "\r\nSending file... please wait" : isReceive ? "\r\nReceiving file... please wait" : "\r\nCopying file..."); }
-                
+
                 execResult = setStream(sourceStreamNumber); if (execResult != result_execOK) { return execResult; }                     // set stream for output
                 execResult = setStream(destinationStreamNumber, true); if (execResult != result_execOK) { return execResult; }          // set stream for output
 
@@ -1368,7 +1374,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 bool waitForFirstChar = isReceive;
                 int progressDotsByteCount{ 0 };
                 long totalByteCount{ 0 };
-                ;                bool newData{};
+                long dotCount{ 0 };
+                bool newData{};
 
                 do {
                     // read data from source stream
@@ -1379,14 +1386,17 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         progressDotsByteCount += bufferCharCount;
                         totalByteCount += bufferCharCount;
                     }
-                    else {        
+                    else {
                         // receive: get a character if available and perform a regular housekeeping callback as well
-                        c = getCharacter(kill, doStop, doAbort,stdConsDummy, isReceive, waitForFirstChar);
+                        c = getCharacter(kill, doStop, doAbort, stdConsDummy, isReceive, waitForFirstChar);
                         newData = (c != 0xff);
                         if (newData) { buffer[bufferCharCount++] = c; progressDotsByteCount++; totalByteCount++; }
                         waitForFirstChar = false;                           // for all next characters
                     }
-                    if (verbose) { if (progressDotsByteCount > 5000) { progressDotsByteCount = 0; printTo(0, '.'); } }      // handle verbose, kill, abort, stop, no more characters 
+                    if (verbose && (progressDotsByteCount > 5000)) {
+                        progressDotsByteCount = 0;  printTo(0, '.');
+                        if ((++dotCount & 0x3f) == 0) { printlnTo(0); }     // print a crlf each 64 dots
+                    }
 
                     // handle kill, abort and stop requests
                     if (kill) { return result_kill; }                                                                       // kill request from caller ?
@@ -1712,7 +1722,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printList));
             bool isPrintToVar = ((_activeFunctionData.activeCmd_ResWordCode == cmdcod_printToVar) || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printLineToVar)
                 || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printListToVar));
-            bool isConsolePrint = !(isStreamPrint || isPrintToVar);
+            bool isConsolePrint = !(isStreamPrint || isPrintToVar);         // for now, refers to 'cout...' commands (implicit console reference)
             int firstValueIndex = isConsolePrint ? 1 : 2;        // print to file or string: first argument is file or string
 
             // normal or list print ?
@@ -1760,8 +1770,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         streamNumber = opIsLong ? operand.longConst : operand.floatConst;
 
                         Stream* p{};
-                        execResult = setStream(streamNumber,p, true); if (execResult != result_execOK) { return execResult; }       // stream for output
-                        if (p == _pConsoleOut) { isConsolePrint = true; }                       // !!! also for streams < 0, if they point to console
+                        execResult = setStream(streamNumber, p, true); if (execResult != result_execOK) { return execResult; }       // stream for output
+                        if (p == _pConsoleOut) { isConsolePrint = true; }               // !!! from here on, also for streams < 0, if they POINT to console
                         pStreamPrintColumn = (streamNumber == 0) ? &_consolePrintColumn : (streamNumber < 0) ? _pIOprintColumns + (-streamNumber) - 1 : &(openFiles[streamNumber - 1].currentPrintColumn);
                     }
 
@@ -1870,7 +1880,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
 
                     // console print only: is print position at line start ? 
-                    if (isConsolePrint) {       // do not set _pIOprintColumns[0] to zero, to be consistent with other stream line end handling
+                    if (isConsolePrint) {       // NOTE: do not set _pIOprintColumns[0] to zero, to be consistent with other stream line end handling
                         if (printString != nullptr) { _consoleAtLineStart = (printString[strlen(printString) - 1] == '\n'); }
                     }
 
@@ -1881,11 +1891,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] printString;
+                    }
                 }
-            }
 
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-        }
+            }
 
             // finalise
             if (isPrintToVar) {        // print to string ? save in variable
@@ -1901,9 +1911,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] assembledString;
-                }
+                    }
                     return execResult;
-            }
+                }
 
                 // print line end without supplied arguments for printing: a string object does not exist yet, so create it now
                 if (doPrintLineEnd) {
@@ -1943,7 +1953,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 }
 
                 if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) { delete[] assembledString; }        // not referenced in eval. stack (clippedString is), so will not be deleted as part of cleanup
-                }
+            }
 
             else {      // print to file or console
                 if (doPrintLineEnd) {
@@ -2250,13 +2260,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     }
                 }
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-                    }
+            }
 
 
             // clean up
             clearEvalStackLevels(cmdParamCount);                                                        // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
-                }
+        }
         break;
 
 
@@ -2505,10 +2515,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         }
         break;
 
-            }       // end switch
+    }       // end switch
 
     return result_execOK;
-        }
+}
 
 
 // -------------------------------
@@ -2817,7 +2827,7 @@ void Justina_interpreter::clearEvalStackLevels(int n) {
         pPrecedingStackLvl = (LE_evalStack*)evalStack.getPrevListElement(pStackLvl);
         evalStack.deleteListElement(pStackLvl);
         pStackLvl = pPrecedingStackLvl;
-}
+    }
 
     _pEvalStackTop = pStackLvl;
     _pEvalStackMinus1 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackTop);
@@ -2895,13 +2905,13 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, b
 
             if (pFlowCtrlStackLvl == nullptr) { break; }       // all done
             isInitialLoop = false;
-            } while (true);
-        }
+        } while (true);
+    }
 
     _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
     _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackTop);
     _pFlowCtrlStackMinus2 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackMinus1);
-    }
+}
 
 
 // ---------------------------------------------------
@@ -2970,7 +2980,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execParenthesesPair(LE
     // none of the te above: simple parenthesis pair ? If variable inside, make it an intermediate constant on the stack 
     makeIntermediateConstant(_pEvalStackTop);                     // left parenthesis already removed from evaluation stack
     return result_execOK;
-    }
+}
 
 // ------------------------------------------------------------------------------------------------------------------
 // *   replace array variable base address and subscripts with the array element address on the evaluation stack   *
@@ -3140,11 +3150,11 @@ Justina_interpreter::execResult_type  Justina_interpreter::execAllProcessedOpera
             // execute operator
             execResult_type execResult = (isPrefixOperator) ? execUnaryOperation(true) : execInfixOperation();
             if (execResult != result_execOK) { return execResult; }
-    }
+        }
 
         // token preceding the operand is not an operator ? (it can be a left parenthesis or a generic name) ? exit while loop (nothing to do for now)
         else { break; }
-}
+    }
 
     return result_execOK;
 }
@@ -3581,7 +3591,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
 #endif
 
     return result_execOK;
-        }
+}
 
 
 // ---------------------------------
@@ -4064,7 +4074,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
                 for (int i = 0; i < maxLineLength; i++) {
                     // get a character if available and perform a regular housekeeping callback as well
-                    char c = getCharacter(kill, doStop, doAbort,stdConsDummy, (streamNumber <= 0));                       // time out only required if external IO
+                    char c = getCharacter(kill, doStop, doAbort, stdConsDummy, (streamNumber <= 0));                       // time out only required if external IO
                     if (kill) {                                                                 // kill request from caller ? 
                         _intermediateStringObjectCount--;
                         delete[] buffer;
@@ -4094,8 +4104,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                     bool varIsLong = (argIsLongBits & (0x1 << (suppliedArgCount - 1)));
                     if (varIsLong) { *_pEvalStackTop->varOrConst.value.pLongConst = (long)charsRead; }
                     else { *_pEvalStackTop->varOrConst.value.pFloatConst = (float)charsRead; }
+                }
             }
-        }
 
             // save result
             // -----------
@@ -4127,7 +4137,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 fcnResult.pStringConst = smallerBuffer;
             }
             else { fcnResult.pStringConst = buffer; }
-    }
+        }
         break;
 
 
@@ -4174,7 +4184,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
                 for (int i = 0; i < MAX_ALPHA_CONST_LEN; i++) {
                     // get a character if available and perform a regular housekeeping callback as well
-                    char c = getCharacter(kill, doStop, doAbort,stdConsDummy, (streamNumber <= 0));                       // time out only required if external IO
+                    char c = getCharacter(kill, doStop, doAbort, stdConsDummy, (streamNumber <= 0));                       // time out only required if external IO
                     if (kill) {                            // kill request from caller ? 
                         if (kill) {                                                                 // kill request from caller ? 
                             _intermediateStringObjectCount--;
@@ -4191,11 +4201,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                     if (c == 0xff) { break; }                                       // no more characters ? break
                     if (c == '\n') { break; }                 // line end found ? break ('terminator'\n' is not stored in buffer)
                     buffer[charsRead++] = c;
-                        }
+                }
 
                 buffer[charsRead] = '\0';       // add terminating '\0'
                 if (forcedAbortRequest) { break; }              // also end outer loop
-                    }
+            }
             else {      // parse from string
                 if (!(argIsStringBits & (1 << 0))) { return result_arg_stringExpected; };
                 buffer = (argIsVarBits & (1 << 0)) ? *pFirstArgStackLvl->varOrConst.value.ppStringConst : pFirstArgStackLvl->varOrConst.value.pStringConst;
@@ -4333,7 +4343,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             // save result: number of values that were actually saved 
             fcnResultValueType = value_isLong;
             fcnResult.longConst = valuesSaved;
-            }
+        }
         break;
 
 
@@ -4380,7 +4390,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
             while (true) {
                 // get a character if available and perform a regular housekeeping callback as well
-                char c = getCharacter(kill, doStop, doAbort,stdConsDummy, (streamNumber <= 0));                       // time out only required if external IO
+                char c = getCharacter(kill, doStop, doAbort, stdConsDummy, (streamNumber <= 0));                       // time out only required if external IO
                 if (kill) { return result_kill; }                           // kill request from caller ? 
                 if (doAbort) { forcedAbortRequest = true; break; }                                     // stop a running Justina program 
                 if (doStop) { forcedStopRequest = true; }                                                     // stop a running program (do not produce stop event yet, wait until program statement executed)
@@ -5110,7 +5120,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             fcnResult.pStringConst[0] = '\r';
             fcnResult.pStringConst[1] = '\n';
             fcnResult.pStringConst[2] = '\0';                                                                                           // terminating \0
-                }
+        }
         break;
 
         case fnccod_space:                                                                                                              // create a string with n spaces
@@ -5140,7 +5150,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
 
             for (int i = 0; i <= len - 1; ++i) { fcnResult.pStringConst[i] = c; }
             fcnResult.pStringConst[len] = '\0';
-            }
+        }
         break;
 
 
@@ -5158,7 +5168,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 value = ((argIsLongBits & (0x1 << 0))) ? args[0].longConst : (long)args[0].floatConst;                            // convert to long if needed
                 if (value <= 0) { return result_arg_outsideRange; }
                 if (((functionCode == fnccod_tab) ? value * _tabSize : value) > MAX_ALPHA_CONST_LEN) { return result_arg_outsideRange; }
-        }
+            }
 
             fcnResultValueType = value_isLong;                                                                                 // init
             fcnResult.longConst = (functionCode == fnccod_tab) ? value * _tabSize : value;        // default function return: tabs x tabsize or column                                       
@@ -5319,7 +5329,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         #endif            
             strcpy(fcnResult.pStringConst, args[0].pStringConst);   // copy original string
             for (int i = first; i <= last; i++) { fcnResult.pStringConst[i] = ((functionCode == fnccod_toupper) ? toupper(fcnResult.pStringConst[i]) : tolower(fcnResult.pStringConst[i])); }
-            }
+        }
         break;
 
 
@@ -5337,7 +5347,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             for (int i = 1; i < suppliedArgCount; ++i) {                                                                                // skip first argument (string)
                 if (!(argIsLongBits & (0x1 << i)) && !(argIsFloatBits & (0x1 << i))) { return result_arg_numberExpected; }
                 if ((argIsFloatBits & (0x1 << i))) { args[i].longConst = int(args[i].floatConst); }                                                     // all these functions need integer values
-        }
+            }
             int len = strlen(args[0].pStringConst);
 
             int first = (functionCode == fnccod_left) ? 0 : (functionCode == fnccod_mid) ? args[1].longConst - 1 : len - args[1].longConst;
@@ -5436,7 +5446,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 fcnResult.pStringConst = args[0].pStringConst;
                 quoteAndExpandEscSeq(fcnResult.pStringConst);     // returns a new intermediate string on the heap (never a null pointer)
             }
-            }
+        }
         break;
 
 
@@ -5564,15 +5574,15 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
                 break;
 
                 default: return result_arg_invalid; break;
-                    }       // switch (sysVal)
-                }
+            }       // switch (sysVal)
+        }
         break;
 
-                }       // end switch
+    }       // end switch
 
 
-                    // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
-                    // -------------------------------------------------------------------------------------------------------------------
+        // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
+        // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
@@ -5591,10 +5601,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
         _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate | (requestPrintTab ? isPrintTabRequest : 0)
             | (requestGotoPrintColumn ? isPrintColumnRequest : 0);
         _pEvalStackTop->varOrConst.sourceVarScopeAndFlags = 0x00;                                                                        // not an array, not an array element (it's a constant) 
-                }
+    }
 
     return result_execOK;
-            }
+}
 
 
 // -----------------------
@@ -5870,7 +5880,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchExternalFunctio
     _activeFunctionData.errorProgramCounter = calledFunctionTokenStep;
 
     return  result_execOK;
-        }
+}
 
 
 // ------------------------------------------------
@@ -6090,7 +6100,7 @@ void Justina_interpreter::initFunctionDefaultParamVariables(char*& pStep, int su
 
     // skip (remainder of) function definition
     findTokenStep(pStep, tok_isTerminalGroup1, termcod_semicolon);
-        };
+};
 
 
 
@@ -6209,7 +6219,7 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
                 }
 
                 tokenType = jumpTokens(1, pStep, terminalCode);       // comma or semicolon
-        }
+            }
 
             else {  // no initializer: if array, initialize it now (scalar has been initialized already)
                 if ((_activeFunctionData.pVariableAttributes[count] & var_isArray) == var_isArray) {
@@ -6219,7 +6229,7 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
             }
             count++;
 
-            } while (terminalCode == termcod_comma);
+        } while (terminalCode == termcod_comma);
 
     }
 };
@@ -6300,7 +6310,7 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateExternalFunct
             _localArrayObjectErrors += abs(_localArrayObjectCount);
             _localArrayObjectCount = 0;
         }
-        }
+    }
 
     execResult_type execResult = execAllProcessedOperators();     // continue in caller !!!
 
@@ -6317,7 +6327,7 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateEval() {
 
     if (evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels >= 1) {
         makeIntermediateConstant(_pEvalStackTop);
-}
+    }
     else { return result_eval_nothingToEvaluate; }
 
 
@@ -6355,7 +6365,7 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateEval() {
         if (execResult != result_execOK) { return execResult; }
     }
     return execResult;
-    }
+}
 
 
 // -----------------------------------

@@ -3112,7 +3112,7 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
     }
 
     // exit
-    printTo(0, multipleInstructions ? " ...)\r\n" : allInstructions ? "" : "\r\n"); _isPrompt = false;
+    printTo(0, multipleInstructions ? " ...)\r\n" : allInstructions ? "" : "\r\n"); _lastPrintedIsPrompt = false;
 }
 
 
@@ -3196,6 +3196,6 @@ void Justina_interpreter::printParsingResult(parseTokenResult_type result, int f
         else { sprintf(parsingInfo, "  Parsing error %d", result); }
     }
 
-    if (strlen(parsingInfo) > 0) { printlnTo(0, parsingInfo); _isPrompt = false; }
+    if (strlen(parsingInfo) > 0) { printlnTo(0, parsingInfo); _lastPrintedIsPrompt = false; }
 
 };

@@ -169,6 +169,7 @@ void TCPconnection::maintainTCPconnection() {
         // state: connected to wifi but no TCP connection => start TCP connection
         if ( _TCPenabled && (_lastTCPconnectAttempt + _TCPconnectDelay < millis()) ) {       // time out before next TCP connection attempt reached ?
             if ( !_isClient ) { _client = _server.available(); }            // if server side: attempt to connect to client
+            
             unsigned int startMeas = millis();
             // NOTE: occasionally, a stall occurs while IN _client.connect method and the system hangs
             bool isConnected = _isClient ? _client.connect( _serverAddress, _serverPort ) : _client.connected();

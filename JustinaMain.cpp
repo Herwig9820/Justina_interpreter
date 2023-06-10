@@ -381,7 +381,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
 
     {"listVars",        cmdcod_printVars,       cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_106,     cmdBlockNone},
     {"listCallSt",      cmdcod_printCallSt,     cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_106,     cmdBlockNone},
-    {"listFilesToSer",  cmdcod_listFilesToSer,  cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_102,     cmdBlockNone},
+    {"listFilesToSerial",cmdcod_listFilesToSer, cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_102,     cmdBlockNone},
     {"listFiles",       cmdcod_listFiles,       cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_106,     cmdBlockNone},
 
     // user callback functions
@@ -732,8 +732,8 @@ const Justina_interpreter::TerminalDef Justina_interpreter::_terminals[]{
 // -------------------
 
 Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int altIOstreamCount,
-    long progMemSize, int SDcardConstraints, int SDcardChipSelectPin) :
-    _pAltIOstreams(pAltInputStreams), _altIOstreamCount(altIOstreamCount), _progMemorySize(progMemSize), _SDcardConstraints(SDcardConstraints), _SDcardChipSelectPin(SDcardChipSelectPin) {
+    long progMemSize, int JustinaConstraints, int SDcardChipSelectPin) :
+    _pAltIOstreams(pAltInputStreams), _altIOstreamCount(altIOstreamCount), _progMemorySize(progMemSize), _JustinaConstraints(JustinaConstraints), _SDcardChipSelectPin(SDcardChipSelectPin) {
 
     // settings to be initialized when cold starting interpreter only
     // --------------------------------------------------------------
@@ -749,7 +749,7 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
     _termTokenCount = (sizeof(_terminals)) / sizeof(_terminals[0]);
     _symbvalueCount = (sizeof(_symbNumConsts)) / sizeof(_symbNumConsts[0]);
 
-    _isPrompt = false;
+    _lastPrintedIsPrompt = false;
 
     _programMode = false;
     _currenttime = millis();
@@ -832,7 +832,7 @@ bool Justina_interpreter::run() {
     static bool flushAllUntilEOF{ false };
 
     int lineCount{ 0 };
-    int progressCount{ 0 };
+    long parsedStatementCount{ 0 };
     int statementCharCount{ 0 };
     char* pErrorPos{};
     parseTokenResult_type result{ result_tokenFound };    // init
@@ -853,7 +853,7 @@ bool Justina_interpreter::run() {
     _programMode = false;
     _programCounter = _programStorage + _progMemorySize;
     *(_programStorage + _progMemorySize) = tok_no_token;                                      //  current end of program (FIRST byte of immediate mode command line)
-    _isPrompt = false;
+    _lastPrintedIsPrompt = false;
 
     _coldStart = false;             // can be used if needed in this procedure, to determine whether this was a cold or warm start
 
@@ -868,13 +868,13 @@ bool Justina_interpreter::run() {
     bool startJustinaWithoutAutostart{ true };
 
     // initialise SD card now ?
-    if (_SDcardConstraints >= 2) {       // 0 = no card reader, 1 = card reader present, do not yet initialise, 2 = initialise card now, 3 = run start.txt functoin start() now
+    if ((_JustinaConstraints & 0b0011) >= 2) {       // 0 = no card reader, 1 = card reader present, do not yet initialise, 2 = initialise card now, 3 = run start.txt functoin start() now
         printTo(0, "\r\nLooking for an SD card...\r\n");
         execResult_type execResult = startSD();
         printTo(0, _SDinitOK ? "SD card found\r\n" : "SD card error: SD card NOT found\r\n");
     }
 
-    if (_SDcardConstraints == 3) {
+    if ((_JustinaConstraints & 0b0011) == 3) {
         // open startup file and retrieve file number (which would be one, normally)
         _initiateProgramLoad = _SDinitOK;
         if (_initiateProgramLoad) {
@@ -900,7 +900,7 @@ bool Justina_interpreter::run() {
         }
     }
 
-
+    parsedStatementCount = 0;
     do {
         // when loading a program, as soon as first printable character of a PROGRAM is read, each subsequent character needs to follow after the previous one within a fixed time delay, handled by getCharacter().
         // program reading ends when no character is read within this time window.
@@ -961,8 +961,10 @@ bool Justina_interpreter::run() {
                 _parsingExecutingTraceString = false; _parsingEvalString = false;
 
                 result = parseStatement(pStatement, pDummy, clearCmdIndicator);          // parse ONE statement only 
-                if (progressCount > 100) { progressCount = 0; printTo(0, '.'); }
-                else { progressCount++; }
+                if ((++parsedStatementCount & 0x3f) == 0) {
+                    printTo(0, '.');                                                    // print a dot each 64 parsed lines
+                    if ((parsedStatementCount & 0x0fff) == 0) { printlnTo(0); }              // print a crlf each 64 dots
+                }
                 pErrorPos = pStatement;                                                      // in case of error
 
                 if (result != result_tokenFound) { flushAllUntilEOF = true; }
@@ -993,7 +995,7 @@ bool Justina_interpreter::run() {
 
                 // reset after program (or imm. mode line) is read and processed
                 lineCount = 0;
-                progressCount = 0;
+                parsedStatementCount = 0;
                 flushAllUntilEOF = false;
                 _statement[statementCharCount] = '\0';                            // add string terminator
 
@@ -1162,20 +1164,25 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
     }
     else {          // parsing error, abort or kill during parsing
         // if parsing a program from console or other external I/O stream, provide feedback immediately after user pressed abort button and process remainder of input file (flush)
-        if (_programMode && (_loadProgFromStreamNo <= 0)) {
-            if (result == result_parse_abort) { printTo(0, "\r\nAbort: "); }  // not for other parsing errors
-            else { printTo(0, "\r\nParsing error: "); }
-            if (result != result_tokenFound) { printlnTo(0, "processing remainder of input file... please wait"); }
+        if (_loadProgFromStreamNo <= 0) {
+            if (_programMode) {
+                if (result == result_parse_abort) { printTo(0, "\r\nAbort: "); }  // not for other parsing errors
+                else { printTo(0, "\r\nParsing error: "); }
+                if (result != result_tokenFound) { printlnTo(0, "processing remainder of input file... please wait"); }
+            }
+
             // process (flush) remainder of input file
-            int byteInCount{ 0 };
+            long byteInCount{ 0 };
             char c{};
             do {        // process remainder of input file (flush)
                 // NOTE: forcedStop and forcedAbort are dummy arguments here and will be ignored because already flushing input file after error, abort or kill
                 bool forcedStop{ false }, forcedAbort{ false }, stdConsDummy{ false };       // dummy arguments (not needed here)
-                c = getCharacter(kill, forcedStop, forcedAbort, stdConsDummy, true, false);
+                c = getCharacter(kill, forcedStop, forcedAbort, stdConsDummy, true);
                 if (kill) { result = result_parse_kill; break; }           // kill while processing remainder of file
-
-                if (++byteInCount > 5000) { byteInCount = 0; printTo(0, '.'); }
+                if ((++byteInCount & 0x0fff) == 0) {
+                    printTo(0, '.');
+                    if ((byteInCount & 0x03ffff) == 0) { printlnTo(0); }        // print a dot each 4096 lines, a crlf each 64 dots
+                }
             } while (c != 0xFF);
         }
 
@@ -1267,13 +1274,12 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
         _programMode = true;
         _programCounter = _programStorage;
 
-        if (_isPrompt) { printlnTo(0); }
+        if (_lastPrintedIsPrompt) { printlnTo(0); }             // print new line if last printed was a prompt
         printTo(0, (_loadProgFromStreamNo > 0) ? "Loading program...\r\n" : "Loading program... please wait\r\n");
-        _isPrompt = false;
+        _lastPrintedIsPrompt = false;
 
         statementInputStreamNumber = _loadProgFromStreamNo;
         setStream(statementInputStreamNumber, pStatementInputStream);
-        ////pStatementInputStream = (_loadProgFromStreamNo == 0) ? static_cast<Stream*>(_pConsoleIn) :
         (_loadProgFromStreamNo < 0) ? static_cast<Stream*>(_pAltIOstreams[(-_loadProgFromStreamNo) - 1]) :    // stream number -1 => array index 0, etc.
             &openFiles[_loadProgFromStreamNo - 1].file;            // loading program from file or from console ?
 
@@ -1285,7 +1291,6 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
     else {      // with or without parsing or execution error
         statementInputStreamNumber = 0;
         setStream(statementInputStreamNumber, pStatementInputStream);
-        ////pStatementInputStream = static_cast<Stream*>(_pConsoleIn);          // set to console again
         if (_loadProgFromStreamNo > 0) { SD_closeFile(_loadProgFromStreamNo); _loadProgFromStreamNo = 0; }
     }
 
@@ -1299,8 +1304,8 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
 
     // print new prompt and exit
     // -------------------------
-    _isPrompt = false;
-    if ((_promptAndEcho != 0) && (execResult != result_initiateProgramLoad)) { printTo(0, "Justina> "); _isPrompt = true; }
+    _lastPrintedIsPrompt = false;
+    if ((_promptAndEcho != 0) && (execResult != result_initiateProgramLoad)) { printTo(0, "Justina> "); _lastPrintedIsPrompt = true; }
 
     return quitJustina;
 }
