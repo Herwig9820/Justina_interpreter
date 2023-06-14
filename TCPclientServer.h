@@ -66,7 +66,7 @@ private:
     static const unsigned long _isServer_stopDelay { 1000 };              // server: delay before stopping connection to client (and continue listening foe new client)
     static const unsigned long _isServer_keepAliveTimeOut { 60 * 60 * 1000 };       // server: default connection timeout after connection to client
     static const unsigned long _isClient_stopDelay { 1000 };              // client: delay before stopping connection
-    static const unsigned long _isClient_keepAliveTimeOut { 10 * 1000 };            // client: default connection timeout after connection to server  //// client: NO timeout ???? (lost probleem op met soms 10" hangen ?)
+    static const unsigned long _isClient_keepAliveTimeOut { 10 * 1000 };            // client: default connection timeout after connection to server  
 
     bool _verbose;
     bool _resetWiFi;

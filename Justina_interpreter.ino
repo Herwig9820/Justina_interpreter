@@ -82,8 +82,6 @@ constexpr int terminalCount{ 3 };
 
 Justina_interpreter* pJustina{ nullptr };                                                    // pointer to Justina_interpreter object
 
-char lastCharRead{ 255 };////
-
 #ifdef ARDUINO_ARCH_RP2040
 long progMemSize = pow(2, 16);
 #else
@@ -130,7 +128,7 @@ void setup() {
     Serial.println("Starting TCP server");
     Serial.print("WiFi firmware version  "); Serial.println(WiFi.firmwareVersion()); Serial.println();
     myTCPconnection.setVerbose(false);                                                // disable debug messages from within myTCPconnection
-    myTCPconnection.setKeepAliveTimeout(1 * 60 * 1000);                                // 1 minute
+    myTCPconnection.setKeepAliveTimeout(60 * 60 * 1000);                                // 1 minute
     Serial.println("On the remote terminal, press ENTER to connect\r\n");
     // set callback function that will be executed when WiFi or TCP connection state changes 
     myTCPconnection.setConnCallback((&onConnStateChange));                            // set callback function
@@ -215,18 +213,20 @@ void execAction(char c) {
             myTCPconnection.printRemoteIP();
             break;
 
-        #endif
-
-            //// temp
-        case 'r':       // print last character sent by tcp client
-            lastCharRead = myTCPconnection.getClient()->read();
+            //// temp: read a character from TCP client and echo it (control characters and characters with ASCII-code > 0x7f: echo hex value instead)
+        case 'r':
+        {
+            char lastCharRead = myTCPconnection.getClient()->read();
             if (lastCharRead != 0xff) {
-                if (lastCharRead < ' ') { myTCPconnection.getClient()->print("(ctrl char) ");  myTCPconnection.getClient()->println(int(lastCharRead)); }
+                if (lastCharRead < ' ') { myTCPconnection.getClient()->print("(ctrl char) ");  myTCPconnection.getClient()->println(lastCharRead, HEX); }
                 else if (lastCharRead <= 0x7f) { myTCPconnection.getClient()->print(lastCharRead); myTCPconnection.getClient()->println(); }
-                else { myTCPconnection.getClient()->print("(>0x7f) ");  myTCPconnection.getClient()->println(int(lastCharRead)); }
+                else { myTCPconnection.getClient()->print("(>0x7f) ");  myTCPconnection.getClient()->println(lastCharRead, HEX); }
                 lastCharRead = 0xff;
             }
-            break;
+        }
+        break;
+    #endif
+
 
         case 'j':
         #if !defined(ARDUINO_SAMD_NANO_33_IOT) && !defined(ARDUINO_ARCH_RP2040)
