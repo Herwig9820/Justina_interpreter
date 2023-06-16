@@ -38,12 +38,11 @@ TCPconnection::TCPconnection(const char SSID[], const char PASS[],
     _gatewayAddress = gatewayAddress;
     _subnetMask = subnetMask;
     _DNSaddress = DNSaddress;
-    _callbackFcn = nullptr;
     _isClient = false;
     _verbose = false;
     _resetWiFi = false;
-    _WiFiEnabled = (initialConnState == conn_1_wifiConnected) || (initialConnState == conn_2_TCPconnected);
-    _TCPenabled = (initialConnState == conn_2_TCPconnected);
+    _WiFiEnabled = (initialConnState == conn_1_wifiConnected) || (initialConnState == conn_3_TCPconnected);
+    _TCPenabled = (initialConnState == conn_3_TCPconnected);
     _keepAliveTimeOut = _isServer_keepAliveTimeOut;     // default
 }
 
@@ -53,12 +52,11 @@ TCPconnection::TCPconnection(const char SSID[], const char PASS[], const IPAddre
     _PASS = PASS;
     _serverAddress = serverAddress;
     _serverPort = serverPort;
-    _callbackFcn = nullptr;
     _isClient = true;
     _verbose = false;
     _resetWiFi = false;
-    _WiFiEnabled = (initialConnState == conn_1_wifiConnected) || (initialConnState == conn_2_TCPconnected);
-    _TCPenabled = (initialConnState == conn_2_TCPconnected);
+    _WiFiEnabled = (initialConnState == conn_1_wifiConnected) || (initialConnState == conn_3_TCPconnected);
+    _TCPenabled = (initialConnState == conn_3_TCPconnected);
     _keepAliveTimeOut = _isClient_keepAliveTimeOut;     // default
 }
 
@@ -67,7 +65,7 @@ void TCPconnection::setVerbose(bool verbose) { _verbose = verbose; }
 
 void TCPconnection::printRemoteIP() {
     Serial.print("connection state: "); Serial.println(_connectionState);
-    if (_connectionState == conn_2_TCPconnected) {
+    if (_connectionState == conn_3_TCPconnected) {
         IPAddress IP = _client.remoteIP();
         char s[100];
         sprintf(s, "-> remote IP %d.%d.%d.%d", IP[0], IP[1], IP[2], IP[3]);
@@ -76,13 +74,9 @@ void TCPconnection::printRemoteIP() {
     }
 }
 
-void TCPconnection::setConnCallback(void (*func)(connectionState_type connectionState)) { _callbackFcn = func; }
-
 WiFiServer* TCPconnection::getServer() { return &_server; }
 
 WiFiClient* TCPconnection::getClient() { return &_client; }
-
-connectionState_type TCPconnection::getConnectionState() { return _connectionState; }
 
 void TCPconnection::setKeepAliveTimeout(unsigned long keepAliveTimeOut) {
     _keepAliveTimeOut = keepAliveTimeOut;
@@ -113,12 +107,15 @@ void TCPconnection::requestAction(connectionAction_type action) { // only one ac
 
     _TCPenabled = _TCPenabled || (action == action_2_TCPkeepAlive) || (action == action_3_TCPdoNotKeepAlive);
     _TCPenabled = _TCPenabled && (!(action == action_4_TCPdisable));
+
+    changeConnectionState(_connectionState);        // needed (if _TCPenabled toggled while connection state = conn_1_wifiConnected)     
 }
 
-void TCPconnection::maintainConnection() {
+void TCPconnection::maintainConnection(connectionState_type &conn_state) {
     // variable 'connectionState' controls proper sequencing of tasks in these procedures:
     maintainWiFiConnection();                                                    // if currently not connected to wifi (or connection lost): (try to re-)connect
     maintainTCPconnection();                                                  // if a client is not connected: (try to re-)connect
+    conn_state = ((_connectionState == conn_1_wifiConnected) && _TCPenabled) ? conn_2_TCPwaitForConnection : _connectionState;
 }
 
 
@@ -184,7 +181,7 @@ void TCPconnection::maintainTCPconnection() {
                     _keepAliveUntil = TCPtimeout + millis();
                     _TCPconnTimeoutEnabled = (TCPtimeout != 0);
 
-                    changeConnectionState(conn_2_TCPconnected);               // success: TCP connection live
+                    changeConnectionState(conn_3_TCPconnected);               // success: TCP connection live
                 }
                 _lastTCPconnectAttempt = millis();                              // remember time of last TCP connection attempt
             }
@@ -196,23 +193,7 @@ void TCPconnection::maintainTCPconnection() {
             // NOTE 1: occasionally, a stall occurs while IN _client.connected() method and the system hangs
             // NOTE 2: sometimes, _client.connected() does not catch terminal disconnect
             // => _client.connected() method replaced by _client.status() method
-            bool clientConnectionEnd = ((_client.status() !=4) || (_TCPconnTimeoutEnabled && (_keepAliveUntil < millis())));
-
-
-            if (clientConnectionEnd) { Serial.print("_client.status() fails:  wifi status = "); Serial.print(WiFi.status()); Serial.print(", client status: "); Serial.println(_client.status()); }
-
-            // do a second check: is remote IP address still different from 0.0.0.0 while still being 'connected' ?
-            // without this check, the remote terminal may go offline without being noticed
-            if (!clientConnectionEnd) {             // do this ONLY if client connection end not reported by previous line (otherwise, wifi connection is recycled (why ???) )       
-                IPAddress IP = _client.remoteIP();
-                char s[20];
-                sprintf(s, "%d.%d.%d.%d", IP[0], IP[1], IP[2], IP[3]);
-                clientConnectionEnd = (strcmp(s, "0.0.0.0") == 0);
-
-
-
-                if (clientConnectionEnd) { Serial.print("IP adres 0.0.0.0:  wifi status = "); Serial.print(WiFi.status()); Serial.print(", client status: "); Serial.println(_client.status()); }
-            }
+            bool clientConnectionEnd = ((_client.status() != 4) || (_TCPconnTimeoutEnabled && (_keepAliveUntil < millis())));
 
             if (clientConnectionEnd) {   // client still connected ? (or still unread data)
                 changeConnectionState(conn_1_wifiConnected);
@@ -222,11 +203,12 @@ void TCPconnection::maintainTCPconnection() {
     }
 }
 
+
 void TCPconnection::changeConnectionState(connectionState_type newState) {  // *** change connection state and report to serial monitor
     if (_verbose) { printConnectionStateInfo(newState); }            // before _connectionState is changed
     _connectionState = newState;
-    if (_callbackFcn != nullptr) { _callbackFcn(_connectionState); }
 }
+
 
 void TCPconnection::printConnectionStateInfo(connectionState_type newState) {
     char stateChange[40], reason[40], s[100];
@@ -263,7 +245,7 @@ void TCPconnection::printConnectionStateInfo(connectionState_type newState) {
             }
             break;
 
-        case conn_2_TCPconnected:
+        case conn_3_TCPconnected:
             IPAddress IP = _client.remoteIP();
             sprintf(s, "%s Connected, remote IP %d.%d.%d.%d", stateChange, IP[0], IP[1], IP[2], IP[3]);
             break;

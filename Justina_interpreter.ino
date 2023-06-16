@@ -63,9 +63,8 @@ constexpr pin_size_t TCP_CONNECTED_PIN{ 15 };
 
 constexpr char SSID[] = SERVER_SSID, PASS[] = SERVER_PASS;                            // WiFi SSID and password                           
 // connect as TCP server: create class object myTCPconnection
-TCPconnection myTCPconnection(SSID, PASS, serverAddress, gatewayAddress, subnetMask, DNSaddress, serverPort, conn_2_TCPconnected);
+TCPconnection myTCPconnection(SSID, PASS, serverAddress, gatewayAddress, subnetMask, DNSaddress, serverPort, conn_3_TCPconnected);
 
-void onConnStateChange(connectionState_type  connectionState);
 constexpr char menu[] = "+++ Please select:\r\n  'H' Help\r\n  '0' (Re-)start WiFi\r\n  '1' Disable WiFi\r\n  '2' Enable TCP\r\n  '3' Disable TCP\r\n  '4' Verbose TCP\r\n  '5' Silent TCP\r\n  '6' Print remote IP\r\n  'J' Start Justina interpreter\r\n";
 
 #else
@@ -74,8 +73,6 @@ constexpr char menu[] = "+++ Please select:\r\n  'J' Start Justina interpreter\r
 
 bool withinApplication{ false };                                                       // init: currently not within an application
 bool interpreterInMemory{ false };                                                     // init: interpreter is not in memory
-
-bool errorCondition = false, statusA = false, statusB = false, dataInOut = false;
 
 Stream* pAlternativeIO[3]{ &Serial , &Serial , &Serial };                                                            // alternative IO ports, if defined
 constexpr int terminalCount{ 3 };
@@ -130,8 +127,7 @@ void setup() {
     myTCPconnection.setVerbose(false);                                                // disable debug messages from within myTCPconnection
     myTCPconnection.setKeepAliveTimeout(60 * 60 * 1000);                                // 1 minute
     Serial.println("On the remote terminal, press ENTER to connect\r\n");
-    // set callback function that will be executed when WiFi or TCP connection state changes 
-    myTCPconnection.setConnCallback((&onConnStateChange));                            // set callback function
+
     // stream pAlternativeIO[0] is the default (input and output) console for Justina
     // from within Justina, all alternative IO streams can be used for IO, AND can be set as Justina console (input and output)
     pAlternativeIO[1] = static_cast<Stream*>(myTCPconnection.getClient());     // Justina: stream number -2 is TCP client (alt streams 0..2 => stream numbers -1..-3)
@@ -157,7 +153,7 @@ void setup() {
 void loop() {
     heartbeat();                                                                        // blink a led to show program is running 
 #if withTCP
-    myTCPconnection.maintainConnection();                                               // maintain TCP connection
+    maintainTCP();
 #endif
 
     char c;
@@ -300,34 +296,43 @@ void heartbeat() {
 }
 
 
+// ----------------------------------------------------
+// *   TCP library: maintain connection and handle leds
+// ----------------------------------------------------
+
 #if withTCP
+void maintainTCP() {
 
-// ----------------------------------------------------------------------------
-// *   Callback function executed when WiFi or TCP connection state changes   * 
-// ----------------------------------------------------------------------------
+    static connectionState_type oldConnectionState{conn_0_wifiNotConnected};
+    static uint32_t lastLedChangeTime{0};
+    static bool TCPledState{ false };
 
-// this callback routine is called from within TCPconnection.maintainConnection() at every change in connection state
-// it allows the main program to take specific custom actions (in this case: printing messages and controlling a led)
+    connectionState_type connectionState;
+    myTCPconnection.maintainConnection(connectionState);                                               // maintain TCP connection
 
-void onConnStateChange(connectionState_type  connectionState) {
-    static bool WiFiConnected{ false };
-    static bool TCPconnected{ false };
-
-    bool holdTCPconnected = TCPconnected;
-    bool holdWiFiConnected = WiFiConnected;
-
-    WiFiConnected = (connectionState == conn_1_wifiConnected) || (connectionState == conn_2_TCPconnected);
-    digitalWrite(WiFi_CONNECTED_PIN, WiFiConnected);                                  // led indicates 'client connected' status 
-    TCPconnected = (connectionState == conn_2_TCPconnected);
-    digitalWrite(TCP_CONNECTED_PIN, TCPconnected);                                    // led indicates 'client connected' status 
-
-    /* //// interfereert met Justina prompt : beter niet
-    if (TCPconnected) { Serial.println("TCP connection established\r\n"); }                   // remote client just got connected: show on main terminal
-    else if (holdTCPconnected) {                                                      // previous status was 'client connected'
-        Serial.println("TCP connection lost or timed out");                   // inform local terminal about it
-        Serial.println("On the remote terminal, press ENTER to reconnect");
+    // TCP enabled and waiting for a client to connect ? blink 'TCP' led
+    bool TCPwaitForConnect = (connectionState == conn_2_TCPwaitForConnection);
+    if (TCPwaitForConnect) {           // blink TCP led
+        uint32_t currentTime = millis();
+        // also handle millis() overflow after about 47 days
+        if ((lastLedChangeTime + 200 < currentTime) || (currentTime < lastLedChangeTime)) {               // time passed OR millis() overflow: switch led state
+            TCPledState = !TCPledState;
+            digitalWrite(TCP_CONNECTED_PIN, TCPledState);
+            lastLedChangeTime = currentTime;
+        }
     }
-    */
+
+    if (oldConnectionState != connectionState) {
+        bool WiFiConnected = (connectionState != conn_0_wifiNotConnected);
+        digitalWrite(WiFi_CONNECTED_PIN, WiFiConnected);                                  // led indicates 'client connected' status
+
+        if (connectionState != conn_2_TCPwaitForConnection) {                   // do not interfere with blinking TCP led
+            bool TCPconnected = (connectionState == conn_3_TCPconnected);
+            digitalWrite(TCP_CONNECTED_PIN, TCPconnected);                        // led indicates 'client connected' status
+        }
+    }
+
+    oldConnectionState = connectionState;
 }
 #endif
 
@@ -427,16 +432,16 @@ void keyStates(uint8_t pinStates, uint8_t& debounced, uint8_t& wentDown, uint8_t
 void Justina_housekeeping(long& appFlags) {
 
     heartbeat();                                                                        // blink a led to show program is running
-
 #if withTCP
-    myTCPconnection.maintainConnection();                                               // maintain TCP connection
-
+    maintainTCP();                                                                      // maintain TCP connection
 #endif
 
     // request kill if debounced kill key press is detected 
     // request stop if debounced stop/abort key release is detected AND debounced key down time is less than the defined alternate function time
     // request abort if debounced stop/abort key down time is equal or more than the defined 'alternate function' time
     // --------------------------------------------------------------------------------------------------------------------------------------------
+
+    static bool errorCondition = false, statusA = false, statusB = false, dataInOut = false;
 
     uint8_t debouncedStates, wentDown, wentUp, isShortPress, isLongPress;
     uint8_t pinStates = (digitalRead(STOP_ABORT_PIN) << 1) + digitalRead(KILL_PIN);

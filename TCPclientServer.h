@@ -39,8 +39,10 @@
 
 enum connectionState_type {
     conn_0_wifiNotConnected,                                            // wifi not yet connected
-    conn_1_wifiConnected,                                               // wifi connected, but server not yet connected to a client 
-    conn_2_TCPconnected,                                                 // server connected to a client 
+    conn_1_wifiConnected,                                               // wifi connected, but server not yet connected to a client
+    conn_2_TCPwaitForConnection,                                        // TCP enabled but not connected
+    conn_3_TCPconnected,                                                 // server connected to a client 
+    
     conn_11_wifiNoSuccessConnecting                                     // only used for [sys] message
 };
 
@@ -90,21 +92,18 @@ private:
     void printConnectionStateInfo( connectionState_type newState );
     void maintainWiFiConnection();                                          // attempt to (re-)connect to wifi
     void maintainTCPconnection();                                        // attempt to (re-)connect to a client, if available
-    void (*_callbackFcn)(connectionState_type connectionState);            // pointer to callback function for connection state change
 
 public:
     // public methods 
     TCPconnection( const char SSID [], const char PASS [],          // constructor: pass IP addresses and server port
         const IPAddress serverAddress, const IPAddress  gatewayAddress, const IPAddress subnetMask, const IPAddress  DNSaddress, const int serverPort, connectionState_type initialConnState );
     TCPconnection( const char SSID [], const char PASS [], const IPAddress serverAddress, const int serverPort, connectionState_type initialConnState );
-    void maintainConnection();                                              // attempt to (re-)connect to wifi and to a client, if available
+    void maintainConnection(connectionState_type &connectionState);                                              // attempt to (re-)connect to wifi and to a client, if available
 
     void setVerbose( bool verbose );
     void printRemoteIP();
-    void setConnCallback( void (*func)(connectionState_type connectionState) );                   // set callback function for connection state change
     void setKeepAliveTimeout(unsigned long keepAliveTimeOut);
     void requestAction( connectionAction_type action );
-    connectionState_type getConnectionState();
     WiFiServer* getServer();    // only if configured as server
     WiFiClient* getClient();
 
