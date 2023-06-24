@@ -6,7 +6,7 @@
 
     Justina is an interpreter which does NOT require you to use an IDE to write
     and compile programs. Programs are written on the PC using any text processor
-    and transferred to the Arduino using any serial terminal capable of sending files.
+    and transferred to the Arduino using any terminal capable of sending files.
     Justina can store and retrieve programs and other data on an SD card as well.
 
     See GitHub for more information and documentation: //// <links>
@@ -29,7 +29,7 @@
 #include "Justina.h"
 
 
-// for debugging purposes, prints to Serial
+// for debugging purposes, prints to _pDebugOut
 #define PRINT_LLIST_OBJ_CREA_DEL 0
 #define PRINT_HEAP_OBJ_CREA_DEL 0
 
@@ -356,6 +356,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"setConsole",      cmdcod_setConsole,      cmd_onlyImmediate,                                      0,0,    cmdPar_104,     cmdBlockNone},
     {"setConsoleIn",    cmdcod_setConsIn,       cmd_onlyImmediate,                                      0,0,    cmdPar_104,     cmdBlockNone},
     {"setConsoleOut",   cmdcod_setConsOut,      cmd_onlyImmediate,                                      0,0,    cmdPar_104,     cmdBlockNone},
+    {"setDebugOut",     cmdcod_setDebugOut,     cmd_onlyImmediate,                                      0,0,    cmdPar_104,     cmdBlockNone},
 
     {"info",            cmdcod_info,            cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_114,     cmdBlockNone},
     {"input",           cmdcod_input,           cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_113,     cmdBlockNone},
@@ -366,6 +367,9 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"receiveFile",     cmdcod_receiveFile,     cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
     {"sendFile",        cmdcod_sendFile,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
     {"copy",            cmdcod_copyFile,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_107,     cmdBlockNone},
+
+    {"dbout",           cmdcod_dbout,           cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
+    {"dboutLine",       cmdcod_dboutLine,       cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_107,     cmdBlockNone},
 
     {"cout",            cmdcod_cout,            cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
     {"coutLine",        cmdcod_coutLine,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_107,     cmdBlockNone},
@@ -504,6 +508,7 @@ const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
     {"space",                   fnccod_space,                   1,1,    0b0},
     {"tab",                     fnccod_tab,                     0,1,    0b0},
     {"col",                     fnccod_gotoColumn,              1,1,    0b0},
+    {"pos",                     fnccod_getColumnPos,               0,0,    0b0},
     {"repChar",                 fnccod_repchar,                 2,2,    0b0},
     {"findInStr",               fnccod_findsubstr,              2,3,    0b0},
     {"substInStr",              fnccod_replacesubstr,           3,4,    0b0},
@@ -647,6 +652,7 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
 
     {"APPEND",              "4",                        value_isLong},  // writes will occur at end of file
     {"CREATE_OK",           "16",                       value_isLong},  // create new file if non-existent
+    //// "32" ???
     {"CREATE_ONLY",         "48",                       value_isLong},  // create new file only - do not open an existing file
     {"TRUNC",               "64",                       value_isLong},  // truncate file to zero bytes on open (NOT if file is opened for read access only)
 };
@@ -733,7 +739,7 @@ const Justina_interpreter::TerminalDef Justina_interpreter::_terminals[]{
 
 Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int altIOstreamCount,
     long progMemSize, int JustinaConstraints, int SDcardChipSelectPin) :
-    _pAltIOstreams(pAltInputStreams), _altIOstreamCount(altIOstreamCount), _progMemorySize(progMemSize), _JustinaConstraints(JustinaConstraints), _SDcardChipSelectPin(SDcardChipSelectPin) {
+    _pExternIOstreams(pAltInputStreams), _externIOstreamCount(altIOstreamCount), _progMemorySize(progMemSize), _JustinaConstraints(JustinaConstraints), _SDcardChipSelectPin(SDcardChipSelectPin) {
 
     // settings to be initialized when cold starting interpreter only
     // --------------------------------------------------------------
@@ -764,15 +770,23 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
     if (_progMemorySize + IMM_MEM_SIZE > pow(2, 16)) { _progMemorySize = pow(2, 16) - IMM_MEM_SIZE; }
     _programStorage = new char[_progMemorySize + IMM_MEM_SIZE];
 
-    _pConsoleIn = _pConsoleOut = _pAltIOstreams[0];
-
-    _pIOprintColumns = new int[_altIOstreamCount];
-    for (int i = 0; i < _altIOstreamCount; i++) {
-        _pAltIOstreams[i]->setTimeout(DEFAULT_READ_TIMEOUT);
+    // current print column is maintened for each stream separately: init
+    _pIOprintColumns = new int[_externIOstreamCount];
+    for (int i = 0; i < _externIOstreamCount; i++) {
+        _pExternIOstreams[i]->setTimeout(DEFAULT_READ_TIMEOUT);   // NOTE: will only have effect for existing connections (e.g. TCP)
         _pIOprintColumns[i] = 0;
     }
-    _consolePrintColumn = 0;
 
+    // by default, console and debug out are first element in _pExternIOstreams[]
+    _consoleIn_sourceStreamNumber = _consoleOut_sourceStreamNumber = _debug_sourceStreamNumber = -1;
+    _pConsoleIn = _pConsoleOut = _pDebugOut = _pExternIOstreams[0];
+    _pConsolePrintColumn = _pDebugPrintColumn = _pIOprintColumns;         //  point to its current print column
+    _pLastPrintColumn = _pIOprintColumns;
+
+    // particular stream is a TCP stream ? Retrigger TCP keep alive timer at each character read (communicated to Justina via application flags)
+    int TCP_externIOStreamIndex = ((_JustinaConstraints & 0xf0) >> 4) - 1;
+    _pTCPstream = (TCP_externIOStreamIndex == -1) ? nullptr : _pExternIOstreams[TCP_externIOStreamIndex];
+    
     initInterpreterVariables(true);
 };
 
@@ -786,9 +800,12 @@ Justina_interpreter::~Justina_interpreter() {
         resetMachine(true);             // delete all objects created on the heap: with = with user variables and FiFo stack
         _housekeepingCallback = nullptr;
         delete[] _programStorage;
+        delete[] _pIOprintColumns;
     }
 
     printlnTo(0, "\r\nJustina: bye\r\n");
+    for (int i = 0; i < 48; i++) { printTo(0, "="); } printlnTo(0, "\r\n");
+
 };
 
 
@@ -859,7 +876,7 @@ bool Justina_interpreter::run() {
 
     Stream* pStatementInputStream = static_cast<Stream*>(_pConsoleIn);            // init: load program from console
     int streamNumber{ 0 };
-    setStream(0);
+    setStream(0);                           // set _pStreamIn to console, for use by Justina methods
 
     int clearCmdIndicator{ 0 };                                    // 1 = clear program cmd, 2 = clear all cmd
     char c{};
@@ -868,7 +885,7 @@ bool Justina_interpreter::run() {
     bool startJustinaWithoutAutostart{ true };
 
     // initialise SD card now ?
-    if ((_JustinaConstraints & 0b0011) >= 2) {       // 0 = no card reader, 1 = card reader present, do not yet initialise, 2 = initialise card now, 3 = run start.txt functoin start() now
+    if ((_JustinaConstraints & 0b0011) >= 2) {       // 0 = no card reader, 1 = card reader present, do not yet initialise, 2 = initialise card now, 3 = init card & run start.txt function start() now
         printTo(0, "\r\nLooking for an SD card...\r\n");
         execResult_type execResult = startSD();
         printTo(0, _SDinitOK ? "SD card found\r\n" : "SD card error: SD card NOT found\r\n");
@@ -1017,13 +1034,15 @@ bool Justina_interpreter::run() {
 
     if (kill) { _keepInMemory = false; printlnTo(0, "\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
 
-    delete[] _pIOprintColumns;
     SD_closeAllFiles();         // safety (in case an SD card is present: close all files 
     _SDinitOK = false;
     SD.end();                   // stop SD card
     while (_pConsoleIn->available() > 0) { readFrom(0); }             //  empty console buffer before quitting
 
-    if (_keepInMemory) { printlnTo(0, "\r\nJustina: bye\r\n"); }        // if remove from memory: message given in destructor
+    if (_keepInMemory) {       // NOTE: if remove from memory: message given in destructor
+        printlnTo(0, "\r\nJustina: bye\r\n");
+        for (int i = 0; i < 48; i++) { printTo(0, "="); } printlnTo(0, "\r\n");
+    } 
 
     return _keepInMemory;           // return to calling program
 }
@@ -1177,7 +1196,7 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
             do {        // process remainder of input file (flush)
                 // NOTE: forcedStop and forcedAbort are dummy arguments here and will be ignored because already flushing input file after error, abort or kill
                 bool forcedStop{ false }, forcedAbort{ false }, stdConsDummy{ false };       // dummy arguments (not needed here)
-                c = getCharacter(kill, forcedStop, forcedAbort, stdConsDummy, true);
+                c = getCharacter(kill, forcedStop, forcedAbort, stdConsDummy, _programMode);
                 if (kill) { result = result_parse_kill; break; }           // kill while processing remainder of file
                 if ((++byteInCount & 0x0fff) == 0) {
                     printTo(0, '.');
@@ -1190,8 +1209,11 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
             printlnTo(0, "\r\n+++ Abort: parsing terminated +++");        // abort: display error message 
         }
         else if (result == result_parse_stdConsole) {
-            _pConsoleIn = _pConsoleOut = _pAltIOstreams[0];      // set console to stream -1
-            printlnTo(0, "+++ console reset +++");
+            printlnTo(0, "\r\n+++ console reset +++");
+            _consoleIn_sourceStreamNumber = _consoleOut_sourceStreamNumber = -1;
+            _pConsoleIn = _pConsoleOut = _pExternIOstreams[0];      // set console to stream -1 (NOT debug out)
+            _pConsolePrintColumn = &_pIOprintColumns[0];
+            *_pConsolePrintColumn = 0;
 
         }
         else if (result == result_parse_kill) { quitJustina = true; }
@@ -1280,8 +1302,10 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
 
         statementInputStreamNumber = _loadProgFromStreamNo;
         setStream(statementInputStreamNumber, pStatementInputStream);
-        (_loadProgFromStreamNo < 0) ? static_cast<Stream*>(_pAltIOstreams[(-_loadProgFromStreamNo) - 1]) :    // stream number -1 => array index 0, etc.
+        /*    //// doet dat iets ???
+        (_loadProgFromStreamNo < 0) ? static_cast<Stream*>(_pExternIOstreams[(-_loadProgFromStreamNo) - 1]) :    // stream number -1 => array index 0, etc.
             &openFiles[_loadProgFromStreamNo - 1].file;            // loading program from file or from console ?
+        */
 
         // useful for remote terminals (characters sent to connect are flushed, this way)
         if (_loadProgFromStreamNo <= 0) { while (pStatementInputStream->available()) { readFrom(statementInputStreamNumber); } }
@@ -1370,7 +1394,7 @@ void Justina_interpreter::execPeriodicHousekeeping(bool* pKillNow, bool* pForced
             if ((_appFlags & appFlag_stopRequestBit) && (pForcedStop != nullptr)) { *pForcedStop = true; }
             if ((_appFlags & appFlag_abortRequestBit) && (pForcedAbort != nullptr)) { *pForcedAbort = true; }
 
-            _appFlags &= ~appFlag_dataInOut;        // reset 'external IO' flag 
+            _appFlags &= ~(appFlag_dataInOut | appFlag_TCPkeepAlive);        // reset 'external IO' flags 
         }
     }
 }
@@ -1428,7 +1452,7 @@ bool Justina_interpreter::getConsoleCharacters(bool& forcedStop, bool& forcedAbo
         // read a character, if available in buffer
         char c{ };                                                           // init: no character available
         bool kill{ false }, stop{ false }, abort{ false }, stdConsDummy{ false };
-        setStream(0);
+        setStream(0);               // set _pStreamIn to console, for use by Justina methods
         c = getCharacter(kill, stop, abort, stdConsDummy);               // get a key (character from console) if available and perform a regular housekeeping callback as well
         if (kill) { return true; }      // return value true: kill Justina interpreter (buffer is now flushed until next line character)
         if (abort) { forcedAbort = true; return false; }        // exit immediately
@@ -1526,22 +1550,20 @@ void Justina_interpreter::printVariables(bool userVars) {
                         quoteAndExpandEscSeq(pString);        // creates new string
                         println(pString);
                     #if PRINT_HEAP_OBJ_CREA_DEL
-                        Serial.print("----- (Intermd str) ");   Serial.println((uint32_t)pString, HEX);
+                        _pDebugOut->print("----- (Intermd str) ");   _pDebugOut->println((uint32_t)pString, HEX);
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] pString;
-                    }
+                }
                     else { println("????"); }
 
                     linesPrinted = true;
-                }
             }
         }
     }
+}
     if (!linesPrinted) { println("    (none)"); }
     println();
-    _pIOprintColumns[0] = 0;
-    _consoleAtLineStart = true;
 }
 
 
@@ -1552,7 +1574,6 @@ void Justina_interpreter::printVariables(bool userVars) {
 // before calling this function, output stream must be set by function 'setStream(...)'
 
 void Justina_interpreter::printCallStack() {
-    println();
     if (_callStackDepth > 0) {      // including eval() stack levels but excluding open block (for, if, ...) stack levels
         int indent = 0;
         void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                    int blockType = block_none;
@@ -1593,10 +1614,7 @@ void Justina_interpreter::printCallStack() {
         }
     }
     else  println("(no program running)");
-
     println();
-    _pIOprintColumns[0] = 0;
-    _consoleAtLineStart = true;
 }
 
 
@@ -1627,7 +1645,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
         // 1. delete variable name object
         // ------------------------------
     #if PRINT_HEAP_OBJ_CREA_DEL
-        Serial.print("----- (usrvar name) "); Serial.println((uint32_t) * (userVarNames + index), HEX);
+        _pDebugOut->print("----- (usrvar name) "); _pDebugOut->println((uint32_t) * (userVarNames + index), HEX);
     #endif
         _userVarNameStringObjectCount--;
         delete[] * (userVarNames + index);
@@ -1641,7 +1659,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
         //    NOTE: do this before checking for strings (if both 'var_isArray' and 'value_isStringPointer' bits are set: array of strings, with strings already deleted)
         if (isArray) {       // variable is an array: delete array storage          
         #if PRINT_HEAP_OBJ_CREA_DEL
-            Serial.print("----- (usr ar stor)"); Serial.println((uint32_t)userVarValues[index].pArray, HEX);
+            _pDebugOut->print("----- (usr ar stor)"); _pDebugOut->println((uint32_t)userVarValues[index].pArray, HEX);
         #endif
             delete[]  userVarValues[index].pArray;
             _userArrayObjectCount--;
@@ -1652,12 +1670,12 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
         else if (isString) {       // variable is a scalar containing a string
             if (userVarValues[index].pStringConst != nullptr) {
             #if PRINT_HEAP_OBJ_CREA_DEL
-                Serial.print("----- (usr var str) "); Serial.println((uint32_t)userVarValues[index].pStringConst, HEX);
+                _pDebugOut->print("----- (usr var str) "); _pDebugOut->println((uint32_t)userVarValues[index].pStringConst, HEX);
             #endif
                 _userVarStringObjectCount--;
                 delete[]  userVarValues[index].pStringConst;
             }
-        }
+    }
 
         // 5. move up next user variables one place
         //    if a user variable is used in currently loaded program: adapt index in program storage
@@ -1682,7 +1700,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
 
         _userVarCount--;
         varDeleted = true;
-    }
+}
 
     if (!varDeleted) { return result_var_notDeclared; }
 
@@ -1794,7 +1812,7 @@ bool Justina_interpreter::parseString(char*& pNext, char*& pch, char*& pStringCs
         isIntermediateString ? _intermediateStringObjectCount++ : _parsedStringConstObjectCount++;
         pStringCst = new char[pNext - (pch + 1) - escChars + 1];                                // create char array on the heap to store alphanumeric constant, including terminating '\0'
     #if PRINT_HEAP_OBJ_CREA_DEL
-        Serial.print(isIntermediateString ? "+++++ (Intermd str) " : "+++++ (parsed str ) "); Serial.println((uint32_t)pStringCst, HEX);
+        _pDebugOut->print(isIntermediateString ? "+++++ (Intermd str) " : "+++++ (parsed str ) "); _pDebugOut->println((uint32_t)pStringCst, HEX);
     #endif
         // store alphanumeric constant in newly created character array
         pStringCst[pNext - (pch + 1) - escChars] = '\0';                                 // store string terminating '\0' (pch + 1 points to character after opening quote, pNext points to closing quote)
@@ -1803,7 +1821,7 @@ bool Justina_interpreter::parseString(char*& pNext, char*& pch, char*& pStringCs
             if (pSource[0] == '\\') { pSource++; escChars--; }                           // if escape sequences found: skip first escape sequence character (backslash)
             pDestin++[0] = pSource++[0];
         }
-    }
+}
     pNext++;                                                                            // skip closing quote
 
     valueType = value_isStringPointer;

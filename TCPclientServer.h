@@ -91,22 +91,20 @@ private:
     void changeConnectionState( connectionState_type newState );                             // change connection state and report to sysTerminal
     void printConnectionStateInfo( connectionState_type newState );
     void maintainWiFiConnection();                                          // attempt to (re-)connect to wifi
-    void maintainTCPconnection();                                        // attempt to (re-)connect to a client, if available
+    void maintainTCPconnection(bool resetKeepAliveTimer);                                        // attempt to (re-)connect to a client, if available
 
 public:
     // public methods 
     TCPconnection( const char SSID [], const char PASS [],          // constructor: pass IP addresses and server port
         const IPAddress serverAddress, const IPAddress  gatewayAddress, const IPAddress subnetMask, const IPAddress  DNSaddress, const int serverPort, connectionState_type initialConnState );
     TCPconnection( const char SSID [], const char PASS [], const IPAddress serverAddress, const int serverPort, connectionState_type initialConnState );
-    void maintainConnection(connectionState_type &connectionState);                                              // attempt to (re-)connect to wifi and to a client, if available
+    void maintainConnection(connectionState_type &connectionState, bool resetKeepAliveTimer=false);                                              // attempt to (re-)connect to wifi and to a client, if available
 
     void setVerbose( bool verbose );
-    void printRemoteIP();
     void setKeepAliveTimeout(unsigned long keepAliveTimeOut);
-    void requestAction( connectionAction_type action );
+    void requestAction( connectionAction_type action, connectionState_type& connState);
     WiFiServer* getServer();    // only if configured as server
     WiFiClient* getClient();
-
 };
 
 

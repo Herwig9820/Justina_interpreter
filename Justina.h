@@ -224,6 +224,8 @@ class Justina_interpreter {
         cmdcod_quit,
         cmdcod_info,
         cmdcod_input,
+        cmdcod_dbout,
+        cmdcod_dboutLine,
         cmdcod_cout,
         cmdcod_coutLine,
         cmdcod_coutList,
@@ -251,6 +253,7 @@ class Justina_interpreter {
         cmdcod_setConsole,
         cmdcod_setConsIn,
         cmdcod_setConsOut,
+        cmdcod_setDebugOut
     };
 
     enum func_code {
@@ -304,6 +307,7 @@ class Justina_interpreter {
         fnccod_space,
         fnccod_tab,
         fnccod_gotoColumn,
+        fnccod_getColumnPos,
         fnccod_repchar,
         fnccod_findsubstr,
         fnccod_replacesubstr,
@@ -447,7 +451,7 @@ class Justina_interpreter {
         termcod_comma = termcod_opRangeEnd + 1,
         termcod_semicolon,
         termcod_leftPar,
-        termcod_rightPar,
+        termcod_rightPar
     };
 
     enum tokenType_type {                                       // token type
@@ -598,7 +602,7 @@ class Justina_interpreter {
         // other program errors
         result_parse_abort = 2200,
         result_parse_stdConsole,
-        result_parse_kill,
+        result_parse_kill
     };
 
 
@@ -661,6 +665,7 @@ class Justina_interpreter {
         result_SD_couldNotCreateFileDir,
         result_SD_pathIsNotValid,
         result_SD_sourceIsDestination,
+        result_SD_fileNotAllowedHere,
 
         // IO streams
         result_IO_invalidStreamNumber,
@@ -896,7 +901,8 @@ public:
     static constexpr long appFlag_executing = 0x04L;                // executing status
     static constexpr long appFlag_stoppedInDebug = 0x06L;           // stopped in debug status
 
-    static constexpr long appFlag_dataInOut = 0x08L;                // external I/O (not to SD) is happening
+    static constexpr long appFlag_dataInOut = 0x08L;                // external I/O stream transmitted or received data (not SD) 
+    static constexpr long appFlag_TCPkeepAlive = 0x10L;                // reset keep alive timer (extend keep alive period)
 
     // bits 11-8: flags signaling specific caller status conditions to Justina
     static constexpr long appFlag_requestMask = 0x0f00;
@@ -907,16 +913,17 @@ public:
 
 
 
-    // constants used during execution, only stored within the stack for constant and variable tokens
+    // constants used during execution, only stored within the stack for (parsed and intermediate) constant and variable tokens
 
     // bit b0: intermediate constant (not a parsed constant, not a constant stored in a variable) 
     static constexpr uint8_t constIsIntermediate = 0x01;
     // bit b1: the address is the address of an array element. If this bit is zero, the address is the scalar or array variable base address 
     static constexpr uint8_t var_isArray_pendingSubscripts = 0x02;
 
-    // bits b32: print tab request, set column request. Bits set by tab() resp. col() functions if the function result is an argument of a print command (e.g. cout)
+    // bits b4..2: print tab request, set column request. Bits set by tab() resp. col() functions if the function result is an argument of a print command (e.g. cout)
     static constexpr uint8_t isPrintTabRequest = 0x04;
     static constexpr uint8_t isPrintColumnRequest = 0x08;
+    static constexpr uint8_t isCurrentPrintColumnRequest = 0x10;        // not used, but kept for poterntial future use 
 
     // block statements
     static constexpr uint8_t withinIteration = 0x01;        // flag is set at the start of each iteration and cleared at the end
@@ -1219,8 +1226,8 @@ public:
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na, block_na, block_na };                                   // not a 'block' command
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[63];                          // keyword names
-    static const FuncDef _functions[134];                            // function names with min & max arguments allowed
+    static const ResWordDef _resWords[66];                          // keyword names
+    static const FuncDef _functions[135];                            // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
     static const SymbNumConsts _symbNumConsts[58];
 
@@ -1230,7 +1237,6 @@ public:
     // ---------
 
     OpenFile openFiles[MAX_OPEN_SD_FILES];                      // open files: file paths and attributed file numbers
-    int _consolePrintColumn{ 0 };
     int* _pIOprintColumns{};                                    // points to array on the heap
     int _tabSize{ 8 };                                           // tab size, default value if not changed by tabSize command 
     int _angleMode{ 0 };                                       // 0 = radians, 1 = degrees
@@ -1358,7 +1364,6 @@ public:
     int _localVarValueAreaCount = 0, _localVarValueAreaErrors = 0;
 
 
-    bool _consoleAtLineStart = true;
     bool _lastValueIsStored = false;
 
     // calculation result print
@@ -1415,14 +1420,23 @@ public:
 
     char _programName[MAX_IDENT_NAME_LEN + 1];
 
-    Stream* _pConsoleIn{ nullptr }, * _pConsoleOut{ nullptr };
-    Stream** _pAltIOstreams{ nullptr };
-    int _altIOstreamCount = 0;
+    int _JustinaConstraints{ 0 };
+    int _externIOstreamCount = 0;
+    
+    Stream** _pExternIOstreams{ nullptr };                             // available external IO streams (set by Justina caller)
+    Stream* _pTCPstream{nullptr};                                   // pointer to TCP stream with keep alive setting implemented in code (set by Justina caller)
+    
 
-    int _JustinaConstraints{0};
+    // for use by cout..., dbout, ... commands (without explicit stream indicated)
+    Stream* _pConsoleIn{ nullptr }, * _pConsoleOut{ nullptr }, * _pDebugOut{ nullptr }; 
+    int _consoleIn_sourceStreamNumber{}, _consoleOut_sourceStreamNumber{}, _debug_sourceStreamNumber{};        // != 0: originating stream (external or SD)
+    int* _pConsolePrintColumn{nullptr}, *_pDebugPrintColumn {nullptr};                      
+    int* _pLastPrintColumn{nullptr};
+
     Stream* _pStreamIn{ nullptr }, * _pStreamOut{ nullptr };
     int _streamNumberIn{ 0 }, _streamNumberOut{ 0 };
 
+    
     long _progMemorySize{};
 
     char* _programStorage;                                      // pointer to start of program storage
@@ -1430,7 +1444,7 @@ public:
     Sd2Card _SDcard;
 
 
-    // Justina variable storage
+    // Justina variable storage //// verplaats
     // ------------------------
 
     // variable scope: global (program variables and user variables), local within function (including function parameters), static within function     
@@ -1552,7 +1566,7 @@ public:
     // ------------------------------------
 
 public:
-    Justina_interpreter(Stream** const pAltInputStreams, int altIOstreamCount, long progMemSize, int SDcardConstraints=0, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);               // constructor
+    Justina_interpreter(Stream** const pAltInputStreams, int altIOstreamCount, long progMemSize, int SDcardConstraints = 0, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);               // constructor
     ~Justina_interpreter();               // deconstructor
     bool setMainLoopCallback(void (*func)(long& appFlags));                   // set callback functions
     bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType, const int argCount));
@@ -1728,11 +1742,11 @@ private:
     execResult_type SD_fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File*& pFile, int allowFileTypes = 1);
     execResult_type SD_fileChecks(bool argIsLong, bool argIsFloat, Val arg, File*& pFile, int allowFileTypes = 1);
     execResult_type SD_fileChecks(File*& pFile, int fileNumber, int allowFileTypes = 1);
-    execResult_type setStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, Stream*& pStream, int& streamNumber, bool forOutput = false);
+    execResult_type setStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, int& streamNumber, bool forOutput = false);
     execResult_type setStream(int streamNumber, bool forOutput = false);
     execResult_type setStream(int streamNumber, Stream*& pStream, bool forOutput = false);
     execResult_type determineStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, Stream*& pStream, int& streamNumber, bool forOutput = false);
-    execResult_type determineStream(int streamNumber, Stream** pStream, bool forOutput = false);
+    execResult_type determineStream(int streamNumber, Stream*& pStream, bool forOutput = false);
 
     void printDirectory(File dir, int numTabs);
 
