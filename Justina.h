@@ -1,7 +1,7 @@
 /***************************************************************************************
     Justina interpreter library for Arduino Nano 33 IoT and Arduino RP2040.
 
-    Version:    v1.00 - xx/xx/2022
+    Version:    v1.00 - xx/xx/2022-2024
     Author:     Herwig Taveirne
 
     Justina is an interpreter which does NOT require you to use an IDE to write
@@ -39,7 +39,7 @@
 #define J_productName "Justina: JUST an INterpreter for Arduino"
 #define J_legalCopyright "Copyright (C) Herwig Taveirne 2022, 2023"
 #define J_productVersion "1.0.1"
-#define J_buildDate "June 10, 2023"
+#define J_buildDate "June 30, 2023"
 
 
 // ******************************************************************
@@ -81,6 +81,7 @@ class LinkedList {
     // -----------------
 
 
+    static Stream** _ppDebugOutStream;                     // pointer to pointer to debug stream
     static int _listIDcounter;                                  // number of lists created
     static long _createdListObjectCounter;                          // count of created objects accross lists
 
@@ -113,6 +114,7 @@ public:
     int getListID();
     void setListName(char* listName);
     char* getListName();
+    void setDebugOutStream(Stream** pDebugOutStream);
     static long getCreatedObjectCount();
 };
 
@@ -392,6 +394,9 @@ class Justina_interpreter {
         fnccod_peek,
         fnccod_setTimeout,
         fnccod_getTimeout,
+        fnccod_availableForWrite,
+        fnccod_getWriteError,
+        fnccod_clearWriteError,
         fnccod_flush,
         fnccod_isDirectory,
         fnccod_rewindDirectory,
@@ -812,7 +817,6 @@ class Justina_interpreter {
     static const char cmdPar_115[4];
     static const char cmdPar_116[4];
     static const char cmdPar_117[4];
-    static const char cmdPar_999[4];////test
 
     // commands parameters: types allowed
     static constexpr uint8_t cmdPar_none = 0;
@@ -923,7 +927,6 @@ public:
     // bits b4..2: print tab request, set column request. Bits set by tab() resp. col() functions if the function result is an argument of a print command (e.g. cout)
     static constexpr uint8_t isPrintTabRequest = 0x04;
     static constexpr uint8_t isPrintColumnRequest = 0x08;
-    static constexpr uint8_t isCurrentPrintColumnRequest = 0x10;        // not used, but kept for poterntial future use 
 
     // block statements
     static constexpr uint8_t withinIteration = 0x01;        // flag is set at the start of each iteration and cleared at the end
@@ -1227,9 +1230,9 @@ public:
 
     // sizes MUST be specified AND must be exact
     static const ResWordDef _resWords[66];                          // keyword names
-    static const FuncDef _functions[135];                            // function names with min & max arguments allowed
+    static const FuncDef _functions[138];                           // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
-    static const SymbNumConsts _symbNumConsts[58];
+    static const SymbNumConsts _symbNumConsts[60];
 
 
     // ---------

@@ -25,6 +25,9 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ***************************************************************************************/
 
+#include "commands.h"
+#include "functions.h"
+#include "linkedLists.h"
 #define withTCP 1
 
 
@@ -114,17 +117,22 @@ void setup() {
     pinMode(TCP_CONNECTED_PIN, OUTPUT);                                               // 'TCP connected' led
 #endif
 
-    digitalWrite(HEARTBEAT_PIN, HIGH);                                                // while waiting for Serial to be ready
-    digitalWrite(ERROR_PIN, HIGH);
-    long tStart = millis();  //// check op overflow
-    while (!Serial);                                                                    // native USB port only 
-    long tEnd = millis();
-    digitalWrite(ERROR_PIN, LOW);                                                      // high during wait for serial
-    if (tEnd - tStart < 2000) { delay(2000 - (tEnd - tStart)); }
-    digitalWrite(HEARTBEAT_PIN, LOW);                                                   // high during (minimum) 2 seconds                                                      
+    bool ledState{ 0 };
+    int loopCount{ 0 };
+    do {
+        ledState = !ledState;
+        loopCount++;
+        digitalWrite(HEARTBEAT_PIN, ledState);                                                
+        digitalWrite(ERROR_PIN, ledState);
+        digitalWrite(STATUS_A_PIN, ledState);
+        digitalWrite(STATUS_B_PIN, ledState);
+
+        if (Serial && (loopCount > 3)) { if (!ledState) { break; } }            // wait minimum 3 seconds (a non-native USB port will always return 'true')
+        else { delay(1000); }
+    } while (true);
 
 #if withTCP
-    Serial.println("Starting TCP server");
+    Serial.println("\r\nStarting TCP server");
     Serial.print("WiFi firmware version  "); Serial.println(WiFi.firmwareVersion()); Serial.println();
     myTCPconnection.setVerbose(false);                                                // disable debug messages from within myTCPconnection
     myTCPconnection.setKeepAliveTimeout(20 * 60 * 1000);                                // 20 minutes TCP keep alive timeout
@@ -174,8 +182,8 @@ void loop() {
 void execAction(char c) {
     bool printMenu{ false };
 
-    bool isAction{ c > ' '};
-    if (isAction) {Serial.println(c); }
+    bool isAction{ c > ' ' };
+    if (isAction) { Serial.println(c); }
 
     switch (tolower(c)) {
 
@@ -279,7 +287,7 @@ void execAction(char c) {
             break;
 
         default:
-            if (c >  ' ') {
+            if (c > ' ') {
                 Serial.println("This is not a valid choice (enter 'H' for help)");
             }
             break;

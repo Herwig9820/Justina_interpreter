@@ -28,7 +28,6 @@
 
 #include "Justina.h"
 
-// for debugging purposes, prints to _pDebugOut
 #define PRINT_HEAP_OBJ_CREA_DEL 0
 #define printParsedTokens 0
 #define PRINT_DEBUG_INFO 0
@@ -38,617 +37,6 @@
 // *****************************************************************
 // ***        class Justina_interpreter - implementation         ***
 // *****************************************************************
-
-// -------------------------------------------------------------------------------------
-// *   delete all identifier names (char strings)                                      *
-// *   note: this excludes generic identifier names stored as alphanumeric constants   *
-// -------------------------------------------------------------------------------------
-
-void Justina_interpreter::deleteIdentifierNameObjects(char** pIdentNameArray, int identifiersInUse, bool isUserVar) {
-    int index = 0;          // points to last variable in use
-    while (index < identifiersInUse) {                       // points to variable in use
-    #if PRINT_HEAP_OBJ_CREA_DEL
-        _pDebugOut->print(isUserVar ? "----- (usrvar name) " : "----- (ident name ) "); _pDebugOut->println((uint32_t) * (pIdentNameArray + index), HEX);
-    #endif
-        isUserVar ? _userVarNameStringObjectCount-- : _identifierNameStringObjectCount--;
-        delete[] * (pIdentNameArray + index);
-        index++;
-    }
-}
-
-
-// --------------------------------------------------------------------------------------------------------------
-// *   all string array variables of a specified scope: delete array element character strings (heap objects)   *
-// --------------------------------------------------------------------------------------------------------------
-
-void Justina_interpreter::deleteStringArrayVarsStringObjects(Justina_interpreter::Val* varValues, char* sourceVarScopeAndFlags, int varNameCount, int paramOnlyCount, bool checkIfGlobalValue, bool isUserVar, bool isLocalVar) {
-    int index = paramOnlyCount;                    // skip parameters (if function, otherwise must be zero) - if parameter variables are arrays, they are always a reference variable 
-    while (index < varNameCount) {
-        if (!checkIfGlobalValue || (sourceVarScopeAndFlags[index] & (var_nameHasGlobalValue))) { // if only for global values: is it a global value ?
-
-            if ((sourceVarScopeAndFlags[index] & (var_isArray | value_typeMask)) == (var_isArray | value_isStringPointer)) {              // array of strings
-                deleteOneArrayVarStringObjects(varValues, index, isUserVar, isLocalVar);
-            }
-        }
-        index++;
-    }
-}
-
-
-// --------------------------------------------------------------------------------------------
-// *   delete variable heap objects: array variable character strings for ONE array variable  *
-// --------------------------------------------------------------------------------------------
-
-// no checks are made - make sure the variable is an array variable storing strings
-
-void Justina_interpreter::deleteOneArrayVarStringObjects(Justina_interpreter::Val* varValues, int index, bool isUserVar, bool isLocalVar) {
-    void* pArrayStorage = varValues[index].pArray;        // void pointer to an array of string pointers; element 0 contains dimensions and dimension count
-    int dimensions = (((char*)pArrayStorage)[3]);  // can range from 1 to MAX_ARRAY_DIMS
-    int arrayElements = 1;                                  // determine array size
-    for (int dimCnt = 0; dimCnt < dimensions; dimCnt++) { arrayElements *= (int)((((char*)pArrayStorage)[dimCnt])); }
-
-    // delete non-empty strings
-    for (int arrayElem = 1; arrayElem <= arrayElements; arrayElem++) {  // array element 0 contains dimensions and count
-        char* pString = ((char**)pArrayStorage)[arrayElem];
-        uint32_t stringPointerAddress = (uint32_t) & (((char**)pArrayStorage)[arrayElem]);
-        if (pString != nullptr) {
-        #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print(isUserVar ? "----- (usr arr str) " : isLocalVar ? "-----(loc arr str)" : "----- (arr string ) "); _pDebugOut->println((uint32_t)pString, HEX);     // applicable to string and array (same pointer)
-        #endif
-            isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
-            delete[]  pString;                                  // applicable to string and array (same pointer)
-        }
-    }
-}
-
-
-// ----------------------------------------------------------------------------------------------
-// *   delete variable heap objects: scalar variable strings and array variable array storage   *
-// ----------------------------------------------------------------------------------------------
-
-// note: make sure array variable element string objects have been deleted prior to calling this routine
-
-void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* varValues, char* varType, int varNameCount, int paramOnlyCount, bool checkIfGlobalValue, bool isUserVar, bool isLocalVar) {
-
-    int index = 0;                          // do NOT skip parameters if deleting function variables: with constant args, a local copy is created (always scalar) and must be deleted if non-empty string
-    while (index < varNameCount) {
-        if (!checkIfGlobalValue || (varType[index] & (var_nameHasGlobalValue))) { // global value ?
-            // check for arrays before checking for strings (if both 'var_isArray' and 'value_isStringPointer' bits are set: array of strings, with strings already deleted)
-            if (((varType[index] & value_typeMask) != value_isVarRef) && (varType[index] & var_isArray)) {       // variable is an array: delete array storage          
-            #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print(isUserVar ? "----- (usr ar stor) " : isLocalVar ? "----- (loc ar stor) " : "----- (array stor ) "); _pDebugOut->println((uint32_t)varValues[index].pArray, HEX);
-            #endif
-                isUserVar ? _userArrayObjectCount-- : isLocalVar ? _localArrayObjectCount-- : _globalStaticArrayObjectCount--;
-                delete[]  varValues[index].pArray;
-            }
-            else if ((varType[index] & value_typeMask) == value_isStringPointer) {       // variable is a scalar containing a string
-                if (varValues[index].pStringConst != nullptr) {
-                #if PRINT_HEAP_OBJ_CREA_DEL
-                    _pDebugOut->print(isUserVar ? "----- (usr var str) " : isLocalVar ? "----- (loc var str)" : "----- (var string ) "); _pDebugOut->println((uint32_t)varValues[index].pStringConst, HEX);
-                #endif
-                    isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
-                    delete[]  varValues[index].pStringConst;
-                }
-            }
-        }
-        index++;
-    }
-}
-
-
-// --------------------------------------------------------------------
-// *   delete variable heap objects: last value Fifo string objects   *
-// --------------------------------------------------------------------
-
-void Justina_interpreter::deleteLastValueFiFoStringObjects() {
-    if (_lastValuesCount == 0) return;
-
-    for (int i = 0; i < _lastValuesCount; i++) {
-        bool isNonEmptyString = (lastResultTypeFiFo[i] == value_isStringPointer) ? (lastResultValueFiFo[i].pStringConst != nullptr) : false;
-        if (isNonEmptyString) {
-        #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print("----- (FiFo string) "); _pDebugOut->println((uint32_t)lastResultValueFiFo[i].pStringConst, HEX);
-        #endif
-            _lastValuesStringObjectCount--;
-            delete[] lastResultValueFiFo[i].pStringConst;
-        }
-    }
-}
-
-
-// -----------------------------------------------------------------------------------------
-// *   delete all parsed alphanumeric constant value heap objects                          *
-// *   note: this includes UNQUALIFIED identifier names stored as alphanumeric constants   *
-// -----------------------------------------------------------------------------------------
-
-// must be called before deleting tokens (list elements) 
-
-void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
-    char* pAnum;
-    TokenPointer prgmCnt;
-
-    prgmCnt.pTokenChars = pFirstToken;
-    uint8_t tokenType = *prgmCnt.pTokenChars & 0x0F;
-    while (tokenType != tok_no_token) {                                                                    // for all tokens in token list
-        bool isStringConst = (tokenType == tok_isConstant) ? (((*prgmCnt.pTokenChars >> 4) & value_typeMask) == value_isStringPointer) : false;
-
-        if (isStringConst || (tokenType == tok_isGenericName)) {
-            memcpy(&pAnum, prgmCnt.pCstToken->cstValue.pStringConst, sizeof(pAnum));                         // pointer not necessarily aligned with word size: copy memory instead
-            if (pAnum != nullptr) {
-            #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print("----- (parsed str ) ");   _pDebugOut->println((uint32_t)pAnum, HEX);
-            #endif
-                _parsedStringConstObjectCount--;
-                delete[] pAnum;
-            }
-        }
-        uint8_t tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) :
-            (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*prgmCnt.pTokenChars >> 4) & 0x0F;
-        prgmCnt.pTokenChars += tokenLength;
-        tokenType = *prgmCnt.pTokenChars & 0x0F;
-    }
-}
-
-
-// -------------------------
-// *   reset interpreter   *
-// -------------------------
-
-void Justina_interpreter::resetMachine(bool withUserVariables) {
-
-    // delete all objects created on the heap
-    // --------------------------------------
-
-    // note: objects living only during execution do not need to be deleted: they are all always deleted when the execution phase ends (even if with execution errors)
-    // more in particular: evaluation stack, intermediate alphanumeric constants, local storage areas, local variable strings, local array objects
-
-    // delete identifier name objects on the heap (variable names, external function names) 
-    deleteIdentifierNameObjects(programVarNames, _programVarNameCount);
-    deleteIdentifierNameObjects(extFunctionNames, _extFunctionCount);
-    if (withUserVariables) { deleteIdentifierNameObjects(userVarNames, _userVarCount, true); }
-
-    // delete variable heap objects: array variable element string objects
-    deleteStringArrayVarsStringObjects(globalVarValues, globalVarType, _programVarNameCount, 0, true);
-    deleteStringArrayVarsStringObjects(staticVarValues, staticVarType, _staticVarCount, 0, false);
-    if (withUserVariables) {
-        deleteStringArrayVarsStringObjects(userVarValues, userVarType, _userVarCount, 0, false, true);
-        deleteLastValueFiFoStringObjects();
-    }
-
-    // delete variable heap objects: scalar variable strings and array variable array storage 
-    deleteVariableValueObjects(globalVarValues, globalVarType, _programVarNameCount, 0, true);
-    deleteVariableValueObjects(staticVarValues, staticVarType, _staticVarCount, 0, false);
-    if (withUserVariables) {
-        deleteVariableValueObjects(userVarValues, userVarType, _userVarCount, 0, false, true);
-
-        if (_pTraceString != nullptr) {        // internal trace 'variable'
-        #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print("----- (system var str) "); _pDebugOut->println((uint32_t)_pTraceString, HEX);
-        #endif
-            _systemVarStringObjectCount--;
-            delete[] _pTraceString;
-            _pTraceString = nullptr;      // old trace string
-        }
-    }
-
-    // delete all elements of the immediate mode parsed statements stack
-    // (parsed immediate mode statements can be temporarily pushed on the immediate mode stack to be replaced either by parsed debug command lines or parsed eval() strings) 
-    // also delete all parsed alphanumeric constants: (1) in the currently parsed program program, (2) in parsed immediate mode statements (including those on the imm.mode parsed statements stack)) 
-
-    clearParsedCommandLineStack(parsedCommandLineStack.getElementCount());      // including parsed string constants
-    deleteConstStringObjects(_programStorage);
-    deleteConstStringObjects(_programStorage + _progMemorySize);
-
-    // delete all elements of the flow control stack 
-    // in the process, delete all local variable areas referenced in elements of the flow control stack referring to functions, including local variable string and array values
-    int dummy{};
-    clearFlowCtrlStack(dummy);
-
-    // clear expression evaluation stack
-    clearEvalStack();
-
-    // delete parsing stack (keeps track of open parentheses and open command blocks during parsing)
-    parsingStack.deleteList();
-
-
-    // check that all heap objects are deleted (in fact only the count is checked)
-    // ---------------------------------------------------------------------------
-    danglingPointerCheckAndCount(withUserVariables);     // check and count
-
-
-    // initialize interpreter object variables
-    // ---------------------------------------
-    initInterpreterVariables(withUserVariables);
-
-
-    printlnTo(0);
-}
-
-
-// ---------------------------------------------------------------------------------------
-// *   perform consistency checks: verify that all objects created are destroyed again   *
-// ---------------------------------------------------------------------------------------
-
-void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
-
-    // note: the evaluation stack, intermediate string objects, function local storage, and function local variable strings and arrays exist solely during execution
-    //       relevant checks are performed each time execution terminates 
-
-    // parsing stack: no need to check if any elements were left (the list has just been deleted)
-    // note: this stack does not contain any pointers to heap objects
-
-    // string and array heap objects: any objects left ?
-    if (_identifierNameStringObjectCount != 0) {
-    #if PRINT_OBJECT_COUNT_ERRORS
-        _pDebugOut->print("*** Variable / function name objects cleanup error. Remaining: "); _pDebugOut->println(_identifierNameStringObjectCount);
-    #endif
-        _identifierNameStringObjectErrors += abs(_identifierNameStringObjectCount);
-    }
-
-    if (_parsedStringConstObjectCount != 0) {
-    #if PRINT_OBJECT_COUNT_ERRORS
-        _pDebugOut->print("*** Parsed constant string objects cleanup error. Remaining: "); _pDebugOut->println(_parsedStringConstObjectCount);
-    #endif
-        _parsedStringConstObjectErrors += abs(_parsedStringConstObjectCount);
-    }
-
-    if (_globalStaticVarStringObjectCount != 0) {
-    #if PRINT_OBJECT_COUNT_ERRORS
-        _pDebugOut->print("*** Variable string objects cleanup error. Remaining: "); _pDebugOut->println(_globalStaticVarStringObjectCount);
-    #endif
-        _globalStaticVarStringObjectErrors += abs(_globalStaticVarStringObjectCount);
-    }
-
-    if (_globalStaticArrayObjectCount != 0) {
-    #if PRINT_OBJECT_COUNT_ERRORS
-        _pDebugOut->print("*** Array objects cleanup error. Remaining: "); _pDebugOut->println(_globalStaticArrayObjectCount);
-    #endif
-        _globalStaticArrayObjectErrors += abs(_globalStaticArrayObjectCount);
-    }
-
-#if PRINT_DEBUG_INFO
-    _pDebugOut->print("\r\n** Reset stats\r\n    parsed strings "); _pDebugOut->print(_parsedStringConstObjectCount);
-
-    _pDebugOut->print(", prog name strings "); _pDebugOut->print(_identifierNameStringObjectCount);
-    _pDebugOut->print(", prog var strings "); _pDebugOut->print(_globalStaticVarStringObjectCount);
-    _pDebugOut->print(", prog arrays "); _pDebugOut->print(_globalStaticArrayObjectCount);
-#endif
-
-    if (withUserVariables) {
-        if (_userVarNameStringObjectCount != 0) {
-        #if PRINT_OBJECT_COUNT_ERRORS
-            _pDebugOut->print("*** User variable name objects cleanup error. Remaining: "); _pDebugOut->println(_userVarNameStringObjectCount);
-        #endif
-            _userVarNameStringObjectErrors += abs(_userVarNameStringObjectCount);
-        }
-
-        if (_userVarStringObjectCount != 0) {
-        #if PRINT_OBJECT_COUNT_ERRORS
-            _pDebugOut->print("*** User variable string objects cleanup error. Remaining: "); _pDebugOut->println(_userVarStringObjectCount);
-        #endif
-            _userVarStringObjectErrors += abs(_userVarStringObjectCount);
-        }
-
-        if (_userArrayObjectCount != 0) {
-        #if PRINT_OBJECT_COUNT_ERRORS
-            _pDebugOut->print("*** User array objects cleanup error. Remaining: "); _pDebugOut->println(_userArrayObjectCount);
-        #endif
-            _userArrayObjectErrors += abs(_userArrayObjectCount);
-        }
-
-        if (_systemVarStringObjectCount != 0) {
-        #if PRINT_OBJECT_COUNT_ERRORS
-            _pDebugOut->print("*** System variable string objects cleanup error. Remaining: "); _pDebugOut->println(_systemVarStringObjectCount);
-        #endif
-            _systemVarStringObjectErrors += abs(_systemVarStringObjectCount);
-        }
-
-        if (_lastValuesStringObjectCount != 0) {
-        #if PRINT_OBJECT_COUNT_ERRORS
-            _pDebugOut->print("*** Last value FiFo string objects cleanup error. Remaining: "); _pDebugOut->print(_lastValuesStringObjectCount);
-        #endif
-            _lastValuesStringObjectErrors += abs(_lastValuesStringObjectCount);
-        }
-
-    #if PRINT_DEBUG_INFO
-        _pDebugOut->print(", user var names "); _pDebugOut->print(_userVarNameStringObjectCount);
-        _pDebugOut->print(", user var strings "); _pDebugOut->print(_userVarStringObjectCount);
-        _pDebugOut->print(", user arrays "); _pDebugOut->print(_userArrayObjectCount);
-
-        _pDebugOut->print(", last value strings "); _pDebugOut->print(_lastValuesStringObjectCount);
-    #endif
-    }
-}
-
-
-// --------------------------------------------
-// *   initialise interpreter object fields   *
-// --------------------------------------------
-
-void Justina_interpreter::initInterpreterVariables(bool fullReset) {
-
-    // intialised at cold start AND each time the interpreter is reset
-
-    _blockLevel = 0;
-    _extFunctionCount = 0;
-    _paramOnlyCountInFunction = 0;
-    _localVarCountInFunction = 0;
-    _localVarCount = 0;
-    _staticVarCountInFunction = 0;
-    _staticVarCount = 0;
-    _extFunctionBlockOpen = false;
-
-    _programVarNameCount = 0;
-    if (fullReset) { _userVarCount = 0; }
-    else {
-        int index = 0;          // clear user variable flag 'variable is used by program'
-        while (index++ < _userVarCount) { userVarType[index] = userVarType[index] & ~var_userVarUsedByProgram; }
-    }
-    _userCBprocAliasSet_count = 0;   // note: _userCBprocStartSet_count: only reset when starting interpreter
-
-    *_programStorage = tok_no_token;                                                        //  set as current end of program 
-    *(_programStorage + _progMemorySize) = tok_no_token;                                      //  set as current end of program (immediate mode)
-    _programCounter = _programStorage + _progMemorySize;                          // start of 'immediate mode' program area
-
-    _programName[0] = '\0';
-
-    _pEvalStackTop = nullptr;   _pEvalStackMinus2 = nullptr; _pEvalStackMinus1 = nullptr;
-    _pFlowCtrlStackTop = nullptr;   _pFlowCtrlStackMinus2 = nullptr; _pFlowCtrlStackMinus1 = nullptr;
-    _pImmediateCmdStackTop = nullptr;
-
-    _intermediateStringObjectCount = 0;      // reset at the start of execution
-    _localVarValueAreaCount = 0;
-    _localVarStringObjectCount = 0;
-    _localArrayObjectCount = 0;
-
-    _activeFunctionData.callerEvalStackLevels = 0;          // this is the highest program level
-    _callStackDepth = 0;                                            // equals flow control stack depth minus open loop (if, for, ...) blocks (= blocks being executed)
-    _openDebugLevels = 0;                                           // equals imm mode cmd stack depth minus open eval() strings (= eval() strings being executed)
-
-
-    // reset counters for heap objects
-    // -------------------------------
-
-    _identifierNameStringObjectCount = 0;
-    _parsedStringConstObjectCount = 0;
-
-    _globalStaticVarStringObjectCount = 0;
-    _globalStaticArrayObjectCount = 0;
-
-    if (fullReset) {
-        _lastValuesCount = 0;                                       // current last result FiFo depth (values currently stored)
-
-        _userVarNameStringObjectCount = 0;
-        _userVarStringObjectCount = 0;
-        _userArrayObjectCount = 0;
-        _systemVarStringObjectCount = 0;
-
-        _lastValuesStringObjectCount = 0;
-
-        _openFileCount = 0;
-    }
-
-
-    // initialize format settings for numbers and strings (width, characters to print, flags, ...)
-    // -------------------------------------------------------------------------------------------
-
-    // calculation result print format
-    _dispWidth = DEFAULT_CALC_RESULT_PRINT_WIDTH; _dispNumPrecision = DEFAULT_NUM_PRECISION;
-    _dispCharsToPrint = DEFAULT_STRCHAR_TO_PRINT; _dispFmtFlags = _defaultPrintFlags;
-    _dispNumSpecifier[0] = 'G'; _dispNumSpecifier[1] = '\0';
-    _dispIsIntFmt = false;
-    makeFormatString(_dispFmtFlags, false, _dispNumSpecifier, _dispNumberFmtString);       // for numbers
-    strcpy(_dispStringFmtString, "%*.*s%n");                                                           // for strings
-
-    // print command argument format
-    _printWidth = DEFAULT_PRINT_WIDTH; _printNumPrecision = DEFAULT_NUM_PRECISION;
-    _printCharsToPrint = DEFAULT_STRCHAR_TO_PRINT; _printFmtFlags = _defaultPrintFlags;
-    _printNumSpecifier[0] = 'G'; _printNumSpecifier[1] = '\0';
-
-    // display output settings
-    if (fullReset) {
-        _promptAndEcho = 2, _printLastResult = 1;
-    }
-}
-
-
-// -------------------------------------------------------------------------
-// *   check if identifier storage exists already, optionally create new   *
-// -------------------------------------------------------------------------
-
-int Justina_interpreter::getIdentifier(char** pIdentNameArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNewName, bool isUserVar) {
-
-    char* pIdentifierName;
-    int index = 0;          // points to last variable in use
-    while (index < identifiersInUse) {                       // points to variable in use
-        pIdentifierName = pIdentNameArray[index];
-        if (strlen(pIdentifierName) == identLength) {                                    // identifier with name with same length found
-            if (strncmp(pIdentifierName, pIdentNameToCheck, identLength) == 0) { break; } // storage for identifier name was created already 
-        }
-        index++;
-    }
-    if (index == identifiersInUse) { index = -1; }                                  // not found
-    if (!createNewName) { return index; }                                                 // if check only: identNameIndex to identifier name or -1, createNewName = false
-
-    createNewName = (index == -1);                                       // create new ?
-
-    // create new identifier if it does not exist yet ?
-    // upon return, createNew indicates whether new identifier storage NEEDED to be created ...
-    // and if it was possible, identifiersInUse will be set to the new identifier count
-
-    if (createNewName) {
-        if (identifiersInUse == maxIdentifiers) { return index; }                // create identifier name failed: return -1 with createNewName = true
-        isUserVar ? _userVarNameStringObjectCount++ : _identifierNameStringObjectCount++;
-        pIdentifierName = new char[MAX_IDENT_NAME_LEN + 1 + 1];                      // create standard length char array on the heap, including '\0' and an extra character 
-    #if PRINT_HEAP_OBJ_CREA_DEL
-        _pDebugOut->print(isUserVar ? "+++++ (usrvar name) " : "+++++ (ident name ) "); _pDebugOut->println((uint32_t)pIdentifierName, HEX);
-    #endif
-        strncpy(pIdentifierName, pIdentNameToCheck, identLength);                            // store identifier name in newly created character array
-        pIdentifierName[identLength] = '\0';                                                 // string terminating '\0'
-        pIdentNameArray[identifiersInUse] = pIdentifierName;
-        identifiersInUse++;
-        return identifiersInUse - 1;                                                   // identNameIndex to newly created identifier name
-    }
-}
-
-
-// --------------------------------------------------------------
-// *   initialize a variable or an array with (a) constant(s)   *
-// --------------------------------------------------------------
-
-bool Justina_interpreter::initVariable(uint16_t varTokenStep, uint16_t constTokenStep) {
-    long l{ 0 };
-    float f{ 0. };        // last token is a number constant: dimension spec
-    char* pString{ nullptr };
-
-    // parsing: initialize variables and arrays with a constant number or (arrays: empty) string
-
-    // fetch variable location and attributes
-    bool isArrayVar = ((TokenIsVariable*)(_programStorage + varTokenStep))->identInfo & var_isArray;
-    bool isGlobalVar = (((TokenIsVariable*)(_programStorage + varTokenStep))->identInfo & var_scopeMask) == var_isGlobal;
-    bool isUserVar = (((TokenIsVariable*)(_programStorage + varTokenStep))->identInfo & var_scopeMask) == var_isUser;
-    int varValueIndex = ((TokenIsVariable*)(_programStorage + varTokenStep))->identValueIndex;
-    void* pVarStorage = isGlobalVar ? globalVarValues : isUserVar ? userVarValues : staticVarValues;
-    char* pVarTypeStorage = isGlobalVar ? globalVarType : isUserVar ? userVarType : staticVarType;
-    void* pArrayStorage;        // array storage (if array) 
-
-    // fetch constant (numeric or alphanumeric) 
-    char valueType = (((TokenIsConstant*)(_programStorage + constTokenStep))->tokenType >> 4) & value_typeMask;
-    bool isLongConst = (valueType == value_isLong);
-    bool isFloatConst = (valueType == value_isFloat);
-    bool isStringConst = (valueType == value_isStringPointer);
-
-    if (isLongConst) { memcpy(&l, ((TokenIsConstant*)(_programStorage + constTokenStep))->cstValue.longConst, sizeof(l)); }        // copy float
-    else if (isFloatConst) { memcpy(&f, ((TokenIsConstant*)(_programStorage + constTokenStep))->cstValue.floatConst, sizeof(f)); }        // copy float
-    else { memcpy(&pString, ((TokenIsConstant*)(_programStorage + constTokenStep))->cstValue.pStringConst, sizeof(pString)); }     // copy pointer to string (not the string itself)
-    int length = (!isStringConst) ? 0 : (pString == nullptr) ? 0 : strlen(pString);       // only relevant for strings
-
-    if (isArrayVar) {
-        pArrayStorage = ((void**)pVarStorage)[varValueIndex];        // void pointer to an array 
-        int dimensions = (((char*)pArrayStorage)[3]);  // can range from 1 to MAX_ARRAY_DIMS
-        int arrayElements = 1;                                  // determine array size
-        for (int dimCnt = 0; dimCnt < dimensions; dimCnt++) { arrayElements *= (int)((((char*)pArrayStorage)[dimCnt])); }
-        // fill up with numeric constants or (empty strings:) null pointers
-        if (isLongConst) { for (int arrayElem = 1; arrayElem <= arrayElements; arrayElem++) { ((long*)pArrayStorage)[arrayElem] = l; } }
-        else if (isFloatConst) { for (int arrayElem = 1; arrayElem <= arrayElements; arrayElem++) { ((float*)pArrayStorage)[arrayElem] = f; } }
-        else {                                                      // alphanumeric constant
-            if (length != 0) { return false; };       // to limit memory usage, no mass initialisation with non-empty strings
-            for (int arrayElem = 1; arrayElem <= arrayElements; arrayElem++) {
-                ((char**)pArrayStorage)[arrayElem] = nullptr;
-            }
-        }
-    }
-
-    else {                                  // scalar
-        if (isLongConst) { ((long*)pVarStorage)[varValueIndex] = l; }      // store numeric constant
-        else if (isFloatConst) { ((float*)pVarStorage)[varValueIndex] = f; }      // store numeric constant
-        else {                                                  // alphanumeric constant
-            if (length == 0) {
-                ((char**)pVarStorage)[varValueIndex] = nullptr;       // an empty string does not create a heap object
-            }
-            else { // create string object and store string
-                isUserVar ? _userVarStringObjectCount++ : _globalStaticVarStringObjectCount++;
-                char* pVarAlphanumValue = new char[length + 1];          // create char array on the heap to store alphanumeric constant, including terminating '\0'
-            #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print(isUserVar ? "+++++ (usr var str) " : "+++++ (var string ) "); _pDebugOut->println((uint32_t)pVarAlphanumValue, HEX);
-            #endif
-                // store alphanumeric constant in newly created character array
-                strcpy(pVarAlphanumValue, pString);              // including terminating \0
-                ((char**)pVarStorage)[varValueIndex] = pVarAlphanumValue;       // store pointer to string
-            }
-        }
-    }
-
-
-    pVarTypeStorage[varValueIndex] = (pVarTypeStorage[varValueIndex] & ~value_typeMask) |
-        (isLongConst ? value_isLong : isFloatConst ? value_isFloat : value_isStringPointer);
-    return true;
-};
-
-
-// --------------------------------------------------------------
-// *   check if all external functions referenced are defined   *
-// --------------------------------------------------------------
-
-bool Justina_interpreter::allExternalFunctionsDefined(int& index) {
-    index = 0;
-    while (index < _extFunctionCount) {                       // points to variable in use
-        if (extFunctionData[index].pExtFunctionStartToken == nullptr) { return false; }
-        index++;
-    }
-    return true;
-}
-
-
-// -----------------------------------------------
-// *   parse and exec trace string expressions   *
-// -----------------------------------------------
-
-// trace string may not contain keywords, external functions, generic names
-
-void Justina_interpreter::parseAndExecTraceString() {
-    char* pNextParseStatement{};
-
-    if (_pTraceString == nullptr) { return; }       // no trace string: nothing to trace
-
-    // trace string expressions will be parsed and executed from immediate mode program storage: 
-    // before overwriting user statements that were just parsed and executed, delete parsed strings
-    deleteConstStringObjects(_programStorage + _progMemorySize);
-
-    bool valuePrinted{ false };
-    char* pTraceParsingInput = _pTraceString;  // copy pointer to start of trace string
-    _parsingExecutingTraceString = true;
-
-    printTo(0, "TRACE ==>> ");
-    do {
-        // init
-        *(_programStorage + _progMemorySize) = tok_no_token;          // in case no valid tokens will be stored
-        _programCounter = _programStorage + _progMemorySize;                     // start of 'immediate mode' program area
-
-        // skip any spaces and semi-colons in the input stream
-        while ((pTraceParsingInput[0] == ' ') || (pTraceParsingInput[0] == term_semicolon[0])) { pTraceParsingInput++; }
-        if (*pTraceParsingInput == '\0') { break; } // could occur if semicolons skipped
-
-        // parse ONE trace string expression only
-        if (valuePrinted) { printTo(0, ", "); }                    // separate values (if more than one)
-
-        // note: application flags are not adapted (would not be passed to caller immediately)
-        int dummy{};
-        parseTokenResult_type result = parseStatement(pTraceParsingInput, pNextParseStatement, dummy);
-        if (result == result_tokenFound) {
-            prettyPrintStatements(0);         // do NOT pretty print if parsing error, to avoid bad-looking partially printed statements (even if there will be an execution error later)
-            printTo(0, ": ");                 // resulting value will follow
-            pTraceParsingInput = pNextParseStatement;
-        }
-        else {
-            char  errStr[12];                   // includes place for terminating '\0'
-            sprintf(errStr, "<ErrP%d>", (int)result);       // if parsing error, print error instead of value AND CONTINUE with next trace expression (if any)
-            printTo(0, errStr);
-            // pNextParseStatement not yet correctly positioned: set to next statement
-            while ((pTraceParsingInput[0] != term_semicolon[0]) && (pTraceParsingInput[0] != '\0')) { ++pTraceParsingInput; }
-            if (pTraceParsingInput[0] == term_semicolon[0]) { ++pTraceParsingInput; }
-        }
-
-        // if parsing went OK: execute ONE parsed expression (just parsed now)
-        execResult_type execResult{ result_execOK };
-        if (result == result_tokenFound) {
-            execResult = exec(_programStorage + _progMemorySize);        // note: value or exec. error is printed from inside exec()
-        }
-
-        valuePrinted = true;
-
-        // execution finished: delete parsed strings in imm mode command (they are on the heap and not needed any more)
-        deleteConstStringObjects(_programStorage + _progMemorySize);  // always
-        *(_programStorage + _progMemorySize) = tok_no_token;                                      //  current end of program (immediate mode)
-
-    } while (*pTraceParsingInput != '\0');                                              // exit loop if all expressions handled
-
-    _parsingExecutingTraceString = false;
-    println(0);       // go to next output line
-
-    return;
-}
-
 
 // ----------------------------------------------------------------------------------------------------------------------
 // *   parse ONE instruction in a character string, ended by an optional ';' character and a '\0' mandatary character   *
@@ -664,10 +52,10 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
     _lastTokenIsPrefixIncrDecr = false;
 
     // expression syntax check
-    _thisLvl_lastIsVariable = false;                               // init
+    _thisLvl_lastIsVariable = false;                                                    // init
     _thislvl_lastIsConstVar = false;
-    _thisLvl_assignmentStillPossible = true;                             // assume for now
-    _thisLvl_lastOpIsIncrDecr = false;                                  // assume for now
+    _thisLvl_assignmentStillPossible = true;                                            // assume for now
+    _thisLvl_lastOpIsIncrDecr = false;                                                  // assume for now
 
     // command argument constraints check: reset before starting to parse an instruction
     _lvl0_withinExpression = false;
@@ -715,7 +103,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
             ((t == tok_no_token) || isSemicolon || (t == tok_isReservedWord) || (t == tok_isGenericName)) ? lastTokenGroup_2 :
             ((t == tok_isConstant) || isRightPar) ? lastTokenGroup_3 :
             ((t == tok_isInternFunction) || (t == tok_isExternFunction)) ? lastTokenGroup_4 :
-            isLeftPar ? lastTokenGroup_5 : lastTokenGroup_6;     // token group 5: scalar or array variable name
+            isLeftPar ? lastTokenGroup_5 : lastTokenGroup_6;                                                        // token group 5: scalar or array variable name
 
         // a space may be required between last token and next token (not yet known), if one of them is a keyword
         // and the other token is either a keyword, an alphanumeric constant or a parenthesis
@@ -723,15 +111,15 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
         _leadingSpaceCheck = ((t == tok_isReservedWord) || _lastTokenIsString || isRightPar) && (pNext[0] != ' ');
 
         // move to the first non-space character of next token 
-        while (pNext[0] == ' ') { pNext++; }                                         // skip leading spaces
-        if (pNext[0] == '\0') { pNextParseStatement = pNext; break; }                // end of instruction: prepare to quit parsing  
+        while (pNext[0] == ' ') { pNext++; }                                                                        // skip leading spaces
+        if (pNext[0] == '\0') { pNextParseStatement = pNext; break; }                                               // end of instruction: prepare to quit parsing  
 
         // trace string ? exit after each individual expression
-        if (_parsingExecutingTraceString && isSemicolon) { pNextParseStatement = pNext;  break; }        // within trace : only parse one instruction at a time, then execute it first
+        if (_parsingExecutingTraceString && isSemicolon) { pNextParseStatement = pNext;  break; }                   // within trace : only parse one instruction at a time, then execute it first
 
 
-        _lastTokenType_hold = _lastTokenType;                                       // remember the last parsed token during parsing of a next token
-        _lastTermCode_hold = _lastTermCode;                                         // only relevant for certain tokens
+        _lastTokenType_hold = _lastTokenType;                                                                       // remember the last parsed token during parsing of a next token
+        _lastTermCode_hold = _lastTermCode;                                                                         // only relevant for certain tokens
         _lastTokenIsTerminal_hold = _lastTokenIsTerminal;
 
         pNext_hold = pNext;
@@ -739,7 +127,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
 
         // try to parse a token
         // --------------------
-        do {                                                                                                                // one loop only
+        do {                                                                                                        // one loop only
             // parsing routines below try to parse characters as a token of a specific type
             // if a function returns true, then either proceed OR skip reminder of loop ('continue') if 'result' indicates a token has been found
             // if a function returns false, then break with 'result' containing the error
@@ -747,18 +135,18 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
             char* lastProgramByte = _programStorage + _progMemorySize + (_programMode ? 0 : IMM_MEM_SIZE) - 1;
             if ((_programCounter + sizeof(TokenIsConstant) + 1) > lastProgramByte) { result = result_progMemoryFull; break; };
 
-            if (!parseAsResWord(pNext, result)) { break; } if (result == result_tokenFound) { break; }             // check before checking for identifier  
-            if (!parseTerminalToken(pNext, result)) { break; }  if (result == result_tokenFound) { break; }       // check before checking for number
+            if (!parseAsResWord(pNext, result)) { break; } if (result == result_tokenFound) { break; }              // check before checking for identifier  
+            if (!parseTerminalToken(pNext, result)) { break; }  if (result == result_tokenFound) { break; }         // check before checking for number
             if (!parseAsNumber(pNext, result)) { break; }  if (result == result_tokenFound) { break; }
             if (!parseAsStringConstant(pNext, result)) { break; }  if (result == result_tokenFound) { break; }
-            if (!parseAsInternFunction(pNext, result)) { break; }  if (result == result_tokenFound) { break; }     // check before checking for identifier (ext. function / variable) 
-            if (!parseAsExternFunction(pNext, result)) { break; }  if (result == result_tokenFound) { break; }     // check before checking for variable
+            if (!parseAsInternFunction(pNext, result)) { break; }  if (result == result_tokenFound) { break; }      // check before checking for identifier (ext. function / variable) 
+            if (!parseAsExternFunction(pNext, result)) { break; }  if (result == result_tokenFound) { break; }      // check before checking for variable
             if (!parseAsVariable(pNext, result)) { break; }  if (result == result_tokenFound) { break; }
-            if (!parseAsIdentifierName(pNext, result)) { break; }  if (result == result_tokenFound) { break; }     // at the end
+            if (!parseAsIdentifierName(pNext, result)) { break; }  if (result == result_tokenFound) { break; }      // at the end
             result = result_token_not_recognised;
         } while (false);
         // one token parsed (or error)
-        if (result != result_tokenFound) { break; }                                   // exit loop if token error (syntax, ...). Checked before checking command syntax
+        if (result != result_tokenFound) { break; }                                                                 // exit loop if token error (syntax, ...). Checked before checking command syntax
 
 
         // command ? Perform additional syntax checks 
@@ -767,9 +155,9 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
         bool isStatementStart = (_lastTokenType_hold == tok_no_token) || (_lastTokenIsTerminal_hold ? (_lastTermCode_hold == termcod_semicolon) : false);
         bool isCommandStart = false;
         if (isStatementStart) {
-            isCommandStart = (_lastTokenType == tok_isReservedWord);                       // keyword at start of statement ? is start of a command 
-            _isCommand = isCommandStart;                                                                // is start of a command ? then within a command now. Otherwise, it's an 'expression only' statement
-            if (_isCommand) { if (!checkCommandKeyword(result)) { ; pNext = pNext_hold; break; } }         // start of a command: keyword
+            isCommandStart = (_lastTokenType == tok_isReservedWord);                                                // keyword at start of statement ? is start of a command 
+            _isCommand = isCommandStart;                                                                            // is start of a command ? then within a command now. Otherwise, it's an 'expression only' statement
+            if (_isCommand) { if (!checkCommandKeyword(result)) { ; pNext = pNext_hold; break; } }                  // start of a command: keyword
         }
 
         bool isCommandArgToken = (!isCommandStart && _isCommand);
@@ -780,7 +168,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
     // one instruction parsed (or error: no token found OR command syntax error OR semicolon encountered)
 
 
-    pInputStart = pNext;                                                                // set to next character (if error: indicates error position)
+    pInputStart = pNext;                                                                                            // set to next character (if error: indicates error position)
 
     if (_userVarUnderConstruction) { deleteUserVariable(); }
 
@@ -788,14 +176,14 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
 }
 
 
-// -------------------------------------------------------------------------
-// * Check a command keyword token (apply additional command syntax rules) *
-// -------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// *   Check a command keyword token (apply additional command syntax rules)   *
+// -----------------------------------------------------------------------------
 
-bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {                    // command syntax checks
+bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {                                      // command syntax checks
 
-    _pCmdAllowedParTypes = _resWords[_tokenIndex].pCmdAllowedParTypes;         // remember allowed parameter types
-    _cmdParSpecColumn = 0;                                                          // reset actual command parameter counter
+    _pCmdAllowedParTypes = _resWords[_tokenIndex].pCmdAllowedParTypes;                                              // remember allowed parameter types
+    _cmdParSpecColumn = 0;                                                                                          // reset actual command parameter counter
     _cmdArgNo = 0;
 
     CmdBlockDef cmdBlockDef = _resWords[_tokenIndex].cmdBlockDef;
@@ -814,7 +202,7 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
     _isClearProgCmd = _resWords[_tokenIndex].resWordCode == cmdcod_clearProg;
     _isClearAllCmd = _resWords[_tokenIndex].resWordCode == cmdcod_clearAll;
 
-    _isAnyVarCmd = _isGlobalOrUserVarCmd || _isLocalVarCmd || _isStaticVarCmd;      //  VAR, LOCAL, STATIC
+    _isAnyVarCmd = _isGlobalOrUserVarCmd || _isLocalVarCmd || _isStaticVarCmd;                                      //  var, local, static
 
 
     // is this command allowed here ? Check restrictions
@@ -842,38 +230,38 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
     // perform specific checks related to block commands
     // -------------------------------------------------
 
-    if (cmdBlockDef.blockPosOrAction == block_startPos) {                        // is a block start command ?                          
-        _blockLevel++;                                                          // increment stack counter and create corresponding list element
+    if (cmdBlockDef.blockPosOrAction == block_startPos) {                                                           // is a block start command ?                          
+        _blockLevel++;                                                                                              // increment stack counter and create corresponding list element
         _pParsingStack = (LE_parsingStack*)parsingStack.appendListElement(sizeof(LE_parsingStack));
-        _pParsingStack->openBlock.cmdBlockDef = cmdBlockDef;                // store in stack: block type, block position ('start'), n/a, n/a
+        _pParsingStack->openBlock.cmdBlockDef = cmdBlockDef;                                                        // store in stack: block type, block position ('start'), n/a, n/a
 
-        memcpy(_pParsingStack->openBlock.toTokenStep, &_lastTokenStep, sizeof(char[2]));                      // store in stack: pointer to block start command token of open block
-        _blockStartCmdTokenStep = _lastTokenStep;                                     // remember pointer to block start command token of open block
-        _blockCmdTokenStep = _lastTokenStep;                                          // remember pointer to last block command token of open block
-        _extFunctionBlockOpen = _extFunctionBlockOpen || _isExtFunctionCmd;    // open until block closing END command     
+        memcpy(_pParsingStack->openBlock.toTokenStep, &_lastTokenStep, sizeof(char[2]));                            // store in stack: pointer to block start command token of open block
+        _blockStartCmdTokenStep = _lastTokenStep;                                                                   // remember pointer to block start command token of open block
+        _blockCmdTokenStep = _lastTokenStep;                                                                        // remember pointer to last block command token of open block
+        _extFunctionBlockOpen = _extFunctionBlockOpen || _isExtFunctionCmd;                                         // open until block closing END command     
 
-        return true;                                                         // nothing more to do
+        return true;                                                                                                // nothing more to do
     }
 
-    if (_blockLevel == 0) { result = result_block_noOpenBlock; return false; }      // not a block start and no open block: error
+    if (_blockLevel == 0) { result = result_block_noOpenBlock; return false; }                                      // not a block start and no open block: error
 
     if ((cmdBlockDef.blockType == block_alterFlow) && (_blockLevel > 0)) {
         // check for a compatible open block (e.g. a BREAK command can only occur if at least one open loop block exists)
         // parenthesis level is zero, because this is a block start command -> all stack levels are block levels
-        LE_parsingStack* pStackLvl = _pParsingStack;                                   // start with current open block level
+        LE_parsingStack* pStackLvl = _pParsingStack;                                                                // start with current open block level
         while (pStackLvl != nullptr) {
-            if ((pStackLvl->openBlock.cmdBlockDef.blockType == block_extFunction) &&   // an open external function block has been found (call or definition)
-                (cmdBlockDef.blockPosOrAction == block_inOpenFunctionBlock)) {                // and current flow altering command is allowed in open function block
+            if ((pStackLvl->openBlock.cmdBlockDef.blockType == block_extFunction) &&                                // an open external function block has been found (call or definition)
+                (cmdBlockDef.blockPosOrAction == block_inOpenFunctionBlock)) {                                      // and current flow altering command is allowed in open function block
                 // store pointer from 'alter flow' token (command) to block start command token of compatible open block (from RETURN to FUNCTION token)
                 memcpy(((TokenIsResWord*)(_programStorage + _lastTokenStep))->toTokenStep, pStackLvl->openBlock.toTokenStep, sizeof(char[2]));
-                break;                                                                      // -> applicable open block level found
+                break;                                                                                              // -> applicable open block level found
             }
             if (((pStackLvl->openBlock.cmdBlockDef.blockType == block_for) ||
-                (pStackLvl->openBlock.cmdBlockDef.blockType == block_while)) &&         // an open loop block has been found (e.g. FOR ... END block)
-                (cmdBlockDef.blockPosOrAction == block_inOpenLoopBlock)) {                    // and current flow altering command is allowed in open loop block
+                (pStackLvl->openBlock.cmdBlockDef.blockType == block_while)) &&                                     // an open loop block has been found (e.g. FOR ... END block)
+                (cmdBlockDef.blockPosOrAction == block_inOpenLoopBlock)) {                                          // and current flow altering command is allowed in open loop block
                 // store pointer from 'alter flow' token (command) to block start command token of compatible open block (e.g. from BREAK to FOR token)
                 memcpy(((TokenIsResWord*)(_programStorage + _lastTokenStep))->toTokenStep, pStackLvl->openBlock.toTokenStep, sizeof(char[2]));
-                break;                                                                      // -> applicable open block level found
+                break;                                                                                              // -> applicable open block level found
             }
             pStackLvl = (LE_parsingStack*)parsingStack.getPrevListElement(pStackLvl);
         }
@@ -881,31 +269,31 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
         return (pStackLvl != nullptr);
     }
 
-    if ((cmdBlockDef.blockType != _pParsingStack->openBlock.cmdBlockDef.blockType) &&    // same block type as open block (or block type is generic block end) ?
+    if ((cmdBlockDef.blockType != _pParsingStack->openBlock.cmdBlockDef.blockType) &&                               // same block type as open block (or block type is generic block end) ?
         (cmdBlockDef.blockType != block_genericEnd)) {
-        result = result_block_notAllowedInThisOpenBlock; return false;                // wrong block type: error
+        result = result_block_notAllowedInThisOpenBlock; return false;                                              // wrong block type: error
     }
 
-    bool withinRange = (_pParsingStack->openBlock.cmdBlockDef.blockPosOrAction >= cmdBlockDef.blockMinPredecessor) &&     // sequence of block commands OK ?
+    bool withinRange = (_pParsingStack->openBlock.cmdBlockDef.blockPosOrAction >= cmdBlockDef.blockMinPredecessor) &&   // sequence of block commands OK ?
         (_pParsingStack->openBlock.cmdBlockDef.blockPosOrAction <= cmdBlockDef.blockMaxPredecessor);
-    if (!withinRange) { result = result_block_wrongBlockSequence; return false; }   // sequence of block commands (for current stack level) is not OK: error
+    if (!withinRange) { result = result_block_wrongBlockSequence; return false; }                                   // sequence of block commands (for current stack level) is not OK: error
 
     // pointer from previous open block token to this open block token (e.g. pointer from IF token to ELSEIF or ELSE token)
     memcpy(((TokenIsResWord*)(_programStorage + _blockCmdTokenStep))->toTokenStep, &_lastTokenStep, sizeof(char[2]));
-    _blockCmdTokenStep = _lastTokenStep;                                              // remember pointer to last block command token of open block
+    _blockCmdTokenStep = _lastTokenStep;                                                                            // remember pointer to last block command token of open block
 
 
-    if (cmdBlockDef.blockPosOrAction == block_endPos) {                          // is this a block END command token ? 
-        if (_pParsingStack->openBlock.cmdBlockDef.blockType == block_extFunction) { _extFunctionBlockOpen = false; }       // FUNCTON definition blocks cannot be nested
+    if (cmdBlockDef.blockPosOrAction == block_endPos) {                                                             // is this a block END command token ? 
+        if (_pParsingStack->openBlock.cmdBlockDef.blockType == block_extFunction) { _extFunctionBlockOpen = false; }    // FUNCTON definition blocks cannot be nested
         memcpy(((TokenIsResWord*)(_programStorage + _lastTokenStep))->toTokenStep, &_blockStartCmdTokenStep, sizeof(char[2]));
-        parsingStack.deleteListElement(nullptr);                                   // decrement stack counter and delete corresponding list element
-        _blockLevel--;                                                          // also set pointer to currently last element in stack (if it exists)
+        parsingStack.deleteListElement(nullptr);                                                                    // decrement stack counter and delete corresponding list element
+        _blockLevel--;                                                                                              // also set pointer to currently last element in stack (if it exists)
 
         if (_blockLevel + _parenthesisLevel > 0) { _pParsingStack = (LE_parsingStack*)parsingStack.getLastListElement(); }
         if (_blockLevel > 0) {
             // retrieve pointer to block start command token and last block command token of open block
-            memcpy(&_blockStartCmdTokenStep, _pParsingStack->openBlock.toTokenStep, sizeof(char[2]));         // pointer to block start command token of open block       
-            uint16_t tokenStep = _blockStartCmdTokenStep;                            // init pointer to last block command token of open block
+            memcpy(&_blockStartCmdTokenStep, _pParsingStack->openBlock.toTokenStep, sizeof(char[2]));               // pointer to block start command token of open block       
+            uint16_t tokenStep = _blockStartCmdTokenStep;                                                           // init pointer to last block command token of open block
             uint16_t tokenStepPointedTo;
             memcpy(&tokenStepPointedTo, ((TokenIsResWord*)(_programStorage + tokenStep))->toTokenStep, sizeof(char[2]));
             while (tokenStepPointedTo != 0xFFFF)
@@ -914,25 +302,25 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
                 memcpy(&tokenStepPointedTo, ((TokenIsResWord*)(_programStorage + tokenStep))->toTokenStep, sizeof(char[2]));
             }
 
-            _blockCmdTokenStep = tokenStep;                                        // pointer to last block command token of open block                       
+            _blockCmdTokenStep = tokenStep;                                                                         // pointer to last block command token of open block                       
         }
     }
-    else { _pParsingStack->openBlock.cmdBlockDef = cmdBlockDef; }           // overwrite (block type (same or generic end), position, min & max predecessor)
+    else { _pParsingStack->openBlock.cmdBlockDef = cmdBlockDef; }                                                   // overwrite (block type (same or generic end), position, min & max predecessor)
 
     return true;
 }
 
 
-// --------------------------------------------------------------------------
-// * Check a command argument token (apply additional command syntax rules) *
-// --------------------------------------------------------------------------
+// ------------------------------------------------------------------------------
+// *   Check a command argument token (apply additional command syntax rules)   *
+// ------------------------------------------------------------------------------
 
 bool Justina_interpreter::checkCommandArgToken(parseTokenResult_type& result, int& clearIndicator) {
 
     // init and adapt variables
     // ------------------------
 
-    static uint8_t allowedParType = cmdPar_none;                                         // init
+    static uint8_t allowedParType = cmdPar_none;                                                                    // init
 
     bool isResWord = (_lastTokenType == tok_isReservedWord);
     bool isGenIdent = (_lastTokenType == tok_isGenericName);
@@ -968,7 +356,7 @@ bool Justina_interpreter::checkCommandArgToken(parseTokenResult_type& result, in
         allowedParType = (_cmdParSpecColumn == sizeof(_pCmdAllowedParTypes)) ? cmdPar_none : (uint8_t)(_pCmdAllowedParTypes[_cmdParSpecColumn]);
         multipleParameter = (allowedParType & cmdPar_multipleFlag);
         optionalParameter = (allowedParType & cmdPar_optionalFlag);
-        if (!multipleParameter) { _cmdParSpecColumn++; }                                   // increase parameter count, unless multiple parameters of this type are accepted  
+        if (!multipleParameter) { _cmdParSpecColumn++; }                                                            // increase parameter count, unless multiple parameters of this type are accepted  
         allowedParType = allowedParType & ~cmdPar_flagMask;
     }
 
@@ -976,17 +364,17 @@ bool Justina_interpreter::checkCommandArgToken(parseTokenResult_type& result, in
     // if end of command, test for missing parameters and exit
     // -------------------------------------------------------
 
-    if (isSemiColonSep) {                                                             // semicolon: end of command                                                    
-        if ((allowedParType != cmdPar_none) && !multipleParameter && !optionalParameter) {    // missing parameters ?
+    if (isSemiColonSep) {                                                                                           // semicolon: end of command                                                    
+        if ((allowedParType != cmdPar_none) && !multipleParameter && !optionalParameter) {                          // missing parameters ?
             result = result_cmd_parameterMissing; return false;
         }
 
         if (_isClearCBcmd) { _userCBprocAliasSet_count = 0; }
         // NOTE: clear program / memory command will be executed when normal execution ends (before entering idle idle mode, waiting for input)
-        else if (_isClearProgCmd) { clearIndicator = 1; }     // clear program: set flag 
-        else if (_isClearAllCmd) { clearIndicator = 2; }      // clear all: set flag
+        else if (_isClearProgCmd) { clearIndicator = 1; }                                                           // clear program: set flag 
+        else if (_isClearAllCmd) { clearIndicator = 2; }                                                            // clear all: set flag
 
-        return true;                                                                    // nothing more to do for this command
+        return true;                                                                                                // nothing more to do for this command
     }
 
 
@@ -996,11 +384,11 @@ bool Justina_interpreter::checkCommandArgToken(parseTokenResult_type& result, in
     // check each token, but skip tokens within open parenthesis (whatever is in there has no relevance for argument checking) ...
     // ... and skip commas separating arguments (because these commas have just reset variables used for command argument constraints checking, preparing for next command argument (if any))
 
-    if ((_parenthesisLevel == 0) && (!isLvl0CommaSep)) {     // a comma resets variables used for command argument constraint checks
+    if ((_parenthesisLevel == 0) && (!isLvl0CommaSep)) {                                                            // a comma resets variables used for command argument constraint checks
         if (allowedParType == cmdPar_none) { result = result_cmd_tooManyParameters; return false; }
-        if (allowedParType == cmdPar_resWord && !isResWord) { result = result_cmd_resWordExpectedAsPar; return false; }                              // does not occur, but keep for completeness
+        if (allowedParType == cmdPar_resWord && !isResWord) { result = result_cmd_resWordExpectedAsPar; return false; }     // does not occur, but keep for completeness
         if (allowedParType == cmdPar_ident && !isGenIdent) { result = result_cmd_identExpectedAsPar; return false; }
-        if ((allowedParType == cmdPar_expression) && !_lvl0_withinExpression) { result = result_cmd_expressionExpectedAsPar; return false; }         // does not occur, but keep for completeness
+        if ((allowedParType == cmdPar_expression) && !_lvl0_withinExpression) { result = result_cmd_expressionExpectedAsPar; return false; }    // does not occur, but keep for completeness
 
         if ((allowedParType == cmdPar_varOptAssignment) && (!_lvl0_isPurePrefixIncrDecr && (!_lvl0_isPureVariable && !_isConstVarCmd) && !_lvl0_isVarWithAssignment)) {
             result = (parseTokenResult_type)result_cmd_varWithOptionalAssignmentExpectedAsPar; return false;
@@ -1015,21 +403,21 @@ bool Justina_interpreter::checkCommandArgToken(parseTokenResult_type& result, in
 }
 
 
-// -------------------------------------------------------
-// *   try to parse next characters as a keyword   *
-// -------------------------------------------------------
+// --------------------------------------------------------------------------------
+// *   try to parse next characters as a keyword (start of a command statement)   *
+// --------------------------------------------------------------------------------
 
 bool Justina_interpreter::parseAsResWord(char*& pNext, parseTokenResult_type& result) {
-    result = result_tokenNotFound;                                                      // init: flag 'no token found'
-    char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
+    result = result_tokenNotFound;                                                                              // init: flag 'no token found'
+    char* pch = pNext;                                                                                          // pointer to first character to parse (any spaces have been skipped already)
     int resWordIndex;
 
-    if (!isalpha(pNext[0])) { return true; }                                       // first character is not a letter ? Then it's not a keyword (it can still be something else)
-    while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                   // do until first character after alphanumeric token (can be anything, including '\0')
+    if (!isalpha(pNext[0])) { return true; }                                                                    // first character is not a letter ? Then it's not a keyword (it can still be something else)
+    while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                                                 // do until first character after alphanumeric token (can be anything, including '\0')
 
-    for (resWordIndex = _resWordCount - 1; resWordIndex >= 0; resWordIndex--) {          // for all defined keywords: check against alphanumeric token (NOT ending by '\0')
-        if (strlen(_resWords[resWordIndex]._resWordName) != pNext - pch) { continue; }          // token has correct length ? If not, skip remainder of loop ('continue')                            
-        if (strncmp(_resWords[resWordIndex]._resWordName, pch, pNext - pch) != 0) { continue; } // token corresponds to keyword ? If not, skip remainder of loop ('continue') 
+    for (resWordIndex = _resWordCount - 1; resWordIndex >= 0; resWordIndex--) {                                 // for all defined keywords: check against alphanumeric token (NOT ending by '\0')
+        if (strlen(_resWords[resWordIndex]._resWordName) != pNext - pch) { continue; }                          // token has correct length ? If not, skip remainder of loop ('continue')                            
+        if (strncmp(_resWords[resWordIndex]._resWordName, pch, pNext - pch) != 0) { continue; }                 // token corresponds to keyword ? If not, skip remainder of loop ('continue') 
 
         // token is keyword, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
         if (_parsingExecutingTraceString || _parsingEvalString) { pNext = pch; result = result_trace_eval_resWordNotAllowed; return false; }
@@ -1037,22 +425,22 @@ bool Justina_interpreter::parseAsResWord(char*& pNext, parseTokenResult_type& re
         if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2_0)) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
         if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
 
-        if (!_isCommand) {                                                             // already within a command: do not test here
+        if (!_isCommand) {                                                                                      // already within a command: do not test here
             bool lastIsSemiColon = _lastTokenIsTerminal ? (_lastTermCode == termcod_semicolon) : false;
             if (!lastIsSemiColon && (_lastTokenType != tok_no_token)) {
-                pNext = pch; result = result_resWordNotAllowedHere; return false;       // keyword only at start of a statement (not within an expression)
+                pNext = pch; result = result_resWordNotAllowedHere; return false;                               // keyword only at start of a statement (not within an expression)
             }
         }
 
         if (_leadingSpaceCheck) { pNext = pch; result = result_spaceMissing; return false; }
-        _tokenIndex = resWordIndex;                                                     // needed in case it's the start of a command (to determine parameters)
+        _tokenIndex = resWordIndex;                                                                             // needed in case it's the start of a command (to determine parameters)
 
         // token is a keyword, and it's allowed here
 
         // expression syntax check 
         _thisLvl_lastIsVariable = false;
         _thislvl_lastIsConstVar = false;
-        _thisLvl_assignmentStillPossible = true;                                                 // reset (expression may follow)                          
+        _thisLvl_assignmentStillPossible = true;                                                                // reset (expression may follow)                          
 
         // command argument constraints check: reset for next command parameter
         _lvl0_withinExpression = false;
@@ -1066,7 +454,7 @@ bool Justina_interpreter::parseAsResWord(char*& pNext, parseTokenResult_type& re
         TokenIsResWord* pToken = (TokenIsResWord*)_programCounter;
         pToken->tokenType = tok_isReservedWord | ((sizeof(TokenIsResWord) - (hasTokenStep ? 0 : 2)) << 4);
         pToken->tokenIndex = resWordIndex;
-        if (hasTokenStep) { pToken->toTokenStep[0] = 0xFF; pToken->toTokenStep[1] = 0xFF; }                  // -1: no token ref. uint16_t not necessarily aligned with word size: store as two sep. bytes                            
+        if (hasTokenStep) { pToken->toTokenStep[0] = 0xFF; pToken->toTokenStep[1] = 0xFF; }                     // -1: no token ref. uint16_t not necessarily aligned with word size: store as two sep. bytes                            
 
         _lastTokenStep = _programCounter - _programStorage;
         _lastTokenType = tok_isReservedWord;
@@ -1078,13 +466,13 @@ bool Justina_interpreter::parseAsResWord(char*& pNext, parseTokenResult_type& re
     #endif
 
         _programCounter += sizeof(TokenIsResWord) - (hasTokenStep ? 0 : 2);
-        *_programCounter = tok_no_token;                                                 // indicates end of program
-        result = result_tokenFound;                                                     // flag 'valid token found'
+        *_programCounter = tok_no_token;                                                                        // indicates end of program
+        result = result_tokenFound;                                                                             // flag 'valid token found'
         return true;
     }
 
-    pNext = pch;                                                                        // reset pointer to first character to parse (because no token was found)
-    return true;                                                                        // token is not a keyword (but can still be something else)
+    pNext = pch;                                                                                                // reset pointer to first character to parse (because no token was found)
+    return true;                                                                                                // token is not a keyword (but can still be something else)
 }
 
 
@@ -1093,13 +481,13 @@ bool Justina_interpreter::parseAsResWord(char*& pNext, parseTokenResult_type& re
 // ------------------------------------------------
 
 bool Justina_interpreter::parseAsNumber(char*& pNext, parseTokenResult_type& result) {
-    result = result_tokenNotFound;                                                      // init: flag 'no token found'
-    char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
+    result = result_tokenNotFound;                                                                              // init: flag 'no token found'
+    char* pch = pNext;                                                                                          // pointer to first character to parse (any spaces have been skipped already)
 
     // try to parse as number (int or float)
     Val value; char valueType{};
-    if (!parseIntFloat(pNext, pch, value, valueType, result)) { return false; }                  // return with error, 'result' contains error number
-    if (result != result_tokenFound) { return true; }                                           // is not a number, but can still be another valid token
+    if (!parseIntFloat(pNext, pch, value, valueType, result)) { return false; }                                 // return with error, 'result' contains error number
+    if (result != result_tokenFound) { return true; }                                                           // is not a number, but can still be another valid token
 
     float flt{ 0 }; long lng{ 0 };
     if (valueType == value_isLong) { lng = value.longConst; }
@@ -1126,7 +514,7 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parseTokenResult_type& res
     // Function command: check that constant can only appear after an equal sign
     // (in a variable declaration statement (VAR,...), this is handled by the keyword 'allowed command parameter' key)
     // Note: in a (variable or parameter) declaration statement, operators other than assignment operators are not allowed, which is detected in terminal token parsing
-    bool lastIsPureAssignmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;     // not a compound assignment
+    bool lastIsPureAssignmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;             // not a compound assignment
     if (_isExtFunctionCmd && !lastIsPureAssignmentOp) { pNext = pch; result = result_numConstNotAllowedHere; return false; }
 
     // array declaration: dimensions must be number constants (global, static, local arrays)
@@ -1148,14 +536,14 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parseTokenResult_type& res
     TokenIsConstant* pToken = (TokenIsConstant*)_programCounter;
     pToken->tokenType = tok_isConstant | (valueType << 4);
     if (valueType == value_isLong) { memcpy(pToken->cstValue.longConst, &lng, sizeof(lng)); }
-    else { memcpy(pToken->cstValue.floatConst, &flt, sizeof(flt)); }                                           // float not necessarily aligned with word size: copy memory instead
-    _lastTokenStep = _programCounter - _programStorage;             // before referencing _lastTokenStep
+    else { memcpy(pToken->cstValue.floatConst, &flt, sizeof(flt)); }                                            // float not necessarily aligned with word size: copy memory instead
+    _lastTokenStep = _programCounter - _programStorage;                                                         // before referencing _lastTokenStep
 
     _lastTokenType = tok_isConstant;
     _lastTokenIsString = false, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
     bool doNonLocalVarInit = ((_isGlobalOrUserVarCmd || _isStaticVarCmd) && lastIsPureAssignmentOp);
-    if (doNonLocalVarInit) { initVariable(_lastVariableTokenStep, _lastTokenStep); }     // initialisation of global / static variable ? (operator: is always assignment)
+    if (doNonLocalVarInit) { initVariable(_lastVariableTokenStep, _lastTokenStep); }                            // initialisation of global / static variable ? (operator: is always assignment)
 
 #if printParsedTokens
     _pDebugOut->print("parsing number : address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); if (valueType == value_isLong) { _pDebugOut->print(lng); }
@@ -1163,8 +551,8 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parseTokenResult_type& res
 #endif
 
     _programCounter += sizeof(TokenIsConstant);
-    *_programCounter = tok_no_token;                                                 // indicates end of program
-    result = result_tokenFound;                                                         // flag 'valid token found'
+    *_programCounter = tok_no_token;                                                                            // indicates end of program
+    result = result_tokenFound;                                                                                 // flag 'valid token found'
     return true;
 }
 
@@ -1174,11 +562,11 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parseTokenResult_type& res
 // ----------------------------------------------------------------
 
 bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_type& result) {
-    result = result_tokenNotFound;                                                      // init: flag 'no token found'
-    char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
-    if ((pNext[0] != '\"')) { return true; }                                         // no opening quote ? Is not an alphanumeric cst (it can still be something else)
+    result = result_tokenNotFound;                                                                              // init: flag 'no token found'
+    char* pch = pNext;                                                                                          // pointer to first character to parse (any spaces have been skipped already)
+    if ((pNext[0] != '\"')) { return true; }                                                                    // no opening quote ? Is not an alphanumeric cst (it can still be something else)
 
-    if (_programCounter == _programStorage) { pNext = pch; result = result_cmd_programCmdMissing; return false; }  // program mode and no PROGRAM command
+    if (_programCounter == _programStorage) { pNext = pch; result = result_cmd_programCmdMissing; return false; }   // program mode and no PROGRAM command
 
     // token is an alphanumeric constant, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
     if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2_1_0)) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
@@ -1206,11 +594,11 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
     if (_leadingSpaceCheck) { pNext = pch; result = result_spaceMissing; return false; }
 
     // try to parse as string now
-    char* pStringCst = nullptr;                 // init: is empty string (prevent creating a string object to conserve memory)
+    char* pStringCst = nullptr;                                                                                 // init: is empty string (prevent creating a string object to conserve memory)
     char valueType; //dummy
 
-    if (!parseString(pNext, pch, pStringCst, valueType, result, false)) { return false; };                   // return with error, 'result' contains error number
-    if (result != result_tokenFound) { return true; }                                           // is not a number, but can still be another valid token
+    if (!parseString(pNext, pch, pStringCst, valueType, result, false)) { return false; };                      // return with error, 'result' contains error number
+    if (result != result_tokenFound) { return true; }                                                           // is not a number, but can still be another valid token
 
     // expression syntax check 
     _thisLvl_lastIsVariable = false;
@@ -1221,20 +609,20 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
 
     TokenIsConstant* pToken = (TokenIsConstant*)_programCounter;
     pToken->tokenType = tok_isConstant | (value_isStringPointer << 4);
-    memcpy(pToken->cstValue.pStringConst, &pStringCst, sizeof(pStringCst));            // pointer not necessarily aligned with word size: copy pointer instead
+    memcpy(pToken->cstValue.pStringConst, &pStringCst, sizeof(pStringCst));                                     // pointer not necessarily aligned with word size: copy pointer instead
 
     _lastTokenStep = _programCounter - _programStorage;
     _lastTokenType = tok_isConstant;
     _lastTokenIsString = true, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
     bool isLocalVarInitCheck = (_isLocalVarCmd && isPureAssignmentOp);
-    bool doNonLocalVarInit = ((_isGlobalOrUserVarCmd || _isStaticVarCmd) && isPureAssignmentOp);          // (operator: is always assignment)
+    bool doNonLocalVarInit = ((_isGlobalOrUserVarCmd || _isStaticVarCmd) && isPureAssignmentOp);                // (operator: is always assignment)
     bool isArrayVar = ((TokenIsVariable*)(_programStorage + _lastVariableTokenStep))->identInfo & var_isArray;
 
     if (isLocalVarInitCheck && isArrayVar && (pStringCst != nullptr)) {
-        result = result_arrayDef_emptyInitStringExpected;        // only check (init when function is called)
+        result = result_arrayDef_emptyInitStringExpected;                                                       // only check (init when function is called)
     }
-    if (doNonLocalVarInit) {                                     // initialisation of global / static variable ? 
+    if (doNonLocalVarInit) {                                                                                    // initialisation of global / static variable ? 
         if (!initVariable(_lastVariableTokenStep, _lastTokenStep)) {
             result = result_arrayDef_emptyInitStringExpected;
         };
@@ -1255,8 +643,8 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
 #endif
 
     _programCounter += sizeof(TokenIsConstant);
-    *_programCounter = tok_no_token;                                                 // indicates end of program
-    result = result_tokenFound;                                                         // flag 'valid token found'
+    *_programCounter = tok_no_token;                                                                            // indicates end of program
+    result = result_tokenFound;                                                                                 // flag 'valid token found'
 
     return true;
 }
@@ -1265,123 +653,6 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
 // ---------------------------------------------------------------------------------
 // *   try to parse next characters as a terminal token (one- or two-characters)   *
 // ---------------------------------------------------------------------------------
-
-// Array parsing: check that max dimension count and maximum array size is not exceeded
-// ------------------------------------------------------------------------------------
-
-bool Justina_interpreter::checkArrayDimCountAndSize(parseTokenResult_type& result, int* arrayDef_dims, int& dimCnt) {
-
-    bool lastIsLeftPar = _lastTokenIsTerminal ? (_lastTermCode == termcod_leftPar) : false;
-    if (lastIsLeftPar) { result = result_arrayDef_noDims; return false; }
-
-    dimCnt++;
-
-    if (dimCnt > MAX_ARRAY_DIMS) { result = result_arrayDef_maxDimsExceeded; return false; }
-
-    char valueType = (*(_programStorage + _lastTokenStep) >> 4) & value_typeMask;
-
-    long l{};        // last token is a number constant: dimension spec
-    float f{ 0 };
-    if (valueType == (value_isLong)) {     // float
-        memcpy(&l, ((TokenIsConstant*)(_programStorage + _lastTokenStep))->cstValue.longConst, sizeof(l));
-    }
-    else {
-        memcpy(&f, ((TokenIsConstant*)(_programStorage + _lastTokenStep))->cstValue.floatConst, sizeof(f));
-        l = int(f);
-    }
-
-    if (l < 1) { result = result_arrayDef_negativeDim; return false; }
-    if (l > 255) { result = result_arrayDef_dimTooLarge; return false; }
-    arrayDef_dims[dimCnt - 1] = l;
-    int arrayElements = 1;
-    for (int cnt = 0; cnt < dimCnt; cnt++) { arrayElements *= arrayDef_dims[cnt]; }
-    if (arrayElements > MAX_ARRAY_ELEM) { result = result_arrayDef_maxElementsExceeded; return false; }
-    return true;
-}
-
-
-// External function definition statement parsing: check order of mandatory and optional arguments, check if max. n° not exceeded
-// -------------------------------------------------------------------------------------------------------------------------------
-
-bool Justina_interpreter::checkExtFunctionArguments(parseTokenResult_type& result, int& minArgCnt, int& maxArgCnt) {
-    bool lastIsRightPar = _lastTokenIsTerminal ? (_lastTermCode == termcod_rightPar) : false;
-
-    bool argWasMandatory = (_lastTokenType == tok_isVariable) || lastIsRightPar;         // variable without assignment to a constant or param array def. parenthesis
-    bool alreadyOptArgs = (minArgCnt != maxArgCnt);
-    if (argWasMandatory && alreadyOptArgs) { result = result_function_mandatoryArgFoundAfterOptionalArgs; return false; }
-    if (argWasMandatory) { minArgCnt++; }
-    maxArgCnt++;
-    // check that max argument count is not exceeded (number must fit in 4 bits)
-    if (maxArgCnt > c_extFunctionMaxArgs) { result = result_function_maxArgsExceeded; return false; }
-    return true;
-}
-
-
-// Internal function: check that order of arrays and scalar variables is consistent with function definition 
-// ---------------------------------------------------------------------------------------------------------
-
-bool Justina_interpreter::checkInternFuncArgArrayPattern(parseTokenResult_type& result) {
-    int funcIndex = _pParsingStack->openPar.identifierIndex;            // note: also stored in stack for FUNCTION definition block level; here we can pick one of both
-    char paramIsArrayPattern = _functions[funcIndex].arrayPattern;
-    int argNumber = _pParsingStack->openPar.actualArgsOrDims;
-
-    if (argNumber > 0) {
-        bool isArray = false;
-        if (_lastTokenType == tok_isVariable) {                                      // function call and last token is variable name ? Could be an array name                                                                                      // function call
-            // check if variable is defined as array (then it will NOT be part of an expression )
-            isArray = (((TokenIsVariable*)(_programStorage + _lastTokenStep))->identInfo) & var_isArray;
-        }
-
-        bool arrayArgumentExpected = false;
-        if (argNumber >= 8) {
-            if (isArray) { result = result_function_scalarArgExpected; return false; }
-        }
-        else {
-            if (((paramIsArrayPattern >> (argNumber - 1)) & 0b1) != isArray) { result = isArray ? result_function_scalarArgExpected : result_function_arrayArgExpected; return false; }
-        }
-    }
-    return true;
-}
-
-
-// External function: check that order of arrays and scalar variables is consistent with previous calls and function definition 
-// ----------------------------------------------------------------------------------------------------------------------------
-
-bool Justina_interpreter::checkExternFuncArgArrayPattern(parseTokenResult_type& result, bool isFunctionClosingParenthesis) {
-
-    int funcIndex = _pParsingStack->openPar.identifierIndex;            // note: also stored in stack for FUNCTION definition block level; here we can pick one of both
-    int argNumber = _pParsingStack->openPar.actualArgsOrDims;
-    uint16_t paramIsArrayPattern{ 0 };
-    memcpy(&paramIsArrayPattern, extFunctionData[funcIndex].paramIsArrayPattern, sizeof(char[2]));
-    if (argNumber > 0) {
-
-        bool isArray = false;
-        bool lastIsRightPar = _lastTokenIsTerminal ? (_lastTermCode == termcod_rightPar) : false;
-
-        if (_isExtFunctionCmd) { isArray = lastIsRightPar; }  // function definition: if variable name followed by empty parameter list ' () ': array parameter
-        else if (_lastTokenType == tok_isVariable) {                                      // function call and last token is variable name ? Could be an array name                                                                                      // function call
-            // check if variable is defined as array (then it will NOT be part of an expression )
-            isArray = (((TokenIsVariable*)(_programStorage + _lastTokenStep))->identInfo) & var_isArray;
-        }
-
-        uint16_t paramArrayMask = 1 << (argNumber - 1);
-        if (paramIsArrayPattern & 0x8000) {                   // function not used yet (before it was defined now: no need to check, just set array bit)
-            paramIsArrayPattern = paramIsArrayPattern | (isArray ? paramArrayMask : 0);
-        }
-        else {  // error message can not be more specific (scalar expected, array expected) because maybe function has not been defined yet
-            if ((paramIsArrayPattern & paramArrayMask) != (isArray ? paramArrayMask : 0)) { result = result_function_scalarAndArrayArgOrderNotConsistent; return false; }
-        }
-    }
-
-    if (isFunctionClosingParenthesis) { paramIsArrayPattern = paramIsArrayPattern & ~0x8000; }    // function name used now: order of scalar and array parameters is now fixed
-    memcpy(extFunctionData[funcIndex].paramIsArrayPattern, &paramIsArrayPattern, sizeof(char[2]));
-    return true;
-}
-
-
-// --------------------------
-// * Parse a terminal token * 
-// --------------------------
 
 bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
 
@@ -1393,25 +664,25 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
     static int array_dimCounter{ 0 };
     static int arrayDef_dims[MAX_ARRAY_DIMS]{ 0 };
 
-    result = result_tokenNotFound;                                                      // init: flag 'no token found'
-    char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
+    result = result_tokenNotFound;                                                                              // init: flag 'no token found'
+    char* pch = pNext;                                                                                          // pointer to first character to parse (any spaces have been skipped already)
     int termIndex;
 
-    for (termIndex = _termTokenCount - 1; termIndex >= 0; termIndex--) {                  // for all defined terminal names: check against alphanumeric token (NOT ending by '\0')
-        int len = strlen(_terminals[termIndex].terminalName);    // token has correct length ? If not, skip remainder of loop ('continue')                            
+    for (termIndex = _termTokenCount - 1; termIndex >= 0; termIndex--) {                                        // for all defined terminal names: check against alphanumeric token (NOT ending by '\0')
+        int len = strlen(_terminals[termIndex].terminalName);                                                   // token has correct length ? If not, skip remainder of loop ('continue')                            
         // do not look for trailing space, to use strncmp() wih number of non-space characters found, because a space is not required after an operator
-        if (strncmp(_terminals[termIndex].terminalName, pch, len) == 0) { break; }      // token corresponds to terminal name ? Then exit loop    
+        if (strncmp(_terminals[termIndex].terminalName, pch, len) == 0) { break; }                              // token corresponds to terminal name ? Then exit loop    
     }
-    if (termIndex < 0) { return true; }                                                // token is not a one-character token (and it's not a two-char token, because these start with same character)
-    pNext += strlen(_terminals[termIndex].terminalName);                                                                            // move to next character
+    if (termIndex < 0) { return true; }                                                                         // token is not a one-character token (and it's not a two-char token, because these start with same character)
+    pNext += strlen(_terminals[termIndex].terminalName);                                                        // move to next character
 
     int nextTermIndex;  // peek: is next token a terminal ? nextTermIndex will be -1 if not
     char* peek = pNext;     // first character of next token (or '\0')
     while (peek[0] == ' ') { peek++; }
-    for (nextTermIndex = _termTokenCount - 1; nextTermIndex >= 0; nextTermIndex--) {                  // for all defined function names: check against alphanumeric token (NOT ending by '\0')
-        int len = strlen(_terminals[nextTermIndex].terminalName);    // token has correct length ? If not, skip remainder of loop ('continue')                            
+    for (nextTermIndex = _termTokenCount - 1; nextTermIndex >= 0; nextTermIndex--) {                            // for all defined function names: check against alphanumeric token (NOT ending by '\0')
+        int len = strlen(_terminals[nextTermIndex].terminalName);                                               // token has correct length ? If not, skip remainder of loop ('continue')                            
         // do not look for trailing space, to use strncmp() wih number of non-space characters found, because a space is not required after an operator
-        if (strncmp(_terminals[nextTermIndex].terminalName, peek, len) == 0) { break; }      // token corresponds to terminal name ? Then exit loop   
+        if (strncmp(_terminals[nextTermIndex].terminalName, peek, len) == 0) { break; }                         // token corresponds to terminal name ? Then exit loop   
     }
 
 
@@ -1426,7 +697,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             // Case 1: is token a left parenthesis ?
             // -------------------------------------
 
-            if (_programCounter == _programStorage) { pNext = pch; result = result_cmd_programCmdMissing; return false; }  // program mode and no PROGRAM command
+            if (_programCounter == _programStorage) { pNext = pch; result = result_cmd_programCmdMissing; return false; }   // program mode and no PROGRAM command
 
             // token is left parenthesis, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
             if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_5_4_2_1_0)) { pNext = pch;  result = result_parenthesisNotAllowedHere; return false; }
@@ -1436,7 +707,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             bool tokenAllowed = (_isCommand || (!_programMode) || _extFunctionBlockOpen);
             if (!tokenAllowed) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; ; }
 
-            if (_isAnyVarCmd && (_parenthesisLevel > 0)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }     // no parenthesis nesting in array declarations
+            if (_isAnyVarCmd && (_parenthesisLevel > 0)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }  // no parenthesis nesting in array declarations
             // parenthesis nesting in function definitions, only to declare an array parameter AND only if followed by a closing parenthesis 
             if ((_isExtFunctionCmd) && (_parenthesisLevel > 0) && (_lastTokenType != tok_isVariable)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
             if (_isProgramCmd || _isDeleteVarCmd || _isDeclCBcmd) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
@@ -1452,7 +723,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             // store specific flags in stack, because if nesting functions or parentheses, values will be overwritten
             flags = (_lastTokenType == tok_isExternFunction) ? extFunctionBit :
                 (_lastTokenType == tok_isInternFunction) ? intFunctionBit :
-                (_lastTokenType == tok_isVariable) ? arrayBit : openParenthesisBit;     // is it following a(n internal or external) function name ?
+                (_lastTokenType == tok_isVariable) ? arrayBit : openParenthesisBit;                                         // is it following a(n internal or external) function name ?
 
             // external function (call or definition) opening parenthesis
             if (_lastTokenType == tok_isExternFunction) {
@@ -1465,45 +736,46 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             if (_thislvl_lastIsConstVar) { flags |= varIsConstantBit; }
             _thislvl_lastIsConstVar = false;
 
-            if (_thisLvl_assignmentStillPossible) { flags = flags | varAssignmentAllowedBit; }          // remember if array element can be assigned to (after closing parenthesis)
-            _thisLvl_assignmentStillPossible = true;                                                    // array subscripts: reset assignment allowed flag (init)
+            if (_thisLvl_assignmentStillPossible) { flags = flags | varAssignmentAllowedBit; }                              // remember if array element can be assigned to (after closing parenthesis)
+            _thisLvl_assignmentStillPossible = true;                                                                        // array subscripts: reset assignment allowed flag (init)
 
-            if (_thisLvl_lastOpIsIncrDecr) { flags = flags | varHasPrefixIncrDecrBit; }                 // remember if array element has a prefix incr/decr operator (before opening parenthesis) 
-            _thisLvl_lastOpIsIncrDecr = false;                                                           // array subscripts: reset assignment allowed flag 
+            if (_thisLvl_lastOpIsIncrDecr) { flags = flags | varHasPrefixIncrDecrBit; }                                     // remember if array element has a prefix incr/decr operator (before opening parenthesis) 
+            _thisLvl_lastOpIsIncrDecr = false;                                                                              // array subscripts: reset assignment allowed flag 
 
             // command argument constraints check
             _lvl0_withinExpression = true;
 
             // if function DEFINITION: initialize variables for counting of allowed mandatory and optional arguments (not an array parameter, would be parenthesis level 1)
-            if (_isExtFunctionCmd && (_parenthesisLevel == 0)) {      // not an array parameter (would be parenthesis level 1)
+            if (_isExtFunctionCmd && (_parenthesisLevel == 0)) {                                                            // not an array parameter (would be parenthesis level 1)
                 extFunctionDef_minArgCounter = 0;
-                extFunctionDef_maxArgCounter = 0;            // init count; range from 0 to a hardcoded maximum 
+                extFunctionDef_maxArgCounter = 0;                                                                           // init count; range from 0 to a hardcoded maximum 
             }
 
-            if (_isExtFunctionCmd && (_parenthesisLevel == 1)) {      // array parameter (would be parenthesis level 1)
+            if (_isExtFunctionCmd && (_parenthesisLevel == 1)) {                                                            // array parameter (would be parenthesis level 1)
                 if (peek[0] != term_rightPar[0]) { pNext = pch; result = result_function_arrayParamMustHaveEmptyDims; return false; }
             }
 
             // if LOCAL, STATIC or GLOBAL array DEFINITION or USE (NOT: parameter array): initialize variables for reading dimensions 
-            if (flags & arrayBit) {                    // always count, also if not first definition (could happen for global variables)
+            if (flags & arrayBit) {                                                                                         // always count, also if not first definition (could happen for global variables)
                 if (_varIsConstant) { pNext = pch; result = result_var_constantArrayNotAllowed; return false; }
                 array_dimCounter = 0;
-                for (int i = 0; i < MAX_ARRAY_DIMS; i++) { arrayDef_dims[i] = 0; }        // init dimensions (dimension count will result from dimensions being non-zero
+                for (int i = 0; i < MAX_ARRAY_DIMS; i++) { arrayDef_dims[i] = 0; }                                          // init dimensions (dimension count will result from dimensions being non-zero
             }
 
             // left parenthesis only ? (not a function or array opening parenthesis): min & max allowed argument count not yet initialised
             if (_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_5) {
-                _minFunctionArgs = 1;                                    // initialize min & max allowed argument count to 1
+                _minFunctionArgs = 1;                                                                                       // initialize min & max allowed argument count to 1
                 _maxFunctionArgs = 1;
             }
 
             // min & max argument count: either allowed range (if function previously defined), current range of actual args counts (if previous calls only), or not initialized
-            _parenthesisLevel++;                                                            // increment stack counter and create corresponding list element
+            _parenthesisLevel++;                                                                                            // increment stack counter and create corresponding list element
             _pParsingStack = (LE_parsingStack*)parsingStack.appendListElement(sizeof(LE_parsingStack));
             _pParsingStack->openPar.minArgs = _minFunctionArgs;
             _pParsingStack->openPar.maxArgs = _maxFunctionArgs;
             _pParsingStack->openPar.actualArgsOrDims = 0;
-            _pParsingStack->openPar.arrayDimCount = _arrayDimCount;         // dimensions of previously defined array. If zero, then this array did not yet exist, or it's a scalar variable
+            // dimensions of previously defined array. If zero, then this array did not yet exist, or it's a scalar variable
+            _pParsingStack->openPar.arrayDimCount = _arrayDimCount;
             _pParsingStack->openPar.flags = flags;
             _pParsingStack->openPar.identifierIndex = (_lastTokenType == tok_isInternFunction) ? _functionIndex :
                 (_lastTokenType == tok_isExternFunction) ? _functionIndex :
@@ -1521,7 +793,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             // Case 2: is token a right parenthesis ?
             // --------------------------------------
 
-            if (_programCounter == _programStorage) { pNext = pch; result = result_cmd_programCmdMissing; return false; }  // program mode and no PROGRAM command
+            if (_programCounter == _programStorage) { pNext = pch; result = result_cmd_programCmdMissing; return false; }   // program mode and no PROGRAM command
 
             // token is right parenthesis, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
             if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_5_3_0)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
@@ -1535,9 +807,9 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             flags = _pParsingStack->openPar.flags;
 
             // expression syntax check 
-            _thisLvl_lastIsVariable = (flags & arrayBit);                            // note: parameter array (empty parenthesis): array bit not set
+            _thisLvl_lastIsVariable = (flags & arrayBit);                                                                   // note: parameter array (empty parenthesis): array bit not set
             _thislvl_lastIsConstVar = (flags & varIsConstantBit);
-            _thisLvl_assignmentStillPossible = (flags & varAssignmentAllowedBit);    // array subscripts: retrieve assignment allowed flag 
+            _thisLvl_assignmentStillPossible = (flags & varAssignmentAllowedBit);                                           // array subscripts: retrieve assignment allowed flag 
             _thisLvl_lastOpIsIncrDecr = (flags & varHasPrefixIncrDecrBit);
 
 
@@ -1545,25 +817,25 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             // --------------------------------------------------------------------------------------------------
 
             if (_isExtFunctionCmd) {
-                if (_parenthesisLevel == 1) {          // function definition closing parenthesis
+                if (_parenthesisLevel == 1) {                                                                               // function definition closing parenthesis
                     // stack level will not change until closing parenthesis (because within definition, no nesting of parenthesis is possible)
                     // stack min & max values: current range of args counts that occured in previous calls (not initialized if no earlier calls occured)
 
                     // if empty function parameter list, then do not increment parameter count (function taking no parameters)
 
-                    bool emptyParamList = _lastTokenIsTerminal ? (_lastTermCode == termcod_leftPar) : false;            // ok because no nesting allowed
+                    bool emptyParamList = _lastTokenIsTerminal ? (_lastTermCode == termcod_leftPar) : false;                // ok because no nesting allowed
                     _pParsingStack->openPar.actualArgsOrDims += (emptyParamList ? 0 : 1);
 
                     // check order of mandatory and optional arguments, check if max. n° not exceeded
                     if (!emptyParamList) { if (!checkExtFunctionArguments(result, extFunctionDef_minArgCounter, extFunctionDef_maxArgCounter)) { pNext = pch; return false; }; }
 
-                    int funcIndex = _pParsingStack->openPar.identifierIndex;            // note: also stored in stack for FUNCTION definition block level; here we can pick one of both
+                    int funcIndex = _pParsingStack->openPar.identifierIndex;                                                // note: also stored in stack for FUNCTION definition block level; here we can pick one of both
                     // if previous calls, check if range of actual argument counts that occured in previous calls corresponds to mandatory and optional arguments defined now
                     bool previousCalls = (extFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1]) != c_extFunctionFirstOccurFlag;
-                    if (previousCalls) {                                                      // stack contains current range of actual args occured in previous calls
+                    if (previousCalls) {                                                                                    // stack contains current range of actual args occured in previous calls
                         if (((int)_pParsingStack->openPar.minArgs < extFunctionDef_minArgCounter) ||
                             (int)_pParsingStack->openPar.maxArgs > extFunctionDef_maxArgCounter) {
-                            pNext = pch; result = result_function_prevCallsWrongArgCount; return false;  // argument count in previous calls to this function does not correspond 
+                            pNext = pch; result = result_function_prevCallsWrongArgCount; return false;                     // argument count in previous calls to this function does not correspond 
                         }
                     }
 
@@ -1572,7 +844,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                     extFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1] = (extFunctionDef_minArgCounter << 4) | (extFunctionDef_maxArgCounter);
 
                     // check that order of arrays and scalar variables is consistent with previous callsand function definition
-                    if (!checkExternFuncArgArrayPattern(result, true)) { pNext = pch; return false; };       // verify that the order of scalar and array parameters is consistent with arguments
+                    if (!checkExternFuncArgArrayPattern(result, true)) { pNext = pch; return false; };                      // verify that the order of scalar and array parameters is consistent with arguments
                 }
             }
 
@@ -1580,7 +852,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             // 2.2 Array definition closing parenthesis ?
             // ------------------------------------------
 
-            else if (_isAnyVarCmd) {                        // note: parenthesis level is 1 (because no inner parenthesis allowed)
+            else if (_isAnyVarCmd) {                                                                                        // note: parenthesis level is 1 (because no inner parenthesis allowed)
                 if (!checkArrayDimCountAndSize(result, arrayDef_dims, array_dimCounter)) { pNext = pch; return false; }
 
                 int varNameIndex = _pParsingStack->openPar.identifierIndex;
@@ -1589,7 +861,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                 bool isUserVar = (varQualifier == var_isUser);
                 bool isGlobalVar = (varQualifier == var_isGlobal);
                 bool isStaticVar = (varQualifier == var_isStaticInFunc);
-                bool isLocalVar = (varQualifier == var_isLocalInFunc);            // but not function parameter definitions
+                bool isLocalVar = (varQualifier == var_isLocalInFunc);                                                      // but not function parameter definitions
 
                 float* pArray;
                 int arrayElements = 1;              // init
@@ -1601,11 +873,12 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                 bool arrayWithoutInitializer = (nextTermIndex < 0) ? false : ((_terminals[nextTermIndex].terminalCode == termcod_comma) || (_terminals[nextTermIndex].terminalCode == termcod_semicolon));
                 if (!arrayWithAssignmentOp && !arrayWithoutInitializer) {
                     if (isUserVar) {
-                        _userVarCount--; // consider user variable not created (relevant for user variables only, because program variables are destroyed anyway if parsing fails)
+                        // consider user variable not created (relevant for user variables only, because program variables are destroyed anyway if parsing fails)
+                        _userVarCount--;
                         _userVarUnderConstruction = false;
                     }
                     pNext = pch; result = result_assignmentOrSeparatorExpected; return false;
-                }  // before array is created
+                }
 
                 if (isUserVar || isGlobalVar || isStaticVar) {
                     for (int dimCnt = 0; dimCnt < array_dimCounter; dimCnt++) { arrayElements *= arrayDef_dims[dimCnt]; }
@@ -1615,22 +888,22 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                     _pDebugOut->print(isUserVar ? "+++++ (usr ar stor) " : "+++++ (array stor ) "); _pDebugOut->println((uint32_t)pArray, HEX);
                 #endif
 
-                    if (!arrayWithAssignmentOp) {   // no explicit initializer: initialize now (as real) 
+                    if (!arrayWithAssignmentOp) {                                                                           // no explicit initializer: initialize now (as real) 
                         for (int arrayElem = 1; arrayElem <= arrayElements; arrayElem++) { ((float*)pArray)[arrayElem] = 0.; }
                     }
 
                     // only now, the array flag can be set, because only now the object exists
                     if (isUserVar) {
                         userVarValues[valueIndex].pArray = pArray;
-                        userVarType[varNameIndex] |= var_isArray;             // set array bit
+                        userVarType[varNameIndex] |= var_isArray;                                                           // set array bit
                     }
                     else if (isGlobalVar) {
                         globalVarValues[valueIndex].pArray = pArray;
-                        globalVarType[varNameIndex] |= var_isArray;             // set array bit
+                        globalVarType[varNameIndex] |= var_isArray;                                                         // set array bit
                     }
                     else if (isStaticVar) {
                         staticVarValues[valueIndex].pArray = pArray;
-                        staticVarType[_staticVarCount - 1] |= var_isArray;             // set array bit
+                        staticVarType[_staticVarCount - 1] |= var_isArray;                                                  // set array bit
                     }
                 }
 
@@ -1646,7 +919,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                 for (int i = 0; i < MAX_ARRAY_DIMS; i++) {
                     ((char*)pArray)[i] = arrayDef_dims[i];
                 }
-                ((char*)pArray)[3] = array_dimCounter;        // (note: for param arrays, set to max dimension count during parsing)
+                ((char*)pArray)[3] = array_dimCounter;                                                                      // (note: for param arrays, set to max dimension count during parsing)
             }
 
 
@@ -1655,7 +928,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
 
             else if (flags & (intFunctionBit | extFunctionBit | openParenthesisBit)) {
                 // if empty function call argument list, then do not increment argument count (function call without arguments)
-                bool emptyArgList = _lastTokenIsTerminal ? (_lastTermCode == termcod_leftPar) : false;            // ok because no nesting allowed
+                bool emptyArgList = _lastTokenIsTerminal ? (_lastTermCode == termcod_leftPar) : false;                      // ok because no nesting allowed
                 _pParsingStack->openPar.actualArgsOrDims += (emptyArgList ? 0 : 1);
                 int actualArgs = (int)_pParsingStack->openPar.actualArgsOrDims;
 
@@ -1667,7 +940,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
 
                     // if at least one previous call (maybe a nested call) is completely parsed, retrieve current range of actual args that occured in these previous calls
                     // and update this range with the argument count of the current external function call that is at its closing parenthesis
-                    int funcIndex = _pParsingStack->openPar.identifierIndex;            // of current function call: stored in stack for current PARENTHESIS level
+                    int funcIndex = _pParsingStack->openPar.identifierIndex;                                                // of current function call: stored in stack for current PARENTHESIS level
                     bool prevExtFuncCompletelyParsed = (extFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1]) != c_extFunctionFirstOccurFlag;
                     if (prevExtFuncCompletelyParsed) {
                         _pParsingStack->openPar.minArgs = ((extFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1]) >> 4) & 0x0F;
@@ -1704,7 +977,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                 // check if array dimension count corresponds (individual dimension adherence can only be checked at runtime)
                 // for function parameters, array dimension count can only be checked at runtime as well
                 // if previous token is left parenthesis (' () '), then do not increment argument count
-                bool lastWasLeftPar = _lastTokenIsTerminal ? (_lastTermCode == termcod_leftPar) : false;            // ok because no nesting allowed
+                bool lastWasLeftPar = _lastTokenIsTerminal ? (_lastTermCode == termcod_leftPar) : false;                    // ok because no nesting allowed
                 if (!lastWasLeftPar) { _pParsingStack->openPar.actualArgsOrDims++; }
 
                 int varNameIndex = _pParsingStack->openPar.identifierIndex;
@@ -1712,18 +985,18 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                 bool isParam = (varScope == var_isParamInFunc);
                 int actualDimCount = _pParsingStack->openPar.actualArgsOrDims;
 
-                if (actualDimCount == 0) { pNext = pch; result = result_arrayUse_noDims; return false; } // dim count too high: already handled when preceding comma was parsed
+                if (actualDimCount == 0) { pNext = pch; result = result_arrayUse_noDims; return false; }                    // dim count too high: already handled when preceding comma was parsed
                 if (!isParam) {
                     if (actualDimCount != (int)_pParsingStack->openPar.arrayDimCount) { pNext = pch; result = result_arrayUse_wrongDimCount; return false; }
                 }
             }
 
-            else {}     // for documentation only: all cases handled
+            else {}                                                                                                         // for documentation only: all cases handled
 
 
             // token is a right parenthesis, and it's allowed here
 
-            parsingStack.deleteListElement(nullptr);                                           // decrement open parenthesis stack counter and delete corresponding list element
+            parsingStack.deleteListElement(nullptr);                                                                        // decrement open parenthesis stack counter and delete corresponding list element
             _parenthesisLevel--;
 
             // set pointer to currently last element in stack
@@ -1740,7 +1013,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             // Case 3: is token a comma separator ?
             // ------------------------------------
 
-            if (_programCounter == _programStorage) { pNext = pch; result = result_cmd_programCmdMissing; return false; }  // program mode and no PROGRAM command
+            if (_programCounter == _programStorage) { pNext = pch; result = result_cmd_programCmdMissing; return false; }   // program mode and no PROGRAM command
 
             // token is comma separator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
             if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_0)) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
@@ -1756,9 +1029,9 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             flags = (_parenthesisLevel > 0) ? _pParsingStack->openPar.flags : 0;
 
             // expression syntax check 
-            _thisLvl_lastIsVariable = false;       // currently open block, new expression
+            _thisLvl_lastIsVariable = false;                                                                                // currently open block, new expression
             _thislvl_lastIsConstVar = false;
-            _thisLvl_assignmentStillPossible = true;            // init (start of (sub-)expression)
+            _thisLvl_assignmentStillPossible = true;                                                                        // init (start of (sub-)expression)
             _thisLvl_lastOpIsIncrDecr = false;
 
             // command argument constraints check: reset for next command argument (if within a command)
@@ -1776,22 +1049,23 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             // -------------------------------------------------------------------
 
             if (_isExtFunctionCmd) {
-                if (_parenthesisLevel == 1) {          // not an array parameter (would be parenthesis level 2)
+                if (_parenthesisLevel == 1) {                                                                               // not an array parameter (would be parenthesis level 2)
                     _pParsingStack->openPar.actualArgsOrDims++;
                     // check order of mandatory and optional arguments, check if max. n� not exceeded
                     if (!checkExtFunctionArguments(result, extFunctionDef_minArgCounter, extFunctionDef_maxArgCounter)) { pNext = pch; return false; };
 
                     // Check order of mandatory and optional arguments (function: parenthesis levels > 0)
-                    if (!checkExternFuncArgArrayPattern(result, false)) { pNext = pch; return false; };       // verify that the order of scalar and array parameters is consistent with arguments
+                    if (!checkExternFuncArgArrayPattern(result, false)) { pNext = pch; return false; };                     // verify that the order of scalar and array parameters is consistent with arguments
                 }
             }
 
 
-            // 3.2 Array definition dimension spec separator ? 
-            // -----------------------------------------------
+            // 3.2 Array definition dimension separator ? 
+            // ------------------------------------------
 
             else if (_isAnyVarCmd) {
-                if (_parenthesisLevel == 1) {             // parenthesis level 1: separator between array dimension specs (level 0: sep. between variables)             
+                // parenthesis level 1: separator between array dimensions (level 0: sep. between variables)
+                if (_parenthesisLevel == 1) {
                     // Check dimension count and array size 
                     if (!checkArrayDimCountAndSize(result, arrayDef_dims, array_dimCounter)) { pNext = pch; return false; }
                 }
@@ -1817,7 +1091,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                 else {
                     bool isOpenParenthesis = (flags & openParenthesisBit);
                     if (isOpenParenthesis) { _pParsingStack->openPar.minArgs = 1; _pParsingStack->openPar.maxArgs = 1; }
-                    bool argCountWrong = (actualArgs >= (int)_pParsingStack->openPar.maxArgs);       // check against allowed maximum number of arguments for this function
+                    bool argCountWrong = (actualArgs >= (int)_pParsingStack->openPar.maxArgs);                              // check against allowed maximum number of arguments for this function
                     if (argCountWrong) { pNext = pch; result = isOpenParenthesis ? result_missingRightParenthesis : result_function_wrongArgCount; return false; }
                 }
 
@@ -1836,12 +1110,12 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                 if ((int)_pParsingStack->openPar.actualArgsOrDims == (int)_pParsingStack->openPar.arrayDimCount) { pNext = pch; result = result_arrayUse_wrongDimCount; return false; }
             }
 
-            else {}     // for documentation only: all cases handled
+            else {}                                                                                                         // for documentation only: all cases handled
 
             // token is a comma separator, and it's allowed here
             _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
-            if (_parenthesisLevel == 0) { _userVarUnderConstruction = false; }        // if a var was under construction, it has been created now without errors
+            if (_parenthesisLevel == 0) { _userVarUnderConstruction = false; }                                              // if a var was under construction, it has been created now without errors
 
         }
         break;
@@ -1853,7 +1127,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             // Case 4: is token a semicolon separator ?
             // ----------------------------------------
 
-            if (_programCounter == _programStorage) { pNext = pch; result = result_cmd_programCmdMissing; return false; }  // program mode and no PROGRAM command
+            if (_programCounter == _programStorage) { pNext = pch; result = result_cmd_programCmdMissing; return false; }   // program mode and no PROGRAM command
 
             // token is semicolon separator, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
             if (_parenthesisLevel > 0) { pNext = pch; result = result_missingRightParenthesis; return false; }
@@ -1865,7 +1139,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
             // expression syntax check 
-            _thisLvl_lastIsVariable = false;       // currently open block
+            _thisLvl_lastIsVariable = false;                                                                                // currently open block
             _thislvl_lastIsConstVar = false;
             _thisLvl_assignmentStillPossible = true;
             _thisLvl_lastOpIsIncrDecr = false;
@@ -1876,7 +1150,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             _lvl0_isPureVariable = false;
             _lvl0_isVarWithAssignment = false;
 
-            _userVarUnderConstruction = false;        // if a var was under construction, it has been created now without errors
+            _userVarUnderConstruction = false;                                                                              // if a var was under construction, it has been created now without errors
         }
         break;
 
@@ -1890,7 +1164,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             // 1. Is an operator allowed here ? 
             // --------------------------------
 
-            if (_programCounter == _programStorage) { pNext = pch; result = result_cmd_programCmdMissing; return false; }  // program mode and no PROGRAM command
+            if (_programCounter == _programStorage) { pNext = pch; result = result_cmd_programCmdMissing; return false; }   // program mode and no PROGRAM command
 
             // does last token type allow an operator as current token ?
             if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_5_3_2_1_0)) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
@@ -1923,13 +1197,14 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             if ((_isExtFunctionCmd && (_parenthesisLevel == 1)) || (_isAnyVarCmd && (_parenthesisLevel == 0))) {
                 bool isPrefixPlusOrMinus = ((_terminals[termIndex].terminalCode == termcod_plus) || (_terminals[termIndex].terminalCode == termcod_minus));
                 if (isPrefixPlusOrMinus) {
-                    if (_initVarOrParWithUnaryOp != 0) { pNext = pch; result = result_operatorNotAllowedHere; return false; }       // already a prefix operator found (only one allowed in initialiser)
+                    if (_initVarOrParWithUnaryOp != 0) { pNext = pch; result = result_operatorNotAllowedHere; return false; }   // already a prefix operator found (only one allowed in initialiser)
                     else {
-                        _initVarOrParWithUnaryOp = (_terminals[termIndex].terminalCode == termcod_minus) ? -1 : 1;      // -1 if minus, 1 if plus prefix operator
-                        while (pNext[0] == ' ') { pNext++; }                                         // find start of next token
-                        if (pNext[0] == '\0') { break; }                                              // safety: instruction was not ended by a semicolon (should never happen) 
+                        _initVarOrParWithUnaryOp = (_terminals[termIndex].terminalCode == termcod_minus) ? -1 : 1;          // -1 if minus, 1 if plus prefix operator
+                        while (pNext[0] == ' ') { pNext++; }                                                                // find start of next token
+                        if (pNext[0] == '\0') { break; }                                                                    // safety: instruction was not ended by a semicolon (should never happen) 
                         result = result_tokenFound;
-                        return true;            // consider unary plus or minus operator as processed, but do not create token; remember which of the two was found
+                        // consider unary plus or minus operator as processed, but do not create token; remember which of the two was found
+                        return true;
                     }
                 }
             }
@@ -1947,10 +1222,10 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                 ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp)) {
                 // infix and postfix operators are allowed: test that current operator is infix or postfix
                 if ((_terminals[termIndex].infix_priority == 0) && (_terminals[termIndex].postfix_priority == 0)) { pNext = pch; result = result_prefixOperatorNotAllowedhere; return false; }
-                tokenIsPrefixOp = false; tokenIsPostfixOp = (_terminals[termIndex].postfix_priority != 0);    // token is either infix or postfix
+                tokenIsPrefixOp = false; tokenIsPostfixOp = (_terminals[termIndex].postfix_priority != 0);                  // token is either infix or postfix
 
             }
-            else {        // prefix operators only are allowed
+            else {                                                                                                          // prefix operators only are allowed
                 if (_terminals[termIndex].prefix_priority == 0) { pNext = pch; result = result_invalidOperator; return false; }
                 tokenIsPrefixOp = true; tokenIsPostfixOp = false;
             }
@@ -1959,16 +1234,16 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             bool isPostfixIncrDecr = (tokenIsPostfixOp && ((_terminals[termIndex].terminalCode == termcod_incr) || (_terminals[termIndex].terminalCode == termcod_decr)));
 
             if (isPostfixIncrDecr) {
-                if (!_thisLvl_lastIsVariable) { pNext = pch; result = result_operatorNotAllowedHere; return false; }   // not a variable or array element
-                if (_thislvl_lastIsConstVar) { pNext = pch; result = result_cannotChangeConstantValue; return false; }   // variable is declared constant
+                if (!_thisLvl_lastIsVariable) { pNext = pch; result = result_operatorNotAllowedHere; return false; }        // not a variable or array element
+                if (_thislvl_lastIsConstVar) { pNext = pch; result = result_cannotChangeConstantValue; return false; }      // variable is declared constant
                 if (_thisLvl_lastOpIsIncrDecr) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
             }
 
             if (tokenIsPrefixOp && !isPrefixIncrDecr) {
                 if (_thisLvl_lastOpIsIncrDecr) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
             }
-
-            _thisLvl_lastOpIsIncrDecr = (isPrefixIncrDecr || isPostfixIncrDecr);      // remember, because not allowed with postfix increment / decrement (has higher priority and does not return a variable reference)
+            // remember, because not allowed with postfix increment / decrement (has higher priority and does not return a variable reference)
+            _thisLvl_lastOpIsIncrDecr = (isPrefixIncrDecr || isPostfixIncrDecr);
 
 
             // 1.c If current token is an assignment operator, check whether it's allowed here
@@ -1983,12 +1258,12 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
 
 
             if (operatorContainsAssignment) {
-                if (!_thisLvl_lastIsVariable) { pNext = pch; result = result_assignmNotAllowedHere; return false; }   // not a variable or array element
+                if (!_thisLvl_lastIsVariable) { pNext = pch; result = result_assignmNotAllowedHere; return false; }         // not a variable or array element
                 if (_thislvl_lastIsConstVar && !_isConstVarCmd) { pNext = pch; result = result_cannotChangeConstantValue; return false; }   // variable is declared constant
                 if (!_thisLvl_assignmentStillPossible) { pNext = pch; result = result_assignmNotAllowedHere; return false; }
             }
 
-            if (!(operatorContainsAssignment || isPrefixIncrDecr)) { _thisLvl_assignmentStillPossible = false; }   // further assignments at this expression level not possible any more
+            if (!(operatorContainsAssignment || isPrefixIncrDecr)) { _thisLvl_assignmentStillPossible = false; }            // further assignments at this expression level not possible any more
 
 
             // 1.d Command argument constraints check
@@ -2014,11 +1289,11 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
     // ------------
 
     // too many terminals for 1 terminal group: provide multiple groups
-    tokenType = (termIndex <= 0x0F) ? tok_isTerminalGroup1 : (termIndex <= 0x1F) ? tok_isTerminalGroup2 : tok_isTerminalGroup3;                                              // remember: token is a left parenthesis
+    tokenType = (termIndex <= 0x0F) ? tok_isTerminalGroup1 : (termIndex <= 0x1F) ? tok_isTerminalGroup2 : tok_isTerminalGroup3;     // remember: token is a left parenthesis
     _tokenIndex = termIndex;
 
     TokenIsTerminal* pToken = (TokenIsTerminal*)_programCounter;
-    pToken->tokenTypeAndIndex = tokenType | ((termIndex & 0x0F) << 4);     // terminal tokens only: token type character includes token index too 
+    pToken->tokenTypeAndIndex = tokenType | ((termIndex & 0x0F) << 4);                                                      // terminal tokens only: token type character includes token index too 
     _lastTokenStep = _programCounter - _programStorage;
 
     _lastTokenType = tokenType;
@@ -2030,8 +1305,8 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
 #endif
 
     _programCounter += sizeof(TokenIsTerminal);
-    *_programCounter = tok_no_token;                                                  // indicates end of program
-    result = result_tokenFound;                                                         // flag 'valid token found'
+    *_programCounter = tok_no_token;                                                                                        // indicates end of program
+    result = result_tokenFound;                                                                                             // flag 'valid token found'
     return true;
 }
 
@@ -2041,19 +1316,19 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
 // ----------------------------------------------------------------------------
 
 bool Justina_interpreter::parseAsInternFunction(char*& pNext, parseTokenResult_type& result) {
-    result = result_tokenNotFound;                                                      // init: flag 'no token found'
-    char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
+    result = result_tokenNotFound;                                                                                      // init: flag 'no token found'
+    char* pch = pNext;                                                                                                  // pointer to first character to parse (any spaces have been skipped already)
     int funcIndex;
 
-    if (!isalpha(pNext[0])) { return true; }                                       // first character is not a letter ? Then it's not a function name (it can still be something else)
-    while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                   // do until first character after alphanumeric token (can be anything, including '\0')
+    if (!isalpha(pNext[0])) { return true; }                                                                            // first character is not a letter ? Then it's not a function name (it can still be something else)
+    while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                                                         // do until first character after alphanumeric token (can be anything, including '\0')
 
-    for (funcIndex = _functionCount - 1; funcIndex >= 0; funcIndex--) {                  // for all defined function names: check against alphanumeric token (NOT ending by '\0')
-        if (strlen(_functions[funcIndex].funcName) != pNext - pch) { continue; }   // token has correct length ? If not, skip remainder of loop ('continue')                            
-        if (strncmp(_functions[funcIndex].funcName, pch, pNext - pch) != 0) { continue; }      // token corresponds to function name ? If not, skip remainder of loop ('continue')    
+    for (funcIndex = _functionCount - 1; funcIndex >= 0; funcIndex--) {                                                 // for all defined function names: check against alphanumeric token (NOT ending by '\0')
+        if (strlen(_functions[funcIndex].funcName) != pNext - pch) { continue; }                                        // token has correct length ? If not, skip remainder of loop ('continue')                            
+        if (strncmp(_functions[funcIndex].funcName, pch, pNext - pch) != 0) { continue; }                               // token corresponds to function name ? If not, skip remainder of loop ('continue')    
 
         // token is a function, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-        if (_programCounter == _programStorage) { pNext = pch; result = result_cmd_programCmdMissing; return false; }  // program mode and no PROGRAM command
+        if (_programCounter == _programStorage) { pNext = pch; result = result_cmd_programCmdMissing; return false; }   // program mode and no PROGRAM command
 
         if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2_1_0)) { pNext = pch; result = result_functionNotAllowedHere; return false; }
         if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp) { pNext = pch; result = result_functionNotAllowedHere; return false; }
@@ -2066,7 +1341,7 @@ bool Justina_interpreter::parseAsInternFunction(char*& pNext, parseTokenResult_t
         if (varRequired) { pNext = pch; result = result_variableNameExpected; return false; }
 
         if (_isExtFunctionCmd) { pNext = pch; result = result_function_redefiningNotAllowed; return false; }
-        if (_isAnyVarCmd) { pNext = pch; result = result_functionNotAllowedHere; return false; }        // is a variable declaration: internal function name not allowed
+        if (_isAnyVarCmd) { pNext = pch; result = result_functionNotAllowedHere; return false; }                        // is a variable declaration: internal function name not allowed
 
         // eval() function can not occur within a trace string (all other internal functins are OK)
         if (_parsingExecutingTraceString) {
@@ -2075,7 +1350,7 @@ bool Justina_interpreter::parseAsInternFunction(char*& pNext, parseTokenResult_t
 
         // token is an internal function, and it's allowed here
 
-        _minFunctionArgs = _functions[funcIndex].minArgs;                       // set min & max for allowed argument count (note: minimum is 0)
+        _minFunctionArgs = _functions[funcIndex].minArgs;                                                               // set min & max for allowed argument count (note: minimum is 0)
         _maxFunctionArgs = _functions[funcIndex].maxArgs;
         _functionIndex = funcIndex;
 
@@ -2099,13 +1374,13 @@ bool Justina_interpreter::parseAsInternFunction(char*& pNext, parseTokenResult_t
     #endif
 
         _programCounter += sizeof(TokenIsIntFunction);
-        *_programCounter = tok_no_token;                                                 // indicates end of program
-        result = result_tokenFound;                                                     // flag 'valid token found'
+        *_programCounter = tok_no_token;                                                                                // indicates end of program
+        result = result_tokenFound;                                                                                     // flag 'valid token found'
         return true;
     }
 
-    pNext = pch;                                                                        // reset pointer to first character to parse (because no token was found)
-    return true;                                                                        // token is not a function name (but can still be something else)
+    pNext = pch;                                                                                                        // reset pointer to first character to parse (because no token was found)
+    return true;                                                                                                        // token is not a function name (but can still be something else)
 }
 
 
@@ -2115,34 +1390,34 @@ bool Justina_interpreter::parseAsInternFunction(char*& pNext, parseTokenResult_t
 
 bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_type& result) {
 
-    if (_isProgramCmd || _isDeleteVarCmd) { return true; }                             // looking for an UNQUALIFIED identifier name; prevent it's mistaken for a variable name (same format)
+    if (_isProgramCmd || _isDeleteVarCmd) { return true; }                                                              // looking for an UNQUALIFIED identifier name; prevent it's mistaken for a variable name (same format)
     if (_isDeclCBcmd || _isCallbackCmd) { return true; }
 
     // 1. Is this token a function name ? 
     // ----------------------------------
 
-    result = result_tokenNotFound;                                                      // init: flag 'no token found'
-    char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
+    result = result_tokenNotFound;                                                                                      // init: flag 'no token found'
+    char* pch = pNext;                                                                                                  // pointer to first character to parse (any spaces have been skipped already)
 
-    if (!isalpha(pNext[0])) { return true; }                                       // first character is not a letter ? Then it's not an identifier name (it can still be something else)
-    while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                   // do until first character after alphanumeric token (can be anything, including '\0')
+    if (!isalpha(pNext[0])) { return true; }                                                                            // first character is not a letter ? Then it's not an identifier name (it can still be something else)
+    while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                                                         // do until first character after alphanumeric token (can be anything, including '\0')
 
     // name already in use as global or user variable name ? Then it's not an external function
     bool createNewName = false;
     int index = getIdentifier(programVarNames, _programVarNameCount, MAX_PROGVARNAMES, pch, pNext - pch, createNewName);
-    if (index != -1) { pNext = pch; return true; }                // is a variable
+    if (index != -1) { pNext = pch; return true; }                                                                      // is a variable
     index = getIdentifier(userVarNames, _userVarCount, MAX_USERVARNAMES, pch, pNext - pch, createNewName, true);
-    if (index != -1) { pNext = pch; return true; }                // is a user variable
+    if (index != -1) { pNext = pch; return true; }                                                                      // is a user variable
 
     if (_parsingExecutingTraceString) { pNext = pch; result = result_trace_userFunctonNotAllowed; return false; }
 
-    if ((_isExtFunctionCmd) && (_parenthesisLevel > 0)) { pNext = pch; return true; }        // only array parameter allowed now
+    if ((_isExtFunctionCmd) && (_parenthesisLevel > 0)) { pNext = pch; return true; }                                   // only array parameter allowed now
 
 
     // 2. Is a function name allowed here ? 
     // ------------------------------------
 
-    if (_programCounter == _programStorage) { pNext = pch; result = result_cmd_programCmdMissing; return false; }  // program mode and no PROGRAM command
+    if (_programCounter == _programStorage) { pNext = pch; result = result_cmd_programCmdMissing; return false; }       // program mode and no PROGRAM command
 
     // token is an external function, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
     if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2_1_0)) { pNext = pch; result = result_functionNotAllowedHere; return false; }
@@ -2155,12 +1430,12 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
     // if function name is too long, reset pointer to first character to parse, indicate error and return
     if (pNext - pch > MAX_IDENT_NAME_LEN) { pNext = pch; result = result_identifierTooLong;  return false; }
 
-    createNewName = false;                                                              // only check if function is defined, do NOT YET create storage for it
+    createNewName = false;                                                                                              // only check if function is defined, do NOT YET create storage for it
     index = getIdentifier(extFunctionNames, _extFunctionCount, MAX_EXT_FUNCS, pch, pNext - pch, createNewName);
 
     if (_isAnyVarCmd) {     // is a variable declaration
-        if (index == -1) { pNext = pch; return true; }        // it's not a defined external function: move on
-        else { pNext = pch; result = result_functionNotAllowedHere; return false; }       // it's an external function: not allowed here
+        if (index == -1) { pNext = pch; return true; }                                                                  // it's not a defined external function: move on
+        else { pNext = pch; result = result_functionNotAllowedHere; return false; }                                     // it's an external function: not allowed here
     }
 
     // not a defined variable and not a variable definition: consider it as a function
@@ -2168,12 +1443,12 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
     // next character is not a left parenthesis ? do not wait until next token to produce (more specific) error
     char* peek1 = pNext; while (peek1[0] == ' ') { peek1++; }
     if (peek1[0] != term_leftPar[0]) {
-        if (_isExtFunctionCmd) { pNext = pch; result = result_function_needsParentheses; return false; }                 // function definition: left parentesis required
-        if (index != -1) { pNext = pch; result = result_function_needsParentheses; return false; }                       // defined function: left parentesis required
-        pNext = pch; return true;                                                                                      // it's not a defined external function: move on
+        if (_isExtFunctionCmd) { pNext = pch; result = result_function_needsParentheses; return false; }                // function definition: left parentesis required
+        if (index != -1) { pNext = pch; result = result_function_needsParentheses; return false; }                      // defined function: left parentesis required
+        pNext = pch; return true;                                                                                       // it's not a defined external function: move on
     }
 
-    else if (!_programMode) {                // if in immediate mode: the function must be defined earlier (in a program)
+    else if (!_programMode) {                                                                                           // if in immediate mode: the function must be defined earlier (in a program)
         if (index == -1) { pNext = pch; result = result_function_undefinedFunctionOrArray; return false; }
     }
 
@@ -2186,35 +1461,35 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
     // 3. Has function attribute storage already been created for this function ? (because of a previous function definition or a previous function call)
     // --------------------------------------------------------------------------------------------------------------------------------------------------
 
-    createNewName = true;                                                              // if new external function, create storage for it
+    createNewName = true;                                                                                               // if new external function, create storage for it
     index = getIdentifier(extFunctionNames, _extFunctionCount, MAX_EXT_FUNCS, pch, pNext - pch, createNewName);
     if (index == -1) { pNext = pch; result = result_maxExtFunctionsReached; return false; }
-    char* funcName = extFunctionNames[index];                                    // either new or existing function name
-    if (createNewName) {                                                                      // new function name
+    char* funcName = extFunctionNames[index];                                                                           // either new or existing function name
+    if (createNewName) {                                                                                                // new function name
         // init max (bits 7654) & min (bits 3210) allowed n� OR actual n� of arguments; store in last position (behind string terminating character)
-        funcName[MAX_IDENT_NAME_LEN + 1] = c_extFunctionFirstOccurFlag;                          // max (bits 7654) < (bits 3210): indicates value is not yet updated by parsing previous calls closing parenthesis
-        extFunctionData[index].pExtFunctionStartToken = nullptr;                      // initialize. Pointer will be set when function definition is parsed (checked further down)
-        extFunctionData[index].paramIsArrayPattern[1] = 0x80;                        // set flag to indicate a new function name is parsed (definition or call)
-        extFunctionData[index].paramIsArrayPattern[0] = 0x00;                        // boundary alignment 
+        funcName[MAX_IDENT_NAME_LEN + 1] = c_extFunctionFirstOccurFlag;                                                 // max (bits 7654) < (bits 3210): indicates value is not yet updated by parsing previous calls closing parenthesis
+        extFunctionData[index].pExtFunctionStartToken = nullptr;                                                        // initialize. Pointer will be set when function definition is parsed (checked further down)
+        extFunctionData[index].paramIsArrayPattern[1] = 0x80;                                                           // set flag to indicate a new function name is parsed (definition or call)
+        extFunctionData[index].paramIsArrayPattern[0] = 0x00;                                                           // boundary alignment 
     }
 
     // if function storage was created already: check for double function definition
-    else if (_isExtFunctionCmd) {                                                     // this is a function definition (not a call)
+    else if (_isExtFunctionCmd) {                                                                                       // this is a function definition (not a call)
         // pointer to function starting token already defined: this is a double definition
         if (extFunctionData[index].pExtFunctionStartToken != nullptr) { pNext = pch; result = result_function_redefinitionNotAllowed; return false; }
     }
 
     // Is this an external function definition( not a function call ) ?
     if (_isExtFunctionCmd) {
-        extFunctionData[index].pExtFunctionStartToken = _programCounter;            // store pointer to function start token 
+        extFunctionData[index].pExtFunctionStartToken = _programCounter;                                                // store pointer to function start token 
         // global program variable name usage array: reset in-function reference flags to be able to keep track of in-procedure variable value types used
         // KEEP all other settings
         for (int i = 0; i < _programVarNameCount; i++) { globalVarType[i] = (globalVarType[i] & ~var_scopeMask) | var_scopeToSpecify; }       // indicates 'variable with this name has not been referred to in current procedure'
 
 
-        _paramOnlyCountInFunction = 0;             // reset local and parameter variable count in function 
-        _localVarCountInFunction = 0;             // reset local and parameter variable count in function
-        _staticVarCountInFunction = 0;             // reset static variable count in function
+        _paramOnlyCountInFunction = 0;                                                                                  // reset local and parameter variable count in function 
+        _localVarCountInFunction = 0;                                                                                   // reset local and parameter variable count in function
+        _staticVarCountInFunction = 0;                                                                                  // reset static variable count in function
         extFunctionData[index].paramOnlyCountInFunction = 0;
         extFunctionData[index].localVarCountInFunction = 0;
         extFunctionData[index].staticVarCountInFunction = 0;
@@ -2225,15 +1500,15 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
         // if function will define local variables, although storage area is dynamic, this is needed while in debugging (only)
         extFunctionData[index].localVarNameRefs_startIndex = _localVarCount;
 
-        _pFunctionDefStack = _pParsingStack;               // stack level for FUNCTION definition block
-        _pFunctionDefStack->openBlock.fcnBlock_functionIndex = index;  // store in BLOCK stack level: only if function def
+        _pFunctionDefStack = _pParsingStack;                                                                            // stack level for FUNCTION definition block
+        _pFunctionDefStack->openBlock.fcnBlock_functionIndex = index;                                                   // store in BLOCK stack level: only if function def
 
     }
 
     // if function was defined prior to this occurence (which is then a call), retrieve min & max allowed arguments for checking actual argument count
     // if function not yet defined: retrieve current state of min & max of actual argument count found in COMPLETELY PARSED previous calls to same function 
     // if no previous occurences at all: data is not yet initialized (which is ok)
-    _minFunctionArgs = ((funcName[MAX_IDENT_NAME_LEN + 1]) >> 4) & 0x0F;         // use only for passing to parsing stack
+    _minFunctionArgs = ((funcName[MAX_IDENT_NAME_LEN + 1]) >> 4) & 0x0F;                                                // use only for passing to parsing stack
     _maxFunctionArgs = (funcName[MAX_IDENT_NAME_LEN + 1]) & 0x0F;
     _functionIndex = index;
 
@@ -2261,8 +1536,8 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
 #endif
 
     _programCounter += sizeof(TokenIsExtFunction);
-    *_programCounter = tok_no_token;                                                 // indicates end of program
-    result = result_tokenFound;                                                         // flag 'valid token found'
+    *_programCounter = tok_no_token;                                                                                    // indicates end of program
+    result = result_tokenFound;                                                                                         // flag 'valid token found'
     return true;
 }
 
@@ -2273,32 +1548,33 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
 
 bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
 
-    if (_isProgramCmd || _isDeleteVarCmd || _isDeclCBcmd) { return true; }                             // looking for an UNQUALIFIED identifier name; prevent it's mistaken for a variable name (same format)
+    // looking for an UNQUALIFIED identifier name; prevent it's mistaken for a variable name (same format)
+    if (_isProgramCmd || _isDeleteVarCmd || _isDeclCBcmd) { return true; }
     if (_isCallbackCmd && (_cmdArgNo == 0)) { return true; }
 
     // 1. Is this token a variable name ? 
     // ----------------------------------
-    result = result_tokenNotFound;                                                      // init: flag 'no token found'
-    char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
+    result = result_tokenNotFound;                                                                                      // init: flag 'no token found'
+    char* pch = pNext;                                                                                                  // pointer to first character to parse (any spaces have been skipped already)
     bool debug_functionVarOnly{ false };
 
-    if (!isalpha(pNext[0]) && (pNext[0] != '#')) { return true; }                                       // first character is not a letter ? Then it's not a variable name (it can still be something else)
+    if (!isalpha(pNext[0]) && (pNext[0] != '#')) { return true; }                                                       // first character is not a letter ? Then it's not a variable name (it can still be something else)
     if (pNext[0] == '#') {
         if (_programMode) { pNext = pch; result = result_var_illegalInProgram; return false; }
         if (_isAnyVarCmd) { pNext = pch; result = result_var_illegalInDeclaration; return false; }
         else {
-            debug_functionVarOnly = true; ++pNext;    // record that a 'function variable only' prefix was found 
+            debug_functionVarOnly = true; ++pNext;                                                                      // record that a 'function variable only' prefix was found 
             if (!isalpha(pNext[0])) { pNext = pch; result = result_variableNameExpected; return false; }
         }
     }
-    while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                   // do until first character after alphanumeric token (can be anything, including '\0')
+    while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                                                         // do until first character after alphanumeric token (can be anything, including '\0')
     char* pName = pch + (debug_functionVarOnly ? 1 : 0);
 
 
     // 2. Is a variable name allowed here ? 
     // ------------------------------------
 
-    if (_programCounter == _programStorage) { pNext = pch; result = result_cmd_programCmdMissing; return false; }  // program mode and no PROGRAM command
+    if (_programCounter == _programStorage) { pNext = pch; result = result_cmd_programCmdMissing; return false; }       // program mode and no PROGRAM command
 
     // token is a variable, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
     if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2_1_0)) { pNext = pch; result = result_variableNotAllowedHere; return false; }
@@ -2309,8 +1585,8 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     if (!tokenAllowed) { pNext = pch; result = result_variableNotAllowedHere; return false; ; }
 
     // scalar or array variable ? (could still be function 'array' argument; this will be detected further below)
-    char* peek1 = pNext; while (peek1[0] == ' ') { peek1++; }                                                // peek next character: is it a left parenthesis ?
-    char* peek2; if (peek1[0] == term_leftPar[0]) { peek2 = peek1 + 1; while (peek2[0] == ' ') { peek2++; } }         // also find the subsequent character
+    char* peek1 = pNext; while (peek1[0] == ' ') { peek1++; }                                                           // peek next character: is it a left parenthesis ?
+    char* peek2; if (peek1[0] == term_leftPar[0]) { peek2 = peek1 + 1; while (peek2[0] == ' ') { peek2++; } }           // also find the subsequent character
     bool isArray = (peek1[0] == term_leftPar[0]);
 
     // Function parameter definition: check for proper function name, proper array definition (empty parentheses) and proper initialiser (must be constant) 
@@ -2348,7 +1624,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     Val* varValues[2]; varValues[0] = globalVarValues; varValues[1] = userVarValues;
 
     // 0: program variable, 1: user variable
-    int primaryNameRange = (_programMode || debug_functionVarOnly) ? 0 : 1;        // immediate mode while in debug only: if '#' prefix is found, force 'function variable'
+    int primaryNameRange = (_programMode || debug_functionVarOnly) ? 0 : 1;                                             // immediate mode while in debug only: if '#' prefix is found, force 'function variable'
     int secondaryNameRange = _programMode ? 1 : 0;
     int activeNameRange = primaryNameRange;
 
@@ -2361,31 +1637,31 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     createNewName = _isExtFunctionCmd || _isAnyVarCmd;
     varNameIndex = getIdentifier(pvarNames[primaryNameRange], *varNameCount[primaryNameRange], maxVarNames[primaryNameRange], pName, pNext - pName, createNewName, !isProgramVar);
 
-    if (_isExtFunctionCmd || _isAnyVarCmd) {               // variable or parameter DEFINITION: if name didn't exist, it should have been created now
-        if (varNameIndex == -1) { pNext = pch; result = result_maxVariableNamesReached; return false; }      // name still does not exist: error
+    if (_isExtFunctionCmd || _isAnyVarCmd) {                                                                            // variable or parameter DEFINITION: if name didn't exist, it should have been created now
+        if (varNameIndex == -1) { pNext = pch; result = result_maxVariableNamesReached; return false; }                 // name still does not exist: error
 
         // user variables: detect immediatemy if a variable has been redeclared 
         if (!isProgramVar) {
             if (!createNewName) { pNext = pch; result = result_var_redeclared; return false; }
-            _userVarUnderConstruction = true;    // it may have to be deleted again (an error can still occur
+            _userVarUnderConstruction = true;                                                                           // it may have to be deleted again (an error can still occur
         }
 
         // name exists (newly created or pre-existing)
         // variable name is new: clear all variable value type flags and indicate 'qualifier not determined yet'
         // variable value type (array, float or string) will be set later
-        if (createNewName) { varType[primaryNameRange][varNameIndex] = var_scopeToSpecify; }     // new name was created now: reset scope (not yet done) - only for use while parsing functions
+        if (createNewName) { varType[primaryNameRange][varNameIndex] = var_scopeToSpecify; }                            // new name was created now: reset scope (not yet done) - only for use while parsing functions
     }
     else { // not a variable definition, just a variable reference
         if (varNameIndex == -1) {
             // variable name does not exist in primary range (and no error produced, so it was not a variable declaration):
             // check if the name is defined in the secondary name range (except if only looking for function variable -> '#' prefix found)
             if (!debug_functionVarOnly) {
-                isProgramVar = !_programMode;                  // program parsing: is program variable; immediate mode: is user variable
+                isProgramVar = !_programMode;                                                                           // program parsing: is program variable; immediate mode: is user variable
                 varNameIndex = getIdentifier(pvarNames[secondaryNameRange], *varNameCount[secondaryNameRange], maxVarNames[secondaryNameRange], pName, pNext - pName, createNewName, !isProgramVar);
                 if (varNameIndex == -1) { pNext = pch; result = result_var_notDeclared; return false; }  // if the name doesn't exist, the variable doesn't
                 activeNameRange = secondaryNameRange;
             }
-            else { pNext = pch; result = result_var_notDeclared; return false; }  // if the name doesn't exist, the variable doesn't
+            else { pNext = pch; result = result_var_notDeclared; return false; }                                        // if the name doesn't exist, the variable doesn't
         }
 
         // user variable referenced in program: set flag in user var types array (only; will not be copied in token info)
@@ -2397,8 +1673,9 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
         bool scalarWithoutInitializer = ((peek1[0] == term_comma[0]) || (peek1[0] == term_semicolon[0]));
         if (!scalarWithAssignmentOp && !scalarWithoutInitializer) {
             if (!isProgramVar) {
-                (*varNameCount[primaryNameRange])--;            // consider user variable not created (relevant for user variables only, because program variables are destroyed anyway if parsing fails)
-                _userVarUnderConstruction = false;        // user variable has just been 'deleted'
+                // consider user variable not created (relevant for user variables only, because program variables are destroyed anyway if parsing fails)
+                (*varNameCount[primaryNameRange])--;
+                _userVarUnderConstruction = false;                                                                      // user variable has just been 'deleted'
             }
             pNext = pch; result = result_assignmentOrSeparatorExpected; return false;
         }
@@ -2410,7 +1687,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     //           LOCAL variable storage is created at runtime when a function is called
     // --------------------------------------------------------------------------------------------------------------------------------------
 
-    bool globalVarStorageMissingOrIsNotGlobal = false;                   // init: assume global (program or user) var with defined storage location
+    bool globalVarStorageMissingOrIsNotGlobal = false;                                                                  // init: assume global (program or user) var with defined storage location
     bool isOpenFunctionStaticVariable{ false }, isOpenFunctionLocalVariable{ false }, isOpenFunctionParam{ false };
     bool isOpenFunctionLocalArrayVariable{ false };
     int openFunctionVar_valueIndex{};
@@ -2419,12 +1696,13 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     // 4.1 Currently parsing a FUNCTION...END block ? 
     // ----------------------------------------------
 
-    if (_extFunctionBlockOpen) { // (only while parsing program instructions)
+    if (_extFunctionBlockOpen) {                                                                                        // (only while parsing program instructions)
 
         // first use of a particular variable NAME in a function ?  (either a program variable or a user variable)
         bool isFirstVarNameRefInFnc = (((uint8_t)varType[activeNameRange][varNameIndex] & var_scopeMask) == var_scopeToSpecify);
         // first use of a particular PROGRAM variable NAME ? 
-        if (isFirstVarNameRefInFnc && isProgramVar) {     // check if a user variable with same name exists AND it is (maybe) already used within current function
+        // check if a user variable with same name exists AND it is (maybe) already used within current function
+        if (isFirstVarNameRefInFnc && isProgramVar) {
             createNewName = false;
             bool userVarUsedInFunction{ false };
             int userVarIndex = getIdentifier(pvarNames[secondaryNameRange], *varNameCount[secondaryNameRange], maxVarNames[secondaryNameRange], pName, pNext - pName, createNewName, true);
@@ -2433,7 +1711,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
             isFirstVarNameRefInFnc = !userVarUsedInFunction;
         }
 
-        if (isFirstVarNameRefInFnc) {                                                                         // variable not yet referenced within currently parsed procedure
+        if (isFirstVarNameRefInFnc) {                                                                                   // variable not yet referenced within currently parsed procedure
 
             // determine variable qualifier
             // if a variable definition statement: set scope to parameter, local or static (global and usar variable definition: not possible in a function) 
@@ -2443,14 +1721,14 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
 
             varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~var_scopeMask) | varScope;     //set scope bits (will be stored in token AND needed during current procedure)
 
-            if (_isStaticVarCmd) {                                              // definition of NEW static variable for function
-                globalVarStorageMissingOrIsNotGlobal = true;                                 // (but it isn't a global variable) 
+            if (_isStaticVarCmd) {                                                                                      // definition of NEW static variable for function
+                globalVarStorageMissingOrIsNotGlobal = true;                                                            // (but it isn't a global variable) 
                 if (_staticVarCount == MAX_STAT_VARS) { pNext = pch; result = result_maxStaticVariablesReached; return false; }
 
                 programVarValueIndex[varNameIndex] = _staticVarCount;
-                if (!isArray) { staticVarValues[_staticVarCount].floatConst = 0.; }           // initialize variable (if initializer and/or array: will be overwritten)
+                if (!isArray) { staticVarValues[_staticVarCount].floatConst = 0.; }                                     // initialize variable (if initializer and/or array: will be overwritten)
 
-                staticVarType[_staticVarCount] = value_isFloat;                                         // init as float (for array or scalar - array flag will be added later) 
+                staticVarType[_staticVarCount] = value_isFloat;                                                         // init as float (for array or scalar - array flag will be added later) 
 
                 // will only be used while in DEBUGGING mode: index of static variable name
                 staticVarNameRef[_staticVarCount] = varNameIndex;
@@ -2463,15 +1741,17 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 extFunctionData[fcnIndex].staticVarCountInFunction = _staticVarCountInFunction;
             }
 
-            else if (_isExtFunctionCmd || _isLocalVarCmd) {                  // definition of NEW parameter (in function definition) or NEW local variable for function
-                globalVarStorageMissingOrIsNotGlobal = true;                                 // (but it isn't a global variable; relative position in a function's local variables area will be defined now) 
+            // definition of NEW parameter (in function definition) or NEW local variable for function
+            // (but it isn't a global variable; relative position in a function's local variables area will be defined now) 
+            else if (_isExtFunctionCmd || _isLocalVarCmd) {
+                globalVarStorageMissingOrIsNotGlobal = true;
                 if (_localVarCountInFunction == MAX_LOC_VARS_IN_FUNC) { pNext = pch; result = result_maxLocalVariablesReached; return false; }
 
                 programVarValueIndex[varNameIndex] = _localVarCountInFunction;
                 // param and local variables: array flag temporarily stored during function parsing       
                 // storage space creation and initialisation will occur when function is called durig execution 
                 localVarType[_localVarCountInFunction] = (localVarType[_localVarCountInFunction] & ~(var_isArray | var_isConstantVar)) |
-                    (isArray ? var_isArray : 0) | (_isConstVarCmd ? var_isConstantVar : 0);  // init (no storage needs to be created: set array flag here) 
+                    (isArray ? var_isArray : 0) | (_isConstVarCmd ? var_isConstantVar : 0);                             // init (no storage needs to be created: set array flag here) 
 
                 // will only be used while in DEBUGGING mode: index of local variable name
                 localVarNameRef[_localVarCount] = varNameIndex;
@@ -2482,7 +1762,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
 
                 // ext. function index: in stack level for FUNCTION definition command
                 int fcnIndex = _pFunctionDefStack->openBlock.fcnBlock_functionIndex;
-                extFunctionData[fcnIndex].localVarCountInFunction = _localVarCountInFunction;        // after incrementing count
+                extFunctionData[fcnIndex].localVarCountInFunction = _localVarCountInFunction;                           // after incrementing count
                 if (_isExtFunctionCmd) { extFunctionData[fcnIndex].paramOnlyCountInFunction = _paramOnlyCountInFunction; }
             }
 
@@ -2492,7 +1772,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 // if the variable name refers to a user variable, the variable exists, so it's known then
                 globalVarStorageMissingOrIsNotGlobal = isProgramVar ? (!(varType[activeNameRange][varNameIndex] & var_nameHasGlobalValue)) : false;
                 // variable is NEW ? Variable has not been declared
-                if (globalVarStorageMissingOrIsNotGlobal) {              // undeclared global program variable                                                             
+                if (globalVarStorageMissingOrIsNotGlobal) {                                                             // undeclared global program variable                                                             
                     pNext = pch; result = result_var_notDeclared; return false;
                 }
                 // // IS the use of an EXISTING global or user variable, within a function
@@ -2502,7 +1782,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
         }
 
         else {  // if variable name already referenced before in function (global / user variable use OR param, local, static declaration), then it has been defined already
-            bool isLocalDeclaration = (_isExtFunctionCmd || _isLocalVarCmd || _isStaticVarCmd); // local variable declaration ? (parameter, local, static)
+            bool isLocalDeclaration = (_isExtFunctionCmd || _isLocalVarCmd || _isStaticVarCmd);                         // local variable declaration ? (parameter, local, static)
             if (isLocalDeclaration) { pNext = pch; result = result_var_redeclared; return false; }
         }
     }
@@ -2516,34 +1796,46 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
         // concentrate on global program variables and user variables first (not yet on function variables)
         // if program variable: has a GLOBAL program variabe with this name been declared already ? (if user variable, because the name exixts, storage exists)
         globalVarStorageMissingOrIsNotGlobal = isProgramVar ? !(varType[activeNameRange][varNameIndex] & var_nameHasGlobalValue) : _isGlobalOrUserVarCmd;
-        if (debug_functionVarOnly) { globalVarStorageMissingOrIsNotGlobal = true; }                    // because it's not a global variable
+        if (debug_functionVarOnly) { globalVarStorageMissingOrIsNotGlobal = true; }                                     // because it's not a global variable
 
         // qualifier 'var_isGlobal' (program variables): set it now, because could have been cleared by previously parsed function (will ultimately be stored in token)
         if (isProgramVar) { varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~var_scopeMask) | var_isGlobal; }
 
-        ////_pDebugOut->print("*** 4.2 - var NAME index: "); _pDebugOut->println(varNameIndex);
+    #if PRINT_DEBUG_INFO
+        _pDebugOut->print("*** 4.2 - var NAME index: "); _pDebugOut->println(varNameIndex);
+    #endif
 
         // variable not yet declared as global or user variable ? (If in debug mode, it can still be a static or local variable of a stopped function)
         if (globalVarStorageMissingOrIsNotGlobal) {
-            ////_pDebugOut->println("\r\n*** 4.2 - var not yet known");
+
+        #if PRINT_DEBUG_INFO
+            _pDebugOut->println("\r\n*** 4.2 - var not yet known");
+        #endif
+
             // but this can still be a global or user variable declaration 
-            if (_isGlobalOrUserVarCmd) {                           // is it a declaration ?  define storage location now
-                ////_pDebugOut->println("*** 4.2 - is global or user");
-               // is a declaration of a new program global variable (in program mode), or a new user user variable (in immediate mode) 
-               // variable qualifier : don't care for now (global varables: reset at start of next external function parsing)
-                if (!isArray) { varValues[activeNameRange][varNameIndex].floatConst = 0.; }                  // initialize variable (if initializer and/or array: will be overwritten)
-                varType[activeNameRange][varNameIndex] = varType[activeNameRange][varNameIndex] | value_isFloat;         // init as float (for scalar and array)
+            if (_isGlobalOrUserVarCmd) {                                                                                // is it a declaration ?  define storage location now
+            #if PRINT_DEBUG_INFO
+                _pDebugOut->println("*** 4.2 - is global or user var");
+            #endif
+
+                // is a declaration of a new program global variable (in program mode), or a new user user variable (in immediate mode) 
+                // variable qualifier : don't care for now (global varables: reset at start of next external function parsing)
+                if (!isArray) { varValues[activeNameRange][varNameIndex].floatConst = 0.; }                             // initialize variable (if initializer and/or array: will be overwritten)
+                varType[activeNameRange][varNameIndex] = varType[activeNameRange][varNameIndex] | value_isFloat;        // init as float (for scalar and array)
                 if (isProgramVar) { varType[activeNameRange][varNameIndex] = varType[activeNameRange][varNameIndex] | var_nameHasGlobalValue; }   // set 'has global value' or 'user var' bit
-                varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~var_isArray); // init (array flag may only be added when storage is created) 
+                varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~var_isArray);       // init (array flag may only be added when storage is created) 
                 varType[activeNameRange][varNameIndex] |= (_isConstVarCmd ? var_isConstantVar : 0);
             }
             else {  // not a variable declaration, but a variable reference
-                ////_pDebugOut->println("*** 4.2 - is not global or user");
-                // it's neither a global or user variable declaration, nor a global or user variable reference (because storage does not exist for it). But the variable name exists,
-                // so local or static function variables using this name have been defined already. 
-                // in debug mode (program stopped), the name could refer to a local or static variable within the currently stopped function (open function) 
+            #if PRINT_DEBUG_INFO
+                _pDebugOut->println("*** 4.2 - is not a global or user var");
+            #endif
 
-                // in debug mode now ? (if multiple programs in debug mode, only the last one stopped will be considered here
+                // it's neither a global or user variable declaration, nor a global or user variable reference (because storage does not exist for it). But the variable name exists,
+                 // so local or static function variables using this name have been defined already. 
+                 // in debug mode (program stopped), the name could refer to a local or static variable within the currently stopped function (open function) 
+
+                 // in debug mode now ? (if multiple programs in debug mode, only the last one stopped will be considered here
                 if (_openDebugLevels > 0) {
 
                     // first locate the debug command level (either in active function data or down in the flow control stack)
@@ -2557,12 +1849,12 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                     int blockType = _activeFunctionData.blockType;
                     void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;       // one level below _activeFunctionData
                     bool isDebugCmdLevel = (blockType == block_extFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + _progMemorySize)) : false;
-                    if (!isDebugCmdLevel) {       // find debug level in flow control stack instead
+                    if (!isDebugCmdLevel) {                                                                             // find debug level in flow control stack instead
                         do {
                             blockType = *(char*)pFlowCtrlStackLvl;
                             isDebugCmdLevel = (blockType == block_extFunction) ? (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + _progMemorySize)) : false;
                             pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
-                        } while (!isDebugCmdLevel);          // stack level for open function found immediate below debug line found (always match)
+                        } while (!isDebugCmdLevel);                                                                     // stack level for open function found immediate below debug line found (always match)
                     }
 
                     blockType = ((OpenFunctionData*)pFlowCtrlStackLvl)->blockType;
@@ -2571,7 +1863,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                         blockType = ((OpenFunctionData*)pFlowCtrlStackLvl)->blockType;
                     }
 
-                    int openFunctionIndex = ((OpenFunctionData*)pFlowCtrlStackLvl)->functionIndex;    // function index of stopped program's deepest function in call stack
+                    int openFunctionIndex = ((OpenFunctionData*)pFlowCtrlStackLvl)->functionIndex;                      // function index of stopped program's deepest function in call stack
 
                     // check whether this is a local or static function variable reference of the deepest open function in the call stack
                     int staticVarStartIndex = extFunctionData[openFunctionIndex].staticVarStartIndex;
@@ -2580,7 +1872,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                     //   is variable defined in this function as a static variable ?
                     int i{};
 
-                    for (i = staticVarStartIndex; i <= staticVarStartIndex + staticVarCountInFunction - 1; ++i) {        // skip if count is zero
+                    for (i = staticVarStartIndex; i <= staticVarStartIndex + staticVarCountInFunction - 1; ++i) {       // skip if count is zero
                         if (staticVarNameRef[i] == varNameIndex) { isOpenFunctionStaticVariable = true; openFunctionVar_valueIndex = i; break; }     // is a static variable of function and its value index is known
                     }
 
@@ -2591,28 +1883,37 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                         int localVarCountInFunction = extFunctionData[openFunctionIndex].localVarCountInFunction;
                         int paramOnlyCountInFunction = extFunctionData[openFunctionIndex].paramOnlyCountInFunction;
 
-                        for (i = localVarNameRefs_startIndex; i <= localVarNameRefs_startIndex + localVarCountInFunction - 1; ++i) {        // skip if count is zero
+                        for (i = localVarNameRefs_startIndex; i <= localVarNameRefs_startIndex + localVarCountInFunction - 1; ++i) {    // skip if count is zero
                             if (localVarNameRef[i] == varNameIndex) {
-                                openFunctionVar_valueIndex = i - localVarNameRefs_startIndex;   // calculate vaue index within local storage
+                                openFunctionVar_valueIndex = i - localVarNameRefs_startIndex;                           // calculate vaue index within local storage
                                 isOpenFunctionLocalVariable = (openFunctionVar_valueIndex >= paramOnlyCountInFunction);
                                 isOpenFunctionParam = (openFunctionVar_valueIndex < paramOnlyCountInFunction);
-                                break;      // is a local variable of function and its value index is known
+                                break;                                                                                  // is a local variable of function and its value index is known
                             }
 
                         }
                         if (isOpenFunctionLocalVariable || isOpenFunctionParam) {
                             // supplied argument is a variable ? (scalar or array)
                             bool isSourceVarRef = ((OpenFunctionData*)pFlowCtrlStackLvl)->pVariableAttributes[openFunctionVar_valueIndex] & value_isVarRef;
-                            ////_pDebugOut->print("     is open function 'var ref': "); _pDebugOut->println(isSourceVarRef);
+                        #if PRINT_DEBUG_INFO
+                            _pDebugOut->print("     is open function 'var ref': "); _pDebugOut->println(isSourceVarRef);
+                        #endif
+
 
                             // has this local variable been defined as a scalar or array ?
                             isOpenFunctionLocalArrayVariable = ((OpenFunctionData*)pFlowCtrlStackLvl)->pVariableAttributes[openFunctionVar_valueIndex] & var_isArray;
-                            ////_pDebugOut->print("------ is open function local array: "); _pDebugOut->println(isOpenFunctionLocalArrayVariable);
+                        #if PRINT_DEBUG_INFO
+                            _pDebugOut->print("------ is open function local array: "); _pDebugOut->println(isOpenFunctionLocalArrayVariable);
+                        #endif
+
                             if (isOpenFunctionLocalArrayVariable) {
                                 void* pArray = isSourceVarRef ? *(((OpenFunctionData*)pFlowCtrlStackLvl)->pLocalVarValues[openFunctionVar_valueIndex].ppArray) :
                                     ((OpenFunctionData*)pFlowCtrlStackLvl)->pLocalVarValues[openFunctionVar_valueIndex].pArray;
                                 openFunctionArray_dimCount = ((char*)pArray)[3];
-                                ////_pDebugOut->print("------ open function local var dim count: "); _pDebugOut->println(openFunctionArray_dimCount);
+                            #if PRINT_DEBUG_INFO
+                                _pDebugOut->print("------ open function local var dim count: "); _pDebugOut->println(openFunctionArray_dimCount);
+                            #endif
+
                             }
                         }
                     }
@@ -2629,8 +1930,12 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
 
         }
 
-        else {  // global PROGRAM variable exists already: check for double definition (USER variables: detected when NAME was declared a second time) 
-            ////_pDebugOut->println("*** 4.2 - is existing global");
+        else {
+            // global PROGRAM variable exists already: check for double definition (USER variables: detected when NAME was declared a second time) 
+        #if PRINT_DEBUG_INFO
+            _pDebugOut->println("*** 4.2 - is existing global");
+        #endif
+
             if (_isGlobalOrUserVarCmd) {
                 _userVarUnderConstruction = false;          // variable was declared earlier: don't delete it 
                 pNext = pch; result = result_var_redeclared; return false;
@@ -2638,20 +1943,23 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
         }
     }
 
-    ////_pDebugOut->println("*** 5");
     // 5. If NOT a new variable, check if it corresponds to the variable definition (scalar or array) and retrieve array dimension count (if array)
     //    If it is a FOR loop control variable, check that it is not in use by a FOR outer loop (in same function)
     // --------------------------------------------------------------------------------------------------------------------------------------------
+
+#if PRINT_DEBUG_INFO
+    _pDebugOut->println("*** 5 further checks");
+#endif
 
     uint8_t varScope = isOpenFunctionStaticVariable ? var_isStaticInFunc :
         isOpenFunctionLocalVariable ? var_isLocalInFunc :
         isOpenFunctionParam ? var_isParamInFunc :
         !isProgramVar ? var_isUser :
-        varType[activeNameRange][varNameIndex] & var_scopeMask;  // may only contain variable scope info (parameter, local, static, global, user)
+        varType[activeNameRange][varNameIndex] & var_scopeMask;                                                         // may only contain variable scope info (parameter, local, static, global, user)
 
     bool isGlobalOrUserVar = (isOpenFunctionStaticVariable || isOpenFunctionLocalVariable || isOpenFunctionParam) ? false :
-        isProgramVar ? // NOTE: inside a function, test against 'var_isGlobal', outside a function, test against 'var_nameHasGlobalValue'
-        ((_extFunctionBlockOpen && (varScope == var_isGlobal)) || (!_extFunctionBlockOpen && (varType[activeNameRange][varNameIndex] & var_nameHasGlobalValue))) : true;
+        // NOTE: inside a function, test against 'var_isGlobal', outside a function, test against 'var_nameHasGlobalValue'
+        isProgramVar ? ((_extFunctionBlockOpen && (varScope == var_isGlobal)) || (!_extFunctionBlockOpen && (varType[activeNameRange][varNameIndex] & var_nameHasGlobalValue))) : true;
     bool isStaticVar = isOpenFunctionStaticVariable ? true : (_extFunctionBlockOpen && (varScope == var_isStaticInFunc));
     bool isLocalVar = isOpenFunctionLocalVariable ? true : (_extFunctionBlockOpen && (varScope == var_isLocalInFunc));
     bool isParam = isOpenFunctionParam ? true : (_extFunctionBlockOpen && (varScope == var_isParamInFunc));
@@ -2659,25 +1967,18 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     int valueIndex = (isOpenFunctionStaticVariable || isOpenFunctionLocalVariable || isOpenFunctionParam) ? openFunctionVar_valueIndex :
         isGlobalOrUserVar ? varNameIndex : programVarValueIndex[varNameIndex];
 
-    bool varIsConstantVar = isGlobalOrUserVar ? (varType[activeNameRange][varNameIndex] & var_isConstantVar) :      // note: a STATIC or a PARAM variable is never a constant
+    bool varIsConstantVar = isGlobalOrUserVar ? (varType[activeNameRange][varNameIndex] & var_isConstantVar) :          // note: a STATIC or a PARAM variable is never a constant
         isLocalVar ? (localVarType[valueIndex] & var_isConstantVar) : false;
 
     if (_lastTokenIsPrefixIncrDecr && varIsConstantVar) { pNext = pch; result = result_cannotChangeConstantValue; return false; }
 
-    /*
-    _pDebugOut->print("*** 5: var scope: "); _pDebugOut->print(varScope, HEX);
-    _pDebugOut->print(", glob/user static local param: "); _pDebugOut->print(isGlobalOrUserVar); _pDebugOut->print(" "); _pDebugOut->print(isStaticVar);
-    _pDebugOut->print(" "); _pDebugOut->print(isLocalVar); _pDebugOut->print(" "); _pDebugOut->print(isParam);
-    _pDebugOut->print(", value index: "); _pDebugOut->print(valueIndex); _pDebugOut->print(", is reference: "); _pDebugOut->println(!(_isExtFunctionCmd || _isAnyVarCmd));
-    */
-
-    if (!(_isExtFunctionCmd || _isAnyVarCmd)) {  // not a variable definition but a variable reference
+    if (!(_isExtFunctionCmd || _isAnyVarCmd)) {                                                                         // not a variable definition but a variable reference
         bool existingArray = false;
-        _arrayDimCount = 0;                  // init: if new variable (or no array), then set dimension count to zero
+        _arrayDimCount = 0;                                                                                             // init: if new variable (or no array), then set dimension count to zero
         existingArray = (isOpenFunctionLocalVariable || isOpenFunctionParam) ? isOpenFunctionLocalArrayVariable :
             isGlobalOrUserVar ? (varType[activeNameRange][valueIndex] & var_isArray) :
             isStaticVar ? (staticVarType[valueIndex] & var_isArray) :
-            (localVarType[valueIndex] & var_isArray);           // param or local
+            (localVarType[valueIndex] & var_isArray);                                                                   // param or local
         // if not a function definition: array name does not have to be followed by a left parenthesis (passing the array and not an array element)
         // Is this variable part of a function call argument, without further nesting of parenthesis, and has it been defined as an array ? 
         bool isPartOfFuncCallArgument = (_parenthesisLevel > 0) ? (_pParsingStack->openPar.flags & (intFunctionBit | extFunctionBit)) : false;
@@ -2698,7 +1999,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
             void* pArray = nullptr;
             if (isStaticVar) { pArray = staticVarValues[valueIndex].pArray; }
             else if (isGlobalOrUserVar) { pArray = varValues[activeNameRange][valueIndex].pArray; }
-            else if (isLocalVar) { pArray = (float*)localVarDims[valueIndex]; }   // dimensions and count are stored in a float
+            else if (isLocalVar) { pArray = (float*)localVarDims[valueIndex]; }                                         // dimensions and count are stored in a float
 
             // retrieve dimension count from array element 0, character 3 (char 0 to 2 contain the dimensions) 
             // parameters; set to maximum allowed for now (count only known during exec))
@@ -2715,20 +2016,20 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
             if (_blockLevel > 1) {     // minimum 1 other (outer) open block
 
                 // check whether this is the control variable (following the 'for' keyword) => this means there are no parenthesis levels to skip, below
-                char tokenType = *(_programStorage + _lastTokenStep);           // step preceding the variable step (which is not yet stored in program memory)
-                if ((tokenType & 0x0f) == tok_isReservedWord) {                 // preceding step can only be a 'for' keyword, because we are in a 'for' command
+                char tokenType = *(_programStorage + _lastTokenStep);                                                   // step preceding the variable step (which is not yet stored in program memory)
+                if ((tokenType & 0x0f) == tok_isReservedWord) {                                                         // preceding step can only be a 'for' keyword, because we are in a 'for' command
 
                     // check if control variable is in use by a FOR outer loop
-                    LE_parsingStack* pStackLvl = (LE_parsingStack*)parsingStack.getLastListElement();        // current open block level
+                    LE_parsingStack* pStackLvl = (LE_parsingStack*)parsingStack.getLastListElement();                   // current open block level
                     do {
-                        pStackLvl = (LE_parsingStack*)parsingStack.getPrevListElement(pStackLvl);    // an outer block stack level
+                        pStackLvl = (LE_parsingStack*)parsingStack.getPrevListElement(pStackLvl);                       // an outer block stack level
                         if (pStackLvl == nullptr) { break; }
 
-                        if (pStackLvl->openBlock.cmdBlockDef.blockType == block_for) {    // outer block is FOR loop as well (could be while, if, ... block)
+                        if (pStackLvl->openBlock.cmdBlockDef.blockType == block_for) {                                  // outer block is FOR loop as well (could be while, if, ... block)
                             TokenPointer prgmCnt;
                             uint16_t tokenStep{ 0 };
                             memcpy(&tokenStep, pStackLvl->openBlock.toTokenStep, sizeof(char[2]));
-                            prgmCnt.pTokenChars = _programStorage + tokenStep + sizeof(TokenIsResWord);              // program step for control variable
+                            prgmCnt.pTokenChars = _programStorage + tokenStep + sizeof(TokenIsResWord);                 // program step for control variable
                             bool isSameControlVariable = ((uint8_t(prgmCnt.pVar->identInfo & var_scopeMask) == varScope)
                                 && ((int)prgmCnt.pVar->identNameIndex == varNameIndex)
                                 && ((int)prgmCnt.pVar->identValueIndex == valueIndex));
@@ -2740,7 +2041,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
         }
     }
 
-    _variableNameIndex = varNameIndex;          // will be pushed to parsing stack
+    _variableNameIndex = varNameIndex;                                                                                  // will be pushed to parsing stack
     _variableScope = varScope;
     _varIsConstant = varIsConstantVar;
 
@@ -2750,19 +2051,23 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
 
     // command argument constraints check
     if (!_lvl0_withinExpression || _lvl0_isPurePrefixIncrDecr) { _lvl0_isPureVariable = !varIsConstantVar; _lvl0_isPurePrefixIncrDecr = false; }
-    _lvl0_withinExpression = true;                                                         // reset for next command parameter
+    _lvl0_withinExpression = true;                                                                                      // reset for next command parameter
 
 
-    ////_pDebugOut->println("*** 6");
     // 6. Store token in program memory
     // --------------------------------
+
+#if PRINT_DEBUG_INFO
+    _pDebugOut->println("*** 6 - store token");
+#endif
 
     TokenIsVariable* pToken = (TokenIsVariable*)_programCounter;
     pToken->tokenType = tok_isVariable | (sizeof(TokenIsVariable) << 4);
     // identInfo only contains variable scope info (parameter, local, static, global), 'is array' flag, is constant var flag, and 'is forced function variable in debug mode' flag (for printing only) 
-    pToken->identInfo = varScope | (isArray ? var_isArray : 0) | (varIsConstantVar ? var_isConstantVar : 0) | (debug_functionVarOnly ? var_isForcedFunctionVar : 0);              // qualifier, array flag ? (is fixed for a variable -> can be stored in token)  
+    pToken->identInfo = varScope | (isArray ? var_isArray : 0) | (varIsConstantVar ? var_isConstantVar : 0) |
+        (debug_functionVarOnly ? var_isForcedFunctionVar : 0);                                                          // qualifier, array flag ? (is fixed for a variable -> can be stored in token)  
     pToken->identNameIndex = varNameIndex;
-    pToken->identValueIndex = valueIndex;                      // points to storage area element for the variable  
+    pToken->identValueIndex = valueIndex;                                                                               // points to storage area element for the variable  
 
 
     _lastTokenStep = _programCounter - _programStorage;
@@ -2774,17 +2079,9 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     _pDebugOut->print("parsing var name: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(pvarNames[activeNameRange][varNameIndex]);  _pDebugOut->println("]");
 #endif
 
-    /*
-    _pDebugOut->print("-  token address: "); _pDebugOut->println(_programCounter - _programStorage);
-    _pDebugOut->print("-  token type: "); _pDebugOut->println(pToken->tokenType, HEX);
-    _pDebugOut->print("-  info: scope+array+forced (hex): "); _pDebugOut->println(pToken->identInfo, HEX);
-    _pDebugOut->print("-  name index: "); _pDebugOut->println((int)pToken->identNameIndex);
-    _pDebugOut->print("-  value index: "); _pDebugOut->println((int)pToken->identValueIndex);
-    */
-
     _programCounter += sizeof(TokenIsVariable);
-    *_programCounter = tok_no_token;                                                 // indicates end of program
-    result = result_tokenFound;                                                         // flag 'valid token found'
+    *_programCounter = tok_no_token;                                                                                    // indicates end of program
+    result = result_tokenFound;                                                                                         // flag 'valid token found'
 
     return true;
 }
@@ -2795,15 +2092,15 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
 // -----------------------------------------------------------------
 
 bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_type& result) {
-    result = result_tokenNotFound;                                                      // init: flag 'no token found'
-    char* pch = pNext;                                                                  // pointer to first character to parse (any spaces have been skipped already)
+    result = result_tokenNotFound;                                                              // init: flag 'no token found'
+    char* pch = pNext;                                                                          // pointer to first character to parse (any spaces have been skipped already)
 
     bool stay = (_isProgramCmd || _isDeleteVarCmd || _isDeclCBcmd || _isClearAllCmd || _isClearProgCmd);
     stay = stay || (_isCallbackCmd && (_cmdArgNo == 0));
     if (!stay) { return true; }
 
-    if (!isalpha(pNext[0])) { return true; }                                       // first character is not a letter ? Then it's not an identifier name (it can still be something else)
-    while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                   // do until first character after alphanumeric token (can be anything, including '\0')
+    if (!isalpha(pNext[0])) { return true; }                                                    // first character is not a letter ? Then it's not an identifier name (it can still be something else)
+    while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                                 // do until first character after alphanumeric token (can be anything, including '\0')
 
     // token is a generic identifier, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
     if (_parsingExecutingTraceString || _parsingEvalString) { pNext = pch; result = result_trace_eval_genericNameNotAllowed; return false; }
@@ -2816,12 +2113,12 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
 
     // token is an identifier name, and it's allowed here
     _parsedStringConstObjectCount++;
-    char* pIdentifierName = new char[pNext - pch + 1];                    // create char array on the heap to store identifier name, including terminating '\0'
+    char* pIdentifierName = new char[pNext - pch + 1];                                          // create char array on the heap to store identifier name, including terminating '\0'
 #if PRINT_HEAP_OBJ_CREA_DEL
     _pDebugOut->print("+++++ (parsed str ) "); _pDebugOut->println((uint32_t)pIdentifierName, HEX);
 #endif
-    strncpy(pIdentifierName, pch, pNext - pch);                            // store identifier name in newly created character array
-    pIdentifierName[pNext - pch] = '\0';                                                 // string terminating '\0'
+    strncpy(pIdentifierName, pch, pNext - pch);                                                 // store identifier name in newly created character array
+    pIdentifierName[pNext - pch] = '\0';                                                        // string terminating '\0'
 
     // Declaring program name or aliases ? Store 
     if (_isProgramCmd) {
@@ -2829,9 +2126,9 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
     }
 
     else if (_isDeclCBcmd) {
-        if (_userCBprocAliasSet_count >= _userCBprocStartSet_count) { pNext = pch; result = result_userCB_allAliasesSet; } // still need to delete string object
-        for (int i = 0; i < _userCBprocAliasSet_count; i++) {                               // alias already declared ?
-            if (strcmp(_callbackUserProcAlias[i], pIdentifierName) == 0) { pNext = pch; result = result_userCB_aliasRedeclared; }    // still need to delete string object
+        if (_userCBprocAliasSet_count >= _userCBprocStartSet_count) { pNext = pch; result = result_userCB_allAliasesSet; }          // still need to delete string object
+        for (int i = 0; i < _userCBprocAliasSet_count; i++) {                                                                       // alias already declared ?
+            if (strcmp(_callbackUserProcAlias[i], pIdentifierName) == 0) { pNext = pch; result = result_userCB_aliasRedeclared; }   // still need to delete string object
         }
 
         if ((result == result_userCB_allAliasesSet || result == result_userCB_aliasRedeclared)) {
@@ -2849,7 +2146,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
         // NOTE: deletion of user varables NEEDS to be done during parsing (before execution starts)  to keep system consistency, because variable creation also occurs during parsing
 
         char* p = pNext;
-        while (p[0] == ' ') { p++; }                   // find first non-space character
+        while (p[0] == ' ') { p++; }                                                            // find first non-space character
         if ((p[0] != term_comma[0]) && (p[0] != term_semicolon[0]) && (p[0] != '\0')) { result = result_var_deleteSyntaxinvalid; }
         else { result = deleteUserVariable(pIdentifierName); }
 
@@ -2875,7 +2172,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
 
     TokenIsConstant* pToken = (TokenIsConstant*)_programCounter;
     pToken->tokenType = tok_isGenericName | (sizeof(TokenIsConstant) << 4);
-    memcpy(pToken->cstValue.pStringConst, &pIdentifierName, sizeof(pIdentifierName));            // pointer not necessarily aligned with word size: copy memory instead
+    memcpy(pToken->cstValue.pStringConst, &pIdentifierName, sizeof(pIdentifierName));           // pointer not necessarily aligned with word size: copy memory instead
 
     _lastTokenStep = _programCounter - _programStorage;
     _lastTokenType = tok_isGenericName;
@@ -2886,316 +2183,460 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
 #endif
 
     _programCounter += sizeof(TokenIsConstant);
-    *_programCounter = tok_no_token;                                                 // indicates end of program
-    result = result_tokenFound;                                                         // flag 'valid token found'
+    *_programCounter = tok_no_token;                                                            // indicates end of program
+    result = result_tokenFound;                                                                 // flag 'valid token found'
+    return true;
+}
+
+
+// --------------------------------------------------------------------------------------------
+// *   Array parsing: check that max dimension count and maximum array size is not exceeded   *
+// --------------------------------------------------------------------------------------------
+
+bool Justina_interpreter::checkArrayDimCountAndSize(parseTokenResult_type& result, int* arrayDef_dims, int& dimCnt) {
+
+    bool lastIsLeftPar = _lastTokenIsTerminal ? (_lastTermCode == termcod_leftPar) : false;
+    if (lastIsLeftPar) { result = result_arrayDef_noDims; return false; }
+
+    dimCnt++;
+
+    if (dimCnt > MAX_ARRAY_DIMS) { result = result_arrayDef_maxDimsExceeded; return false; }
+
+    char valueType = (*(_programStorage + _lastTokenStep) >> 4) & value_typeMask;
+
+    long l{};                                                                                   // last token is a number constant: dimension
+    float f{ 0 };
+    if (valueType == (value_isLong)) {     // float
+        memcpy(&l, ((TokenIsConstant*)(_programStorage + _lastTokenStep))->cstValue.longConst, sizeof(l));
+    }
+    else {
+        memcpy(&f, ((TokenIsConstant*)(_programStorage + _lastTokenStep))->cstValue.floatConst, sizeof(f));
+        l = int(f);
+    }
+
+    if (l < 1) { result = result_arrayDef_negativeDim; return false; }
+    if (l > 255) { result = result_arrayDef_dimTooLarge; return false; }
+    arrayDef_dims[dimCnt - 1] = l;
+    int arrayElements = 1;
+    for (int cnt = 0; cnt < dimCnt; cnt++) { arrayElements *= arrayDef_dims[cnt]; }
+    if (arrayElements > MAX_ARRAY_ELEM) { result = result_arrayDef_maxElementsExceeded; return false; }
+    return true;
+}
+
+
+// ---------------------------------------------------------------------------------------------------------------------------------------
+// *   External function definition statement parsing: check order of mandatory and optional arguments, check if max. n° not exceeded   *
+// ---------------------------------------------------------------------------------------------------------------------------------------
+
+bool Justina_interpreter::checkExtFunctionArguments(parseTokenResult_type& result, int& minArgCnt, int& maxArgCnt) {
+    bool lastIsRightPar = _lastTokenIsTerminal ? (_lastTermCode == termcod_rightPar) : false;
+
+    bool argWasMandatory = (_lastTokenType == tok_isVariable) || lastIsRightPar;                // variable without assignment to a constant or param array def. parenthesis
+    bool alreadyOptArgs = (minArgCnt != maxArgCnt);
+    if (argWasMandatory && alreadyOptArgs) { result = result_function_mandatoryArgFoundAfterOptionalArgs; return false; }
+    if (argWasMandatory) { minArgCnt++; }
+    maxArgCnt++;
+    // check that max argument count is not exceeded (number must fit in 4 bits)
+    if (maxArgCnt > c_extFunctionMaxArgs) { result = result_function_maxArgsExceeded; return false; }
+    return true;
+}
+
+
+// -----------------------------------------------------------------------------------------------------------------
+// *   Internal function: check that order of arrays and scalar variables is consistent with function definition   *
+// -----------------------------------------------------------------------------------------------------------------
+
+bool Justina_interpreter::checkInternFuncArgArrayPattern(parseTokenResult_type& result) {
+    int funcIndex = _pParsingStack->openPar.identifierIndex;                                    // note: also stored in stack for FUNCTION definition block level; here we can pick one of both
+    char paramIsArrayPattern = _functions[funcIndex].arrayPattern;
+    int argNumber = _pParsingStack->openPar.actualArgsOrDims;
+
+    if (argNumber > 0) {
+        bool isArray = false;
+        if (_lastTokenType == tok_isVariable) {                                                 // function call and last token is variable name ? Could be an array name                                                                                      // function call
+            // check if variable is defined as array (then it will NOT be part of an expression )
+            isArray = (((TokenIsVariable*)(_programStorage + _lastTokenStep))->identInfo) & var_isArray;
+        }
+
+        bool arrayArgumentExpected = false;
+        if (argNumber >= 8) {
+            if (isArray) { result = result_function_scalarArgExpected; return false; }
+        }
+        else {
+            if (((paramIsArrayPattern >> (argNumber - 1)) & 0b1) != isArray) { result = isArray ? result_function_scalarArgExpected : result_function_arrayArgExpected; return false; }
+        }
+    }
+    return true;
+}
+
+
+// ------------------------------------------------------------------------------------------------------------------------------------
+// *   External function: check that order of arrays and scalar variables is consistent with previous calls and function definition   *
+// ------------------------------------------------------------------------------------------------------------------------------------
+
+bool Justina_interpreter::checkExternFuncArgArrayPattern(parseTokenResult_type& result, bool isFunctionClosingParenthesis) {
+
+    int funcIndex = _pParsingStack->openPar.identifierIndex;                                    // note: also stored in stack for FUNCTION definition block level; here we can pick one of both
+    int argNumber = _pParsingStack->openPar.actualArgsOrDims;
+    uint16_t paramIsArrayPattern{ 0 };
+    memcpy(&paramIsArrayPattern, extFunctionData[funcIndex].paramIsArrayPattern, sizeof(char[2]));
+    if (argNumber > 0) {
+
+        bool isArray = false;
+        bool lastIsRightPar = _lastTokenIsTerminal ? (_lastTermCode == termcod_rightPar) : false;
+
+        if (_isExtFunctionCmd) { isArray = lastIsRightPar; }                                    // function definition: if variable name followed by empty parameter list ' () ': array parameter
+        else if (_lastTokenType == tok_isVariable) {                                            // function call and last token is variable name ? Could be an array name                                                                                      // function call
+            // check if variable is defined as array (then it will NOT be part of an expression )
+            isArray = (((TokenIsVariable*)(_programStorage + _lastTokenStep))->identInfo) & var_isArray;
+        }
+
+        uint16_t paramArrayMask = 1 << (argNumber - 1);
+        if (paramIsArrayPattern & 0x8000) {                                                     // function not used yet (before it was defined now: no need to check, just set array bit)
+            paramIsArrayPattern = paramIsArrayPattern | (isArray ? paramArrayMask : 0);
+        }
+        else {  // error message can not be more specific (scalar expected, array expected) because maybe function has not been defined yet
+            if ((paramIsArrayPattern & paramArrayMask) != (isArray ? paramArrayMask : 0)) { result = result_function_scalarAndArrayArgOrderNotConsistent; return false; }
+        }
+    }
+
+    if (isFunctionClosingParenthesis) { paramIsArrayPattern = paramIsArrayPattern & ~0x8000; }  // function name used now: order of scalar and array parameters is now fixed
+    memcpy(extFunctionData[funcIndex].paramIsArrayPattern, &paramIsArrayPattern, sizeof(char[2]));
     return true;
 }
 
 
 // -----------------------------------------
-// *   pretty print a parsed instruction   *
+// *   parse a number (integer or float)   *
 // -----------------------------------------
-void Justina_interpreter::prettyPrintStatements(int instructionCount, char* startToken, char* errorProgCounter, int* sourceErrorPos) {
 
-    // input: stored tokens
-    TokenPointer progCnt;
-    progCnt.pTokenChars = (startToken == nullptr) ? _programStorage + _progMemorySize : startToken;
-    int tokenType = *progCnt.pTokenChars & 0x0F;
-    int lastTokenType = tok_no_token;
-    bool lastHasTrailingSpace = false, testForPostfix = false, testForPrefix = false;
-    bool lastWasPostfixOperator = false, lastWasInfixOperator = false;
+// called while parsing expressions and while executing specifing print commands (e.g. 'readList')
 
-    bool allInstructions = (instructionCount == 0);
-    bool multipleInstructions = (instructionCount > 1);      // multiple, but not all, instructions
-    bool isFirstInstruction = true;
+bool Justina_interpreter::parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueType, parseTokenResult_type& result) {
 
-    // output: printable token (text) - must be long enough to hold one token in text (e.g. a variable name)
-    const int maxCharsPrettyToken{ MAX_ALPHA_CONST_LEN };           // IT IS SUPPOSED THAT A STRING CAN BE LONGER THAN ANY OTHER TOKEN
-    const int maxOutputLength{ 200 };
-    int outputLength = 0;                       // init: first position
+    result = result_tokenNotFound;                                                              // init: flag 'no token found'
+    pch = pNext;                                                                                // pointer to first character to parse (any spaces have been skipped already)
 
-    while (tokenType != tok_no_token) {                                                                    // for all tokens in token list
-        int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) :
-            (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*progCnt.pTokenChars >> 4) & 0x0F;
-        TokenPointer nextProgCnt;
-        nextProgCnt.pTokenChars = progCnt.pTokenChars + tokenLength;
-        int nextTokenType = *nextProgCnt.pTokenChars & 0x0F;                                                                // next token type (look ahead)
-        bool tokenHasLeadingSpace = false, testNextForPostfix = false, isPostfixOperator = false, isInfixOperator = false;
-        bool hasTrailingSpace = false;
-        bool isSemicolon = false;
+    // first, check for symbolic number
+    char* tokenStart = pNext;
+    if (isalpha(pNext[0])) {                                                                    // first character is a letter ? could be symbolic constant
+        while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                             // position as if symbolic constant was found, for now
 
-        char prettyToken[maxCharsPrettyToken] = "";         // used for all tokens except string values; must be long enough for the longest token in text
-        char* pPrettyToken{ prettyToken };                  // init: for all tokens except string values
-
-        switch (tokenType)
-        {
-            case tok_isReservedWord:
-            {
-                TokenIsResWord* pToken = (TokenIsResWord*)progCnt.pTokenChars;
-                bool nextIsTerminal = ((nextTokenType == tok_isTerminalGroup1) || (nextTokenType == tok_isTerminalGroup2) || (nextTokenType == tok_isTerminalGroup3));
-                bool nextIsSemicolon = false;
-                if (nextIsTerminal) {
-                    int nextTokenIndex = ((nextProgCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F);
-                    nextTokenIndex += ((nextTokenType == tok_isTerminalGroup2) ? 0x10 : (nextTokenType == tok_isTerminalGroup3) ? 0x20 : 0);
-                    nextIsSemicolon = (_terminals[nextTokenIndex].terminalCode == termcod_semicolon);
-                }
-
-                sprintf(prettyToken, nextIsSemicolon ? "%s" : "%s ", _resWords[progCnt.pResW->tokenIndex]._resWordName);
-                hasTrailingSpace = true;
+        for (int index = _symbvalueCount - 1; index >= 0; index--) {                            // for all defined symbolic names: check against alphanumeric token (NOT ending by '\0')
+            if (strlen(_symbNumConsts[index].symbolName) != pNext - pch) { continue; }          // token has correct length ? If not, skip remainder of loop ('continue')                            
+            if (strncmp(_symbNumConsts[index].symbolName, pch, pNext - pch) != 0) { continue; } // token corresponds to symbolic name ? If not, skip remainder of loop ('continue')    
+            // symbol found: 
+            bool isNumber = ((_symbNumConsts[index].valueType == value_isLong) || (_symbNumConsts[index].valueType == value_isFloat));
+            if (isNumber) {
+                if ((_symbNumConsts[index].valueType == value_isLong)) { value.longConst = strtol(_symbNumConsts[index].symbolValue, nullptr, 0); }
+                else { value.floatConst = strtof(_symbNumConsts[index].symbolValue, nullptr); }
+                valueType = _symbNumConsts[index].valueType;
+                result = result_tokenFound;
             }
-            break;
-
-            case tok_isInternFunction:
-                strcpy(prettyToken, _functions[progCnt.pIntFnc->tokenIndex].funcName);
-                break;
-
-            case tok_isExternFunction:
-            {
-                int identNameIndex = (int)progCnt.pExtFnc->identNameIndex;   // external function list element
-                char* identifierName = extFunctionNames[identNameIndex];
-                strcpy(prettyToken, identifierName);
-            }
-            break;
-
-            case tok_isVariable:
-            {
-                int identNameIndex = (int)(progCnt.pVar->identNameIndex);
-                bool isForcedFunctionVar = (progCnt.pVar->identInfo & var_isForcedFunctionVar) == var_isForcedFunctionVar;
-                bool isUserVar = (progCnt.pVar->identInfo & var_scopeMask) == var_isUser;
-                char* identifierName = isUserVar ? userVarNames[identNameIndex] : programVarNames[identNameIndex];
-                sprintf(prettyToken, "%s%s", (isForcedFunctionVar ? "#" : ""), identifierName);
-                testNextForPostfix = true;
-            }
-            break;
-
-            case tok_isConstant:
-            {
-                char valueType = (*progCnt.pTokenChars >> 4) & value_typeMask;
-                bool isLongConst = (valueType == value_isLong);
-                bool isFloatConst = (valueType == value_isFloat);
-                bool isStringConst = (valueType == value_isStringPointer);
-
-                if (isLongConst) {
-                    long  l;
-                    memcpy(&l, progCnt.pCstToken->cstValue.longConst, sizeof(l));                         // pointer not necessarily aligned with word size: copy memory instead
-                    sprintf(prettyToken, "%ld", l);
-                    testNextForPostfix = true;
-                    break;   // and quit switch
-                }
-
-                else if (isFloatConst) {
-                    float f;
-                    memcpy(&f, progCnt.pCstToken->cstValue.floatConst, sizeof(f));                         // pointer not necessarily aligned with word size: copy memory instead
-                    sprintf(prettyToken, "%#.3G", f);
-                    testNextForPostfix = true;
-                    break;   // and quit switch
-                }
-
-                else if (isStringConst) {
-                    testNextForPostfix = true;     // no break here: fall into generic name handling
-                }
-            }
-            // NO break here
-
-            case tok_isGenericName:
-            {
-                char* pAnum{ nullptr };
-                memcpy(&pAnum, progCnt.pCstToken->cstValue.pStringConst, sizeof(pAnum));                         // copy pointer, not string (not necessarily aligned with word size: copy memory instead)
-
-                if (testNextForPostfix) {                   // string constant and NOT a generic name ? expand '\' sequences and add string delimiters
-                    quoteAndExpandEscSeq(pAnum);          // returns pointer to new (temporary) string created on the heap 
-                    strcpy(prettyToken, pAnum);
-                #if PRINT_HEAP_OBJ_CREA_DEL
-                    _pDebugOut->print("----- (Intermd str) ");   _pDebugOut->println((uint32_t)pAnum, HEX);
-                #endif
-                    _intermediateStringObjectCount--;
-                    delete[]pAnum;
-                }
-                else {
-                    strcpy(prettyToken, pAnum); strcat(prettyToken, " ");       // generic token: just add a space at the end
-                }
-                hasTrailingSpace = !testNextForPostfix;
-            }
-            break;
-
-            default:  // terminal
-            {
-                int index = (progCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F;
-                index += ((tokenType == tok_isTerminalGroup2) ? 0x10 : (tokenType == tok_isTerminalGroup3) ? 0x20 : 0);
-                char trailing[2] = "\0";      // init: empty string
-
-                if (_terminals[index].terminalCode <= termcod_opRangeEnd) {      // operator 
-                    isPostfixOperator = testForPostfix ? (_terminals[index].postfix_priority != 0) : false;
-
-                    isInfixOperator = lastWasInfixOperator ? false : testForPostfix ? !isPostfixOperator : false;
-
-                    if (lastWasPostfixOperator && isPostfixOperator) {             // check if operator is postfix operator 
-                        strcat(prettyToken, " ");          // leading space
-                        tokenHasLeadingSpace = true;
-                    }
-
-                    if (!isPostfixOperator && !lastHasTrailingSpace) {             // check if operator is postfix operator 
-                        strcat(prettyToken, " ");          // leading space
-                        tokenHasLeadingSpace = true;
-                    }
-
-                    if ((isInfixOperator)) {
-                        trailing[0] = ' ';      // single space (already terminated by '\0')
-                        hasTrailingSpace = true;
-                    }
-
-                    testNextForPostfix = isPostfixOperator;
-                }
-
-                else if (_terminals[index].terminalCode == termcod_rightPar) {
-                    testNextForPostfix = true;
-                }
-
-                else if (_terminals[index].terminalCode == termcod_leftPar) {
-                    hasTrailingSpace = true;
-                    testNextForPostfix = false;
-                }
-
-                else if ((_terminals[index].terminalCode == termcod_comma) || (_terminals[index].terminalCode == termcod_semicolon)) {
-                    testNextForPostfix = false;
-                    trailing[0] = ' ';      // single space (already terminated by '\0')
-                    hasTrailingSpace = true;
-                }
-
-                strcat(prettyToken, _terminals[index].terminalName);         // concatenate with empty string or single-space string
-                strcat(prettyToken, trailing);
-                isSemicolon = (_terminals[index].terminalCode == termcod_semicolon);
-            }
-            break;
+            // no error; result indicates whether token for numeric value symbol was found or search for valid token needs to be continued
+            else { pNext = pch; }
+            return true;
         }
-
-
-        // print pretty token
-        // ------------------
-
-        // if not printing all instructions, then limit output, but always print the first instruction in full
-        if (!allInstructions && !isFirstInstruction && (outputLength > maxOutputLength)) { break; }
-
-        int tokenSourceLength = strlen(pPrettyToken);
-        if (isSemicolon) {
-            if (multipleInstructions && isFirstInstruction) { pPrettyToken[1] = '\0'; }  // no space after semicolon
-            if ((nextTokenType != tok_no_token) && (allInstructions || (instructionCount > 1))) { printTo(0, pPrettyToken); }
-            if (isFirstInstruction && multipleInstructions) { printTo(0, "]   ( ==>> "); }
-        }
-
-        else { printTo(0, pPrettyToken); }              // not a semicolon
-
-        // if printing a fixed number of instructions, return output error position based on token where execution error was produced
-        if (!allInstructions) {
-            if (errorProgCounter == progCnt.pTokenChars) {
-                *sourceErrorPos = outputLength + (tokenHasLeadingSpace ? 1 : 0);
-            }
-            if (isSemicolon) {
-                if (--instructionCount == 0) { break; }     // all statements printed
-            }
-            outputLength += tokenSourceLength;
-        }
-
-
-        // advance to next token
-        // ---------------------
-
-        progCnt.pTokenChars = nextProgCnt.pTokenChars;
-        lastTokenType = tokenType;
-        tokenType = nextTokenType;                                                     // next token type
-        testForPostfix = testNextForPostfix;
-        lastHasTrailingSpace = hasTrailingSpace;
-        lastWasInfixOperator = isInfixOperator;
-        lastWasPostfixOperator = isPostfixOperator;
-
-        if (isSemicolon) { isFirstInstruction = false; }
+        pNext = pch; return true;                                                               // no match: no error, search for valid token needs to be continued
     }
 
-    // exit
-    printTo(0, multipleInstructions ? " ...)\r\n" : allInstructions ? "" : "\r\n"); _lastPrintedIsPrompt = false;
+    // is not a symbolic number: numeric literal ?
+
+    // all numbers will be positive, because leading '-' or '+' characters are parsed separately as prefix operators
+    // this is important if next infix operator (power) has higher priority then this prefix operator: -2^4 <==> -(2^4) <==> -16, AND NOT (-2)^4 <==> 16 
+    // exception: variable declarations with initializers: prefix operators are not parsed separately
+
+    pNext = tokenStart;
+    ;
+    bool isLong{ false };
+    int i{ 0 };
+
+    int base = ((tokenStart[0] == '0') && ((tokenStart[1] == 'x') || (tokenStart[1] == 'X'))) ? 16 : ((tokenStart[0] == '0') && ((tokenStart[1] == 'b') || (tokenStart[1] == 'B'))) ? 2 : 10;
+
+    if (base == 10) {      // base 10
+        while (isDigit(tokenStart[++i]));
+        isLong = ((i > 0) && (tokenStart[i] != '.') && (tokenStart[i] != 'E') && (tokenStart[i] != 'e'));   // no decimal point, no exponent and minimum one digit
+    }
+
+    else {       // binary or hexadecimal
+        tokenStart += 2;      // skip "0b" or "0x" and start looking for digits at next position
+        while ((base == 16) ? isxdigit(tokenStart[++i]) : ((tokenStart[i] == '0') || (tokenStart[i] == '1'))) { ++i; }
+        isLong = (i > 0);        // minimum one digit
+        if (!isLong) { pNext = pch; result = result_numberInvalidFormat; return false; }        // not a long constant, but not a float either 
+    }
+
+    if (isLong) {                                                                               // token can be parsed as long ?
+        valueType = value_isLong;
+        // string to UNSIGNED long before assigning to (signed) long -> 0xFFFFFFFF will be stored as -1, as it should (all bits set)
+        value.longConst = strtoul(tokenStart, &pNext, base);
+        if (_initVarOrParWithUnaryOp == -1) { value.longConst = -value.longConst; }
+    }
+    else {
+        valueType = value_isFloat;
+        value.floatConst = strtof(tokenStart, &pNext);
+        if (_initVarOrParWithUnaryOp == -1) { value.floatConst = -value.floatConst; }
+    }                                                                                           // token can be parsed as float ?
+
+    bool isValidNumber = (tokenStart != pNext);                                                 // is a number if pointer pNext was not moved (is NO error - possibly it's another valid token type)
+    if (isValidNumber) { result = result_tokenFound; }
+    return true;                                                                                // no error; result indicates whether valid token was found or search for valid token needs to be continued
 }
 
 
-// -----------------------------------------------------------------------
-// *   add surrounding quotes and expand backslash sequences in string   *
-// -----------------------------------------------------------------------
+// --------------------------------
+// *   parse a character string   *
+// --------------------------------
 
-// note: this routine creates a character string on the heap; it must be deleted afterwards
+// called while parsing expressions and while executing specifing print commands (e.g. 'readList')
 
-void Justina_interpreter::quoteAndExpandEscSeq(char*& stringValue) {
-    int occurences{ 0 };                   // count '\' and '"' characters within string
-    char* pos = stringValue;
+bool Justina_interpreter::parseString(char*& pNext, char*& pch, char*& pStringCst, char& valueType, parseTokenResult_type& result, bool isIntermediateString) {
 
-    if (stringValue != nullptr) { do { pos = strpbrk(pos, "\\\""); if (pos != nullptr) { ++occurences; } } while (pos++ != nullptr); }
-    int oldLen = (stringValue == nullptr) ? 0 : strlen(stringValue);
+    result = result_tokenNotFound;                                                              // init: flag 'no token found'
+    pch = pNext;                                                                                // pointer to first character to parse (any spaces have been skipped already)
 
-    _intermediateStringObjectCount++;
-    char* output = new char[oldLen + occurences + 2 + 1];       // provide room for expanded \ and " characters, 2 string terminating " and terminator
-#if PRINT_HEAP_OBJ_CREA_DEL
-    _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)output, HEX);
-#endif
-    output[0] = '"';                                                          // add starting string terminator
-
-    if (oldLen != 0) {
-        char* newPos = pos = stringValue;
-
-        char* destinPos = output + 1;
-
-        for (int i = 1; i <= occurences; ++i) {
-            newPos = strpbrk(pos, "\\\"");      // always match
-            int len = newPos - pos;             // if zero, first character is \ or "
-            if (len > 0) { memcpy(destinPos, pos, len);  destinPos += len; }          // copy characters before found \ or " character 
-            destinPos[0] = '\\'; destinPos[1] = newPos[0];  destinPos += 2;
-            newPos++;
-            pos = newPos;
+    if ((pNext[0] != '\"')) { return true; }                                                    // no opening quote ? Is not an alphanumeric cst (it can still be something else)
+    pNext++;                                                                                    // skip opening quote
+    int escChars = 0;
+    pStringCst = nullptr;                                                                       // init
+    while (pNext[0] != '\"') {                                                                  // do until closing quote, if any
+        // if no closing quote found, an invalid escape sequence or a control character detected, reset pointer to first character to parse, indicate error and return
+        if (pNext[0] == '\0') { pNext = pch; result = result_alphaClosingQuoteMissing; return false; }
+        if (pNext[0] < ' ') { pNext = pch; result = result_alphaNoCtrlCharAllowed; return false; }
+        if (pNext[0] == '\\') {
+            if ((pNext[1] == '\\') || (pNext[1] == '\"')) { pNext++; escChars++; }              // valid escape sequences: ' \\ ' (add backslash) and ' \" ' (add double quote)
+            else { pNext = pch; result = result_alphaConstInvalidEscSeq; return false; }
         }
-        strcpy(destinPos, pos);     // remainder of string
+        pNext++;
+    };
+
+    // if alphanumeric constant is too long, reset pointer to first character to parse, indicate error and return
+    if (pNext - (pch + 1) - escChars > MAX_ALPHA_CONST_LEN) { pNext = pch; result = result_alphaConstTooLong; return false; }
+
+    // token is an alphanumeric constant, and it's allowed here
+    if (pNext - (pch + 1) - escChars > 0) {    // not an empty string: create string object 
+        isIntermediateString ? _intermediateStringObjectCount++ : _parsedStringConstObjectCount++;
+        pStringCst = new char[pNext - (pch + 1) - escChars + 1];                                // create char array on the heap to store alphanumeric constant, including terminating '\0'
+    #if PRINT_HEAP_OBJ_CREA_DEL
+        _pDebugOut->print(isIntermediateString ? "+++++ (Intermd str) " : "+++++ (parsed str ) "); _pDebugOut->println((uint32_t)pStringCst, HEX);
+    #endif
+        // store alphanumeric constant in newly created character array
+        pStringCst[pNext - (pch + 1) - escChars] = '\0';                                        // store string terminating '\0' (pch + 1 points to character after opening quote, pNext points to closing quote)
+        char* pSource = pch + 1, * pDestin = pStringCst;                                        // pSource points to character after opening quote
+        while (pSource + escChars < pNext) {                                                    // store alphanumeric constant in newly created character array (terminating '\0' already added)
+            if (pSource[0] == '\\') { pSource++; escChars--; }                                  // if escape sequences found: skip first escape sequence character (backslash)
+            pDestin++[0] = pSource++[0];
+        }
     }
-    output[oldLen + occurences + 2 - 1] = '"';
-    output[oldLen + occurences + 2] = '\0';
-    stringValue = output;
-    return;
+    pNext++;                                                                                    // skip closing quote
+
+    valueType = value_isStringPointer;
+    result = result_tokenFound;
+    return true;                                                                                // valid string
 }
 
 
-// ----------------------------
-// *   print parsing result   *
-// ----------------------------
+// -------------------------------------------------------------------------
+// *   check if identifier storage exists already, optionally create new   *
+// -------------------------------------------------------------------------
 
-void Justina_interpreter::printParsingResult(parseTokenResult_type result, int funcNotDefIndex, char* const pInstruction, int lineCount, char* pErrorPos) {
+int Justina_interpreter::getIdentifier(char** pIdentNameArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNewName, bool isUserVar) {
 
-    char parsingInfo[100 + MAX_IDENT_NAME_LEN] = "";       // provide sufficient room for longest possible message (int: no OK message in immediate mode)
-    if (result == result_tokenFound) {                                                // prepare message with parsing result
-        if (_programMode) {
-            if (_lastProgramStep == _programStorage) { strcpy(parsingInfo, "\r\nNo program loaded"); }
-            else {
-                sprintf(parsingInfo, "\r\nProgram parsed without errors. %lu %% of program memory used (%u bytes)",
-                    (uint32_t)(((_lastProgramStep - _programStorage + 1) * 100) / _progMemorySize), (uint16_t)(_lastProgramStep - _programStorage + 1));
+    char* pIdentifierName;
+    int index = 0;          // points to last variable in use
+    while (index < identifiersInUse) {                       // points to variable in use
+        pIdentifierName = pIdentNameArray[index];
+        if (strlen(pIdentifierName) == identLength) {                                           // identifier with name with same length found
+            if (strncmp(pIdentifierName, pIdentNameToCheck, identLength) == 0) { break; }       // storage for identifier name was created already 
+        }
+        index++;
+    }
+    if (index == identifiersInUse) { index = -1; }                                              // not found
+    if (!createNewName) { return index; }                                                       // if check only: identNameIndex to identifier name or -1, createNewName = false
+
+    createNewName = (index == -1);                                                              // create new ?
+
+    // create new identifier if it does not exist yet ?
+    // upon return, createNew indicates whether new identifier storage NEEDED to be created ...
+    // and if it was possible, identifiersInUse will be set to the new identifier count
+
+    if (createNewName) {
+        if (identifiersInUse == maxIdentifiers) { return index; }                               // create identifier name failed: return -1 with createNewName = true
+        isUserVar ? _userVarNameStringObjectCount++ : _identifierNameStringObjectCount++;
+        pIdentifierName = new char[MAX_IDENT_NAME_LEN + 1 + 1];                                 // create standard length char array on the heap, including '\0' and an extra character 
+    #if PRINT_HEAP_OBJ_CREA_DEL
+        _pDebugOut->print(isUserVar ? "+++++ (usrvar name) " : "+++++ (ident name ) "); _pDebugOut->println((uint32_t)pIdentifierName, HEX);
+    #endif
+        strncpy(pIdentifierName, pIdentNameToCheck, identLength);                               // store identifier name in newly created character array
+        pIdentifierName[identLength] = '\0';                                                    // string terminating '\0'
+        pIdentNameArray[identifiersInUse] = pIdentifierName;
+        identifiersInUse++;
+        return identifiersInUse - 1;                                                            // identNameIndex to newly created identifier name
+    }
+}
+
+
+// --------------------------------------------------------------
+// *   initialize a variable or an array with (a) constant(s)   *
+// --------------------------------------------------------------
+
+bool Justina_interpreter::initVariable(uint16_t varTokenStep, uint16_t constTokenStep) {
+    long l{ 0 };
+    float f{ 0. };        // last token is a number constant: dimension
+    char* pString{ nullptr };
+
+    // parsing: initialize variables and arrays with a constant number or (arrays: empty) string
+
+    // fetch variable location and attributes
+    bool isArrayVar = ((TokenIsVariable*)(_programStorage + varTokenStep))->identInfo & var_isArray;
+    bool isGlobalVar = (((TokenIsVariable*)(_programStorage + varTokenStep))->identInfo & var_scopeMask) == var_isGlobal;
+    bool isUserVar = (((TokenIsVariable*)(_programStorage + varTokenStep))->identInfo & var_scopeMask) == var_isUser;
+    int varValueIndex = ((TokenIsVariable*)(_programStorage + varTokenStep))->identValueIndex;
+    void* pVarStorage = isGlobalVar ? globalVarValues : isUserVar ? userVarValues : staticVarValues;
+    char* pVarTypeStorage = isGlobalVar ? globalVarType : isUserVar ? userVarType : staticVarType;
+    void* pArrayStorage;        // array storage (if array) 
+
+    // fetch constant (numeric or alphanumeric) 
+    char valueType = (((TokenIsConstant*)(_programStorage + constTokenStep))->tokenType >> 4) & value_typeMask;
+    bool isLongConst = (valueType == value_isLong);
+    bool isFloatConst = (valueType == value_isFloat);
+    bool isStringConst = (valueType == value_isStringPointer);
+
+    if (isLongConst) { memcpy(&l, ((TokenIsConstant*)(_programStorage + constTokenStep))->cstValue.longConst, sizeof(l)); }         // copy float
+    else if (isFloatConst) { memcpy(&f, ((TokenIsConstant*)(_programStorage + constTokenStep))->cstValue.floatConst, sizeof(f)); }  // copy float
+    else { memcpy(&pString, ((TokenIsConstant*)(_programStorage + constTokenStep))->cstValue.pStringConst, sizeof(pString)); }      // copy pointer to string (not the string itself)
+    int length = (!isStringConst) ? 0 : (pString == nullptr) ? 0 : strlen(pString);                                                 // only relevant for strings
+
+    if (isArrayVar) {
+        pArrayStorage = ((void**)pVarStorage)[varValueIndex];                                                                       // void pointer to an array 
+        int dimensions = (((char*)pArrayStorage)[3]);                                                                               // can range from 1 to MAX_ARRAY_DIMS
+        int arrayElements = 1;                                                                                                      // determine array size
+        for (int dimCnt = 0; dimCnt < dimensions; dimCnt++) { arrayElements *= (int)((((char*)pArrayStorage)[dimCnt])); }
+        // fill up with numeric constants or (empty strings:) null pointers
+        if (isLongConst) { for (int arrayElem = 1; arrayElem <= arrayElements; arrayElem++) { ((long*)pArrayStorage)[arrayElem] = l; } }
+        else if (isFloatConst) { for (int arrayElem = 1; arrayElem <= arrayElements; arrayElem++) { ((float*)pArrayStorage)[arrayElem] = f; } }
+        else {                                                                                                                      // alphanumeric constant
+            if (length != 0) { return false; };                                                                                     // to limit memory usage, no mass initialisation with non-empty strings
+            for (int arrayElem = 1; arrayElem <= arrayElements; arrayElem++) {
+                ((char**)pArrayStorage)[arrayElem] = nullptr;
             }
         }
     }
 
-    else  if ((result == result_function_undefinedFunctionOrArray) && _programMode) {     // in program mode only 
-        // during external function call parsing, it is not always known whether the function exists (because function can be defined after a call) 
-        // -> a linenumber can not be given, but the undefined function can
-        sprintf(parsingInfo, "\r\n  Parsing error %d: function or array '%s' is not defined", result, extFunctionNames[funcNotDefIndex]);
+    else {                                                                                                                          // scalar
+        if (isLongConst) { ((long*)pVarStorage)[varValueIndex] = l; }                                                               // store numeric constant
+        else if (isFloatConst) { ((float*)pVarStorage)[varValueIndex] = f; }                                                        // store numeric constant
+        else {                                                                                                                      // alphanumeric constant
+            if (length == 0) {
+                ((char**)pVarStorage)[varValueIndex] = nullptr;                                                                     // an empty string does not create a heap object
+            }
+            else { // create string object and store string
+                isUserVar ? _userVarStringObjectCount++ : _globalStaticVarStringObjectCount++;
+                // create char array on the heap to store alphanumeric constant, including terminating '\0'
+                char* pVarAlphanumValue = new char[length + 1];
+            #if PRINT_HEAP_OBJ_CREA_DEL
+                _pDebugOut->print(isUserVar ? "+++++ (usr var str) " : "+++++ (var string ) "); _pDebugOut->println((uint32_t)pVarAlphanumValue, HEX);
+            #endif
+                // store alphanumeric constant in newly created character array
+                strcpy(pVarAlphanumValue, pString);              // including terminating \0
+                ((char**)pVarStorage)[varValueIndex] = pVarAlphanumValue;                                                           // store pointer to string
+            }
+        }
     }
 
-    else {                                                                              // parsing error
-        // instruction not parsed (because of error): print source instruction where error is located (can not 'unparse' yet for printing instruction)
-        if (result == result_statementTooLong) { pErrorPos = pInstruction; }
 
-        printTo(0, "\r\n  "); printlnTo(0, pInstruction);
-        char point[pErrorPos - pInstruction + 3];                               // 2 extra positions for 2 leading spaces, 2 for '^' and '\0' characters
-        memset(point, ' ', pErrorPos - pInstruction + 2);
-        point[pErrorPos - pInstruction + 2] = '^';
-        point[pErrorPos - pInstruction + 3] = '\0';
-        printlnTo(0, point);
-
-        if (_programMode) { sprintf(parsingInfo, "  Parsing error %d: statement ending at line %d", result, lineCount + 1); }
-        else { sprintf(parsingInfo, "  Parsing error %d", result); }
-    }
-
-    if (strlen(parsingInfo) > 0) { printlnTo(0, parsingInfo); _lastPrintedIsPrompt = false; }
-
+    pVarTypeStorage[varValueIndex] = (pVarTypeStorage[varValueIndex] & ~value_typeMask) |
+        (isLongConst ? value_isLong : isFloatConst ? value_isFloat : value_isStringPointer);
+    return true;
 };
+
+
+// ------------------------------
+// *   delete a user variable   *
+// ------------------------------
+
+Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariable(char* userVarName) {
+
+    bool deleteLastVar = (userVarName == nullptr);
+
+    bool varDeleted{ false };
+    for (int index = (deleteLastVar ? _userVarCount - 1 : 0); index < _userVarCount; index++) {
+        if (!deleteLastVar) {
+            if (strcmp(userVarNames[index], userVarName) != 0) { continue; }                                // no match yet: continue looking for it (if it exists)
+        }
+
+        bool userVarUsedInProgram = (userVarType[index] & var_userVarUsedByProgram);
+        if (userVarUsedInProgram) { return result_var_usedInProgram; }                                      // match, but cannot delete (variable used in program)
+
+        int valueType = (userVarType[index] & value_typeMask);
+        bool isLong = (valueType == value_isLong);
+        bool isFloat = (valueType == value_isFloat);
+        bool isString = (valueType == value_isStringPointer);
+        bool isArray = (userVarType[index] & var_isArray);
+
+
+        // 1. delete variable name object
+        // ------------------------------
+    #if PRINT_HEAP_OBJ_CREA_DEL
+        _pDebugOut->print("----- (usrvar name) "); _pDebugOut->println((uint32_t) * (userVarNames + index), HEX);
+    #endif
+        _userVarNameStringObjectCount--;
+        delete[] * (userVarNames + index);
+
+        // 2. if variable is an array of strings: delete all non-empty strings in array
+        // ----------------------------------------------------------------------------
+        if (isArray && isString) { deleteOneArrayVarStringObjects(userVarValues, index, true, false); }
+
+        // 3. if variable is an array: delete the array storage
+        // ----------------------------------------------------
+        //    NOTE: do this before checking for strings (if both 'var_isArray' and 'value_isStringPointer' bits are set: array of strings, with strings already deleted)
+        if (isArray) {       // variable is an array: delete array storage          
+        #if PRINT_HEAP_OBJ_CREA_DEL
+            _pDebugOut->print("----- (usr ar stor)"); _pDebugOut->println((uint32_t)userVarValues[index].pArray, HEX);
+        #endif
+            delete[]  userVarValues[index].pArray;
+            _userArrayObjectCount--;
+        }
+
+        // 4. if variable is a scalar string value: delete string
+        // ------------------------------------------------------
+        else if (isString) {                                                                                // variable is a scalar containing a string
+            if (userVarValues[index].pStringConst != nullptr) {
+            #if PRINT_HEAP_OBJ_CREA_DEL
+                _pDebugOut->print("----- (usr var str) "); _pDebugOut->println((uint32_t)userVarValues[index].pStringConst, HEX);
+            #endif
+                _userVarStringObjectCount--;
+                delete[]  userVarValues[index].pStringConst;
+            }
+        }
+
+        // 5. move up next user variables one place
+        //    if a user variable is used in currently loaded program: adapt index in program storage
+        // -----------------------------------------------------------------------------------------
+        for (int i = index; i < _userVarCount - 1; i++) {
+            userVarNames[i] = userVarNames[i + 1];
+            userVarValues[i] = userVarValues[i + 1];
+            userVarType[i] = userVarType[i + 1];
+
+            userVarUsedInProgram = (userVarType[i + 1] & var_userVarUsedByProgram);
+            if (userVarUsedInProgram) {
+
+                char* programStep = _programStorage;
+                int tokenType{};
+                do {
+                    tokenType = findTokenStep(programStep, tok_isVariable, var_isUser, i + 1);
+                    if (tokenType == '\0') { break; }
+                    --((TokenIsVariable*)programStep)->identValueIndex;
+                } while (true);
+            }
+        }
+
+        _userVarCount--;
+        varDeleted = true;
+    }
+
+    if (!varDeleted) { return result_var_notDeclared; }
+
+    return result_tokenFound;
+}
+
+
