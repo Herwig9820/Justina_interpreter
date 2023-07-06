@@ -36,15 +36,15 @@
 // *****************************************************************
 
 
-// ---------------------------------
-// *   execute internal function   *
-// ---------------------------------
+// -------------------------------------
+// *   execute internal cpp function   *
+// -------------------------------------
 
-// structure of an internal function: function name (expression, expression, ...) ;
+// structure of an internal cpp function: function name (expression, expression, ...) ;
 // during parsing, preliminary checks have been done already: minimum, maximum number of arguments allowed for the function and, for each argument supplied, whether a single value or an array is expected as argument
 // the expression list as a whole is put between parentheses (in contrast to command arguments)
 
-Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount, bool& forcedStopRequest, bool& forcedAbortRequest) {
+Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount, bool& forcedStopRequest, bool& forcedAbortRequest) {
 
     // this procedure is called when the closing parenthesis of an internal Justina function is encountered.
     // all internal Justina functions use the same standard mechanism (with exception of the eval() function):
@@ -64,7 +64,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
     // within the evaluation stack MUST BE  DELETED (if referenced, they will be deleted automatically by error handling)
 
 
-    // remember token address of internal function token (address from where the internal function is called), in case an error occurs (while passing arguments etc.)   
+    // remember token address of internal cpp function token (address from where the internal cpp function is called), in case an error occurs (while passing arguments etc.)   
     _activeFunctionData.errorProgramCounter = pFunctionStackLvl->function.tokenAddress;
 
     int functionIndex = pFunctionStackLvl->function.index;
@@ -981,7 +981,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             char resultValueType;
             execResult_type execResult = launchEval(pFunctionStackLvl, args[0].pStringConst);
             if (execResult != result_execOK) { return execResult; }
-            // a dummy 'EXTERNAL function' (executing the parsed eval() expressions) has just been 'launched' (and will start after current (right parenthesis) token is processed)
+            // a dummy 'Justina function' (executing the parsed eval() expressions) has just been 'launched' (and will start after current (right parenthesis) token is processed)
             // because eval function name token and single argument will be removed from stack now (see below, at end of this procedure), adapt CALLER evaluation stack levels
             _activeFunctionData.callerEvalStackLevels -= 2;
         }
@@ -1600,7 +1600,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalFunction(L
             else if (functionCode == fnccod_pinMode) { pinMode(args[0].longConst, args[1].longConst); }                     // args: pin, pin mode
             else if (functionCode == fnccod_analogRead) { fcnResult.longConst = analogRead(args[0].longConst); }            // arg: pin
         #if !defined(ARDUINO_ARCH_RP2040)                                                                                   // Arduino RP2040: prevent linker error
-            else if (functionCode == fnccod_analogReference) { analogReference(args[0].longConst); }                        // arg: reference type (0 to 5: see ARduino ref - 2 is external)
+            else if (functionCode == fnccod_analogReference) { analogReference(args[0].longConst); }                        // arg: reference type (0 to 5: see Arduino doc - 2 is external reference)
         #endif
             else if (functionCode == fnccod_analogWrite) { analogWrite(args[0].longConst, args[1].longConst); }             // args: pin, value
             else if (functionCode == fnccod_analogReadResolution) { analogReadResolution(args[0].longConst); }              // arg: bits

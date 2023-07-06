@@ -56,7 +56,7 @@ const char Justina_interpreter::cmdPar_104[4]{ cmdPar_expression,               
 const char Justina_interpreter::cmdPar_105[4]{ cmdPar_expression,                             cmdPar_expression,                               cmdPar_none,                                    cmdPar_none };
 const char Justina_interpreter::cmdPar_106[4]{ cmdPar_expression | cmdPar_optionalFlag,       cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
 const char Justina_interpreter::cmdPar_107[4]{ cmdPar_expression | cmdPar_multipleFlag,       cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
-const char Justina_interpreter::cmdPar_108[4]{ cmdPar_extFunction,                            cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
+const char Justina_interpreter::cmdPar_108[4]{ cmdPar_JustinaFunction,                        cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
 const char Justina_interpreter::cmdPar_109[4]{ cmdPar_varOptAssignment,                       cmdPar_expression,                               cmdPar_expression | cmdPar_optionalFlag,        cmdPar_none };
 const char Justina_interpreter::cmdPar_110[4]{ cmdPar_ident,                                  cmdPar_ident | cmdPar_multipleFlag,              cmdPar_none,                                    cmdPar_none };
 const char Justina_interpreter::cmdPar_111[4]{ cmdPar_varOptAssignment,                       cmdPar_varOptAssignment | cmdPar_multipleFlag,   cmdPar_none,                                    cmdPar_none };
@@ -91,7 +91,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"loadProg",        cmdcod_loadProg,        cmd_onlyImmediate,                                      0,0,    cmdPar_106,     cmdBlockNone},
 
     {"program",         cmdcod_program,         cmd_onlyProgramTop | cmd_skipDuringExec,                0,0,    cmdPar_103,     cmdBlockNone},
-    {"function",        cmdcod_function,        cmd_onlyInProgram | cmd_skipDuringExec,                 0,0,    cmdPar_108,     cmdBlockExtFunction},
+    {"function",        cmdcod_function,        cmd_onlyInProgram | cmd_skipDuringExec,                 0,0,    cmdPar_108,     cmdBlockJustinaFunction},
 
     {"for",             cmdcod_for,             cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_109,     cmdBlockFor},
     {"while",           cmdcod_while,           cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_104,     cmdBlockWhile},
@@ -179,8 +179,8 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
 };
 
 
-// internal (intrinsic) Justina functions: returning a result
-// ----------------------------------------------------------
+// internal cpp Justina functions: returning a result
+// --------------------------------------------------
 
 // the 8 array pattern bits indicate the order of arrays and scalars; bit b0 to bit b7 refer to parameter 1 to 8, if a bit is set, an array is expected as argument
 // if more than 8 arguments are supplied, only arguments 1 to 8 can be set as array arguments
@@ -526,7 +526,7 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
 
 Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int altIOstreamCount,
     long progMemSize, int JustinaConstraints, int SDcardChipSelectPin) :
-    _pExternIOstreams(pAltInputStreams), _externIOstreamCount(altIOstreamCount), _progMemorySize(progMemSize), _JustinaConstraints(JustinaConstraints), _SDcardChipSelectPin(SDcardChipSelectPin) {
+    _pExternIOstreams(pAltInputStreams), _externIOstreamCount(altIOstreamCount), _progMemorySize(progMemSize), _justinaConstraints(JustinaConstraints), _SDcardChipSelectPin(SDcardChipSelectPin) {
 
     // settings to be initialized when cold starting interpreter only
     // --------------------------------------------------------------
@@ -538,7 +538,7 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
     _userCBprocStartSet_count = 0;
 
     _resWordCount = (sizeof(_resWords)) / sizeof(_resWords[0]);
-    _functionCount = (sizeof(_functions)) / sizeof(_functions[0]);
+    _internCppFunctionCount = (sizeof(_functions)) / sizeof(_functions[0]);
     _termTokenCount = (sizeof(_terminals)) / sizeof(_terminals[0]);
     _symbvalueCount = (sizeof(_symbNumConsts)) / sizeof(_symbNumConsts[0]);
 
@@ -574,7 +574,7 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
     parsingStack.setDebugOutStream(static_cast<Stream**> (&_pDebugOut));                                // for debug printing within linked list object
 
     // particular stream is a TCP stream ? Retrigger TCP keep alive timer at each character read (communicated to Justina via application flags)
-    int TCP_externIOStreamIndex = ((_JustinaConstraints & 0xf0) >> 4) - 1;
+    int TCP_externIOStreamIndex = ((_justinaConstraints & 0xf0) >> 4) - 1;
     _pTCPstream = (TCP_externIOStreamIndex == -1) ? nullptr : _pExternIOstreams[TCP_externIOStreamIndex];
 
     initInterpreterVariables(true);
@@ -612,6 +612,37 @@ bool Justina_interpreter::setMainLoopCallback(void (*func)(long& appFlags)) {
     _housekeepingCallback = func;
     return true;
 }
+
+// -----------------------------
+// >>> call backs voor user CPP functies
+// -----------------------------
+
+bool Justina_interpreter::setUserBoolCppFunctionsEntryPoint(CppBoolFunction* pCppBoolFunctions, int cppBoolFunctionCount) {
+    _pCppBoolFunctions = pCppBoolFunctions;
+    _cppBoolFunctionCount = cppBoolFunctionCount;
+};
+
+bool Justina_interpreter::setUserLongCppFunctionsEntryPoint(CppLongFunction* pCppLongFunctions, int cppLongFunctionCount) {
+    _pCppLongFunctions = pCppLongFunctions;
+    _cppLongFunctionCount = cppLongFunctionCount;
+};
+
+bool Justina_interpreter::setUserFloatCppFunctionsEntryPoint(CppFloatFunction* pCppFloatFunctions, int cppFloatFunctionCount) {
+    _pCppFloatFunctions = pCppFloatFunctions;
+    _cppFloatFunctionCount = cppFloatFunctionCount;
+};
+
+bool Justina_interpreter::setUser_pCharCppFunctionsEntryPoint(Cpp_pCharFunction* pCpp_pCharFunctions, int cpp_pCharFunctionCount) {
+    _pCpp_pCharFunctions = pCpp_pCharFunctions;
+    _cpp_pCharFunctionCount = cpp_pCharFunctionCount;
+};
+
+bool Justina_interpreter::setUserCppCommandsEntryPoint(CppVoidCommand* pCppVoidCommands, int cppVoidCommandCount) {
+    _pCppVoidCommands = pCppVoidCommands;
+    _cppVoidCommandCount = cppVoidCommandCount;
+};
+
+// >>> -------------------------------------------------------------------------------------------------------------------------
 
 bool Justina_interpreter::setUserFcnCallback(void(*func) (const void** data, const char* valueType, const int argCount)) {
 
@@ -676,13 +707,13 @@ bool Justina_interpreter::run() {
 
     // initialise SD card now ?
     // 0 = no card reader, 1 = card reader present, do not yet initialise, 2 = initialise card now, 3 = init card & run start.txt function start() now
-    if ((_JustinaConstraints & 0b0011) >= 2) {
+    if ((_justinaConstraints & 0b0011) >= 2) {
         printTo(0, "\r\nLooking for an SD card...\r\n");
         execResult_type execResult = startSD();
         printTo(0, _SDinitOK ? "SD card found\r\n" : "SD card error: SD card NOT found\r\n");
     }
 
-    if ((_JustinaConstraints & 0b0011) == 3) {
+    if ((_justinaConstraints & 0b0011) == 3) {
         // open startup file and retrieve file number (which would be one, normally)
         _initiateProgramLoad = _SDinitOK;
         if (_initiateProgramLoad) {
@@ -707,6 +738,33 @@ bool Justina_interpreter::run() {
             printTo(0, "Loading program 'start.txt'...\r\n");
         }
     }
+
+
+
+    // -----------------------------
+    // >>> call backs voor user CPP functies: TEST aanroep
+    // -----------------------------
+
+    long v = 10;
+    const void* a[8]; char b[8]{}; int count;
+    a[0] = (void*)&v;
+    b[0] = value_isFloat;
+    Serial.print("bool callback vanuit main: "); Serial.println(_pCppBoolFunctions[0].func(a, b, count));
+    Serial.print("long callback vanuit main: "); Serial.println(_pCppLongFunctions[0].func(a, b, count));
+    Serial.print("long callback vanuit main: "); Serial.println(_pCppLongFunctions[1].func(a, b, count));
+    Serial.print("float callback vanuit main: "); Serial.println(_pCppFloatFunctions[0].func(a, b, count));
+    Serial.print("void callback vanuit main: "); _pCppVoidCommands[0].command(a, b, 1); Serial.println();
+
+    char str[20] = "98765";
+    b[0] = value_isStringPointer;
+
+    const void* valueArray[8]; valueArray[0] = str;
+    char* res = _pCpp_pCharFunctions[0].func(valueArray, b, count);
+    if (res != nullptr) { Serial.print("pchar callback vanuit main: "); Serial.println(res); }
+    else { Serial.println("---"); };
+
+    // >>> ------------------------------------------------------------------
+
 
     parsedStatementCount = 0;
     do {
@@ -956,7 +1014,7 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
     int funcNotDefIndex;
     if (result == result_tokenFound) {
         // checks at the end of parsing: any undefined functions (program mode only) ?  any open blocks ?
-        if (_programMode && (!allExternalFunctionsDefined(funcNotDefIndex))) { result = result_function_undefinedFunctionOrArray; }
+        if (_programMode && (!allJustinaFunctionsDefined(funcNotDefIndex))) { result = result_function_undefinedFunctionOrArray; }
         if (_blockLevel > 0) { result = result_block_noBlockEnd; }
     }
 
@@ -1039,7 +1097,7 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
     else {
         parsingStack.deleteList();
         _blockLevel = 0;
-        _extFunctionBlockOpen = false;
+        _justinaFunctionBlockOpen = false;
     }
 
     // the clear memory / clear all command is executed AFTER the execution phase
@@ -1142,7 +1200,7 @@ void Justina_interpreter::traceAndPrintDebugInfo() {
     int blockType = block_none;
     do {                                                                                                        // there is at least one open function in the call stack
         blockType = *(char*)pFlowCtrlStackLvl;
-        if (blockType == block_extFunction) { break; }
+        if (blockType == block_JustinaFunction) { break; }
         pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
     } while (true);
 
@@ -1150,9 +1208,9 @@ void Justina_interpreter::traceAndPrintDebugInfo() {
     nextStatementPointer = pDeepestOpenFunction->pNextStep;
 
     printlnTo(0); for (int i = 1; i <= _dispWidth; i++) { printTo(0, "-"); } printlnTo(0);
-    parseAndExecTraceString();                                                                                  // trace string may not contain keywords, external functions, generic names
+    parseAndExecTraceString();                                                                                  // trace string may not contain keywords, Justina functions, generic names
     char msg[150] = "";
-    sprintf(msg, "DEBUG ==>> NEXT [%s: ", extFunctionNames[pDeepestOpenFunction->functionIndex]);
+    sprintf(msg, "DEBUG ==>> NEXT [%s: ", JustinaFunctionNames[pDeepestOpenFunction->functionIndex]);
     printTo(0, msg);
     prettyPrintStatements(10, nextStatementPointer);
 
@@ -1167,7 +1225,7 @@ void Justina_interpreter::traceAndPrintDebugInfo() {
 // *   parse and exec trace string expressions   *
 // -----------------------------------------------
 
-// trace string may not contain keywords, external functions, generic names
+// trace string may not contain keywords, Justina functions, generic names
 
 void Justina_interpreter::parseAndExecTraceString() {
     char* pNextParseStatement{};
@@ -1235,14 +1293,14 @@ void Justina_interpreter::parseAndExecTraceString() {
 }
 
 
-// --------------------------------------------------------------
-// *   check if all external functions referenced are defined   *
-// --------------------------------------------------------------
+// -------------------------------------------------------------
+// *   check if all Justina functions referenced are defined   *
+// -------------------------------------------------------------
 
-bool Justina_interpreter::allExternalFunctionsDefined(int& index) {
+bool Justina_interpreter::allJustinaFunctionsDefined(int& index) {
     index = 0;
-    while (index < _extFunctionCount) {                                                                         // points to variable in use
-        if (extFunctionData[index].pExtFunctionStartToken == nullptr) { return false; }
+    while (index < _justinaFunctionCount) {                                                                     // points to variable in use
+        if (justinaFunctionData[index].pJustinaFunctionStartToken == nullptr) { return false; }
         index++;
     }
     return true;
@@ -1291,9 +1349,9 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
     // note: objects living only during execution do not need to be deleted: they are all always deleted when the execution phase ends (even if with execution errors)
     // more in particular: evaluation stack, intermediate alphanumeric constants, local storage areas, local variable strings, local array objects
 
-    // delete identifier name objects on the heap (variable names, external function names) 
+    // delete identifier name objects on the heap (variable names, Justina function names) 
     deleteIdentifierNameObjects(programVarNames, _programVarNameCount);
-    deleteIdentifierNameObjects(extFunctionNames, _extFunctionCount);
+    deleteIdentifierNameObjects(JustinaFunctionNames, _justinaFunctionCount);
     if (withUserVariables) { deleteIdentifierNameObjects(userVarNames, _userVarCount, true); }
 
     // delete variable heap objects: array variable element string objects
@@ -1459,13 +1517,13 @@ void Justina_interpreter::initInterpreterVariables(bool fullReset) {
     // intialised at cold start AND each time the interpreter is reset
 
     _blockLevel = 0;
-    _extFunctionCount = 0;
+    _justinaFunctionCount = 0;
     _paramOnlyCountInFunction = 0;
     _localVarCountInFunction = 0;
     _localVarCount = 0;
     _staticVarCountInFunction = 0;
     _staticVarCount = 0;
-    _extFunctionBlockOpen = false;
+    _justinaFunctionBlockOpen = false;
 
     _programVarNameCount = 0;
     if (fullReset) { _userVarCount = 0; }

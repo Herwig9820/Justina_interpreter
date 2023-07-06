@@ -57,14 +57,6 @@ class LinkedList {
     static const int listNameSize = 9;             // including terminating '\0'
 
 
-    enum listType_type {                                       // identifier type
-        list_isToken,
-        list_isVariable,
-        list_isExtFunction,
-        list_isStack
-    };
-
-
     // ------------------
     // *   structures   *
     // ------------------
@@ -89,7 +81,6 @@ class LinkedList {
 
     ListElemHead* _pFirstElement = nullptr;                     // pointers to first and last list element
     ListElemHead* _pLastElement = nullptr;
-    listType_type _listType{};
 
     char _listName[listNameSize] = "";                                         // includes terminating '\0'
     int _listID{ 0 };                                       // list ID (in order of creation) 
@@ -131,7 +122,7 @@ class Justina_interpreter {
     static constexpr int MAX_STAT_VARS{ 255 };              // max. static variables allowed across all parsed functions (only). Absolute limit: 255
     static constexpr int MAX_LOCAL_VARS{ 255 };             // max. local variables allowed across all parsed functons, including function parameters. Absolute limit: 255
     static constexpr int MAX_LOC_VARS_IN_FUNC{ 32 };        // max. local and parameter variables allowed (only) in an INDIVIDUAL parsed function. Absolute limit: 255 
-    static constexpr int MAX_EXT_FUNCS{ 32 };               // max. user functions allowed. Absolute limit: 255
+    static constexpr int MAX_JUSTINA_FUNCS{ 32 };           // max. Justina functions allowed. Absolute limit: 255
     static constexpr int MAX_ARRAY_DIMS{ 3 };               // max. array dimensions allowed. Absolute limit: 3 
     static constexpr int MAX_ARRAY_ELEM{ 200 };             // max. elements allowed in an array. Absolute limit: 2^15-1 = 32767. Individual dimensions are limited to a size of 255
     static constexpr int MAX_LAST_RESULT_DEPTH{ 10 };       // max. depth of 'last results' FiFo
@@ -159,7 +150,7 @@ class Justina_interpreter {
     enum blockType_type {
         // value 1: block type
         block_none,                                             // command is not a block command
-        block_extFunction,
+        block_JustinaFunction,
         block_for,
         block_while,
         block_if,
@@ -462,8 +453,8 @@ class Justina_interpreter {
     enum tokenType_type {                                       // token type
         tok_no_token,                                           // no token to process
         tok_isReservedWord,
-        tok_isInternFunction,
-        tok_isExternFunction,
+        tok_isInternCppFunction,
+        tok_isJustinaFunction,
         tok_isConstant,
         tok_isVariable,
         tok_isGenericName,
@@ -510,7 +501,7 @@ class Justina_interpreter {
         result_maxVariableNamesReached = 1300,
         result_maxLocalVariablesReached,
         result_maxStaticVariablesReached,
-        result_maxExtFunctionsReached,
+        result_maxJustinaFunctionsReached,
         result_progMemoryFull,
 
         // token errors
@@ -621,7 +612,7 @@ class Justina_interpreter {
         result_array_dimCountInvalid,
         result_array_valueTypeIsFixed,
 
-        // internal function arguments
+        // internal cpp function arguments
         result_arg_outsideRange = 3100,
         result_arg_integerTypeExpected,
         result_arg_numberExpected,
@@ -702,15 +693,15 @@ class Justina_interpreter {
 
     static constexpr int _defaultPrintFlags = 0x00;
 
-    static constexpr char c_extFunctionFirstOccurFlag = 0x10;     // flag: min > max means not initialized
-    static constexpr char c_extFunctionMaxArgs = 0xF;             // must fit in 4 bits
+    static constexpr char c_JustinaFunctionFirstOccurFlag = 0x10; // flag: min > max means not initialized
+    static constexpr char c_JustinaFunctionMaxArgs = 0xF;         // must fit in 4 bits
 
     // these constants are used to check to which token group (or group of token groups) a parsed token belongs
     static constexpr uint8_t lastTokenGroup_0 = 1 << 0;          // operator
     static constexpr uint8_t lastTokenGroup_1 = 1 << 1;          // comma
     static constexpr uint8_t lastTokenGroup_2 = 1 << 2;          // (line start), semicolon, keyword, generic identifier
     static constexpr uint8_t lastTokenGroup_3 = 1 << 3;          // number, alphanumeric constant, right bracket
-    static constexpr uint8_t lastTokenGroup_4 = 1 << 4;          // internal or external function name
+    static constexpr uint8_t lastTokenGroup_4 = 1 << 4;          // internal cpp or Justina function name
     static constexpr uint8_t lastTokenGroup_5 = 1 << 5;          // left parenthesis
     static constexpr uint8_t lastTokenGroup_6 = 1 << 6;          // variable
 
@@ -788,9 +779,9 @@ class Justina_interpreter {
 
 
     // type & info about of parenthesis level
-    static constexpr uint8_t extFunctionBit{ B00000001 };
-    static constexpr uint8_t extFunctionPrevDefinedBit{ B00000010 };
-    static constexpr uint8_t intFunctionBit{ B00000100 };
+    static constexpr uint8_t JustinaFunctionBit{ B00000001 };
+    static constexpr uint8_t JustinaFunctionPrevDefinedBit{ B00000010 };
+    static constexpr uint8_t internCppFunctionBit{ B00000100 };
     static constexpr uint8_t openParenthesisBit{ B00001000 };                                  // not a function
     static constexpr uint8_t arrayBit{ B00010000 };
     static constexpr uint8_t varAssignmentAllowedBit{ B00100000 };
@@ -824,7 +815,7 @@ class Justina_interpreter {
     static constexpr uint8_t cmdPar_varNoAssignment = 2;    // and no operators
     static constexpr uint8_t cmdPar_varOptAssignment = 3;
     static constexpr uint8_t cmdPar_expression = 4;
-    static constexpr uint8_t cmdPar_extFunction = 5;
+    static constexpr uint8_t cmdPar_JustinaFunction = 5;
     static constexpr uint8_t cmdPar_numConstOnly = 6;
     static constexpr uint8_t cmdPar_ident = 7;
 
@@ -883,6 +874,7 @@ class Justina_interpreter {
     // - INTERMEDIATE constants (execution only) and variables: value type is maintained together with variable / intermediate constant data (per variable, array or constant) 
     // Note: because the value type is not fixed for scalar variables (type can dynamically change at runtime), this info is not maintained in the parsed 'variable' token 
 
+public:
     static constexpr uint8_t value_typeMask = 0x03;                    // mask for value type 
     static constexpr uint8_t value_isVarRef = 0x00;
     static constexpr uint8_t value_isLong = 0x01;
@@ -890,7 +882,6 @@ class Justina_interpreter {
     static constexpr uint8_t value_isStringPointer = 0x03;
 
 
-public:
     // application flag bits
     //----------------------
     // bits 3-0: flags signaling specific Justina status conditions to caller
@@ -906,7 +897,7 @@ public:
     static constexpr long appFlag_stoppedInDebug = 0x06L;           // stopped in debug status
 
     static constexpr long appFlag_dataInOut = 0x08L;                // external I/O stream transmitted or received data (not SD) 
-    static constexpr long appFlag_TCPkeepAlive = 0x10L;                // reset keep alive timer (extend keep alive period)
+    static constexpr long appFlag_TCPkeepAlive = 0x10L;             // reset keep alive timer (extend keep alive period)
 
     // bits 11-8: flags signaling specific caller status conditions to Justina
     static constexpr long appFlag_requestMask = 0x0f00;
@@ -967,14 +958,14 @@ public:
         CstValue cstValue;
     };
 
-    struct TokenIsIntFunction {                                 // token storage for internal function: length 2
+    struct TokenIsInternCppFunction {                           // token storage for internal cpp function: length 2
         char tokenType;                                         // will be set to specific token type
         char tokenIndex;                                        // index into list of tokens
     };
 
-    struct TokenIsExtFunction {                                 // token storage for external function: length 2
+    struct TokenIsJustinaFunction {                             // token storage for Justina function: length 2
         char tokenType;                                         // will be set to specific token type
-        char identNameIndex;                                    // index into external function name and additional data storage 
+        char identNameIndex;                                    // index into Justina function name and additional data storage 
     };
 
     struct TokenIsVariable {                                    // token storage for variable: length 4
@@ -993,8 +984,8 @@ public:
         char* pTokenChars;
         TokenIsResWord* pResW;
         TokenIsConstant* pCstToken;
-        TokenIsIntFunction* pIntFnc;
-        TokenIsExtFunction* pExtFnc;
+        TokenIsInternCppFunction* pInternCppFnc;
+        TokenIsJustinaFunction* pJustinaFnc;
         TokenIsVariable* pVar;
         TokenIsTerminal* pTermTok;                             // terminal token
     };
@@ -1017,8 +1008,8 @@ public:
     };
 
 
-    struct ExtFunctionData {
-        char* pExtFunctionStartToken;                           // ext. function: pointer to start of function (token)
+    struct JustinaFunctionData {
+        char* pJustinaFunctionStartToken;                       // Justina function: pointer to start of function (token)
 
         char paramOnlyCountInFunction;
         char localVarCountInFunction;                           // needed to reserve run time storage for local variables 
@@ -1150,7 +1141,7 @@ public:
     struct FuncDef {                                            // function names with min & max number of arguments allowed 
         const char* funcName;
         char functionCode;
-        char minArgs;                                           // internal (intrinsic) functions: min & max n� of allowed arguments
+        char minArgs;                                           // internal cpp functions: min & max n� of allowed arguments
         char maxArgs;
         char arrayPattern;                                      // order of arraysand scalars; bit b0 to bit b7 refer to parameter 1 to 8, if a bit is set, an array is expected as argument
     };
@@ -1210,9 +1201,9 @@ public:
     };
 
     // block commands only (FOR, END, etc.): type of block, position in block, sequence check in block: allowed previous block commands 
-    static constexpr CmdBlockDef cmdBlockExtFunction{ block_extFunction, block_startPos, block_na, block_na };                // 'IF' block mid position 2, min & max previous position is block start & block position 1, resp.
+    static constexpr CmdBlockDef cmdBlockJustinaFunction{ block_JustinaFunction, block_startPos, block_na, block_na };        // 'IF' block mid position 2, min & max previous position is block start & block position 1, resp.
     static constexpr CmdBlockDef cmdBlockWhile{ block_while, block_startPos, block_na, block_na };                            // 'WHILE' block start
-    static constexpr CmdBlockDef cmdBlockFor{ block_for, block_startPos, block_na, block_na };                               // 'FOR' block start
+    static constexpr CmdBlockDef cmdBlockFor{ block_for, block_startPos, block_na, block_na };                                // 'FOR' block start
     static constexpr CmdBlockDef cmdBlockIf{ block_if, block_startPos, block_na, block_na };                                  // 'IF' block start
     static constexpr CmdBlockDef cmdBlockIf_elseIf{ block_if, block_midPos1, block_startPos, block_midPos1 };                 // 'IF' block mid position 1, min & max previous position is block start & block position 1, resp.
     static constexpr CmdBlockDef cmdBlockIf_else{ block_if, block_midPos2, block_startPos, block_midPos1 };                   // 'IF' block mid position 2, min & max previous position is block start & block position 1, resp.
@@ -1235,9 +1226,45 @@ public:
     static const SymbNumConsts _symbNumConsts[60];
 
 
+    // -------------------------------------------------------
+    // >>> USER CPP functions: 'name + function pointer' structure
+    // -------------------------------------------------------
+
+    struct CppBoolFunction {
+        const char* cppFunctionName;                                                            // function name
+        bool (*func)(const void** pdata, const char* valueType, const int argCount);            // function pointer
+    };
+
+    struct CppLongFunction {
+        const char* cppFunctionName;
+        long (*func)(const void** pdata, const char* valueType, const int argCount);
+    };
+
+    struct CppFloatFunction {
+        const char* cppFunctionName;
+        float (*func)(const void** pdata, const char* valueType, const int argCount);
+    };
+
+    struct Cpp_pCharFunction {
+        const char* cppFunctionName;
+        char* (*func)(const void** pdata, const char* valueType, const int argCount);
+    };
+
+    struct CppVoidCommand {
+        const char* cppCommandName;
+        void (*command)(const void** pdata, const char* valueType, const int argCount);
+    };
+
+    // >>> ------------------------------------------------------------------------------------------------------------
+
+
+
     // ---------
     // variables
     // ---------
+
+
+
 
     OpenFile openFiles[MAX_OPEN_SD_FILES];                      // open files: file paths and attributed file numbers
     int* _pIOprintColumns{};                                    // points to array on the heap
@@ -1248,12 +1275,12 @@ public:
     bool _SDinitOK = false;
 
     int _resWordCount;                                          // count of keywords in keyword table 
-    int _functionCount;                                         // count of internal (intrinsic) functions in functions table
+    int _internCppFunctionCount;                                         // count of internal cpp functions in functions table
     int _symbvalueCount;
     int _termTokenCount;                                        // count of operators and other terminals in terminals table
 
     bool _isProgramCmd = false;
-    bool _isExtFunctionCmd = false;                             // FUNCTION command is being parsed (not the complete function)
+    bool _isJustinaFunctionCmd = false;                             // FUNCTION command is being parsed (not the complete function)
     bool _isGlobalOrUserVarCmd = false;                                // VAR command is being parsed
     bool _isLocalVarCmd = false;                                // LOCAL command is being parsed
     bool _isStaticVarCmd = false;                               // STATIC command is being parsed
@@ -1275,7 +1302,7 @@ public:
     bool _leadingSpaceCheck{ false };
 
     // parsing stack: value supplied when pushing data to stack OR value returned when stack drops 
-    char _minFunctionArgs{ 0 };                                // if external function defined prior to call: min & max allowed arguments. Otherwise, counters to keep track of min & max actual arguments in previous calls 
+    char _minFunctionArgs{ 0 };                                // if Justina function defined prior to call: min & max allowed arguments. Otherwise, counters to keep track of min & max actual arguments in previous calls 
     char _maxFunctionArgs{ 0 };
     int _functionIndex{ 0 };
     int _variableNameIndex{ 0 };
@@ -1290,9 +1317,9 @@ public:
     LE_parsingStack* _pParsingStack;
     LE_parsingStack* _pFunctionDefStack;
 
-    Justina_interpreter::tokenType_type _lastTokenType = Justina_interpreter::tok_no_token;               // type of last token parsed
-    Justina_interpreter::tokenType_type _lastTokenType_hold = Justina_interpreter::tok_no_token;
-    Justina_interpreter::tokenType_type _previousTokenType = Justina_interpreter::tok_no_token;
+    tokenType_type _lastTokenType = tok_no_token;               // type of last token parsed
+    tokenType_type _lastTokenType_hold = tok_no_token;
+    tokenType_type _previousTokenType = tok_no_token;
 
     termin_code _lastTermCode;               // type of last token parsed
     termin_code _lastTermCode_hold;
@@ -1329,7 +1356,7 @@ public:
     bool _isCommand = false;                                    // a command is being parsed (instruction starting with a keyword)
     int _parenthesisLevel = 0;                               // current number of open parentheses
     uint8_t _lastTokenGroup_sequenceCheck_bit = 0;                   // bits indicate which token group the last token parsed belongs to          
-    bool _extFunctionBlockOpen = false;                         // commands within FUNCTION...END block are being parsed (excluding END command)
+    bool _justinaFunctionBlockOpen = false;                         // commands within FUNCTION...END block are being parsed (excluding END command)
     int _blockLevel = 0;                                     // current number of open blocks
 
     LinkedList parsingStack;                                      // during parsing: linked list keeping track of open parentheses and open blocks
@@ -1392,17 +1419,36 @@ public:
     int _programVarNameCount{ 0 };                                 // counts number of variable names (global variables: also stores values) 
     int _localVarCountInFunction{ 0 };                             // counts number of local variables in a specific function (names only, values not used)
     int _paramOnlyCountInFunction{ 0 };
-    int _localVarCount{ 0 };                                      // local variable count (across all functions)
+    int _localVarCount{ 0 };                                       // local variable count (across all functions)
     int _staticVarCountInFunction{ 0 };
     int _staticVarCount{ 0 };                                      // static variable count (across all functions)
-    int _extFunctionCount{ 0 };                                    // external function count
+    int _justinaFunctionCount{ 0 };                                // Justina function count
     int _lastValuesCount{ 0 };
     int _userCBprocStartSet_count = 0;
     int _userCBprocAliasSet_count = 0;
 
+
+    // -----------------------------
+    // >>> entry points for call backs voor user CPP functies
+    // -----------------------------
+
+    CppBoolFunction* _pCppBoolFunctions{ nullptr };
+    CppLongFunction* _pCppLongFunctions{ nullptr };
+    CppFloatFunction* _pCppFloatFunctions{ nullptr };
+    Cpp_pCharFunction* _pCpp_pCharFunctions{ nullptr };
+    CppVoidCommand* _pCppVoidCommands{ nullptr };
+
+    int _cppBoolFunctionCount{ 0 };
+    int _cppLongFunctionCount{ 0 };
+    int _cppFloatFunctionCount{ 0 };
+    int _cpp_pCharFunctionCount{ 0 };
+    int _cppVoidCommandCount{ 0 };
+
+    // >>> ----------------------------------------------------------------------------------------
+
     long _appFlags = 0x00L;                                         // bidirectional flags to transfer info / requests between caller and Justina library
 
-    // number of currently [called external functions + open eval() levels + stopped programs]: equals flow ctrl stack levels minus open loop (if, for, ...) blocks (= blocks being executed)
+    // number of currently [called Justina functions + open eval() levels + stopped programs]: equals flow ctrl stack levels minus open loop (if, for, ...) blocks (= blocks being executed)
     int _callStackDepth{ 0 };
     // number of stopped programs: equals imm mode cmd stack depth minus open eval() strings (= eval() strings being executed)
     int _openDebugLevels{ 0 };
@@ -1423,23 +1469,23 @@ public:
 
     char _programName[MAX_IDENT_NAME_LEN + 1];
 
-    int _JustinaConstraints{ 0 };
+    int _justinaConstraints{ 0 };
     int _externIOstreamCount = 0;
-    
+
     Stream** _pExternIOstreams{ nullptr };                             // available external IO streams (set by Justina caller)
-    Stream* _pTCPstream{nullptr};                                   // pointer to TCP stream with keep alive setting implemented in code (set by Justina caller)
-    
+    Stream* _pTCPstream{ nullptr };                                   // pointer to TCP stream with keep alive setting implemented in code (set by Justina caller)
+
 
     // for use by cout..., dbout, ... commands (without explicit stream indicated)
-    Stream* _pConsoleIn{ nullptr }, * _pConsoleOut{ nullptr }, * _pDebugOut{ nullptr }; 
+    Stream* _pConsoleIn{ nullptr }, * _pConsoleOut{ nullptr }, * _pDebugOut{ nullptr };
     int _consoleIn_sourceStreamNumber{}, _consoleOut_sourceStreamNumber{}, _debug_sourceStreamNumber{};        // != 0: originating stream (external or SD)
-    int* _pConsolePrintColumn{nullptr}, *_pDebugPrintColumn {nullptr};                      
-    int* _pLastPrintColumn{nullptr};
+    int* _pConsolePrintColumn{ nullptr }, * _pDebugPrintColumn{ nullptr };
+    int* _pLastPrintColumn{ nullptr };
 
     Stream* _pStreamIn{ nullptr }, * _pStreamOut{ nullptr };
     int _streamNumberIn{ 0 }, _streamNumberOut{ 0 };
 
-    
+
     long _progMemorySize{};
 
     char* _programStorage;                                      // pointer to start of program storage
@@ -1506,8 +1552,8 @@ public:
 
 
     // function key data storage
-    char* extFunctionNames[MAX_EXT_FUNCS];
-    ExtFunctionData extFunctionData[MAX_EXT_FUNCS];
+    char* JustinaFunctionNames[MAX_JUSTINA_FUNCS];
+    JustinaFunctionData justinaFunctionData[MAX_JUSTINA_FUNCS];
 
     LE_evalStack* _pEvalStackTop{ nullptr }, * _pEvalStackMinus1{ nullptr }, * _pEvalStackMinus2{ nullptr };
     void* _pFlowCtrlStackTop{ nullptr }, * _pFlowCtrlStackMinus1{ nullptr }, * _pFlowCtrlStackMinus2{ nullptr };
@@ -1572,7 +1618,20 @@ public:
     Justina_interpreter(Stream** const pAltInputStreams, int altIOstreamCount, long progMemSize, int SDcardConstraints = 0, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);               // constructor
     ~Justina_interpreter();               // deconstructor
     bool setMainLoopCallback(void (*func)(long& appFlags));                   // set callback functions
+
+
+    // -----------------------------
+    // >>> call backs voor user CPP functies
+    // -----------------------------
+    bool setUserBoolCppFunctionsEntryPoint(CppBoolFunction* pCppBoolFunctions, int cppBoolFunctionCount);
+    bool setUserLongCppFunctionsEntryPoint(CppLongFunction* pCppLongFunctions, int cpplongFunctionCount);
+    bool setUserFloatCppFunctionsEntryPoint(CppFloatFunction* pCppFloatFunctions, int cppfloatFunctionCount);
+    bool setUser_pCharCppFunctionsEntryPoint(Cpp_pCharFunction* pCpp_pCharFunctions, int cpp_pCharFunctionCount);
+    bool setUserCppCommandsEntryPoint(CppVoidCommand* pCppVoidCommands, int cppVoidCommandCount);
+    // >>> -------------------------------------------------------------------------------------------------------------------------
+
     bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType, const int argCount));
+
     bool run();
 
     int readFrom(int streamNumber);
@@ -1636,18 +1695,19 @@ private:
     bool parseAsNumber(char*& pNext, parseTokenResult_type& result);
     bool parseAsStringConstant(char*& pNext, parseTokenResult_type& result);
     bool parseTerminalToken(char*& pNext, parseTokenResult_type& result);
-    bool parseAsInternFunction(char*& pNext, parseTokenResult_type& result);
-    bool parseAsExternFunction(char*& pNext, parseTokenResult_type& result);
+    bool parseAsInternCPPfunction(char*& pNext, parseTokenResult_type& result);
+    bool parseAsExternCPPfunction(char*& pNext, parseTokenResult_type& result);
+    bool parseAsJustinaFunction(char*& pNext, parseTokenResult_type& result);
     bool parseAsVariable(char*& pNext, parseTokenResult_type& result);
     bool parseAsIdentifierName(char*& pNext, parseTokenResult_type& result);
 
     bool checkCommandKeyword(parseTokenResult_type& result);
     bool checkCommandArgToken(parseTokenResult_type& result, int& clearIndicatore);
-    bool checkExtFunctionArguments(parseTokenResult_type& result, int& minArgCnt, int& maxArgCnt);
+    bool checkJustinaFunctionArguments(parseTokenResult_type& result, int& minArgCnt, int& maxArgCnt);
     bool checkArrayDimCountAndSize(parseTokenResult_type& result, int* arrayDef_dims, int& dimCnt);
     int getIdentifier(char** pIdentArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNew, bool isUserVar = false);
-    bool checkInternFuncArgArrayPattern(parseTokenResult_type& result);
-    bool checkExternFuncArgArrayPattern(parseTokenResult_type& result, bool isFunctionClosingParenthesis);
+    bool checkInternCppFuncArgArrayPattern(parseTokenResult_type& result);
+    bool checkJustinaFuncArgArrayPattern(parseTokenResult_type& result, bool isFunctionClosingParenthesis);
     bool initVariable(uint16_t varTokenStep, uint16_t constTokenStep);
 
 
@@ -1661,7 +1721,7 @@ private:
     void deleteConstStringObjects(char* pToken);
     void parseAndExecTraceString();
     parseTokenResult_type parseStatement(char*& pInputLine, char*& pNextParseStatement, int& clearIndicator);
-    bool allExternalFunctionsDefined(int& index);
+    bool allJustinaFunctionsDefined(int& index);
     void prettyPrintStatements(int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
     void printParsingResult(parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* pErrorPos);
 
@@ -1676,10 +1736,10 @@ private:
 
     execResult_type  execUnaryOperation(bool isPrefix);
     execResult_type  execInfixOperation();
-    execResult_type  execInternalFunction(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount, bool& forcedStopRequest, bool& forcedAbortRequest);
-    execResult_type  launchExternalFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount);
+    execResult_type  execInternalCppFunction(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount, bool& forcedStopRequest, bool& forcedAbortRequest);
+    execResult_type  launchJustinaFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount);
     execResult_type  launchEval(LE_evalStack*& pFunctionStackLvl, char* parsingInput);
-    execResult_type  terminateExternalFunction(bool addZeroReturnValue = false);
+    execResult_type  terminateJustinaFunction(bool addZeroReturnValue = false);
     execResult_type  terminateEval();
     execResult_type execProcessedCommand(bool& isFunctionReturn, bool& forcedStopRequest, bool& forcedAbortRequest);
     execResult_type testForLoopCondition(bool& fail);
@@ -1704,7 +1764,7 @@ private:
     void clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, bool errorWhileCurrentlyStoppedPrograms = false, bool isAbortCommand = false);
     void clearParsedCommandLineStack(int n);
 
-    void deleteOneArrayVarStringObjects(Justina_interpreter::Val* varValues, int index, bool isUserVar, bool isLocalVar);
+    void deleteOneArrayVarStringObjects(Val* varValues, int index, bool isUserVar, bool isLocalVar);
     execResult_type deleteVarStringObject(LE_evalStack* pStackLvl);
     execResult_type deleteIntermStringObject(LE_evalStack* pStackLvl);
 

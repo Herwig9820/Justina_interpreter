@@ -109,13 +109,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);                    // copy arguments from evaluationi stack
                 if (((uint8_t)(valueType[0]) != value_isLong) && ((uint8_t)(valueType[0]) != value_isFloat)) { return result_arg_numberExpected; }
                 if ((uint8_t)(valueType[0]) == value_isFloat) { args[0].longConst = (int)args[0].floatConst; }
-                // specifying 'retain data' or 'release memory' argument: silent mode. Note: 'retain data' will only set if allowed by _JustinaConstraints 
-                _keepInMemory = ((args[0].longConst != 0) && ((_JustinaConstraints & 0b0100) == 0b0100));                   // silent mode (even not possible to cancel)
+                // specifying 'retain data' or 'release memory' argument: silent mode. Note: 'retain data' will only set if allowed by _justinaConstraints 
+                _keepInMemory = ((args[0].longConst != 0) && ((_justinaConstraints & 0b0100) == 0b0100));                   // silent mode (even not possible to cancel)
                 return result_quit;
             }
 
             else {      // keep in memory when quitting, cancel: ask user
-                if ((_JustinaConstraints & 0b0100) == 0b0100) {                                                             // retaining data is allowed: ask question and note answer
+                if ((_justinaConstraints & 0b0100) == 0b0100) {                                                             // retaining data is allowed: ask question and note answer
                     while (_pConsoleIn->available() > 0) { readFrom(0); }                                                   // empty console buffer first (to allow the user to start with an empty line)
 
                     do {
@@ -205,18 +205,18 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     // skip command ? 
                     if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_skip) {
                         // If open function block found, check that skipping next step is allowed
-                        if (blockType == block_extFunction) {  // open function block (not an open loop block)
+                        if (blockType == block_JustinaFunction) {                                               // open function block (not an open loop block)
                             // check if next step is start of a command (reserved word) and that it is the start or end of a block command
                             char* pNextStep = ((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep;
-                            int tokenType = *pNextStep & 0x0F;             // always first character (any token)
-                            if (tokenType != tok_isReservedWord) { break; }                        // ok
+                            int tokenType = *pNextStep & 0x0F;                                                  // always first character (any token)
+                            if (tokenType != tok_isReservedWord) { break; }                                     // ok
                             int tokenindex = ((TokenIsResWord*)pNextStep)->tokenIndex;
                             nextStepBlockAction = _resWords[tokenindex].cmdBlockDef.blockPosOrAction;
                         }
                     }
 
                     pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
-                } while ((blockType != block_extFunction) && (blockType != block_eval));
+                } while ((blockType != block_JustinaFunction) && (blockType != block_eval));
 
                 // access the flow control stack level below the stack level for the active function, and check the blocktype: is it an open block within the function ?
                 // (if not, then it's the stack level for the caller already)
@@ -265,14 +265,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 blockType = *(char*)_pFlowCtrlStackTop;
 
                 // load local storage pointers again for interrupted function and restore pending step & active function information for interrupted function
-                if (blockType == block_extFunction) {
+                if (blockType == block_JustinaFunction) {
                     _activeFunctionData = *(OpenFunctionData*)_pFlowCtrlStackTop;
                 }
 
                 // delete FLOW CONTROL stack level that contained caller function storage pointers and return address (all just retrieved to _activeFunctionData)
                 flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);
                 _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
-            } while (blockType != block_extFunction);
+            } while (blockType != block_JustinaFunction);
             --_callStackDepth;          // deepest open function removed from flow control stack (as well as optional debug command line open blocks) 
 
             // info needed to check when commands like step out, ... have finished executing, returning control to user
@@ -913,7 +913,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_halt) {
                 char s[100 + MAX_IDENT_NAME_LEN];
                 bool isProgramFunction = (_activeFunctionData.pNextStep < (_programStorage + _progMemorySize));     // is this a program function ?
-                if (isProgramFunction) { sprintf(s, "===== Program stopped in user function %s: press ENTER to continue =====", extFunctionNames[_activeFunctionData.functionIndex]); }
+                if (isProgramFunction) { sprintf(s, "===== Program stopped in user function %s: press ENTER to continue =====", JustinaFunctionNames[_activeFunctionData.functionIndex]); }
                 else { strcpy(s, "Press ENTER to continue"); }
                 printlnTo(0, s);
             }
@@ -1764,7 +1764,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
                 ((OpenBlockTestData*)_pFlowCtrlStackTop)->loopControl &= ~withinIteration;                                  // at the end of an iteration
 
-                // do NOT reset in case of End Function: _activeFunctionData will receive its values in routine terminateExternalFunction()
+                // do NOT reset in case of End Function: _activeFunctionData will receive its values in routine terminateJustinaFunction()
                 _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                    // command execution ended
 
                 if (exitLoop) {
@@ -1789,10 +1789,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         {
             isFunctionReturn = true;
             bool returnWithZero = (cmdParamCount == 0);                                                                     // RETURN statement without expression, or END statement: return a zero
-            execResult = terminateExternalFunction(returnWithZero);
+            execResult = terminateJustinaFunction(returnWithZero);
             if (execResult != result_execOK) { return execResult; }
 
-            // DO NOT reset _activeFunctionData.activeCmd_ResWordCode: _activeFunctionData will receive its values in routine terminateExternalFunction()
+            // DO NOT reset _activeFunctionData.activeCmd_ResWordCode: _activeFunctionData will receive its values in routine terminateJustinaFunction()
         }
         break;
 
@@ -1849,9 +1849,9 @@ Justina_interpreter::execResult_type Justina_interpreter::testForLoopCondition(b
 };
 
 
-// ---------------------------------------------------------------------------
-// copy command arguments or internal function arguments from evaluation stack
-// ---------------------------------------------------------------------------
+// -------------------------------------------------------------------------------
+// copy command arguments or internal cpp function arguments from evaluation stack
+// -------------------------------------------------------------------------------
 
 Justina_interpreter::execResult_type Justina_interpreter::copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsNonConstantVar, bool* argIsArray, char* valueType, Val* args, bool prepareForCallback, Val* dummyArgs) {
     execResult_type execResult;

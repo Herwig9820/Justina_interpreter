@@ -94,6 +94,51 @@ unsigned long heartbeatPeriod{ 500 };                                           
 void heartbeat();
 void execAction(char c);
 
+
+
+//--------------------------------------------
+// >>> user CPP functions
+//--------------------------------------------
+
+bool userFcn_test2(const void** pdata, const char* valueType, const int argCount) ;
+long userFcn_test1(const void** pdata, const char* valueType, const int argCount);
+long userFcn_test3(const void** pdata, const char* valueType, const int argCount);
+char* userFcn_test4(const void** pdata, const char* valueType, const int argCount);
+float userFcn_test5(const void** pdata, const char* valueType, const int argCount);
+void userFcn_readPort(const void** pdata, const char* valueType, const int argCount);
+void userFcn_writePort(const void** pdata, const char* valueType, const int argCount);
+void userFcn_togglePort(const void** pdata, const char* valueType, const int argCount);
+
+
+// each variable must contain at least one entry (Justina function or (command name) as a constant string, procedure naam of c++ implementation)
+// if no entries of a specific category, enter one entry, as follows: {"", nullptr}
+
+Justina_interpreter::CppBoolFunction cppBoolFunctions[1]{
+    { "test2", userFcn_test2 }
+};
+
+Justina_interpreter::CppLongFunction cppLongFunctions[2]{
+    { "test1", userFcn_test1},
+    { "test3", userFcn_test3}
+};
+
+Justina_interpreter::CppFloatFunction cppFloatFunctions[1]{
+    { "test5", userFcn_test5}
+};
+
+Justina_interpreter::Cpp_pCharFunction cpppCharFunctions[1]{
+    {"test4",userFcn_test4 }
+};
+
+Justina_interpreter::CppVoidCommand  cpppCommands[3]{
+    {"readPort", userFcn_readPort},
+    {"writePort", userFcn_writePort},
+    {"togglePort", userFcn_togglePort}
+};
+
+// >>> ----------------------------------------------------------------------------------------------------
+
+
 // -------------------------------
 // *   Arduino setup() routine   *
 // -------------------------------
@@ -122,7 +167,7 @@ void setup() {
     do {
         ledState = !ledState;
         loopCount++;
-        digitalWrite(HEARTBEAT_PIN, ledState);                                                
+        digitalWrite(HEARTBEAT_PIN, ledState);
         digitalWrite(ERROR_PIN, ledState);
         digitalWrite(STATUS_A_PIN, ledState);
         digitalWrite(STATUS_B_PIN, ledState);
@@ -266,6 +311,17 @@ void execAction(char c) {
                 // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
                 // this callback function will be called regularly, e.g. every time the interpreter reads a character
                 pJustina->setMainLoopCallback((&Justina_housekeeping));                    // set callback function to Justina_housekeeping routine in this .ino file (pass 'Justina_housekeeping' routine address to Justina_interpreter library)
+
+
+                //--------------------------------------------
+                // >>> CPP user functions: pass entrypoints
+                //--------------------------------------------
+                pJustina->setUserBoolCppFunctionsEntryPoint(cppBoolFunctions, sizeof(cppBoolFunctions) / (sizeof(cppBoolFunctions[0])));
+                pJustina->setUserLongCppFunctionsEntryPoint(cppLongFunctions, sizeof(cppLongFunctions) / (sizeof(cppLongFunctions[0])));
+                pJustina->setUserFloatCppFunctionsEntryPoint(cppFloatFunctions, sizeof(cppFloatFunctions) / (sizeof(cppFloatFunctions[0])));
+                pJustina->setUser_pCharCppFunctionsEntryPoint(cpppCharFunctions, sizeof(cpppCharFunctions) / (sizeof(cpppCharFunctions[0])));
+                pJustina->setUserCppCommandsEntryPoint(cpppCommands, 4);
+                // >>> ---------------------------------------------------------------------------------------------
 
                 pJustina->setUserFcnCallback((&userFcn_readPort));                // pass user function addresses to Justina_interpreter library (return value 'true' indicates success)
                 pJustina->setUserFcnCallback((&userFcn_writePort));
@@ -592,3 +648,35 @@ void userFcn_togglePort(const void** pdata, const char* valueType, const int arg
     pAlternativeIO[0]->println("*** Justina just passed by ***");
     // do your thing here
 };
+
+
+// -----------------------------------------------
+// >>> user cpp functions
+// -----------------------------------------------
+long userFcn_test1(const void** pdata, const char* valueType, const int argCount) { return (*(long*)pdata[0]) * 10; }
+
+bool userFcn_test2(const void** pdata, const char* valueType, const int argCount) { return 123; }
+
+long userFcn_test3(const void** pdata, const char* valueType, const int argCount) { return 456; }
+
+char* userFcn_test4(const void** pdata, const char* valueType, const int argCount) {
+    bool isNonEmptyString = ((((char*)pdata)[0]) != '0') && (valueType[0] == Justina_interpreter::value_isStringPointer);
+    if (isNonEmptyString) {
+        char* pText = ((char**)(pdata))[0];
+
+        Serial.print("in routine  test4: string is "); Serial.println(pText);
+        Serial.print("               char[0] =  is "); Serial.println(pText[0]);
+        Serial.print("               char[1] =  is "); Serial.println((pText[1]));
+
+        pText[0] = 'Y';
+        pText[1] = 'Z';
+        Serial.print("               char[0] =  is "); Serial.println(pText[0]);
+        Serial.print("               char[1] =  is "); Serial.println(pText[1]);
+        return  (char*)pdata[0];
+    }
+    else { return nullptr; }
+}
+
+float userFcn_test5(const void** pdata, const char* valueType, const int argCount) { return 1.23; }
+
+// >>> --------------------------------------------------------------------------------------------------------------------

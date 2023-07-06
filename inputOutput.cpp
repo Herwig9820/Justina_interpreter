@@ -44,7 +44,7 @@ Justina_interpreter::execResult_type Justina_interpreter::startSD() {
 
     if (_SDinitOK) { return result_execOK; }                                                                                // card is initialised: nothing to do
 
-    if ((_JustinaConstraints & 0b0011) == 0) { return result_SD_noCardOrCardError; }
+    if ((_justinaConstraints & 0b0011) == 0) { return result_SD_noCardOrCardError; }
     if (!_SDcard.init(SPI_HALF_SPEED, _SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
     if (!SD.begin(_SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
 
@@ -930,12 +930,12 @@ void Justina_interpreter::printCallStack() {
                 println("eval() string");
                 indent += 4;
             }
-            else if (blockType == block_extFunction) {
+            else if (blockType == block_JustinaFunction) {
                 if (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep < (_programStorage + _progMemorySize)) {
                     for (int space = 0; space < indent - 4; ++space) { print(" "); }
                     if (indent > 0) { print("|__ "); }
                     int index = ((OpenFunctionData*)pFlowCtrlStackLvl)->functionIndex;                                  // print function name
-                    sprintf(s, "%s()", extFunctionNames[index]);
+                    sprintf(s, "%s()", JustinaFunctionNames[index]);
                     println(s);
                     indent += 4;
                 }
@@ -1007,14 +1007,14 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
             }
             break;
 
-            case tok_isInternFunction:
-                strcpy(prettyToken, _functions[progCnt.pIntFnc->tokenIndex].funcName);
+            case tok_isInternCppFunction:
+                strcpy(prettyToken, _functions[progCnt.pInternCppFnc->tokenIndex].funcName);
                 break;
 
-            case tok_isExternFunction:
+            case tok_isJustinaFunction:
             {
-                int identNameIndex = (int)progCnt.pExtFnc->identNameIndex;                  // external function list element
-                char* identifierName = extFunctionNames[identNameIndex];
+                int identNameIndex = (int)progCnt.pJustinaFnc->identNameIndex;              // Justina function list element
+                char* identifierName = JustinaFunctionNames[identNameIndex];
                 strcpy(prettyToken, identifierName);
             }
             break;
@@ -1196,9 +1196,9 @@ void Justina_interpreter::printParsingResult(parseTokenResult_type result, int f
     }
 
     else  if ((result == result_function_undefinedFunctionOrArray) && _programMode) {       // in program mode only 
-        // during external function call parsing, it is not always known whether the function exists (because function can be defined after a call) 
+        // during Justina function call parsing, it is not always known whether the function exists (because function can be defined after a call) 
         // -> a linenumber can not be given, but the undefined function can
-        sprintf(parsingInfo, "\r\n  Parsing error %d: function or array '%s' is not defined", result, extFunctionNames[funcNotDefIndex]);
+        sprintf(parsingInfo, "\r\n  Parsing error %d: function or array '%s' is not defined", result, JustinaFunctionNames[funcNotDefIndex]);
     }
 
     else {                                                                                  // parsing error

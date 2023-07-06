@@ -90,7 +90,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
         if ((_lastTokenType == tok_no_token) || isSemicolon) {
             _isProgramCmd = false;
             _isDeclCBcmd = false; _isClearCBcmd = false; _isCallbackCmd = false;
-            _isExtFunctionCmd = false; _isGlobalOrUserVarCmd = false; _isLocalVarCmd = false; _isStaticVarCmd = false; _isAnyVarCmd = false, _isConstVarCmd = false;;
+            _isJustinaFunctionCmd = false; _isGlobalOrUserVarCmd = false; _isLocalVarCmd = false; _isStaticVarCmd = false; _isAnyVarCmd = false, _isConstVarCmd = false;;
             _isForCommand = false;
             _isDeleteVarCmd = false;
             _isClearProgCmd = false;
@@ -102,7 +102,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
             isComma ? lastTokenGroup_1 :
             ((t == tok_no_token) || isSemicolon || (t == tok_isReservedWord) || (t == tok_isGenericName)) ? lastTokenGroup_2 :
             ((t == tok_isConstant) || isRightPar) ? lastTokenGroup_3 :
-            ((t == tok_isInternFunction) || (t == tok_isExternFunction)) ? lastTokenGroup_4 :
+            ((t == tok_isInternCppFunction) || (t == tok_isJustinaFunction)) ? lastTokenGroup_4 :
             isLeftPar ? lastTokenGroup_5 : lastTokenGroup_6;                                                        // token group 5: scalar or array variable name
 
         // a space may be required between last token and next token (not yet known), if one of them is a keyword
@@ -139,8 +139,8 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
             if (!parseTerminalToken(pNext, result)) { break; }  if (result == result_tokenFound) { break; }         // check before checking for number
             if (!parseAsNumber(pNext, result)) { break; }  if (result == result_tokenFound) { break; }
             if (!parseAsStringConstant(pNext, result)) { break; }  if (result == result_tokenFound) { break; }
-            if (!parseAsInternFunction(pNext, result)) { break; }  if (result == result_tokenFound) { break; }      // check before checking for identifier (ext. function / variable) 
-            if (!parseAsExternFunction(pNext, result)) { break; }  if (result == result_tokenFound) { break; }      // check before checking for variable
+            if (!parseAsInternCPPfunction(pNext, result)) { break; }  if (result == result_tokenFound) { break; }   // check before checking for identifier (Justina function / variable) 
+            if (!parseAsJustinaFunction(pNext, result)) { break; }  if (result == result_tokenFound) { break; }     // check before checking for variable
             if (!parseAsVariable(pNext, result)) { break; }  if (result == result_tokenFound) { break; }
             if (!parseAsIdentifierName(pNext, result)) { break; }  if (result == result_tokenFound) { break; }      // at the end
             result = result_token_not_recognised;
@@ -188,13 +188,13 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
 
     CmdBlockDef cmdBlockDef = _resWords[_tokenIndex].cmdBlockDef;
 
-    _isExtFunctionCmd = _resWords[_tokenIndex].resWordCode == cmdcod_function;
+    _isJustinaFunctionCmd = _resWords[_tokenIndex].resWordCode == cmdcod_function;
     _isProgramCmd = _resWords[_tokenIndex].resWordCode == cmdcod_program;
     _isDeclCBcmd = _resWords[_tokenIndex].resWordCode == cmdcod_declCB;
     _isClearCBcmd = _resWords[_tokenIndex].resWordCode == cmdcod_clearCB;
     _isCallbackCmd = _resWords[_tokenIndex].resWordCode == cmdcod_callback;
-    _isGlobalOrUserVarCmd = ((_resWords[_tokenIndex].resWordCode == cmdcod_var) || (_resWords[_tokenIndex].resWordCode == cmdcod_constVar)) && !_extFunctionBlockOpen;
-    _isLocalVarCmd = ((_resWords[_tokenIndex].resWordCode == cmdcod_var) || (_resWords[_tokenIndex].resWordCode == cmdcod_constVar)) && _extFunctionBlockOpen;
+    _isGlobalOrUserVarCmd = ((_resWords[_tokenIndex].resWordCode == cmdcod_var) || (_resWords[_tokenIndex].resWordCode == cmdcod_constVar)) && !_justinaFunctionBlockOpen;
+    _isLocalVarCmd = ((_resWords[_tokenIndex].resWordCode == cmdcod_var) || (_resWords[_tokenIndex].resWordCode == cmdcod_constVar)) && _justinaFunctionBlockOpen;
     _isStaticVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_static;
     _isConstVarCmd = (_resWords[_tokenIndex].resWordCode == cmdcod_constVar);
     _isForCommand = _resWords[_tokenIndex].resWordCode == cmdcod_for;
@@ -216,12 +216,12 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
     }
     if (_programMode && (cmdRestriction == cmd_onlyImmediate)) { result = result_cmd_onlyImmediateMode; return false; }
     if (!_programMode && (cmdRestriction == cmd_onlyInProgram)) { result = result_cmd_onlyInsideProgram; return false; }
-    if (!_extFunctionBlockOpen && (cmdRestriction == cmd_onlyInFunctionBlock)) { result = result_cmd_onlyInsideFunction; return false; }
-    if (_extFunctionBlockOpen && (cmdRestriction == cmd_onlyOutsideFunctionBlock)) { result = result_cmd_onlyOutsideFunction; return false; }
-    if (((!_programMode) || _extFunctionBlockOpen) && (cmdRestriction == cmd_onlyInProgOutsideFunc)) { result = result_cmd_onlyInProgOutsideFunction; return false; };
-    if ((_programMode && !_extFunctionBlockOpen) && (cmdRestriction == cmd_onlyImmOrInsideFuncBlock)) { result = result_cmd_onlyImmediateOrInFunction; return false; };
+    if (!_justinaFunctionBlockOpen && (cmdRestriction == cmd_onlyInFunctionBlock)) { result = result_cmd_onlyInsideFunction; return false; }
+    if (_justinaFunctionBlockOpen && (cmdRestriction == cmd_onlyOutsideFunctionBlock)) { result = result_cmd_onlyOutsideFunction; return false; }
+    if (((!_programMode) || _justinaFunctionBlockOpen) && (cmdRestriction == cmd_onlyInProgOutsideFunc)) { result = result_cmd_onlyInProgOutsideFunction; return false; };
+    if ((_programMode && !_justinaFunctionBlockOpen) && (cmdRestriction == cmd_onlyImmOrInsideFuncBlock)) { result = result_cmd_onlyImmediateOrInFunction; return false; };
     if ((_programMode || (_blockLevel > 0)) && (cmdRestriction == cmd_onlyImmediateNotWithinBlock)) { result = result_cmd_onlyImmediateEndOfLine; return false; }
-    if (_extFunctionBlockOpen && _isExtFunctionCmd) { result = result_function_defsCannotBeNested; return false; } // separate message to indicate 'no nesting'
+    if (_justinaFunctionBlockOpen && _isJustinaFunctionCmd) { result = result_function_defsCannotBeNested; return false; }     // separate message to indicate 'no nesting'
 
     // not a block command: nothing more to do here 
     if (cmdBlockDef.blockType == block_none) { return true; }
@@ -238,7 +238,7 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
         memcpy(_pParsingStack->openBlock.toTokenStep, &_lastTokenStep, sizeof(char[2]));                            // store in stack: pointer to block start command token of open block
         _blockStartCmdTokenStep = _lastTokenStep;                                                                   // remember pointer to block start command token of open block
         _blockCmdTokenStep = _lastTokenStep;                                                                        // remember pointer to last block command token of open block
-        _extFunctionBlockOpen = _extFunctionBlockOpen || _isExtFunctionCmd;                                         // open until block closing END command     
+        _justinaFunctionBlockOpen = _justinaFunctionBlockOpen || _isJustinaFunctionCmd;                             // open until block closing END command     
 
         return true;                                                                                                // nothing more to do
     }
@@ -250,7 +250,7 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
         // parenthesis level is zero, because this is a block start command -> all stack levels are block levels
         LE_parsingStack* pStackLvl = _pParsingStack;                                                                // start with current open block level
         while (pStackLvl != nullptr) {
-            if ((pStackLvl->openBlock.cmdBlockDef.blockType == block_extFunction) &&                                // an open external function block has been found (call or definition)
+            if ((pStackLvl->openBlock.cmdBlockDef.blockType == block_JustinaFunction) &&                            // an open Justina function block has been found (call or definition)
                 (cmdBlockDef.blockPosOrAction == block_inOpenFunctionBlock)) {                                      // and current flow altering command is allowed in open function block
                 // store pointer from 'alter flow' token (command) to block start command token of compatible open block (from RETURN to FUNCTION token)
                 memcpy(((TokenIsResWord*)(_programStorage + _lastTokenStep))->toTokenStep, pStackLvl->openBlock.toTokenStep, sizeof(char[2]));
@@ -284,7 +284,7 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
 
 
     if (cmdBlockDef.blockPosOrAction == block_endPos) {                                                             // is this a block END command token ? 
-        if (_pParsingStack->openBlock.cmdBlockDef.blockType == block_extFunction) { _extFunctionBlockOpen = false; }    // FUNCTON definition blocks cannot be nested
+        if (_pParsingStack->openBlock.cmdBlockDef.blockType == block_JustinaFunction) { _justinaFunctionBlockOpen = false; }    // FUNCTON definition blocks cannot be nested
         memcpy(((TokenIsResWord*)(_programStorage + _lastTokenStep))->toTokenStep, &_blockStartCmdTokenStep, sizeof(char[2]));
         parsingStack.deleteListElement(nullptr);                                                                    // decrement stack counter and delete corresponding list element
         _blockLevel--;                                                                                              // also set pointer to currently last element in stack (if it exists)
@@ -504,7 +504,7 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parseTokenResult_type& res
     if (valueType == value_isFloat) { if (!isfinite(flt)) { pNext = pch; result = result_parse_overflow; return false; } }
 
     // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
-    bool tokenAllowed = (_isCommand || (!_programMode) || _extFunctionBlockOpen);
+    bool tokenAllowed = (_isCommand || (!_programMode) || _justinaFunctionBlockOpen);
     if (!tokenAllowed) { pNext = pch; result = result_numConstNotAllowedHere; return false; ; }
 
     // is a variable required instead of a constant ?
@@ -515,7 +515,7 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parseTokenResult_type& res
     // (in a variable declaration statement (VAR,...), this is handled by the keyword 'allowed command parameter' key)
     // Note: in a (variable or parameter) declaration statement, operators other than assignment operators are not allowed, which is detected in terminal token parsing
     bool lastIsPureAssignmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;             // not a compound assignment
-    if (_isExtFunctionCmd && !lastIsPureAssignmentOp) { pNext = pch; result = result_numConstNotAllowedHere; return false; }
+    if (_isJustinaFunctionCmd && !lastIsPureAssignmentOp) { pNext = pch; result = result_numConstNotAllowedHere; return false; }
 
     // array declaration: dimensions must be number constants (global, static, local arrays)
     bool isArrayDimSpec = _isAnyVarCmd && (_parenthesisLevel > 0);
@@ -574,7 +574,7 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
 
     // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
     if (_initVarOrParWithUnaryOp != 0) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; } // can only happen with only with initialiser, if constant string is preceded by unary plus or minus operator
-    bool tokenAllowed = (_isCommand || (!_programMode) || _extFunctionBlockOpen);
+    bool tokenAllowed = (_isCommand || (!_programMode) || _justinaFunctionBlockOpen);
     if (!tokenAllowed) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
 
     // is a variable required instead of a constant ?
@@ -585,7 +585,7 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
     // (in a variable declaration statement (VAR,...), this is handled by the keyword 'allowed command parameter' key)
     // Note: in a (variable or parameter) declaration statement, operators other than assignment operators are not allowed, which is detected in terminal token parsing
     bool isPureAssignmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;          // not a compound assignment
-    if (_isExtFunctionCmd && !isPureAssignmentOp) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
+    if (_isJustinaFunctionCmd && !isPureAssignmentOp) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
 
     // array declaration: dimensions must be number constants (global, static, local arrays)
     bool isArrayDimSpec = _isAnyVarCmd && (_parenthesisLevel > 0);
@@ -656,9 +656,9 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
 
 bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type& result) {
 
-    // external function definition statement parsing: count number of mandatory and optional arguments in function definition for storage
-    static int extFunctionDef_minArgCounter{ 0 };
-    static int extFunctionDef_maxArgCounter{ 0 };
+    // Justina function definition statement parsing: count number of mandatory and optional arguments in function definition for storage
+    static int justinaFunctionDef_minArgCounter{ 0 };
+    static int justinaFunctionDef_maxArgCounter{ 0 };
 
     // array definition statement parsing: record dimensions (if 1 dimension only: set dim 2 to zero) 
     static int array_dimCounter{ 0 };
@@ -704,12 +704,12 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
 
             // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
-            bool tokenAllowed = (_isCommand || (!_programMode) || _extFunctionBlockOpen);
+            bool tokenAllowed = (_isCommand || (!_programMode) || _justinaFunctionBlockOpen);
             if (!tokenAllowed) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; ; }
 
             if (_isAnyVarCmd && (_parenthesisLevel > 0)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }  // no parenthesis nesting in array declarations
             // parenthesis nesting in function definitions, only to declare an array parameter AND only if followed by a closing parenthesis 
-            if ((_isExtFunctionCmd) && (_parenthesisLevel > 0) && (_lastTokenType != tok_isVariable)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
+            if ((_isJustinaFunctionCmd) && (_parenthesisLevel > 0) && (_lastTokenType != tok_isVariable)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
             if (_isProgramCmd || _isDeleteVarCmd || _isDeclCBcmd) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
             if (_isCallbackCmd && (_cmdArgNo == 0)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
 
@@ -721,13 +721,13 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             // token is a left parenthesis, and it's allowed here
 
             // store specific flags in stack, because if nesting functions or parentheses, values will be overwritten
-            flags = (_lastTokenType == tok_isExternFunction) ? extFunctionBit :
-                (_lastTokenType == tok_isInternFunction) ? intFunctionBit :
-                (_lastTokenType == tok_isVariable) ? arrayBit : openParenthesisBit;                                         // is it following a(n internal or external) function name ?
+            flags = (_lastTokenType == tok_isJustinaFunction) ? JustinaFunctionBit :
+                (_lastTokenType == tok_isInternCppFunction) ? internCppFunctionBit :
+                (_lastTokenType == tok_isVariable) ? arrayBit : openParenthesisBit;                                         // is it following an internal or Justina function name ?
 
-            // external function (call or definition) opening parenthesis
-            if (_lastTokenType == tok_isExternFunction) {
-                if (extFunctionData[_functionIndex].pExtFunctionStartToken != nullptr) { flags = flags | extFunctionPrevDefinedBit; }
+            // Justina function (call or definition) opening parenthesis
+            if (_lastTokenType == tok_isJustinaFunction) {
+                if (justinaFunctionData[_functionIndex].pJustinaFunctionStartToken != nullptr) { flags = flags | JustinaFunctionPrevDefinedBit; }
             }
 
             // expression syntax check 
@@ -746,12 +746,12 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             _lvl0_withinExpression = true;
 
             // if function DEFINITION: initialize variables for counting of allowed mandatory and optional arguments (not an array parameter, would be parenthesis level 1)
-            if (_isExtFunctionCmd && (_parenthesisLevel == 0)) {                                                            // not an array parameter (would be parenthesis level 1)
-                extFunctionDef_minArgCounter = 0;
-                extFunctionDef_maxArgCounter = 0;                                                                           // init count; range from 0 to a hardcoded maximum 
+            if (_isJustinaFunctionCmd && (_parenthesisLevel == 0)) {                                                        // not an array parameter (would be parenthesis level 1)
+                justinaFunctionDef_minArgCounter = 0;
+                justinaFunctionDef_maxArgCounter = 0;                                                                       // init count; range from 0 to a hardcoded maximum 
             }
 
-            if (_isExtFunctionCmd && (_parenthesisLevel == 1)) {                                                            // array parameter (would be parenthesis level 1)
+            if (_isJustinaFunctionCmd && (_parenthesisLevel == 1)) {                                                        // array parameter (would be parenthesis level 1)
                 if (peek[0] != term_rightPar[0]) { pNext = pch; result = result_function_arrayParamMustHaveEmptyDims; return false; }
             }
 
@@ -777,8 +777,8 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             // dimensions of previously defined array. If zero, then this array did not yet exist, or it's a scalar variable
             _pParsingStack->openPar.arrayDimCount = _arrayDimCount;
             _pParsingStack->openPar.flags = flags;
-            _pParsingStack->openPar.identifierIndex = (_lastTokenType == tok_isInternFunction) ? _functionIndex :
-                (_lastTokenType == tok_isExternFunction) ? _functionIndex :
+            _pParsingStack->openPar.identifierIndex = (_lastTokenType == tok_isInternCppFunction) ? _functionIndex :
+                (_lastTokenType == tok_isJustinaFunction) ? _functionIndex :
                 (_lastTokenType == tok_isVariable) ? _variableNameIndex : 0;
             _pParsingStack->openPar.variableScope = _variableScope;
 
@@ -800,7 +800,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
 
             // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
-            bool tokenAllowed = (_isCommand || (!_programMode) || _extFunctionBlockOpen);
+            bool tokenAllowed = (_isCommand || (!_programMode) || _justinaFunctionBlockOpen);
             if (!tokenAllowed) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; ; }
             if (_parenthesisLevel == 0) { pNext = pch; result = result_missingLeftParenthesis; return false; }
 
@@ -813,10 +813,10 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             _thisLvl_lastOpIsIncrDecr = (flags & varHasPrefixIncrDecrBit);
 
 
-            // 2.1 External function definition (not a call), OR array parameter definition closing parenthesis ?
-            // --------------------------------------------------------------------------------------------------
+            // 2.1 Justina function definition (not a call), OR array parameter definition closing parenthesis ?
+            // -------------------------------------------------------------------------------------------------
 
-            if (_isExtFunctionCmd) {
+            if (_isJustinaFunctionCmd) {
                 if (_parenthesisLevel == 1) {                                                                               // function definition closing parenthesis
                     // stack level will not change until closing parenthesis (because within definition, no nesting of parenthesis is possible)
                     // stack min & max values: current range of args counts that occured in previous calls (not initialized if no earlier calls occured)
@@ -827,24 +827,24 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                     _pParsingStack->openPar.actualArgsOrDims += (emptyParamList ? 0 : 1);
 
                     // check order of mandatory and optional arguments, check if max. n° not exceeded
-                    if (!emptyParamList) { if (!checkExtFunctionArguments(result, extFunctionDef_minArgCounter, extFunctionDef_maxArgCounter)) { pNext = pch; return false; }; }
+                    if (!emptyParamList) { if (!checkJustinaFunctionArguments(result, justinaFunctionDef_minArgCounter, justinaFunctionDef_maxArgCounter)) { pNext = pch; return false; }; }
 
                     int funcIndex = _pParsingStack->openPar.identifierIndex;                                                // note: also stored in stack for FUNCTION definition block level; here we can pick one of both
                     // if previous calls, check if range of actual argument counts that occured in previous calls corresponds to mandatory and optional arguments defined now
-                    bool previousCalls = (extFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1]) != c_extFunctionFirstOccurFlag;
+                    bool previousCalls = (JustinaFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1]) != c_JustinaFunctionFirstOccurFlag;
                     if (previousCalls) {                                                                                    // stack contains current range of actual args occured in previous calls
-                        if (((int)_pParsingStack->openPar.minArgs < extFunctionDef_minArgCounter) ||
-                            (int)_pParsingStack->openPar.maxArgs > extFunctionDef_maxArgCounter) {
+                        if (((int)_pParsingStack->openPar.minArgs < justinaFunctionDef_minArgCounter) ||
+                            (int)_pParsingStack->openPar.maxArgs > justinaFunctionDef_maxArgCounter) {
                             pNext = pch; result = result_function_prevCallsWrongArgCount; return false;                     // argument count in previous calls to this function does not correspond 
                         }
                     }
 
                     // store min required & max allowed n� of arguments in identifier storage
                     // this replaces the range of actual argument counts that occured in previous calls (if any)
-                    extFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1] = (extFunctionDef_minArgCounter << 4) | (extFunctionDef_maxArgCounter);
+                    JustinaFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1] = (justinaFunctionDef_minArgCounter << 4) | (justinaFunctionDef_maxArgCounter);
 
                     // check that order of arrays and scalar variables is consistent with previous callsand function definition
-                    if (!checkExternFuncArgArrayPattern(result, true)) { pNext = pch; return false; };                      // verify that the order of scalar and array parameters is consistent with arguments
+                    if (!checkJustinaFuncArgArrayPattern(result, true)) { pNext = pch; return false; };                     // verify that the order of scalar and array parameters is consistent with arguments
                 }
             }
 
@@ -923,39 +923,39 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             }
 
 
-            // 2.3 Internal or external function call, or parenthesis pair, closing parenthesis ?
-            // ----------------------------------------------------------------------------------
+            // 2.3 Internal or Justina function call, or parenthesis pair, closing parenthesis ?
+            // ---------------------------------------------------------------------------------
 
-            else if (flags & (intFunctionBit | extFunctionBit | openParenthesisBit)) {
+            else if (flags & (internCppFunctionBit | JustinaFunctionBit | openParenthesisBit)) {
                 // if empty function call argument list, then do not increment argument count (function call without arguments)
                 bool emptyArgList = _lastTokenIsTerminal ? (_lastTermCode == termcod_leftPar) : false;                      // ok because no nesting allowed
                 _pParsingStack->openPar.actualArgsOrDims += (emptyArgList ? 0 : 1);
                 int actualArgs = (int)_pParsingStack->openPar.actualArgsOrDims;
 
-                // call to not yet defined external function ? (there might be previous calls)
-                bool callToNotYetDefinedFunc = ((flags & (extFunctionBit | extFunctionPrevDefinedBit)) == extFunctionBit);
+                // call to not yet defined Justina function ? (there might be previous calls)
+                bool callToNotYetDefinedFunc = ((flags & (JustinaFunctionBit | JustinaFunctionPrevDefinedBit)) == JustinaFunctionBit);
                 if (callToNotYetDefinedFunc) {
                     // check that max argument count is not exceeded (number must fit in 4 bits)
-                    if (actualArgs > c_extFunctionMaxArgs) { pNext = pch; result = result_function_maxArgsExceeded; return false; }
+                    if (actualArgs > c_JustinaFunctionMaxArgs) { pNext = pch; result = result_function_maxArgsExceeded; return false; }
 
                     // if at least one previous call (maybe a nested call) is completely parsed, retrieve current range of actual args that occured in these previous calls
-                    // and update this range with the argument count of the current external function call that is at its closing parenthesis
+                    // and update this range with the argument count of the current Justina function call that is at its closing parenthesis
                     int funcIndex = _pParsingStack->openPar.identifierIndex;                                                // of current function call: stored in stack for current PARENTHESIS level
-                    bool prevExtFuncCompletelyParsed = (extFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1]) != c_extFunctionFirstOccurFlag;
-                    if (prevExtFuncCompletelyParsed) {
-                        _pParsingStack->openPar.minArgs = ((extFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1]) >> 4) & 0x0F;
-                        _pParsingStack->openPar.maxArgs = (extFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1]) & 0x0F;
+                    bool prevJusinaFuncCompletelyParsed = (JustinaFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1]) != c_JustinaFunctionFirstOccurFlag;
+                    if (prevJusinaFuncCompletelyParsed) {
+                        _pParsingStack->openPar.minArgs = ((JustinaFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1]) >> 4) & 0x0F;
+                        _pParsingStack->openPar.maxArgs = (JustinaFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1]) & 0x0F;
                         if ((int)_pParsingStack->openPar.minArgs > actualArgs) { _pParsingStack->openPar.minArgs = actualArgs; }
                         if ((int)_pParsingStack->openPar.maxArgs < actualArgs) { _pParsingStack->openPar.maxArgs = actualArgs; }
                     }
-                    // no previous call: simply set this range to the argument count of the current external function call that is at its closing parenthesis
+                    // no previous call: simply set this range to the argument count of the current Justina function call that is at its closing parenthesis
                     else { _pParsingStack->openPar.minArgs = actualArgs; _pParsingStack->openPar.maxArgs = actualArgs; }
 
                     // store the up to date range of actual argument counts in identifier storage
-                    extFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1] = (_pParsingStack->openPar.minArgs << 4) | (_pParsingStack->openPar.maxArgs);
+                    JustinaFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1] = (_pParsingStack->openPar.minArgs << 4) | (_pParsingStack->openPar.maxArgs);
                 }
 
-                // if call to previously defined external function, to an internal function, or if open parenthesis, then check argument count 
+                // if call to previously defined Justina function, to an internal cpp function, or if open parenthesis, then check argument count 
                 else {
                     bool isOpenParenthesis = (flags & openParenthesisBit);
                     if (isOpenParenthesis) { _pParsingStack->openPar.minArgs = 1; _pParsingStack->openPar.maxArgs = 1; }
@@ -964,9 +964,9 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                     if (argCountWrong) { pNext = pch; result = result_function_wrongArgCount; return false; }
                 }
 
-                // check that order of arrays and scalar variables is consistent with function definition and (external functions only: with previous calls) 
-                if (flags & intFunctionBit) { if (!checkInternFuncArgArrayPattern(result)) { pNext = pch; return false; }; }
-                else if (flags & extFunctionBit) { if (!checkExternFuncArgArrayPattern(result, true)) { pNext = pch; return false; }; }
+                // check that order of arrays and scalar variables is consistent with function definition and (Justina functions only: with previous calls) 
+                if (flags & internCppFunctionBit) { if (!checkInternCppFuncArgArrayPattern(result)) { pNext = pch; return false; }; }
+                else if (flags & JustinaFunctionBit) { if (!checkJustinaFuncArgArrayPattern(result, true)) { pNext = pch; return false; }; }
             }
 
 
@@ -1020,7 +1020,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
 
             // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
-            bool tokenAllowed = (_isCommand || (!_programMode) || _extFunctionBlockOpen);
+            bool tokenAllowed = (_isCommand || (!_programMode) || _justinaFunctionBlockOpen);
             if (!tokenAllowed) { pNext = pch; result = result_separatorNotAllowedHere; return false; ; }
 
             // if no open parenthesis, a comma can only occur to separate command parameters
@@ -1045,17 +1045,17 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             _initVarOrParWithUnaryOp = 0;   // reset (needed for Function definitions with multiple parameters)
 
 
-            // 3.1 External function definition (not a call) parameter separator ? 
-            // -------------------------------------------------------------------
+            // 3.1 Justina function definition (not a call) parameter separator ? 
+            // ------------------------------------------------------------------
 
-            if (_isExtFunctionCmd) {
+            if (_isJustinaFunctionCmd) {
                 if (_parenthesisLevel == 1) {                                                                               // not an array parameter (would be parenthesis level 2)
                     _pParsingStack->openPar.actualArgsOrDims++;
                     // check order of mandatory and optional arguments, check if max. n� not exceeded
-                    if (!checkExtFunctionArguments(result, extFunctionDef_minArgCounter, extFunctionDef_maxArgCounter)) { pNext = pch; return false; };
+                    if (!checkJustinaFunctionArguments(result, justinaFunctionDef_minArgCounter, justinaFunctionDef_maxArgCounter)) { pNext = pch; return false; };
 
                     // Check order of mandatory and optional arguments (function: parenthesis levels > 0)
-                    if (!checkExternFuncArgArrayPattern(result, false)) { pNext = pch; return false; };                     // verify that the order of scalar and array parameters is consistent with arguments
+                    if (!checkJustinaFuncArgArrayPattern(result, false)) { pNext = pch; return false; };                     // verify that the order of scalar and array parameters is consistent with arguments
                 }
             }
 
@@ -1072,22 +1072,22 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             }
 
 
-            // 3.3 Internal or external function call argument separator ?
-            // -----------------------------------------------------------
+            // 3.3 Internal or Justina function call argument separator ?
+            // ----------------------------------------------------------
 
-            else if (flags & (intFunctionBit | extFunctionBit | openParenthesisBit)) {
+            else if (flags & (internCppFunctionBit | JustinaFunctionBit | openParenthesisBit)) {
                 // note that actual argument count is at least one more than actual argument count, because at least one more to go (after the comma)
                 _pParsingStack->openPar.actualArgsOrDims++;           // include argument before the comma in argument count     
                 int actualArgs = (int)_pParsingStack->openPar.actualArgsOrDims;
 
-                // call to not yet defined external function ? (because there might be previous calls as well)
-                bool callToNotYetDefinedFunc = ((_pParsingStack->openPar.flags & (extFunctionBit | extFunctionPrevDefinedBit)) == extFunctionBit);
+                // call to not yet defined Justina function ? (because there might be previous calls as well)
+                bool callToNotYetDefinedFunc = ((_pParsingStack->openPar.flags & (JustinaFunctionBit | JustinaFunctionPrevDefinedBit)) == JustinaFunctionBit);
                 if (callToNotYetDefinedFunc) {
                     // check that max argument count is not exceeded (number must fit in 4 bits)
-                    if (actualArgs > c_extFunctionMaxArgs) { pNext = pch; result = result_function_maxArgsExceeded; return false; }
+                    if (actualArgs > c_JustinaFunctionMaxArgs) { pNext = pch; result = result_function_maxArgsExceeded; return false; }
                 }
 
-                // if call to previously defined external function, to an internal function, or if open parenthesis, then check argument count 
+                // if call to previously defined Justina function, to an internal cpp function, or if open parenthesis, then check argument count 
                 else {
                     bool isOpenParenthesis = (flags & openParenthesisBit);
                     if (isOpenParenthesis) { _pParsingStack->openPar.minArgs = 1; _pParsingStack->openPar.maxArgs = 1; }
@@ -1095,9 +1095,9 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                     if (argCountWrong) { pNext = pch; result = isOpenParenthesis ? result_missingRightParenthesis : result_function_wrongArgCount; return false; }
                 }
 
-                // check that order of arrays and scalar variables is consistent with function definition and (external functions only: with previous calls) 
-                if (flags & intFunctionBit) { if (!checkInternFuncArgArrayPattern(result)) { pNext = pch; return false; }; }
-                else if (flags & extFunctionBit) { if (!checkExternFuncArgArrayPattern(result, false)) { pNext = pch; return false; }; }
+                // check that order of arrays and scalar variables is consistent with function definition and (Justina functions only: with previous calls) 
+                if (flags & internCppFunctionBit) { if (!checkInternCppFuncArgArrayPattern(result)) { pNext = pch; return false; }; }
+                else if (flags & JustinaFunctionBit) { if (!checkJustinaFuncArgArrayPattern(result, false)) { pNext = pch; return false; }; }
             }
 
 
@@ -1170,7 +1170,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_5_3_2_1_0)) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
 
             // allow token (pending further tests) if within most commands, if in immediate mode and inside a function   
-            bool tokenAllowed = (_isCommand || (!_programMode) || _extFunctionBlockOpen);
+            bool tokenAllowed = (_isCommand || (!_programMode) || _justinaFunctionBlockOpen);
             if (!tokenAllowed) { pNext = pch; result = result_operatorNotAllowedHere; return false; ; }
 
             // 1.a Check additional constraints within specific commands
@@ -1186,7 +1186,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                 else if (_lastTokenType == tok_isConstant) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
             }
 
-            if (_isExtFunctionCmd) {
+            if (_isJustinaFunctionCmd) {
                 // only a scalar variable or an assignment can be followed by an operator (an assignment and a prefix plus or minus, respectively)
                 if ((_lastTokenType != tok_isVariable) && !lastWasAssignment) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
                 // initialiser is a scalar variable: can not be followed by any other operator than assignment
@@ -1194,7 +1194,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             }
 
             // numeric initializer with plus or minus prefix
-            if ((_isExtFunctionCmd && (_parenthesisLevel == 1)) || (_isAnyVarCmd && (_parenthesisLevel == 0))) {
+            if ((_isJustinaFunctionCmd && (_parenthesisLevel == 1)) || (_isAnyVarCmd && (_parenthesisLevel == 0))) {
                 bool isPrefixPlusOrMinus = ((_terminals[termIndex].terminalCode == termcod_plus) || (_terminals[termIndex].terminalCode == termcod_minus));
                 if (isPrefixPlusOrMinus) {
                     if (_initVarOrParWithUnaryOp != 0) { pNext = pch; result = result_operatorNotAllowedHere; return false; }   // already a prefix operator found (only one allowed in initialiser)
@@ -1315,7 +1315,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
 // *   try to parse next characters as an internal (built in) function name   *
 // ----------------------------------------------------------------------------
 
-bool Justina_interpreter::parseAsInternFunction(char*& pNext, parseTokenResult_type& result) {
+bool Justina_interpreter::parseAsInternCPPfunction(char*& pNext, parseTokenResult_type& result) {
     result = result_tokenNotFound;                                                                                      // init: flag 'no token found'
     char* pch = pNext;                                                                                                  // pointer to first character to parse (any spaces have been skipped already)
     int funcIndex;
@@ -1323,7 +1323,7 @@ bool Justina_interpreter::parseAsInternFunction(char*& pNext, parseTokenResult_t
     if (!isalpha(pNext[0])) { return true; }                                                                            // first character is not a letter ? Then it's not a function name (it can still be something else)
     while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                                                         // do until first character after alphanumeric token (can be anything, including '\0')
 
-    for (funcIndex = _functionCount - 1; funcIndex >= 0; funcIndex--) {                                                 // for all defined function names: check against alphanumeric token (NOT ending by '\0')
+    for (funcIndex = _internCppFunctionCount - 1; funcIndex >= 0; funcIndex--) {                                        // for all defined function names: check against alphanumeric token (NOT ending by '\0')
         if (strlen(_functions[funcIndex].funcName) != pNext - pch) { continue; }                                        // token has correct length ? If not, skip remainder of loop ('continue')                            
         if (strncmp(_functions[funcIndex].funcName, pch, pNext - pch) != 0) { continue; }                               // token corresponds to function name ? If not, skip remainder of loop ('continue')    
 
@@ -1334,21 +1334,21 @@ bool Justina_interpreter::parseAsInternFunction(char*& pNext, parseTokenResult_t
         if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp) { pNext = pch; result = result_functionNotAllowedHere; return false; }
 
         // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
-        bool tokenAllowed = (_isCommand || (!_programMode) || _extFunctionBlockOpen);
+        bool tokenAllowed = (_isCommand || (!_programMode) || _justinaFunctionBlockOpen);
         if (!tokenAllowed) { pNext = pch; result = result_functionNotAllowedHere; return false; ; }
 
         bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_incr) || (_lastTermCode == termcod_decr)) : false;
         if (varRequired) { pNext = pch; result = result_variableNameExpected; return false; }
 
-        if (_isExtFunctionCmd) { pNext = pch; result = result_function_redefiningNotAllowed; return false; }
-        if (_isAnyVarCmd) { pNext = pch; result = result_functionNotAllowedHere; return false; }                        // is a variable declaration: internal function name not allowed
+        if (_isJustinaFunctionCmd) { pNext = pch; result = result_function_redefiningNotAllowed; return false; }
+        if (_isAnyVarCmd) { pNext = pch; result = result_functionNotAllowedHere; return false; }                        // is a variable declaration: internal cpp function name not allowed
 
         // eval() function can not occur within a trace string (all other internal functins are OK)
         if (_parsingExecutingTraceString) {
             if (_functions[funcIndex].functionCode == fnccod_eval) { pNext = pch; result = result_trace_evalFunctonNotAllowed; return false; }
         }
 
-        // token is an internal function, and it's allowed here
+        // token is an internal cpp function, and it's allowed here
 
         _minFunctionArgs = _functions[funcIndex].minArgs;                                                               // set min & max for allowed argument count (note: minimum is 0)
         _maxFunctionArgs = _functions[funcIndex].maxArgs;
@@ -1361,19 +1361,19 @@ bool Justina_interpreter::parseAsInternFunction(char*& pNext, parseTokenResult_t
         // command argument constraints check
         _lvl0_withinExpression = true;
 
-        TokenIsIntFunction* pToken = (TokenIsIntFunction*)_programCounter;
-        pToken->tokenType = tok_isInternFunction | (sizeof(TokenIsIntFunction) << 4);
+        TokenIsInternCppFunction* pToken = (TokenIsInternCppFunction*)_programCounter;
+        pToken->tokenType = tok_isInternCppFunction | (sizeof(TokenIsInternCppFunction) << 4);
         pToken->tokenIndex = funcIndex;
 
         _lastTokenStep = _programCounter - _programStorage;
-        _lastTokenType = tok_isInternFunction;
+        _lastTokenType = tok_isInternCppFunction;
         _lastTokenIsString = false, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
     #if printParsedTokens
         _pDebugOut->print("parsing int fcn: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(_functions[funcIndex].funcName);  _pDebugOut->println("]");
     #endif
 
-        _programCounter += sizeof(TokenIsIntFunction);
+        _programCounter += sizeof(TokenIsInternCppFunction);
         *_programCounter = tok_no_token;                                                                                // indicates end of program
         result = result_tokenFound;                                                                                     // flag 'valid token found'
         return true;
@@ -1384,11 +1384,11 @@ bool Justina_interpreter::parseAsInternFunction(char*& pNext, parseTokenResult_t
 }
 
 
-// ------------------------------------------------------------------------
-// *   try to parse next characters as an external (user) function name   *
-// ------------------------------------------------------------------------
+// ---------------------------------------------------------------
+// *   try to parse next characters as a Justina function name   *
+// ---------------------------------------------------------------
 
-bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_type& result) {
+bool Justina_interpreter::parseAsJustinaFunction(char*& pNext, parseTokenResult_type& result) {
 
     if (_isProgramCmd || _isDeleteVarCmd) { return true; }                                                              // looking for an UNQUALIFIED identifier name; prevent it's mistaken for a variable name (same format)
     if (_isDeclCBcmd || _isCallbackCmd) { return true; }
@@ -1402,7 +1402,7 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
     if (!isalpha(pNext[0])) { return true; }                                                                            // first character is not a letter ? Then it's not an identifier name (it can still be something else)
     while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                                                         // do until first character after alphanumeric token (can be anything, including '\0')
 
-    // name already in use as global or user variable name ? Then it's not an external function
+    // name already in use as global or user variable name ? Then it's not a Justina function
     bool createNewName = false;
     int index = getIdentifier(programVarNames, _programVarNameCount, MAX_PROGVARNAMES, pch, pNext - pch, createNewName);
     if (index != -1) { pNext = pch; return true; }                                                                      // is a variable
@@ -1411,7 +1411,7 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
 
     if (_parsingExecutingTraceString) { pNext = pch; result = result_trace_userFunctonNotAllowed; return false; }
 
-    if ((_isExtFunctionCmd) && (_parenthesisLevel > 0)) { pNext = pch; return true; }                                   // only array parameter allowed now
+    if ((_isJustinaFunctionCmd) && (_parenthesisLevel > 0)) { pNext = pch; return true; }                               // only array parameter allowed now
 
 
     // 2. Is a function name allowed here ? 
@@ -1419,23 +1419,23 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
 
     if (_programCounter == _programStorage) { pNext = pch; result = result_cmd_programCmdMissing; return false; }       // program mode and no PROGRAM command
 
-    // token is an external function, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
+    // token is a Justina function, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
     if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2_1_0)) { pNext = pch; result = result_functionNotAllowedHere; return false; }
     if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp) { pNext = pch; result = result_functionNotAllowedHere; return false; }
 
     // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
-    bool tokenAllowed = (_isCommand || (!_programMode) || _extFunctionBlockOpen);
+    bool tokenAllowed = (_isCommand || (!_programMode) || _justinaFunctionBlockOpen);
     if (!tokenAllowed) { pNext = pch; result = result_functionNotAllowedHere; return false; ; }
 
     // if function name is too long, reset pointer to first character to parse, indicate error and return
     if (pNext - pch > MAX_IDENT_NAME_LEN) { pNext = pch; result = result_identifierTooLong;  return false; }
 
     createNewName = false;                                                                                              // only check if function is defined, do NOT YET create storage for it
-    index = getIdentifier(extFunctionNames, _extFunctionCount, MAX_EXT_FUNCS, pch, pNext - pch, createNewName);
+    index = getIdentifier(JustinaFunctionNames, _justinaFunctionCount, MAX_JUSTINA_FUNCS, pch, pNext - pch, createNewName);
 
     if (_isAnyVarCmd) {     // is a variable declaration
-        if (index == -1) { pNext = pch; return true; }                                                                  // it's not a defined external function: move on
-        else { pNext = pch; result = result_functionNotAllowedHere; return false; }                                     // it's an external function: not allowed here
+        if (index == -1) { pNext = pch; return true; }                                                                  // it's not a defined Justina function: move on
+        else { pNext = pch; result = result_functionNotAllowedHere; return false; }                                     // it's a Justina function: not allowed here
     }
 
     // not a defined variable and not a variable definition: consider it as a function
@@ -1443,9 +1443,9 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
     // next character is not a left parenthesis ? do not wait until next token to produce (more specific) error
     char* peek1 = pNext; while (peek1[0] == ' ') { peek1++; }
     if (peek1[0] != term_leftPar[0]) {
-        if (_isExtFunctionCmd) { pNext = pch; result = result_function_needsParentheses; return false; }                // function definition: left parentesis required
+        if (_isJustinaFunctionCmd) { pNext = pch; result = result_function_needsParentheses; return false; }            // function definition: left parentesis required
         if (index != -1) { pNext = pch; result = result_function_needsParentheses; return false; }                      // defined function: left parentesis required
-        pNext = pch; return true;                                                                                       // it's not a defined external function: move on
+        pNext = pch; return true;                                                                                       // it's not a defined Justina function: move on
     }
 
     else if (!_programMode) {                                                                                           // if in immediate mode: the function must be defined earlier (in a program)
@@ -1455,33 +1455,33 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
     bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_incr) || (_lastTermCode == termcod_decr)) : false;
     if (varRequired) { pNext = pch; result = result_variableNameExpected; return false; }
 
-    // token is an external function (definition or call), and it's allowed here
+    // token is a Justina function (definition or call), and it's allowed here
 
 
     // 3. Has function attribute storage already been created for this function ? (because of a previous function definition or a previous function call)
     // --------------------------------------------------------------------------------------------------------------------------------------------------
 
-    createNewName = true;                                                                                               // if new external function, create storage for it
-    index = getIdentifier(extFunctionNames, _extFunctionCount, MAX_EXT_FUNCS, pch, pNext - pch, createNewName);
-    if (index == -1) { pNext = pch; result = result_maxExtFunctionsReached; return false; }
-    char* funcName = extFunctionNames[index];                                                                           // either new or existing function name
+    createNewName = true;                                                                                               // if new Justina function, create storage for it
+    index = getIdentifier(JustinaFunctionNames, _justinaFunctionCount, MAX_JUSTINA_FUNCS, pch, pNext - pch, createNewName);
+    if (index == -1) { pNext = pch; result = result_maxJustinaFunctionsReached; return false; }
+    char* funcName = JustinaFunctionNames[index];                                                                       // either new or existing function name
     if (createNewName) {                                                                                                // new function name
         // init max (bits 7654) & min (bits 3210) allowed n� OR actual n� of arguments; store in last position (behind string terminating character)
-        funcName[MAX_IDENT_NAME_LEN + 1] = c_extFunctionFirstOccurFlag;                                                 // max (bits 7654) < (bits 3210): indicates value is not yet updated by parsing previous calls closing parenthesis
-        extFunctionData[index].pExtFunctionStartToken = nullptr;                                                        // initialize. Pointer will be set when function definition is parsed (checked further down)
-        extFunctionData[index].paramIsArrayPattern[1] = 0x80;                                                           // set flag to indicate a new function name is parsed (definition or call)
-        extFunctionData[index].paramIsArrayPattern[0] = 0x00;                                                           // boundary alignment 
+        funcName[MAX_IDENT_NAME_LEN + 1] = c_JustinaFunctionFirstOccurFlag;                                             // max (bits 7654) < (bits 3210): indicates value is not yet updated by parsing previous calls closing parenthesis
+        justinaFunctionData[index].pJustinaFunctionStartToken = nullptr;                                                // initialize. Pointer will be set when function definition is parsed (checked further down)
+        justinaFunctionData[index].paramIsArrayPattern[1] = 0x80;                                                       // set flag to indicate a new function name is parsed (definition or call)
+        justinaFunctionData[index].paramIsArrayPattern[0] = 0x00;                                                       // boundary alignment 
     }
 
     // if function storage was created already: check for double function definition
-    else if (_isExtFunctionCmd) {                                                                                       // this is a function definition (not a call)
+    else if (_isJustinaFunctionCmd) {                                                                                   // this is a function definition (not a call)
         // pointer to function starting token already defined: this is a double definition
-        if (extFunctionData[index].pExtFunctionStartToken != nullptr) { pNext = pch; result = result_function_redefinitionNotAllowed; return false; }
+        if (justinaFunctionData[index].pJustinaFunctionStartToken != nullptr) { pNext = pch; result = result_function_redefinitionNotAllowed; return false; }
     }
 
-    // Is this an external function definition( not a function call ) ?
-    if (_isExtFunctionCmd) {
-        extFunctionData[index].pExtFunctionStartToken = _programCounter;                                                // store pointer to function start token 
+    // Is this a Justina function definition( not a function call ) ?
+    if (_isJustinaFunctionCmd) {
+        justinaFunctionData[index].pJustinaFunctionStartToken = _programCounter;                                        // store pointer to function start token 
         // global program variable name usage array: reset in-function reference flags to be able to keep track of in-procedure variable value types used
         // KEEP all other settings
         for (int i = 0; i < _programVarNameCount; i++) { globalVarType[i] = (globalVarType[i] & ~var_scopeMask) | var_scopeToSpecify; }       // indicates 'variable with this name has not been referred to in current procedure'
@@ -1490,15 +1490,15 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
         _paramOnlyCountInFunction = 0;                                                                                  // reset local and parameter variable count in function 
         _localVarCountInFunction = 0;                                                                                   // reset local and parameter variable count in function
         _staticVarCountInFunction = 0;                                                                                  // reset static variable count in function
-        extFunctionData[index].paramOnlyCountInFunction = 0;
-        extFunctionData[index].localVarCountInFunction = 0;
-        extFunctionData[index].staticVarCountInFunction = 0;
+        justinaFunctionData[index].paramOnlyCountInFunction = 0;
+        justinaFunctionData[index].localVarCountInFunction = 0;
+        justinaFunctionData[index].staticVarCountInFunction = 0;
 
         // if function will define static variables, then storage area will start right after stoarage area for previously defined user function's static variable area (this is needed while in debugging only)
-        extFunctionData[index].staticVarStartIndex = _staticVarCount;
+        justinaFunctionData[index].staticVarStartIndex = _staticVarCount;
 
         // if function will define local variables, although storage area is dynamic, this is needed while in debugging (only)
-        extFunctionData[index].localVarNameRefs_startIndex = _localVarCount;
+        justinaFunctionData[index].localVarNameRefs_startIndex = _localVarCount;
 
         _pFunctionDefStack = _pParsingStack;                                                                            // stack level for FUNCTION definition block
         _pFunctionDefStack->openBlock.fcnBlock_functionIndex = index;                                                   // store in BLOCK stack level: only if function def
@@ -1523,19 +1523,19 @@ bool Justina_interpreter::parseAsExternFunction(char*& pNext, parseTokenResult_t
     // 4. Store token in program memory
     // --------------------------------
 
-    TokenIsExtFunction* pToken = (TokenIsExtFunction*)_programCounter;
-    pToken->tokenType = tok_isExternFunction | (sizeof(TokenIsExtFunction) << 4);
+    TokenIsJustinaFunction* pToken = (TokenIsJustinaFunction*)_programCounter;
+    pToken->tokenType = tok_isJustinaFunction | (sizeof(TokenIsJustinaFunction) << 4);
     pToken->identNameIndex = index;
 
     _lastTokenStep = _programCounter - _programStorage;
-    _lastTokenType = tok_isExternFunction;
+    _lastTokenType = tok_isJustinaFunction;
     _lastTokenIsString = false, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
 #if printParsedTokens
-    _pDebugOut->print("parsing ext fcn: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(extFunctionNames[_functionIndex]);  _pDebugOut->println("]");
+    _pDebugOut->print("parsing ext fcn: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(JustinaFunctionNames[_functionIndex]);  _pDebugOut->println("]");
 #endif
 
-    _programCounter += sizeof(TokenIsExtFunction);
+    _programCounter += sizeof(TokenIsJustinaFunction);
     *_programCounter = tok_no_token;                                                                                    // indicates end of program
     result = result_tokenFound;                                                                                         // flag 'valid token found'
     return true;
@@ -1581,7 +1581,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp) { pNext = pch; result = result_variableNotAllowedHere; return false; }
 
     // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
-    bool tokenAllowed = (_isCommand || (!_programMode) || _extFunctionBlockOpen);
+    bool tokenAllowed = (_isCommand || (!_programMode) || _justinaFunctionBlockOpen);
     if (!tokenAllowed) { pNext = pch; result = result_variableNotAllowedHere; return false; ; }
 
     // scalar or array variable ? (could still be function 'array' argument; this will be detected further below)
@@ -1594,7 +1594,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
 
     // an initialiser can only be a constant and not a variable: produce error now, before variable is created (if it doesn't exist yet)
     bool lastIsPureAssgnmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;
-    if ((_isExtFunctionCmd || _isAnyVarCmd) && lastIsPureAssgnmentOp) { pNext = pch; result = result_constantValueExpected; return false; }
+    if ((_isJustinaFunctionCmd || _isAnyVarCmd) && lastIsPureAssgnmentOp) { pNext = pch; result = result_constantValueExpected; return false; }
 
     // array declaration: dimensions must be number constants (global, static, local arrays)
     if (_isAnyVarCmd && (_parenthesisLevel > 0)) { pNext = pch; result = result_variableNotAllowedHere; return false; }
@@ -1602,9 +1602,9 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     // if variable name is too long, reset pointer to first character to parse, indicate error and return
     if (pNext - pch > MAX_IDENT_NAME_LEN) { pNext = pch; result = result_identifierTooLong;  return false; }
 
-    // name already in use as external function name ?
+    // name already in use as Justina function name ?
     bool createNewName{ false };
-    int varNameIndex = getIdentifier(extFunctionNames, _extFunctionCount, MAX_EXT_FUNCS, pch, pNext - pch, createNewName);
+    int varNameIndex = getIdentifier(JustinaFunctionNames, _justinaFunctionCount, MAX_JUSTINA_FUNCS, pch, pNext - pch, createNewName);
     if (varNameIndex != -1) { pNext = pch; result = result_var_nameInUseForFunction; return false; }
 
     // token is a variable NAME, and a variable is allowed here
@@ -1634,10 +1634,10 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     // check if variable exists already (program mode OR '#' prefix found (debug imm. mode): as program variable; immediate mode: as user variable)
     // if a variable DEFINITION, then create variable name if it does not exist yet
     // note: for PROGRAM variables, this only concerns the NAME, not yet the actual variable (program variables: local, static, param and global variables can all share the same name)
-    createNewName = _isExtFunctionCmd || _isAnyVarCmd;
+    createNewName = _isJustinaFunctionCmd || _isAnyVarCmd;
     varNameIndex = getIdentifier(pvarNames[primaryNameRange], *varNameCount[primaryNameRange], maxVarNames[primaryNameRange], pName, pNext - pName, createNewName, !isProgramVar);
 
-    if (_isExtFunctionCmd || _isAnyVarCmd) {                                                                            // variable or parameter DEFINITION: if name didn't exist, it should have been created now
+    if (_isJustinaFunctionCmd || _isAnyVarCmd) {                                                                        // variable or parameter DEFINITION: if name didn't exist, it should have been created now
         if (varNameIndex == -1) { pNext = pch; result = result_maxVariableNamesReached; return false; }                 // name still does not exist: error
 
         // user variables: detect immediatemy if a variable has been redeclared 
@@ -1696,7 +1696,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     // 4.1 Currently parsing a FUNCTION...END block ? 
     // ----------------------------------------------
 
-    if (_extFunctionBlockOpen) {                                                                                        // (only while parsing program instructions)
+    if (_justinaFunctionBlockOpen) {                                                                                    // (only while parsing program instructions)
 
         // first use of a particular variable NAME in a function ?  (either a program variable or a user variable)
         bool isFirstVarNameRefInFnc = (((uint8_t)varType[activeNameRange][varNameIndex] & var_scopeMask) == var_scopeToSpecify);
@@ -1717,7 +1717,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
             // if a variable definition statement: set scope to parameter, local or static (global and usar variable definition: not possible in a function) 
             // if a variable reference: we will determine the qualifier in a moment 
 
-            uint8_t varScope = _isExtFunctionCmd ? var_isParamInFunc : _isLocalVarCmd ? var_isLocalInFunc : _isStaticVarCmd ? var_isStaticInFunc : var_scopeToSpecify;
+            uint8_t varScope = _isJustinaFunctionCmd ? var_isParamInFunc : _isLocalVarCmd ? var_isLocalInFunc : _isStaticVarCmd ? var_isStaticInFunc : var_scopeToSpecify;
 
             varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~var_scopeMask) | varScope;     //set scope bits (will be stored in token AND needed during current procedure)
 
@@ -1736,14 +1736,14 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 _staticVarCountInFunction++;
                 _staticVarCount++;
 
-                // ext. function index: in parsing stack level for FUNCTION definition command
+                // Justina function index: in parsing stack level for FUNCTION definition command
                 int fcnIndex = _pFunctionDefStack->openBlock.fcnBlock_functionIndex;
-                extFunctionData[fcnIndex].staticVarCountInFunction = _staticVarCountInFunction;
+                justinaFunctionData[fcnIndex].staticVarCountInFunction = _staticVarCountInFunction;
             }
 
             // definition of NEW parameter (in function definition) or NEW local variable for function
             // (but it isn't a global variable; relative position in a function's local variables area will be defined now) 
-            else if (_isExtFunctionCmd || _isLocalVarCmd) {
+            else if (_isJustinaFunctionCmd || _isLocalVarCmd) {
                 globalVarStorageMissingOrIsNotGlobal = true;
                 if (_localVarCountInFunction == MAX_LOC_VARS_IN_FUNC) { pNext = pch; result = result_maxLocalVariablesReached; return false; }
 
@@ -1757,13 +1757,13 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 localVarNameRef[_localVarCount] = varNameIndex;
 
                 _localVarCountInFunction++;
-                if (_isExtFunctionCmd) { _paramOnlyCountInFunction++; }
+                if (_isJustinaFunctionCmd) { _paramOnlyCountInFunction++; }
                 _localVarCount++;
 
-                // ext. function index: in stack level for FUNCTION definition command
+                // Justina function index: in stack level for FUNCTION definition command
                 int fcnIndex = _pFunctionDefStack->openBlock.fcnBlock_functionIndex;
-                extFunctionData[fcnIndex].localVarCountInFunction = _localVarCountInFunction;                           // after incrementing count
-                if (_isExtFunctionCmd) { extFunctionData[fcnIndex].paramOnlyCountInFunction = _paramOnlyCountInFunction; }
+                justinaFunctionData[fcnIndex].localVarCountInFunction = _localVarCountInFunction;                       // after incrementing count
+                if (_isJustinaFunctionCmd) { justinaFunctionData[fcnIndex].paramOnlyCountInFunction = _paramOnlyCountInFunction; }
             }
 
             else {
@@ -1782,7 +1782,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
         }
 
         else {  // if variable name already referenced before in function (global / user variable use OR param, local, static declaration), then it has been defined already
-            bool isLocalDeclaration = (_isExtFunctionCmd || _isLocalVarCmd || _isStaticVarCmd);                         // local variable declaration ? (parameter, local, static)
+            bool isLocalDeclaration = (_isJustinaFunctionCmd || _isLocalVarCmd || _isStaticVarCmd);                     // local variable declaration ? (parameter, local, static)
             if (isLocalDeclaration) { pNext = pch; result = result_var_redeclared; return false; }
         }
     }
@@ -1819,7 +1819,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
             #endif
 
                 // is a declaration of a new program global variable (in program mode), or a new user user variable (in immediate mode) 
-                // variable qualifier : don't care for now (global varables: reset at start of next external function parsing)
+                // variable qualifier : don't care for now (global varables: reset at start of next Justina function parsing)
                 if (!isArray) { varValues[activeNameRange][varNameIndex].floatConst = 0.; }                             // initialize variable (if initializer and/or array: will be overwritten)
                 varType[activeNameRange][varNameIndex] = varType[activeNameRange][varNameIndex] | value_isFloat;        // init as float (for scalar and array)
                 if (isProgramVar) { varType[activeNameRange][varNameIndex] = varType[activeNameRange][varNameIndex] | var_nameHasGlobalValue; }   // set 'has global value' or 'user var' bit
@@ -1844,21 +1844,21 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                     //
                     // note: levels in between debug command level and open function level may exist, containing open block data for the debug command level
                     // these levels can NOT refer to an eval() string execution level, because a program can not be stopped during the execution of an eval() string
-                    // (although it can during an external function called from an eval() string)
+                    // (although it can during a Justina function called from an eval() string)
 
                     int blockType = _activeFunctionData.blockType;
                     void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;       // one level below _activeFunctionData
-                    bool isDebugCmdLevel = (blockType == block_extFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + _progMemorySize)) : false;
+                    bool isDebugCmdLevel = (blockType == block_JustinaFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + _progMemorySize)) : false;
                     if (!isDebugCmdLevel) {                                                                             // find debug level in flow control stack instead
                         do {
                             blockType = *(char*)pFlowCtrlStackLvl;
-                            isDebugCmdLevel = (blockType == block_extFunction) ? (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + _progMemorySize)) : false;
+                            isDebugCmdLevel = (blockType == block_JustinaFunction) ? (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + _progMemorySize)) : false;
                             pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                         } while (!isDebugCmdLevel);                                                                     // stack level for open function found immediate below debug line found (always match)
                     }
 
                     blockType = ((OpenFunctionData*)pFlowCtrlStackLvl)->blockType;
-                    while (blockType != block_extFunction) {
+                    while (blockType != block_JustinaFunction) {
                         pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                         blockType = ((OpenFunctionData*)pFlowCtrlStackLvl)->blockType;
                     }
@@ -1866,8 +1866,8 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                     int openFunctionIndex = ((OpenFunctionData*)pFlowCtrlStackLvl)->functionIndex;                      // function index of stopped program's deepest function in call stack
 
                     // check whether this is a local or static function variable reference of the deepest open function in the call stack
-                    int staticVarStartIndex = extFunctionData[openFunctionIndex].staticVarStartIndex;
-                    int staticVarCountInFunction = extFunctionData[openFunctionIndex].staticVarCountInFunction;
+                    int staticVarStartIndex = justinaFunctionData[openFunctionIndex].staticVarStartIndex;
+                    int staticVarCountInFunction = justinaFunctionData[openFunctionIndex].staticVarCountInFunction;
 
                     //   is variable defined in this function as a static variable ?
                     int i{};
@@ -1879,9 +1879,9 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                     //  not a static variable of the open function: is it a local variable (including a function parameter) ?
                     // this is a little more complex, because local variable memory is dynamically allocated when functions are launched (during execution)
                     if (!isOpenFunctionStaticVariable) {
-                        int localVarNameRefs_startIndex = extFunctionData[openFunctionIndex].localVarNameRefs_startIndex;
-                        int localVarCountInFunction = extFunctionData[openFunctionIndex].localVarCountInFunction;
-                        int paramOnlyCountInFunction = extFunctionData[openFunctionIndex].paramOnlyCountInFunction;
+                        int localVarNameRefs_startIndex = justinaFunctionData[openFunctionIndex].localVarNameRefs_startIndex;
+                        int localVarCountInFunction = justinaFunctionData[openFunctionIndex].localVarCountInFunction;
+                        int paramOnlyCountInFunction = justinaFunctionData[openFunctionIndex].paramOnlyCountInFunction;
 
                         for (i = localVarNameRefs_startIndex; i <= localVarNameRefs_startIndex + localVarCountInFunction - 1; ++i) {    // skip if count is zero
                             if (localVarNameRef[i] == varNameIndex) {
@@ -1959,10 +1959,10 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
 
     bool isGlobalOrUserVar = (isOpenFunctionStaticVariable || isOpenFunctionLocalVariable || isOpenFunctionParam) ? false :
         // NOTE: inside a function, test against 'var_isGlobal', outside a function, test against 'var_nameHasGlobalValue'
-        isProgramVar ? ((_extFunctionBlockOpen && (varScope == var_isGlobal)) || (!_extFunctionBlockOpen && (varType[activeNameRange][varNameIndex] & var_nameHasGlobalValue))) : true;
-    bool isStaticVar = isOpenFunctionStaticVariable ? true : (_extFunctionBlockOpen && (varScope == var_isStaticInFunc));
-    bool isLocalVar = isOpenFunctionLocalVariable ? true : (_extFunctionBlockOpen && (varScope == var_isLocalInFunc));
-    bool isParam = isOpenFunctionParam ? true : (_extFunctionBlockOpen && (varScope == var_isParamInFunc));
+        isProgramVar ? ((_justinaFunctionBlockOpen && (varScope == var_isGlobal)) || (!_justinaFunctionBlockOpen && (varType[activeNameRange][varNameIndex] & var_nameHasGlobalValue))) : true;
+    bool isStaticVar = isOpenFunctionStaticVariable ? true : (_justinaFunctionBlockOpen && (varScope == var_isStaticInFunc));
+    bool isLocalVar = isOpenFunctionLocalVariable ? true : (_justinaFunctionBlockOpen && (varScope == var_isLocalInFunc));
+    bool isParam = isOpenFunctionParam ? true : (_justinaFunctionBlockOpen && (varScope == var_isParamInFunc));
 
     int valueIndex = (isOpenFunctionStaticVariable || isOpenFunctionLocalVariable || isOpenFunctionParam) ? openFunctionVar_valueIndex :
         isGlobalOrUserVar ? varNameIndex : programVarValueIndex[varNameIndex];
@@ -1972,7 +1972,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
 
     if (_lastTokenIsPrefixIncrDecr && varIsConstantVar) { pNext = pch; result = result_cannotChangeConstantValue; return false; }
 
-    if (!(_isExtFunctionCmd || _isAnyVarCmd)) {                                                                         // not a variable definition but a variable reference
+    if (!(_isJustinaFunctionCmd || _isAnyVarCmd)) {                                                                     // not a variable definition but a variable reference
         bool existingArray = false;
         _arrayDimCount = 0;                                                                                             // init: if new variable (or no array), then set dimension count to zero
         existingArray = (isOpenFunctionLocalVariable || isOpenFunctionParam) ? isOpenFunctionLocalArrayVariable :
@@ -1981,7 +1981,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
             (localVarType[valueIndex] & var_isArray);                                                                   // param or local
         // if not a function definition: array name does not have to be followed by a left parenthesis (passing the array and not an array element)
         // Is this variable part of a function call argument, without further nesting of parenthesis, and has it been defined as an array ? 
-        bool isPartOfFuncCallArgument = (_parenthesisLevel > 0) ? (_pParsingStack->openPar.flags & (intFunctionBit | extFunctionBit)) : false;
+        bool isPartOfFuncCallArgument = (_parenthesisLevel > 0) ? (_pParsingStack->openPar.flags & (internCppFunctionBit | JustinaFunctionBit)) : false;
         if (isPartOfFuncCallArgument && existingArray) {
             // if NOT followed by an array element enclosed in parenthesis, it references the complete array
             // this is only allowed if not part of an expression: check
@@ -2224,11 +2224,11 @@ bool Justina_interpreter::checkArrayDimCountAndSize(parseTokenResult_type& resul
 }
 
 
-// ---------------------------------------------------------------------------------------------------------------------------------------
-// *   External function definition statement parsing: check order of mandatory and optional arguments, check if max. n° not exceeded   *
-// ---------------------------------------------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------------------------------------------
+// *   Justina function definition statement parsing: check order of mandatory and optional arguments, check if max. n° not exceeded   *
+// -------------------------------------------------------------------------------------------------------------------------------------
 
-bool Justina_interpreter::checkExtFunctionArguments(parseTokenResult_type& result, int& minArgCnt, int& maxArgCnt) {
+bool Justina_interpreter::checkJustinaFunctionArguments(parseTokenResult_type& result, int& minArgCnt, int& maxArgCnt) {
     bool lastIsRightPar = _lastTokenIsTerminal ? (_lastTermCode == termcod_rightPar) : false;
 
     bool argWasMandatory = (_lastTokenType == tok_isVariable) || lastIsRightPar;                // variable without assignment to a constant or param array def. parenthesis
@@ -2237,16 +2237,16 @@ bool Justina_interpreter::checkExtFunctionArguments(parseTokenResult_type& resul
     if (argWasMandatory) { minArgCnt++; }
     maxArgCnt++;
     // check that max argument count is not exceeded (number must fit in 4 bits)
-    if (maxArgCnt > c_extFunctionMaxArgs) { result = result_function_maxArgsExceeded; return false; }
+    if (maxArgCnt > c_JustinaFunctionMaxArgs) { result = result_function_maxArgsExceeded; return false; }
     return true;
 }
 
 
-// -----------------------------------------------------------------------------------------------------------------
-// *   Internal function: check that order of arrays and scalar variables is consistent with function definition   *
-// -----------------------------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------------------------------
+// *   internal cpp function: check that order of arrays and scalar variables is consistent with function definition   *
+// ---------------------------------------------------------------------------------------------------------------------
 
-bool Justina_interpreter::checkInternFuncArgArrayPattern(parseTokenResult_type& result) {
+bool Justina_interpreter::checkInternCppFuncArgArrayPattern(parseTokenResult_type& result) {
     int funcIndex = _pParsingStack->openPar.identifierIndex;                                    // note: also stored in stack for FUNCTION definition block level; here we can pick one of both
     char paramIsArrayPattern = _functions[funcIndex].arrayPattern;
     int argNumber = _pParsingStack->openPar.actualArgsOrDims;
@@ -2270,22 +2270,22 @@ bool Justina_interpreter::checkInternFuncArgArrayPattern(parseTokenResult_type& 
 }
 
 
-// ------------------------------------------------------------------------------------------------------------------------------------
-// *   External function: check that order of arrays and scalar variables is consistent with previous calls and function definition   *
-// ------------------------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------
+// *   Justina function: check that order of arrays and scalar variables is consistent with previous calls and function definition   *
+// -----------------------------------------------------------------------------------------------------------------------------------
 
-bool Justina_interpreter::checkExternFuncArgArrayPattern(parseTokenResult_type& result, bool isFunctionClosingParenthesis) {
+bool Justina_interpreter::checkJustinaFuncArgArrayPattern(parseTokenResult_type& result, bool isFunctionClosingParenthesis) {
 
     int funcIndex = _pParsingStack->openPar.identifierIndex;                                    // note: also stored in stack for FUNCTION definition block level; here we can pick one of both
     int argNumber = _pParsingStack->openPar.actualArgsOrDims;
     uint16_t paramIsArrayPattern{ 0 };
-    memcpy(&paramIsArrayPattern, extFunctionData[funcIndex].paramIsArrayPattern, sizeof(char[2]));
+    memcpy(&paramIsArrayPattern, justinaFunctionData[funcIndex].paramIsArrayPattern, sizeof(char[2]));
     if (argNumber > 0) {
 
         bool isArray = false;
         bool lastIsRightPar = _lastTokenIsTerminal ? (_lastTermCode == termcod_rightPar) : false;
 
-        if (_isExtFunctionCmd) { isArray = lastIsRightPar; }                                    // function definition: if variable name followed by empty parameter list ' () ': array parameter
+        if (_isJustinaFunctionCmd) { isArray = lastIsRightPar; }                                // function definition: if variable name followed by empty parameter list ' () ': array parameter
         else if (_lastTokenType == tok_isVariable) {                                            // function call and last token is variable name ? Could be an array name                                                                                      // function call
             // check if variable is defined as array (then it will NOT be part of an expression )
             isArray = (((TokenIsVariable*)(_programStorage + _lastTokenStep))->identInfo) & var_isArray;
@@ -2301,7 +2301,7 @@ bool Justina_interpreter::checkExternFuncArgArrayPattern(parseTokenResult_type& 
     }
 
     if (isFunctionClosingParenthesis) { paramIsArrayPattern = paramIsArrayPattern & ~0x8000; }  // function name used now: order of scalar and array parameters is now fixed
-    memcpy(extFunctionData[funcIndex].paramIsArrayPattern, &paramIsArrayPattern, sizeof(char[2]));
+    memcpy(justinaFunctionData[funcIndex].paramIsArrayPattern, &paramIsArrayPattern, sizeof(char[2]));
     return true;
 }
 
