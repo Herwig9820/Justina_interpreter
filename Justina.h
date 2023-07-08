@@ -122,7 +122,7 @@ class Justina_interpreter {
     static constexpr int MAX_STAT_VARS{ 255 };              // max. static variables allowed across all parsed functions (only). Absolute limit: 255
     static constexpr int MAX_LOCAL_VARS{ 255 };             // max. local variables allowed across all parsed functons, including function parameters. Absolute limit: 255
     static constexpr int MAX_LOC_VARS_IN_FUNC{ 32 };        // max. local and parameter variables allowed (only) in an INDIVIDUAL parsed function. Absolute limit: 255 
-    static constexpr int MAX_JUSTINA_FUNCS{ 32 };           // max. Justina functions allowed. Absolute limit: 255
+    static constexpr int MAX_JUSTINA_FUNCS{ 256 };          // max. Justina functions allowed. Absolute limit: 255
     static constexpr int MAX_ARRAY_DIMS{ 3 };               // max. array dimensions allowed. Absolute limit: 3 
     static constexpr int MAX_ARRAY_ELEM{ 200 };             // max. elements allowed in an array. Absolute limit: 2^15-1 = 32767. Individual dimensions are limited to a size of 255
     static constexpr int MAX_LAST_RESULT_DEPTH{ 10 };       // max. depth of 'last results' FiFo
@@ -454,6 +454,7 @@ class Justina_interpreter {
         tok_no_token,                                           // no token to process
         tok_isReservedWord,
         tok_isInternCppFunction,
+        tok_isExternCppFunction,
         tok_isJustinaFunction,
         tok_isConstant,
         tok_isVariable,
@@ -779,14 +780,17 @@ class Justina_interpreter {
 
 
     // type & info about of parenthesis level
-    static constexpr uint8_t JustinaFunctionBit{ B00000001 };
-    static constexpr uint8_t JustinaFunctionPrevDefinedBit{ B00000010 };
-    static constexpr uint8_t internCppFunctionBit{ B00000100 };
-    static constexpr uint8_t openParenthesisBit{ B00001000 };                                  // not a function
-    static constexpr uint8_t arrayBit{ B00010000 };
-    static constexpr uint8_t varAssignmentAllowedBit{ B00100000 };
-    static constexpr uint8_t varHasPrefixIncrDecrBit{ B01000000 };
-    static constexpr uint8_t varIsConstantBit{ B10000000 };
+    static constexpr uint8_t JustinaFunctionBit            { B00000001 };
+    static constexpr uint8_t internCppFunctionBit          { B00000010 };
+    static constexpr uint8_t externCppFunctionBit          { B00000100 };
+    static constexpr uint8_t openParenthesisBit            { B00001000 };                                  // not a function
+
+    static constexpr uint8_t JustinaFunctionPrevDefinedBit { B00010000 };
+    static constexpr uint8_t arrayBit                      { B00100000 };
+    static constexpr uint8_t varAssignmentAllowedBit       { B01000000 };
+    static constexpr uint8_t varHasPrefixIncrDecrBit       { B10000000 };
+
+    static constexpr uint8_t varIsConstantBit              { B00000001 };
 
 
     // commands (FUNCTION, FOR, ...): allowed command parameters
@@ -961,6 +965,13 @@ public:
     struct TokenIsInternCppFunction {                           // token storage for internal cpp function: length 2
         char tokenType;                                         // will be set to specific token type
         char tokenIndex;                                        // index into list of tokens
+    };
+
+    struct TokenIsExternCppFunction {                           // token storage for external cpp function: length 2
+        char tokenType;                                         // will be set to specific token type
+        char tokenIndex;                                        // index into list of tokens
+        char returnValueType;                                   // 0 = bool, 1 = char, 2 = int, 3 = long, 4 = float, 5 = char*
+        char funcIndexInType;
     };
 
     struct TokenIsJustinaFunction {                             // token storage for Justina function: length 2
@@ -1168,6 +1179,7 @@ public:
     struct OpenParenthesesLvl {                                         // must fit in 8 bytes (2 words). If stack level is open parenthesis:
         // functions only : if definition already parsed, min & max number of arguments required
         // if not, then current state of min & max argument count found in COMPLETELY PARSED calls to function
+
         char minArgs;                                           // note: 1 for parenthesis without function
         char maxArgs;                                           // note: 1 for parenthesis without function
 
@@ -1175,10 +1187,11 @@ public:
         char arrayDimCount;                                     // previously defined array: dimension count. Zero if new array or if scalar variable.
 
         // functions and arrays
-        char identifierIndex;                                   // functions and variables: index to name pointer
+        char identifierIndex;                                   // internal cpp functions and variables: index to name pointer. external functions: index to extern cpp function return type category
         char variableScope;                                     // variables: scope (user, global, static, local, parameter)
         char actualArgsOrDims;                                  // actual number of arguments found (function) or dimension count (prev. defined array) 
         char flags;                                             // if stack level is open parenthesis (not open block): other flags 
+        char flags2;
     };
 
     struct OpenCmdBlockLvl {
@@ -1196,32 +1209,32 @@ public:
     struct OpenFile {
         File file;
         char* filePath{ nullptr };                                // including file name
-        bool fileNumberInUse{ false };                                   // file number = position in structure (base 0) + 1
+        bool fileNumberInUse{ false };                              // file number = position in structure (base 0) + 1
         int currentPrintColumn{ 0 };
     };
 
     // block commands only (FOR, END, etc.): type of block, position in block, sequence check in block: allowed previous block commands 
-    static constexpr CmdBlockDef cmdBlockJustinaFunction{ block_JustinaFunction, block_startPos, block_na, block_na };        // 'IF' block mid position 2, min & max previous position is block start & block position 1, resp.
-    static constexpr CmdBlockDef cmdBlockWhile{ block_while, block_startPos, block_na, block_na };                            // 'WHILE' block start
-    static constexpr CmdBlockDef cmdBlockFor{ block_for, block_startPos, block_na, block_na };                                // 'FOR' block start
-    static constexpr CmdBlockDef cmdBlockIf{ block_if, block_startPos, block_na, block_na };                                  // 'IF' block start
-    static constexpr CmdBlockDef cmdBlockIf_elseIf{ block_if, block_midPos1, block_startPos, block_midPos1 };                 // 'IF' block mid position 1, min & max previous position is block start & block position 1, resp.
-    static constexpr CmdBlockDef cmdBlockIf_else{ block_if, block_midPos2, block_startPos, block_midPos1 };                   // 'IF' block mid position 2, min & max previous position is block start & block position 1, resp.
+    static constexpr CmdBlockDef cmdBlockJustinaFunction{ block_JustinaFunction, block_startPos, block_na, block_na };          // 'IF' block mid position 2, min & max previous position is block start & block position 1, resp.
+    static constexpr CmdBlockDef cmdBlockWhile{ block_while, block_startPos, block_na, block_na };                              // 'WHILE' block start
+    static constexpr CmdBlockDef cmdBlockFor{ block_for, block_startPos, block_na, block_na };                                  // 'FOR' block start
+    static constexpr CmdBlockDef cmdBlockIf{ block_if, block_startPos, block_na, block_na };                                    // 'IF' block start
+    static constexpr CmdBlockDef cmdBlockIf_elseIf{ block_if, block_midPos1, block_startPos, block_midPos1 };                   // 'IF' block mid position 1, min & max previous position is block start & block position 1, resp.
+    static constexpr CmdBlockDef cmdBlockIf_else{ block_if, block_midPos2, block_startPos, block_midPos1 };                     // 'IF' block mid position 2, min & max previous position is block start & block position 1, resp.
 
     // 'alter flow' block commands require an open block of a specific type, NOT necessary in the current inner open block 
     // the second value ('position in block') is specified to indicate which type of open block is required (e.g. a RETURN command can only occur within a FUNCTION...END block)
-    static constexpr CmdBlockDef cmdBlockOpenBlock_loop{ block_alterFlow, block_inOpenLoopBlock, block_na, block_na };        // only if an open FOR or WHILE block 
-    static constexpr CmdBlockDef cmdBlockOpenBlock_function{ block_alterFlow, block_inOpenFunctionBlock, block_na, block_na };// only if an open FUNCTION definition block 
+    static constexpr CmdBlockDef cmdBlockOpenBlock_loop{ block_alterFlow, block_inOpenLoopBlock, block_na, block_na };          // only if an open FOR or WHILE block 
+    static constexpr CmdBlockDef cmdBlockOpenBlock_function{ block_alterFlow, block_inOpenFunctionBlock, block_na, block_na };  // only if an open FUNCTION definition block 
 
     // used to close any type of currently open inner block
-    static constexpr CmdBlockDef cmdBlockGenEnd{ block_genericEnd, block_endPos, block_na, block_endPos };            // all block types: block end 
+    static constexpr CmdBlockDef cmdBlockGenEnd{ block_genericEnd, block_endPos, block_na, block_endPos };                      // all block types: block end 
 
     // other commands: first value indicates it's not a block command, other positions not used
-    static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na, block_na, block_na };                                   // not a 'block' command
+    static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na, block_na, block_na };                                      // not a 'block' command
 
     // sizes MUST be specified AND must be exact
     static const ResWordDef _resWords[66];                          // keyword names
-    static const FuncDef _functions[138];                           // function names with min & max arguments allowed
+    static const FuncDef _internCppFunctions[138];                  // function names with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
     static const SymbNumConsts _symbNumConsts[60];
 
@@ -1230,29 +1243,60 @@ public:
     // >>> USER CPP functions: 'name + function pointer' structure
     // -------------------------------------------------------
 
+    struct CppDummyVoidFunction {
+        const char* cppFunctionName;                                                            // function name
+        void* func;                                                                  // function pointer
+        char minArgCount;
+        char maxArgCount;
+    };
+
     struct CppBoolFunction {
         const char* cppFunctionName;                                                            // function name
         bool (*func)(const void** pdata, const char* valueType, const int argCount);            // function pointer
+        char minArgCount;
+        char maxArgCount;
+    };
+
+    struct CppCharFunction {
+        const char* cppFunctionName;
+        char (*func)(const void** pdata, const char* valueType, const int argCount);
+        char minArgCount;
+        char maxArgCount;
+    };
+
+    struct CppIntFunction {
+        const char* cppFunctionName;
+        int (*func)(const void** pdata, const char* valueType, const int argCount);
+        char minArgCount;
+        char maxArgCount;
     };
 
     struct CppLongFunction {
         const char* cppFunctionName;
         long (*func)(const void** pdata, const char* valueType, const int argCount);
+        char minArgCount;
+        char maxArgCount;
     };
 
     struct CppFloatFunction {
         const char* cppFunctionName;
         float (*func)(const void** pdata, const char* valueType, const int argCount);
+        char minArgCount;
+        char maxArgCount;
     };
 
     struct Cpp_pCharFunction {
         const char* cppFunctionName;
         char* (*func)(const void** pdata, const char* valueType, const int argCount);
+        char minArgCount;
+        char maxArgCount;
     };
 
     struct CppVoidCommand {
         const char* cppCommandName;
         void (*command)(const void** pdata, const char* valueType, const int argCount);
+        char minArgCount;                                                                           // not used for cpp (user) commands
+        char maxArgCount;
     };
 
     // >>> ------------------------------------------------------------------------------------------------------------
@@ -1276,6 +1320,7 @@ public:
 
     int _resWordCount;                                          // count of keywords in keyword table 
     int _internCppFunctionCount;                                         // count of internal cpp functions in functions table
+    int _externCppFunctionCount;                                         // count of internal cpp functions in functions table
     int _symbvalueCount;
     int _termTokenCount;                                        // count of operators and other terminals in terminals table
 
@@ -1433,16 +1478,16 @@ public:
     // -----------------------------
 
     CppBoolFunction* _pCppBoolFunctions{ nullptr };
+    CppCharFunction* _pCppCharFunctions{ nullptr };
+    CppIntFunction* _pCppIntFunctions{ nullptr };
     CppLongFunction* _pCppLongFunctions{ nullptr };
     CppFloatFunction* _pCppFloatFunctions{ nullptr };
     Cpp_pCharFunction* _pCpp_pCharFunctions{ nullptr };
     CppVoidCommand* _pCppVoidCommands{ nullptr };
 
-    int _cppBoolFunctionCount{ 0 };
-    int _cppLongFunctionCount{ 0 };
-    int _cppFloatFunctionCount{ 0 };
-    int _cpp_pCharFunctionCount{ 0 };
-    int _cppVoidCommandCount{ 0 };
+    // for bool, char, int, long,float, char* function return types; for commands (void return type)
+    void* _pExtCppFunctions[7]{ nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+    int _ExtCppFunctionCounts[7]{ 0,0,0,0,0,0,0 };
 
     // >>> ----------------------------------------------------------------------------------------
 
@@ -1623,11 +1668,13 @@ public:
     // -----------------------------
     // >>> call backs voor user CPP functies
     // -----------------------------
-    bool setUserBoolCppFunctionsEntryPoint(CppBoolFunction* pCppBoolFunctions, int cppBoolFunctionCount);
-    bool setUserLongCppFunctionsEntryPoint(CppLongFunction* pCppLongFunctions, int cpplongFunctionCount);
-    bool setUserFloatCppFunctionsEntryPoint(CppFloatFunction* pCppFloatFunctions, int cppfloatFunctionCount);
-    bool setUser_pCharCppFunctionsEntryPoint(Cpp_pCharFunction* pCpp_pCharFunctions, int cpp_pCharFunctionCount);
-    bool setUserCppCommandsEntryPoint(CppVoidCommand* pCppVoidCommands, int cppVoidCommandCount);
+    bool setUserBoolCppFunctionsEntryPoint(const CppBoolFunction* const  pCppBoolFunctions, int cppBoolFunctionCount);
+    bool setUserCharCppFunctionsEntryPoint(const CppCharFunction* const  pCppCharFunctions, int cppCharFunctionCount);
+    bool setUserIntCppFunctionsEntryPoint(const CppIntFunction* const  pCppIntFunctions, int cppIntFunctionCount);
+    bool setUserLongCppFunctionsEntryPoint(const CppLongFunction* const pCppLongFunctions, int cppLongFunctionCount);
+    bool setUserFloatCppFunctionsEntryPoint(const CppFloatFunction* const pCppFloatFunctions, int cppfloatFunctionCount);
+    bool setUser_pCharCppFunctionsEntryPoint(const Cpp_pCharFunction* const pCpp_pCharFunctions, int cpp_pCharFunctionCount);
+    bool setUserCppCommandsEntryPoint(const CppVoidCommand* const pCppVoidCommands, int cppVoidCommandCount);
     // >>> -------------------------------------------------------------------------------------------------------------------------
 
     bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType, const int argCount));

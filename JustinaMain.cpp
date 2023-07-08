@@ -186,7 +186,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
 // if more than 8 arguments are supplied, only arguments 1 to 8 can be set as array arguments
 // maximum number of parameters should be no more than 16
 
-const Justina_interpreter::FuncDef Justina_interpreter::_functions[]{
+const Justina_interpreter::FuncDef Justina_interpreter::_internCppFunctions[]{
     //  name                    id code                         #par    array pattern
     //  ----                    -------                         ----    -------------   
 
@@ -538,7 +538,7 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
     _userCBprocStartSet_count = 0;
 
     _resWordCount = (sizeof(_resWords)) / sizeof(_resWords[0]);
-    _internCppFunctionCount = (sizeof(_functions)) / sizeof(_functions[0]);
+    _internCppFunctionCount = (sizeof(_internCppFunctions)) / sizeof(_internCppFunctions[0]);
     _termTokenCount = (sizeof(_terminals)) / sizeof(_terminals[0]);
     _symbvalueCount = (sizeof(_symbNumConsts)) / sizeof(_symbNumConsts[0]);
 
@@ -617,29 +617,39 @@ bool Justina_interpreter::setMainLoopCallback(void (*func)(long& appFlags)) {
 // >>> call backs voor user CPP functies
 // -----------------------------
 
-bool Justina_interpreter::setUserBoolCppFunctionsEntryPoint(CppBoolFunction* pCppBoolFunctions, int cppBoolFunctionCount) {
-    _pCppBoolFunctions = pCppBoolFunctions;
-    _cppBoolFunctionCount = cppBoolFunctionCount;
+bool Justina_interpreter::setUserBoolCppFunctionsEntryPoint(const CppBoolFunction* const  pCppBoolFunctions, int cppBoolFunctionCount) {
+    _pExtCppFunctions[0] = _pCppBoolFunctions = (CppBoolFunction*)pCppBoolFunctions;
+    _ExtCppFunctionCounts[0] = cppBoolFunctionCount;
 };
 
-bool Justina_interpreter::setUserLongCppFunctionsEntryPoint(CppLongFunction* pCppLongFunctions, int cppLongFunctionCount) {
-    _pCppLongFunctions = pCppLongFunctions;
-    _cppLongFunctionCount = cppLongFunctionCount;
+bool Justina_interpreter::setUserCharCppFunctionsEntryPoint(const CppCharFunction* const  pCppCharFunctions, int cppCharFunctionCount) {
+    _pExtCppFunctions[1] = _pCppCharFunctions = (CppCharFunction*)pCppCharFunctions;
+    _ExtCppFunctionCounts[1] = cppCharFunctionCount;
 };
 
-bool Justina_interpreter::setUserFloatCppFunctionsEntryPoint(CppFloatFunction* pCppFloatFunctions, int cppFloatFunctionCount) {
-    _pCppFloatFunctions = pCppFloatFunctions;
-    _cppFloatFunctionCount = cppFloatFunctionCount;
+bool Justina_interpreter::setUserIntCppFunctionsEntryPoint(const CppIntFunction* const  pCppIntFunctions, int cppIntFunctionCount) {
+    _pExtCppFunctions[2] = _pCppIntFunctions = (CppIntFunction*)pCppIntFunctions;
+    _ExtCppFunctionCounts[2] = cppIntFunctionCount;
 };
 
-bool Justina_interpreter::setUser_pCharCppFunctionsEntryPoint(Cpp_pCharFunction* pCpp_pCharFunctions, int cpp_pCharFunctionCount) {
-    _pCpp_pCharFunctions = pCpp_pCharFunctions;
-    _cpp_pCharFunctionCount = cpp_pCharFunctionCount;
+bool Justina_interpreter::setUserLongCppFunctionsEntryPoint(const CppLongFunction* const pCppLongFunctions, int cppLongFunctionCount) {
+    _pExtCppFunctions[3] = _pCppLongFunctions = (CppLongFunction*)pCppLongFunctions;
+    _ExtCppFunctionCounts[3] = cppLongFunctionCount;
 };
 
-bool Justina_interpreter::setUserCppCommandsEntryPoint(CppVoidCommand* pCppVoidCommands, int cppVoidCommandCount) {
-    _pCppVoidCommands = pCppVoidCommands;
-    _cppVoidCommandCount = cppVoidCommandCount;
+bool Justina_interpreter::setUserFloatCppFunctionsEntryPoint(const CppFloatFunction* const pCppFloatFunctions, int cppFloatFunctionCount) {
+    _pExtCppFunctions[4] = _pCppFloatFunctions = (CppFloatFunction*)pCppFloatFunctions;
+    _ExtCppFunctionCounts[4] = cppFloatFunctionCount;
+};
+
+bool Justina_interpreter::setUser_pCharCppFunctionsEntryPoint(const Cpp_pCharFunction* const pCpp_pCharFunctions, int cpp_pCharFunctionCount) {
+    _pExtCppFunctions[5] = _pCpp_pCharFunctions = (Cpp_pCharFunction*)pCpp_pCharFunctions;
+    _ExtCppFunctionCounts[5] = cpp_pCharFunctionCount;
+};
+
+bool Justina_interpreter::setUserCppCommandsEntryPoint(const CppVoidCommand* const pCppVoidCommands, int cppVoidCommandCount) {
+    _pExtCppFunctions[6] = _pCppVoidCommands = (CppVoidCommand*)pCppVoidCommands;
+    _ExtCppFunctionCounts[6] = cppVoidCommandCount;
 };
 
 // >>> -------------------------------------------------------------------------------------------------------------------------
@@ -749,7 +759,9 @@ bool Justina_interpreter::run() {
     const void* a[8]; char b[8]{}; int count;
     a[0] = (void*)&v;
     b[0] = value_isFloat;
-    Serial.print("bool callback vanuit main: "); Serial.println(_pCppBoolFunctions[0].func(a, b, count));
+    ////Serial.print("bool callback vanuit main: "); Serial.println(_pCppBoolFunctions[0].func(a, b, count));
+    ////Serial.print("char callback vanuit main: "); Serial.println(_pCppCharFunctions[0].func(a, b, count));
+    ////Serial.print("int callback vanuit main: "); Serial.println(_pCppIntFunctions[0].func(a, b, count));
     Serial.print("long callback vanuit main: "); Serial.println(_pCppLongFunctions[0].func(a, b, count));
     Serial.print("long callback vanuit main: "); Serial.println(_pCppLongFunctions[1].func(a, b, count));
     Serial.print("float callback vanuit main: "); Serial.println(_pCppFloatFunctions[0].func(a, b, count));
@@ -1258,14 +1270,14 @@ void Justina_interpreter::parseAndExecTraceString() {
         parseTokenResult_type result = parseStatement(pTraceParsingInput, pNextParseStatement, dummy);
         if (result == result_tokenFound) {
             // do NOT pretty print if parsing error, to avoid bad-looking partially printed statements (even if there will be an execution error later)
-            prettyPrintStatements(0);         
+            prettyPrintStatements(0);
             printTo(0, ": ");                                                                                   // resulting value will follow
             pTraceParsingInput = pNextParseStatement;
         }
         else {
             char  errStr[12];                                                                                   // includes place for terminating '\0'
             // if parsing error, print error instead of value AND CONTINUE with next trace expression (if any)
-            sprintf(errStr, "<ErrP%d>", (int)result);                                                           
+            sprintf(errStr, "<ErrP%d>", (int)result);
             printTo(0, errStr);
             // pNextParseStatement not yet correctly positioned: set to next statement
             while ((pTraceParsingInput[0] != term_semicolon[0]) && (pTraceParsingInput[0] != '\0')) { ++pTraceParsingInput; }
@@ -1376,7 +1388,7 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
             delete[] _pTraceString;
             _pTraceString = nullptr;                                                                            // old trace string
         }
-        }
+    }
 
     // delete all elements of the immediate mode parsed statements stack
     // (parsed immediate mode statements can be temporarily pushed on the immediate mode stack to be replaced either by parsed debug command lines or parsed eval() strings) 
@@ -1409,7 +1421,7 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
 
 
     printlnTo(0);
-    }
+}
 
 
 // ---------------------------------------------------------------------------------------
@@ -1614,7 +1626,7 @@ void Justina_interpreter::deleteIdentifierNameObjects(char** pIdentNameArray, in
         delete[] * (pIdentNameArray + index);
         index++;
     }
-    }
+}
 
 
 // --------------------------------------------------------------------------------------------------------------
@@ -1659,7 +1671,7 @@ void Justina_interpreter::deleteOneArrayVarStringObjects(Justina_interpreter::Va
             delete[]  pString;                                                                                                      // applicable to string and array (same pointer)
         }
     }
-        }
+}
 
 
 // ----------------------------------------------------------------------------------------------
@@ -1670,7 +1682,7 @@ void Justina_interpreter::deleteOneArrayVarStringObjects(Justina_interpreter::Va
 
 void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* varValues, char* varType, int varNameCount, int paramOnlyCount, bool checkIfGlobalValue, bool isUserVar, bool isLocalVar) {
 
-    int index = 0;                          
+    int index = 0;
     // do NOT skip parameters if deleting function variables: with constant args, a local copy is created (always scalar) and must be deleted if non-empty string
     while (index < varNameCount) {
         if (!checkIfGlobalValue || (varType[index] & (var_nameHasGlobalValue))) {                                                   // global value ?
@@ -1691,10 +1703,10 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
                     delete[]  varValues[index].pStringConst;
                 }
             }
-                }
-        index++;
-            }
         }
+        index++;
+    }
+}
 
 
 // --------------------------------------------------------------------
@@ -1714,7 +1726,7 @@ void Justina_interpreter::deleteLastValueFiFoStringObjects() {
             delete[] lastResultValueFiFo[i].pStringConst;
         }
     }
-        }
+}
 
 
 // -----------------------------------------------------------------------------------------
@@ -1747,8 +1759,8 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
             (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*prgmCnt.pTokenChars >> 4) & 0x0F;
         prgmCnt.pTokenChars += tokenLength;
         tokenType = *prgmCnt.pTokenChars & 0x0F;
-            }
-        }
+    }
+}
 
 
 // ---------------------------------------------------------------------------------

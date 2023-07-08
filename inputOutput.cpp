@@ -1008,7 +1008,11 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
             break;
 
             case tok_isInternCppFunction:
-                strcpy(prettyToken, _functions[progCnt.pInternCppFnc->tokenIndex].funcName);
+                strcpy(prettyToken, _internCppFunctions[progCnt.pInternCppFnc->tokenIndex].funcName);
+                break;
+
+            case tok_isExternCppFunction:
+                strcpy(prettyToken, "externFunc");
                 break;
 
             case tok_isJustinaFunction:

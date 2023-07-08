@@ -209,7 +209,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             #if PRINT_PROCESSED_TOKEN
                 _pDebugOut->print("=== process "); _pDebugOut->print(tokenType == tok_isInternCppFunction ? "int fcn" : "ext fcn"); _pDebugOut->print(": address "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth "); _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [");
                 int funcNameIndex = ((TokenIsInternCppFunction*)_programCounter)->tokenIndex;
-                _pDebugOut->print(_functions[funcNameIndex].funcName); _pDebugOut->println("]");
+                _pDebugOut->print(_internCppFunctions[funcNameIndex].funcName); _pDebugOut->println("]");
             #endif
             }
             break;

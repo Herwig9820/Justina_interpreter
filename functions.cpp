@@ -68,10 +68,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
     _activeFunctionData.errorProgramCounter = pFunctionStackLvl->function.tokenAddress;
 
     int functionIndex = pFunctionStackLvl->function.index;
-    char functionCode = _functions[functionIndex].functionCode;
-    int arrayPattern = _functions[functionIndex].arrayPattern;                                                              // available, just in case it's needed
-    int minArgs = _functions[functionIndex].minArgs;
-    int maxArgs = _functions[functionIndex].maxArgs;
+    char functionCode = _internCppFunctions[functionIndex].functionCode;
+    int arrayPattern = _internCppFunctions[functionIndex].arrayPattern;                                                     // available, just in case it's needed
+    int minArgs = _internCppFunctions[functionIndex].minArgs;
+    int maxArgs = _internCppFunctions[functionIndex].maxArgs;
     char fcnResultValueType{};  // init
     Val fcnResult;
     char argValueType[16];
