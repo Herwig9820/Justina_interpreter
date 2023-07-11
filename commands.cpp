@@ -90,6 +90,26 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
 
         // ------------------------
+        // Raise an execution error
+        // ------------------------
+
+        case cmdcod_raiseError:
+        {
+            bool operandIsVar = (pStackLvl->varOrConst.tokenType == tok_isVariable);
+            char valueType = operandIsVar ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
+            Val value;
+            value.longConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pLongConst) : pStackLvl->varOrConst.value.longConst);       // line is valid for all value types  
+
+            bool opIsLong = ((uint8_t)valueType == value_isLong);
+            bool opIsFloat = ((uint8_t)valueType == value_isFloat);
+            if (!opIsLong && !opIsFloat){break;}                                                                                        // ignore if not a number
+
+            return (opIsLong) ? (execResult_type)value.longConst : (execResult_type) value.floatConst ;
+        }
+        break;
+
+
+        // ------------------------
         // Quit Justina interpreter
         // ------------------------
 
@@ -867,8 +887,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
                         // if NOT a variable REFERENCE, then value type on the stack indicates the real value type and NOT 'variable reference' ...
                         // but it does not need to be changed, because in the next step, the respective stack level will be deleted 
-                        }
                     }
+                }
 
 
                 if (cmdParamCount == (isInput ? 3 : 2)) {       // last argument (optional second if Info, third if Input statement) serves a dual purpose: allow cancel (on entry) and signal 'canceled' (on exit)
@@ -880,12 +900,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     // if NOT a variable REFERENCE, then value type on the stack indicates the real value type and NOT 'variable reference' ...
                     // but it does not need to be changed, because in the next step, the respective stack level will be deleted 
                 }
-                } while (!answerValid);
+            } while (!answerValid);
 
-                // clean up
-                clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
-                _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                            // command execution ended
-            }
+            // clean up
+            clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
+            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                            // command execution ended
+        }
         break;
 
 
@@ -1148,7 +1168,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 }
 
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-                    }
+            }
 
             // finalise
             if (isPrintToVar) {                                                                                             // print to string ? save in variable
@@ -1218,7 +1238,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // clean up
             clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
-                }
+        }
         break;
 
 
@@ -1490,7 +1510,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // any data to pass ? (optional arguments 2 to 9: data)
             if (cmdParamCount >= 2) {                                                                                       // first argument (callback procedure) processed (but still on the stack)
                 copyValueArgsFromStack(pStackLvl, cmdParamCount - 1, argIsNonConstantVar, argIsArray, valueType, args, true, dummyArgs);
-                pStackLvl = pStackLvlFirstValueArg;     // set stack level again to first value argument
+                pStackLvl = pStackLvlFirstValueArg;                                                                         // set stack level again to first value argument
+                for (int i = 0; i < 8; i++) { valueTypes_copy[i] = value_argNotProvided; }                                  // init
                 for (int i = 0; i < cmdParamCount - 1; i++) {
                     if (argIsNonConstantVar[i]) {                                                                           // is this a 'changeable' variable ? (not a constant & not a constant variable)
                         valueType[i] |= isVariable;                                                                         // flag as 'changeable' variable (scalar or array element)
@@ -1541,13 +1562,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     }
                 }
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-                    }
+            }
 
 
             // clean up
             clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
-                    }
+        }
         break;
 
 
@@ -1796,10 +1817,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         }
         break;
 
-                }       // end switch
+    }       // end switch
 
     return result_execOK;
-            }
+}
 
 
 // -------------------------------
@@ -1893,12 +1914,12 @@ Justina_interpreter::execResult_type Justina_interpreter::copyValueArgsFromStack
                     else { strcpy(args[i].pStringConst, pOriginalArg); }                        // non-empty constant string
                 }
             }
-                }
+        }
 
         pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-            }
+    }
 
     return result_execOK;
-        }
+}
 
 

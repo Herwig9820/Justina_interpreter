@@ -73,7 +73,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
     // switch single step mode OFF before starting to execute command line (even in debug mode). Step and Debug commands will switch it on again (to execute one step).
     _stepCmdExecuted = db_continue;
-    _debugCmdExecuted = false;                                                          // function to debug must be on same comand line as Debug command
+    _debugCmdExecuted = false;                                                          // Justina function to debug must be on same comand line as Debug command
 
     _programCounter = startHere;
     holdProgramCnt_StatementStart = _programCounter; programCnt_previousStatementStart = _programCounter;
@@ -198,18 +198,43 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             break;
 
 
-            // Case: process Justina function token
-            // ------------------------------------
+            // Case: process internal cpp function token
+            // -----------------------------------------
 
             case tok_isInternCppFunction:
             {
 
-                pushFunctionName(tokenType);
+                pushInternCppFunctionName(tokenType);
 
             #if PRINT_PROCESSED_TOKEN
-                _pDebugOut->print("=== process "); _pDebugOut->print(tokenType == tok_isInternCppFunction ? "int fcn" : "ext fcn"); _pDebugOut->print(": address "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth "); _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [");
+                _pDebugOut->print("=== process "); _pDebugOut->print(tokenType == tok_isInternCppFunction ? "internal cpp fcn" : tokenType == tok_isExternCppFunction ? "external cpp fcn" : "Justina fcn");
+                _pDebugOut->print(": address "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth ");
+                _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [");
+
                 int funcNameIndex = ((TokenIsInternCppFunction*)_programCounter)->tokenIndex;
                 _pDebugOut->print(_internCppFunctions[funcNameIndex].funcName); _pDebugOut->println("]");
+            #endif
+            }
+            break;
+
+
+            // Case: process external cpp function token
+            // -----------------------------------------
+
+            case tok_isExternCppFunction:
+            {
+
+                pushExternCppFunctionName(tokenType);
+
+            #if PRINT_PROCESSED_TOKEN
+                _pDebugOut->print("=== process "); _pDebugOut->print(tokenType == tok_isInternCppFunction ? "internal cpp fcn" : tokenType == tok_isExternCppFunction ? "external cpp fcn" : "Justina fcn");
+                _pDebugOut->print(": address "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth ");
+                _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [");
+
+                int returnValueType = ((TokenIsExternCppFunction*)_programCounter)->returnValueType;
+                int funcIndexInType = ((TokenIsExternCppFunction*)_programCounter)->funcIndexInType;
+                const char* funcName = ((CppDummyVoidFunction*)_pExtCppFunctions[returnValueType])[funcIndexInType].cppFunctionName;
+                _pDebugOut->print(funcName); _pDebugOut->println("]");
             #endif
             }
             break;
@@ -221,10 +246,13 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             case tok_isJustinaFunction:
             {
 
-                pushFunctionName(tokenType);
+                pushJustinaFunctionName(tokenType);
 
             #if PRINT_PROCESSED_TOKEN
-                _pDebugOut->print("=== process "); _pDebugOut->print(tokenType == tok_isInternCppFunction ? "int fcn" : "ext fcn"); _pDebugOut->print(": address "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth "); _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [");
+                _pDebugOut->print("=== process "); _pDebugOut->print(tokenType == tok_isInternCppFunction ? "internal cpp fcn" : tokenType == tok_isExternCppFunction ? "external cpp fcn" : "Justina fcn");
+                _pDebugOut->print(": address "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth ");
+                _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [");
+
                 int funcNameIndex = ((TokenIsJustinaFunction*)_programCounter)->identNameIndex;
                 _pDebugOut->print(JustinaFunctionNames[funcNameIndex]); _pDebugOut->println("]");
             #endif
@@ -453,7 +481,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                     _pEvalStackMinus1 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackTop);
                     _pEvalStackMinus2 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackMinus1);
 
-                    // execute internal or Justina function, calculate array element address or remove parenthesis around single argument (if no function or array)
+                    // execute internal cpp, external cpp or Justina function, OR (if array closing parenthesis) calculate array element address OR remove parenthesis around single argument 
                     execResult = execParenthesesPair(pPrecedingStackLvl, pStackLvl, argCount, appFlagsRequestStop, appFlagsRequestAbort);
                 #if PRINT_DEBUG_INFO
                     _pDebugOut->print("    right par.: exec result "); _pDebugOut->println(execResult);
@@ -1131,7 +1159,7 @@ void Justina_interpreter::clearEvalStack() {
     clearEvalStackLevels(evalStack.getElementCount());
     _pEvalStackTop = nullptr;  _pEvalStackMinus1 = nullptr; _pEvalStackMinus2 = nullptr;                        // should be already
 
-    // error if not all intermediate string objects deleted (points to an internal Justina issue)
+    // error if not all intermediate string objects deleted (this does NOT indicate a user or Justina program error but instead it points to an internal Justina issue)
     if (_intermediateStringObjectCount != 0) {
     #if PRINT_OBJECT_COUNT_ERRORS
         _pDebugOut->print("*** Intermediate string cleanup error. Remaining: "); _pDebugOut->println(_intermediateStringObjectCount);
@@ -1276,12 +1304,13 @@ void Justina_interpreter::clearParsedCommandLineStack(int n) {
 }
 
 
-// --------------------------------------------------------------------------------------------------------------------------
-// *   execute internal or Justina function, calculate array element address or remove parenthesis around single argument   *
-// --------------------------------------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------------------------------------------------------
+// *   execute internal cpp, external cpp or Justina function, calculate array element address or remove parentheses around single argument   *
+// --------------------------------------------------------------------------------------------------------------------------------------------
 
 Justina_interpreter::execResult_type Justina_interpreter::execParenthesesPair(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& firstArgStackLvl, int argCount, bool& forcedStopRequest, bool& forcedAbortRequest) {
-    // perform internal or Justina function, calculate array element address or simply make an expression result within parentheses an intermediate constant
+
+    // NOTE: removing a parenthesis pair around a variable, constant or expression results in an intermediate constant
 
     // no lower stack levels before left parenthesis (removed in the meantime) ? Is a simple parentheses pair
     if (pPrecedingStackLvl == nullptr) {
@@ -1292,6 +1321,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execParenthesesPair(LE
     // stack level preceding left parenthesis is internal cpp function ? execute function
     else if (pPrecedingStackLvl->genericToken.tokenType == tok_isInternCppFunction) {
         execResult_type execResult = execInternalCppFunction(pPrecedingStackLvl, firstArgStackLvl, argCount, forcedStopRequest, forcedAbortRequest);
+
+        return execResult;
+    }
+
+    // stack level preceding left parenthesis is external cpp function ? execute function
+    else if (pPrecedingStackLvl->genericToken.tokenType == tok_isExternCppFunction) {
+        execResult_type execResult = execExternalCppFunction(pPrecedingStackLvl, firstArgStackLvl, argCount);
 
         return execResult;
     }
@@ -1955,13 +1991,127 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
 }
 
 
+// ------------------------------------------------
+// *   execute external cpp (user cpp) function   *
+// ------------------------------------------------
+
+Justina_interpreter::execResult_type Justina_interpreter::execExternalCppFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount) {
+    _activeFunctionData.errorProgramCounter = pFunctionStackLvl->function.tokenAddress;
+
+    int returnValueType = pFunctionStackLvl->function.returnValueType;
+    int funcIndexInType = pFunctionStackLvl->function.funcIndexInType;
+
+    char fcnResultValueType{};  // init
+    Val fcnResult;
+
+    // variable references to store (arguments 2[..4]) 
+    const char isVariable = 0x80;                                                                                   // mask: is variable (not a constant) 
+
+    // if more than 8 arguments are supplied, excess arguments are discarded
+    // to keep it simple for the c++ user writing the user routine, we always pass const void pointers, to variables and constants
+    // but for constants, the pointer will point to a copy of the data
+
+    Val args[8]{}, dummyArgs[8]{};                                                                                  // values to be passed to user routine
+    char valueType[8]{ };                                                                                           // value types (long, float, char string)
+    char varScope[8]{};                                                                                             // if variable: variable scope (user, program global, static, local)
+    bool argIsNonConstantVar[8]{};                                                                                  // flag: is variable (scalar or aray)
+    bool argIsArray[8]{};                                                                                           // flag: is array element
+
+    const void* pValues_copy[8]{};                                                                                  // copies for safety
+    char valueTypes_copy[8];
+    int cmdParamCount_copy{ suppliedArgCount };
+
+    LE_evalStack* pStackLvl = pFirstArgStackLvl;
+
+    // any data to pass ? (optional arguments 1 to 8: data)
+    if (suppliedArgCount >= 1) {                                                                                    // first argument (callback procedure) processed (but still on the stack)
+        copyValueArgsFromStack(pStackLvl, suppliedArgCount, argIsNonConstantVar, argIsArray, valueType, args, true, dummyArgs);
+        pStackLvl = pFirstArgStackLvl;                                                                              // set stack level again to first value argument
+        for (int i = 0; i < 8; i++) { valueTypes_copy[i] = value_argNotProvided; }                                  // init
+        for (int i = 0; i < suppliedArgCount; i++) {
+            if (argIsNonConstantVar[i]) {                                                                           // is this a 'changeable' variable ? (not a constant & not a constant variable)
+                valueType[i] |= isVariable;                                                                         // flag as 'changeable' variable (scalar or array element)
+                varScope[i] = (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_scopeMask);                       // remember variable scope (user, program global, local, static) 
+            }
+            pValues_copy[i] = args[i].pBaseValue;                                                                   // copy pointers for safety (protect original pointers from changes by c++ routine) 
+            valueTypes_copy[i] = valueType[i];
+            pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
+        }
+    }
+
+    int intExecResult{ (int)result_execOK };
+
+    switch (returnValueType) {
+        case 0: fcnResult.longConst = (long)((CppBoolFunction*)_pExtCppFunctions[0])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;         // bool-> long
+        case 1: fcnResult.longConst = (long)((CppCharFunction*)_pExtCppFunctions[1])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;         // char to long   
+        case 2: fcnResult.longConst = (long)((CppIntFunction*)_pExtCppFunctions[2])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;          // int to long   
+        case 3: fcnResult.longConst = ((CppLongFunction*)_pExtCppFunctions[3])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;               // long   
+        case 4: fcnResult.floatConst = ((CppFloatFunction*)_pExtCppFunctions[4])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;             // float
+        case 5: fcnResult.pStringConst = ((Cpp_pCharFunction*)_pExtCppFunctions[5])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;          // char*   
+        ////case 6:((CppVoidCommand*)_pExtCppFunctions[6])[funcIndexInType].command(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); fcnResult.longConst = 0; break;          // void
+    }
+    if (intExecResult != (int)result_execOK){return (execResult_type)intExecResult;}
+    fcnResultValueType = (returnValueType == 4) ? value_isFloat : (returnValueType == 5) ? value_isStringPointer : value_isLong;        // long: for bool, char, int, long return types
+
+
+    // postprocess: check any strings RETURNED by callback procedure
+    // -------------------------------------------------------------
+
+    pStackLvl = pFirstArgStackLvl;                                                                             // set stack level again to first value argument
+    for (int i = 0; i < suppliedArgCount; i++) {
+        if ((valueType[i] & value_typeMask) == value_isStringPointer) {
+            // string argument was a constant (including a CONST variable) - OR it was empty (null pointer) ?  
+            // => a string copy or a new string solely consisting of a '\0' terminator (intermediate string) was passed to user routine and needs to be deleted 
+            if (valueType[i] & passCopyToCallback) {
+            #if PRINT_HEAP_OBJ_CREA_DEL
+                _pDebugOut->print("----- (Intermd str) "); _pDebugOut->println((uint32_t)args[i].pStringConst, HEX);
+            #endif
+                _intermediateStringObjectCount--;
+                delete[] args[i].pStringConst;                                                                      // delete temporary string
+            }
+
+            // string argument was a (NON-CONSTANT) variable string: no copy was made, the string itself was passed to the user routine
+            // did the user routine change it to an empty, '\0' terminated string ?
+            // then this variable string object needs to be deleted and the pointer to it needs to be replaced by a null pointer (Justnia convention)
+            else if (strlen(args[i].pStringConst) == 0) {
+
+            #if PRINT_HEAP_OBJ_CREA_DEL 
+                _pDebugOut->print((varScope[i] == var_isUser) ? "----- (usr var str) " : ((varScope[i] == var_isGlobal) || (varScope[i] == var_isStaticInFunc)) ? "----- (var string ) " : "----- (loc var str) ");
+                _pDebugOut->println((uint32_t)args[i].pStringConst, HEX);
+            #endif
+                (varScope[i] == var_isUser) ? _userVarStringObjectCount-- : ((varScope[i] == var_isGlobal) || (varScope[i] == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount-- : _localVarStringObjectCount--;
+                delete[]args[i].pStringConst;                                                                       // delete original variable string
+                *pStackLvl->varOrConst.value.ppStringConst = nullptr;                                               // change pointer to string (in variable) to null pointer
+            }
+        }
+        pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
+    }
+
+
+    clearEvalStackLevels(suppliedArgCount + 1);                                                                         // clean up: delete evaluation stack elements for supplied arguments
+
+    // push result to stack
+    // --------------------
+
+    _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(VarOrConstLvl));
+    _pEvalStackMinus1 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackTop);
+    _pEvalStackMinus2 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackMinus1);
+
+    _pEvalStackTop->varOrConst.value = fcnResult;                                                                       // long, float or pointer to string
+    _pEvalStackTop->varOrConst.valueType = fcnResultValueType;                                                          // value type of second operand  
+    _pEvalStackTop->varOrConst.tokenType = tok_isConstant;                                                              // use generic constant type
+    _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
+    _pEvalStackTop->varOrConst.sourceVarScopeAndFlags = 0x00;                                                           // not an array, not an array element (it's a constant) 
+}
+
+
 // -------------------------------
 // *   launch Justina function   *
 // -------------------------------
 
 Justina_interpreter::execResult_type  Justina_interpreter::launchJustinaFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount) {
 
-    // remember token address of internal cpp function token (this is where the internal cpp function is called), in case an error occurs (while passing arguments etc.)   
+    // remember token address of the Justina function token (this is where the Justina function is called), in case an error occurs (while passing arguments etc.)   
     _activeFunctionData.errorProgramCounter = pFunctionStackLvl->function.tokenAddress;
 
 
@@ -2108,8 +2258,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
 
 
 
-    // note current token (internal cpp function 'eval' token) position, in case an error happens IN THE CALLER immediately upon return from function to be called
-    // -----------------------------------------------------------------------------------------------------------------------------------------------------------
+    // note current token (Justina function 'eval' token) position, in case an error happens IN THE CALLER immediately upon return from function to be called
+    // ------------------------------------------------------------------------------------------------------------------------------------------------------
 
     _activeFunctionData.errorProgramCounter = pFunctionStackLvl->function.tokenAddress;                     // CALLER function 'eval' token position, before pushing caller function data to stack   
 
@@ -2122,7 +2272,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
     *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                                         // push caller function data to stack
     ++_callStackDepth;                                                                                      // caller can be main, another Justina function or an eval() string
 
-    _activeFunctionData.functionIndex = pFunctionStackLvl->function.index;                                  // index of (internal) eval() function - but will not be used
+    _activeFunctionData.functionIndex = pFunctionStackLvl->function.index;                                  // index of (Justina) eval() function - but will not be used
     _activeFunctionData.blockType = block_eval;                                                             // now executing parsed 'eval' string
     _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                // command execution ended 
 
@@ -2519,7 +2669,7 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateEval() {
 
 void Justina_interpreter::pushTerminalToken(int& tokenType) {                                                               // terminal token is assumed
 
-    // push internal or Justina function index to stack
+    // push terminal index to stack
 
     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
 
@@ -2532,20 +2682,55 @@ void Justina_interpreter::pushTerminalToken(int& tokenType) {                   
 };
 
 
-// ------------------------------------------------------------------------
-// *   push internal or Justina function name token to evaluation stack   *
-// ------------------------------------------------------------------------
+// -----------------------------------------------------------------
+// *   push internal cpp function name token to evaluation stack   *
+// -----------------------------------------------------------------
 
-void Justina_interpreter::pushFunctionName(int& tokenType) {                                                                // function token is assumed (internal or Justina)
+void Justina_interpreter::pushInternCppFunctionName(int& tokenType) {                                                       // internal cpp function token is assumed
 
-    // push internal or Justina function index to stack
+    // push internal cpp function index to stack
     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
 
     _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(FunctionLvl));
     _pEvalStackTop->function.tokenType = tokenType;
     _pEvalStackTop->function.tokenAddress = _programCounter;                                                                // only for finding source error position during unparsing (for printing)
 
-    _pEvalStackTop->function.index = ((TokenIsInternCppFunction*)_programCounter)->tokenIndex;
+    _pEvalStackTop->function.index = ((TokenIsInternCppFunction*)_programCounter)->tokenIndex;                              // internal cpp functions only
+};
+
+
+// -----------------------------------------------------------------
+// *   push external cpp function name token to evaluation stack   *
+// -----------------------------------------------------------------
+
+void Justina_interpreter::pushExternCppFunctionName(int& tokenType) {                                                       // external cpp function token is assumed
+
+    // push external cpp function return value type and index within functions for a specific return value type to stack
+    _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
+
+    _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(FunctionLvl));
+    _pEvalStackTop->function.tokenType = tokenType;
+    _pEvalStackTop->function.tokenAddress = _programCounter;                                                                // only for finding source error position during unparsing (for printing)
+
+    _pEvalStackTop->function.returnValueType = ((TokenIsExternCppFunction*)_programCounter)->returnValueType;               // 0 = bool, 1 = char, 2 = int, 3 = long, 4 = float, 5 = char*               
+    _pEvalStackTop->function.funcIndexInType = ((TokenIsExternCppFunction*)_programCounter)->funcIndexInType;
+};
+
+
+// ------------------------------------------------------------
+// *   push Justina function name token to evaluation stack   *
+// ------------------------------------------------------------
+
+void Justina_interpreter::pushJustinaFunctionName(int& tokenType) {                                                         // Justina function token is assumed
+
+    // push Justina function index to stack
+    _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
+
+    _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(FunctionLvl));
+    _pEvalStackTop->function.tokenType = tokenType;
+    _pEvalStackTop->function.tokenAddress = _programCounter;                                                                // only for finding source error position during unparsing (for printing)
+
+    _pEvalStackTop->function.index = ((TokenIsJustinaFunction*)_programCounter)->identNameIndex;
 };
 
 

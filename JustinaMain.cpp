@@ -124,6 +124,8 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
 
     {"abort",           cmdcod_abort,           cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
     {"debug",           cmdcod_debug,           cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
+    
+    {"raiseError",      cmdcod_raiseError,      cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_104,     cmdBlockNone},
     {"quit",            cmdcod_quit,            cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_106,     cmdBlockNone},
 
     // settings
@@ -186,7 +188,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
 // if more than 8 arguments are supplied, only arguments 1 to 8 can be set as array arguments
 // maximum number of parameters should be no more than 16
 
-const Justina_interpreter::FuncDef Justina_interpreter::_internCppFunctions[]{
+const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunctions[]{
     //  name                    id code                         #par    array pattern
     //  ----                    -------                         ----    -------------   
 
@@ -622,32 +624,32 @@ bool Justina_interpreter::setUserBoolCppFunctionsEntryPoint(const CppBoolFunctio
     _ExtCppFunctionCounts[0] = cppBoolFunctionCount;
 };
 
-bool Justina_interpreter::setUserCharCppFunctionsEntryPoint(const CppCharFunction* const  pCppCharFunctions, int cppCharFunctionCount) {
+char Justina_interpreter::setUserCharCppFunctionsEntryPoint(const CppCharFunction* const  pCppCharFunctions, int cppCharFunctionCount) {
     _pExtCppFunctions[1] = _pCppCharFunctions = (CppCharFunction*)pCppCharFunctions;
     _ExtCppFunctionCounts[1] = cppCharFunctionCount;
 };
 
-bool Justina_interpreter::setUserIntCppFunctionsEntryPoint(const CppIntFunction* const  pCppIntFunctions, int cppIntFunctionCount) {
+int Justina_interpreter::setUserIntCppFunctionsEntryPoint(const CppIntFunction* const  pCppIntFunctions, int cppIntFunctionCount) {
     _pExtCppFunctions[2] = _pCppIntFunctions = (CppIntFunction*)pCppIntFunctions;
     _ExtCppFunctionCounts[2] = cppIntFunctionCount;
 };
 
-bool Justina_interpreter::setUserLongCppFunctionsEntryPoint(const CppLongFunction* const pCppLongFunctions, int cppLongFunctionCount) {
+long Justina_interpreter::setUserLongCppFunctionsEntryPoint(const CppLongFunction* const pCppLongFunctions, int cppLongFunctionCount) {
     _pExtCppFunctions[3] = _pCppLongFunctions = (CppLongFunction*)pCppLongFunctions;
     _ExtCppFunctionCounts[3] = cppLongFunctionCount;
 };
 
-bool Justina_interpreter::setUserFloatCppFunctionsEntryPoint(const CppFloatFunction* const pCppFloatFunctions, int cppFloatFunctionCount) {
+float Justina_interpreter::setUserFloatCppFunctionsEntryPoint(const CppFloatFunction* const pCppFloatFunctions, int cppFloatFunctionCount) {
     _pExtCppFunctions[4] = _pCppFloatFunctions = (CppFloatFunction*)pCppFloatFunctions;
     _ExtCppFunctionCounts[4] = cppFloatFunctionCount;
 };
 
-bool Justina_interpreter::setUser_pCharCppFunctionsEntryPoint(const Cpp_pCharFunction* const pCpp_pCharFunctions, int cpp_pCharFunctionCount) {
+char* Justina_interpreter::setUser_pCharCppFunctionsEntryPoint(const Cpp_pCharFunction* const pCpp_pCharFunctions, int cpp_pCharFunctionCount) {
     _pExtCppFunctions[5] = _pCpp_pCharFunctions = (Cpp_pCharFunction*)pCpp_pCharFunctions;
     _ExtCppFunctionCounts[5] = cpp_pCharFunctionCount;
 };
 
-bool Justina_interpreter::setUserCppCommandsEntryPoint(const CppVoidCommand* const pCppVoidCommands, int cppVoidCommandCount) {
+void Justina_interpreter::setUserCppCommandsEntryPoint(const CppVoidCommand* const pCppVoidCommands, int cppVoidCommandCount) {
     _pExtCppFunctions[6] = _pCppVoidCommands = (CppVoidCommand*)pCppVoidCommands;
     _ExtCppFunctionCounts[6] = cppVoidCommandCount;
 };
@@ -748,35 +750,6 @@ bool Justina_interpreter::run() {
             printTo(0, "Loading program 'start.txt'...\r\n");
         }
     }
-
-
-
-    // -----------------------------
-    // >>> call backs voor user CPP functies: TEST aanroep
-    // -----------------------------
-
-    long v = 10;
-    const void* a[8]; char b[8]{}; int count;
-    a[0] = (void*)&v;
-    b[0] = value_isFloat;
-    ////Serial.print("bool callback vanuit main: "); Serial.println(_pCppBoolFunctions[0].func(a, b, count));
-    ////Serial.print("char callback vanuit main: "); Serial.println(_pCppCharFunctions[0].func(a, b, count));
-    ////Serial.print("int callback vanuit main: "); Serial.println(_pCppIntFunctions[0].func(a, b, count));
-    Serial.print("long callback vanuit main: "); Serial.println(_pCppLongFunctions[0].func(a, b, count));
-    Serial.print("long callback vanuit main: "); Serial.println(_pCppLongFunctions[1].func(a, b, count));
-    Serial.print("float callback vanuit main: "); Serial.println(_pCppFloatFunctions[0].func(a, b, count));
-    Serial.print("void callback vanuit main: "); _pCppVoidCommands[0].command(a, b, 1); Serial.println();
-
-    char str[20] = "98765";
-    b[0] = value_isStringPointer;
-
-    const void* valueArray[8]; valueArray[0] = str;
-    char* res = _pCpp_pCharFunctions[0].func(valueArray, b, count);
-    if (res != nullptr) { Serial.print("pchar callback vanuit main: "); Serial.println(res); }
-    else { Serial.println("---"); };
-
-    // >>> ------------------------------------------------------------------
-
 
     parsedStatementCount = 0;
     do {

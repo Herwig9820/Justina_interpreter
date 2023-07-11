@@ -96,28 +96,42 @@ void execAction(char c);
 
 
 
-//--------------------------------------------
-// >>> user CPP functions
-//--------------------------------------------
+//--------------------------------------
+// >>> cpp functions external to Justina
+//--------------------------------------
 
-// forward declarations
+// forward declarations of cpp functions that are external to Justina (external cpp functions)
+// the function parameters must be as shown below (please check out an example provided as part of the documentation)
+// parameters:
+//   - const void** pdata: array of pointers to Justina variables or constants. Justina variables can be changed from within the external cpp. Justina constants cannot: a pointer to a COPY of the constant is provided
+//   - const char* valueType: array indicating the value type (long, float, char*) of the respective arguments provided
+//   - the number of arguments provided
+// the last 2 parametes can be used in case the arguments value types and/or the argument count are not known by the external cpp procedure
 
-bool userFcn_returnBool(const void** pdata, const char* valueType, const int argCount);
-char userFcn_returnChar(const void** pdata, const char* valueType, const int argCount);
-int userFcn_returnInt(const void** pdata, const char* valueType, const int argCount);
-long userFcn_returnLong(const void** pdata, const char* valueType, const int argCount);
-long userFcn_returnLong_2(const void** pdata, const char* valueType, const int argCount);
-float userFcn_returnFloat(const void** pdata, const char* valueType, const int argCount);
-char* userFcn_return_pChar(const void** pdata, const char* valueType, const int argCount);
+bool userFcn_returnBool(const void** pdata, const char* valueType, const int argCount, int& execError);
+char userFcn_returnChar(const void** pdata, const char* valueType, const int argCount, int& execError);
+int userFcn_returnInt(const void** pdata, const char* valueType, const int argCount, int& execError);
+long userFcn_returnLong(const void** pdata, const char* valueType, const int argCount, int& execError);
+long userFcn_returnLong_2(const void** pdata, const char* valueType, const int argCount, int& execError);
+float userFcn_returnFloat(const void** pdata, const char* valueType, const int argCount, int& execError);
+char* userFcn_return_pChar(const void** pdata, const char* valueType, const int argCount, int& execError);
 
-void userFcn_readPort(const void** pdata, const char* valueType, const int argCount);
-void userFcn_writePort(const void** pdata, const char* valueType, const int argCount);
-void userFcn_togglePort(const void** pdata, const char* valueType, const int argCount);
+void userFcn_readPort(const void** pdata, const char* valueType, const int argCount, int& execError);
+void userFcn_writePort(const void** pdata, const char* valueType, const int argCount, int& execError);
+void userFcn_togglePort(const void** pdata, const char* valueType, const int argCount, int& execError);
 
 
-// each variable must contain at least one entry (Justina function name (or command name) as a constant string, c++ procedure name)
-// entries with invalid Justina names or with a null pointer as c++ function pointer will be skipped
+// for each user-defined (external cpp) function or command, a record must be created in one of the array variables below (depending on the function return value type)
+// a record consists of 4 fields: 
+//   - alias (adhering to Justina identifier naming convention) that will be used from within Justina to call the function or command, just like any other (internal cpp or Justina) function or Justina command
+//   - cpp function / procedure name
+//   - minimum and maximum number of arguments allowed in calls made by Justina. Absolute maximum is 8. If more arguments are provided, they will be discarded
+
+// each array variable below (cppBoolFunctions, ...) must contain at least 1 entry and less than 256 entries 
 // if no entries of a specific category, add at least one entry consisting of an empty string and a nullptr as Justina name and cpp function pointer, as follows: {"", nullptr, 0, 0} 
+// entries with invalid Justina names or with a null pointer as c++ function pointer will be skipped
+
+// maximum number of arguments is 8. If more arguments are provided, they will be discarded
 
 Justina_interpreter::CppBoolFunction const cppBoolFunctions[]{
     { "returnBool", userFcn_returnBool, 0,1 }
@@ -133,20 +147,23 @@ Justina_interpreter::CppIntFunction const cppIntFunctions[]{
 
 Justina_interpreter::CppLongFunction const cppLongFunctions[]{
     { "returnLong1", userFcn_returnLong, 0, 0},
-    { "returnLong2", userFcn_returnLong_2, 0, 0}
+    { "returnLong2", userFcn_returnLong_2, 0, 8}
 };
 
 Justina_interpreter::CppFloatFunction const cppFloatFunctions[]{
-    { "returnFloat", userFcn_returnFloat, 0, 0},
+    { "returnFloat", userFcn_returnFloat, 0, 2},
 };
 
 Justina_interpreter::Cpp_pCharFunction const cpp_pCharFunctions[]{
     {"return_pChar",userFcn_return_pChar, 0, 0}
 };
 
+
+// cpp procedures not returning a function result can be used as Justina commands (just like any other Justina command, like cout, input,...), instead of Justina functions 
+
 Justina_interpreter::CppVoidCommand  const cppCommands[]{                   // NOTE: min. and max. argument count is not used for user commands
     {"readPort", userFcn_readPort, 0, 0},
-    {"writePort", userFcn_writePort, 0, 0},                     
+    {"writePort", userFcn_writePort, 0, 0},
     {"togglePort", userFcn_togglePort, 0, 0}
 };
 
@@ -330,8 +347,10 @@ void execAction(char c) {
                 //--------------------------------------------
                 // >>> CPP user functions: pass entry points
                 //--------------------------------------------
-                
-                // if no entries of a specific category, comment out the specific entry, below
+
+                // inform Justina about the location of the information stored about the user-defined (external) cpp functions and commands
+
+                // if no entries of a specific category, comment out the specific entry (below), OR provide an empty record for that category, like this: {"", nullptr, 0, 0}
 
                 pJustina->setUserBoolCppFunctionsEntryPoint(cppBoolFunctions, sizeof(cppBoolFunctions) / sizeof(cppBoolFunctions[0]));
                 pJustina->setUserCharCppFunctionsEntryPoint(cppCharFunctions, sizeof(cppCharFunctions) / sizeof(cppCharFunctions[0]));
@@ -341,10 +360,11 @@ void execAction(char c) {
                 pJustina->setUser_pCharCppFunctionsEntryPoint(cpp_pCharFunctions, sizeof(cpp_pCharFunctions) / sizeof(cpp_pCharFunctions[0]));
                 pJustina->setUserCppCommandsEntryPoint(cppCommands, sizeof(cppCommands) / sizeof(cppCommands[0]));
                 // >>> ---------------------------------------------------------------------------------------------
-
+                /* ////
                 pJustina->setUserFcnCallback((&userFcn_readPort));                // pass user function addresses to Justina_interpreter library (return value 'true' indicates success)
                 pJustina->setUserFcnCallback((&userFcn_writePort));
                 pJustina->setUserFcnCallback((&userFcn_togglePort));
+                */
             }
             interpreterInMemory = pJustina->run();                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
 
@@ -352,7 +372,7 @@ void execAction(char c) {
                 delete pJustina;                                                     // cleanup and delete calculator object itself
                 pJustina = nullptr;                                                  // only to indicate memory is released
             }
-            
+
             heartbeatPeriod = 500;
             withinApplication = false;                                                  // return from application
             break;
@@ -609,7 +629,7 @@ void Justina_housekeeping(long& appFlags) {
 // example: show how to read and modify data supplied
 // --------------------------------------------------
 
-void userFcn_readPort(const void** pdata, const char* valueType, const int argCount) {     // data: can be anything, as long as user function knows what to expect
+void userFcn_readPort(const void** pdata, const char* valueType, const int argCount, int& execError) {     // data: can be anything, as long as user function knows what to expect
 
     pAlternativeIO[0]->print("=== control is now in user c++ callback function: arg count = "); pAlternativeIO[0]->println(argCount);
 
@@ -633,7 +653,7 @@ void userFcn_readPort(const void** pdata, const char* valueType, const int argCo
 
         // change data (is safe -> after return, will have no effect for constants) - you can always check here for variable / constant (see above)
         if (isLong) { *pLong += 10 + i; }
-        else if (isFloat) { *pFloat += 10. + i; }
+        else if (isFloat) { *pFloat += 20. + i; }
         else {
             if (strlen(pText) >= 10) { pText[7] = '\0'; }  // do NOT increase the length of strings
             if (strlen(pText) >= 5) { pText[3] = pText[4]; pText[4] = '>'; }  // do NOT increase the length of strings
@@ -657,13 +677,13 @@ void userFcn_readPort(const void** pdata, const char* valueType, const int argCo
 // example: a few other callback routines
 // --------------------------------------
 
-void userFcn_writePort(const void** pdata, const char* valueType, const int argCount) {
+void userFcn_writePort(const void** pdata, const char* valueType, const int argCount, int& execError) {
     pAlternativeIO[0]->println("*** Justina was here too ***");
     // do your thing here
 };
 
 
-void userFcn_togglePort(const void** pdata, const char* valueType, const int argCount) {
+void userFcn_togglePort(const void** pdata, const char* valueType, const int argCount, int& execError) {
     pAlternativeIO[0]->println("*** Justina just passed by ***");
     // do your thing here
 };
@@ -672,18 +692,27 @@ void userFcn_togglePort(const void** pdata, const char* valueType, const int arg
 // -----------------------------------------------
 // >>> user cpp functions
 // -----------------------------------------------
-bool userFcn_returnBool(const void** pdata, const char* valueType, const int argCount) { return 123; }
+bool userFcn_returnBool(const void** pdata, const char* valueType, const int argCount, int& execError) { return 123; }
 
-char userFcn_returnChar(const void** pdata, const char* valueType, const int argCount) { return 'X'; }
+char userFcn_returnChar(const void** pdata, const char* valueType, const int argCount, int& execError) { execError = 1234; return 'X'; }
 
-int userFcn_returnInt(const void** pdata, const char* valueType, const int argCount) { return (int) - 987; }
+int userFcn_returnInt(const void** pdata, const char* valueType, const int argCount, int& execError) { return (int)-987; }
 
-long userFcn_returnLong(const void** pdata, const char* valueType, const int argCount) { return (*(long*)pdata[0]) * 10; }
+long userFcn_returnLong(const void** pdata, const char* valueType, const int argCount, int& execError) { return (*(long*)pdata[0]) * 10; }
 
 
-long userFcn_returnLong_2(const void** pdata, const char* valueType, const int argCount) { return 456; }
+long userFcn_returnLong_2(const void** pdata, const char* valueType, const int argCount, int& execError) { return 456; }
 
-char* userFcn_return_pChar(const void** pdata, const char* valueType, const int argCount) {
+float userFcn_returnFloat(const void** pdata, const char* valueType, const int argCount, int& execError) {
+    Serial.println(" * **within 'userFcn_return float'");
+
+    bool isLong = ((valueType[1] & 0x03) == 0x01);                                  // bits 2-0: value indicates value type (1=long, 2=float, 3=char*) 
+    bool isFloat = ((valueType[1] & 0x03) == 0x02);
+    float value = isLong ? (float)(*((long*)pdata[1])) + 10 : isFloat ? (*(float*)pdata[1]) + 20 : 1.23;
+    return   value;
+}
+
+char* userFcn_return_pChar(const void** pdata, const char* valueType, const int argCount, int& execError) {
     bool isNonEmptyString = ((((char*)pdata)[0]) != '0') && (valueType[0] == Justina_interpreter::value_isStringPointer);
     if (isNonEmptyString) {
         char* pText = ((char**)(pdata))[0];
@@ -700,7 +729,5 @@ char* userFcn_return_pChar(const void** pdata, const char* valueType, const int 
     }
     else { return nullptr; }
 }
-
-float userFcn_returnFloat(const void** pdata, const char* valueType, const int argCount) { return 1.23; }
 
 // >>> --------------------------------------------------------------------------------------------------------------------

@@ -69,18 +69,16 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
     int functionIndex = pFunctionStackLvl->function.index;
     char functionCode = _internCppFunctions[functionIndex].functionCode;
-    int arrayPattern = _internCppFunctions[functionIndex].arrayPattern;                                                     // available, just in case it's needed
-    int minArgs = _internCppFunctions[functionIndex].minArgs;
-    int maxArgs = _internCppFunctions[functionIndex].maxArgs;
-    char fcnResultValueType{};  // init
+   
+   char fcnResultValueType{};  // init
     Val fcnResult;
+    
     char argValueType[16];
     Val args[16];
+    
     bool requestPrintTab{ false }, requestGotoPrintColumn{ false };
 
     long argIsVarBits{ 0 }, argIsConstantVarBits{ 0 }, argIsLongBits{ 0 }, argIsFloatBits{ 0 }, argIsStringBits{ 0 };
-
-
 
 
     // preprocess: retrieve argument(s) info: variable or constant, value type
@@ -1592,7 +1590,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                     if (kill) { return result_kill; }                                                                       // kill Justina interpreter ? (buffer is now flushed until next line character)
                     if (doAbort) { forcedAbortRequest = true; break; }                                                      // stop a running Justina program 
                     if (doStop) { forcedStopRequest = true; }                                                               // stop a running program (do not produce stop event yet, wait until program statement executed)
-                    if (forcedStopRequest) { break; }                                                                       // atypical ! as this is a pure delay not doing anything else, break on stop as well
+                    if (forcedStopRequest) { break; }                                                                       // atypical flow: as this is a pure delay not doing anything else, break on stop as well
                 }
             }
             else if (functionCode == fnccod_digitalRead) { fcnResult.longConst = digitalRead(args[0].longConst); }          // arg: pin

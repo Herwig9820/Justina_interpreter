@@ -1008,16 +1008,16 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
             break;
 
             case tok_isInternCppFunction:
-                strcpy(prettyToken, _internCppFunctions[progCnt.pInternCppFnc->tokenIndex].funcName);
+                strcpy(prettyToken, _internCppFunctions[progCnt.pInternCppFunc->tokenIndex].funcName);
                 break;
 
             case tok_isExternCppFunction:
-                strcpy(prettyToken, "externFunc");
+                strcpy(prettyToken, ((CppDummyVoidFunction*)_pExtCppFunctions[progCnt.pExternCppFunc->returnValueType])[progCnt.pExternCppFunc->funcIndexInType].cppFunctionName);
                 break;
 
             case tok_isJustinaFunction:
             {
-                int identNameIndex = (int)progCnt.pJustinaFnc->identNameIndex;              // Justina function list element
+                int identNameIndex = (int)progCnt.pJustinaFunc->identNameIndex;             // Justina function list element
                 char* identifierName = JustinaFunctionNames[identNameIndex];
                 strcpy(prettyToken, identifierName);
             }

@@ -214,6 +214,7 @@ class Justina_interpreter {
         cmdcod_trace,
         cmdcod_debug,
         cmdcod_nop,
+        cmdcod_raiseError,
         cmdcod_quit,
         cmdcod_info,
         cmdcod_input,
@@ -613,7 +614,7 @@ class Justina_interpreter {
         result_array_dimCountInvalid,
         result_array_valueTypeIsFixed,
 
-        // internal cpp function arguments
+        // cpp function arguments
         result_arg_outsideRange = 3100,
         result_arg_integerTypeExpected,
         result_arg_numberExpected,
@@ -702,7 +703,7 @@ class Justina_interpreter {
     static constexpr uint8_t lastTokenGroup_1 = 1 << 1;          // comma
     static constexpr uint8_t lastTokenGroup_2 = 1 << 2;          // (line start), semicolon, keyword, generic identifier
     static constexpr uint8_t lastTokenGroup_3 = 1 << 3;          // number, alphanumeric constant, right bracket
-    static constexpr uint8_t lastTokenGroup_4 = 1 << 4;          // internal cpp or Justina function name
+    static constexpr uint8_t lastTokenGroup_4 = 1 << 4;          // internal cpp, external cpp or Justina function 
     static constexpr uint8_t lastTokenGroup_5 = 1 << 5;          // left parenthesis
     static constexpr uint8_t lastTokenGroup_6 = 1 << 6;          // variable
 
@@ -885,6 +886,8 @@ public:
     static constexpr uint8_t value_isFloat = 0x02;
     static constexpr uint8_t value_isStringPointer = 0x03;
 
+    static constexpr uint8_t value_argNotProvided = 0x00;
+
 
     // application flag bits
     //----------------------
@@ -962,16 +965,15 @@ public:
         CstValue cstValue;
     };
 
-    struct TokenIsInternCppFunction {                           // token storage for internal cpp function: length 2
+    struct TokenIsInternCppFunction {                           // token storage for internal and external cpp function: length 2
         char tokenType;                                         // will be set to specific token type
         char tokenIndex;                                        // index into list of tokens
     };
 
-    struct TokenIsExternCppFunction {                           // token storage for external cpp function: length 2
+    struct TokenIsExternCppFunction {                           // token storage for external and external cpp function: length 3
         char tokenType;                                         // will be set to specific token type
-        char tokenIndex;                                        // index into list of tokens
         char returnValueType;                                   // 0 = bool, 1 = char, 2 = int, 3 = long, 4 = float, 5 = char*
-        char funcIndexInType;
+        char funcIndexInType;                                   // index into list of external functions with a specific return type
     };
 
     struct TokenIsJustinaFunction {                             // token storage for Justina function: length 2
@@ -995,8 +997,9 @@ public:
         char* pTokenChars;
         TokenIsResWord* pResW;
         TokenIsConstant* pCstToken;
-        TokenIsInternCppFunction* pInternCppFnc;
-        TokenIsJustinaFunction* pJustinaFnc;
+        TokenIsInternCppFunction* pInternCppFunc;
+        TokenIsExternCppFunction* pExternCppFunc;
+        TokenIsJustinaFunction* pJustinaFunc;
         TokenIsVariable* pVar;
         TokenIsTerminal* pTermTok;                             // terminal token
     };
@@ -1061,7 +1064,8 @@ public:
     struct FunctionLvl {
         char tokenType;
         char index;
-        char spare[2];
+        char returnValueType;                                   // external cpp funcyionvonly; 0 = bool, 1 = char, 2 = int, 3 = long, 4 = float, 5 = char*
+        char funcIndexInType;                                   // external cpp function only
         char* tokenAddress;                                     // must be second 4-byte word, only for finding source error position during unparsing (for printing)
     };
 
@@ -1149,12 +1153,12 @@ public:
         const CmdBlockDef cmdBlockDef;                          // block commands: position in command block and min, max required position of previous block command 
     };
 
-    struct FuncDef {                                            // function names with min & max number of arguments allowed 
+    struct InternCppFuncDef {                                   // internal cpp function names and codes with min & max number of arguments allowed 
         const char* funcName;
         char functionCode;
-        char minArgs;                                           // internal cpp functions: min & max n� of allowed arguments
+        char minArgs;                                           // internal or external cpp functions: min & max number of allowed arguments
         char maxArgs;
-        char arrayPattern;                                      // order of arraysand scalars; bit b0 to bit b7 refer to parameter 1 to 8, if a bit is set, an array is expected as argument
+        char arrayPattern;                                      // order of arrays and scalars; bit b0 to bit b7 refer to parameter 1 to 8, if a bit is set, an array is expected as argument
     };
 
     struct SymbNumConsts {
@@ -1187,7 +1191,7 @@ public:
         char arrayDimCount;                                     // previously defined array: dimension count. Zero if new array or if scalar variable.
 
         // functions and arrays
-        char identifierIndex;                                   // internal cpp functions and variables: index to name pointer. external functions: index to extern cpp function return type category
+        char identifierIndex;                                   // internal cpp functions and variables: index to name pointer
         char variableScope;                                     // variables: scope (user, global, static, local, parameter)
         char actualArgsOrDims;                                  // actual number of arguments found (function) or dimension count (prev. defined array) 
         char flags;                                             // if stack level is open parenthesis (not open block): other flags 
@@ -1233,8 +1237,8 @@ public:
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na, block_na, block_na };                                      // not a 'block' command
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[66];                          // keyword names
-    static const FuncDef _internCppFunctions[138];                  // function names with min & max arguments allowed
+    static const ResWordDef _resWords[67];                          // keyword names
+    static const InternCppFuncDef _internCppFunctions[138];         // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[38];                        // terminals (ncluding operators)
     static const SymbNumConsts _symbNumConsts[60];
 
@@ -1252,50 +1256,50 @@ public:
 
     struct CppBoolFunction {
         const char* cppFunctionName;                                                            // function name
-        bool (*func)(const void** pdata, const char* valueType, const int argCount);            // function pointer
+        bool (*func)(const void** pdata, const char* valueType, const int argCount, int& execError);            // function pointer
         char minArgCount;
         char maxArgCount;
     };
 
     struct CppCharFunction {
         const char* cppFunctionName;
-        char (*func)(const void** pdata, const char* valueType, const int argCount);
+        char (*func)(const void** pdata, const char* valueType, const int argCount, int& execError);
         char minArgCount;
         char maxArgCount;
     };
 
     struct CppIntFunction {
         const char* cppFunctionName;
-        int (*func)(const void** pdata, const char* valueType, const int argCount);
+        int (*func)(const void** pdata, const char* valueType, const int argCount, int& execError);
         char minArgCount;
         char maxArgCount;
     };
 
     struct CppLongFunction {
         const char* cppFunctionName;
-        long (*func)(const void** pdata, const char* valueType, const int argCount);
+        long (*func)(const void** pdata, const char* valueType, const int argCount, int& execError);
         char minArgCount;
         char maxArgCount;
     };
 
     struct CppFloatFunction {
         const char* cppFunctionName;
-        float (*func)(const void** pdata, const char* valueType, const int argCount);
+        float (*func)(const void** pdata, const char* valueType, const int argCount, int& execError);
         char minArgCount;
         char maxArgCount;
     };
 
     struct Cpp_pCharFunction {
         const char* cppFunctionName;
-        char* (*func)(const void** pdata, const char* valueType, const int argCount);
+        char* (*func)(const void** pdata, const char* valueType, const int argCount, int& execError);
         char minArgCount;
         char maxArgCount;
     };
 
     struct CppVoidCommand {
         const char* cppCommandName;
-        void (*command)(const void** pdata, const char* valueType, const int argCount);
-        char minArgCount;                                                                           // not used for cpp (user) commands
+        void (*command)(const void** pdata, const char* valueType, const int argCount, int& execError);
+        char minArgCount;                                                                           // not used for external cpp (user) commands
         char maxArgCount;
     };
 
@@ -1320,7 +1324,7 @@ public:
 
     int _resWordCount;                                          // count of keywords in keyword table 
     int _internCppFunctionCount;                                         // count of internal cpp functions in functions table
-    int _externCppFunctionCount;                                         // count of internal cpp functions in functions table
+    int _externCppFunctionCount;                                         // count of external cpp functions in functions table
     int _symbvalueCount;
     int _termTokenCount;                                        // count of operators and other terminals in terminals table
 
@@ -1669,12 +1673,12 @@ public:
     // >>> call backs voor user CPP functies
     // -----------------------------
     bool setUserBoolCppFunctionsEntryPoint(const CppBoolFunction* const  pCppBoolFunctions, int cppBoolFunctionCount);
-    bool setUserCharCppFunctionsEntryPoint(const CppCharFunction* const  pCppCharFunctions, int cppCharFunctionCount);
-    bool setUserIntCppFunctionsEntryPoint(const CppIntFunction* const  pCppIntFunctions, int cppIntFunctionCount);
-    bool setUserLongCppFunctionsEntryPoint(const CppLongFunction* const pCppLongFunctions, int cppLongFunctionCount);
-    bool setUserFloatCppFunctionsEntryPoint(const CppFloatFunction* const pCppFloatFunctions, int cppfloatFunctionCount);
-    bool setUser_pCharCppFunctionsEntryPoint(const Cpp_pCharFunction* const pCpp_pCharFunctions, int cpp_pCharFunctionCount);
-    bool setUserCppCommandsEntryPoint(const CppVoidCommand* const pCppVoidCommands, int cppVoidCommandCount);
+    char setUserCharCppFunctionsEntryPoint(const CppCharFunction* const  pCppCharFunctions, int cppCharFunctionCount);
+    int setUserIntCppFunctionsEntryPoint(const CppIntFunction* const  pCppIntFunctions, int cppIntFunctionCount);
+    long setUserLongCppFunctionsEntryPoint(const CppLongFunction* const pCppLongFunctions, int cppLongFunctionCount);
+    float setUserFloatCppFunctionsEntryPoint(const CppFloatFunction* const pCppFloatFunctions, int cppfloatFunctionCount);
+    char* setUser_pCharCppFunctionsEntryPoint(const Cpp_pCharFunction* const pCpp_pCharFunctions, int cpp_pCharFunctionCount);
+    void setUserCppCommandsEntryPoint(const CppVoidCommand* const pCppVoidCommands, int cppVoidCommandCount);
     // >>> -------------------------------------------------------------------------------------------------------------------------
 
     bool setUserFcnCallback(void (*func) (const void** pdata, const char* valueType, const int argCount));
@@ -1754,6 +1758,7 @@ private:
     bool checkArrayDimCountAndSize(parseTokenResult_type& result, int* arrayDef_dims, int& dimCnt);
     int getIdentifier(char** pIdentArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNew, bool isUserVar = false);
     bool checkInternCppFuncArgArrayPattern(parseTokenResult_type& result);
+    bool checkExternCppFuncArgArrayPattern(parseTokenResult_type& result);
     bool checkJustinaFuncArgArrayPattern(parseTokenResult_type& result, bool isFunctionClosingParenthesis);
     bool initVariable(uint16_t varTokenStep, uint16_t constTokenStep);
 
@@ -1784,6 +1789,7 @@ private:
     execResult_type  execUnaryOperation(bool isPrefix);
     execResult_type  execInfixOperation();
     execResult_type  execInternalCppFunction(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount, bool& forcedStopRequest, bool& forcedAbortRequest);
+    execResult_type  execExternalCppFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount);
     execResult_type  launchJustinaFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount);
     execResult_type  launchEval(LE_evalStack*& pFunctionStackLvl, char* parsingInput);
     execResult_type  terminateJustinaFunction(bool addZeroReturnValue = false);
@@ -1823,7 +1829,9 @@ private:
     int jumpTokens(int n);
 
     void pushTerminalToken(int& tokenType);
-    void pushFunctionName(int& tokenType);
+    void pushInternCppFunctionName(int& tokenType);
+    void pushExternCppFunctionName(int& tokenType);
+    void pushJustinaFunctionName(int& tokenType);
     void pushGenericName(int& tokenType);
     void pushConstant(int& tokenType);
     void pushVariable(int& tokenType);
