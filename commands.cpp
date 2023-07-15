@@ -1,29 +1,31 @@
-/***************************************************************************************
-    Justina interpreter library for Arduino Nano 33 IoT and Arduino RP2040.
-
-    Version:    v1.00 - xx/xx/2022
-    Author:     Herwig Taveirne
-
-    Justina is an interpreter which does NOT require you to use an IDE to write
-    and compile programs. Programs are written on the PC using any text processor
-    and transferred to the Arduino using any terminal capable of sending files.
-    Justina can store and retrieve programs and other data on an SD card as well.
-
-    See GitHub for more information and documentation: //// <links>
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-***************************************************************************************/
+/************************************************************************************************************
+*    Justina interpreter library for Arduino boards with 32 bit SAMD microconrollers                        *
+*                                                                                                           *
+*    Tested with Nano 33 IoT and Arduino RP2040                                                             *
+*                                                                                                           *
+*    Version:    v1.01 - 12/07/2023                                                                         *
+*    Author:     Herwig Taveirne, 2021-2023                                                                 *
+*                                                                                                           *
+*    Justina is an interpreter which does NOT require you to use an IDE to write                            *
+*    and compile programs. Programs are written on the PC using any text processor                          *
+*    and transferred to the Arduino using any serial terminal capable of sending files.                     *
+*    Justina can store and retrieve programs and other data on an SD card as well.                          *
+*                                                                                                           *
+*    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
+*                                                                                                           *
+*    This program is free software: you can redistribute it and/or modify                                   *
+*    it under the terms of the GNU General Public License as published by                                   *
+*    the Free Software Foundation, either version 3 of the License, or                                      *
+*    (at your option) any later version.                                                                    *
+*                                                                                                           *
+*    This program is distributed in the hope that it will be useful,                                        *
+*    but WITHOUT ANY WARRANTY; without even the implied warranty of                                         *
+*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                                           *
+*    GNU General Public License for more details.                                                           *
+*                                                                                                           *
+*    You should have received a copy of the GNU General Public License                                      *
+*    along with this program.  If not, see <http://www.gnu.org/licenses/>.                                  *
+************************************************************************************************************/
 
 
 #include "Justina.h"
@@ -254,12 +256,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // overwrite the parsed command line (containing the 'step', 'go' or 'abort' command) with the command line stack top and pop the command line stack top
             // before removing, delete any parsed string constants for that command line
 
-            _lastUserCmdStep = *(char**)_pImmediateCmdStackTop;                                                             // pop program step of last user cmd token ('tok_no_token')
+            _lastUserCmdStep = *(char**)_pParsedCommandLineStackTop;                                                             // pop program step of last user cmd token ('tok_no_token')
             long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + _progMemorySize) + 1;
             deleteConstStringObjects(_programStorage + _progMemorySize);
-            memcpy((_programStorage + _progMemorySize), _pImmediateCmdStackTop + sizeof(char*), parsedUserCmdLen);          // size berekenen
-            parsedCommandLineStack.deleteListElement(_pImmediateCmdStackTop);
-            _pImmediateCmdStackTop = parsedCommandLineStack.getLastListElement();
+            memcpy((_programStorage + _progMemorySize), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);          // size berekenen
+            parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
+            _pParsedCommandLineStackTop = parsedCommandLineStack.getLastListElement();
         #if PRINT_PARSED_STAT_STACK
             _pDebugOut->print("  >> POP parsed statements (Go): last step: "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
         #endif
@@ -1459,111 +1461,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             _angleMode = (valueType[0] == value_isLong) ? args[0].longConst : (int)args[0].floatConst;
             if ((_angleMode < 0) || (_angleMode > 1)) { return result_arg_outsideRange; }                                   // 0 = radians, 1 = degrees
             Serial.println(_angleMode);
-
-            // clean up
-            clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings
-            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
-        }
-        break;
-
-
-        // -------------------------- 
-        // Call a user routine in C++
-        // --------------------------
-
-        case cmdcod_callback:
-        {
-            // preprocess
-            // ----------
-
-            // determine which callback routine to call, based upon alias (argument 1) 
-            LE_evalStack* aliasStackLvl = pStackLvl;
-            char* alias = aliasStackLvl->genericName.pStringConst;
-            bool isDeclared = false;
-            int index{};
-            for (index = 0; index < _userCBprocAliasSet_count; index++) {                                                   // find alias in table (break if found)
-                // both strings are NOT empty: no nullpointers 
-                if (strcmp(_callbackUserProcAlias[index], alias) == 0) { isDeclared = true; break; }                        // case sensitive comparison
-            }
-            if (!isDeclared) { execResult = result_userCB_aliasNotDeclared; return execResult; }
-
-            LE_evalStack* pStackLvlFirstValueArg = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-            pStackLvl = pStackLvlFirstValueArg;
-
-            // variable references to store (arguments 2[..4]) 
-            const char isVariable = 0x80;                                                                                   // mask: is variable (not a constant) 
-
-            // if more than 8 arguments are supplied, excess arguments are discarded
-            // to keep it simple for the c++ user writing the user routine, we always pass const void pointers, to variables and constants
-            // but for constants, the pointer will point to a copy of the data
-
-            Val args[8]{}, dummyArgs[8]{};                                                                                  // values to be passed to user routine
-            char valueType[8]{ };                                                                                           // value types (long, float, char string)
-            char varScope[8]{};                                                                                             // if variable: variable scope (user, program global, static, local)
-            bool argIsNonConstantVar[8]{};                                                                                  // flag: is variable (scalar or aray)
-            bool argIsArray[8]{};                                                                                           // flag: is array element
-
-            const void* pValues_copy[8]{};                                                                                  // copies for safety
-            char valueTypes_copy[8];
-            int cmdParamCount_copy{ cmdParamCount };
-
-            // any data to pass ? (optional arguments 2 to 9: data)
-            if (cmdParamCount >= 2) {                                                                                       // first argument (callback procedure) processed (but still on the stack)
-                copyValueArgsFromStack(pStackLvl, cmdParamCount - 1, argIsNonConstantVar, argIsArray, valueType, args, true, dummyArgs);
-                pStackLvl = pStackLvlFirstValueArg;                                                                         // set stack level again to first value argument
-                for (int i = 0; i < 8; i++) { valueTypes_copy[i] = value_argNotProvided; }                                  // init
-                for (int i = 0; i < cmdParamCount - 1; i++) {
-                    if (argIsNonConstantVar[i]) {                                                                           // is this a 'changeable' variable ? (not a constant & not a constant variable)
-                        valueType[i] |= isVariable;                                                                         // flag as 'changeable' variable (scalar or array element)
-                        varScope[i] = (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_scopeMask);                       // remember variable scope (user, program global, local, static) 
-                    }
-                    pValues_copy[i] = args[i].pBaseValue;                                                                   // copy pointers for safety (protect original pointers from changes by c++ routine) 
-                    valueTypes_copy[i] = valueType[i];
-                    pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-                }
-            }
-
-
-            // call user routine
-            // -----------------
-
-            // arguments: pointers to values passed (pass by ref), value types copied for safety (if constants are passed, even the values have been copied: dummyArgs[])
-            _callbackUserProcStart[index](pValues_copy, valueTypes_copy, cmdParamCount_copy - 1);
-
-
-            // postprocess: check any strings RETURNED by callback procedure
-            // -------------------------------------------------------------
-
-            pStackLvl = pStackLvlFirstValueArg;                                                                             // set stack level again to first value argument
-            for (int i = 0; i < 8; i++) {
-                if ((valueType[i] & value_typeMask) == value_isStringPointer) {
-                    // string argument was a constant (including a CONST variable) - OR it was empty (null pointer) ?  
-                    // => a string copy or a new string solely consisting of a '\0' terminator (intermediate string) was passed to user routine and needs to be deleted 
-                    if (valueType[i] & passCopyToCallback) {
-                    #if PRINT_HEAP_OBJ_CREA_DEL
-                        _pDebugOut->print("----- (Intermd str) "); _pDebugOut->println((uint32_t)args[i].pStringConst, HEX);
-                    #endif
-                        _intermediateStringObjectCount--;
-                        delete[] args[i].pStringConst;                                                                      // delete temporary string
-                    }
-
-                    // string argument was a (NON-CONSTANT) variable string: no copy was made, the string itself was passed to the user routine
-                    // did the user routine change it to an empty, '\0' terminated string ?
-                    // then this variable string object needs to be deleted and the pointer to it needs to be replaced by a null pointer (Justnia convention)
-                    else if (strlen(args[i].pStringConst) == 0) {
-
-                    #if PRINT_HEAP_OBJ_CREA_DEL 
-                        _pDebugOut->print((varScope[i] == var_isUser) ? "----- (usr var str) " : ((varScope[i] == var_isGlobal) || (varScope[i] == var_isStaticInFunc)) ? "----- (var string ) " : "----- (loc var str) ");
-                        _pDebugOut->println((uint32_t)args[i].pStringConst, HEX);
-                    #endif
-                        (varScope[i] == var_isUser) ? _userVarStringObjectCount-- : ((varScope[i] == var_isGlobal) || (varScope[i] == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount-- : _localVarStringObjectCount--;
-                        delete[]args[i].pStringConst;                                                                       // delete original variable string
-                        *pStackLvl->varOrConst.value.ppStringConst = nullptr;                                               // change pointer to string (in variable) to null pointer
-                    }
-                }
-                pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-            }
-
 
             // clean up
             clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings

@@ -146,7 +146,7 @@ Justina_interpreter::CppIntFunction const cppIntFunctions[]{
 };
 
 Justina_interpreter::CppLongFunction const cppLongFunctions[]{
-    { "returnLong1", userFcn_returnLong, 0, 0},
+    { "returnLong1", userFcn_returnLong, 1, 1},
     { "returnLong2", userFcn_returnLong_2, 0, 8}
 };
 
@@ -158,10 +158,9 @@ Justina_interpreter::Cpp_pCharFunction const cpp_pCharFunctions[]{
     {"return_pChar",userFcn_return_pChar, 0, 0}
 };
 
+// cpp procedures not returning a function result: a zero will be returned to Justina 
 
-// cpp procedures not returning a function result can be used as Justina commands (just like any other Justina command, like cout, input,...), instead of Justina functions 
-
-Justina_interpreter::CppVoidCommand  const cppCommands[]{                   // NOTE: min. and max. argument count is not used for user commands
+Justina_interpreter::CppVoidFunction  const cppVoidFunctions[]{                   // NOTE: min. and max. argument count is not used for user commands
     {"readPort", userFcn_readPort, 0, 0},
     {"writePort", userFcn_writePort, 0, 0},
     {"togglePort", userFcn_togglePort, 0, 0}
@@ -358,9 +357,10 @@ void execAction(char c) {
                 pJustina->setUserLongCppFunctionsEntryPoint(cppLongFunctions, sizeof(cppLongFunctions) / sizeof(cppLongFunctions[0]));
                 pJustina->setUserFloatCppFunctionsEntryPoint(cppFloatFunctions, sizeof(cppFloatFunctions) / sizeof(cppFloatFunctions[0]));
                 pJustina->setUser_pCharCppFunctionsEntryPoint(cpp_pCharFunctions, sizeof(cpp_pCharFunctions) / sizeof(cpp_pCharFunctions[0]));
-                pJustina->setUserCppCommandsEntryPoint(cppCommands, sizeof(cppCommands) / sizeof(cppCommands[0]));
+                pJustina->setUserCppCommandsEntryPoint(cppVoidFunctions, sizeof(cppVoidFunctions) / sizeof(cppVoidFunctions[0]));
                 // >>> ---------------------------------------------------------------------------------------------
-                /* ////
+                
+                /* 
                 pJustina->setUserFcnCallback((&userFcn_readPort));                // pass user function addresses to Justina_interpreter library (return value 'true' indicates success)
                 pJustina->setUserFcnCallback((&userFcn_writePort));
                 pJustina->setUserFcnCallback((&userFcn_togglePort));

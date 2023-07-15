@@ -1,29 +1,31 @@
-/***************************************************************************************
-    Justina interpreter library for Arduino Nano 33 IoT and Arduino RP2040.
-
-    Version:    v1.00 - xx/xx/2022
-    Author:     Herwig Taveirne
-
-    Justina is an interpreter which does NOT require you to use an IDE to write
-    and compile programs. Programs are written on the PC using any text processor
-    and transferred to the Arduino using any terminal capable of sending files.
-    Justina can store and retrieve programs and other data on an SD card as well.
-
-    See GitHub for more information and documentation: //// <links>
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-***************************************************************************************/
+/************************************************************************************************************
+*    Justina interpreter library for Arduino boards with 32 bit SAMD microconrollers                        *
+*                                                                                                           *
+*    Tested with Nano 33 IoT and Arduino RP2040                                                             *
+*                                                                                                           *
+*    Version:    v1.01 - 12/07/2023                                                                         *
+*    Author:     Herwig Taveirne, 2021-2023                                                                 *
+*                                                                                                           *
+*    Justina is an interpreter which does NOT require you to use an IDE to write                            *
+*    and compile programs. Programs are written on the PC using any text processor                          *
+*    and transferred to the Arduino using any serial terminal capable of sending files.                     *
+*    Justina can store and retrieve programs and other data on an SD card as well.                          *
+*                                                                                                           *
+*    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
+*                                                                                                           *
+*    This program is free software: you can redistribute it and/or modify                                   *
+*    it under the terms of the GNU General Public License as published by                                   *
+*    the Free Software Foundation, either version 3 of the License, or                                      *
+*    (at your option) any later version.                                                                    *
+*                                                                                                           *
+*    This program is distributed in the hope that it will be useful,                                        *
+*    but WITHOUT ANY WARRANTY; without even the implied warranty of                                         *
+*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                                           *
+*    GNU General Public License for more details.                                                           *
+*                                                                                                           *
+*    You should have received a copy of the GNU General Public License                                      *
+*    along with this program.  If not, see <http://www.gnu.org/licenses/>.                                  *
+************************************************************************************************************/
 
 
 #include "Justina.h"
@@ -124,7 +126,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
 
     {"abort",           cmdcod_abort,           cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
     {"debug",           cmdcod_debug,           cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
-    
+
     {"raiseError",      cmdcod_raiseError,      cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_104,     cmdBlockNone},
     {"quit",            cmdcod_quit,            cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_106,     cmdBlockNone},
 
@@ -172,12 +174,6 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"listCallSt",      cmdcod_printCallSt,     cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_106,     cmdBlockNone},
     {"listFilesToSerial",cmdcod_listFilesToSer, cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_102,     cmdBlockNone},
     {"listFiles",       cmdcod_listFiles,       cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_106,     cmdBlockNone},
-
-    // user callback functions
-    // -----------------------
-    {"declareCB",       cmdcod_declCB,          cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,      0,0,    cmdPar_110,     cmdBlockNone},
-    {"clearCB",         cmdcod_clearCB,         cmd_onlyOutsideFunctionBlock | cmd_skipDuringExec,      0,0,    cmdPar_102,     cmdBlockNone},
-    {"callcpp",         cmdcod_callback,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_101,     cmdBlockNone}
 };
 
 
@@ -536,13 +532,6 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
     _coldStart = true;
 
     _housekeepingCallback = nullptr;
-    for (int i = 0; i < _userCBarrayDepth; i++) { _callbackUserProcStart[i] = nullptr; }
-    _userCBprocStartSet_count = 0;
-
-    _resWordCount = (sizeof(_resWords)) / sizeof(_resWords[0]);
-    _internCppFunctionCount = (sizeof(_internCppFunctions)) / sizeof(_internCppFunctions[0]);
-    _termTokenCount = (sizeof(_terminals)) / sizeof(_terminals[0]);
-    _symbvalueCount = (sizeof(_symbNumConsts)) / sizeof(_symbNumConsts[0]);
 
     _lastPrintedIsPrompt = false;
 
@@ -601,13 +590,14 @@ Justina_interpreter::~Justina_interpreter() {
 };
 
 
-// ------------------------------
-// *   set call back functons   *
-// ------------------------------
+// --------------------------------------------
+// *   set system (main) call back functons   *
+// --------------------------------------------
 
 bool Justina_interpreter::setMainLoopCallback(void (*func)(long& appFlags)) {
 
-    // set the address of an optional 'user callback' function
+    // this function is directly called from the Arduino program starting Justina
+    // it stores the address of an optional 'user callback' function
     // Justina will call this user routine at specific time intervals, allowing  the user...
     // ...to execute a specific routine regularly (e.g. to maintain a TCP connection, to implement a heartbeat, ...)
 
@@ -615,57 +605,50 @@ bool Justina_interpreter::setMainLoopCallback(void (*func)(long& appFlags)) {
     return true;
 }
 
-// -----------------------------
-// >>> call backs voor user CPP functies
-// -----------------------------
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// *   sets pointers to the locations where the Arduino program stored information about user-defined (external) cpp functions (user callback functions)   *
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+
+    // these functions are directly called from the Arduino program starting Justina
+    // each function stores the starting address of an array with information about external (user callback) functions with a specific return type 
+    // for instance, _pExtCppFunctions[0] stores the adress of the array containing information about cpp functions returning a boolean value
+    // a null pointer indicates there are no functions of a specific type
+    // return types are: 0 = bool, 1 = char, 2 = int, 3 = long, 4 = float, 5 = char*, 6 = void (but returns zero to Justina)
 
 bool Justina_interpreter::setUserBoolCppFunctionsEntryPoint(const CppBoolFunction* const  pCppBoolFunctions, int cppBoolFunctionCount) {
-    _pExtCppFunctions[0] = _pCppBoolFunctions = (CppBoolFunction*)pCppBoolFunctions;
+    _pExtCppFunctions[0] = (CppBoolFunction*)pCppBoolFunctions;
     _ExtCppFunctionCounts[0] = cppBoolFunctionCount;
 };
 
 char Justina_interpreter::setUserCharCppFunctionsEntryPoint(const CppCharFunction* const  pCppCharFunctions, int cppCharFunctionCount) {
-    _pExtCppFunctions[1] = _pCppCharFunctions = (CppCharFunction*)pCppCharFunctions;
+    _pExtCppFunctions[1] = (CppCharFunction*)pCppCharFunctions;
     _ExtCppFunctionCounts[1] = cppCharFunctionCount;
 };
 
 int Justina_interpreter::setUserIntCppFunctionsEntryPoint(const CppIntFunction* const  pCppIntFunctions, int cppIntFunctionCount) {
-    _pExtCppFunctions[2] = _pCppIntFunctions = (CppIntFunction*)pCppIntFunctions;
+    _pExtCppFunctions[2] = (CppIntFunction*)pCppIntFunctions;
     _ExtCppFunctionCounts[2] = cppIntFunctionCount;
 };
 
 long Justina_interpreter::setUserLongCppFunctionsEntryPoint(const CppLongFunction* const pCppLongFunctions, int cppLongFunctionCount) {
-    _pExtCppFunctions[3] = _pCppLongFunctions = (CppLongFunction*)pCppLongFunctions;
+    _pExtCppFunctions[3] = (CppLongFunction*)pCppLongFunctions;
     _ExtCppFunctionCounts[3] = cppLongFunctionCount;
 };
 
 float Justina_interpreter::setUserFloatCppFunctionsEntryPoint(const CppFloatFunction* const pCppFloatFunctions, int cppFloatFunctionCount) {
-    _pExtCppFunctions[4] = _pCppFloatFunctions = (CppFloatFunction*)pCppFloatFunctions;
+    _pExtCppFunctions[4] = (CppFloatFunction*)pCppFloatFunctions;
     _ExtCppFunctionCounts[4] = cppFloatFunctionCount;
 };
 
 char* Justina_interpreter::setUser_pCharCppFunctionsEntryPoint(const Cpp_pCharFunction* const pCpp_pCharFunctions, int cpp_pCharFunctionCount) {
-    _pExtCppFunctions[5] = _pCpp_pCharFunctions = (Cpp_pCharFunction*)pCpp_pCharFunctions;
+    _pExtCppFunctions[5] = (Cpp_pCharFunction*)pCpp_pCharFunctions;
     _ExtCppFunctionCounts[5] = cpp_pCharFunctionCount;
 };
 
-void Justina_interpreter::setUserCppCommandsEntryPoint(const CppVoidCommand* const pCppVoidCommands, int cppVoidCommandCount) {
-    _pExtCppFunctions[6] = _pCppVoidCommands = (CppVoidCommand*)pCppVoidCommands;
-    _ExtCppFunctionCounts[6] = cppVoidCommandCount;
+void Justina_interpreter::setUserCppCommandsEntryPoint(const CppVoidFunction* const pCppVoidFunctions, int cppVoidFunctionCount) {
+    _pExtCppFunctions[6] = (CppVoidFunction*)pCppVoidFunctions;
+    _ExtCppFunctionCounts[6] = cppVoidFunctionCount;
 };
-
-// >>> -------------------------------------------------------------------------------------------------------------------------
-
-bool Justina_interpreter::setUserFcnCallback(void(*func) (const void** data, const char* valueType, const int argCount)) {
-
-    // set the address of an optional 'user callback' function
-    // this mechanism allows to call user c++ procedures using aliases
-
-    if (_userCBprocStartSet_count > +_userCBarrayDepth) { return false; }                               // throw away if callback array full
-    _callbackUserProcStart[_userCBprocStartSet_count++] = func;
-    return true; // success
-}
-
 
 // ----------------------------
 // *   interpreter main loop   *
@@ -999,7 +982,7 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
     int funcNotDefIndex;
     if (result == result_tokenFound) {
         // checks at the end of parsing: any undefined functions (program mode only) ?  any open blocks ?
-        if (_programMode && (!allJustinaFunctionsDefined(funcNotDefIndex))) { result = result_function_undefinedFunctionOrArray; }
+        if (_programMode && (!checkAllJustinaFunctionsDefined(funcNotDefIndex))) { result = result_function_undefinedFunctionOrArray; }
         if (_blockLevel > 0) { result = result_block_noBlockEnd; }
     }
 
@@ -1282,7 +1265,7 @@ void Justina_interpreter::parseAndExecTraceString() {
 // *   check if all Justina functions referenced are defined   *
 // -------------------------------------------------------------
 
-bool Justina_interpreter::allJustinaFunctionsDefined(int& index) {
+bool Justina_interpreter::checkAllJustinaFunctionsDefined(int& index) {
     index = 0;
     while (index < _justinaFunctionCount) {                                                                     // points to variable in use
         if (justinaFunctionData[index].pJustinaFunctionStartToken == nullptr) { return false; }
@@ -1516,8 +1499,6 @@ void Justina_interpreter::initInterpreterVariables(bool fullReset) {
         int index = 0;                                                                                          // clear user variable flag 'variable is used by program'
         while (index++ < _userVarCount) { userVarType[index] = userVarType[index] & ~var_userVarUsedByProgram; }
     }
-    _userCBprocAliasSet_count = 0;                                                                              // note: _userCBprocStartSet_count: only reset when starting interpreter
-
     *_programStorage = tok_no_token;                                                                            //  set as current end of program 
     *(_programStorage + _progMemorySize) = tok_no_token;                                                        //  set as current end of program (immediate mode)
     _programCounter = _programStorage + _progMemorySize;                                                        // start of 'immediate mode' program area
@@ -1526,7 +1507,7 @@ void Justina_interpreter::initInterpreterVariables(bool fullReset) {
 
     _pEvalStackTop = nullptr;   _pEvalStackMinus2 = nullptr; _pEvalStackMinus1 = nullptr;
     _pFlowCtrlStackTop = nullptr;   _pFlowCtrlStackMinus2 = nullptr; _pFlowCtrlStackMinus1 = nullptr;
-    _pImmediateCmdStackTop = nullptr;
+    _pParsedCommandLineStackTop = nullptr;
 
     _intermediateStringObjectCount = 0;      // reset at the start of execution
     _localVarValueAreaCount = 0;

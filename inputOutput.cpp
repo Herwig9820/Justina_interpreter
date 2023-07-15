@@ -1,29 +1,31 @@
-/***************************************************************************************
-    Justina interpreter library for Arduino Nano 33 IoT and Arduino RP2040.
-
-    Version:    v1.00 - xx/xx/2022
-    Author:     Herwig Taveirne
-
-    Justina is an interpreter which does NOT require you to use an IDE to write
-    and compile programs. Programs are written on the PC using any text processor
-    and transferred to the Arduino using any terminal capable of sending files.
-    Justina can store and retrieve programs and other data on an SD card as well.
-
-    See GitHub for more information and documentation: //// <links>
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-***************************************************************************************/
+/************************************************************************************************************
+*    Justina interpreter library for Arduino boards with 32 bit SAMD microconrollers                        *
+*                                                                                                           *
+*    Tested with Nano 33 IoT and Arduino RP2040                                                             *
+*                                                                                                           *
+*    Version:    v1.01 - 12/07/2023                                                                         *
+*    Author:     Herwig Taveirne, 2021-2023                                                                 *
+*                                                                                                           *
+*    Justina is an interpreter which does NOT require you to use an IDE to write                            *
+*    and compile programs. Programs are written on the PC using any text processor                          *
+*    and transferred to the Arduino using any serial terminal capable of sending files.                     *
+*    Justina can store and retrieve programs and other data on an SD card as well.                          *
+*                                                                                                           *
+*    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
+*                                                                                                           *
+*    This program is free software: you can redistribute it and/or modify                                   *
+*    it under the terms of the GNU General Public License as published by                                   *
+*    the Free Software Foundation, either version 3 of the License, or                                      *
+*    (at your option) any later version.                                                                    *
+*                                                                                                           *
+*    This program is distributed in the hope that it will be useful,                                        *
+*    but WITHOUT ANY WARRANTY; without even the implied warranty of                                         *
+*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                                           *
+*    GNU General Public License for more details.                                                           *
+*                                                                                                           *
+*    You should have received a copy of the GNU General Public License                                      *
+*    along with this program.  If not, see <http://www.gnu.org/licenses/>.                                  *
+************************************************************************************************************/
 
 
 #include "Justina.h"
@@ -436,7 +438,7 @@ int Justina_interpreter::readFrom(int streamNumber) {
 int Justina_interpreter::readFrom(int streamNumber, char* buffer, int length) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, pStream) != result_execOK) { return 0; }          // if error, zero characters written but error is not returned to caller
-    return static_cast<File*>(pStream)->read(buffer, length);                           // NOTE: stream MUST be a file -> appFlag_dataInOut must not be set
+    return static_cast<File*>(pStream)->read(buffer, length);                           // NOTE: stream MUST be a file (check before call) -> appFlag_dataInOut must not be set
 }
 
 

@@ -1,29 +1,31 @@
-/***************************************************************************************
-    Justina interpreter library for Arduino Nano 33 IoT and Arduino RP2040.
-
-    Version:    v1.00 - xx/xx/2022
-    Author:     Herwig Taveirne
-
-    Justina is an interpreter which does NOT require you to use an IDE to write
-    and compile programs. Programs are written on the PC using any text processor
-    and transferred to the Arduino using any terminal capable of sending files.
-    Justina can store and retrieve programs and other data on an SD card as well.
-
-    See GitHub for more information and documentation: //// <links>
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-***************************************************************************************/
+/************************************************************************************************************
+*    Justina interpreter library for Arduino boards with 32 bit SAMD microconrollers                        *
+*                                                                                                           *
+*    Tested with Nano 33 IoT and Arduino RP2040                                                             *
+*                                                                                                           *
+*    Version:    v1.01 - 12/07/2023                                                                         *
+*    Author:     Herwig Taveirne, 2021-2023                                                                 *
+*                                                                                                           *
+*    Justina is an interpreter which does NOT require you to use an IDE to write                            *
+*    and compile programs. Programs are written on the PC using any text processor                          *
+*    and transferred to the Arduino using any serial terminal capable of sending files.                     *
+*    Justina can store and retrieve programs and other data on an SD card as well.                          *
+*                                                                                                           *
+*    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
+*                                                                                                           *
+*    This program is free software: you can redistribute it and/or modify                                   *
+*    it under the terms of the GNU General Public License as published by                                   *
+*    the Free Software Foundation, either version 3 of the License, or                                      *
+*    (at your option) any later version.                                                                    *
+*                                                                                                           *
+*    This program is distributed in the hope that it will be useful,                                        *
+*    but WITHOUT ANY WARRANTY; without even the implied warranty of                                         *
+*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                                           *
+*    GNU General Public License for more details.                                                           *
+*                                                                                                           *
+*    You should have received a copy of the GNU General Public License                                      *
+*    along with this program.  If not, see <http://www.gnu.org/licenses/>.                                  *
+************************************************************************************************************/
 
 
 #include "Justina.h"
@@ -89,7 +91,6 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
 
         if ((_lastTokenType == tok_no_token) || isSemicolon) {
             _isProgramCmd = false;
-            _isDeclCBcmd = false; _isClearCBcmd = false; _isCallbackCmd = false;
             _isJustinaFunctionCmd = false; _isGlobalOrUserVarCmd = false; _isLocalVarCmd = false; _isStaticVarCmd = false; _isAnyVarCmd = false, _isConstVarCmd = false;;
             _isForCommand = false;
             _isDeleteVarCmd = false;
@@ -191,9 +192,6 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
 
     _isJustinaFunctionCmd = _resWords[_tokenIndex].resWordCode == cmdcod_function;
     _isProgramCmd = _resWords[_tokenIndex].resWordCode == cmdcod_program;
-    _isDeclCBcmd = _resWords[_tokenIndex].resWordCode == cmdcod_declCB;
-    _isClearCBcmd = _resWords[_tokenIndex].resWordCode == cmdcod_clearCB;
-    _isCallbackCmd = _resWords[_tokenIndex].resWordCode == cmdcod_callback;
     _isGlobalOrUserVarCmd = ((_resWords[_tokenIndex].resWordCode == cmdcod_var) || (_resWords[_tokenIndex].resWordCode == cmdcod_constVar)) && !_justinaFunctionBlockOpen;
     _isLocalVarCmd = ((_resWords[_tokenIndex].resWordCode == cmdcod_var) || (_resWords[_tokenIndex].resWordCode == cmdcod_constVar)) && _justinaFunctionBlockOpen;
     _isStaticVarCmd = _resWords[_tokenIndex].resWordCode == cmdcod_static;
@@ -351,7 +349,7 @@ bool Justina_interpreter::checkCommandArgToken(parseTokenResult_type& result, in
 
     if (isResWord || isGenIdent || isExpressionFirstToken) { _cmdArgNo++; }
 
-    // if first token of a command parameter or a semicolon: check allowed argument types with respect to command definition (ecpression, identifier, ...) 
+    // if first token of a command parameter or a semicolon: check allowed argument types with respect to command definition (expression, identifier, ...) 
     bool multipleParameter = false, optionalParameter = false;
     if (isResWord || isGenIdent || isExpressionFirstToken || isSemiColonSep) {
         allowedParType = (_cmdParSpecColumn == sizeof(_pCmdAllowedParTypes)) ? cmdPar_none : (uint8_t)(_pCmdAllowedParTypes[_cmdParSpecColumn]);
@@ -370,7 +368,6 @@ bool Justina_interpreter::checkCommandArgToken(parseTokenResult_type& result, in
             result = result_cmd_parameterMissing; return false;
         }
 
-        if (_isClearCBcmd) { _userCBprocAliasSet_count = 0; }
         // NOTE: clear program / memory command will be executed when normal execution ends (before entering idle idle mode, waiting for input)
         else if (_isClearProgCmd) { clearIndicator = 1; }                                                           // clear program: set flag 
         else if (_isClearAllCmd) { clearIndicator = 2; }                                                            // clear all: set flag
@@ -711,8 +708,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             if (_isAnyVarCmd && (_parenthesisLevel > 0)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }  // no parenthesis nesting in array declarations
             // parenthesis nesting in function definitions, only to declare an array parameter AND only if followed by a closing parenthesis 
             if ((_isJustinaFunctionCmd) && (_parenthesisLevel > 0) && (_lastTokenType != tok_isVariable)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
-            if (_isProgramCmd || _isDeleteVarCmd || _isDeclCBcmd) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
-            if (_isCallbackCmd && (_cmdArgNo == 0)) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
+            if (_isProgramCmd || _isDeleteVarCmd) { pNext = pch; result = result_parenthesisNotAllowedHere; return false; }
 
             bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_incr) || (_lastTermCode == termcod_decr)) : false;
             if (varRequired) { pNext = pch; result = result_variableNameExpected; return false; }
@@ -1213,8 +1209,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                 }
             }
 
-            if (_isProgramCmd || _isDeleteVarCmd || _isDeclCBcmd) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
-            if (_isCallbackCmd && (_cmdArgNo == 0)) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+            if (_isProgramCmd || _isDeleteVarCmd ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
 
 
             // 1.b Find out if the provided operator type (prefix, infix or postfix) is allowed 
@@ -1395,19 +1390,18 @@ bool Justina_interpreter::parseAsInternCPPfunction(char*& pNext, parseTokenResul
 bool Justina_interpreter::parseAsExternCPPfunction(char*& pNext, parseTokenResult_type& result) {
     result = result_tokenNotFound;                                                                                      // init: flag 'no token found'
     char* pch = pNext;                                                                                                  // pointer to first character to parse (any spaces have been skipped already)
-    int funcIndex{ 0 };
 
     if (!isalpha(pNext[0])) { return true; }                                                                            // first character is not a letter ? Then it's not a function name (it can still be something else)
     while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                                                         // do until first character after alphanumeric token (can be anything, including '\0')
 
     int extFunctionReturnType{ 0 }, extFuncIndexInType{ 0 };
-    for (extFunctionReturnType = 0; extFunctionReturnType < (sizeof(_ExtCppFunctionCounts) / sizeof(_ExtCppFunctionCounts[0]) - 1); extFunctionReturnType++) {    // exclude commands (last return type category)
-        // in case entry point for specific return type was not initialised (no callback functions for this return type), skip this return type category
-        if ((CppDummyVoidFunction*)_pExtCppFunctions[extFunctionReturnType] == nullptr) { Serial.println("*** category not present");  continue; }
+    for (extFunctionReturnType = 0; extFunctionReturnType < (sizeof(_ExtCppFunctionCounts) / sizeof(_ExtCppFunctionCounts[0])); extFunctionReturnType++) {
+
+        // entry point for specific return type was not initialised (no callback functions for this return type) ? skip this return type category
+        if ((CppDummyVoidFunction*)_pExtCppFunctions[extFunctionReturnType] == nullptr) { continue; }
 
         for (extFuncIndexInType = 0; extFuncIndexInType < _ExtCppFunctionCounts[extFunctionReturnType]; extFuncIndexInType++) {
             const char* funcName = ((CppDummyVoidFunction*)_pExtCppFunctions[extFunctionReturnType])[extFuncIndexInType].cppFunctionName;
-            funcIndex++;                                                                                                // increment function counter for each entry (also those with invalid identifier names) 
 
             // note: strncmp() is used to compare strings instead of strcmp(), because one of the strings to compare does not have a terminating '\0' 
             if (strlen(funcName) != pNext - pch) { continue; }                                                          // token has same length as a stored name ? If not, skip remainder of loop ('continue')                            
@@ -1435,7 +1429,6 @@ bool Justina_interpreter::parseAsExternCPPfunction(char*& pNext, parseTokenResul
 
             _minFunctionArgs = ((CppDummyVoidFunction*)_pExtCppFunctions[extFunctionReturnType])[extFuncIndexInType].minArgCount;   // set min & max for allowed argument count (note: minimum is 0)
             _maxFunctionArgs = ((CppDummyVoidFunction*)_pExtCppFunctions[extFunctionReturnType])[extFuncIndexInType].maxArgCount;
-            _functionIndex = funcIndex - 1;                                                                             // index was base 1, must be base 0
 
             // expression syntax check 
             _thisLvl_lastIsVariable = false;
@@ -1476,7 +1469,6 @@ bool Justina_interpreter::parseAsExternCPPfunction(char*& pNext, parseTokenResul
 bool Justina_interpreter::parseAsJustinaFunction(char*& pNext, parseTokenResult_type& result) {
 
     if (_isProgramCmd || _isDeleteVarCmd) { return true; }                                                              // looking for an UNQUALIFIED identifier name; prevent it's mistaken for a variable name (same format)
-    if (_isDeclCBcmd || _isCallbackCmd) { return true; }
 
     // 1. Is this token a function name ? 
     // ----------------------------------
@@ -1490,7 +1482,7 @@ bool Justina_interpreter::parseAsJustinaFunction(char*& pNext, parseTokenResult_
     // name already in use as global or user variable name ? Then it's not a Justina function
     bool createNewName = false;
     int index = getIdentifier(programVarNames, _programVarNameCount, MAX_PROGVARNAMES, pch, pNext - pch, createNewName);
-    if (index != -1) { pNext = pch; return true; }                                                                      // is a variable
+    if (index != -1) { pNext = pch; return true; }                                                                      // is a program variable
     index = getIdentifier(userVarNames, _userVarCount, MAX_USERVARNAMES, pch, pNext - pch, createNewName, true);
     if (index != -1) { pNext = pch; return true; }                                                                      // is a user variable
 
@@ -1585,8 +1577,7 @@ bool Justina_interpreter::parseAsJustinaFunction(char*& pNext, parseTokenResult_
         // if function will define local variables, although storage area is dynamic, this is needed while in debugging (only)
         justinaFunctionData[index].localVarNameRefs_startIndex = _localVarCount;
 
-        _pFunctionDefStack = _pParsingStack;                                                                            // stack level for FUNCTION definition block
-        _pFunctionDefStack->openBlock.fcnBlock_functionIndex = index;                                                   // store in BLOCK stack level: only if function def
+        _pParsingStack->openBlock.fcnBlock_functionIndex = index;                                                       // store in BLOCK stack level: only if function def
 
     }
 
@@ -1634,8 +1625,7 @@ bool Justina_interpreter::parseAsJustinaFunction(char*& pNext, parseTokenResult_
 bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& result) {
 
     // looking for an UNQUALIFIED identifier name; prevent it's mistaken for a variable name (same format)
-    if (_isProgramCmd || _isDeleteVarCmd || _isDeclCBcmd) { return true; }
-    if (_isCallbackCmd && (_cmdArgNo == 0)) { return true; }
+    if (_isProgramCmd || _isDeleteVarCmd) { return true; }
 
     // 1. Is this token a variable name ? 
     // ----------------------------------
@@ -1822,7 +1812,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 _staticVarCount++;
 
                 // Justina function index: in parsing stack level for FUNCTION definition command
-                int fcnIndex = _pFunctionDefStack->openBlock.fcnBlock_functionIndex;
+                int fcnIndex = _pParsingStack->openBlock.fcnBlock_functionIndex;
                 justinaFunctionData[fcnIndex].staticVarCountInFunction = _staticVarCountInFunction;
             }
 
@@ -1846,7 +1836,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 _localVarCount++;
 
                 // Justina function index: in stack level for FUNCTION definition command
-                int fcnIndex = _pFunctionDefStack->openBlock.fcnBlock_functionIndex;
+                int fcnIndex = _pParsingStack->openBlock.fcnBlock_functionIndex;
                 justinaFunctionData[fcnIndex].localVarCountInFunction = _localVarCountInFunction;                       // after incrementing count
                 if (_isJustinaFunctionCmd) { justinaFunctionData[fcnIndex].paramOnlyCountInFunction = _paramOnlyCountInFunction; }
             }
@@ -2180,8 +2170,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
     result = result_tokenNotFound;                                                              // init: flag 'no token found'
     char* pch = pNext;                                                                          // pointer to first character to parse (any spaces have been skipped already)
 
-    bool stay = (_isProgramCmd || _isDeleteVarCmd || _isDeclCBcmd || _isClearAllCmd || _isClearProgCmd);
-    stay = stay || (_isCallbackCmd && (_cmdArgNo == 0));
+    bool stay = (_isProgramCmd || _isDeleteVarCmd || _isClearAllCmd || _isClearProgCmd);
     if (!stay) { return true; }
 
     if (!isalpha(pNext[0])) { return true; }                                                    // first character is not a letter ? Then it's not an identifier name (it can still be something else)
@@ -2208,23 +2197,6 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
     // Declaring program name or aliases ? Store 
     if (_isProgramCmd) {
         strcpy(_programName, pIdentifierName);
-    }
-
-    else if (_isDeclCBcmd) {
-        if (_userCBprocAliasSet_count >= _userCBprocStartSet_count) { pNext = pch; result = result_userCB_allAliasesSet; }          // still need to delete string object
-        for (int i = 0; i < _userCBprocAliasSet_count; i++) {                                                                       // alias already declared ?
-            if (strcmp(_callbackUserProcAlias[i], pIdentifierName) == 0) { pNext = pch; result = result_userCB_aliasRedeclared; }   // still need to delete string object
-        }
-
-        if ((result == result_userCB_allAliasesSet || result == result_userCB_aliasRedeclared)) {
-        #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print("----- (parsed str ) ");   _pDebugOut->println((uint32_t)pIdentifierName, HEX);
-        #endif
-            _parsedStringConstObjectCount--;
-            delete[] pIdentifierName;
-            return false;
-        }
-        else (strcpy(_callbackUserProcAlias[_userCBprocAliasSet_count++], pIdentifierName));
     }
 
     else if (_isDeleteVarCmd) {

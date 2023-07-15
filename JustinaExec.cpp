@@ -1,29 +1,31 @@
-/***************************************************************************************
-    Justina interpreter library for Arduino Nano 33 IoT and Arduino RP2040.
-
-    Version:    v1.00 - xx/xx/2022
-    Author:     Herwig Taveirne
-
-    Justina is an interpreter which does NOT require you to use an IDE to write
-    and compile programs. Programs are written on the PC using any text processor
-    and transferred to the Arduino using any terminal capable of sending files.
-    Justina can store and retrieve programs and other data on an SD card as well.
-
-    See GitHub for more information and documentation: //// <links>
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-***************************************************************************************/
+/************************************************************************************************************
+*    Justina interpreter library for Arduino boards with 32 bit SAMD microconrollers                        *
+*                                                                                                           *
+*    Tested with Nano 33 IoT and Arduino RP2040                                                             *
+*                                                                                                           *
+*    Version:    v1.01 - 12/07/2023                                                                         *
+*    Author:     Herwig Taveirne, 2021-2023                                                                 *
+*                                                                                                           *
+*    Justina is an interpreter which does NOT require you to use an IDE to write                            *
+*    and compile programs. Programs are written on the PC using any text processor                          *
+*    and transferred to the Arduino using any serial terminal capable of sending files.                     *
+*    Justina can store and retrieve programs and other data on an SD card as well.                          *
+*                                                                                                           *
+*    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
+*                                                                                                           *
+*    This program is free software: you can redistribute it and/or modify                                   *
+*    it under the terms of the GNU General Public License as published by                                   *
+*    the Free Software Foundation, either version 3 of the License, or                                      *
+*    (at your option) any later version.                                                                    *
+*                                                                                                           *
+*    This program is distributed in the hope that it will be useful,                                        *
+*    but WITHOUT ANY WARRANTY; without even the implied warranty of                                         *
+*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                                           *
+*    GNU General Public License for more details.                                                           *
+*                                                                                                           *
+*    You should have received a copy of the GNU General Public License                                      *
+*    along with this program.  If not, see <http://www.gnu.org/licenses/>.                                  *
+************************************************************************************************************/
 
 
 #include "Justina.h"
@@ -751,7 +753,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                     // info to identify and print the statement where the error occured is on the flow ctrl stack ? find it there
                     if (_activeFunctionData.blockType == block_eval) {
                         void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                                                               // one level below _activeFunctionData
-                        char* pImmediateCmdStackLvl = _pImmediateCmdStackTop;
+                        char* pImmediateCmdStackLvl = _pParsedCommandLineStackTop;
 
                         while (((OpenFunctionData*)pFlowCtrlStackLvl)->blockType == block_eval) {
                             pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
@@ -852,9 +854,9 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         _pDebugOut->print("  >> PUSH parsed statements (stop for debug): last step: "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
     #endif
         long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + _progMemorySize) + 1;
-        _pImmediateCmdStackTop = (char*)parsedCommandLineStack.appendListElement(sizeof(char*) + parsedUserCmdLen);
-        *(char**)_pImmediateCmdStackTop = _lastUserCmdStep;
-        memcpy(_pImmediateCmdStackTop + sizeof(char*), (_programStorage + _progMemorySize), parsedUserCmdLen);
+        _pParsedCommandLineStackTop = (char*)parsedCommandLineStack.appendListElement(sizeof(char*) + parsedUserCmdLen);
+        *(char**)_pParsedCommandLineStackTop = _lastUserCmdStep;
+        memcpy(_pParsedCommandLineStackTop + sizeof(char*), (_programStorage + _progMemorySize), parsedUserCmdLen);
 
         ++_openDebugLevels;
     }
@@ -1285,16 +1287,16 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, b
 
 void Justina_interpreter::clearParsedCommandLineStack(int n) {
     // note: ensure that only entries are cleared for eval() levels for currently running program (if there is one) and current debug level (if at least one program is stopped)
-    _pImmediateCmdStackTop = parsedCommandLineStack.getLastListElement();
+    _pParsedCommandLineStackTop = parsedCommandLineStack.getLastListElement();
 
     while (n-- > 0) {
         // copy command line stack top to command line program storage and pop command line stack top
-        _lastUserCmdStep = *(char**)_pImmediateCmdStackTop;                                                     // pop parsed user cmd length
+        _lastUserCmdStep = *(char**)_pParsedCommandLineStackTop;                                                     // pop parsed user cmd length
         long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + _progMemorySize) + 1;
         deleteConstStringObjects(_programStorage + _progMemorySize);                                            // current parsed user command statements in immediate mode program memory
-        memcpy((_programStorage + _progMemorySize), _pImmediateCmdStackTop + sizeof(char*), parsedUserCmdLen);
-        parsedCommandLineStack.deleteListElement(_pImmediateCmdStackTop);
-        _pImmediateCmdStackTop = parsedCommandLineStack.getLastListElement();
+        memcpy((_programStorage + _progMemorySize), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);
+        parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
+        _pParsedCommandLineStackTop = parsedCommandLineStack.getLastListElement();
     #if PRINT_PARSED_STAT_STACK
         _pDebugOut->print("  >> POP parsed statements (clr imm cmd stack): last step: "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
     #endif
@@ -1971,8 +1973,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
         _pEvalStackTop->varOrConst.value = opResult;                        // float or pointer to string
         _pEvalStackTop->varOrConst.valueType = opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer;     // value type of second operand  
         _pEvalStackTop->varOrConst.tokenType = tok_isConstant;                                                  // use generic constant type
-        _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
         _pEvalStackTop->varOrConst.sourceVarScopeAndFlags = 0x00;                                               // not an array, not an array element (it's a constant) 
+        _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
     }
 
     _pEvalStackTop->varOrConst.valueAttributes &= ~(isPrintTabRequest | isPrintColumnRequest);                  // clear tab() and col() function flags
@@ -2011,29 +2013,28 @@ Justina_interpreter::execResult_type Justina_interpreter::execExternalCppFunctio
     // to keep it simple for the c++ user writing the user routine, we always pass const void pointers, to variables and constants
     // but for constants, the pointer will point to a copy of the data
 
-    Val args[8]{}, dummyArgs[8]{};                                                                                  // values to be passed to user routine
-    char valueType[8]{ };                                                                                           // value types (long, float, char string)
-    char varScope[8]{};                                                                                             // if variable: variable scope (user, program global, static, local)
-    bool argIsNonConstantVar[8]{};                                                                                  // flag: is variable (scalar or aray)
-    bool argIsArray[8]{};                                                                                           // flag: is array element
+    Val args[8]{}, dummyArgs[8]{};                                                                                                  // values to be passed to user routine
+    char valueType[8]{ };                                                                                                           // value types (long, float, char string)
+    char varScope[8]{};                                                                                                             // if variable: variable scope (user, program global, static, local)
+    bool argIsNonConstantVar[8]{};                                                                                                  // flag: is variable (scalar or aray)
+    bool argIsArray[8]{};                                                                                                           // flag: is array element
 
-    const void* pValues_copy[8]{};                                                                                  // copies for safety
+    const void* pValues_copy[8]{};                                                                                                  // copies for safety
     char valueTypes_copy[8];
     int cmdParamCount_copy{ suppliedArgCount };
 
     LE_evalStack* pStackLvl = pFirstArgStackLvl;
 
     // any data to pass ? (optional arguments 1 to 8: data)
-    if (suppliedArgCount >= 1) {                                                                                    // first argument (callback procedure) processed (but still on the stack)
+    if (suppliedArgCount >= 1) {                                                                                                    // first argument (callback procedure) processed (but still on the stack)
         copyValueArgsFromStack(pStackLvl, suppliedArgCount, argIsNonConstantVar, argIsArray, valueType, args, true, dummyArgs);
-        pStackLvl = pFirstArgStackLvl;                                                                              // set stack level again to first value argument
-        for (int i = 0; i < 8; i++) { valueTypes_copy[i] = value_argNotProvided; }                                  // init
+        pStackLvl = pFirstArgStackLvl;                                                                                              // set stack level again to first value argument
         for (int i = 0; i < suppliedArgCount; i++) {
-            if (argIsNonConstantVar[i]) {                                                                           // is this a 'changeable' variable ? (not a constant & not a constant variable)
-                valueType[i] |= isVariable;                                                                         // flag as 'changeable' variable (scalar or array element)
-                varScope[i] = (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_scopeMask);                       // remember variable scope (user, program global, local, static) 
+            if (argIsNonConstantVar[i]) {                                                                                           // is this a 'changeable' variable ? (not a constant & not a constant variable)
+                valueType[i] |= isVariable;                                                                                         // flag as 'changeable' variable (scalar or array element)
+                varScope[i] = (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_scopeMask);                                       // remember variable scope (user, program global, local, static) 
             }
-            pValues_copy[i] = args[i].pBaseValue;                                                                   // copy pointers for safety (protect original pointers from changes by c++ routine) 
+            pValues_copy[i] = args[i].pBaseValue;                                                                                   // copy pointers for safety (protect original pointers from changes by c++ routine) 
             valueTypes_copy[i] = valueType[i];
             pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
         }
@@ -2042,16 +2043,16 @@ Justina_interpreter::execResult_type Justina_interpreter::execExternalCppFunctio
     int intExecResult{ (int)result_execOK };
 
     switch (returnValueType) {
-        case 0: fcnResult.longConst = (long)((CppBoolFunction*)_pExtCppFunctions[0])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;         // bool-> long
-        case 1: fcnResult.longConst = (long)((CppCharFunction*)_pExtCppFunctions[1])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;         // char to long   
-        case 2: fcnResult.longConst = (long)((CppIntFunction*)_pExtCppFunctions[2])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;          // int to long   
-        case 3: fcnResult.longConst = ((CppLongFunction*)_pExtCppFunctions[3])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;               // long   
-        case 4: fcnResult.floatConst = ((CppFloatFunction*)_pExtCppFunctions[4])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;             // float
-        case 5: fcnResult.pStringConst = ((Cpp_pCharFunction*)_pExtCppFunctions[5])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;          // char*   
-        ////case 6:((CppVoidCommand*)_pExtCppFunctions[6])[funcIndexInType].command(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); fcnResult.longConst = 0; break;          // void
+        case 0: fcnResult.longConst = (long)((CppBoolFunction*)_pExtCppFunctions[0])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;        // bool-> long
+        case 1: fcnResult.longConst = (long)((CppCharFunction*)_pExtCppFunctions[1])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;        // char to long   
+        case 2: fcnResult.longConst = (long)((CppIntFunction*)_pExtCppFunctions[2])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;         // int to long   
+        case 3: fcnResult.longConst = ((CppLongFunction*)_pExtCppFunctions[3])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;              // long   
+        case 4: fcnResult.floatConst = ((CppFloatFunction*)_pExtCppFunctions[4])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;            // float
+        case 5: fcnResult.pStringConst = ((Cpp_pCharFunction*)_pExtCppFunctions[5])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;         // char*   
+        case 6:((CppVoidFunction*)_pExtCppFunctions[6])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); fcnResult.longConst = 0; break;            // void -> returns zero
     }
-    if (intExecResult != (int)result_execOK){return (execResult_type)intExecResult;}
-    fcnResultValueType = (returnValueType == 4) ? value_isFloat : (returnValueType == 5) ? value_isStringPointer : value_isLong;        // long: for bool, char, int, long return types
+    if (intExecResult != (int)result_execOK) { return (execResult_type)intExecResult; }
+    fcnResultValueType = (returnValueType == 4) ? value_isFloat : (returnValueType == 5) ? value_isStringPointer : value_isLong;    // long: for bool, char, int, long return types
 
 
     // postprocess: check any strings RETURNED by callback procedure
@@ -2197,9 +2198,9 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
     _pDebugOut->print("  >> PUSH parsed statements (launch eval): last step: "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
 #endif
     long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + _progMemorySize) + 1;
-    _pImmediateCmdStackTop = (char*)parsedCommandLineStack.appendListElement(sizeof(char*) + parsedUserCmdLen);
-    *(char**)_pImmediateCmdStackTop = _lastUserCmdStep;
-    memcpy(_pImmediateCmdStackTop + sizeof(char*), (_programStorage + _progMemorySize), parsedUserCmdLen);
+    _pParsedCommandLineStackTop = (char*)parsedCommandLineStack.appendListElement(sizeof(char*) + parsedUserCmdLen);
+    *(char**)_pParsedCommandLineStackTop = _lastUserCmdStep;
+    memcpy(_pParsedCommandLineStackTop + sizeof(char*), (_programStorage + _progMemorySize), parsedUserCmdLen);
 
     // parse eval() string
     // -------------------
@@ -2241,9 +2242,9 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
         // a corresponding entry in flow ctrl stack has not yet been created either)
 
         deleteConstStringObjects(_programStorage + _progMemorySize);      // string constants that were created just now 
-        memcpy((_programStorage + _progMemorySize), _pImmediateCmdStackTop + sizeof(char*), parsedUserCmdLen);
-        parsedCommandLineStack.deleteListElement(_pImmediateCmdStackTop);
-        _pImmediateCmdStackTop = (char*)parsedCommandLineStack.getLastListElement();
+        memcpy((_programStorage + _progMemorySize), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);
+        parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
+        _pParsedCommandLineStackTop = (char*)parsedCommandLineStack.getLastListElement();
     #if PRINT_PARSED_STAT_STACK
         _pDebugOut->print("  >> POP parsed statements (launch eval parse error): last step: "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
     #endif
@@ -2645,12 +2646,12 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateEval() {
     // overwrite the parsed 'EVAL' string expressions
     // before removing, delete any parsed strng constants for that command line
 
-    _lastUserCmdStep = *(char**)_pImmediateCmdStackTop;                                                                     // pop parsed user cmd length
+    _lastUserCmdStep = *(char**)_pParsedCommandLineStackTop;                                                                     // pop parsed user cmd length
     long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + _progMemorySize) + 1;
     deleteConstStringObjects(_programStorage + _progMemorySize);
-    memcpy((_programStorage + _progMemorySize), _pImmediateCmdStackTop + sizeof(char*), parsedUserCmdLen);                  // size berekenen
-    parsedCommandLineStack.deleteListElement(_pImmediateCmdStackTop);
-    _pImmediateCmdStackTop = (char*)parsedCommandLineStack.getLastListElement();
+    memcpy((_programStorage + _progMemorySize), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);                  // size berekenen
+    parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
+    _pParsedCommandLineStackTop = (char*)parsedCommandLineStack.getLastListElement();
 #if PRINT_PARSED_STAT_STACK
     _pDebugOut->print("  >> POP parsed statements (terminate eval): last step: "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
 #endif
@@ -2712,7 +2713,7 @@ void Justina_interpreter::pushExternCppFunctionName(int& tokenType) {           
     _pEvalStackTop->function.tokenType = tokenType;
     _pEvalStackTop->function.tokenAddress = _programCounter;                                                                // only for finding source error position during unparsing (for printing)
 
-    _pEvalStackTop->function.returnValueType = ((TokenIsExternCppFunction*)_programCounter)->returnValueType;               // 0 = bool, 1 = char, 2 = int, 3 = long, 4 = float, 5 = char*               
+    _pEvalStackTop->function.returnValueType = ((TokenIsExternCppFunction*)_programCounter)->returnValueType;               // 0 = bool, 1 = char, 2 = int, 3 = long, 4 = float, 5 = char*, 6 = void (but returns zero to Justina)               
     _pEvalStackTop->function.funcIndexInType = ((TokenIsExternCppFunction*)_programCounter)->funcIndexInType;
 };
 
@@ -2773,7 +2774,7 @@ void Justina_interpreter::pushGenericName(int& tokenType) {                     
     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
 
     // just push the string pointer to the generic name (no indexes, ...)
-    _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(GenNameLvl));
+    _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(GenericNameLvl));
     _pEvalStackTop->varOrConst.tokenType = tok_isGenericName;                                                               // use generic constant type
     _pEvalStackTop->varOrConst.tokenAddress = _programCounter;                                                              // only for finding source error position during unparsing (for printing)
 
@@ -2820,7 +2821,7 @@ void* Justina_interpreter::fetchVarBaseAddress(TokenIsVariable* pVarToken, char*
 
     // upon entry, pVarToken argument must point to a variable token in Justina PROGRAM memory 
     // upon return:
-    // - selfValueType contains the value type (long, float, char* or reference) of Justina the variable indicated by the token
+    // - selfValueType contains the value type (long, float, char* or reference) of the Justina variable indicated by the token
     // - sourceVarScopeAndFlags contains the SOURCE variable's scope, 'is array' and 'is constant variable' (declared with 'const') flags, respectively
     // - sourceVarTypeAddress points to (contains the address of) source variable's attributes (value type, ...) 
     // - return pointer will point to (contain the address of) the 'self' variable base address (Justina variable indicated by the token): the address where the variable's value is stored

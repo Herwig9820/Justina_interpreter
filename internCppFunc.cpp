@@ -1,29 +1,31 @@
-/***************************************************************************************
-    Justina interpreter library for Arduino Nano 33 IoT and Arduino RP2040.
-
-    Version:    v1.00 - xx/xx/2022
-    Author:     Herwig Taveirne
-
-    Justina is an interpreter which does NOT require you to use an IDE to write
-    and compile programs. Programs are written on the PC using any text processor
-    and transferred to the Arduino using any terminal capable of sending files.
-    Justina can store and retrieve programs and other data on an SD card as well.
-
-    See GitHub for more information and documentation: //// <links>
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-***************************************************************************************/
+/************************************************************************************************************
+*    Justina interpreter library for Arduino boards with 32 bit SAMD microconrollers                        *
+*                                                                                                           *
+*    Tested with Nano 33 IoT and Arduino RP2040                                                             *
+*                                                                                                           *
+*    Version:    v1.01 - 12/07/2023                                                                         *
+*    Author:     Herwig Taveirne, 2021-2023                                                                 *
+*                                                                                                           *
+*    Justina is an interpreter which does NOT require you to use an IDE to write                            *
+*    and compile programs. Programs are written on the PC using any text processor                          *
+*    and transferred to the Arduino using any serial terminal capable of sending files.                     *
+*    Justina can store and retrieve programs and other data on an SD card as well.                          *
+*                                                                                                           *
+*    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
+*                                                                                                           *
+*    This program is free software: you can redistribute it and/or modify                                   *
+*    it under the terms of the GNU General Public License as published by                                   *
+*    the Free Software Foundation, either version 3 of the License, or                                      *
+*    (at your option) any later version.                                                                    *
+*                                                                                                           *
+*    This program is distributed in the hope that it will be useful,                                        *
+*    but WITHOUT ANY WARRANTY; without even the implied warranty of                                         *
+*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                                           *
+*    GNU General Public License for more details.                                                           *
+*                                                                                                           *
+*    You should have received a copy of the GNU General Public License                                      *
+*    along with this program.  If not, see <http://www.gnu.org/licenses/>.                                  *
+************************************************************************************************************/
 
 
 #include "Justina.h"
@@ -69,13 +71,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
     int functionIndex = pFunctionStackLvl->function.index;
     char functionCode = _internCppFunctions[functionIndex].functionCode;
-   
-   char fcnResultValueType{};  // init
+
+    char fcnResultValueType{};  // init
     Val fcnResult;
-    
+
     char argValueType[16];
     Val args[16];
-    
+
     bool requestPrintTab{ false }, requestGotoPrintColumn{ false };
 
     long argIsVarBits{ 0 }, argIsConstantVarBits{ 0 }, argIsLongBits{ 0 }, argIsFloatBits{ 0 }, argIsStringBits{ 0 };
@@ -437,7 +439,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             fcnResultValueType = value_isLong;
             if (functionCode == fnccod_getWriteError) { fcnResult.longConst = pStream->getWriteError(); }
             else if (functionCode == fnccod_clearWriteError) { pStream->clearWriteError(); fcnResult.longConst = 0; }
-            else {fcnResult.longConst = pStream->availableForWrite(); }
+            else { fcnResult.longConst = pStream->availableForWrite(); }
         }
         break;
 
@@ -2058,8 +2060,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
                 case 10: fcnResult.longConst = _promptAndEcho; break;
                 case 11: fcnResult.longConst = _printLastResult; break;
-                case 12: fcnResult.longConst = _userCBprocStartSet_count; break;
-                case 13: fcnResult.longConst = _userCBprocAliasSet_count; break;
+                case 12: fcnResult.longConst = _openFileCount; break;
+                case 13: fcnResult.longConst = _externIOstreamCount; break;
 
                 case 14:
                 {
@@ -2126,10 +2128,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
                 case 25: fcnResult.longConst = evalStack.getCreatedObjectCount(); break;                                    // created list object count (across linked lists: count is static)
                 case 26: fcnResult.longConst = _angleMode; break;
-                case 27: fcnResult.longConst = _openFileCount; break;
-                case 28: fcnResult.longConst = _externIOstreamCount; break;
 
-                case 29:                                                                                                    // return trace string
+                case 27:                                                                                                    // return trace string
                 {
                     fcnResultValueType = value_isStringPointer;
                     fcnResult.pStringConst = nullptr;                                                                       // init (empty string)
@@ -2169,9 +2169,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
         _pEvalStackTop->varOrConst.value = fcnResult;                                                                       // long, float or pointer to string
         _pEvalStackTop->varOrConst.valueType = fcnResultValueType;                                                          // value type of second operand  
         _pEvalStackTop->varOrConst.tokenType = tok_isConstant;                                                              // use generic constant type
+        _pEvalStackTop->varOrConst.sourceVarScopeAndFlags = 0x00;                                                           // not an array, not an array element (it's a constant) 
         _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate | (requestPrintTab ? isPrintTabRequest : 0)
             | (requestGotoPrintColumn ? isPrintColumnRequest : 0);                                                          // set tab() or col() function flag if requested
-        _pEvalStackTop->varOrConst.sourceVarScopeAndFlags = 0x00;                                                           // not an array, not an array element (it's a constant) 
     }
 
     return result_execOK;
