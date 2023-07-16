@@ -9,6 +9,7 @@ secrets.h
 *.vcxproj
 *.filters
 *.sln
+.development
 
 # User-specific files
 *.rsuser
