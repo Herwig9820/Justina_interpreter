@@ -34,7 +34,7 @@
 #include <WiFiNINA.h>
 #endif
 
-#include "arduino.h"
+#include "Arduino.h"
 
 
 enum connectionState_type {

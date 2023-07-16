@@ -25,9 +25,6 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ***************************************************************************************/
 
-#include "commands.h"
-#include "functions.h"
-#include "linkedLists.h"
 #define withTCP 1
 
 

@@ -31,7 +31,7 @@
 #ifndef _JUSTINA_h
 #define _JUSTINA_h
 
-#include "arduino.h"
+#include "Arduino.h"
 #include <SD.h>
 #include <SPI.h>
 
