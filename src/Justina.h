@@ -34,9 +34,7 @@
 #include "Arduino.h"
 #include <SD.h>
 #include <SPI.h>
-
-#include <stdlib.h>
-#include <memory>
+#include <avr/dtostrf.h>        
 
 #define J_productName "Justina: JUST an INterpreter for Arduino"
 #define J_legalCopyright "Copyright (C) Herwig Taveirne 2021, 2023"

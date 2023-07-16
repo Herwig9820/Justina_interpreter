@@ -1,7 +1,7 @@
 /*
     Test Arduino Nano 33 IoT as TCP server
 
-    Version:    v1.00 - 3/4/2021
+    Version:    v1.xx - 3/4/2021
     Author:     Herwig Taveirne
 
     Purpose: test connection and message transmission via WiFi between an Arduino nano 33 IoT board and a TCP IP terminal
