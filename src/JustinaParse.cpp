@@ -6,9 +6,9 @@
 *    Version:    v1.01 - 12/07/2023                                                                         *
 *    Author:     Herwig Taveirne, 2021-2023                                                                 *
 *                                                                                                           *
-*    Justina is an interpreter which does NOT require you to use an IDE to write                            *
-*    and compile programs. Programs are written on the PC using any text processor                          *
-*    and transferred to the Arduino using any serial terminal capable of sending files.                     *
+*    Justina is an interpreter which does NOT require you to use an IDE to write and compile programs.      *
+*    Programs are written on the PC using any text processor and transferred to the Arduino using any       *
+*    Serial or TCP Terminal program capable of sending files.                                               *
 *    Justina can store and retrieve programs and other data on an SD card as well.                          *
 *                                                                                                           *
 *    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *

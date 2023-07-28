@@ -6,9 +6,9 @@
 *    Version:    v1.01 - 12/07/2023                                                                         *
 *    Author:     Herwig Taveirne, 2021-2023                                                                 *
 *                                                                                                           *
-*    Justina is an interpreter which does NOT require you to use an IDE to write                            *
-*    and compile programs. Programs are written on the PC using any text processor                          *
-*    and transferred to the Arduino using any serial terminal capable of sending files.                     *
+*    Justina is an interpreter which does NOT require you to use an IDE to write and compile programs.      *
+*    Programs are written on the PC using any text processor and transferred to the Arduino using any       *
+*    Serial or TCP Terminal program capable of sending files.                                               *
 *    Justina can store and retrieve programs and other data on an SD card as well.                          *
 *                                                                                                           *
 *    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
@@ -919,7 +919,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
             int value = 1;        // init
 
-            if (suppliedArgCount == 1) {
+            if (suppliedArgCount == 1) {                                                                                    // tab() function only
                 if (!(argIsLongBits & (0x1 << 0)) && !(argIsFloatBits & (0x1 << 0))) { return result_arg_numberExpected; }
                 value = ((argIsLongBits & (0x1 << 0))) ? args[0].longConst : (long)args[0].floatConst;                      // convert to long if needed
                 if (value <= 0) { return result_arg_outsideRange; }
@@ -1245,11 +1245,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             // - with specifiers 'D'and 'X': specifies the minimum number of digits to be written. Shorter values are padded with leading zeros. Longer values are not truncated. 
             //   If the precision is zero, a zero value will not be printed.
             // - with 'E' and 'F' specifiers: number of decimals to be printed after the decimal point
-            // - with 'G' specifier:maximum number of significant numbers to be printed
+            // - with 'G' specifier:maximum number of significant digits to be printed
 
-            // flags: value 1 = left justify, 2 = force sign, 4 = insert a space if no sign, 8: the use depends on the precision specifier:
+            // flags: value 1 = left justify, 2 = force sign, 4 = insert a space if no sign
+            // flag value 8: the use depends on the precision specifier:
             // - used with 'F', 'E', 'G' specifiers: always add a decimal point, even if no digits follow 
-            // - used with 'X' (hex) specifier: preceed non-zero numbers with '0x'
+            // - used with 'X' (hex) specifier: precede non-zero numbers with '0x'
             // - no function with 'D' (decimal) specifier
             // flag value 16 = pad with zeros 
 
@@ -1330,13 +1331,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
         {
             fcnResultValueType = value_isStringPointer;                                                                     // convert to string
             fcnResult.pStringConst = nullptr;
-            if ((argIsLongBits & (0x1 << 0)) || (argIsFloatBits & (0x1 << 0))) {
+            if ((argIsLongBits & (0x1 << 0)) || (argIsFloatBits & (0x1 << 0))) {                                            // argument is long or float ?
                 _intermediateStringObjectCount++;
                 fcnResult.pStringConst = new char[30];                                                                      // provide sufficient length to store a number
                 (argIsLongBits & (0x1 << 0)) ? sprintf(fcnResult.pStringConst, "%ld", args[0].longConst) : sprintf(fcnResult.pStringConst, "%G", args[0].floatConst);
 
             }
-            else if ((argIsStringBits & (0x1 << 0))) {
+            else if ((argIsStringBits & (0x1 << 0))) {                                                                      // argument is string ?
                 if (args[0].pStringConst != nullptr) {
                     _intermediateStringObjectCount++;
                     fcnResult.pStringConst = new char[strlen(args[0].pStringConst) + 1];
@@ -1386,14 +1387,16 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             fcnResultValueType = value_isFloat;                                                                             // init: return a float
             fcnResult.floatConst = 0.;                                                                                      // init: return 0. if the Arduino function doesn't return anything
 
-            // test arguments
+            // test the arguments
+            // ------------------
             if (functionCode == fnccod_sqrt) { if (arg1float < 0.) { return result_arg_outsideRange; } }
             else if ((functionCode == fnccod_asin) || (functionCode == fnccod_acos)) { if ((arg1float < -1.) || (arg1float > 1.)) { return result_arg_outsideRange; } }
             else if ((functionCode == fnccod_ln) || (functionCode == fnccod_log10)) { if (arg1float <= 0.) { return result_arg_outsideRange; } }
             else if (functionCode == fnccod_lnp1) { if (arg1float <= -1.) { return result_arg_outsideRange; } }
 
-
             // calculate
+            // ---------
+            // functions always returning a float
             if (functionCode == fnccod_sqrt) { fcnResult.floatConst = sqrt(arg1float); }
             else if (functionCode == fnccod_sin) { if (_angleMode == 1) { arg1float *= DEG_TO_RAD; } fcnResult.floatConst = sin(arg1float); }
             else if (functionCode == fnccod_cos) { if (_angleMode == 1) { arg1float *= DEG_TO_RAD; }fcnResult.floatConst = cos(arg1float); }
@@ -1410,8 +1413,15 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             else if (functionCode == fnccod_trunc) { fcnResult.floatConst = trunc(arg1float); }
             else if (functionCode == fnccod_floor) { fcnResult.floatConst = floor(arg1float); }
             else if (functionCode == fnccod_ceil) { fcnResult.floatConst = ceil(arg1float); }
-            // Arduino min(long 0, something greater than 0) returns a double very close to zero, but not zero (same for max()). Avoid this.
+            else if (functionCode == fnccod_fmod) { fcnResult.floatConst = fmod(arg1float, (argIsLongBits & (0x1 << 1)) ? args[1].longConst : args[1].floatConst); }
+
+            // function always returning an integer
+            else if (functionCode == fnccod_sign) { fcnResultValueType = value_isLong; fcnResult.longConst = (argIsLongBits & (0x1 << 0)) ? (args[0].longConst < 0 ? 1 : 0) : signbit(arg1float); }
+
+
+            // functions returning a float if the argument / at least one of the arguments is a floating-point number. Otherwise returning an integer.
             else if ((functionCode == fnccod_min) || (functionCode == fnccod_max)) {
+                // Arduino min(...) or max(long 0, something greater than 0) returns a double very close to zero, but not zero (same for max()). Avoid this.
                 if ((argIsLongBits & (0x1 << 0)) && (argIsLongBits & (0x1 << 1))) {
                     fcnResultValueType = value_isLong;
                     fcnResult.longConst = (functionCode == fnccod_min) ? min(args[0].longConst, args[1].longConst) : max(args[0].longConst, args[1].longConst);
@@ -1426,11 +1436,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 if ((argIsLongBits & (0x1 << 0))) { fcnResultValueType = value_isLong; };
                 (argIsLongBits & (0x1 << 0)) ? fcnResult.longConst = abs(args[0].longConst) : fcnResult.floatConst = fabs(args[0].floatConst);
             }
-            else if (functionCode == fnccod_sign) { fcnResultValueType = value_isLong; fcnResult.longConst = (argIsLongBits & (0x1 << 0)) ? (args[0].longConst < 0 ? 1 : 0) : signbit(arg1float); }
-            else if (functionCode == fnccod_fmod) { fcnResult.floatConst = fmod(arg1float, (argIsLongBits & (0x1 << 1)) ? args[1].longConst : args[1].floatConst); }    // cast to float anyway
 
-
-            // test result (do not test for subnormal numbers here)
+            // test the result (do not test for subnormal numbers here)
+            // --------------------------------------------------------
             if (fcnResultValueType == value_isFloat) {
                 if (isnan(fcnResult.floatConst)) { return result_undefined; }
                 if (!isfinite(fcnResult.floatConst)) { return result_overflow; }
@@ -1455,43 +1463,49 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
         case fnccod_bitSet:             // 2 arguments: long value, bit (0 to 31) to set. New value is returned 
         case fnccod_bitWrite:           // 3 arguments: long value, bit (0 to 31), new bit value (0 or 1). New value is returned 
 
-            // extra Justina bit manipulation functons. Mask argument indicates which bits to read, set, clear or write
-        case fnccod_bitsMaskedRead:     // 2 arguments: long value, mask. Returns masked value 
-        case fnccod_bitsMaskedClear:    // 2 arguments: long value, mask = bits to clear: bits indicated by mask are cleared. New value is returned
-        case fnccod_bitsMaskedSet:      // 2 arguments: long value, mask = bits = bits to set: bits indicated by mask are set. New value is returned 
-        case fnccod_bitsMaskedWrite:    // 3 arguments: long value, mask, bits to write: value bits indicated by mask are changed. New value is returned
-
             // extra Justina byte manipulation functons. Byte argument indicates which byte to read or write
         case fnccod_byteRead:           // 2 arguments: long, byte to read (0 to 3). Value returned is between 0x00 and 0xFF.     
         case fnccod_byteWrite:          // 3 arguments: long, byte to write (0 to 3), value to write (lowest 8 bits of argument). New value is returned    
+
+            // extra Justina bit manipulation functons. Mask argument indicates which bits to read, set, clear or write
+        case fnccod_wordMaskedRead:     // 2 arguments: long value, mask. Returns masked value 
+        case fnccod_wordMaskedClear:    // 2 arguments: long value, mask = bits to clear: bits indicated by mask are cleared. New value is returned
+        case fnccod_wordMaskedSet:      // 2 arguments: long value, mask = bits to set: bits indicated by mask are set. New value is returned 
+        case fnccod_wordMaskedWrite:    // 3 arguments: long value, mask, bits to write: value bits indicated by mask are changed. New value is returned
         {
-            if (!(argIsLongBits & (0x1 << 0)) && (functionCode != fnccod_bit)) { return result_arg_integerTypeExpected; }
+            // all arguments of these functions must have long value type, EXCEPT bitWrite function: last argument can be floating point number too (just as Arduino's bitWrite function).
             for (int i = 0; i < suppliedArgCount; ++i) {
-                if (!(argIsLongBits & (0x1 << i)) && !(argIsFloatBits & (0x1 << i))) { return result_arg_numberExpected; }
-                if ((argIsFloatBits & (0x1 << i))) { args[i].longConst = (long)args[i].floatConst; }                                        // all arguments have long type now
+                if (!(argIsLongBits & (0x1 << i))) {
+                    if ((i == suppliedArgCount - 1) && (functionCode == fnccod_bitWrite)) {                                                         // float also acceptable
+                        if (!(argIsFloatBits & (0x1 << i))) { return result_arg_numberExpected; }
+                        args[i].longConst = (long)args[i].floatConst;
+                    }
+                    else { return result_arg_integerTypeExpected; }
+                }
             }
 
+            // range checks
             if (functionCode == fnccod_bit && ((args[0].longConst < 0) || (args[0].longConst > 31))) { return result_arg_outsideRange; }
             if (((functionCode == fnccod_bitRead) || (functionCode == fnccod_bitClear) || (functionCode == fnccod_bitSet) || (functionCode == fnccod_bitWrite)) && ((args[1].longConst < 0) || (args[1].longConst > 31))) {
                 return result_arg_outsideRange;
             }
             if (((functionCode == fnccod_byteRead) || (functionCode == fnccod_byteWrite)) && ((args[1].longConst < 0) || (args[1].longConst > 3))) { return result_arg_outsideRange; }
 
-            fcnResultValueType = value_isLong;                                                                                              // init: return a long
-            fcnResult.longConst = 0;                                                                                                        // init: return 0 if the Arduino function doesn't return anything
-            uint8_t* pBytes = (uint8_t*)&(args[0].longConst);                                                                               // access individual bytes of a value
+            fcnResultValueType = value_isLong;                                                                                                      // init: return a long
+            fcnResult.longConst = 0;                                                                                                                // init: return 0 if the Arduino function doesn't return anything
+            uint8_t* pBytes = (uint8_t*)&(args[0].longConst);                                                                                       // access individual bytes of a value
 
-            if (functionCode == fnccod_bit) { fcnResult.longConst = 1 << args[0].longConst; }                                               // requires no variable
+            if (functionCode == fnccod_bit) { fcnResult.longConst = 1 << args[0].longConst; }                                                       // requires no variable
 
-            else if (functionCode == fnccod_bitRead) { fcnResult.longConst = (args[0].longConst & (1 << args[1].longConst)) != 0; }         // requires no variable
+            else if (functionCode == fnccod_bitRead) { fcnResult.longConst = (args[0].longConst & (1 << args[1].longConst)) != 0; }                 // requires no variable
             else if (functionCode == fnccod_bitClear) { fcnResult.longConst = args[0].longConst & ~(1 << args[1].longConst); }
             else if (functionCode == fnccod_bitSet) { fcnResult.longConst = args[0].longConst | (1 << args[1].longConst); }
             else if (functionCode == fnccod_bitWrite) { fcnResult.longConst = (args[2].longConst == 0) ? args[0].longConst & ~(1 << args[1].longConst) : args[0].longConst | (1 << args[1].longConst); }
 
-            else if (functionCode == fnccod_bitsMaskedRead) { fcnResult.longConst = (args[0].longConst & args[1].longConst); }              // requires no variable; second argument is considered mask
-            else if (functionCode == fnccod_bitsMaskedClear) { fcnResult.longConst = args[0].longConst & ~args[1].longConst; }
-            else if (functionCode == fnccod_bitsMaskedSet) { fcnResult.longConst = args[0].longConst | args[1].longConst; }
-            else if (functionCode == fnccod_bitsMaskedWrite) { fcnResult.longConst = args[0].longConst & (~args[1].longConst | args[2].longConst) | (args[1].longConst & args[2].longConst); }
+            else if (functionCode == fnccod_wordMaskedRead) { fcnResult.longConst = (args[0].longConst & args[1].longConst); }                      // requires no variable; second argument is considered mask
+            else if (functionCode == fnccod_wordMaskedClear) { fcnResult.longConst = args[0].longConst & ~args[1].longConst; }
+            else if (functionCode == fnccod_wordMaskedSet) { fcnResult.longConst = args[0].longConst | args[1].longConst; }
+            else if (functionCode == fnccod_wordMaskedWrite) { fcnResult.longConst = args[0].longConst & (~args[1].longConst | args[2].longConst) | (args[1].longConst & args[2].longConst); }
 
             else if (functionCode == fnccod_byteRead) { fcnResult.longConst = pBytes[args[1].longConst]; }                                          // requires variable; contents of 1 byte is returned
             else if (functionCode == fnccod_byteWrite) { pBytes[args[1].longConst] = args[2].longConst; fcnResult.longConst = args[0].longConst; }  // new variable value is returned
@@ -1500,11 +1514,16 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
         // function modifies variable (first argument) ?
         if ((functionCode == fnccod_bitClear) || (functionCode == fnccod_bitSet) || (functionCode == fnccod_bitWrite) ||
-            (functionCode == fnccod_bitsMaskedClear) || (functionCode == fnccod_bitsMaskedSet) || (functionCode == fnccod_bitsMaskedWrite) ||
+            (functionCode == fnccod_wordMaskedClear) || (functionCode == fnccod_wordMaskedSet) || (functionCode == fnccod_wordMaskedWrite) ||
             (functionCode == fnccod_byteWrite)) {
 
-            bool isConstant = (!(argIsVarBits & (0x1 << 0)) || (_pEvalStackMinus2->varOrConst.sourceVarScopeAndFlags & var_isConstantVar)); // first argument is variable ? then store result
-            if (!isConstant) { *_pEvalStackMinus2->varOrConst.value.pLongConst = fcnResult.longConst; }                                     // (note: it's a long already - tested above)
+            bool isConstant = (!(argIsVarBits & (0x1 << 0)) || (_pEvalStackMinus2->varOrConst.sourceVarScopeAndFlags & var_isConstantVar));         // first argument is variable ? then store result
+
+            if (!isConstant) {
+                LE_evalStack* pStackLvl = ((functionCode == fnccod_bitWrite) || (functionCode == fnccod_byteWrite) ||
+                    (functionCode == fnccod_wordMaskedWrite)) ? _pEvalStackMinus2 : _pEvalStackMinus1;
+                *pStackLvl->varOrConst.value.pLongConst = fcnResult.longConst;                                                                      // stack level for variable
+            }
         }
         break;
 
@@ -1521,26 +1540,25 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
         case    fnccod_mem8Read:
         case    fnccod_mem8Write:
         {
-            if (!(argIsLongBits & (0x1 << 0))) { return result_arg_integerTypeExpected; }                                               // memory address must be integer
-            for (int i = 1; i < suppliedArgCount; ++i) {
-                if (!(argIsLongBits & (0x1 << i)) && !(argIsFloatBits & (0x1 << i))) { return result_arg_numberExpected; }
-                if ((argIsFloatBits & (0x1 << i))) { args[i].longConst = (long)args[i].floatConst; }          // all arguments have long type now
+            // all arguments of these functions must have long value type
+            for (int i = 0; i < suppliedArgCount; ++i) {
+                if (!(argIsLongBits & (0x1 << i))) { return result_arg_integerTypeExpected; }
             }
 
+            // range checks
             if (((functionCode == fnccod_mem8Read) || (functionCode == fnccod_mem8Write)) && ((args[1].longConst < 0) || (args[1].longConst > 3))) { return result_arg_outsideRange; }
 
-            fcnResultValueType = value_isLong;                                                                                          // init: return a long
-            fcnResult.longConst = 0;                                                                                                    // init: return 0 if the Arduino function doesn't return anything
+            fcnResultValueType = value_isLong;                                                                                                      // init: return a long
+            fcnResult.longConst = 0;                                                                                                                // init: return 0 if the Arduino function doesn't return anything
 
-            args[0].longConst &= ~0x3;                                                                                                  // align with word size
+            args[0].longConst &= ~0x3;                                                                                                              // align with word size
 
             // write functions: the memory / peripheral register location is not read afterwards (because this could trigger a specific hardware action),
             // so write functions return zero)  
-            if (functionCode == fnccod_mem32Read) { fcnResult.longConst = *(uint32_t*)args[0].longConst; }                              // 32 bit register value is returned
-            else if (functionCode == fnccod_mem8Read) { fcnResult.longConst = ((uint8_t*)(args[0].longConst))[args[1].longConst]; }     // 8 bit register value is returned
-            else if (functionCode == fnccod_mem32Write) { *(uint32_t*)args[0].longConst = args[1].longConst; }                          // register contents has not been read: zero is returned
-            else if (functionCode == fnccod_mem8Write) { ((uint8_t*)(args[0].longConst))[args[1].longConst] = args[2].longConst; }      // register contents has not been read: zero is returned
-
+            if (functionCode == fnccod_mem32Read) { fcnResult.longConst = *(volatile uint32_t*)args[0].longConst; }                                 // 32 bit register value is returned
+            else if (functionCode == fnccod_mem8Read) { fcnResult.longConst = ((volatile uint8_t*)(args[0].longConst))[args[1].longConst]; }        // 8 bit register value is returned
+            else if (functionCode == fnccod_mem32Write) { *( volatile uint32_t *)args[0].longConst = args[1].longConst; }
+            else if (functionCode == fnccod_mem8Write) { ((volatile uint8_t* )(args[0].longConst))[args[1].longConst] = args[2].longConst; }
         }
         break;
 
@@ -1644,7 +1662,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
         case fnccod_isLowerCase:
         case fnccod_isPrintable:
         case fnccod_isPunct:
-        case fnccod_isSpace:
         case fnccod_isUpperCase:
         case fnccod_isWhitespace:
         case fnccod_asc:
@@ -1674,7 +1691,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             else if (functionCode == fnccod_isLowerCase) { fcnResult.longConst = isLowerCase(args[0].pStringConst[--charPos]); }
             else if (functionCode == fnccod_isPrintable) { fcnResult.longConst = isPrintable(args[0].pStringConst[--charPos]); }
             else if (functionCode == fnccod_isPunct) { fcnResult.longConst = isPunct(args[0].pStringConst[--charPos]); }
-            else if (functionCode == fnccod_isSpace) { fcnResult.longConst = isSpace(args[0].pStringConst[--charPos]); }
             else if (functionCode == fnccod_isUpperCase) { fcnResult.longConst = isUpperCase(args[0].pStringConst[--charPos]); }
             else if (functionCode == fnccod_isWhitespace) { fcnResult.longConst = isWhitespace(args[0].pStringConst[--charPos]); }
             else if (functionCode == fnccod_asc) { fcnResult.longConst = args[0].pStringConst[--charPos]; }
@@ -1801,8 +1817,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
         // find   : arguments: string, substring to search for [, start]. Returns position (base 1) of first occurence
         // replace: arguments: string, substring to search for, replacement string [, start]. Returns modified string
-        //          if start is a variable, sets it to first character after changed part of string
-        // -----------------------------------------------------------------------------------------------------------
+        //          if start is a variable, sets it to first character after changed part of string (or 0, if substring not found)
+        // -----------------------------------------------------------------------------------------------------------------------
 
         case fnccod_findsubstr:
         case fnccod_replacesubstr:

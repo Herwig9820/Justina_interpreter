@@ -6,9 +6,9 @@
 *    Version:    v1.01 - 12/07/2023                                                                         *
 *    Author:     Herwig Taveirne, 2021-2023                                                                 *
 *                                                                                                           *
-*    Justina is an interpreter which does NOT require you to use an IDE to write                            *
-*    and compile programs. Programs are written on the PC using any text processor                          *
-*    and transferred to the Arduino using any serial terminal capable of sending files.                     *
+*    Justina is an interpreter which does NOT require you to use an IDE to write and compile programs.      *
+*    Programs are written on the PC using any text processor and transferred to the Arduino using any       *
+*    Serial or TCP Terminal program capable of sending files.                                               *
 *    Justina can store and retrieve programs and other data on an SD card as well.                          *
 *                                                                                                           *
 *    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
@@ -629,7 +629,7 @@ int Justina_interpreter::read(char* buffer, int length) {
 // write functions
 // ---------------
 
-size_t Justina_interpreter::write(char c) {                                             
+size_t Justina_interpreter::write(char c) {
     if (_streamNumberOut <= 0) { _appFlags |= appFlag_dataInOut; }
     return _pStreamOut->write(c);
 }
@@ -853,7 +853,7 @@ void Justina_interpreter::printVariables(bool userVars) {
     char* varType = userVars ? userVarType : globalVarType;
     Val* varValues = userVars ? userVarValues : globalVarValues;
     bool userVarUsedInProgram{};
-    bool  varNameHasGlobalValue{};
+    bool varNameHasGlobalValue{};
     bool linesPrinted{ false };
 
     for (int q = 0; q <= 1; q++) {
@@ -864,7 +864,7 @@ void Justina_interpreter::printVariables(bool userVars) {
                 bool isConst = (varType[i] & var_isConstantVar);
                 if (lookForConst == isConst) {
                     int valueType = (varType[i] & value_typeMask);
-                    userVars ? userVarUsedInProgram = (varType[i] & var_userVarUsedByProgram) : false;
+                    userVarUsedInProgram = userVars ? (varType[i] & var_userVarUsedByProgram) : false;
                     bool isLong = (valueType == value_isLong);
                     bool isFloat = (valueType == value_isFloat);
                     bool isString = (valueType == value_isStringPointer);
@@ -1318,7 +1318,7 @@ Justina_interpreter::execResult_type Justina_interpreter::checkFmtSpecifiers(boo
     // format STRING: precision argument NOT specified: init precision to width. Note that for strings, precision specifies MAXIMUM no of characters that will be printed
 
      // fstr() with explicit change of width and without explicit change of precision: init precision to width
-    if (valueIsString && (suppliedArgCount == 2)) { precision = width; }       
+    if (valueIsString && (suppliedArgCount == 2)) { precision = width; }
 
     width = min(width, MAX_PRINT_WIDTH);                                                                                                    // limit width to MAX_PRINT_WIDTH
     precision = min(precision, valueIsString ? MAX_STRCHAR_TO_PRINT : MAX_NUM_PRECISION);
@@ -1355,6 +1355,7 @@ void  Justina_interpreter::makeFormatString(int flags, bool isIntFmt, char* numF
 void  Justina_interpreter::printToString(int width, int precision, bool inputIsString, bool isIntFmt, char* valueType, Val* value, char* fmtString,
     Val& fcnResult, int& charsPrinted, bool expandStrings) {
     int opStrLen{ 0 }, resultStrLen{ 0 };
+
     if (inputIsString) {
         if ((*value).pStringConst != nullptr) {
             opStrLen = strlen((*value).pStringConst);
@@ -1387,7 +1388,7 @@ void  Justina_interpreter::printToString(int width, int precision, bool inputIsS
         sprintf(fcnResult.pStringConst, fmtString, width, precision, ((*value).pStringConst == nullptr) ? (expandStrings ? "\"\"" : "") : (*value).pStringConst, &charsPrinted);
     }
     // note: hex output for floating point numbers not provided (Arduino)
-    else if (isIntFmt) { sprintf(fcnResult.pStringConst, fmtString, width, precision, (*valueType == value_isLong) ? (*value).longConst : (long)(*value).floatConst, &charsPrinted); }     
+    else if (isIntFmt) { sprintf(fcnResult.pStringConst, fmtString, width, precision, (*valueType == value_isLong) ? (*value).longConst : (long)(*value).floatConst, &charsPrinted); }
     else { sprintf(fcnResult.pStringConst, fmtString, width, precision, (*valueType == value_isLong) ? (float)(*value).longConst : (*value).floatConst, &charsPrinted); }
 
     return;

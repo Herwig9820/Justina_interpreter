@@ -6,9 +6,9 @@
 *    Version:    v1.01 - 12/07/2023                                                                         *
 *    Author:     Herwig Taveirne, 2021-2023                                                                 *
 *                                                                                                           *
-*    Justina is an interpreter which does NOT require you to use an IDE to write                            *
-*    and compile programs. Programs are written on the PC using any text processor                          *
-*    and transferred to the Arduino using any serial terminal capable of sending files.                     *
+*    Justina is an interpreter which does NOT require you to use an IDE to write and compile programs.      *
+*    Programs are written on the PC using any text processor and transferred to the Arduino using any       *
+*    Serial or TCP Terminal program capable of sending files.                                               *
 *    Justina can store and retrieve programs and other data on an SD card as well.                          *
 *                                                                                                           *
 *    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
@@ -33,6 +33,11 @@
 #define PRINT_HEAP_OBJ_CREA_DEL 0
 #define PRINT_DEBUG_INFO 0
 #define PRINT_OBJECT_COUNT_ERRORS 0
+
+// progMemSize defines the size of Justina program memory in bytes, which depends on the available RAM 
+#if !defined (ARDUINO_ARCH_RP2040) && !defined (ARDUINO_ARCH_SAMD)
+#error Justina library does not support boards with this processor.
+#endif 
 
 
 // *****************************************************************
@@ -118,8 +123,8 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"step",            cmdcod_step,            cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
     {"stepOut",         cmdcod_stepOut,         cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
     {"stepOver",        cmdcod_stepOver,        cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
-    {"blockStepOut",    cmdcod_stepOutOfBlock,  cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
-    {"blockStepEnd",    cmdcod_stepToBlockEnd,  cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
+    {"bStepOut",        cmdcod_stepOutOfBlock,  cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
+    {"bStepEnd",        cmdcod_stepToBlockEnd,  cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
     {"skip",            cmdcod_skip,            cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
 
     {"trace",           cmdcod_trace,           cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_104,     cmdBlockNone},
@@ -188,21 +193,6 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     //  name                    id code                         #par    array pattern
     //  ----                    -------                         ----    -------------   
 
-    // logical functions
-    {"ifte",                    fnccod_ifte,                    3,16,   0b0},
-    {"switch",                  fnccod_switch,                  3,16,   0b0},
-    {"index",                   fnccod_index,                   3,16,   0b0},
-    {"choose",                  fnccod_choose,                  3,16,   0b0},
-
-    // other functions
-    {"eval",                    fnccod_eval,                    1,1,    0b0},
-    {"ubound",                  fnccod_ubound,                  2,2,    0b00000001},        // first parameter is array (LSB)
-    {"dims",                    fnccod_dims,                    1,1,    0b00000001},
-    {"type",                    fnccod_valueType,               1,1,    0b0},
-    {"r",                       fnccod_last,                    0,1,    0b0},               // short label for 'last result'
-    {"fmt",                     fnccod_format,                  1,6,    0b0},               // short label for 'system value'
-    {"sysval",                  fnccod_sysVal,                  1,1,    0b0},
-
     // math functions
     {"sqrt",                    fnccod_sqrt,                    1,1,    0b0},
     {"sin",                     fnccod_sin,                     1,1,    0b0},
@@ -225,8 +215,14 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     {"min",                     fnccod_min,                     2,2,    0b0},
     {"max",                     fnccod_max,                     2,2,    0b0},
     {"abs",                     fnccod_abs,                     1,1,    0b0},
-    {"sign",                    fnccod_sign,                    1,1,    0b0},
+    {"signBit",                 fnccod_sign,                    1,1,    0b0},
     {"fmod",                    fnccod_fmod,                    2,2,    0b0},
+
+    // lookup functions
+    {"ifte",                    fnccod_ifte,                    3,16,   0b0},
+    {"switch",                  fnccod_switch,                  3,16,   0b0},
+    {"index",                   fnccod_index,                   3,16,   0b0},
+    {"choose",                  fnccod_choose,                  3,16,   0b0},
 
     // conversion functions
     {"cInt",                    fnccod_cint,                    1,1,    0b0},
@@ -255,16 +251,16 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     {"random",                  fnccod_random,                  1,2,    0b0},
     {"randomSeed",              fnccod_randomSeed,              1,1,    0b0},
 
-    // bit and byte manipulation functions
+    // Arduino bit and byte manipulation functions
     {"bit",                     fnccod_bit,                     1,1,    0b0},
     {"bitRead",                 fnccod_bitRead,                 2,2,    0b0},
     {"bitClear",                fnccod_bitClear,                2,2,    0b0},
     {"bitSet",                  fnccod_bitSet,                  2,2,    0b0},
     {"bitWrite",                fnccod_bitWrite,                3,3,    0b0},
-    {"maskedBitRead",           fnccod_bitsMaskedRead,          2,2,    0b0},
-    {"maskedBitClear",          fnccod_bitsMaskedClear,         2,2,    0b0},
-    {"maskedBitSet",            fnccod_bitsMaskedSet,           2,2,    0b0},
-    {"maskedBitWrite",          fnccod_bitsMaskedWrite,         3,3,    0b0},
+    {"maskedWordBitRead",       fnccod_wordMaskedRead,          2,2,    0b0},
+    {"maskedWordClear",         fnccod_wordMaskedClear,         2,2,    0b0},
+    {"maskedWordSet",           fnccod_wordMaskedSet,           2,2,    0b0},
+    {"maskedWordWrite",         fnccod_wordMaskedWrite,         3,3,    0b0},
     {"byteRead",                fnccod_byteRead,                2,2,    0b0},
     {"byteWrite",               fnccod_byteWrite,               3,3,    0b0},
 
@@ -295,26 +291,30 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     {"substInStr",              fnccod_replacesubstr,           3,4,    0b0},
     {"strCmp",                  fnccod_strcmp,                  2,2,    0b0},
     {"strCaseCmp",              fnccod_strcasecmp,              2,2,    0b0},
-    {"strHex",                  fnccod_strhex,                  1,1,    0b0},
+    {"strToHexStr",             fnccod_strhex,                  1,1,    0b0},
     {"quote",                   fnccod_quote,                   1,1,    0b0},
 
     {"isAlpha",                 fnccod_isAlpha,                 1,2,    0b0},
     {"isAlphaNumeric",          fnccod_isAlphaNumeric,          1,2,    0b0},
-    {"isAscii",                 fnccod_isAscii,                 1,2,    0b0},
-    {"isControl",               fnccod_isControl,               1,2,    0b0},
     {"isDigit",                 fnccod_isDigit,                 1,2,    0b0},
+    {"isHexDigit",              fnccod_isHexadecimalDigit,      1,2,    0b0},
+    {"isControl",               fnccod_isControl,               1,2,    0b0},
     {"isGraph",                 fnccod_isGraph,                 1,2,    0b0},
-    {"isHexadecimalDigit",      fnccod_isHexadecimalDigit,      1,2,    0b0},
-    {"isLowerCase",             fnccod_isLowerCase,             1,2,    0b0},
-    {"isUpperCase",             fnccod_isUpperCase,             1,2,    0b0},
     {"isPrintable",             fnccod_isPrintable,             1,2,    0b0},
     {"isPunct",                 fnccod_isPunct,                 1,2,    0b0},
-    {"isSpace",                 fnccod_isSpace,                 1,2,    0b0},
     {"isWhitespace",            fnccod_isWhitespace,            1,2,    0b0},
+    {"isAscii",                 fnccod_isAscii,                 1,2,    0b0},
+    {"isLowerCase",             fnccod_isLowerCase,             1,2,    0b0},
+    {"isUpperCase",             fnccod_isUpperCase,             1,2,    0b0},
 
-    // based upon Arduino SD card library functions
-    { "open",                    fnccod_open,                   1,2,    0b0 },
-    { "close",                   fnccod_close,                  1,1,    0b0 },
+    // other functions
+    {"eval",                    fnccod_eval,                    1,1,    0b0},
+    {"ubound",                  fnccod_ubound,                  2,2,    0b00000001},        // first parameter is array (LSB)
+    {"dims",                    fnccod_dims,                    1,1,    0b00000001},
+    {"type",                    fnccod_valueType,               1,1,    0b0},
+    {"r",                       fnccod_last,                    0,1,    0b0},               // short label for 'last result'
+    {"fmt",                     fnccod_format,                  1,6,    0b0},               // short label for 'system value'
+    {"sysval",                  fnccod_sysVal,                  1,1,    0b0},
 
     { "cin",                     fnccod_cin,                    0,2,    0b0 },
     { "cinLine",                 fnccod_cinLine,                0,0,    0b0 },
@@ -329,17 +329,21 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     { "findUntil",               fnccod_findUntil,              3,3,    0b0 },
     { "peek",                    fnccod_peek,                   0,1,    0b0 },
     { "available",               fnccod_available,              0,1,    0b0 },
-    { "position",                fnccod_position,               1,1,    0b0 },
-    { "size",                    fnccod_size,                   1,1,    0b0 },
-    { "name",                    fnccod_name,                   1,1,    0b0 },
-    { "fullName",                fnccod_fullName,               1,1,    0b0 },
     { "flush",                   fnccod_flush,                  1,1,    0b0 },
-    { "seek",                    fnccod_seek,                   2,2,    0b0 },
     { "setTimeout",              fnccod_setTimeout,             2,2,    0b0 },
     { "getTimeout",              fnccod_getTimeout,             1,1,    0b0 },
     { "availableForWrite",       fnccod_availableForWrite,      1,1,    0b0 },
     { "getWriteError",           fnccod_getWriteError,          1,1,    0b0 },
     { "clearWriteError",         fnccod_clearWriteError,        1,1,    0b0 },
+    
+    // SD card only (based upon Arduino SD card library functions)
+    { "open",                    fnccod_open,                   1,2,    0b0 },
+    { "close",                   fnccod_close,                  1,1,    0b0 },
+    { "position",                fnccod_position,               1,1,    0b0 },
+    { "size",                    fnccod_size,                   1,1,    0b0 },
+    { "seek",                    fnccod_seek,                   2,2,    0b0 },
+    { "name",                    fnccod_name,                   1,1,    0b0 },
+    { "fullName",                fnccod_fullName,               1,1,    0b0 },
     { "isDirectory",             fnccod_isDirectory,            1,1,    0b0 },
     { "rewindDirectory",         fnccod_rewindDirectory,        1,1,    0b0 },
     { "openNext",                fnccod_openNextFile,           1,2,    0b0 },
@@ -347,7 +351,6 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     { "createDirectory",         fnccod_mkdir,                  1,1,    0b0 },
     { "removeDirectory",         fnccod_rmdir,                  1,1,    0b0 },
     { "remove",                  fnccod_remove,                 1,1,    0b0 },
-
     { "fileNum",                 fnccod_fileNumber,             1,1,    0b0 },
     { "isInUse",                 fnccod_isOpenFile,             1,1,    0b0 },
     { "closeAll",                fnccod_closeAll,               0,0,    0b0 },
@@ -373,8 +376,8 @@ const Justina_interpreter::TerminalDef Justina_interpreter::_terminals[]{
 
     {term_comma,            termcod_comma,              0x00,               0x00,                       0x00},
     {term_semicolon,        termcod_semicolon,          0x00,               0x00,                       0x00},
-    {term_rightPar,         termcod_rightPar,           0x00,               0x00,                       0x00},
     {term_leftPar,          termcod_leftPar,            0x00,               0x10,                       0x00},
+    {term_rightPar,         termcod_rightPar,           0x00,               0x00,                       0x00},
 
     // operators (0x00 -> operator not available, 0x01 -> pure or compound assignment)
     // op_long: operands must be long, a long is returned (e.g. 'bitand' operator)
@@ -439,7 +442,8 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     // name                 // value                    // value type
     // ----                 --------                    // ----------
 
-    {"EULER",               "2.7182818284590452354",    value_isFloat},     // base of natural logarithm
+    // math: floating point constants
+    {"e",                   "2.7182818284590452354",    value_isFloat},     // base of natural logarithm
     {"PI",                  "3.14159265358979323846",   value_isFloat},     // PI
     {"HALF_PI",             "1.57079632679489661923",   value_isFloat},     // PI / 2
     {"QUART_PI",            "0.78539816339744830962",   value_isFloat},     // PI / 4
@@ -448,73 +452,88 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     {"DEG_TO_RAD",          "0.01745329251994329577",   value_isFloat},     // conversion factor: degrees to radians
     {"RAD_TO_DEG",          "57.2957795130823208768",   value_isFloat},     // radians to degrrees
 
+    // angle mode
     {"DEGREES",             "0",                        value_isLong},
     {"RADIANS",             "1",                        value_isLong},
 
+    // boolean values
     {"FALSE",               "0",                        value_isLong},      // value for boolean 'false'
     {"TRUE",                "1",                        value_isLong},      // value for boolean 'true'
 
+    // data types
     {"LONG_TYP",            "1",                        value_isLong},      // value type of a long value
     {"FLOAT_TYP",           "2",                        value_isLong},      // value type of a float value
     {"STRING_TYP",          "3",                        value_isLong},      // value type of a string value
-
+    
+    // digital I/O
     {"LOW",                 "0",                        value_isLong},      // standard ARduino constants for digital I/O
     {"HIGH",                "1",                        value_isLong},
-
     {"INPUT",               "0x0",                      value_isLong},      // standard ARduino constants for digital I/O
     {"OUTPUT",              "0x1",                      value_isLong},
     {"INPUT_PULLUP",        "0x2",                      value_isLong},
     {"INPUT_PULLDOWN",      "0x3",                      value_isLong},
+    {"LSBFIRST",            "0x0",                      value_isLong},      // standard ARduino constants for digital I/O
+    {"MSBFIRST",            "0x1",                      value_isLong},
 
+    // display mode command first argument: prompt and echo display
     {"NO_PROMPT",           "0",                        value_isLong},      // do not print prompt and do not echo user input
     {"PROMPT",              "1",                        value_isLong},      // print prompt but no not echo user input
     {"ECHO",                "2",                        value_isLong},      // print prompt and echo user input
 
+    // display mode command second argument: last result format
     {"NO_LAST",             "0",                        value_isLong},      // do not print last result
     {"PRINT_LAST",          "1",                        value_isLong},      // print last result
     {"QUOTE_LAST",          "2",                        value_isLong},      // print last result, quote string results 
 
-    {"LEFT",                "0x1",                      value_isLong},      // left justify
-    {"SIGN",                "0x2",                      value_isLong},      // force sign
-    {"SPACE_IF_POS",        "0x4",                      value_isLong},      // insert a space if no sign
-    {"DEC_POINT",           "0x8",                      value_isLong},      // used with 'F', 'E', 'G' specifiers: always add a decimal point, even if no digits follow
-    {"HEX_0X",              "0x8",                      value_isLong},      // used with 'X' (hex) specifier: preceed non-zero numbers with '0x'
-    {"PAD_ZERO",            "0x10",                     value_isLong},      // pad with zeros
-
+    // info command: type of confirmation required (argument 2, must be a variable)
     {"INFO_ENTER",          "0",                        value_isLong},      // confirmation required by pressing ENTER (any preceding characters are skipped)
-    {"INFO_ENTER_CANC",     "1",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
+    {"INFO_ENT_CANC",       "1",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
     {"INFO_YN",             "2",                        value_isLong},      // only yes or no answer allowed, by pressing 'y' or 'n' followed by ENTER   
     {"INFO_YN_CANC",        "3",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
 
+    // input command: default allowed  
     {"INPUT_NO_DEF",        "0",                        value_isLong},      // '\d' sequences ('default') in the input stream are ignored
     {"INPUT_ALLOW_DEF",     "1",                        value_isLong},      // if '\d' sequence is encountered in the input stream, default value is returned
 
+    // input and info command: flag 'user canceled' (input argument 3 / info argument 2 return value - argument must be a variable)
     {"USER_CANCELED",       "0",                        value_isLong},      // operation was canceled by user (\c sequence encountered)
     {"USER_SUCCESS",        "1",                        value_isLong},      // operation was NOT canceled by user
 
+    // quit command
     {"KEEP_MEM",            "0",                        value_isLong},      // keep Justina in memory on quitting
     {"RELEASE_MEM",         "1",                        value_isLong},      // release memory on quitting
 
+    // input / output streams
     {"CONSOLE",             "0",                        value_isLong},      // IO: read from / print to console
-    {"EXT_IO_1",            "-1",                       value_isLong},      // IO: read from / print to alternative I/O port 1 (if defined)
-    {"EXT_IO_2",            "-2",                       value_isLong},      // IO: read from / print to alternative I/O port 2 (if defined)
-    {"EXT_IO_3",            "-3",                       value_isLong},      // IO: read from / print to alternative I/O port 3 (if defined)
+    {"IO_1",                "-1",                       value_isLong},      // IO: read from / print to alternative I/O port 1 (if defined)
+    {"IO_2",                "-2",                       value_isLong},      // IO: read from / print to alternative I/O port 2 (if defined)
+    {"IO_3",                "-3",                       value_isLong},      // IO: read from / print to alternative I/O port 3 (if defined)
+    {"IO_4",                "-4",                       value_isLong},      // IO: read from / print to alternative I/O port 4 (if defined)
+    {"IO_5",                "-5",                       value_isLong},      // IO: read from / print to alternative I/O port 5 (if defined)
     {"FILE_1",              "1",                        value_isLong},      // IO: read from / print to open SD file 1
     {"FILE_2",              "2",                        value_isLong},      // IO: read from / print to open SD file 2 
     {"FILE_3",              "3",                        value_isLong},      // IO: read from / print to open SD file 3 
     {"FILE_4",              "4",                        value_isLong},      // IO: read from / print to open SD file 4 
     {"FILE_5",              "5",                        value_isLong},      // IO: read from / print to open SD file 5 
 
+    // file access type on open
     {"READ",                "0x1",                      value_isLong},      // open SD file for read access
     {"WRITE",               "0x2",                      value_isLong},      // open SD file for write access
     {"RDWR",                "0x3",                      value_isLong},      // open SD file for r/w access
-
     {"APPEND",              "0x4",                      value_isLong},      // writes will occur at end of file
     {"SYNC",                "0x8",                      value_isLong},      //  
     {"CREATE_OK",           "0x10",                     value_isLong},      // create new file if non-existent
     {"EXCL",                "0x20",                     value_isLong},      // --> use together with flag 0x10 
     {"CREATE_ONLY",         "0x30",                     value_isLong},      // create new file only - do not open an existing file
     {"TRUNC",               "0x40",                     value_isLong},      // truncate file to zero bytes on open (NOT if file is opened for read access only)
+
+    // formatting
+    {"FMT_LEFT",            "0x01",                     value_isLong},      // align output left within the print field 
+    {"FMT_SIGN",            "0x02",                     value_isLong},      // always add a sign (- or +) preceding the value
+    {"FMT_SPACE",           "0x04",                     value_isLong},      // precede the value with a space if no sign is written 
+    {"FMT_FPSEP",           "0x08",                     value_isLong},      // if used with 'F', 'E', 'G' specifiers: add decimal point, even if no digits after decimal point  
+    {"FMT_0X",              "0x08",                     value_isLong},      // if used with 'hex output'X' specifier: precede non-zero values with 0x  
+    {"FMT_PAD0",            "0x10",                     value_isLong},      // if used with 'F', 'E', 'G' specifiers: pad with zeros 
 };
 
 

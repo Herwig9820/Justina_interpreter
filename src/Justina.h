@@ -6,9 +6,9 @@
 *    Version:    v1.01 - 12/07/2023                                                                         *
 *    Author:     Herwig Taveirne, 2021-2023                                                                 *
 *                                                                                                           *
-*    Justina is an interpreter which does NOT require you to use an IDE to write                            *
-*    and compile programs. Programs are written on the PC using any text processor                          *
-*    and transferred to the Arduino using any serial terminal capable of sending files.                     *
+*    Justina is an interpreter which does NOT require you to use an IDE to write and compile programs.      *
+*    Programs are written on the PC using any text processor and transferred to the Arduino using any       *
+*    Serial or TCP Terminal program capable of sending files.                                               *
 *    Justina can store and retrieve programs and other data on an SD card as well.                          *
 *                                                                                                           *
 *    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
@@ -310,10 +310,10 @@ class Justina_interpreter {
         fnccod_bitSet,
         fnccod_bitRead,
         fnccod_bitWrite,
-        fnccod_bitsMaskedClear,
-        fnccod_bitsMaskedSet,
-        fnccod_bitsMaskedRead,
-        fnccod_bitsMaskedWrite,
+        fnccod_wordMaskedClear,
+        fnccod_wordMaskedSet,
+        fnccod_wordMaskedRead,
+        fnccod_wordMaskedWrite,
         fnccod_byteRead,
         fnccod_byteWrite,
         fnccod_mem32Read,
@@ -331,7 +331,6 @@ class Justina_interpreter {
         fnccod_isLowerCase,
         fnccod_isPrintable,
         fnccod_isPunct,
-        fnccod_isSpace,
         fnccod_isUpperCase,
         fnccod_isWhitespace,
 
@@ -684,7 +683,7 @@ class Justina_interpreter {
     static constexpr int MAX_LOC_VARS_IN_FUNC{ 32 };                    // max. local and parameter variables allowed (only) in an INDIVIDUAL parsed function. Absolute limit: 255 
     static constexpr int MAX_JUSTINA_FUNCS{ 256 };                      // max. Justina functions allowed. Absolute limit: 255
     static constexpr int MAX_ARRAY_DIMS{ 3 };                           // max. array dimensions allowed. Absolute limit: 3 
-    static constexpr int MAX_ARRAY_ELEM{ 200 };                         // max. elements allowed in an array. Absolute limit: 2^15-1 = 32767. Individual dimensions are limited to a size of 255
+    static constexpr int MAX_ARRAY_ELEM{ 1000 };                        // max. elements allowed in an array. Absolute limit: 2^15-1 = 32767. Individual dimensions are limited to a size of 255
     static constexpr int MAX_LAST_RESULT_DEPTH{ 10 };                   // max. depth of 'last results' FiFo
 
     static constexpr int MAX_IDENT_NAME_LEN{ 20 };                      // max length of identifier names, excluding terminating '\0'
@@ -694,7 +693,7 @@ class Justina_interpreter {
 
     static constexpr int MAX_OPEN_SD_FILES{ 4 };                        // SD card: max. concurrent open files
 
-    static constexpr long LONG_WAIT_FOR_CHAR_TIMEOUT{ 5000 };           // milli seconds
+    static constexpr long LONG_WAIT_FOR_CHAR_TIMEOUT{ 15000 };          // milli seconds
     static constexpr long DEFAULT_READ_TIMEOUT{ 1000 };                 // milliseconds
 
     static constexpr int DEFAULT_CALC_RESULT_PRINT_WIDTH{ 30 };         // calculation results: default width of the print field.
@@ -1114,9 +1113,9 @@ private:
 
     // sizes MUST be specified AND must be exact
     static const ResWordDef _resWords[64];                                                                                      // keyword names
-    static const InternCppFuncDef _internCppFunctions[138];                                                                     // internal cpp function names and codes with min & max arguments allowed
+    static const InternCppFuncDef _internCppFunctions[137];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[38];                                                                                    // terminals (including operators)
-    static const SymbNumConsts _symbNumConsts[60];                                                                              // predefined constants
+    static const SymbNumConsts _symbNumConsts[70];                                                                              // predefined constants
 
     static const int _resWordCount{ sizeof(_resWords) / sizeof(_resWords[0]) };                                                 // count of keywords in keyword table 
     static const int _internCppFunctionCount{ (sizeof(_internCppFunctions)) / sizeof(_internCppFunctions[0]) };                 // count of internal cpp functions in functions table
@@ -1958,7 +1957,7 @@ private:
     execResult_type checkFmtSpecifiers(bool isDispFmt, bool valueIsString, int suppliedArgCount, char* valueType, Val* operands, char& numSpecifier,
         int& width, int& precision, int& flags);
     void makeFormatString(int flags, bool isIntFmt, char* numFmt, char* fmtString);
-    void printToString(int width, int precision, bool isFmtString, bool isIntFmt, char* valueType, Val* operands, char* fmtString,
+    void printToString(int width, int precision, bool inputIsString, bool isIntFmt, char* valueType, Val* operands, char* fmtString,
         Val& fcnResult, int& charsPrinted, bool expandStrings = false);
 
     //  unparse statement and pretty print, print parsing result (OK or error number), print variables, print call stack, SD card directory

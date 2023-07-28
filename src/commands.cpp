@@ -6,9 +6,9 @@
 *    Version:    v1.01 - 12/07/2023                                                                         *
 *    Author:     Herwig Taveirne, 2021-2023                                                                 *
 *                                                                                                           *
-*    Justina is an interpreter which does NOT require you to use an IDE to write                            *
-*    and compile programs. Programs are written on the PC using any text processor                          *
-*    and transferred to the Arduino using any serial terminal capable of sending files.                     *
+*    Justina is an interpreter which does NOT require you to use an IDE to write and compile programs.      *
+*    Programs are written on the PC using any text processor and transferred to the Arduino using any       *
+*    Serial or TCP Terminal program capable of sending files.                                               *
 *    Justina can store and retrieve programs and other data on an SD card as well.                          *
 *                                                                                                           *
 *    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
@@ -104,9 +104,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
             bool opIsLong = ((uint8_t)valueType == value_isLong);
             bool opIsFloat = ((uint8_t)valueType == value_isFloat);
-            if (!opIsLong && !opIsFloat){break;}                                                                                        // ignore if not a number
+            if (!opIsLong && !opIsFloat) { break; }                                                                                        // ignore if not a number
 
-            return (opIsLong) ? (execResult_type)value.longConst : (execResult_type) value.floatConst ;
+            return (opIsLong) ? (execResult_type)value.longConst : (execResult_type)value.floatConst;
         }
         break;
 
@@ -1155,7 +1155,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     }
 
                     else {      // print to file or console ?
-                        if (printString != nullptr) { *pStreamPrintColumn += print(printString); }
+                        if (printString != nullptr) {
+                            // if a direct argument of a print function ENDS with CR or LF, reset print column to 0
+                            long printed = print(printString);                                                              // we need the position n the string of the last character printed
+                            if ((printString[printed - 1] == '\r') || (printString[printed - 1] == '\n')) { *pStreamPrintColumn = 0; }      // reset print column for stream to 0
+                            else { *pStreamPrintColumn += printed; }                                                        // not a CR or LF character at end of string ? adapt print column for stream 
+                        }
                         if ((i < cmdParamCount) && doPrintList) { *pStreamPrintColumn += print(argSep); }
                     }
 
@@ -1166,11 +1171,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] printString;
-                    }
                 }
+            }
 
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-            }
+        }
 
             // finalise
             if (isPrintToVar) {                                                                                             // print to string ? save in variable
@@ -1186,9 +1191,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] assembledString;
-                    }
+            }
                     return execResult;
-                }
+    }
 
                 // print line end without supplied arguments for printing: a string object does not exist yet, so create it now
                 if (doPrintLineEnd) {
@@ -1228,7 +1233,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 }
 
                 if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) { delete[] assembledString; }                            // not referenced in eval. stack (clippedString is), so will not be deleted as part of cleanup
-            }
+}
 
             else {      // print to file or external IO
                 if (doPrintLineEnd) {
@@ -1240,7 +1245,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // clean up
             clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
-        }
+}
         break;
 
 
