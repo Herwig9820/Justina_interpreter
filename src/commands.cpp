@@ -1340,7 +1340,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         // -------------------------------------------------------
 
         case cmdcod_dispfmt:
+        case cmdcod_intfmt:
         {
+            // dispFmt precision [, specifier]  [, flags] ]     : formatting for floats and any future types
+            // intFmt precision [, specifier]  [, flags] ]      : formatting for integers
+            // NOTE: string printing : NOT affected
+
             // mandatory argument 1: width (used for both numbers and strings) 
             // optional arguments 2-4 (relevant for printing numbers only): [precision, [specifier (F:fixed, E:scientific, G:general, D: decimal, X:hex), ] flags]
             // note that specifier argument can be left out, flags argument taking its place
@@ -1362,22 +1367,35 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // - no function with 'D' (decimal) specifier
             // flag value 16 = pad with zeros 
 
-            bool argIsVar[4];
-            bool argIsArray[4];
-            char valueType[4];
-            Val args[4];
+            bool argIsVar[3];
+            bool argIsArray[3];
+            char valueType[3];
+            Val args[3];
 
-            if (cmdParamCount > 4) { execResult = result_arg_tooManyArgs; return execResult; }
+            if (cmdParamCount > 3) { execResult = result_arg_tooManyArgs; return execResult; }
             copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
 
             // set format for numbers and strings
 
-            execResult = checkFmtSpecifiers(true, false, cmdParamCount, valueType, args, _dispNumSpecifier[0],
-                _dispWidth, _dispNumPrecision, _dispFmtFlags);
+            bool isIntFmtCmd = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_intfmt);
+            char specifier[2] = " ";     // one space
+            specifier[0] = isIntFmtCmd ? _dispIntegerSpecifier[0] : _dispFloatSpecifier[0];
+            int precision{ isIntFmtCmd ? _dispIntegerPrecision : _dispFloatPrecision };
+            int fmtFlags{ isIntFmtCmd ? _dispIntegerFmtFlags : _dispFloatFmtFlags };
+
+            // !!! the last 3 arguments return the values of 1st to max. 3rd argument of the command (widh, precision, specifier, flags). Optional last argument is characters printed -> not relevant here
+            execResult = checkFmtSpecifiers(true, cmdParamCount, valueType, args, specifier[0], precision, fmtFlags);
             if (execResult != result_execOK) { return execResult; }
 
-            _dispIsIntFmt = (_dispNumSpecifier[0] == 'X') || (_dispNumSpecifier[0] == 'x') || (_dispNumSpecifier[0] == 'd') || (_dispNumSpecifier[0] == 'D');
-            makeFormatString(_dispFmtFlags, _dispIsIntFmt, _dispNumSpecifier, _dispNumberFmtString);                        // for numbers
+            bool isIntSpecifier = (specifier[0] == 'X') || (specifier[0] == 'x') || (specifier[0] == 'd');
+            if (isIntFmtCmd != isIntSpecifier) { return result_arg_invalid; }
+
+            precision = min(precision, MAX_NUM_PRECISION);                                                         // same maximum for all numeric types
+
+            // create format string for numeric values
+            _dispFloatPrecision = precision;  _dispFloatFmtFlags = fmtFlags, _dispFloatSpecifier[0] = specifier[0];
+
+            makeNumericFormatString(fmtFlags, _dispIsIntFmt, specifier, _dispFloatFmtString);
 
             _dispCharsToPrint = _dispWidth;
             strcpy(_dispStringFmtString, "%*.*s%n");                                                                        // strings: set characters to print to display width

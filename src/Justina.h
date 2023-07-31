@@ -202,7 +202,9 @@ class Justina_interpreter {
         cmdcod_printToVar,
         cmdcod_printLineToVar,
         cmdcod_printListToVar,
+        cmdcod_dispwidth,
         cmdcod_dispfmt,
+        cmdcod_intfmt,
         cmdcod_dispmod,
         cmdcod_tabSize,
         cmdcod_angle,
@@ -598,6 +600,7 @@ class Justina_interpreter {
         result_arg_integerDimExpected,
         result_arg_dimNumberInvalid,
         result_arg_tooManyArgs,
+        result_arg_wrongSpecifierForDataType,
 
         // user callback errors
         result_userCB_aliasNotDeclared = 3200,
@@ -696,14 +699,32 @@ class Justina_interpreter {
     static constexpr long LONG_WAIT_FOR_CHAR_TIMEOUT{ 15000 };          // milli seconds
     static constexpr long DEFAULT_READ_TIMEOUT{ 1000 };                 // milliseconds
 
-    static constexpr int DEFAULT_CALC_RESULT_PRINT_WIDTH{ 30 };         // calculation results: default width of the print field.
-    static constexpr int DEFAULT_PRINT_WIDTH{ 0 };                      // default width of the print field.
-    static constexpr int DEFAULT_NUM_PRECISION{ 3 };                    // default numeric precision
-    static constexpr int DEFAULT_STRCHAR_TO_PRINT{ 30 };                // default # alphanumeric characters to print
+    // display and print settings
+    // --------------------------
+
+    // maximum values
 
     const int MAX_PRINT_WIDTH = 255;                                    // max. width of the print field. Absolute limit: 255. With as defined as in c++ printf 'format.width' sub-specifier
     const int MAX_NUM_PRECISION = 8;                                    // max. numeric precision. Precision as defined as in c++ printf 'format.precision' sub-specifier
     const int MAX_STRCHAR_TO_PRINT = 255;                               // max. # of alphanumeric characters to print. Absolute limit: 255. Defined as in c++ printf 'format.precision' sub-specifier
+
+    // separate defaults for display settings (last values, command line echo, tracing, print commands) and fmt() function
+    static constexpr int DEFAULT_DISP_WIDTH{ 50 };                      // display setting      : default width of the print field 
+    static constexpr int DEFAULT_FMT_WIDTH{ 0 };                        // fmt() function output: default width of the print field 
+
+    // shared defaults for display settings AND fmt() function settings    
+
+    static constexpr int DEFAULT_FLOAT_PRECISION{ 2 };                  // default precision for floating point numbers
+    static constexpr int DEFAULT_INT_PRECISION{ 1 };                    // default 'minimum digits to print' for integers 
+    static constexpr int DEFAULT_STR_CHARS_TO_PRINT{ 50 };               // default # alphanumeric characters to print
+
+    const char DEFAULT_FLOAT_SPECIFIER[2]{ "f" };                       // default specifier for floating point numbers. Arduino doesn't recognise uppercase "F"
+    const char DEFAULT_INT_SPECIFIER[2]{ "d" };                         // default specifier for integers 
+    const char DEFAULT_STR_SPECIFIER[2]{ "s" };                         // default specifier for integers 
+
+    static constexpr int DEFAULT_FLOAT_FLAGS{ 0X08 };                   // default for floating point numbers: always print decimal point
+    static constexpr int DEFAULT_INT_FLAGS{ 0X00 };                     // default for integers: no flags
+    static constexpr int DEFAULT_STR_FLAGS{ 0X00 };                     // default for strings: no flags
 
 
     // ------------------------------------------------------------------------------------------------------
@@ -1112,10 +1133,10 @@ private:
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na, block_na, block_na };                                      // not a 'block' command
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[64];                                                                                      // keyword names
+    static const ResWordDef _resWords[66];                                                                                      // keyword names
     static const InternCppFuncDef _internCppFunctions[137];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[38];                                                                                    // terminals (including operators)
-    static const SymbNumConsts _symbNumConsts[70];                                                                              // predefined constants
+    static const SymbNumConsts _symbNumConsts[65];                                                                              // predefined constants
 
     static const int _resWordCount{ sizeof(_resWords) / sizeof(_resWords[0]) };                                                 // count of keywords in keyword table 
     static const int _internCppFunctionCount{ (sizeof(_internCppFunctions)) / sizeof(_internCppFunctions[0]) };                 // count of internal cpp functions in functions table
@@ -1542,19 +1563,47 @@ private:
     int _promptAndEcho{ 2 };                                                        // print prompt and print input echo
     int _printLastResult{ 1 };                                                      // print last result: 0 = do not print, 1 = print, 2 = print and expand backslash sequences in string constants  
 
-    // calculation results
-    int _dispWidth = DEFAULT_PRINT_WIDTH, _dispNumPrecision = DEFAULT_NUM_PRECISION, _dispCharsToPrint = DEFAULT_STRCHAR_TO_PRINT, _dispFmtFlags = _defaultPrintFlags;
-    char _dispNumSpecifier[2] = "G";                                                // room for 1 character and an extra terminating \0 
-    bool _dispIsIntFmt{ false };                                                    // initialized during reset          
-    char  _dispNumberFmtString[20] = "", _dispStringFmtString[20] = "%*.*s%n";      // long enough to contain all format specifier parts; initialized during reset
+    // display settings (last values, command line echo, tracing, print commands
+    // -------------------------------------------------------------------------
 
-    
-    // print commands
-    int _printWidth = DEFAULT_PRINT_WIDTH, _printNumPrecision = DEFAULT_NUM_PRECISION, _printCharsToPrint = DEFAULT_STRCHAR_TO_PRINT, _printFmtFlags = _defaultPrintFlags;
-    char _printNumSpecifier[2] = "G";                                               // room for 1 character and an extra terminating \0 (initialized during reset)
+    bool _dispIsIntFmt{ false };                                                    // initialized during reset          
+    int _dispWidth = DEFAULT_DISP_WIDTH;
+
+    int _dispFloatPrecision = DEFAULT_FLOAT_PRECISION;
+    int _dispIntegerPrecision = DEFAULT_INT_PRECISION;
+    int _dispCharsToPrint = DEFAULT_STR_CHARS_TO_PRINT;
+
+    char _dispFloatSpecifier[2]{ "" };                                              // will be initialised in Justina constructor 
+    char _dispIntegerSpecifier[2]{ "" };
+    char _dispStringSpecifier[2]{ "" };
+
+    int _dispFloatFmtFlags = DEFAULT_FLOAT_FLAGS;
+    int _dispIntegerFmtFlags = DEFAULT_INT_FLAGS;
+    int _dispStringFmtFlags = DEFAULT_STR_FLAGS;
+
+    char _dispFloatFmtString[20] = "";                                              // long enough to contain all format specifier parts; initialized during reset
+    char _dispIntegerFmtString[15] = "";
+    char _dispStringFmtString[20] = "%*.*s%n";
+
+
+    // fmt() function settings 
+    // -----------------------
+
+    // shared for values to format of all data types, EXCEPT precision  and specifier character: maintained separately for strings
+
+    int _fmt_width = DEFAULT_FMT_WIDTH;
+
+    int _fmt_numPrecision = DEFAULT_FLOAT_PRECISION;                                 // all numeric types
+    int _fmt_strCharsToPrint = DEFAULT_STR_CHARS_TO_PRINT;                              // string type
+
+    char _fmt_numSpecifier[2]{ "" };                                               // will be initialised in Justina constructor                                              
+    char _fmt_stringSpecifier[2]{ "" };
+
+    int _fmt_formattingFlags = DEFAULT_FLOAT_FLAGS;
+
     int _tabSize{ 8 };                                                              // tab size, default value if not changed by tabSize command 
 
-    
+
     // debugging
     // ---------
     
@@ -1954,9 +2003,8 @@ private:
     // --------    
 
     // output formatting, preparing for printing
-    execResult_type checkFmtSpecifiers(bool isDispFmt, bool valueIsString, int suppliedArgCount, char* valueType, Val* operands, char& numSpecifier,
-        int& width, int& precision, int& flags);
-    void makeFormatString(int flags, bool isIntFmt, char* numFmt, char* fmtString);
+    execResult_type checkFmtSpecifiers(bool isDispFmtCmd, int argCount, char* valueType, Val* operands, char& specifier, int& precision, int& flags);
+    void makeNumericFormatString(int flags, bool isIntFmt, char* numFmt, char* fmtString);
     void printToString(int width, int precision, bool inputIsString, bool isIntFmt, char* valueType, Val* operands, char* fmtString,
         Val& fcnResult, int& charsPrinted, bool expandStrings = false);
 
