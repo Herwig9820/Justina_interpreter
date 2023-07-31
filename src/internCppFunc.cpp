@@ -1585,8 +1585,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             // so write functions return zero)  
             if (functionCode == fnccod_mem32Read) { fcnResult.longConst = *(volatile uint32_t*)args[0].longConst; }                                 // 32 bit register value is returned
             else if (functionCode == fnccod_mem8Read) { fcnResult.longConst = ((volatile uint8_t*)(args[0].longConst))[args[1].longConst]; }        // 8 bit register value is returned
-            else if (functionCode == fnccod_mem32Write) { *( volatile uint32_t *)args[0].longConst = args[1].longConst; }
-            else if (functionCode == fnccod_mem8Write) { ((volatile uint8_t* )(args[0].longConst))[args[1].longConst] = args[2].longConst; }
+            else if (functionCode == fnccod_mem32Write) { *(volatile uint32_t*)args[0].longConst = args[1].longConst; }
+            else if (functionCode == fnccod_mem8Write) { ((volatile uint8_t*)(args[0].longConst))[args[1].longConst] = args[2].longConst; }
         }
         break;
 
@@ -2078,12 +2078,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             fcnResultValueType = value_isLong;                                                                              // default for most system values
 
             switch (sysVal) {
-
-                case 0: fcnResult.longConst = _dispWidth; break;                //// uitbreiden
+                // display (last results, echo, ...)
+                case 0: fcnResult.longConst = _dispWidth; break;
                 case 1: fcnResult.longConst = _dispFloatPrecision; break;
                 case 2: fcnResult.longConst = _dispCharsToPrint; break;
-                case 3: fcnResult.longConst = _dispFloatFmtFlags; break;
+                case 3: fcnResult.longConst = _dispFloatFmtFlags; break;            //// en integer ???
 
+                    // print commands
                 case 5: fcnResult.longConst = _fmt_width; break;
                 case 6: fcnResult.longConst = _fmt_numPrecision; break;
                 case 7: fcnResult.longConst = _fmt_strCharsToPrint; break;
@@ -2098,7 +2099,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 #if PRINT_HEAP_OBJ_CREA_DEL
                     _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
                 #endif
-                    strcpy(fcnResult.pStringConst, (sysVal == 4) ? _fmt_numSpecifier : _fmt_stringSpecifier);
+                    strcpy(fcnResult.pStringConst, (sysVal == 4) ? _dispFloatSpecifier : _fmt_numSpecifier);
                 }
                 break;
 

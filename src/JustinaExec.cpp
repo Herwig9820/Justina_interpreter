@@ -886,7 +886,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             // printToString() expects long, float or char*: remove extra level of indirection (variables only)
             value.floatConst = isVar ? *_pEvalStackTop->varOrConst.value.pFloatConst : _pEvalStackTop->varOrConst.value.floatConst; // works for long and string as well
             printToString(0, (isLong || isFloat) ? _dispFloatPrecision : MAX_STRCHAR_TO_PRINT,
-                (!isLong && !isFloat), _dispIsIntFmt, & valueType, & value, fmtString, toPrint, charsPrinted);
+                (!isLong && !isFloat), _dispIsIntFmt, &valueType, &value, fmtString, toPrint, charsPrinted);
         }
         else {
             char valTyp = value_isStringPointer;

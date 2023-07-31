@@ -547,50 +547,54 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
 Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int altIOstreamCount,
     long progMemSize, int JustinaConstraints, int SDcardChipSelectPin) :
     _pExternIOstreams(pAltInputStreams), _externIOstreamCount(altIOstreamCount), _progMemorySize(progMemSize), _justinaConstraints(JustinaConstraints), _SDcardChipSelectPin(SDcardChipSelectPin) {
+    /*
+        // settings to be initialized when cold starting interpreter only
+        // --------------------------------------------------------------
+        Serial.println("A1");
+        _coldStart = true;
 
-    // settings to be initialized when cold starting interpreter only
-    // --------------------------------------------------------------
+        _housekeepingCallback = nullptr;
 
-    _coldStart = true;
+        _lastPrintedIsPrompt = false;
 
-    _housekeepingCallback = nullptr;
+        _programMode = false;
+        _currenttime = millis();
+        _previousTime = _currenttime;
+        _lastCallBackTime = _currenttime;
 
-    _lastPrintedIsPrompt = false;
+        parsingStack.setListName("parsing ");
+        evalStack.setListName("eval    ");
+        flowCtrlStack.setListName("flowCtrl");
+        parsedCommandLineStack.setListName("cmd line");
 
-    _programMode = false;
-    _currenttime = millis();
-    _previousTime = _currenttime;
-    _lastCallBackTime = _currenttime;
+        if (_progMemorySize + IMM_MEM_SIZE > pow(2, 16)) { _progMemorySize = pow(2, 16) - IMM_MEM_SIZE; }
+        _programStorage = new char[_progMemorySize + IMM_MEM_SIZE];
 
-    parsingStack.setListName("parsing ");
-    evalStack.setListName("eval    ");
-    flowCtrlStack.setListName("flowCtrl");
-    parsedCommandLineStack.setListName("cmd line");
+        // current print column is maintened for each stream separately: init
+        _pIOprintColumns = new int[_externIOstreamCount];
+        for (int i = 0; i < _externIOstreamCount; i++) {
+            _pExternIOstreams[i]->setTimeout(DEFAULT_READ_TIMEOUT);                                         // NOTE: will only have effect for existing connections (e.g. TCP)
+            _pIOprintColumns[i] = 0;
+        }
 
-    if (_progMemorySize + IMM_MEM_SIZE > pow(2, 16)) { _progMemorySize = pow(2, 16) - IMM_MEM_SIZE; }
-    _programStorage = new char[_progMemorySize + IMM_MEM_SIZE];
+        // by default, console and debug out are first element in _pExternIOstreams[]
+        _consoleIn_sourceStreamNumber = _consoleOut_sourceStreamNumber = _debug_sourceStreamNumber = -1;
+        _pConsoleIn = _pConsoleOut = _pDebugOut = _pExternIOstreams[0];
+        _pConsolePrintColumn = _pDebugPrintColumn = _pIOprintColumns;                                       //  point to its current print column
+        _pLastPrintColumn = _pIOprintColumns;
 
-    // current print column is maintened for each stream separately: init
-    _pIOprintColumns = new int[_externIOstreamCount];
-    for (int i = 0; i < _externIOstreamCount; i++) {
-        _pExternIOstreams[i]->setTimeout(DEFAULT_READ_TIMEOUT);                                         // NOTE: will only have effect for existing connections (e.g. TCP)
-        _pIOprintColumns[i] = 0;
-    }
+        // set linked list debug printing. Pointer to debug out stream pointer: will follow if debug stream is changed
+        parsingStack.setDebugOutStream(static_cast<Stream**> (&_pDebugOut));                                // for debug printing within linked list object
 
-    // by default, console and debug out are first element in _pExternIOstreams[]
-    _consoleIn_sourceStreamNumber = _consoleOut_sourceStreamNumber = _debug_sourceStreamNumber = -1;
-    _pConsoleIn = _pConsoleOut = _pDebugOut = _pExternIOstreams[0];
-    _pConsolePrintColumn = _pDebugPrintColumn = _pIOprintColumns;                                       //  point to its current print column
-    _pLastPrintColumn = _pIOprintColumns;
+        // particular stream is a TCP stream ? Retrigger TCP keep alive timer at each character read (communicated to Justina via application flags)
+        int TCP_externIOStreamIndex = ((_justinaConstraints & 0xf0) >> 4) - 1;
+        _pTCPstream = (TCP_externIOStreamIndex == -1) ? nullptr : _pExternIOstreams[TCP_externIOStreamIndex];
+        Serial.println("A2");
 
-    // set linked list debug printing. Pointer to debug out stream pointer: will follow if debug stream is changed
-    parsingStack.setDebugOutStream(static_cast<Stream**> (&_pDebugOut));                                // for debug printing within linked list object
+        initInterpreterVariables(true);
+    */
 
-    // particular stream is a TCP stream ? Retrigger TCP keep alive timer at each character read (communicated to Justina via application flags)
-    int TCP_externIOStreamIndex = ((_justinaConstraints & 0xf0) >> 4) - 1;
-    _pTCPstream = (TCP_externIOStreamIndex == -1) ? nullptr : _pExternIOstreams[TCP_externIOStreamIndex];
-
-    initInterpreterVariables(true);
+    Serial.println("A3");
 };
 
 
@@ -1604,6 +1608,7 @@ void Justina_interpreter::initInterpreterVariables(bool fullReset) {
 
     // display output settings
     // -----------------------
+
     if (fullReset) {
         _promptAndEcho = 2, _printLastResult = 1;
     }

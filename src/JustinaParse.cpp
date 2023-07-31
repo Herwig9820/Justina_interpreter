@@ -1209,7 +1209,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                 }
             }
 
-            if (_isProgramCmd || _isDeleteVarCmd ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+            if (_isProgramCmd || _isDeleteVarCmd) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
 
 
             // 1.b Find out if the provided operator type (prefix, infix or postfix) is allowed 

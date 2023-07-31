@@ -1025,6 +1025,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             int varPrintColumn{ 0 };                                                                                        // only for printing to string variable: current print column
             char* assembledString{ nullptr };                                                                               // only for printing to string variable: intermediate string
 
+            char floatFmtStr[10] = "%#.*";
+            strcat(floatFmtStr, _dispFloatSpecifier);
 
             for (int i = 1; i <= cmdParamCount; i++) {
                 bool operandIsVar = (pStackLvl->varOrConst.tokenType == tok_isVariable);
@@ -1104,8 +1106,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                             printString = s;                                                                                // pointer
                             // next line is valid for long values as well (same memory locations are copied)
                             operand.floatConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pFloatConst) : pStackLvl->varOrConst.value.floatConst);
-                            if (opIsLong) { sprintf(s, "%ld", operand.longConst); }
-                            else { sprintf(s, "%3.7G", operand.floatConst); }                                               // specifier 'G': print minimum 3 characters, print 7 significant digits maximum  
+                            if (opIsLong) { sprintf(s, "%ld", operand.longConst); }                                     // integer: just print all digits
+                            else { sprintf(s, floatFmtStr, _dispFloatPrecision, operand.floatConst); }                  // floats : with current display precision for floating point values                                             
                         }
                         else {
                             operand.pStringConst = operandIsVar ? (*pStackLvl->varOrConst.value.ppStringConst) : pStackLvl->varOrConst.value.pStringConst;
@@ -1171,11 +1173,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] printString;
+                    }
                 }
-            }
 
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-        }
+            }
 
             // finalise
             if (isPrintToVar) {                                                                                             // print to string ? save in variable
@@ -1191,9 +1193,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] assembledString;
-            }
+                    }
                     return execResult;
-    }
+                }
 
                 // print line end without supplied arguments for printing: a string object does not exist yet, so create it now
                 if (doPrintLineEnd) {
@@ -1233,7 +1235,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 }
 
                 if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) { delete[] assembledString; }                            // not referenced in eval. stack (clippedString is), so will not be deleted as part of cleanup
-}
+            }
 
             else {      // print to file or external IO
                 if (doPrintLineEnd) {
@@ -1245,7 +1247,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // clean up
             clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
-}
+        }
         break;
 
 
@@ -1330,6 +1332,30 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
             // clean up
             clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings 
+            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
+        }
+        break;
+
+
+        // ------------------------------------------------------
+        // Set display width for printing last calculation result
+        // ------------------------------------------------------
+
+        case cmdcod_dispwidth:
+        {
+            bool argIsVar[1];
+            bool argIsArray[1];
+            char valueType[1];
+            Val args[1];
+            copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
+
+            if ((valueType[0] != value_isLong) && (valueType[0] != value_isFloat)) { return result_arg_numberExpected; }    // numeric ?
+            if ((valueType[0] == value_isLong) ? args[0].longConst < 0 : args[0].floatConst < 0.) { return result_arg_outsideRange; }                                           // positive ?
+            _dispWidth = (valueType[0] == value_isLong) ? args[0].longConst : (long)args[0].floatConst;
+            _dispWidth = min(_dispWidth, MAX_PRINT_WIDTH);                                                                                                    // limit width to MAX_PRINT_WIDTH
+
+            // clean up
+            clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
         }
         break;
