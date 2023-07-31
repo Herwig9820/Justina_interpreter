@@ -1232,6 +1232,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
         case fnccod_format:
         {
+            // fmt (expression [, width [, precision [, specifier]  [, flags  [, character count] ] ] ]
+
             // mandatory argument 1: value to be formatted
             // optional arguments 2-5: width, precision, [specifier (F:fixed, E:scientific, G:general, D: long integer, X:hex)], flags, characters printed (return value)
             // note that specifier argument can be left out, flags argument taking its place
@@ -1244,8 +1246,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             // numeric precision: function depends on the specifier:
             // - with specifiers 'D'and 'X': specifies the minimum number of digits to be written. Shorter values are padded with leading zeros. Longer values are not truncated. 
             //   If the precision is zero, a zero value will not be printed.
-            // - with 'E' and 'F' specifiers: number of decimals to be printed after the decimal point
-            // - with 'G' specifier:maximum number of significant digits to be printed
+            // - with 'E' and 'F' specifiers: minimum number of decimals to be printed after the decimal point
+            // - with 'G' specifier: maximum number of significant digits to be printed
 
             // flags: value 1 = left justify, 2 = force sign, 4 = insert a space if no sign
             // flag value 8: the use depends on the precision specifier:
@@ -1257,31 +1259,57 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             bool isIntFmt{ false };
             int charsPrinted{ 0 };
 
-            // INIT print width, precision, specifier, flags
-            int& width = _printWidth, & precision = (((argIsLongBits & (0x1 << 0)) || (argIsFloatBits & (0x1 << 0))) ? _printNumPrecision : _printCharsToPrint), & flags = _printFmtFlags;
+            bool valueToFormatIsString = (argValueType[0] == value_isStringPointer);        // formatting a string value ?
 
-            // optional argument returning #chars that were printed is present ? Variable expected
+            // make a local copy until all tests done
+            int width = _fmt_width;
+            int precision = valueToFormatIsString ? _fmt_strCharsToPrint : _fmt_numPrecision;
+            char specifier{ valueToFormatIsString ? _fmt_stringSpecifier[0] : _fmt_numSpecifier[0] };
+            int flags = _fmt_formattingFlags;
+
             bool hasSpecifierArg = false; // init
-            if (suppliedArgCount >= 3) { hasSpecifierArg = (!(argIsLongBits & (0x1 << 3)) && !(argIsFloatBits & (0x1 << 3))); }     // third argument is either a specifier (string) or set of flags (number)
+            if (suppliedArgCount > 3) { hasSpecifierArg = (!(argIsLongBits & (0x1 << 3)) && !(argIsFloatBits & (0x1 << 3))); }     // third argument is either a specifier (string) or set of flags (number)
 
             // test arguments and ADAPT print width, precision, specifier, flags
             // -----------------------------------------------------------------
 
-            execResult_type execResult = checkFmtSpecifiers(false, (!(argIsLongBits & (0x1 << 0)) && !(argIsFloatBits & (0x1 << 0))), suppliedArgCount, argValueType, args, _printNumSpecifier[0], width, precision, flags);
-            if (execResult != result_execOK) { return execResult; }
+            // test width
+            if (suppliedArgCount > 1) {                                                                                                                 // check width
+                if ((argValueType[1] != value_isLong) && (argValueType[1] != value_isFloat)) { return result_arg_numberExpected; }                              // numeric ?
+                if ((argValueType[1] == value_isLong) ? args[1].longConst < 0 : args[1].floatConst < 0.) { return result_arg_outsideRange; }                       // positive ?
+                width = (argValueType[1] == value_isLong) ? args[1].longConst : (long)args[1].floatConst;
+                width = min(width, MAX_PRINT_WIDTH);                                                                                                    // limit width to MAX_PRINT_WIDTH
+            }
+
+            // check other arguments
+            if (suppliedArgCount > 2) {                                                                             // do not include value to format and width 
+                execResult_type execResult = checkFmtSpecifiers(false, suppliedArgCount - 2, argValueType + 2, args + 2, specifier, precision, flags);
+                if (execResult != result_execOK) { return execResult; }
+            }
+
+            // if formatting STRING with explicit change of width and without precision argument: init 'precision' (max. no of characters to print) to width.
+            if (valueToFormatIsString) { if (suppliedArgCount == 2) { precision = width; } }
+
+            // limit precision (is stored separately for numbers and strings)
+            precision = min(precision, valueToFormatIsString ? MAX_STRCHAR_TO_PRINT : MAX_NUM_PRECISION);
+
+            // is specifier acceptable for data type ?
+            // ---------------------------------------
+            if (valueToFormatIsString != (specifier == 's')) { return result_arg_wrongSpecifierForDataType; }
 
             // prepare format specifier string and format
             // ------------------------------------------
 
-            char  fmtString[20];                                                                                                    // long enough to contain all format specifier parts
-            char* specifier = "s";
-            if ((argIsLongBits & (0x1 << 0)) || (argIsFloatBits & (0x1 << 0))) {
-                specifier = _printNumSpecifier;
-                isIntFmt = (specifier[0] == 'X') || (specifier[0] == 'x') || (specifier[0] == 'D') || (specifier[0] == 'd');
-            }
-            makeFormatString(flags, isIntFmt, specifier, fmtString);
-            printToString(width, precision, (!(argIsLongBits & (0x1 << 0)) && !(argIsFloatBits & (0x1 << 0))), isIntFmt, argValueType, args, fmtString, fcnResult, charsPrinted);
+            char fmtString[20]{};                                                                                                    // long enough to contain all format specifier parts
+            isIntFmt = (specifier == 'X') || (specifier == 'x') || (specifier == 'd');                                                  // for ALL numeric types
+            makeNumericFormatString(flags, isIntFmt, &specifier, fmtString);
+            printToString(width, precision, valueToFormatIsString, isIntFmt, argValueType, args, fmtString, fcnResult, charsPrinted);
             fcnResultValueType = value_isStringPointer;
+
+            _fmt_width = width;
+            (valueToFormatIsString ? _fmt_strCharsToPrint : _fmt_numPrecision) = precision;
+            (valueToFormatIsString ? _fmt_stringSpecifier[0] : _fmt_numSpecifier[0]) = specifier;                                                    // string specifier is a constant ("s")
+            _fmt_formattingFlags = flags;
 
             // return number of characters printed into (variable) argument if it was supplied
             // -------------------------------------------------------------------------------
@@ -2051,15 +2079,15 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
             switch (sysVal) {
 
-                case 0: fcnResult.longConst = _dispWidth; break;
-                case 1: fcnResult.longConst = _dispNumPrecision; break;
+                case 0: fcnResult.longConst = _dispWidth; break;                //// uitbreiden
+                case 1: fcnResult.longConst = _dispFloatPrecision; break;
                 case 2: fcnResult.longConst = _dispCharsToPrint; break;
-                case 3: fcnResult.longConst = _dispFmtFlags; break;
+                case 3: fcnResult.longConst = _dispFloatFmtFlags; break;
 
-                case 5: fcnResult.longConst = _printWidth; break;
-                case 6: fcnResult.longConst = _printNumPrecision; break;
-                case 7: fcnResult.longConst = _printCharsToPrint; break;
-                case 8: fcnResult.longConst = _printFmtFlags; break;
+                case 5: fcnResult.longConst = _fmt_width; break;
+                case 6: fcnResult.longConst = _fmt_numPrecision; break;
+                case 7: fcnResult.longConst = _fmt_strCharsToPrint; break;
+                case 8: fcnResult.longConst = _fmt_formattingFlags; break;
 
                 case 4:
                 case 9:
@@ -2070,7 +2098,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 #if PRINT_HEAP_OBJ_CREA_DEL
                     _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
                 #endif
-                    strcpy(fcnResult.pStringConst, (sysVal == 4) ? _dispNumSpecifier : _printNumSpecifier);
+                    strcpy(fcnResult.pStringConst, (sysVal == 4) ? _fmt_numSpecifier : _fmt_stringSpecifier);
                 }
                 break;
 

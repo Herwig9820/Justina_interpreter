@@ -137,7 +137,9 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
 
     // settings
     // --------
+    {"dispWidth",       cmdcod_dispwidth,       cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_104,     cmdBlockNone},
     {"dispFmt",         cmdcod_dispfmt,         cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
+    {"intFmt",          cmdcod_intfmt,          cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
     {"dispMode",        cmdcod_dispmod,         cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_105,     cmdBlockNone},
     {"tabSize",         cmdcod_tabSize,         cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_104,     cmdBlockNone},
     {"angleMode",       cmdcod_angle,           cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_104,     cmdBlockNone},
@@ -335,7 +337,7 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     { "availableForWrite",       fnccod_availableForWrite,      1,1,    0b0 },
     { "getWriteError",           fnccod_getWriteError,          1,1,    0b0 },
     { "clearWriteError",         fnccod_clearWriteError,        1,1,    0b0 },
-    
+
     // SD card only (based upon Arduino SD card library functions)
     { "open",                    fnccod_open,                   1,2,    0b0 },
     { "close",                   fnccod_close,                  1,1,    0b0 },
@@ -464,7 +466,7 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     {"LONG_TYP",            "1",                        value_isLong},      // value type of a long value
     {"FLOAT_TYP",           "2",                        value_isLong},      // value type of a float value
     {"STRING_TYP",          "3",                        value_isLong},      // value type of a string value
-    
+
     // digital I/O
     {"LOW",                 "0",                        value_isLong},      // standard ARduino constants for digital I/O
     {"HIGH",                "1",                        value_isLong},
@@ -527,13 +529,14 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     {"CREATE_ONLY",         "0x30",                     value_isLong},      // create new file only - do not open an existing file
     {"TRUNC",               "0x40",                     value_isLong},      // truncate file to zero bytes on open (NOT if file is opened for read access only)
 
-    // formatting
+    // formatting flags
     {"FMT_LEFT",            "0x01",                     value_isLong},      // align output left within the print field 
     {"FMT_SIGN",            "0x02",                     value_isLong},      // always add a sign (- or +) preceding the value
     {"FMT_SPACE",           "0x04",                     value_isLong},      // precede the value with a space if no sign is written 
     {"FMT_FPSEP",           "0x08",                     value_isLong},      // if used with 'F', 'E', 'G' specifiers: add decimal point, even if no digits after decimal point  
     {"FMT_0X",              "0x08",                     value_isLong},      // if used with 'hex output'X' specifier: precede non-zero values with 0x  
     {"FMT_PAD0",            "0x10",                     value_isLong},      // if used with 'F', 'E', 'G' specifiers: pad with zeros 
+    {"FMT_NONE",            "0x00",                     value_isLong},      // no flags 
 };
 
 
@@ -1565,19 +1568,42 @@ void Justina_interpreter::initInterpreterVariables(bool fullReset) {
     // -------------------------------------------------------------------------------------------
 
     // calculation result print format
-    _dispWidth = DEFAULT_CALC_RESULT_PRINT_WIDTH; _dispNumPrecision = DEFAULT_NUM_PRECISION;
-    _dispCharsToPrint = DEFAULT_STRCHAR_TO_PRINT; _dispFmtFlags = _defaultPrintFlags;
-    _dispNumSpecifier[0] = 'G'; _dispNumSpecifier[1] = '\0';
     _dispIsIntFmt = false;
-    makeFormatString(_dispFmtFlags, false, _dispNumSpecifier, _dispNumberFmtString);                // for numbers
-    strcpy(_dispStringFmtString, "%*.*s%n");                                                        // for strings
 
-    // print command argument format
-    _printWidth = DEFAULT_PRINT_WIDTH; _printNumPrecision = DEFAULT_NUM_PRECISION;
-    _printCharsToPrint = DEFAULT_STRCHAR_TO_PRINT; _printFmtFlags = _defaultPrintFlags;
-    _printNumSpecifier[0] = 'G'; _printNumSpecifier[1] = '\0';
+    _dispWidth = DEFAULT_DISP_WIDTH;
+
+    _dispFloatPrecision = DEFAULT_FLOAT_PRECISION;
+    _dispIntegerPrecision = DEFAULT_INT_PRECISION;
+    _dispCharsToPrint = DEFAULT_STR_CHARS_TO_PRINT;
+
+    strcpy(_dispFloatSpecifier, DEFAULT_FLOAT_SPECIFIER);
+    strcpy(_dispIntegerSpecifier, DEFAULT_INT_SPECIFIER);                                                                 // here without 'd' (long integer) : will be added  
+    strcpy(_dispStringSpecifier, DEFAULT_STR_SPECIFIER);                                                                 // here without 'd' (long integer) : will be added  
+
+    _dispFloatFmtFlags = DEFAULT_FLOAT_FLAGS;
+    _dispIntegerFmtFlags = DEFAULT_INT_FLAGS;
+    _dispStringFmtFlags = DEFAULT_STR_FLAGS;
+
+    makeNumericFormatString(_dispFloatFmtFlags, false, _dispFloatSpecifier, _dispFloatFmtString);               // for floats
+    makeNumericFormatString(_dispIntegerFmtFlags, true, _dispIntegerSpecifier, _dispIntegerFmtString);           // for integers
+    strcpy(_dispStringFmtString, "%*.*s%n");                                                                    // for strings
+    ////printf(_dispStringFmtString, "%%*.*%%%s%%n", _dispStringSpecifier);                                           // for strings
+
+    // fmt() function settings 
+    // -----------------------
+    _fmt_width = DEFAULT_FMT_WIDTH;                             // width
+
+    _fmt_numPrecision = DEFAULT_FLOAT_PRECISION;                  // precision
+    _fmt_strCharsToPrint = DEFAULT_STR_CHARS_TO_PRINT;
+
+    strcpy(_fmt_numSpecifier, DEFAULT_FLOAT_SPECIFIER);         // specifier   
+    strcpy(_fmt_stringSpecifier, DEFAULT_STR_SPECIFIER);
+
+    _fmt_formattingFlags = DEFAULT_FLOAT_FLAGS;             // flags
+
 
     // display output settings
+    // -----------------------
     if (fullReset) {
         _promptAndEcho = 2, _printLastResult = 1;
     }

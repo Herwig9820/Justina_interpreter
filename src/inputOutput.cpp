@@ -1287,42 +1287,71 @@ void Justina_interpreter::quoteAndExpandEscSeq(char*& stringValue) {
 // *   check format specifiers   *
 // -------------------------------
 
-Justina_interpreter::execResult_type Justina_interpreter::checkFmtSpecifiers(bool isDispFmt, bool valueIsString, int suppliedArgCount, char* valueType, Val* operands, char& numSpecifier,
-    int& width, int& precision, int& flags) {
+// possible callers: 
+// -----------------
+// 1. display and integer format command:
+//    dispFmt precision [, specifier]  [, flags] ]
+//    intFmt precision [, specifier]  [, flags] ]
+//    
+// 2. fmt() function:
+//    fmt (expression [, width [, precision [, specifier]  [, flags  [, character count] ] ] ]
+//        =>> !!! expression and width are NOT passed to this function !!! <<=
 
-    // format a value: third argument is either a specifier (string) or set of flags (number)
-    bool hasSpecifierArg = false; // init
-    if (suppliedArgCount >= (isDispFmt ? 3 : 4)) { hasSpecifierArg = ((valueType[isDispFmt ? 2 : 3] != value_isLong) && (valueType[isDispFmt ? 2 : 3] != value_isFloat)); }
+Justina_interpreter::execResult_type Justina_interpreter::checkFmtSpecifiers(bool isDispFmtCmd, int argCount, char* valueType, Val* operands, char& specifier, int& precision, int& flags) {
 
-    for (int argNo = (isDispFmt ? 1 : 2); argNo <= suppliedArgCount; argNo++) {
+    Serial.print("** checkFmtSpecifiers START");
+    // format a value: one-character specifier string included ?
+    bool hasSpecifierArg{ false }; // init
+    if (argCount > 1) { hasSpecifierArg = (valueType[1] == value_isStringPointer); }
 
-        // Specifier argument ? Single character specifier (FfEeGgXxDd) expected
-        if (hasSpecifierArg && (argNo == (isDispFmt ? 3 : 4))) {     // position of specifier in arg list varies
-            if (valueType[argNo - 1] != value_isStringPointer) { return result_arg_stringExpected; }
-            if (operands[argNo - 1].pStringConst == nullptr) { return result_arg_invalid; }
-            if (strlen(operands[argNo - 1].pStringConst) != 1) { return result_arg_invalid; }
-            numSpecifier = operands[argNo - 1].pStringConst[0];
-            char* pChar(strchr("FfGgEeXxDd", numSpecifier));
-            if (pChar == nullptr) { return result_arg_invalid; }
+    bool hasReturnParameter = isDispFmtCmd ? false : argCount == 3;                // no error if no variable, but nothing will be returned
+
+    char spec = ' ';
+    if (hasSpecifierArg) {
+        if (operands[1].pStringConst == nullptr) { return result_arg_invalid; }
+        if (strlen(operands[1].pStringConst) != 1) { return result_arg_invalid; }
+        spec = operands[1].pStringConst[0];
+        char* pChar(strchr("fGgEeXxds", spec));
+        if (pChar == nullptr) { return result_arg_invalid; }
+
+        // move next arguments, if supplied, down one position 
+        for (int index = 1; index < argCount - 1; index++) {
+            Serial.print("loop: move = "); Serial.println(index + 1);
+            operands[index] = operands[index + 1];
+            valueType[index] = valueType[index + 1];
         }
-
-        // Width, precision flags ? Numeric arguments expected
-        else if (argNo != (hasSpecifierArg ? 6 : 5)) {                                                                                      // (exclude optional argument returning #chars printed from tests)
-            if ((valueType[argNo - 1] != value_isLong) && (valueType[argNo - 1] != value_isFloat)) { return result_arg_numberExpected; }    // numeric ?
-            if ((valueType[argNo - 1] == value_isLong) ? operands[argNo - 1].longConst < 0 : operands[argNo - 1].floatConst < 0.) { return result_arg_outsideRange; }                                           // positive ?
-            int argValue = (valueType[argNo - 1] == value_isLong) ? operands[argNo - 1].longConst : (long)operands[argNo - 1].floatConst;
-            ((argNo == (isDispFmt ? 1 : 2)) ? width : (argNo == (isDispFmt ? 2 : 3)) ? precision : flags) = argValue;                       // set with, precision, flags to respective argument
-            if (argValue != ((argNo == (isDispFmt ? 1 : 2)) ? width : (argNo == (isDispFmt ? 2 : 3)) ? precision : flags)) { return result_arg_invalid; }    // integer ?
-        }
+        argCount--;
     }
-    // format STRING: precision argument NOT specified: init precision to width. Note that for strings, precision specifies MAXIMUM no of characters that will be printed
 
-     // fstr() with explicit change of width and without explicit change of precision: init precision to width
-    if (valueIsString && (suppliedArgCount == 2)) { precision = width; }
+    // first and last index only refer to formatting fields with specifier field removed, not to value to format (if dispFmt command) and not 'chars printed' return value (if dispFmt command)
+    int firstFmtArgIndex = 0;
+    int lastFmtArgIndex = (isDispFmtCmd ? 2 : 3) - (hasSpecifierArg ? 0 : 1) - (hasReturnParameter ? 1 : 0);       // exclude return value
+    if (argCount <= lastFmtArgIndex) { lastFmtArgIndex = argCount - 1; }
+    Serial.print("first format arg = "); Serial.println(firstFmtArgIndex);
+    Serial.print("last             = "); Serial.println(lastFmtArgIndex);
 
-    width = min(width, MAX_PRINT_WIDTH);                                                                                                    // limit width to MAX_PRINT_WIDTH
-    precision = min(precision, valueIsString ? MAX_STRCHAR_TO_PRINT : MAX_NUM_PRECISION);
+    int prec{}, fl{};
+    for (int argIndex = firstFmtArgIndex; argIndex <= lastFmtArgIndex; argIndex++) {
+        Serial.print("loop: index = "); Serial.println(argIndex);
+
+        // Width, precision, flags ? Numeric arguments expected
+        if ((valueType[argIndex] != value_isLong) && (valueType[argIndex] != value_isFloat)) { return result_arg_numberExpected; }    // numeric ?
+        if ((valueType[argIndex] == value_isLong) ? operands[argIndex].longConst < 0 : operands[argIndex].floatConst < 0.) { return result_arg_outsideRange; }                                           // positive ?
+        int argValue = (valueType[argIndex] == value_isLong) ? operands[argIndex].longConst : (long)operands[argIndex].floatConst;
+        Serial.print("      value = "); Serial.println(argValue);
+
+        if (argIndex == firstFmtArgIndex) { prec = argValue; }            // precision
+        else if (argIndex == firstFmtArgIndex + 1) { fl = argValue; }       // flags
+    }
+
+    // at the end, after all tests (return variables)
+    precision = prec;
+    specifier = spec;
+    flags = fl;
+
     flags &= 0b11111;       // apply mask
+    Serial.print("** checkFmtSpecifiers END OK");
+
     return result_execOK;
 }
 
@@ -1332,7 +1361,7 @@ Justina_interpreter::execResult_type Justina_interpreter::checkFmtSpecifiers(boo
 // ------------------------------
 
 
-void  Justina_interpreter::makeFormatString(int flags, bool isIntFmt, char* numFmt, char* fmtString) {
+void  Justina_interpreter::makeNumericFormatString(int flags, bool isIntFmt, char* numFmt, char* fmtString) {
 
     fmtString[0] = '%';
     int strPos = 1;
