@@ -550,7 +550,6 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
 
     // settings to be initialized when cold starting interpreter only
     // --------------------------------------------------------------
-
     _coldStart = true;
 
     _housekeepingCallback = nullptr;
@@ -671,7 +670,6 @@ void Justina_interpreter::setUserCppCommandsEntryPoint(const CppVoidFunction* co
     _pExtCppFunctions[6] = (CppVoidFunction*)pCppVoidFunctions;
     _ExtCppFunctionCounts[6] = cppVoidFunctionCount;
 };
-
 // ----------------------------
 // *   interpreter main loop   *
 // ----------------------------
@@ -1399,7 +1397,7 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
 
 
     printlnTo(0);
-}
+        }
 
 
 // ---------------------------------------------------------------------------------------
@@ -1427,7 +1425,7 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
         _pDebugOut->print("*** Parsed constant string objects cleanup error. Remaining: "); _pDebugOut->println(_parsedStringConstObjectCount);
     #endif
         _parsedStringConstObjectErrors += abs(_parsedStringConstObjectCount);
-    }
+}
 
     if (_globalStaticVarStringObjectCount != 0) {
     #if PRINT_OBJECT_COUNT_ERRORS
@@ -1441,7 +1439,7 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
         _pDebugOut->print("*** Array objects cleanup error. Remaining: "); _pDebugOut->println(_globalStaticArrayObjectCount);
     #endif
         _globalStaticArrayObjectErrors += abs(_globalStaticArrayObjectCount);
-    }
+}
 
 #if PRINT_DEBUG_INFO
     _pDebugOut->print("\r\n** Reset stats\r\n    parsed strings "); _pDebugOut->print(_parsedStringConstObjectCount);
@@ -1600,7 +1598,11 @@ void Justina_interpreter::initInterpreterVariables(bool fullReset) {
     strcpy(_fmt_stringSpecifier, DEFAULT_STR_SPECIFIER);
 
     _fmt_formattingFlags = DEFAULT_FLOAT_FLAGS;             // flags
+
+
     // display output settings
+    // -----------------------
+
     if (fullReset) {
         _promptAndEcho = 2, _printLastResult = 1;
     }
@@ -1701,8 +1703,8 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
             }
         }
         index++;
-    }
-}
+            }
+        }
 
 
 // --------------------------------------------------------------------
@@ -1755,8 +1757,8 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
             (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*prgmCnt.pTokenChars >> 4) & 0x0F;
         prgmCnt.pTokenChars += tokenLength;
         tokenType = *prgmCnt.pTokenChars & 0x0F;
-    }
-}
+            }
+        }
 
 
 // ---------------------------------------------------------------------------------
