@@ -49,7 +49,7 @@ long progMemSize = 2000;
 
 // create Justina_interpreter object. The last argument informs Justina that an SD card
 // reader is not present, among others  
-Justina_interpreter justina(pExternal_IO, terminalCount, progMemSize, 0);
+////Justina_interpreter justina(pExternal_IO, terminalCount, progMemSize, 0);
 
 
 // -------------------------------
@@ -59,7 +59,10 @@ Justina_interpreter justina(pExternal_IO, terminalCount, progMemSize, 0);
 void setup() {
     Serial.begin(1000000);
     delay(5000);
-    
+    Serial.println("ino 1");
+    Justina_interpreter justina(pExternal_IO, terminalCount, progMemSize, 0);
+    Serial.println("ino 2");
+
     justina.run();                          // run interpreter
 }
 

@@ -1025,6 +1025,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             int varPrintColumn{ 0 };                                                                                        // only for printing to string variable: current print column
             char* assembledString{ nullptr };                                                                               // only for printing to string variable: intermediate string
 
+            char floatFmtStr[10] = "%#.*";
+            strcat(floatFmtStr, _dispFloatSpecifier);
 
             for (int i = 1; i <= cmdParamCount; i++) {
                 bool operandIsVar = (pStackLvl->varOrConst.tokenType == tok_isVariable);
@@ -1104,8 +1106,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                             printString = s;                                                                                // pointer
                             // next line is valid for long values as well (same memory locations are copied)
                             operand.floatConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pFloatConst) : pStackLvl->varOrConst.value.floatConst);
-                            if (opIsLong) { sprintf(s, "%ld", operand.longConst); }
-                            else { sprintf(s, "%3.7G", operand.floatConst); }                                               // specifier 'G': print minimum 3 characters, print 7 significant digits maximum  
+                            if (opIsLong) { sprintf(s, "%ld", operand.longConst); }                                     // integer: just print all digits
+                            else { sprintf(s, floatFmtStr, _dispFloatPrecision, operand.floatConst); }                  // floats : with current display precision for floating point values                                             
                         }
                         else {
                             operand.pStringConst = operandIsVar ? (*pStackLvl->varOrConst.value.ppStringConst) : pStackLvl->varOrConst.value.pStringConst;
@@ -1171,11 +1173,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] printString;
+                    }
                 }
-            }
 
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-        }
+            }
 
             // finalise
             if (isPrintToVar) {                                                                                             // print to string ? save in variable
@@ -1191,9 +1193,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] assembledString;
-            }
+                    }
                     return execResult;
-    }
+                }
 
                 // print line end without supplied arguments for printing: a string object does not exist yet, so create it now
                 if (doPrintLineEnd) {
@@ -1233,7 +1235,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 }
 
                 if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) { delete[] assembledString; }                            // not referenced in eval. stack (clippedString is), so will not be deleted as part of cleanup
-}
+            }
 
             else {      // print to file or external IO
                 if (doPrintLineEnd) {
@@ -1245,7 +1247,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // clean up
             clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
-}
+        }
         break;
 
 
@@ -1335,12 +1337,41 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         break;
 
 
+        // ------------------------------------------------------
+        // Set display width for printing last calculation result
+        // ------------------------------------------------------
+
+        case cmdcod_dispwidth:
+        {
+            bool argIsVar[1];
+            bool argIsArray[1];
+            char valueType[1];
+            Val args[1];
+            copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
+
+            if ((valueType[0] != value_isLong) && (valueType[0] != value_isFloat)) { return result_arg_numberExpected; }    // numeric ?
+            if ((valueType[0] == value_isLong) ? args[0].longConst < 0 : args[0].floatConst < 0.) { return result_arg_outsideRange; }                                           // positive ?
+            _dispWidth = (valueType[0] == value_isLong) ? args[0].longConst : (long)args[0].floatConst;
+            _dispWidth = min(_dispWidth, MAX_PRINT_WIDTH);                                                                                                    // limit width to MAX_PRINT_WIDTH
+
+            // clean up
+            clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings
+            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
+        }
+        break;
+
+
         // -------------------------------------------------------
         // Set display format for printing last calculation result
         // -------------------------------------------------------
 
         case cmdcod_dispfmt:
+        case cmdcod_intfmt:
         {
+            // dispFmt precision [, specifier]  [, flags] ]     : formatting for floats and any future types
+            // intFmt precision [, specifier]  [, flags] ]      : formatting for integers
+            // NOTE: string printing : NOT affected
+             
             // mandatory argument 1: width (used for both numbers and strings) 
             // optional arguments 2-4 (relevant for printing numbers only): [precision, [specifier (F:fixed, E:scientific, G:general, D: decimal, X:hex), ] flags]
             // note that specifier argument can be left out, flags argument taking its place
@@ -1362,22 +1393,35 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // - no function with 'D' (decimal) specifier
             // flag value 16 = pad with zeros 
 
-            bool argIsVar[4];
-            bool argIsArray[4];
-            char valueType[4];
-            Val args[4];
+            bool argIsVar[3];
+            bool argIsArray[3];
+            char valueType[3];
+            Val args[3];
 
-            if (cmdParamCount > 4) { execResult = result_arg_tooManyArgs; return execResult; }
+            if (cmdParamCount > 3) { execResult = result_arg_tooManyArgs; return execResult; }
             copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
 
             // set format for numbers and strings
 
-            execResult = checkFmtSpecifiers(true, false, cmdParamCount, valueType, args, _dispNumSpecifier[0],
-                _dispWidth, _dispNumPrecision, _dispFmtFlags);
+            bool isIntFmtCmd = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_intfmt);
+            char specifier[2] = " ";     // one space
+            specifier[0] =  isIntFmtCmd ? _dispIntegerSpecifier[0] : _dispFloatSpecifier[0];
+            int precision{ isIntFmtCmd ? _dispIntegerPrecision : _dispFloatPrecision };
+            int fmtFlags{ isIntFmtCmd ? _dispIntegerFmtFlags : _dispFloatFmtFlags };
+
+            // !!! the last 3 arguments return the values of 1st to max. 3rd argument of the command (widh, precision, specifier, flags). Optional last argument is characters printed -> not relevant here
+            execResult = checkFmtSpecifiers(true, cmdParamCount, valueType, args, specifier[0], precision, fmtFlags);
             if (execResult != result_execOK) { return execResult; }
 
-            _dispIsIntFmt = (_dispNumSpecifier[0] == 'X') || (_dispNumSpecifier[0] == 'x') || (_dispNumSpecifier[0] == 'd') || (_dispNumSpecifier[0] == 'D');
-            makeFormatString(_dispFmtFlags, _dispIsIntFmt, _dispNumSpecifier, _dispNumberFmtString);                        // for numbers
+            bool isIntSpecifier = (specifier[0] == 'X') || (specifier[0] == 'x') || (specifier[0] == 'd');
+            if (isIntFmtCmd != isIntSpecifier) { return result_arg_invalid; }
+
+            precision = min(precision,  MAX_NUM_PRECISION);                                                         // same maximum for all numeric types
+            
+            // create format string for numeric values
+            _dispFloatPrecision = precision;  _dispFloatFmtFlags = fmtFlags, _dispFloatSpecifier[0] = specifier[0];
+            
+            makeNumericFormatString(fmtFlags, _dispIsIntFmt, specifier, _dispFloatFmtString);
 
             _dispCharsToPrint = _dispWidth;
             strcpy(_dispStringFmtString, "%*.*s%n");                                                                        // strings: set characters to print to display width

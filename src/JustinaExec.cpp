@@ -820,10 +820,12 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             bool isFloat = (lastResultTypeFiFo[0] == value_isFloat);
             int charsPrinted{  };                                                                                                   // required but not used
             Val toPrint;
-            char* fmtString = (isLong || isFloat) ? _dispNumberFmtString : _dispStringFmtString;
+            char* fmtString = isLong ? _dispIntegerFmtString: isFloat ? _dispFloatFmtString : _dispStringFmtString;
 
-            printToString(_dispWidth, (isLong || isFloat) ? _dispNumPrecision : MAX_STRCHAR_TO_PRINT,
-                (!isLong && !isFloat), _dispIsIntFmt, lastResultTypeFiFo, lastResultValueFiFo, fmtString, toPrint, charsPrinted, (_printLastResult == 2));
+            Serial.print("last result - format string: "); Serial.print(fmtString); Serial.print(", precision: "); Serial.println(_dispFloatPrecision);////
+
+            printToString(_dispWidth, isLong ? _dispIntegerPrecision : isFloat ? _dispFloatPrecision : MAX_STRCHAR_TO_PRINT,
+                (!isLong && !isFloat), isLong, lastResultTypeFiFo, lastResultValueFiFo, fmtString, toPrint, charsPrinted, (_printLastResult == 2));
             printlnTo(0, toPrint.pStringConst);
 
             if (toPrint.pStringConst != nullptr) {
@@ -880,10 +882,10 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             char valueType = isVar ? (*_pEvalStackTop->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackTop->varOrConst.valueType;
             bool isLong = (valueType == value_isLong);
             bool isFloat = (valueType == value_isFloat);
-            char* fmtString = (isLong || isFloat) ? _dispNumberFmtString : _dispStringFmtString;
+            char* fmtString = (isLong || isFloat) ? _dispFloatFmtString : _dispStringFmtString;
             // printToString() expects long, float or char*: remove extra level of indirection (variables only)
             value.floatConst = isVar ? *_pEvalStackTop->varOrConst.value.pFloatConst : _pEvalStackTop->varOrConst.value.floatConst; // works for long and string as well
-            printToString(0, (isLong || isFloat) ? _dispNumPrecision : MAX_STRCHAR_TO_PRINT,
+            printToString(0, (isLong || isFloat) ? _dispFloatPrecision : MAX_STRCHAR_TO_PRINT,
                 (!isLong && !isFloat), _dispIsIntFmt, &valueType, &value, fmtString, toPrint, charsPrinted);
         }
         else {
