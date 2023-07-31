@@ -974,7 +974,6 @@ private:
     // other
     static constexpr char c_JustinaFunctionFirstOccurFlag = 0x10;       // flag: min > max means not initialized
     static constexpr char c_JustinaFunctionMaxArgs = 0xF;               // must fit in 4 bits
-    static constexpr int _defaultPrintFlags = 0x00;
 
 
     // block statements: status flags (execution)
@@ -988,7 +987,7 @@ private:
 
     // constants only stored within the evaluation stack, for (parsed and intermediate) constant and variable tokens (execution)
     // -------------------------------------------------------------------------------------------------------------------------
-    
+
     // bit b0: intermediate constant (not a parsed constant, not a constant stored in a variable) 
     static constexpr uint8_t constIsIntermediate = 0x01;
     // bit b1: the address is the address of an array element. If this bit is zero, the address is the scalar or array variable base address 
@@ -1133,10 +1132,10 @@ private:
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na, block_na, block_na };                                      // not a 'block' command
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[66];                                                                                      // keyword names
+    static const ResWordDef _resWords[67];                                                                                      // keyword names
     static const InternCppFuncDef _internCppFunctions[137];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[38];                                                                                    // terminals (including operators)
-    static const SymbNumConsts _symbNumConsts[65];                                                                              // predefined constants
+    static const SymbNumConsts _symbNumConsts[70];                                                                              // predefined constants
 
     static const int _resWordCount{ sizeof(_resWords) / sizeof(_resWords[0]) };                                                 // count of keywords in keyword table 
     static const int _internCppFunctionCount{ (sizeof(_internCppFunctions)) / sizeof(_internCppFunctions[0]) };                 // count of internal cpp functions in functions table
@@ -1273,7 +1272,7 @@ private:
 
     // flow control stack data (execution)
     // -----------------------------------
-     
+
     // each function called, EXCEPT the currently ACTIVE function (deepest call stack level), and all other block commands (e.g. while...end, etc.), use a flow control stack level
     // flow control data for the currently active function - or the main program level if no function is currently active - is stored in structure '_activeFunctionData' (NOT on the flow control stack)
     // -> if executing a command in immediate mode, and not within a called function or open block, the control flow stack has no elements
@@ -1403,7 +1402,7 @@ private:
 
     // basic settings
     // --------------
-    
+
     bool _coldStart{};                                              // is this a cold start (initialising Justina) or a warm start (if Justina was stopped ('quit' command) with its memory retained)
     int _justinaConstraints{ 0 };                                   // 0 = no card reader, 1 = card reader present, do not yet initialise, 2 = initialise card now, 3 = init card & run start.txt function start() now
     long _progMemorySize{};                                         // depends on processor
@@ -1414,7 +1413,7 @@ private:
 
     // parsing 
     // -------
-    
+
     bool _programMode{ false };
     char _statement[MAX_STATEMENT_LEN + 1] = "";                    // character buffer for one statement read from console, SD file or any other external IO channel, ready to be parsed
 
@@ -1435,7 +1434,7 @@ private:
 
     // parsing commands
     // ----------------
-    
+
     bool _justinaFunctionBlockOpen = false;                         // commands within FUNCTION...END block are being parsed (excluding END command)
     bool _isCommand = false;                                        // a command is being parsed (instruction starting with a keyword)
 
@@ -1468,7 +1467,7 @@ private:
 
     // parsing expressions 
     // -------------------
-    
+
     char _minFunctionArgs{ 0 };                                     // if Justina function defined prior to call: min & max allowed arguments...
     char _maxFunctionArgs{ 0 };                                     // ...otherwise, counters to keep track of min & max actual arguments in previous calls 
     int _functionIndex{ 0 };                                        // index of Justina function or internal cpp function in definition table
@@ -1481,7 +1480,7 @@ private:
 
     // remember what token type was last parsed, or even the token before that
     // ----------------------------------------------------------------------
-    
+
     uint16_t _lastTokenStep, _lastVariableTokenStep;
     uint16_t _blockCmdTokenStep, _blockStartCmdTokenStep;           // remember step number (in JUSTINA program memory) of keyword starting a block command                           
 
@@ -1503,7 +1502,7 @@ private:
 
     // flags related to current parsing stack level
     // --------------------------------------------
-    
+
     bool _thisLvl_lastIsVariable;                                   // variable parsed (for arrays: right parenthesis is now parsed)
     bool _thislvl_lastIsConstVar;                                   // symbolic constant has been parsed (scalars allowed only)
     bool _thisLvl_lastOpIsIncrDecr;                                 // last operation parsed was an increment or decrement operator
@@ -1514,7 +1513,7 @@ private:
 
     // execution
     // ---------
-    
+
     char* _programCounter{ nullptr };                                // pointer to token memory address (NOT token step number)
 
     bool _initiateProgramLoad = false;                              // waiting for first program instruction streamed from SD or external IO stream
@@ -1558,10 +1557,11 @@ private:
 
     // console settings and output and print commands
     // ----------------------------------------------
-    
+
     int _angleMode{ 0 };                                                            // 0 = radians, 1 = degrees
     int _promptAndEcho{ 2 };                                                        // print prompt and print input echo
     int _printLastResult{ 1 };                                                      // print last result: 0 = do not print, 1 = print, 2 = print and expand backslash sequences in string constants  
+
 
     // display settings (last values, command line echo, tracing, print commands
     // -------------------------------------------------------------------------
@@ -1606,7 +1606,7 @@ private:
 
     // debugging
     // ---------
-    
+
     int _stepCallStackLevel{ 0 };                                   // call stack levels at the moment of a step, skip... debugging command 
     int _stepFlowCtrlStackLevels{ 0 };                              // total flow control stack levels at the moment of a step, skip... debugging command
     int _stepCmdExecuted{ db_continue };                            // type of debugging command executed (step, skip, ...)
@@ -1616,7 +1616,7 @@ private:
 
     // evaluation strings ('eval("...")' and 'trace("...")' commands)
     // --------------------------------------------------------
-    
+
     char* _pTraceString{ nullptr };
     char* _pEvalString{ nullptr };
     bool _parsingExecutingTraceString{ false };
@@ -1626,7 +1626,7 @@ private:
 
     // counting of heap objects (note: linked list element count is maintained within the linked list objects)
     // -------------------------------------------------------------------------------------------------------
-    
+
     // name strings for variables and functions
     int _identifierNameStringObjectCount = 0, _identifierNameStringObjectErrors = 0;
     int _userVarNameStringObjectCount = 0, _userVarNameStringObjectErrors = 0;
@@ -1653,7 +1653,7 @@ private:
 
     // system (main) callback
     // ----------------------
-    
+
     void (*_housekeepingCallback)(long& appFlags);                  // pointer to callback function for heartbeat
     long _appFlags = 0x00L;                                         // bidirectional flags to transfer info / requests between main program and Justina library
     unsigned long _lastCallBackTime{ 0 }, _currenttime{ 0 }, _previousTime{ 0 };
@@ -1661,7 +1661,7 @@ private:
 
     // user callbacks (external cpp functions)
     // ---------------------------------------
-    
+
     // for bool, char, int, long,float, char*, void (returns zero to Justina) function return types; for commands (void return type)
     void* _pExtCppFunctions[7]{ nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
     int _ExtCppFunctionCounts[7]{ 0,0,0,0,0,0,0 };
@@ -1669,7 +1669,7 @@ private:
 
     // external IO, SD card and files
     // ------------------------------
-    
+
     Stream** _pExternIOstreams{ nullptr };                          // available external IO streams (set by Justina caller)
     Stream* _pTCPstream{ nullptr };                                 // pointer to TCP stream with keep alive setting implemented in code (set by Justina caller)
 
@@ -1695,7 +1695,7 @@ private:
 
     // Justina variable storage
     // ------------------------
-    
+
     // variable scope: global (program variables and user variables), local within function (including function parameters), static within function     
 
     // global program and user variables bearing the same name: in a program, the program variable has priority; in immediate mode a user variable has priority
@@ -1766,13 +1766,13 @@ public:
 
     // set pointer to system (main) call back function
     // -----------------------------------------------
-    
+
     bool setMainLoopCallback(void (*func)(long& appFlags));
 
 
     // sets pointers to the locations where the Arduino program stored information about user-defined (external) cpp functions (user callback functions)
     // -------------------------------------------------------------------------------------------------------------------------------------------------
-    
+
     bool setUserBoolCppFunctionsEntryPoint(const CppBoolFunction* const  pCppBoolFunctions, int cppBoolFunctionCount);
     char setUserCharCppFunctionsEntryPoint(const CppCharFunction* const  pCppCharFunctions, int cppCharFunctionCount);
     int setUserIntCppFunctionsEntryPoint(const CppIntFunction* const  pCppIntFunctions, int cppIntFunctionCount);
@@ -1784,13 +1784,13 @@ public:
 
     // pass control to Justina interpreter
     // -----------------------------------
-    
+
     bool run();                                                     // call from Arduino main program
 
 
     // Justina print functions
     // -----------------------
-    
+
     int readFrom(int streamNumber);
     int readFrom(int streamNumber, char* buffer, int length);
 
@@ -1848,7 +1848,7 @@ private:
 
     // reset Interpreter to clean state
     // --------------------------------
-    
+
     void resetMachine(bool withUserVariables);
 
     void initInterpreterVariables(bool withUserVariables);
@@ -1864,7 +1864,7 @@ private:
 
     // parsing
     // -------
-    
+
     // read one character from a stream (stream must be set prior to call)
     char getCharacter(bool& killNow, bool& forcedStop, bool& forcedAbort, bool& setStdConsole, bool enableTimeOut = false, bool useLongTimeout = false);
 
@@ -1972,7 +1972,7 @@ private:
 
     // streams, SD card and files
     // --------------------------
-    
+
     execResult_type startSD();
     void SD_closeAllFiles();
     execResult_type SD_open(int& fileNumber, char* filePath, int mod = O_READ);
@@ -1994,7 +1994,7 @@ private:
 
     // Justina tracing
     // ---------------
-    
+
     void parseAndExecTraceString();
     void traceAndPrintDebugInfo();
 
@@ -2003,7 +2003,8 @@ private:
     // --------    
 
     // output formatting, preparing for printing
-    execResult_type checkFmtSpecifiers(bool isDispFmtCmd, int argCount, char* valueType, Val* operands, char& specifier, int& precision, int& flags);
+    execResult_type checkFmtSpecifiers(bool isDispFmt, int argCount, char* valueType, Val* operands, char& specifier,
+        int& precision, int& flags);
     void makeNumericFormatString(int flags, bool isIntFmt, char* numFmt, char* fmtString);
     void printToString(int width, int precision, bool inputIsString, bool isIntFmt, char* valueType, Val* operands, char* fmtString,
         Val& fcnResult, int& charsPrinted, bool expandStrings = false);

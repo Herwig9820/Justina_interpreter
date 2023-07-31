@@ -1585,8 +1585,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             // so write functions return zero)  
             if (functionCode == fnccod_mem32Read) { fcnResult.longConst = *(volatile uint32_t*)args[0].longConst; }                                 // 32 bit register value is returned
             else if (functionCode == fnccod_mem8Read) { fcnResult.longConst = ((volatile uint8_t*)(args[0].longConst))[args[1].longConst]; }        // 8 bit register value is returned
-            else if (functionCode == fnccod_mem32Write) { *( volatile uint32_t *)args[0].longConst = args[1].longConst; }
-            else if (functionCode == fnccod_mem8Write) { ((volatile uint8_t* )(args[0].longConst))[args[1].longConst] = args[2].longConst; }
+            else if (functionCode == fnccod_mem32Write) { *(volatile uint32_t*)args[0].longConst = args[1].longConst; }
+            else if (functionCode == fnccod_mem8Write) { ((volatile uint8_t*)(args[0].longConst))[args[1].longConst] = args[2].longConst; }
         }
         break;
 

@@ -978,6 +978,9 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
     const int maxOutputLength{ 200 };
     int outputLength = 0;                                                                                                   // init: first position
 
+    char floatFmtStr[10] = "%#.*";
+    strcat(floatFmtStr, _dispFloatSpecifier);
+
     while (tokenType != tok_no_token) {                                                                                     // for all tokens in token list
         int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) :
             (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*progCnt.pTokenChars >> 4) & 0x0F;
@@ -1046,7 +1049,7 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
                 if (isLongConst) {
                     long  l;
                     memcpy(&l, progCnt.pCstToken->cstValue.longConst, sizeof(l));           // pointer not necessarily aligned with word size: copy memory instead
-                    sprintf(prettyToken, "%ld", l);
+                    sprintf(prettyToken, "%ld", l);                                         // integers always displayed without exponent
                     testNextForPostfix = true;
                     break;   // and quit switch
                 }
@@ -1054,7 +1057,7 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
                 else if (isFloatConst) {
                     float f;
                     memcpy(&f, progCnt.pCstToken->cstValue.floatConst, sizeof(f));          // pointer not necessarily aligned with word size: copy memory instead
-                    sprintf(prettyToken, "%#.3G", f);
+                    sprintf(prettyToken, floatFmtStr, _dispFloatPrecision, f);               // displayed with current floating point precision
                     testNextForPostfix = true;
                     break;   // and quit switch
                 }
@@ -1356,8 +1359,6 @@ Justina_interpreter::execResult_type Justina_interpreter::checkFmtSpecifiers(boo
 }
 
 
-
-
 // ------------------------------
 // *   create a format string   *
 // ------------------------------
@@ -1371,8 +1372,8 @@ void  Justina_interpreter::makeNumericFormatString(int flags, bool isIntFmt, cha
         if (flags & 0b1) { fmtString[strPos] = ((i == 1) ? '-' : (i == 2) ? '+' : (i == 3) ? ' ' : (i == 4) ? '#' : '0'); ++strPos; }
     }
     fmtString[strPos] = '*'; ++strPos; fmtString[strPos] = '.'; ++strPos; fmtString[strPos] = '*'; ++strPos;                // width and precision specified with additional arguments (*.*)
-    if (isIntFmt) { fmtString[strPos] = 'l'; ++strPos; fmtString[strPos] = numFmt[0]; ++strPos; }
-    else { fmtString[strPos] = numFmt[0]; ++strPos; }
+    if (isIntFmt) { fmtString[strPos] = 'l'; ++strPos; fmtString[strPos] = numFmt[0]; ++strPos; }                           // "ld", "lx": long integer in decimal or hex format
+    else { fmtString[strPos] = numFmt[0]; ++strPos; }                                                                       // "e", "f", "g": floating point number printed
     fmtString[strPos] = '%'; ++strPos; fmtString[strPos] = 'n'; ++strPos; fmtString[strPos] = '\0'; ++strPos;               // %n specifier (return characters printed)
 
     return;
@@ -1418,9 +1419,13 @@ void  Justina_interpreter::printToString(int width, int precision, bool inputIsS
         }
         sprintf(fcnResult.pStringConst, fmtString, width, precision, ((*value).pStringConst == nullptr) ? (expandStrings ? "\"\"" : "") : (*value).pStringConst, &charsPrinted);
     }
-    // note: hex output for floating point numbers not provided (Arduino)
-    else if (isIntFmt) { sprintf(fcnResult.pStringConst, fmtString, width, precision, (*valueType == value_isLong) ? (*value).longConst : (long)(*value).floatConst, &charsPrinted); }
-    else { sprintf(fcnResult.pStringConst, fmtString, width, precision, (*valueType == value_isLong) ? (float)(*value).longConst : (*value).floatConst, &charsPrinted); }
+    // note: hex output for floating point numbers is not provided (Arduino)
+    else if (isIntFmt) {
+        sprintf(fcnResult.pStringConst, fmtString, width, precision, (*valueType == value_isLong) ? (*value).longConst : (long)(*value).floatConst, &charsPrinted);
+    }
+    else {
+        sprintf(fcnResult.pStringConst, fmtString, width, precision, (*valueType == value_isLong) ? (float)(*value).longConst : (*value).floatConst, &charsPrinted);
+    }
 
     return;
 }
