@@ -555,10 +555,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                                 if (_programCounter >= (_programStorage + _progMemorySize)) {
                                     saveLastValue(_lastValueIsStored);
                                 }                                                                                                   // save last result in FIFO and delete stack level
-                                else {
-                                    clearEvalStackLevels(1);
-                                }                                                                                                   // NOT main program level: we don't need to keep the statement result
-
+                                else {clearEvalStackLevels(1);  }                                                                        // NOT main program level: we don't need to keep the statement result
                             }
                         }
                     }
@@ -822,7 +819,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             Val toPrint;
             char* fmtString = isLong ? _dispIntegerFmtString : isFloat ? _dispFloatFmtString : _dispStringFmtString;
 
-            Serial.print("last result - format string: "); Serial.print(fmtString); Serial.print(", precision: "); Serial.println(_dispFloatPrecision);////
+            ////Serial.print("last result - format string: "); Serial.print(fmtString); Serial.print(", precision: "); Serial.println(_dispFloatPrecision);////
 
             printToString(_dispWidth, isLong ? _dispIntegerPrecision : isFloat ? _dispFloatPrecision : MAX_STRCHAR_TO_PRINT,
                 (!isLong && !isFloat), isLong, lastResultTypeFiFo, lastResultValueFiFo, fmtString, toPrint, charsPrinted, (_printLastResult == 2));
@@ -1074,7 +1071,9 @@ int Justina_interpreter::findTokenStep(char*& pStep, int tokenType_spec, char cr
 
 void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
     if (!(evalStack.getElementCount() > _activeFunctionData.callerEvalStackLevels)) { return; }                 // safety: data available ?
-    // if overwrite 'previous' last result, then replace first item (if there is one); otherwise replace last item if FiFo full (-1 if nothing to replace)
+
+    // if overwrite 'previous' last result, then remove first item (newest item - if there is one) and stop (all done)
+    // if not overwriting 'previous' last result and FiFo is full, then remove last (oldest) item before proceeding
     int itemToRemove = overWritePrevious ? ((_lastValuesCount >= 1) ? 0 : -1) :
         ((_lastValuesCount == MAX_LAST_RESULT_DEPTH) ? MAX_LAST_RESULT_DEPTH - 1 : -1);
 
@@ -1123,6 +1122,7 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
     else {
         int stringlen = min(strlen(lastvalue.value.pStringConst), MAX_ALPHA_CONST_LEN);                         // excluding terminating \0
         _lastValuesStringObjectCount++;
+
         lastResultValueFiFo[0].pStringConst = new char[stringlen + 1];
     #if PRINT_HEAP_OBJ_CREA_DEL
         _pDebugOut->print("+++++ (FiFo string) ");   _pDebugOut->println((uint32_t)lastResultValueFiFo[0].pStringConst, HEX);

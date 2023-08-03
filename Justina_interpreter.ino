@@ -34,6 +34,7 @@
 // In this example, we won't bother about system and call back routines, SD memory cards, multiple streams etc.
 // Only purpose is to call the interpreter and verify that it works.
 
+#include <ESP_AT_Lib.h>
 #include "Justina.h"
 
 Stream* pExternal_IO[1]{ &Serial };         // external streams, available for Justina
@@ -51,7 +52,6 @@ long progMemSize = 2000;
 // reader is not present, among others  
 Justina_interpreter justina(pExternal_IO, terminalCount, progMemSize, 0);
 
-
 // -------------------------------
 // *   Arduino setup() routine   *
 // -------------------------------
@@ -59,7 +59,8 @@ Justina_interpreter justina(pExternal_IO, terminalCount, progMemSize, 0);
 void setup() {
     Serial.begin(1000000);
     delay(5000);
-    
+    Serial.println(sizeof(justina));
+
     justina.run();                          // run interpreter
 }
 

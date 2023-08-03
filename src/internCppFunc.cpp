@@ -1256,24 +1256,18 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             // - no function with 'D' (decimal) specifier
             // flag value 16 = pad with zeros 
 
-            bool isIntFmt{ false };
-            int charsPrinted{ 0 };
-
             bool valueToFormatIsString = (argValueType[0] == value_isStringPointer);        // formatting a string value ?
 
-            // make a local copy until all tests done
+            // make a local copy of current settings until all tests done
+            // ----------------------------------------------------------
             int width = _fmt_width;
             int precision = valueToFormatIsString ? _fmt_strCharsToPrint : _fmt_numPrecision;
             char specifier{ valueToFormatIsString ? _fmt_stringSpecifier[0] : _fmt_numSpecifier[0] };
-            int flags = _fmt_formattingFlags;
-
-            bool hasSpecifierArg = false; // init
-            if (suppliedArgCount > 3) { hasSpecifierArg = (!(argIsLongBits & (0x1 << 3)) && !(argIsFloatBits & (0x1 << 3))); }     // third argument is either a specifier (string) or set of flags (number)
+            int flags = valueToFormatIsString ? _fmt_stringFmtFlags : _fmt_numFmtFlags;   ;
 
             // test arguments and ADAPT print width, precision, specifier, flags
             // -----------------------------------------------------------------
-
-            // test width
+            // test and limit width argument
             if (suppliedArgCount > 1) {                                                                                                                 // check width
                 if ((argValueType[1] != value_isLong) && (argValueType[1] != value_isFloat)) { return result_arg_numberExpected; }                              // numeric ?
                 if ((argValueType[1] == value_isLong) ? args[1].longConst < 0 : args[1].floatConst < 0.) { return result_arg_outsideRange; }                       // positive ?
@@ -1282,7 +1276,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             }
 
             // check other arguments
-            if (suppliedArgCount > 2) {                                                                             // do not include value to format and width 
+            if (suppliedArgCount > 2) {                             // skip value to format and width                                                                  
                 execResult_type execResult = checkFmtSpecifiers(false, suppliedArgCount - 2, argValueType + 2, args + 2, specifier, precision, flags);
                 if (execResult != result_execOK) { return execResult; }
             }
@@ -1295,24 +1289,29 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
             // is specifier acceptable for data type ?
             // ---------------------------------------
-            if (valueToFormatIsString != (specifier == 's')) { return result_arg_wrongSpecifierForDataType; }
+            if (valueToFormatIsString != (specifier == 's')) { return result_arg_wrongSpecifierForDataType; }                   // if more string specifiers defined, add them here with 'or' operator
 
-            // prepare format specifier string and format
-            // ------------------------------------------
+            // prepare format string and format
+            // --------------------------------
 
+            int charsPrinted{ 0 };
             char fmtString[20]{};                                                                                                    // long enough to contain all format specifier parts
-            isIntFmt = (specifier == 'X') || (specifier == 'x') || (specifier == 'd');                                                  // for ALL numeric types
-            makeNumericFormatString(flags, isIntFmt, &specifier, fmtString);
+            bool isIntFmt = (specifier == 'X') || (specifier == 'x') || (specifier == 'd');                                                  // for ALL numeric types
+
+            makeFormatString(flags, isIntFmt, &specifier, fmtString);
             printToString(width, precision, valueToFormatIsString, isIntFmt, argValueType, args, fmtString, fcnResult, charsPrinted);
             fcnResultValueType = value_isStringPointer;
 
             _fmt_width = width;
             (valueToFormatIsString ? _fmt_strCharsToPrint : _fmt_numPrecision) = precision;
-            (valueToFormatIsString ? _fmt_stringSpecifier[0] : _fmt_numSpecifier[0]) = specifier;                                                    // string specifier is a constant ("s")
-            _fmt_formattingFlags = flags;
+            (valueToFormatIsString ? _fmt_stringSpecifier[0] : _fmt_numSpecifier[0]) = specifier;
+            (valueToFormatIsString ? _fmt_stringFmtFlags:  _fmt_numFmtFlags) = flags;
 
             // return number of characters printed into (variable) argument if it was supplied
             // -------------------------------------------------------------------------------
+
+            bool hasSpecifierArg = false; // init
+            if (suppliedArgCount > 3) { hasSpecifierArg = (!(argIsLongBits & (0x1 << 3)) && !(argIsFloatBits & (0x1 << 3))); }     // third argument is either a specifier (string) or set of flags (number)
 
             if (suppliedArgCount == (hasSpecifierArg ? 6 : 5)) {      // optional argument returning #chars that were printed is present
                 bool isConstant = (!(argIsVarBits & (0x1 << (suppliedArgCount - 1))) || (_pEvalStackTop->varOrConst.sourceVarScopeAndFlags & var_isConstantVar));
@@ -2088,7 +2087,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 case 5: fcnResult.longConst = _fmt_width; break;
                 case 6: fcnResult.longConst = _fmt_numPrecision; break;
                 case 7: fcnResult.longConst = _fmt_strCharsToPrint; break;
-                case 8: fcnResult.longConst = _fmt_formattingFlags; break;
+                case 8: fcnResult.longConst = _fmt_numFmtFlags; break;
 
                 case 4:
                 case 9:

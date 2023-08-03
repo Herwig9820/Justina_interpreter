@@ -138,7 +138,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     // settings
     // --------
     {"dispWidth",       cmdcod_dispwidth,       cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_104,     cmdBlockNone},
-    {"dispFmt",         cmdcod_dispfmt,         cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
+    {"floatFmt",        cmdcod_floatfmt,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
     {"intFmt",          cmdcod_intfmt,          cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_112,     cmdBlockNone},
     {"dispMode",        cmdcod_dispmod,         cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_105,     cmdBlockNone},
     {"tabSize",         cmdcod_tabSize,         cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_104,     cmdBlockNone},
@@ -588,7 +588,6 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
     // particular stream is a TCP stream ? Retrigger TCP keep alive timer at each character read (communicated to Justina via application flags)
     int TCP_externIOStreamIndex = ((_justinaConstraints & 0xf0) >> 4) - 1;
     _pTCPstream = (TCP_externIOStreamIndex == -1) ? nullptr : _pExternIOstreams[TCP_externIOStreamIndex];
-
     initInterpreterVariables(true);
 };
 
@@ -670,6 +669,7 @@ void Justina_interpreter::setUserCppCommandsEntryPoint(const CppVoidFunction* co
     _pExtCppFunctions[6] = (CppVoidFunction*)pCppVoidFunctions;
     _ExtCppFunctionCounts[6] = cppVoidFunctionCount;
 };
+
 // ----------------------------
 // *   interpreter main loop   *
 // ----------------------------
@@ -1565,7 +1565,6 @@ void Justina_interpreter::initInterpreterVariables(bool fullReset) {
     // initialize format settings for numbers and strings (width, characters to print, flags, ...)
     // -------------------------------------------------------------------------------------------
 
-    // calculation result print format
     _dispIsIntFmt = false;
 
     _dispWidth = DEFAULT_DISP_WIDTH;
@@ -1582,11 +1581,10 @@ void Justina_interpreter::initInterpreterVariables(bool fullReset) {
     _dispIntegerFmtFlags = DEFAULT_INT_FLAGS;
     _dispStringFmtFlags = DEFAULT_STR_FLAGS;
 
-    makeNumericFormatString(_dispFloatFmtFlags, false, _dispFloatSpecifier, _dispFloatFmtString);               // for floats
-    makeNumericFormatString(_dispIntegerFmtFlags, true, _dispIntegerSpecifier, _dispIntegerFmtString);           // for integers
-    strcpy(_dispStringFmtString, "%*.*s%n");                                                                    // for strings
-    ////printf(_dispStringFmtString, "%%*.*%%%s%%n", _dispStringSpecifier);                                           // for strings
-
+    makeFormatString(_dispIntegerFmtFlags, true, _dispIntegerSpecifier, _dispIntegerFmtString);           // for integers
+    makeFormatString(_dispFloatFmtFlags, false, _dispFloatSpecifier, _dispFloatFmtString);               // for floats
+    makeFormatString(_dispStringFmtFlags, false, _dispStringSpecifier, _dispStringFmtString);               // for strings
+    
     // fmt() function settings 
     // -----------------------
     _fmt_width = DEFAULT_FMT_WIDTH;                             // width
@@ -1597,7 +1595,8 @@ void Justina_interpreter::initInterpreterVariables(bool fullReset) {
     strcpy(_fmt_numSpecifier, DEFAULT_FLOAT_SPECIFIER);         // specifier   
     strcpy(_fmt_stringSpecifier, DEFAULT_STR_SPECIFIER);
 
-    _fmt_formattingFlags = DEFAULT_FLOAT_FLAGS;             // flags
+    _fmt_numFmtFlags = DEFAULT_FLOAT_FLAGS;             // flags
+    _fmt_stringFmtFlags = DEFAULT_STR_FLAGS;             // flags
 
 
     // display output settings
@@ -1699,12 +1698,12 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
                 #endif
                     isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
                     delete[]  varValues[index].pStringConst;
-                }
+        }
             }
         }
         index++;
-            }
-        }
+    }
+}
 
 
 // --------------------------------------------------------------------
@@ -1757,8 +1756,8 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
             (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*prgmCnt.pTokenChars >> 4) & 0x0F;
         prgmCnt.pTokenChars += tokenLength;
         tokenType = *prgmCnt.pTokenChars & 0x0F;
-            }
         }
+    }
 
 
 // ---------------------------------------------------------------------------------
