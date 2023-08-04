@@ -1226,35 +1226,40 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
         break;
 
 
-        // -----------------------------------------
-        // format a number or a string into a string
-        // -----------------------------------------
+        // ---------------------------------------------------
+        // format a number or a string into a formatted string
+        // ---------------------------------------------------
 
         case fnccod_format:
         {
             // fmt (expression [, width [, precision [, specifier]  [, flags  [, character count] ] ] ]
 
-            // mandatory argument 1: value to be formatted
-            // optional arguments 2-5: width, precision, [specifier (F:fixed, E:scientific, G:general, D: long integer, X:hex)], flags, characters printed (return value)
+            // mandatory argument 1: value to be formatted (any type)
+            // optional arguments 2-5: width, precision, specifier, flags, characters printed (return value)
             // note that specifier argument can be left out, flags argument taking its place
-            // behaviour corresponds to c++ printf, sprintf, ..., result is a formatted string
+            // behaviour corresponds to c++ printf, sprintf, ...
+
+            // precision
+            // (1) if expression is numeric (any type)
+            //     - 'f', 'e' or 'E' specifier: number of digits printed after the decimal point 
+            //     - 'g' or 'G' specifier: MAXIMUM number of significant digits to be printed 
+            //     - 'd', 'x' and 'X': MINIMUM number of digits to be written, if the integer is shorter, it will be padded with leading zeros (non-integer values will be converted to integers for printing)
+            // (2) if expression is a string: precision is interpreted as the maximum number of characters to print
+            
+            // specifier (optional parameter): specifies the format of the value printed
+            // (1) if expression is numeric (any type): specifiers 'f', 'e', 'E', 'g', 'G', 'd', 'x' and 'X' are allowed
+            //     =>  'f': fixed point, 'e' or 'E': scientific, 'g' ot 'G': shortest notation (fixed or scientific). 'E' or 'G': exponent character printed in capitals    
+            //     =>  'd' signed integer, 'x' or 'X': unsigned hexadecimal integer. 'X': hex number is printed in capitals
+            // (2) if expression is a string, if not omitted, the specifier needs to be 's' (string)
+             
+            // depending on the specifier, the value to be printed will first be converted to the correct type (integer or float)
+
+            // flags (optional parameter): 
+            // value 0x1 = left justify within print field, 0x2 = force sign, 0x4 = insert a space if no sign, 0x8: (1) floating point numbers: ALWAYS add a decimal point, even if no digits follow...
+            // ...(2) integers:  precede non-zero numbers with '0x' or '0X' if printed in hexadecimal format, value 0x10 = pad with zeros within print field
 
             // width, precision, specifier and flags are used as defaults for next calls to this function, if they are not provided again
-            // if the value to be formatted is a string, the precision argument is interpreted as 'maximum characters to print', otherwise it indicates numeric precision (both values retained seperately)
-            // the specifier is only relevant for formatting numbers (ignored for formatting strings), but can be set while formatting a string
-
-            // numeric precision: function depends on the specifier:
-            // - with specifiers 'D'and 'X': specifies the minimum number of digits to be written. Shorter values are padded with leading zeros. Longer values are not truncated. 
-            //   If the precision is zero, a zero value will not be printed.
-            // - with 'E' and 'F' specifiers: minimum number of decimals to be printed after the decimal point
-            // - with 'G' specifier: maximum number of significant digits to be printed
-
-            // flags: value 1 = left justify, 2 = force sign, 4 = insert a space if no sign
-            // flag value 8: the use depends on the precision specifier:
-            // - used with 'F', 'E', 'G' specifiers: always add a decimal point, even if no digits follow 
-            // - used with 'X' (hex) specifier: precede non-zero numbers with '0x'
-            // - no function with 'D' (decimal) specifier
-            // flag value 16 = pad with zeros 
+            
 
             bool valueToFormatIsString = (argValueType[0] == value_isStringPointer);        // formatting a string value ?
 

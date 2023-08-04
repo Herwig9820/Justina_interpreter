@@ -34,21 +34,23 @@
 // In this example, we won't bother about system and call back routines, SD memory cards, multiple streams etc.
 // Only purpose is to call the interpreter and verify that it works.
 
+#include <ESP_AT_Lib.h>
 #include "Justina.h"
 
-Stream* pExternal_IO[1]{ &Serial };                                     // external streams, available for Justina
-constexpr int terminalCount{ 1 };                                       // only one
+Stream* pExternal_IO[1]{ &Serial };         // external streams, available for Justina
+constexpr int terminalCount{ 1 };           // only one
 
-// progMemSize defines the size of Justina program memory in bytes, which depends on the available RAM 
+// progMemSize defines the size of Justina program memory in bytes,...
+// ...which depends on the available RAM 
 #if defined (ARDUINO_ARCH_RP2040)
 long progMemSize = pow(2, 16);
-#elif defined (ARDUINO_ARCH_SAMD)
-long progMemSize = 2000;
 #else
-#error Justina library does not support boards with this processor.
+long progMemSize = 2000;
 #endif 
 
-
+// create Justina_interpreter object. The last argument informs Justina that an SD card
+// reader is not present, among others  
+Justina_interpreter justina(pExternal_IO, terminalCount, progMemSize, 0);
 
 // -------------------------------
 // *   Arduino setup() routine   *
@@ -57,15 +59,9 @@ long progMemSize = 2000;
 void setup() {
     Serial.begin(1000000);
     delay(5000);
-    Serial.println("Launching Justina interpreter\r\n");
+    Serial.println(sizeof(justina));
 
-    // create Justina_interpreter object. The last argument informs Justina that an SD card reader is not present, among others  
-    Justina_interpreter justina(pExternal_IO, terminalCount, progMemSize, 0);       
-    
-    justina.run();                                                                  // run interpreter
-    
-    // note that the Justina object is still in memory upon return, but for this example this is OK
-    Serial.println("Returned from Justina interpreter\r\n");                        // returning when quitting Justina
+    justina.run();                          // run interpreter
 }
 
 

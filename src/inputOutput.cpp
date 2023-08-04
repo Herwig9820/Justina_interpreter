@@ -983,6 +983,9 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
     char floatFmtStr[10] = "%#.*";                                                                                          // '#' flag: always a decimal point
     strcat(floatFmtStr, _dispFloatSpecifier);
 
+    // multiple instructions: only during debugging
+    int outputStream = (_parsingExecutingTraceString || multipleInstructions)  ? _debug_sourceStreamNumber : 0;
+
     while (tokenType != tok_no_token) {                                                                                     // for all tokens in token list
         int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) :
             (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*progCnt.pTokenChars >> 4) & 0x0F;
@@ -1152,11 +1155,11 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
         int tokenSourceLength = strlen(pPrettyToken);
         if (isSemicolon) {
             if (multipleInstructions && isFirstInstruction) { pPrettyToken[1] = '\0'; }     // no space after semicolon
-            if ((nextTokenType != tok_no_token) && (allInstructions || (instructionCount > 1))) { printTo(0, pPrettyToken); }
-            if (isFirstInstruction && multipleInstructions) { printTo(0, "]   ( ==>> "); }
+            if ((nextTokenType != tok_no_token) && (allInstructions || (instructionCount > 1))) { printTo(outputStream, pPrettyToken); }
+            if (isFirstInstruction && multipleInstructions) { printTo(outputStream, "]   ( ==>> "); }
         }
 
-        else { printTo(0, pPrettyToken); }                                                  // not a semicolon
+        else { printTo(outputStream, pPrettyToken); }                                                  // not a semicolon
 
         // if printing a fixed number of instructions, return output error position based on token where execution error was produced
         if (!allInstructions) {
@@ -1185,7 +1188,7 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
     }
 
     // exit
-    printTo(0, multipleInstructions ? " ...)\r\n" : allInstructions ? "" : "\r\n"); _lastPrintedIsPrompt = false;
+    printTo(outputStream, multipleInstructions ? " ...)\r\n" : allInstructions ? "" : "\r\n"); _lastPrintedIsPrompt = false;
 }
 
 

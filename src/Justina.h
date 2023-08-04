@@ -1566,8 +1566,6 @@ private:
     // display settings (last values, command line echo, tracing, print commands
     // -------------------------------------------------------------------------
 
-    bool _dispIsIntFmt{ false };                                                    // initialized during reset    //// check nodig      
-    
     int _dispWidth = DEFAULT_DISP_WIDTH;
 
     int _dispFloatPrecision = DEFAULT_FLOAT_PRECISION;

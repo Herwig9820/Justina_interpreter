@@ -1195,16 +1195,16 @@ void Justina_interpreter::traceAndPrintDebugInfo() {
     pDeepestOpenFunction = (OpenFunctionData*)pFlowCtrlStackLvl;                                                // deepest level of nested functions
     nextStatementPointer = pDeepestOpenFunction->pNextStep;
 
-    printlnTo(0); for (int i = 1; i <= _dispWidth; i++) { printTo(0, "-"); } printlnTo(0);
+    printlnTo(_debug_sourceStreamNumber); for (int i = 1; i <= _dispWidth; i++) { printTo(_debug_sourceStreamNumber, "-"); } printlnTo(_debug_sourceStreamNumber);
     parseAndExecTraceString();                                                                                  // trace string may not contain keywords, Justina functions, generic names
     char msg[150] = "";
     sprintf(msg, "DEBUG ==>> NEXT [%s: ", JustinaFunctionNames[pDeepestOpenFunction->functionIndex]);
-    printTo(0, msg);
+    printTo(_debug_sourceStreamNumber, msg);
     prettyPrintStatements(10, nextStatementPointer);
 
     if (_openDebugLevels > 1) {
         sprintf(msg, "*** this + %d other programs STOPPED ***", _openDebugLevels - 1);
-        printlnTo(0, msg);
+        printlnTo(_debug_sourceStreamNumber, msg);
     }
 }
 
@@ -1228,7 +1228,7 @@ void Justina_interpreter::parseAndExecTraceString() {
     char* pTraceParsingInput = _pTraceString;                                                                   // copy pointer to start of trace string
     _parsingExecutingTraceString = true;
 
-    printTo(0, "TRACE ==>> ");
+    printTo(_debug_sourceStreamNumber, "TRACE ==>> ");
     do {
         // init
         *(_programStorage + _progMemorySize) = tok_no_token;                                                    // in case no valid tokens will be stored
@@ -1239,22 +1239,22 @@ void Justina_interpreter::parseAndExecTraceString() {
         if (*pTraceParsingInput == '\0') { break; }                                                             // could occur if semicolons skipped
 
         // parse ONE trace string expression only
-        if (valuePrinted) { printTo(0, ", "); }                                                                 // separate values (if more than one)
+        if (valuePrinted) { printTo(_debug_sourceStreamNumber, ", "); }                                                                 // separate values (if more than one)
 
         // note: application flags are not adapted (would not be passed to caller immediately)
         int dummy{};
         parseTokenResult_type result = parseStatement(pTraceParsingInput, pNextParseStatement, dummy);
         if (result == result_tokenFound) {
             // do NOT pretty print if parsing error, to avoid bad-looking partially printed statements (even if there will be an execution error later)
-            prettyPrintStatements(0);
-            printTo(0, ": ");                                                                                   // resulting value will follow
+            prettyPrintStatements(0);  
+            printTo(_debug_sourceStreamNumber, ": ");                                                                                   // resulting value will follow
             pTraceParsingInput = pNextParseStatement;
         }
         else {
             char  errStr[12];                                                                                   // includes place for terminating '\0'
             // if parsing error, print error instead of value AND CONTINUE with next trace expression (if any)
             sprintf(errStr, "<ErrP%d>", (int)result);
-            printTo(0, errStr);
+            printTo(_debug_sourceStreamNumber, errStr);
             // pNextParseStatement not yet correctly positioned: set to next statement
             while ((pTraceParsingInput[0] != term_semicolon[0]) && (pTraceParsingInput[0] != '\0')) { ++pTraceParsingInput; }
             if (pTraceParsingInput[0] == term_semicolon[0]) { ++pTraceParsingInput; }
@@ -1275,7 +1275,7 @@ void Justina_interpreter::parseAndExecTraceString() {
     } while (*pTraceParsingInput != '\0');                                                                      // exit loop if all expressions handled
 
     _parsingExecutingTraceString = false;
-    println(0);       // go to next output line
+    printlnTo(_debug_sourceStreamNumber);       // go to next output line
 
     return;
 }
@@ -1564,8 +1564,6 @@ void Justina_interpreter::initInterpreterVariables(bool fullReset) {
 
     // initialize format settings for numbers and strings (width, characters to print, flags, ...)
     // -------------------------------------------------------------------------------------------
-
-    _dispIsIntFmt = false;
 
     _dispWidth = DEFAULT_DISP_WIDTH;
 

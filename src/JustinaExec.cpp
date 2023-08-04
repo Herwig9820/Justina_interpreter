@@ -30,7 +30,7 @@
 
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 0
+#define PRINT_HEAP_OBJ_CREA_DEL 1
 #define PRINT_PROCESSED_TOKEN 0
 #define PRINT_DEBUG_INFO 0
 #define PRINT_PARSED_STAT_STACK 0
@@ -51,7 +51,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
     _pDebugOut->print("\r\n*** enter exec: eval stack depth: "); _pDebugOut->println(evalStack.getElementCount());
 #endif
     // init
-
     _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_executing;     // status 'executing'
 
     int tokenType = *startHere & 0x0F;
@@ -818,9 +817,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             int charsPrinted{  };                                                                                                   // required but not used
             Val toPrint;
             char* fmtString = isLong ? _dispIntegerFmtString : isFloat ? _dispFloatFmtString : _dispStringFmtString;
-
-            ////Serial.print("last result - format string: "); Serial.print(fmtString); Serial.print(", precision: "); Serial.println(_dispFloatPrecision);////
-
             printToString(_dispWidth, isLong ? _dispIntegerPrecision : isFloat ? _dispFloatPrecision : MAX_STRCHAR_TO_PRINT,
                 (!isLong && !isFloat), isLong, lastResultTypeFiFo, lastResultValueFiFo, fmtString, toPrint, charsPrinted, (_printLastResult == 2));
             printlnTo(0, toPrint.pStringConst);
@@ -879,11 +875,11 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             char valueType = isVar ? (*_pEvalStackTop->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackTop->varOrConst.valueType;
             bool isLong = (valueType == value_isLong);
             bool isFloat = (valueType == value_isFloat);
-            char* fmtString = (isLong || isFloat) ? _dispFloatFmtString : _dispStringFmtString;
+            char* fmtString = isLong ? _dispIntegerFmtString : isFloat ? _dispFloatFmtString : _dispStringFmtString;
             // printToString() expects long, float or char*: remove extra level of indirection (variables only)
             value.floatConst = isVar ? *_pEvalStackTop->varOrConst.value.pFloatConst : _pEvalStackTop->varOrConst.value.floatConst; // works for long and string as well
-            printToString(0, (isLong || isFloat) ? _dispFloatPrecision : MAX_STRCHAR_TO_PRINT,
-                (!isLong && !isFloat), _dispIsIntFmt, &valueType, &value, fmtString, toPrint, charsPrinted);
+            printToString(0, isLong ? _dispIntegerPrecision : isFloat ? _dispFloatPrecision : MAX_STRCHAR_TO_PRINT,
+                (!isLong && !isFloat), isLong, &valueType, &value, fmtString, toPrint, charsPrinted);
         }
         else {
             char valTyp = value_isStringPointer;
@@ -894,9 +890,9 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             printToString(0, MAX_STRCHAR_TO_PRINT, true, false, &valTyp, &temp, _dispStringFmtString, toPrint, charsPrinted);
         }
 
-        if (toPrint.pStringConst == nullptr) { printlnTo(0); }
+        if (toPrint.pStringConst == nullptr) { printlnTo(_debug_sourceStreamNumber); }
         else {
-            printTo(0, toPrint.pStringConst);
+            printTo(_debug_sourceStreamNumber, toPrint.pStringConst);
         #if PRINT_HEAP_OBJ_CREA_DEL
             _pDebugOut->print("----- (Intermd str) "); _pDebugOut->println((uint32_t)toPrint.pStringConst, HEX);
         #endif
@@ -927,7 +923,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
     _pDebugOut->println("**** returning to main");
 #endif
     _activeFunctionData.pNextStep = _programStorage + _progMemorySize;                                                              // only to signal 'immediate mode command level'
-
     return execResult;                                                                                                              // return result, in case it's needed by caller
 };
 
