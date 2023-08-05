@@ -33,7 +33,6 @@
 // --------
 
 #include "Justina.h"
-#include <avr/dtostrf.h>            //// nodig voor arm ?   
 
 #if withTCP
 #include "secrets.h"
@@ -348,7 +347,7 @@ void execAction(char c) {
                 // inform Justina about the location of the information stored about the user-defined (external) cpp functions and commands
 
                 // if no entries of a specific category, comment out the specific entry (below), OR provide an empty record for that category, like this: {"", nullptr, 0, 0}
-                
+
                 pJustina->setUserBoolCppFunctionsEntryPoint(cppBoolFunctions, sizeof(cppBoolFunctions) / sizeof(cppBoolFunctions[0]));
                 pJustina->setUserCharCppFunctionsEntryPoint(cppCharFunctions, sizeof(cppCharFunctions) / sizeof(cppCharFunctions[0]));
                 pJustina->setUserIntCppFunctionsEntryPoint(cppIntFunctions, sizeof(cppIntFunctions) / sizeof(cppIntFunctions[0]));

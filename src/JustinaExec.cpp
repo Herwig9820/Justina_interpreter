@@ -31,9 +31,9 @@
 #include "Justina.h"
 
 #define PRINT_HEAP_OBJ_CREA_DEL 1
-#define PRINT_PROCESSED_TOKEN 0
+#define PRINT_PROCESSED_TOKEN 1
 #define PRINT_DEBUG_INFO 0
-#define PRINT_PARSED_STAT_STACK 0
+#define PRINT_PARSED_STAT_STACK 1
 #define PRINT_OBJECT_COUNT_ERRORS 0
 
 
@@ -2798,6 +2798,11 @@ void Justina_interpreter::pushVariable(int& tokenType) {                        
         _pEvalStackTop->varOrConst.sourceVarScopeAndFlags);
     _pEvalStackTop->varOrConst.value.pBaseValue = varAddress;                                                               // base address of variable
     _pEvalStackTop->varOrConst.valueAttributes = 0;                                                                         // init
+
+    Serial.print("\r\n**** PUSH ** stack element address: "); Serial.println((uint32_t)_pEvalStackTop, HEX);
+    Serial.print("     variable address: "); Serial.println((uint32_t)varAddress, HEX);
+    Serial.print("     variable value: "); Serial.println(*(long*)varAddress);
+    Serial.print("     push variable: value is "); Serial.println(*_pEvalStackTop->varOrConst.value.pLongConst);
 }
 
 

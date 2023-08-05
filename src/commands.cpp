@@ -30,7 +30,7 @@
 
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 0
+#define PRINT_HEAP_OBJ_CREA_DEL 1
 #define PRINT_DEBUG_INFO 0
 #define PRINT_PARSED_STAT_STACK 0
 
@@ -1039,6 +1039,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
                 // next line is valid for values of all types (same memory locations are copied)
                 operand.floatConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pFloatConst) : pStackLvl->varOrConst.value.floatConst);
+
+                Serial.print("\r\n**** COUT ** stack element address: "); Serial.println((uint32_t)pStackLvl, HEX);
+                if (operandIsVar){Serial.print("      value is "); Serial.println(*_pEvalStackTop->varOrConst.value.pLongConst);}
 
                 // print to stream or variable: first argument is stream number or receiving variable
                 if (i < firstValueIndex) {                                                                                  // cout, .... have an implicit stream: skip
