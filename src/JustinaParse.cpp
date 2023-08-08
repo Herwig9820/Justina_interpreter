@@ -30,8 +30,8 @@
 
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 1
-#define printParsedTokens 1
+#define PRINT_HEAP_OBJ_CREA_DEL 0
+#define printParsedTokens 0
 #define PRINT_DEBUG_INFO 0
 #define PRINT_OBJECT_COUNT_ERRORS 0
 
@@ -1209,7 +1209,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                 }
             }
 
-            if (_isProgramCmd || _isDeleteVarCmd ) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+            if (_isProgramCmd || _isDeleteVarCmd) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
 
 
             // 1.b Find out if the provided operator type (prefix, infix or postfix) is allowed 
@@ -1577,8 +1577,8 @@ bool Justina_interpreter::parseAsJustinaFunction(char*& pNext, parseTokenResult_
         // if function will define local variables, although storage area is dynamic, this is needed while in debugging (only)
         justinaFunctionData[index].localVarNameRefs_startIndex = _localVarCount;
 
-        _pParsingStack->openBlock.fcnBlock_functionIndex = index;                                                       // store in BLOCK stack level: only if function def
-
+        _pFunctionDefStack = _pParsingStack;                                                                            // stack level for FUNCTION definition block
+        _pFunctionDefStack->openBlock.fcnBlock_functionIndex = index;                                                   // store in BLOCK stack level: only if function def
     }
 
     // if function was defined prior to this occurence (which is then a call), retrieve min & max allowed arguments for checking actual argument count
@@ -1812,7 +1812,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 _staticVarCount++;
 
                 // Justina function index: in parsing stack level for FUNCTION definition command
-                int fcnIndex = _pParsingStack->openBlock.fcnBlock_functionIndex;
+                int fcnIndex = _pFunctionDefStack->openBlock.fcnBlock_functionIndex;
                 justinaFunctionData[fcnIndex].staticVarCountInFunction = _staticVarCountInFunction;
             }
 
@@ -1836,7 +1836,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                 _localVarCount++;
 
                 // Justina function index: in stack level for FUNCTION definition command
-                int fcnIndex = _pParsingStack->openBlock.fcnBlock_functionIndex;
+                int fcnIndex = _pFunctionDefStack->openBlock.fcnBlock_functionIndex;
                 justinaFunctionData[fcnIndex].localVarCountInFunction = _localVarCountInFunction;                       // after incrementing count
                 if (_isJustinaFunctionCmd) { justinaFunctionData[fcnIndex].paramOnlyCountInFunction = _paramOnlyCountInFunction; }
             }

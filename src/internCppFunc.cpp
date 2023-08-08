@@ -30,7 +30,7 @@
 
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 1
+#define PRINT_HEAP_OBJ_CREA_DEL 0
 
 
 // *****************************************************************
@@ -59,7 +59,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
     // next, control is passed to the specific Justina function (switch statement below).
 
     // when the Justina function terminates, arguments are removed from the evaluation stack and the function result is pushed on the stack (at the end of the current procedure)...
-    // ;;;as an intermediate constant (long, float, pointer to string).
+    // ...as an intermediate constant (long, float, pointer to string).
     // if the result is a non-empty string, a new string is created on the heap (Justina convention: empty strings are represented by a null pointer to conserve memory).
 
     // IMPORTANT: at any time, when an error occurs, a RETURN <error code> statement can be called, BUT FIRST all 'intermediate character strings' which are NOT referenced 

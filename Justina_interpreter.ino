@@ -153,7 +153,7 @@ Justina_interpreter::CppFloatFunction const cppFloatFunctions[]{
 };
 
 Justina_interpreter::Cpp_pCharFunction const cpp_pCharFunctions[]{
-    {"return_pChar",userFcn_return_pChar, 0, 0}
+    {"return_pChar",userFcn_return_pChar, 1, 1}
 };
 
 // cpp procedures not returning a function result: a zero will be returned to Justina 
@@ -348,7 +348,7 @@ void execAction(char c) {
                 // inform Justina about the location of the information stored about the user-defined (external) cpp functions and commands
 
                 // if no entries of a specific category, comment out the specific entry (below), OR provide an empty record for that category, like this: {"", nullptr, 0, 0}
-                
+
                 pJustina->setUserBoolCppFunctionsEntryPoint(cppBoolFunctions, sizeof(cppBoolFunctions) / sizeof(cppBoolFunctions[0]));
                 pJustina->setUserCharCppFunctionsEntryPoint(cppCharFunctions, sizeof(cppCharFunctions) / sizeof(cppCharFunctions[0]));
                 pJustina->setUserIntCppFunctionsEntryPoint(cppIntFunctions, sizeof(cppIntFunctions) / sizeof(cppIntFunctions[0]));
@@ -357,12 +357,6 @@ void execAction(char c) {
                 pJustina->setUser_pCharCppFunctionsEntryPoint(cpp_pCharFunctions, sizeof(cpp_pCharFunctions) / sizeof(cpp_pCharFunctions[0]));
                 pJustina->setUserCppCommandsEntryPoint(cppVoidFunctions, sizeof(cppVoidFunctions) / sizeof(cppVoidFunctions[0]));
                 // >>> ---------------------------------------------------------------------------------------------
-                
-                /* 
-                pJustina->setUserFcnCallback((&userFcn_readPort));                // pass user function addresses to Justina_interpreter library (return value 'true' indicates success)
-                pJustina->setUserFcnCallback((&userFcn_writePort));
-                pJustina->setUserFcnCallback((&userFcn_togglePort));
-                */
             }
             interpreterInMemory = pJustina->run();                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
 
@@ -676,7 +670,7 @@ void userFcn_readPort(const void** pdata, const char* valueType, const int argCo
 // --------------------------------------
 
 void userFcn_writePort(const void** pdata, const char* valueType, const int argCount, int& execError) {
-    pAlternativeIO[0]->println("*** Justina was here too ***");
+    pAlternativeIO[0]->println("*** Justina was here ***");
     // do your thing here
 };
 
@@ -698,7 +692,6 @@ int userFcn_returnInt(const void** pdata, const char* valueType, const int argCo
 
 long userFcn_returnLong(const void** pdata, const char* valueType, const int argCount, int& execError) { return (*(long*)pdata[0]) * 10; }
 
-
 long userFcn_returnLong_2(const void** pdata, const char* valueType, const int argCount, int& execError) { return 456; }
 
 float userFcn_returnFloat(const void** pdata, const char* valueType, const int argCount, int& execError) {
@@ -711,21 +704,23 @@ float userFcn_returnFloat(const void** pdata, const char* valueType, const int a
 }
 
 char* userFcn_return_pChar(const void** pdata, const char* valueType, const int argCount, int& execError) {
-    bool isNonEmptyString = ((((char*)pdata)[0]) != '0') && (valueType[0] == Justina_interpreter::value_isStringPointer);
-    if (isNonEmptyString) {
-        char* pText = ((char**)(pdata))[0];
 
-        Serial.print("in routine  test4: string is "); Serial.println(pText);
-        Serial.print("               char[0] =  is "); Serial.println(pText[0]);
-        Serial.print("               char[1] =  is "); Serial.println((pText[1]));
+    if ((valueType[0] & Justina_interpreter::value_typeMask) != Justina_interpreter::value_isStringPointer) { Serial.println("user function: wrong value type"); return ""; }
 
-        pText[0] = 'Y';
-        pText[1] = 'Z';
-        Serial.print("               char[0] =  is "); Serial.println(pText[0]);
-        Serial.print("               char[1] =  is "); Serial.println(pText[1]);
-        return  (char*)pdata[0];
+    char* pText = ((char**)(pdata))[0];
+    if (strlen(pText) < 3) { Serial.println("user function: string too short"); return ""; }
+
+    Serial.print("in routine  test4: string is "); Serial.println(pText);
+    Serial.print("               char[0] =  is "); Serial.println(pText[0]);
+    Serial.print("               char[1] =  is "); Serial.println((pText[1]));
+
+    pText[0] = 'Y';
+    pText[1] = 'Z';
+    Serial.print("               char[0] changed to "); Serial.println(pText[0]);
+    Serial.print("               char[1] changed to "); Serial.println(pText[1]);
+    
+    bool isVariable = (valueType[0] & 0x80);                                        // bit b7: '1' indicates 'variable', '0' means 'constant'
+
+    return ((char**)(pdata))[0];
     }
-    else { return nullptr; }
-}
-
-// >>> --------------------------------------------------------------------------------------------------------------------
+    // >>> --------------------------------------------------------------------------------------------------------------------

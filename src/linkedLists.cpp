@@ -31,7 +31,7 @@
 #include "Justina.h"
 
 
-#define PRINT_LLIST_OBJ_CREA_DEL 1
+#define PRINT_LLIST_OBJ_CREA_DEL 0
 
 
 // *****************************************************************
@@ -109,7 +109,7 @@ char* LinkedList::appendListElement(int size) {
         (*_ppDebugOutStream)->print(", list elem address: "); (*_ppDebugOutStream)->println((uint32_t)p, HEX);
     }
 #endif
-    return (char*)(p + 1);                                                                          // pointer to payload of newly created element
+    return (char*)(p + 1);                                                                          // move pointer 1 list element header length: point to payload of newly created element
 }
 
 
@@ -151,7 +151,8 @@ char* LinkedList::deleteListElement(void* pPayload) {                           
     delete[]pElem;
 
     if (p == nullptr) { return nullptr; }
-    else { return (char*)(p + 1); }                                                                 // pointer to payload of next element in list, or nullptr if last element deleted
+    // move pointer 1 list element header length: point to payload of next element in list (or nullptr if last element deleted)
+    else { return (char*)(p + 1); }                                                                 
 }
 
 

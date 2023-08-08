@@ -30,7 +30,7 @@
 
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 1
+#define PRINT_HEAP_OBJ_CREA_DEL 0
 #define PRINT_DEBUG_INFO 0
 #define PRINT_OBJECT_COUNT_ERRORS 0
 
@@ -318,6 +318,7 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     {"fmt",                     fnccod_format,                  1,6,    0b0},               // short label for 'system value'
     {"sysval",                  fnccod_sysVal,                  1,1,    0b0},
 
+    // input and output functions
     { "cin",                     fnccod_cin,                    0,2,    0b0 },
     { "cinLine",                 fnccod_cinLine,                0,0,    0b0 },
     { "cinList",                 fnccod_cinParseList,           1,16,   0b0 },
