@@ -34,7 +34,7 @@
 #include "Arduino.h"
 #include <SD.h>
 #include <SPI.h>
-#include <avr/dtostrf.h>        
+//#include <avr/dtostrf.h>        
 
 #define J_productName "Justina: JUST an INterpreter for Arduino"
 #define J_legalCopyright "Copyright (C) Herwig Taveirne 2021, 2023"
@@ -1419,9 +1419,6 @@ private:
 
     LinkedList parsingStack;                                        // during parsing: parsing stack keeps track of open parentheses and open blocks
     LE_parsingStack* _pParsingStack;                                // stack used during parsing to keep track of open blocks (e.g. for...end) , functions, open parentheses
-    
-    LE_parsingStack* _pFunctionDefStack;////
-
     int _blockLevel = 0;                                            // current number of open block commands (during parsing) - block level + parenthesis level = parsing stack depth
     int _parenthesisLevel = 0;                                      // current number of open parentheses (during parsing)
 
@@ -1569,6 +1566,8 @@ private:
     // display settings (last values, command line echo, tracing, print commands
     // -------------------------------------------------------------------------
 
+    bool _dispIsIntFmt{ false };                                                    // initialized during reset    //// check nodig      
+    
     int _dispWidth = DEFAULT_DISP_WIDTH;
 
     int _dispFloatPrecision = DEFAULT_FLOAT_PRECISION;

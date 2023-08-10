@@ -966,7 +966,7 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
     progCnt.pTokenChars = (startToken == nullptr) ? _programStorage + _progMemorySize : startToken;
     int tokenType = *progCnt.pTokenChars & 0x0F;
     int lastTokenType = tok_no_token;
-    bool lastHasTrailingSpace = false, testForPostfix = false, testForPrefix = false;
+    bool lastHasTrailingSpace = true, testForPostfix = false, testForPrefix = false;
     bool lastWasPostfixOperator = false, lastWasInfixOperator = false;
 
     bool allInstructions = (instructionCount == 0);
@@ -978,8 +978,13 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
     const int maxOutputLength{ 200 };
     int outputLength = 0;                                                                                                   // init: first position
 
-    char floatFmtStr[10] = "%#.*";
+    char intFormatStr[10]= "%#l";                                                                                           // '#' flag: always precede hex values with 0x
+    strcat(intFormatStr, _dispIntegerSpecifier);
+    char floatFmtStr[10] = "%#.*";                                                                                          // '#' flag: always a decimal point
     strcat(floatFmtStr, _dispFloatSpecifier);
+
+    // multiple instructions: only during debugging
+    int outputStream = (_parsingExecutingTraceString || multipleInstructions)  ? _debug_sourceStreamNumber : 0;
 
     while (tokenType != tok_no_token) {                                                                                     // for all tokens in token list
         int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) :
@@ -1049,7 +1054,7 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
                 if (isLongConst) {
                     long  l;
                     memcpy(&l, progCnt.pCstToken->cstValue.longConst, sizeof(l));           // pointer not necessarily aligned with word size: copy memory instead
-                    sprintf(prettyToken, "%ld", l);                                         // integers always displayed without exponent
+                    sprintf(prettyToken, intFormatStr, l);                                         // integers always displayed without exponent
                     testNextForPostfix = true;
                     break;   // and quit switch
                 }
@@ -1150,11 +1155,11 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
         int tokenSourceLength = strlen(pPrettyToken);
         if (isSemicolon) {
             if (multipleInstructions && isFirstInstruction) { pPrettyToken[1] = '\0'; }     // no space after semicolon
-            if ((nextTokenType != tok_no_token) && (allInstructions || (instructionCount > 1))) { printTo(0, pPrettyToken); }
-            if (isFirstInstruction && multipleInstructions) { printTo(0, "]   ( ==>> "); }
+            if ((nextTokenType != tok_no_token) && (allInstructions || (instructionCount > 1))) { printTo(outputStream, pPrettyToken); }
+            if (isFirstInstruction && multipleInstructions) { printTo(outputStream, "]   ( ==>> "); }
         }
 
-        else { printTo(0, pPrettyToken); }                                                  // not a semicolon
+        else { printTo(outputStream, pPrettyToken); }                                                  // not a semicolon
 
         // if printing a fixed number of instructions, return output error position based on token where execution error was produced
         if (!allInstructions) {
@@ -1183,7 +1188,7 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
     }
 
     // exit
-    printTo(0, multipleInstructions ? " ...)\r\n" : allInstructions ? "" : "\r\n"); _lastPrintedIsPrompt = false;
+    printTo(outputStream, multipleInstructions ? " ...)\r\n" : allInstructions ? "" : "\r\n"); _lastPrintedIsPrompt = false;
 }
 
 
@@ -1302,24 +1307,24 @@ void Justina_interpreter::quoteAndExpandEscSeq(char*& stringValue) {
 
 Justina_interpreter::execResult_type Justina_interpreter::checkFmtSpecifiers(bool isDispFmtCmd, int argCount, char* valueType, Val* operands, char& specifier, int& precision, int& flags) {
 
-    Serial.print("** checkFmtSpecifiers START");
+    ////Serial.println("** checkFmtSpecifiers START");
     // format a value: one-character specifier string included ?
     bool hasSpecifierArg{ false }; // init
     if (argCount > 1) { hasSpecifierArg = (valueType[1] == value_isStringPointer); }
 
-    bool hasReturnParameter =  isDispFmtCmd ? false: argCount == 3 ;                // no error if no variable, but nothing will be returned
+    bool hasReturnParameter = isDispFmtCmd ? false : argCount == 3;                // no error if no variable, but nothing will be returned
 
-    char spec= ' ';
+    char spec = ' ';
     if (hasSpecifierArg) {
         if (operands[1].pStringConst == nullptr) { return result_arg_invalid; }
         if (strlen(operands[1].pStringConst) != 1) { return result_arg_invalid; }
         spec = operands[1].pStringConst[0];
         char* pChar(strchr("fGgEeXxds", spec));
         if (pChar == nullptr) { return result_arg_invalid; }
+        specifier = spec;                   // valid specifier: return it
 
         // move next arguments, if supplied, down one position 
         for (int index = 1; index < argCount - 1; index++) {
-            Serial.print("loop: move = "); Serial.println(index+1);
             operands[index] = operands[index + 1];
             valueType[index] = valueType[index + 1];
         }
@@ -1328,32 +1333,27 @@ Justina_interpreter::execResult_type Justina_interpreter::checkFmtSpecifiers(boo
 
     // first and last index only refer to formatting fields with specifier field removed, not to value to format (if dispFmt command) and not 'chars printed' return value (if dispFmt command)
     int firstFmtArgIndex = 0;
-    int lastFmtArgIndex  = (isDispFmtCmd ? 2 : 3) - (hasSpecifierArg ? 0 : 1) - (hasReturnParameter ? 1 : 0);       // exclude return value
+    int lastFmtArgIndex = (isDispFmtCmd ? 2 : 3) - (hasSpecifierArg ? 0 : 1) - (hasReturnParameter ? 1 : 0);       // exclude return value
     if (argCount <= lastFmtArgIndex) { lastFmtArgIndex = argCount - 1; }
-    Serial.print("first format arg = "); Serial.println(firstFmtArgIndex);
-    Serial.print("last             = "); Serial.println(lastFmtArgIndex);
+    ////Serial.print("first format arg = "); Serial.println(firstFmtArgIndex);
+    ////Serial.print("last             = "); Serial.println(lastFmtArgIndex);
 
     int prec{}, fl{};
     for (int argIndex = firstFmtArgIndex; argIndex <= lastFmtArgIndex; argIndex++) {
-        Serial.print("loop: index = "); Serial.println(argIndex);
+        ////Serial.print("loop: index = "); Serial.println(argIndex);
 
         // Width, precision, flags ? Numeric arguments expected
         if ((valueType[argIndex] != value_isLong) && (valueType[argIndex] != value_isFloat)) { return result_arg_numberExpected; }    // numeric ?
         if ((valueType[argIndex] == value_isLong) ? operands[argIndex].longConst < 0 : operands[argIndex].floatConst < 0.) { return result_arg_outsideRange; }                                           // positive ?
         int argValue = (valueType[argIndex] == value_isLong) ? operands[argIndex].longConst : (long)operands[argIndex].floatConst;
-        Serial.print("      value = "); Serial.println(argValue);
+        ////Serial.print("      value = "); Serial.println(argValue);
 
-         if (argIndex == firstFmtArgIndex ) { prec = argValue; }            // precision
-        else if (argIndex == firstFmtArgIndex + 1) { fl = argValue; }       // flags
+        if (argIndex == firstFmtArgIndex) { precision = argValue; }            // precision
+        else if (argIndex == firstFmtArgIndex + 1) { flags = argValue; }       // flags
     }
 
-    // at the end, after all tests (return variables)
-    precision = prec;
-    specifier =spec;                                                                              
-    flags=fl;
-
     flags &= 0b11111;       // apply mask
-    Serial.print("** checkFmtSpecifiers END OK");
+    ////Serial.println("** checkFmtSpecifiers END OK");
 
     return result_execOK;
 }
@@ -1364,7 +1364,7 @@ Justina_interpreter::execResult_type Justina_interpreter::checkFmtSpecifiers(boo
 // ------------------------------
 
 
-void  Justina_interpreter::makeNumericFormatString(int flags, bool isIntFmt, char* numFmt, char* fmtString) {
+void  Justina_interpreter::makeFormatString(int flags, bool longPrefix, char* specifier, char* fmtString) {
 
     fmtString[0] = '%';
     int strPos = 1;
@@ -1372,9 +1372,9 @@ void  Justina_interpreter::makeNumericFormatString(int flags, bool isIntFmt, cha
         if (flags & 0b1) { fmtString[strPos] = ((i == 1) ? '-' : (i == 2) ? '+' : (i == 3) ? ' ' : (i == 4) ? '#' : '0'); ++strPos; }
     }
     fmtString[strPos] = '*'; ++strPos; fmtString[strPos] = '.'; ++strPos; fmtString[strPos] = '*'; ++strPos;                // width and precision specified with additional arguments (*.*)
-    if (isIntFmt) { fmtString[strPos] = 'l'; ++strPos; fmtString[strPos] = numFmt[0]; ++strPos; }                           // "ld", "lx": long integer in decimal or hex format
-    else { fmtString[strPos] = numFmt[0]; ++strPos; }                                                                       // "e", "f", "g": floating point number printed
-    fmtString[strPos] = '%'; ++strPos; fmtString[strPos] = 'n'; ++strPos; fmtString[strPos] = '\0'; ++strPos;               // %n specifier (return characters printed)
+    if (longPrefix) { fmtString[strPos] = 'l'; ++strPos; fmtString[strPos] = specifier[0]; ++strPos; }                           // "ld", "lx": long integer in decimal or hex format
+    else { fmtString[strPos] = specifier[0]; ++strPos; }                                                                       
+    fmtString[strPos] = '%'; ++strPos; fmtString[strPos] = 'n'; ++strPos; fmtString[strPos] = '\0'; ++strPos;                   // %n specifier (return characters printed - for fmt() function only)
 
     return;
 }
@@ -1423,7 +1423,7 @@ void  Justina_interpreter::printToString(int width, int precision, bool inputIsS
     else if (isIntFmt) {
         sprintf(fcnResult.pStringConst, fmtString, width, precision, (*valueType == value_isLong) ? (*value).longConst : (long)(*value).floatConst, &charsPrinted);
     }
-    else {
+    else {      // floating point
         sprintf(fcnResult.pStringConst, fmtString, width, precision, (*valueType == value_isLong) ? (float)(*value).longConst : (*value).floatConst, &charsPrinted);
     }
 

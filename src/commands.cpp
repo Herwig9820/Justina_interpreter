@@ -433,7 +433,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             bool setDebugOut = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_setDebugOut);
             if (setDebugOut) {
                 if (streamNumber < 0) {
-                    _debug_sourceStreamNumber = -1;
+                    _debug_sourceStreamNumber = streamNumber;
                     _pDebugOut = static_cast<Stream*>(_pExternIOstreams[(-streamNumber) - 1]);                              // external IO (stream number -1 => array index 0, etc.)
                     _pDebugPrintColumn = &_pIOprintColumns[(-streamNumber) - 1];
                 }
@@ -1361,38 +1361,38 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         break;
 
 
-        // -------------------------------------------------------
-        // Set display format for printing last calculation result
-        // -------------------------------------------------------
+        // ---------------------------------------------------------
+        // Set display format for floating point numbers or integers
+        // ---------------------------------------------------------
 
-        case cmdcod_dispfmt:
+        case cmdcod_floatfmt:
         case cmdcod_intfmt:
         {
-            // dispFmt precision [, specifier]  [, flags] ]     : formatting for floats and any future types
-            // intFmt precision [, specifier]  [, flags] ]      : formatting for integers
+            // floatFmt precision [, specifier]  [, flags] ]    : set formatting for floats 
+            // intFmt precision [, specifier]  [, flags] ]      : set formatting for integers
             // NOTE: string printing : NOT affected
+            
+            // these settings are used for printing last calculation result, user input echo, print commands output and values traced in debug mode('trace' command)
+
+            // precision: 
+            // floatFmt command with 'f', 'e' or 'E' specifier: number of digits printed after the decimal point (floatFmt command only)
+            //                  with 'g' or 'G' specifier: MAXIMUM number of significant digits to be printed (intFmt command only)
+            // intFmt command with 'd', 'x' and 'X': MINIMUM number of digits to be written (if the integer is shorter, it will be padded with leading zeros)
              
-            // mandatory argument 1: width (used for both numbers and strings) 
-            // optional arguments 2-4 (relevant for printing numbers only): [precision, [specifier (F:fixed, E:scientific, G:general, D: decimal, X:hex), ] flags]
-            // note that specifier argument can be left out, flags argument taking its place
-            // behaviour corresponds to c++ printf, sprintf, ..., result is a formatted string
+            // specifier (optional parameter):
+            // floatFmt command: 'f', 'e', 'E', 'g' or 'G' specifiers allowed
+            // =>  'f': fixed point, 'e' or 'E': scientific, 'g' ot 'G': shortest notation (fixed or scientific). 'E' or 'G': exponent character printed in capitals    
+            // intFmt command: 'd', 'x' and 'X' specifiers allowed
+            // =>  'd' signed integer, 'x' or 'X': unsigned hexadecimal integer. 'X': hex number is printed in capitals
 
-            // precision, specifier and flags are used as defaults for next calls to this command, if they are not provided again
-            // if the value to be formatted is a string, the precision argument is interpreted as 'maximum characters to print', otherwise it indicates numeric precision (both values retained seperately)
-            // the specifier is only relevant for formatting numbers (ignored for formatting strings)
+            // flags (optional parameter): 
+            // value 0x1 = left justify within print field, 0x2 = force sign, 0x4 = insert a space if no sign, 0x8: (1) floating point numbers: ALWAYS add a decimal point, even if no digits follow...
+            // ...(2) integers:  precede non-zero numbers with '0x' or '0X' if printed in hexadecimal format, value 0x10 = pad with zeros within print field
 
-            // numeric precision: function depends on the specifier:
-            // - with specifiers 'D'and 'X': specifies the minimum number of digits to be written. Shorter values are padded with leading zeros. Longer values are not truncated. 
-            //   If the precision is zero, a zero value will not be printed.
-            // - with 'E' and 'F' specifiers: number of decimals to be printed after the decimal point
-            // - with 'G' specifier:maximum number of significant numbers to be printed
+            // once set, and if not provided again, specifier and flags are used as defaults for next calls to these commands
 
-            // flags: value 1 = left justify, 2 = force sign, 4 = insert a space if no sign, 8: the use depends on the precision specifier:
-            // - used with 'F', 'E', 'G' specifiers: always add a decimal point, even if no digits follow 
-            // - used with 'X' (hex) specifier: preceed non-zero numbers with '0x'
-            // - no function with 'D' (decimal) specifier
-            // flag value 16 = pad with zeros 
-
+            // NOTE: strings are always printed unchanged, right justified. Use the fmt() function to format strings
+            
             bool argIsVar[3];
             bool argIsArray[3];
             char valueType[3];
@@ -1404,27 +1404,28 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // set format for numbers and strings
 
             bool isIntFmtCmd = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_intfmt);
-            char specifier[2] = " ";     // one space
-            specifier[0] =  isIntFmtCmd ? _dispIntegerSpecifier[0] : _dispFloatSpecifier[0];
+            char specifier= isIntFmtCmd ? _dispIntegerSpecifier[0] : _dispFloatSpecifier[0];
             int precision{ isIntFmtCmd ? _dispIntegerPrecision : _dispFloatPrecision };
             int fmtFlags{ isIntFmtCmd ? _dispIntegerFmtFlags : _dispFloatFmtFlags };
+            char* fmtString {isIntFmtCmd ? _dispIntegerFmtString : _dispFloatFmtString};
 
-            // !!! the last 3 arguments return the values of 1st to max. 3rd argument of the command (widh, precision, specifier, flags). Optional last argument is characters printed -> not relevant here
-            execResult = checkFmtSpecifiers(true, cmdParamCount, valueType, args, specifier[0], precision, fmtFlags);
+           // !!! the last 3 arguments return the values of 1st to max. 3rd argument of the command (widh, precision, specifier, flags). Optional last argument is characters printed -> not relevant here
+            execResult = checkFmtSpecifiers(true, cmdParamCount, valueType, args, specifier, precision, fmtFlags);
             if (execResult != result_execOK) { return execResult; }
 
-            bool isIntSpecifier = (specifier[0] == 'X') || (specifier[0] == 'x') || (specifier[0] == 'd');
+            if (specifier == 's'){return result_arg_invalid;}
+            bool isIntSpecifier = (specifier == 'X') || (specifier == 'x') || (specifier == 'd');
             if (isIntFmtCmd != isIntSpecifier) { return result_arg_invalid; }
-
-            precision = min(precision,  MAX_NUM_PRECISION);                                                         // same maximum for all numeric types
             
+            precision = min(precision, MAX_NUM_PRECISION);                                                         // same maximum for all numeric types
+
             // create format string for numeric values
-            _dispFloatPrecision = precision;  _dispFloatFmtFlags = fmtFlags, _dispFloatSpecifier[0] = specifier[0];
+            (isIntFmtCmd ? _dispIntegerPrecision : _dispFloatPrecision) = precision;
+            (isIntFmtCmd ? _dispIntegerFmtFlags : _dispFloatFmtFlags) = fmtFlags;
+            (isIntFmtCmd ? _dispIntegerSpecifier[0] : _dispFloatSpecifier[0]) = specifier;
             
-            makeNumericFormatString(fmtFlags, _dispIsIntFmt, specifier, _dispFloatFmtString);
-
-            _dispCharsToPrint = _dispWidth;
-            strcpy(_dispStringFmtString, "%*.*s%n");                                                                        // strings: set characters to print to display width
+            // adapt the format string for integers (intFmt cmd) or floats (floatFmt cmd); NOTE that the format string for strings is fixed
+            makeFormatString(fmtFlags, isIntSpecifier, &specifier, fmtString);  
 
             // clean up
             clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings
@@ -1509,7 +1510,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             if ((valueType[0] != value_isLong) && (valueType[0] != value_isFloat)) { return result_arg_numberExpected; }
             _angleMode = (valueType[0] == value_isLong) ? args[0].longConst : (int)args[0].floatConst;
             if ((_angleMode < 0) || (_angleMode > 1)) { return result_arg_outsideRange; }                                   // 0 = radians, 1 = degrees
-            Serial.println(_angleMode);
 
             // clean up
             clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings
