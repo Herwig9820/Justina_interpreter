@@ -2019,7 +2019,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execExternalCppFunctio
 
     const void* pValues_copy[8]{};                                                                                                  // copies for safety
     char valueTypes_copy[8];
-    int cmdParamCount_copy{ suppliedArgCount };
+    int suppliedArgCount_copy{ suppliedArgCount };
     
     LE_evalStack* pStackLvl = pFirstArgStackLvl;
 
@@ -2041,13 +2041,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execExternalCppFunctio
     int intExecResult{ (int)result_execOK };
 
     switch (returnValueType) {
-        case 0: fcnResult.longConst = (long)((CppBoolFunction*)_pExtCppFunctions[0])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;        // bool-> long
-        case 1: fcnResult.longConst = (long)((CppCharFunction*)_pExtCppFunctions[1])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;        // char to long   
-        case 2: fcnResult.longConst = (long)((CppIntFunction*)_pExtCppFunctions[2])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;         // int to long   
-        case 3: fcnResult.longConst = ((CppLongFunction*)_pExtCppFunctions[3])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;              // long   
-        case 4: fcnResult.floatConst = ((CppFloatFunction*)_pExtCppFunctions[4])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;            // float
-        case 5: fcnResult.pStringConst = ((Cpp_pCharFunction*)_pExtCppFunctions[5])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); break;         // char*   
-        case 6:((CppVoidFunction*)_pExtCppFunctions[6])[funcIndexInType].func(pValues_copy, valueTypes_copy, cmdParamCount_copy, intExecResult); fcnResult.longConst = 0; break;            // void -> returns zero
+        case 0: fcnResult.longConst = (long)((CppBoolFunction*)_pExtCppFunctions[0])[funcIndexInType].func(pValues_copy, valueTypes_copy, suppliedArgCount_copy, intExecResult); break;        // bool-> long
+        case 1: fcnResult.longConst = (long)((CppCharFunction*)_pExtCppFunctions[1])[funcIndexInType].func(pValues_copy, valueTypes_copy, suppliedArgCount_copy, intExecResult); break;        // char to long   
+        case 2: fcnResult.longConst = (long)((CppIntFunction*)_pExtCppFunctions[2])[funcIndexInType].func(pValues_copy, valueTypes_copy, suppliedArgCount_copy, intExecResult); break;         // int to long   
+        case 3: fcnResult.longConst = ((CppLongFunction*)_pExtCppFunctions[3])[funcIndexInType].func(pValues_copy, valueTypes_copy, suppliedArgCount_copy, intExecResult); break;              // long   
+        case 4: fcnResult.floatConst = ((CppFloatFunction*)_pExtCppFunctions[4])[funcIndexInType].func(pValues_copy, valueTypes_copy, suppliedArgCount_copy, intExecResult); break;            // float
+        case 5: fcnResult.pStringConst = ((Cpp_pCharFunction*)_pExtCppFunctions[5])[funcIndexInType].func(pValues_copy, valueTypes_copy, suppliedArgCount_copy, intExecResult); break;         // char*   
+        case 6:((CppVoidFunction*)_pExtCppFunctions[6])[funcIndexInType].func(pValues_copy, valueTypes_copy, suppliedArgCount_copy, intExecResult); fcnResult.longConst = 0; break;            // void -> returns zero
     }
     if (intExecResult != (int)result_execOK) { return (execResult_type)intExecResult; }
     fcnResultValueType = (returnValueType == 4) ? value_isFloat : (returnValueType == 5) ? value_isStringPointer : value_isLong;    // long: for bool, char, int, long return types

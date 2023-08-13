@@ -635,7 +635,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
         case fnccod_parseList:
         case fnccod_parseListFromVar:
         {
-            // cinList   (variable, variable, ...)    
+            // cinList   (list variable, variable, ...)    
             // readList  (stream number, variable, variable, ...)
             // vreadList (string value, variable, variable, variable, ...)
 

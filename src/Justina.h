@@ -514,6 +514,7 @@ class Justina_interpreter {
         result_var_definedAsScalar,
         result_var_definedAsArray,
         result_var_constantArrayNotAllowed,
+        result_var_constantVarNeedsAssignment,
         result_var_ControlVarInUse,
         result_var_controlVarIsConstant,
         result_var_illegalInDeclaration,
@@ -549,8 +550,8 @@ class Justina_interpreter {
         result_cmd_varWithOptionalAssignmentExpectedAsPar,
         result_cmd_variableExpectedAsPar,
         result_cmd_identExpectedAsPar,
-        result_cmd_parameterMissing,
-        result_cmd_tooManyParameters,
+        result_cmd_argumentMissing,
+        result_cmd_tooManyArguments,
 
         // user callback errors
         result_userCB_allAliasesSet = 1900,
@@ -1079,7 +1080,8 @@ private:
         const char* _resWordName;
         const char resWordCode;
         const char restrictions;                                        // specifies where he use of a keyword is allowed (in a program, in a function, ...)
-        const char spare1, spare2;                                      // boundary alignment
+        const char minArgs;                                             // minimum & maximum number of arguments AND padding (boundary alignment)                                     
+        const char maxArgs;                                                                         
         const char* pCmdAllowedParTypes;
         const CmdBlockDef cmdBlockDef;                                  // block commands: position in command block and min, max required position of previous block command 
     };
@@ -1888,8 +1890,8 @@ private:
     bool parseAsIdentifierName(char*& pNext, parseTokenResult_type& result);
 
     // checking command statement syntax
-    bool checkCommandKeyword(parseTokenResult_type& result);
-    bool checkCommandArgToken(parseTokenResult_type& result, int& clearIndicatore);
+    bool checkCommandKeyword(parseTokenResult_type& result, int& resWordIndex);
+    bool checkCommandArgToken(parseTokenResult_type& result, int& clearIndicatore, int resWordIndex);
 
     // various checks while parsing
     bool checkArrayDimCountAndSize(parseTokenResult_type& result, int* arrayDef_dims, int& dimCnt);

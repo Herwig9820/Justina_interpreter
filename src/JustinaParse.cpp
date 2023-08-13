@@ -71,6 +71,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
     _parenthesisLevel = 0;
 
     _isCommand = false;
+    int resWordIndex{};
 
     *_programCounter = tok_no_token;                                                    // in case first token produces error
     parseTokenResult_type result = result_tokenFound;                                   // possible error will be determined during parsing 
@@ -159,11 +160,11 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
         if (isStatementStart) {
             isCommandStart = (_lastTokenType == tok_isReservedWord);                                                // keyword at start of statement ? is start of a command 
             _isCommand = isCommandStart;                                                                            // is start of a command ? then within a command now. Otherwise, it's an 'expression only' statement
-            if (_isCommand) { if (!checkCommandKeyword(result)) { ; pNext = pNext_hold; break; } }                  // start of a command: keyword
+            if (_isCommand) { if (!checkCommandKeyword(result, resWordIndex)) { ; pNext = pNext_hold; break; } }                  // start of a command: keyword
         }
 
         bool isCommandArgToken = (!isCommandStart && _isCommand);
-        if (!isCommandStart && _isCommand) { if (!checkCommandArgToken(result, clearIndicator)) { pNext = pNext_hold; break; } }
+        if (!isCommandStart && _isCommand) { if (!checkCommandArgToken(result, clearIndicator, resWordIndex)) { pNext = pNext_hold; break; } }
 
     } while (true);
 
@@ -182,12 +183,15 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
 // *   Check a command keyword token (apply additional command syntax rules)   *
 // -----------------------------------------------------------------------------
 
-bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {                                      // command syntax checks
+bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result, int& resWordIndex) {                                      // command syntax checks
 
+#if printParsedTokens
+    _pDebugOut->println(">> checking command keyword");
+#endif
+    resWordIndex = _tokenIndex;
     _pCmdAllowedParTypes = _resWords[_tokenIndex].pCmdAllowedParTypes;                                              // remember allowed parameter types
     _cmdParSpecColumn = 0;                                                                                          // reset actual command parameter counter
     _cmdArgNo = 0;
-
     CmdBlockDef cmdBlockDef = _resWords[_tokenIndex].cmdBlockDef;
 
     _isJustinaFunctionCmd = _resWords[_tokenIndex].resWordCode == cmdcod_function;
@@ -314,10 +318,13 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result) {  
 // *   Check a command argument token (apply additional command syntax rules)   *
 // ------------------------------------------------------------------------------
 
-bool Justina_interpreter::checkCommandArgToken(parseTokenResult_type& result, int& clearIndicator) {
+bool Justina_interpreter::checkCommandArgToken(parseTokenResult_type& result, int& clearIndicator, int resWordIndex) {
 
     // init and adapt variables
     // ------------------------
+#if printParsedTokens
+    _pDebugOut->println(">> checking command argument");
+#endif
 
     static uint8_t allowedParType = cmdPar_none;                                                                    // init
 
@@ -341,15 +348,20 @@ bool Justina_interpreter::checkCommandArgToken(parseTokenResult_type& result, in
     bool previousTokenWasCmdArgSep = false;
     previousTokenWasCmdArgSep = (_lastTokenIsTerminal_hold ? (_lastTermCode_hold == termcod_comma) : false) && (_parenthesisLevel == isLeftPar ? 1 : 0);
     bool isExpressionFirstToken = _lvl0_withinExpression &&
-        (_lastTokenType_hold == tok_isReservedWord) || (_lastTokenType_hold == tok_isGenericName) || previousTokenWasCmdArgSep;
-
+        ((_lastTokenType_hold == tok_isReservedWord) || (_lastTokenType_hold == tok_isGenericName) || previousTokenWasCmdArgSep);
 
     // keep track of argument index within command
     // -------------------------------------------
-
-    if (isResWord || isGenIdent || isExpressionFirstToken) { _cmdArgNo++; }
-
+    if (isResWord || isGenIdent || isExpressionFirstToken) {
+        _cmdArgNo++;
+        if (_cmdArgNo > _resWords[resWordIndex].maxArgs) { result = result_cmd_tooManyArguments; return false; };
+    }
+    
+    if(isSemiColonSep && (_cmdArgNo < _resWords[resWordIndex].minArgs)) { result = result_cmd_argumentMissing; return false; } 
+    
+    
     // if first token of a command parameter or a semicolon: check allowed argument types with respect to command definition (expression, identifier, ...) 
+    // ---------------------------------------------------------------------------------------------------------------------------------------------------
     bool multipleParameter = false, optionalParameter = false;
     if (isResWord || isGenIdent || isExpressionFirstToken || isSemiColonSep) {
         allowedParType = (_cmdParSpecColumn == sizeof(_pCmdAllowedParTypes)) ? cmdPar_none : (uint8_t)(_pCmdAllowedParTypes[_cmdParSpecColumn]);
@@ -359,31 +371,20 @@ bool Justina_interpreter::checkCommandArgToken(parseTokenResult_type& result, in
         allowedParType = allowedParType & ~cmdPar_flagMask;
     }
 
-
-    // if end of command, test for missing parameters and exit
-    // -------------------------------------------------------
-
     if (isSemiColonSep) {                                                                                           // semicolon: end of command                                                    
-        if ((allowedParType != cmdPar_none) && !multipleParameter && !optionalParameter) {                          // missing parameters ?
-            result = result_cmd_parameterMissing; return false;
-        }
-
         // NOTE: clear program / memory command will be executed when normal execution ends (before entering idle idle mode, waiting for input)
-        else if (_isClearProgCmd) { clearIndicator = 1; }                                                           // clear program: set flag 
+        if (_isClearProgCmd) { clearIndicator = 1; }                                                           // clear program: set flag 
         else if (_isClearAllCmd) { clearIndicator = 2; }                                                            // clear all: set flag
-
         return true;                                                                                                // nothing more to do for this command
     }
 
 
     // check command argument validity
     // -------------------------------
-
     // check each token, but skip tokens within open parenthesis (whatever is in there has no relevance for argument checking) ...
     // ... and skip commas separating arguments (because these commas have just reset variables used for command argument constraints checking, preparing for next command argument (if any))
 
-    if ((_parenthesisLevel == 0) && (!isLvl0CommaSep)) {                                                            // a comma resets variables used for command argument constraint checks
-        if (allowedParType == cmdPar_none) { result = result_cmd_tooManyParameters; return false; }
+    if ((_parenthesisLevel == 0) && (!isLvl0CommaSep)) {                                                                    // a comma resets variables used for command argument constraint checks
         if (allowedParType == cmdPar_resWord && !isResWord) { result = result_cmd_resWordExpectedAsPar; return false; }     // does not occur, but keep for completeness
         if (allowedParType == cmdPar_ident && !isGenIdent) { result = result_cmd_identExpectedAsPar; return false; }
         if ((allowedParType == cmdPar_expression) && !_lvl0_withinExpression) { result = result_cmd_expressionExpectedAsPar; return false; }    // does not occur, but keep for completeness
@@ -1068,6 +1069,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                     // Check dimension count and array size 
                     if (!checkArrayDimCountAndSize(result, arrayDef_dims, array_dimCounter)) { pNext = pch; return false; }
                 }
+                else if ((_lastTokenType == tok_isVariable) && _varIsConstant) { result = result_var_constantVarNeedsAssignment; pNext = pch; return false; }
             }
 
 
@@ -1133,6 +1135,8 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             if (_parenthesisLevel > 0) { pNext = pch; result = result_missingRightParenthesis; return false; }
             if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2_0)) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
             if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_separatorNotAllowedHere; return false; }
+
+            if (_isAnyVarCmd && (_lastTokenType == tok_isVariable) && _varIsConstant) { result = result_var_constantVarNeedsAssignment; pNext = pch; return false; }
 
             // token is a semicolon separator, and it's allowed here
 

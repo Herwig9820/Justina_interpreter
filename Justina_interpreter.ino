@@ -331,10 +331,10 @@ void execAction(char c) {
             if (!interpreterInMemory) {                                                 // if interpreter not running: create an interpreter object on the heap
 
                 // SD card constraints argument:
-                // bits 1..0 = 0b00:no card reader, 0b01 = card reader present, do not yet initialise, 0b10 = initialise card now, 0b11 = initialise card and run start.txt functon start() now (if available)
+                // bits 1..0 = 0b00:no card reader, 0b01 = card reader present, do not yet initialise, 0b10 = initialise (start) card now, 0b11 = initialise (start) card and run start.txt functon start() now (if available)
                 // bit 2     = 0b0: do not allow retaining data when quitting Justina, 0b1 = allow  
                 // bits 7..4 : if TCP IO device present, 1 + index in pAlternativeIO array; zero if TCP IO device not present OR if TCP level keep alive (keep alive timer reset on incoming data) not reguired   
-                pJustina = new  Justina_interpreter(pAlternativeIO, terminalCount, progMemSize, (0x2 << 4) | 0b0100 | 0b0010);  //// no start.txt exec
+                pJustina = new  Justina_interpreter(pAlternativeIO, terminalCount, progMemSize, (0x2 << 4) | 0b0000 | 0b0010);  //// no start.txt exec
 
                 // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
                 // this callback function will be called regularly, e.g. every time the interpreter reads a character

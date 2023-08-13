@@ -60,11 +60,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
     isFunctionReturn = false;  // init
     execResult_type execResult = result_execOK;
-    int cmdParamCount = evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels;
+    int cmdArgCount = evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels;
 
     // note supplied argument count and go to first argument (if any)
     LE_evalStack* pStackLvl = _pEvalStackTop;
-    for (int i = 1; i < cmdParamCount; i++) {                                                                               // skipped if no arguments, or if one argument
+    for (int i = 1; i < cmdArgCount; i++) {                                                                               // skipped if no arguments, or if one argument
         pStackLvl = (LE_evalStack*)evalStack.getPrevListElement(pStackLvl);                                                 // iterate to first argument
     }
 
@@ -122,13 +122,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // - value is 1: keep interpreter in memory on quitting (retain data), value is 0: clear all and exit Justina 
             // 'quit' behaves as if an error occured, in order to follow the same processing logic  
 
-            if (cmdParamCount != 0) {                                                                                       // 'quit' command only                                                                                      
+            if (cmdArgCount != 0) {                                                                                       // 'quit' command only                                                                                      
                 bool argIsVar[1];
                 bool argIsArray[1];
                 char valueType[1];
                 Val args[1];
 
-                copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);                    // copy arguments from evaluationi stack
+                copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);                    // copy arguments from evaluationi stack
                 if (((uint8_t)(valueType[0]) != value_isLong) && ((uint8_t)(valueType[0]) != value_isFloat)) { return result_arg_numberExpected; }
                 if ((uint8_t)(valueType[0]) == value_isFloat) { args[0].longConst = (int)args[0].floatConst; }
                 // specifying 'retain data' or 'release memory' argument: silent mode. Note: 'retain data' will only set if allowed by _justinaConstraints 
@@ -168,7 +168,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             }
 
             // clean up
-            clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings
+            clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
         }
         break;
@@ -348,7 +348,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             }
 
             // clean up
-            clearEvalStackLevels(cmdParamCount);                                                                                        // clear evaluation stack and intermediate strings
+            clearEvalStackLevels(cmdArgCount);                                                                                        // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
         }
         break;
@@ -363,7 +363,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             _debugCmdExecuted = true;
 
             // clean up
-            clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings 
+            clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
         }
         break;
@@ -376,12 +376,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         case cmdcod_loadProg:
         {
             _loadProgFromStreamNo = 0;                                                                                      // init: load from console 
-            if (cmdParamCount == 1) {                                                                                       // source specified (console, alternate input or file name)
+            if (cmdArgCount == 1) {                                                                                       // source specified (console, alternate input or file name)
                 bool argIsVar[1];
                 bool argIsArray[1];
                 char valueType[1];
                 Val args[1];
-                copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
+                copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
 
                 // SD source file name specified ?
                 if (valueType[0] == value_isStringPointer) {                                                                // load program from SD file
@@ -421,7 +421,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             bool argIsArray[1];
             char valueType[1];
             Val args[1];
-            copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
+            copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
             if ((valueType[0] != value_isLong) && (valueType[0] != value_isFloat)) { return result_arg_numberExpected; }
             int streamNumber = (valueType[0] == value_isLong) ? args[0].longConst : args[0].floatConst;
 
@@ -494,7 +494,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             }
 
             // clean up
-            clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings 
+            clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
         }
 
@@ -515,13 +515,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // external I/O stream: numeric constant, default is CONSOLE
             // verbose: default is 1. If verbose is not set, also "overwrite ?" question will not appear  
 
-            if (cmdParamCount > 3) { return result_arg_tooManyArgs; }
+            if (cmdArgCount > 3) { return result_arg_tooManyArgs; }
 
             bool argIsVar[2];
             bool argIsArray[2];
             char valueType[2];
             Val args[2];
-            copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
+            copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
 
             if (!_SDinitOK) { return result_SD_noCardOrCardError; }
 
@@ -532,7 +532,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             int sourceStreamNumber{ 0 }, destinationStreamNumber{ 0 };      // init: console
 
             // send or receive file: send or receive data to / from external IO stream 
-            if ((isSend || isReceive) && (cmdParamCount >= 2)) {                                                            // source (receive) / destination (send) specified ?
+            if ((isSend || isReceive) && (cmdArgCount >= 2)) {                                                            // source (receive) / destination (send) specified ?
                 int IOstreamArgIndex = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_sendFile ? 1 : 0);              // init (default for send and receive only, if not specified)
                 if ((valueType[IOstreamArgIndex] == value_isLong) || (valueType[IOstreamArgIndex] == value_isFloat)) {      // external source/destination specified (console or an alternate I/O stream)
 
@@ -555,7 +555,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
             // verbose argument supplied ?
             bool verbose = true;
-            if (cmdParamCount == 3) {
+            if (cmdArgCount == 3) {
                 if ((valueType[2] == value_isLong) || (valueType[2] == value_isFloat)) { verbose = (bool)((valueType[2] == value_isLong) ? args[2].longConst : (long)args[2].floatConst); }
                 else { return result_arg_numberExpected; }
             }
@@ -564,7 +564,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
             // receive or copy file: destination is a file
             if ((isReceive) || (isCopy)) {
-                int receivingFileArgIndex = (cmdParamCount == 1) ? 0 : 1;
+                int receivingFileArgIndex = (cmdArgCount == 1) ? 0 : 1;
                 if (valueType[receivingFileArgIndex] != value_isStringPointer) { return result_arg_stringExpected; }                        // mandatory file name
                 if (!pathValid(args[receivingFileArgIndex].pStringConst)) { return result_SD_pathIsNotValid; }
 
@@ -708,7 +708,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             }
 
             // clean up
-            clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings
+            clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
         }
         break;
@@ -724,7 +724,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             if (execResult != result_execOK) { return execResult; };
 
             // clean up
-            clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings 
+            clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
         }
         break;
@@ -742,7 +742,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
 
             // clean up
-            clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings 
+            clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
         }
         break;
@@ -790,7 +790,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             char valueType[3];
             Val args[3];
 
-            copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
+            copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
 
             if (valueType[0] != value_isStringPointer) { return result_arg_stringExpected; }                                    // prompt 
 
@@ -820,7 +820,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 }
 
                 else {                                                                                                          // info command
-                    if (cmdParamCount == 2) {
+                    if (cmdArgCount == 2) {
                         if (((uint8_t)(valueType[1]) != value_isLong) && ((uint8_t)(valueType[1]) != value_isFloat)) { return result_arg_numberExpected; }
                         if ((uint8_t)(valueType[1]) == value_isFloat) { args[1].longConst = (int)args[1].floatConst; }
                         if ((args[1].longConst < 0) || (args[1].longConst > 3)) { execResult = result_arg_invalid; return execResult; };
@@ -863,7 +863,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     }
                     else  if (isInput) {
 
-                        LE_evalStack* pStackLvl = (cmdParamCount == 3) ? _pEvalStackMinus1 : _pEvalStackTop;
+                        LE_evalStack* pStackLvl = (cmdArgCount == 3) ? _pEvalStackMinus1 : _pEvalStackTop;
                         // if  variable currently holds a non-empty string (indicated by a nullptr), delete char string object
                         execResult = deleteVarStringObject(pStackLvl); if (execResult != result_execOK) { return execResult; }
 
@@ -893,7 +893,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 }
 
 
-                if (cmdParamCount == (isInput ? 3 : 2)) {       // last argument (optional second if Info, third if Input statement) serves a dual purpose: allow cancel (on entry) and signal 'canceled' (on exit)
+                if (cmdArgCount == (isInput ? 3 : 2)) {       // last argument (optional second if Info, third if Input statement) serves a dual purpose: allow cancel (on entry) and signal 'canceled' (on exit)
                     // store result in variable and adapt variable value type
                     // 0 if canceled, 1 if 'OK' or 'Yes',  -1 if 'No' (variable is already numeric: no variable string to delete)
                     *_pEvalStackTop->varOrConst.value.pLongConst = doCancel ? 0 : answerIsNo ? -1 : 1;                          // 1: 'OK' or 'Yes' (yes / no question) answer                       
@@ -905,7 +905,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             } while (!answerValid);
 
             // clean up
-            clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings
+            clearEvalStackLevels(cmdArgCount);                                                                                // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                            // command execution ended
         }
         break;
@@ -919,12 +919,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         case cmdcod_halt:
         {
             long pauseTime = 1000;                                                                      // default: 1 second
-            if (cmdParamCount == 1) {                                                                   // copy pause delay, in seconds, from stack, if provided
+            if (cmdArgCount == 1) {                                                                   // copy pause delay, in seconds, from stack, if provided
                 bool argIsVar[1];
                 bool argIsArray[1];
                 char valueType[1];
                 Val args[1];
-                copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
+                copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
 
                 if ((valueType[0] != value_isLong) && (valueType[0] != value_isFloat)) { return result_arg_numberExpected; }
                 pauseTime = (valueType[0] == value_isLong) ? args[0].longConst : (int)args[0].floatConst;    // in seconds
@@ -962,7 +962,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             } while (true);
 
             // clean up
-            clearEvalStackLevels(cmdParamCount);                                                        // clear evaluation stack and intermediate strings
+            clearEvalStackLevels(cmdArgCount);                                                        // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                    // command execution ended
         }
         break;
@@ -1028,7 +1028,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             char floatFmtStr[10] = "%#.*";
             strcat(floatFmtStr, _dispFloatSpecifier);
 
-            for (int i = 1; i <= cmdParamCount; i++) {
+            for (int i = 1; i <= cmdArgCount; i++) {
                 bool operandIsVar = (pStackLvl->varOrConst.tokenType == tok_isVariable);
                 char valueType = operandIsVar ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
                 bool opIsLong = ((uint8_t)valueType == value_isLong);
@@ -1129,7 +1129,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         // - if print list: for all value arguments except the last one: sufficient room for argument separator 
                         // - if print new line: if last argument, provide room for new line sequence
                         if (printString != nullptr) { varPrintColumn += strlen(printString); }                              // provide room for new string
-                        if (doPrintList && (i < cmdParamCount)) { varPrintColumn += strlen(argSep); }                       // provide room for argument separator
+                        if (doPrintList && (i < cmdArgCount)) { varPrintColumn += strlen(argSep); }                       // provide room for argument separator
 
                         // create new string object with sufficient room for argument AND extras (arg. separator and new line sequence, if applicable)
                         if (varPrintColumn > 0) {
@@ -1144,7 +1144,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         if (oldAssembString != nullptr) strcpy(assembledString, oldAssembString);
                         if (printString != nullptr) { strcat(assembledString, printString); }
                         // if applicable, copy argument separator or new line sequence
-                        if (doPrintList && (i < cmdParamCount)) { strcat(assembledString, argSep); }
+                        if (doPrintList && (i < cmdArgCount)) { strcat(assembledString, argSep); }
 
                         // delete previous assembled string
                         if (oldAssembString != nullptr) {
@@ -1163,7 +1163,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                             if ((printString[printed - 1] == '\r') || (printString[printed - 1] == '\n')) { *pStreamPrintColumn = 0; }      // reset print column for stream to 0
                             else { *pStreamPrintColumn += printed; }                                                        // not a CR or LF character at end of string ? adapt print column for stream 
                         }
-                        if ((i < cmdParamCount) && doPrintList) { *pStreamPrintColumn += print(argSep); }
+                        if ((i < cmdArgCount) && doPrintList) { *pStreamPrintColumn += print(argSep); }
                     }
 
                     // if printString is an object on the heap, delete it (note: if printString is created above in quoteAndExpandEscSeq(): it's never a nullptr)
@@ -1200,7 +1200,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 // print line end without supplied arguments for printing: a string object does not exist yet, so create it now
                 if (doPrintLineEnd) {
                     *pStreamPrintColumn = 0;                                                                                // to be consistent with handling of printing line end for printing to non-variable streams, but initialised to zero already 
-                    if (cmdParamCount == 1) {                                                                               // only receiving variable supplied: no string created yet     
+                    if (cmdArgCount == 1) {                                                                               // only receiving variable supplied: no string created yet     
                         _intermediateStringObjectCount++;
                         assembledString = new char[3]; assembledString[0] = '\r'; assembledString[1] = '\n'; assembledString[2] = '\0';
                     #if PRINT_HEAP_OBJ_CREA_DEL
@@ -1245,7 +1245,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             }
 
             // clean up
-            clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings 
+            clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
         }
         break;
@@ -1264,7 +1264,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             execResult = setStream(streamNumber, true); if (execResult != result_execOK) { return execResult; }             // init output stream
             int* pStreamPrintColumn = _pConsolePrintColumn;                                                                 // init 
 
-            if (cmdParamCount == 0) {
+            if (cmdArgCount == 0) {
                 *pStreamPrintColumn = 0;                                                                                    // will not be used here, but is zero at the end
             }
             else {                                                                                                          // file name specified
@@ -1272,7 +1272,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 bool argIsArray[1];
                 char valueType[1];
                 Val args[1];
-                copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
+                copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
                 if ((valueType[0] != value_isLong) && (valueType[0] != value_isFloat)) { return result_arg_numberExpected; }
                 streamNumber = (valueType[0] == value_isLong) ? args[0].longConst : args[0].floatConst;
 
@@ -1304,7 +1304,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         }
 
         // clean up
-        clearEvalStackLevels(cmdParamCount);                                                                                // clear evaluation stack and intermediate strings 
+        clearEvalStackLevels(cmdArgCount);                                                                                // clear evaluation stack and intermediate strings 
         _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                            // command execution ended
 
         break;
@@ -1331,7 +1331,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             root.ls(LS_R | LS_DATE | LS_SIZE);                                                                              // to SERIAL (not to _console)
 
             // clean up
-            clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings 
+            clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
         }
         break;
@@ -1347,7 +1347,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             bool argIsArray[1];
             char valueType[1];
             Val args[1];
-            copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
+            copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
 
             if ((valueType[0] != value_isLong) && (valueType[0] != value_isFloat)) { return result_arg_numberExpected; }    // numeric ?
             if ((valueType[0] == value_isLong) ? args[0].longConst < 0 : args[0].floatConst < 0.) { return result_arg_outsideRange; }                                           // positive ?
@@ -1355,7 +1355,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             _dispWidth = min(_dispWidth, MAX_PRINT_WIDTH);                                                                                                    // limit width to MAX_PRINT_WIDTH
 
             // clean up
-            clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings
+            clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
         }
         break;
@@ -1398,8 +1398,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             char valueType[3];
             Val args[3];
 
-            if (cmdParamCount > 3) { execResult = result_arg_tooManyArgs; return execResult; }
-            copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
+            if (cmdArgCount > 3) { execResult = result_arg_tooManyArgs; return execResult; }
+            copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
 
             // set format for numbers and strings
 
@@ -1410,7 +1410,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             char* fmtString {isIntFmtCmd ? _dispIntegerFmtString : _dispFloatFmtString};
 
            // !!! the last 3 arguments return the values of 1st to max. 3rd argument of the command (widh, precision, specifier, flags). Optional last argument is characters printed -> not relevant here
-            execResult = checkFmtSpecifiers(true, cmdParamCount, valueType, args, specifier, precision, fmtFlags);
+            execResult = checkFmtSpecifiers(true, cmdArgCount, valueType, args, specifier, precision, fmtFlags);
             if (execResult != result_execOK) { return execResult; }
 
             if (specifier == 's'){return result_arg_invalid;}
@@ -1428,7 +1428,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             makeFormatString(fmtFlags, isIntSpecifier, &specifier, fmtString);  
 
             // clean up
-            clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings
+            clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
         }
         break;
@@ -1441,16 +1441,16 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         case cmdcod_dispmod:      // takes two arguments: width & flags
         {
             // mandatory argument 1: 0 = do not print prompt and do not echo user input; 1 = print prompt but no not echo user input; 2 = print prompt and echo user input 
-            // mandatory argument 2: 0 = do not print last result; 1 = print last result; 2 = expand escape sequences and print last result
+            // mandatory argument 2: 0 = do not print last result; 1 = print last result; 2 = expand last result escape sequences and print last result
 
             bool argIsVar[2];
             bool argIsArray[2];
             char valueType[2];                                                                                              // 2 arguments
             Val args[2];
 
-            copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
+            copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
 
-            for (int i = 0; i < cmdParamCount; i++) {                                                                       // always 2 parameters
+            for (int i = 0; i < cmdArgCount; i++) {                                                                       // always 2 parameters
                 bool argIsLong = (valueType[i] == value_isLong);
                 bool argIsFloat = (valueType[i] == value_isFloat);
                 if (!(argIsLong || argIsFloat)) { execResult = result_arg_numberExpected; return execResult; }
@@ -1466,7 +1466,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             _promptAndEcho = args[0].longConst, _printLastResult = args[1].longConst;
 
             // clean up
-            clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings
+            clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
         }
         break;
@@ -1482,14 +1482,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             bool argIsArray[1];
             char valueType[1];
             Val args[1];
-            copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
+            copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
 
             if ((valueType[0] != value_isLong) && (valueType[0] != value_isFloat)) { return result_arg_numberExpected; }
             _tabSize = (valueType[0] == value_isLong) ? args[0].longConst : (int)args[0].floatConst;
             if ((_tabSize < 2) || (_tabSize > 30)) { _tabSize = (_tabSize < 2) ? 2 : 30; }                                  // limit tabSize range
 
             // clean up
-            clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings
+            clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
         }
         break;
@@ -1505,14 +1505,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             bool argIsArray[1];
             char valueType[1];
             Val args[1];
-            copyValueArgsFromStack(pStackLvl, cmdParamCount, argIsVar, argIsArray, valueType, args);
+            copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
 
             if ((valueType[0] != value_isLong) && (valueType[0] != value_isFloat)) { return result_arg_numberExpected; }
             _angleMode = (valueType[0] == value_isLong) ? args[0].longConst : (int)args[0].floatConst;
             if ((_angleMode < 0) || (_angleMode > 1)) { return result_arg_outsideRange; }                                   // 0 = radians, 1 = degrees
 
             // clean up
-            clearEvalStackLevels(cmdParamCount);                                                                            // clear evaluation stack and intermediate strings
+            clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
         }
         break;
@@ -1554,7 +1554,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     ((OpenBlockTestData*)_pFlowCtrlStackTop)->nextTokenAddress = _activeFunctionData.pNextStep;
 
                     bool controlVarIsLong{ false }, finalValueIsLong{ false }, stepIsLong{ false };
-                    for (int i = 1; i <= cmdParamCount; i++) {        // skipped if no arguments
+                    for (int i = 1; i <= cmdArgCount; i++) {        // skipped if no arguments
                         Val operand;                                                                                                // operand and result
                         bool operandIsVar = (pStackLvl->varOrConst.tokenType == tok_isVariable);
                         char valueType = operandIsVar ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
@@ -1583,7 +1583,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
                     }
 
-                    if (cmdParamCount < 3) {                                                                                        // step not specified: init with default (1.)  
+                    if (cmdArgCount < 3) {                                                                                        // step not specified: init with default (1.)  
                         stepIsLong = false;
                         ((OpenBlockTestData*)_pFlowCtrlStackTop)->step.floatConst = 1.;                                             // init as float
                     }
@@ -1649,7 +1649,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             }
 
             // clean up
-            clearEvalStackLevels(cmdParamCount);                                                                                    // clear evaluation stack
+            clearEvalStackLevels(cmdArgCount);                                                                                    // clear evaluation stack
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                                // command execution ended
         }
         break;
@@ -1755,7 +1755,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         case cmdcod_return:
         {
             isFunctionReturn = true;
-            bool returnWithZero = (cmdParamCount == 0);                                                                     // RETURN statement without expression, or END statement: return a zero
+            bool returnWithZero = (cmdArgCount == 0);                                                                     // RETURN statement without expression, or END statement: return a zero
             execResult = terminateJustinaFunction(returnWithZero);
             if (execResult != result_execOK) { return execResult; }
 
