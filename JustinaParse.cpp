@@ -68,7 +68,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
     // initialiser unary operators
     _initVarOrParWithUnaryOp = 0;   // no prefix, plus or minus
 
-    _parenthesisLevel = 0;
+    _parenthesisLevel = 0;                                      // current number of open parentheses (during parsing)
 
     _isCommand = false;
     int resWordIndex{};
@@ -102,10 +102,10 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
         // determine token group of last token parsed (bits b4 to b0): this defines which tokens are allowed as next token
         _lastTokenGroup_sequenceCheck_bit = isOperator ? lastTokenGroup_0 :
             isComma ? lastTokenGroup_1 :
-            ((t == tok_no_token) || isSemicolon || (t == tok_isReservedWord) || (t == tok_isGenericName)) ? lastTokenGroup_2 :
+            ((t == tok_no_token) || isSemicolon || (t == tok_isReservedWord)) ? lastTokenGroup_2 :
             ((t == tok_isConstant) || isRightPar) ? lastTokenGroup_3 :
             ((t == tok_isInternCppFunction) || (t == tok_isExternCppFunction) || (t == tok_isJustinaFunction)) ? lastTokenGroup_4 :
-            isLeftPar ? lastTokenGroup_5 : lastTokenGroup_6;                                                        // token group 5: scalar or array variable name
+            isLeftPar ? lastTokenGroup_5 : lastTokenGroup_6;                                                        // token group 6: scalar or array variable name
 
         // a space may be required between last token and next token (not yet known), if one of them is a keyword
         // and the other token is either a keyword, an alphanumeric constant or a parenthesis
@@ -146,7 +146,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
             if (!parseAsJustinaFunction(pNext, result)) { break; }  if (result == result_tokenFound) { break; }     // check before checking for variable
             if (!parseAsVariable(pNext, result)) { break; }  if (result == result_tokenFound) { break; }
             if (!parseAsIdentifierName(pNext, result)) { break; }  if (result == result_tokenFound) { break; }      // at the end
-            result = result_token_not_recognised;
+            result = (pNext[0] == '#') ? result_prefixCharNotAllowedHere : result = result_token_not_recognised;
         } while (false);
         // one token parsed (or error)
         if (result != result_tokenFound) { break; }                                                                 // exit loop if token error (syntax, ...). Checked before checking command syntax
@@ -193,6 +193,7 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result, int
     _cmdParSpecColumn = 0;                                                                                          // reset actual command parameter counter
     _cmdArgNo = 0;
     CmdBlockDef cmdBlockDef = _resWords[_tokenIndex].cmdBlockDef;
+    bool hasTokenStep = (_resWords[_tokenIndex].cmdBlockDef.blockType != block_none);
 
     _isJustinaFunctionCmd = _resWords[_tokenIndex].resWordCode == cmdcod_function;
     _isProgramCmd = _resWords[_tokenIndex].resWordCode == cmdcod_program;
@@ -211,19 +212,16 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result, int
     // is this command allowed here ? Check restrictions
     // -------------------------------------------------
     char cmdRestriction = _resWords[_tokenIndex].restrictions & cmd_usageRestrictionMask;
-    if (cmdRestriction == cmd_onlyProgramTop) {
-        if (_lastTokenStep != 0) { result = result_cmd_onlyProgramStart; return false; }
-    }
-    else {
-        if (_lastTokenStep == 0) { result = result_cmd_programCmdMissing; return false; }
-    }
+    if ((cmdRestriction == cmd_onlyProgramTop) && (_lastTokenStep != 0)) { result = result_cmd_onlyProgramStart; return false; }        // not a 'program' command
+    if ((cmdRestriction != cmd_onlyProgramTop) && (_lastTokenStep == 0)) { result = result_cmd_programCmdMissing; return false; }
+    if ((cmdRestriction == cmd_onlyImmModeTop) && (_programCounter != _programStorage +  _progMemorySize + sizeof(TokenIsResWord) - (hasTokenStep ? 0 : 2))) { result = result_cmd_onlyImmediateMode; return false; }
     if (_programMode && (cmdRestriction == cmd_onlyImmediate)) { result = result_cmd_onlyImmediateMode; return false; }
     if (!_programMode && (cmdRestriction == cmd_onlyInProgram)) { result = result_cmd_onlyInsideProgram; return false; }
     if (!_justinaFunctionBlockOpen && (cmdRestriction == cmd_onlyInFunctionBlock)) { result = result_cmd_onlyInsideFunction; return false; }
     if (_justinaFunctionBlockOpen && (cmdRestriction == cmd_onlyOutsideFunctionBlock)) { result = result_cmd_onlyOutsideFunction; return false; }
     if (((!_programMode) || _justinaFunctionBlockOpen) && (cmdRestriction == cmd_onlyInProgOutsideFunc)) { result = result_cmd_onlyInProgOutsideFunction; return false; };
     if ((_programMode && !_justinaFunctionBlockOpen) && (cmdRestriction == cmd_onlyImmOrInsideFuncBlock)) { result = result_cmd_onlyImmediateOrInFunction; return false; };
-    if ((_programMode || (_blockLevel > 0)) && (cmdRestriction == cmd_onlyImmediateNotWithinBlock)) { result = result_cmd_onlyImmediateEndOfLine; return false; }
+    if ((_programMode || (_blockLevel > 0)) && (cmdRestriction == cmd_onlyImmediateNotWithinBlock)) { result = result_cmd_onlyImmediateNotWithinBlock; return false; }
     if (_justinaFunctionBlockOpen && _isJustinaFunctionCmd) { result = result_function_defsCannotBeNested; return false; }     // separate message to indicate 'no nesting'
 
     // not a block command: nothing more to do here 
@@ -356,10 +354,10 @@ bool Justina_interpreter::checkCommandArgToken(parseTokenResult_type& result, in
         _cmdArgNo++;
         if (_cmdArgNo > _resWords[resWordIndex].maxArgs) { result = result_cmd_tooManyArguments; return false; };
     }
-    
-    if(isSemiColonSep && (_cmdArgNo < _resWords[resWordIndex].minArgs)) { result = result_cmd_argumentMissing; return false; } 
-    
-    
+
+    if (isSemiColonSep && (_cmdArgNo < _resWords[resWordIndex].minArgs)) { result = result_cmd_argumentMissing; return false; }
+
+
     // if first token of a command parameter or a semicolon: check allowed argument types with respect to command definition (expression, identifier, ...) 
     // ---------------------------------------------------------------------------------------------------------------------------------------------------
     bool multipleParameter = false, optionalParameter = false;
@@ -386,10 +384,10 @@ bool Justina_interpreter::checkCommandArgToken(parseTokenResult_type& result, in
 
     if ((_parenthesisLevel == 0) && (!isLvl0CommaSep)) {                                                                    // a comma resets variables used for command argument constraint checks
         if (allowedParType == cmdPar_resWord && !isResWord) { result = result_cmd_resWordExpectedAsPar; return false; }     // does not occur, but keep for completeness
-        if (allowedParType == cmdPar_ident && !isGenIdent) { result = result_cmd_identExpectedAsPar; return false; }
+        if (allowedParType == cmdPar_ident && !isGenIdent) { result = _isDeleteVarCmd ? result_cmd_variableNameExpectedAsPar : result_cmd_identExpectedAsPar; return false; }
         if ((allowedParType == cmdPar_expression) && !_lvl0_withinExpression) { result = result_cmd_expressionExpectedAsPar; return false; }    // does not occur, but keep for completeness
 
-        if ((allowedParType == cmdPar_varOptAssignment) && (!_lvl0_isPurePrefixIncrDecr && (!_lvl0_isPureVariable && !_isConstVarCmd) && !_lvl0_isVarWithAssignment)) {
+        if ((allowedParType == cmdPar_varOptAssignment) && !_lvl0_isPurePrefixIncrDecr && !_lvl0_isPureVariable && !_isConstVarCmd && !_lvl0_isVarWithAssignment) {
             result = (parseTokenResult_type)result_cmd_varWithOptionalAssignmentExpectedAsPar; return false;
         }
 
@@ -508,6 +506,7 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parseTokenResult_type& res
 
     // is a variable required instead of a constant ?
     bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_incr) || (_lastTermCode == termcod_decr)) : false;
+    varRequired = varRequired || (_isConstVarCmd && ((_lastTokenIsTerminal) ? (_lastTermCode == termcod_comma) : (_lastTokenType == tok_isReservedWord)));
     if (varRequired) { pNext = pch; result = result_variableNameExpected; return false; }
 
     // Function command: check that constant can only appear after an equal sign
@@ -578,6 +577,7 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
 
     // is a variable required instead of a constant ?
     bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_incr) || (_lastTermCode == termcod_decr)) : false;
+    varRequired = varRequired || (_isConstVarCmd && ((_lastTokenIsTerminal) ? (_lastTermCode == termcod_comma) : (_lastTokenType == tok_isReservedWord)));
     if (varRequired) { pNext = pch; result = result_variableNameExpected; return false; }
 
     // Function command: check that constant can only appear after an equal sign
@@ -1345,6 +1345,7 @@ bool Justina_interpreter::parseAsInternCPPfunction(char*& pNext, parseTokenResul
 
         if (_isJustinaFunctionCmd) { pNext = pch; result = result_function_redefiningNotAllowed; return false; }
         if (_isAnyVarCmd) { pNext = pch; result = result_functionNotAllowedHere; return false; }                        // is a variable declaration: cpp function name not allowed
+        if (_isDeleteVarCmd) { pNext = pch; result = result_functionNotAllowedHere; return false; }
 
         // eval() function can not occur within a trace string (all other internal functins are OK)
         if (_parsingExecutingTraceString) {
@@ -1428,6 +1429,7 @@ bool Justina_interpreter::parseAsExternCPPfunction(char*& pNext, parseTokenResul
 
             if (_isJustinaFunctionCmd) { pNext = pch; result = result_function_redefiningNotAllowed; return false; }
             if (_isAnyVarCmd) { pNext = pch; result = result_functionNotAllowedHere; return false; }                    // is a variable declaration: cpp function name not allowed
+            if (_isDeleteVarCmd) { pNext = pch; result = result_functionNotAllowedHere; return false; }
 
             // token is an external cpp function, and it's allowed here
 
@@ -1472,7 +1474,7 @@ bool Justina_interpreter::parseAsExternCPPfunction(char*& pNext, parseTokenResul
 
 bool Justina_interpreter::parseAsJustinaFunction(char*& pNext, parseTokenResult_type& result) {
 
-    if (_isProgramCmd || _isDeleteVarCmd) { return true; }                                                              // looking for an UNQUALIFIED identifier name; prevent it's mistaken for a variable name (same format)
+    if (_isProgramCmd) { return true; }                                                              // looking for an UNQUALIFIED identifier name; prevent it's mistaken for a variable name (same format)
 
     // 1. Is this token a function name ? 
     // ----------------------------------
@@ -1518,6 +1520,7 @@ bool Justina_interpreter::parseAsJustinaFunction(char*& pNext, parseTokenResult_
         if (index == -1) { pNext = pch; return true; }                                                                  // it's not a defined Justina function: move on
         else { pNext = pch; result = result_functionNotAllowedHere; return false; }                                     // it's a Justina function: not allowed here
     }
+    if (_isDeleteVarCmd) { pNext = pch; result = result_functionNotAllowedHere; return false; }
 
     // not a defined variable and not a variable definition: consider it as a function
 
@@ -2177,14 +2180,17 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
     bool stay = (_isProgramCmd || _isDeleteVarCmd || _isClearAllCmd || _isClearProgCmd);
     if (!stay) { return true; }
 
-    if (!isalpha(pNext[0])) { return true; }                                                    // first character is not a letter ? Then it's not an identifier name (it can still be something else)
+    if (!isalpha(pNext[0]) && (pNext[0] != '#')) { return true; }                                                    // first character is not a letter ? Then it's not an identifier name (it can still be something else)
     while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                                 // do until first character after alphanumeric token (can be anything, including '\0')
 
     // token is a generic identifier, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
     if (_parsingExecutingTraceString || _parsingEvalString) { pNext = pch; result = result_trace_eval_genericNameNotAllowed; return false; }
 
     if (_parenthesisLevel > 0) { pNext = pch; result = result_identifierNotAllowedHere; return false; }
-    if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2_0)) { pNext = pch; result = result_identifierNotAllowedHere; return false; }
+    if (_isDeleteVarCmd) {        // delete variable: previous token can only be a reserved word ("delete") or a comma (token group one)
+        if ((_lastTokenType != tok_isReservedWord) && !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_1)) { pNext = pch; result = result_identifierNotAllowedHere; return false; }
+    }
+    else if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2_0)) { pNext = pch; result = result_identifierNotAllowedHere; return false; }
 
     // if variable name is too long, reset pointer to first character to parse, indicate error and return
     if (pNext - pch > MAX_IDENT_NAME_LEN) { pNext = pch; result = result_identifierTooLong;  return false; }
@@ -2715,7 +2721,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
         varDeleted = true;
     }
 
-    if (!varDeleted) { return result_var_notDeclared; }
+    if (!varDeleted) { return result_variableNameExpected; }
 
     return result_tokenFound;
 }

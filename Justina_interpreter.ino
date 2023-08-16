@@ -33,7 +33,7 @@
 // --------
 
 #include "Justina.h"
-#include <avr/dtostrf.h>            //// nodig voor arm ?   
+#include <avr/dtostrf.h>               
 
 #if withTCP
 #include "secrets.h"
@@ -129,7 +129,7 @@ void userFcn_togglePort(const void** pdata, const char* valueType, const int arg
 // if no entries of a specific category, add at least one entry consisting of an empty string and a nullptr as Justina name and cpp function pointer, as follows: {"", nullptr, 0, 0} 
 // entries with invalid Justina names or with a null pointer as c++ function pointer will be skipped
 
-// maximum number of arguments is 8. If more arguments are provided, they will be discarded
+// maximum number of arguments is 8. If more arguments are provided by external cpp function, they will be discarded
 
 Justina_interpreter::CppBoolFunction const cppBoolFunctions[]{
     { "returnBool", userFcn_returnBool, 0,1 }
@@ -218,7 +218,7 @@ void setup() {
 
     // not functionaly used, but required to circumvent a bug in sprintf function with %F, %E, %G specifiers 
     char s[10];
-    dtostrf(1.0, 4, 1, s);   // not used, but needed to circumvent a bug in sprintf function with %F, %E, %G specifiers    //// nog nodig ???
+    dtostrf(1.0, 4, 1, s);   // not used, but needed to circumvent a bug in sprintf function with %F, %E, %G specifiers    
 
     // print sample / simple main menu for the user
     Serial.println(menu);
@@ -304,17 +304,6 @@ void execAction(char c) {
             Serial.println();
             break;
 
-            //// temp: read a character from TCP client and echo it (control characters and characters with ASCII-code > 0x7f: echo hex value instead)
-        case 'r':
-        {
-            char lastCharRead = myTCPconnection.getClient()->read();
-            if (lastCharRead != 0xff) {
-                if (lastCharRead < ' ') { myTCPconnection.getClient()->print("(ctrl char) ");  myTCPconnection.getClient()->println(lastCharRead, HEX); }
-                else if (lastCharRead <= 0x7f) { myTCPconnection.getClient()->print(lastCharRead); myTCPconnection.getClient()->println(); }
-                else { myTCPconnection.getClient()->print("(>0x7f) ");  myTCPconnection.getClient()->println(lastCharRead, HEX); }
-                lastCharRead = 0xff;
-            }
-        }
         break;
     #endif
 
@@ -334,7 +323,7 @@ void execAction(char c) {
                 // bits 1..0 = 0b00:no card reader, 0b01 = card reader present, do not yet initialise, 0b10 = initialise (start) card now, 0b11 = initialise (start) card and run start.txt functon start() now (if available)
                 // bit 2     = 0b0: do not allow retaining data when quitting Justina, 0b1 = allow  
                 // bits 7..4 : if TCP IO device present, 1 + index in pAlternativeIO array; zero if TCP IO device not present OR if TCP level keep alive (keep alive timer reset on incoming data) not reguired   
-                pJustina = new  Justina_interpreter(pAlternativeIO, terminalCount, progMemSize, (0x2 << 4) | 0b0000 | 0b0010);  //// no start.txt exec
+                pJustina = new  Justina_interpreter(pAlternativeIO, terminalCount, progMemSize, (0x2 << 4) | 0b0100 | 0b0011);  
 
                 // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
                 // this callback function will be called regularly, e.g. every time the interpreter reads a character

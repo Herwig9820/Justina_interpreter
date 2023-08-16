@@ -467,6 +467,7 @@ class Justina_interpreter {
         result_assignmNotAllowedHere,
         result_cannotChangeConstantValue,
         result_identifierNotAllowedHere,
+        result_prefixCharNotAllowedHere,                              
 
         // token expected errors
         result_constantValueExpected = 1200,
@@ -542,13 +543,14 @@ class Justina_interpreter {
         result_cmd_onlyOutsideFunction,
         result_cmd_onlyImmediateOrInFunction,
         result_cmd_onlyInProgOutsideFunction,
-        result_cmd_onlyImmediateEndOfLine,
+        result_cmd_onlyImmediateNotWithinBlock,
 
         result_cmd_resWordExpectedAsPar,
         result_cmd_expressionExpectedAsPar,
         result_cmd_varWithoutAssignmentExpectedAsPar,
         result_cmd_varWithOptionalAssignmentExpectedAsPar,
         result_cmd_variableExpectedAsPar,
+        result_cmd_variableNameExpectedAsPar,
         result_cmd_identExpectedAsPar,
         result_cmd_argumentMissing,
         result_cmd_tooManyArguments,
@@ -688,7 +690,7 @@ class Justina_interpreter {
     static constexpr int MAX_JUSTINA_FUNCS{ 255 };                      // max. Justina functions allowed. Absolute limit: 255
     static constexpr int MAX_ARRAY_DIMS{ 3 };                           // max. array dimensions allowed. Absolute limit: 3 
     static constexpr int MAX_ARRAY_ELEM{ 1000 };                        // max. elements allowed in an array. Absolute limit: 2^15-1 = 32767. Individual dimensions are limited to a size of 255
-    static constexpr int MAX_LAST_RESULT_DEPTH{ 5 };////                   // max. depth of 'last results' FiFo
+    static constexpr int MAX_LAST_RESULT_DEPTH{ 10 };                   // max. depth of 'last results' FiFo
 
     static constexpr int MAX_IDENT_NAME_LEN{ 20 };                      // max length of identifier names, excluding terminating '\0'
     static constexpr int MAX_ALPHA_CONST_LEN{ 255 };                    // max length of character strings stored in variables, excluding terminating '\0',. Absolute limit: 255
@@ -698,7 +700,7 @@ class Justina_interpreter {
     static constexpr int MAX_OPEN_SD_FILES{ 5 };                        // SD card: max. concurrent open files
 
     static constexpr long LONG_WAIT_FOR_CHAR_TIMEOUT{ 15000 };          // milli seconds
-    static constexpr long DEFAULT_READ_TIMEOUT{ 1000 };                 // milliseconds
+    static constexpr long DEFAULT_READ_TIMEOUT{ 200 };                  // milliseconds
 
     // ------------------------------------------------------------------------------------------------------
     // constants that should NOT be changed without carefully examining the impact on the Justina application
@@ -809,7 +811,7 @@ class Justina_interpreter {
     static constexpr uint8_t lastTokenGroup_3 = 1 << 3;                 // number, alphanumeric constant, right bracket
     static constexpr uint8_t lastTokenGroup_4 = 1 << 4;                 // internal cpp, external cpp or Justina function 
     static constexpr uint8_t lastTokenGroup_5 = 1 << 5;                 // left parenthesis
-    static constexpr uint8_t lastTokenGroup_6 = 1 << 6;                 // variable
+    static constexpr uint8_t lastTokenGroup_6 = 1 << 6;                 // variable, generic identifier
 
     // groups of token groups: combined token groups (for testing valid token sequences when next token will be parsed)
     static constexpr uint8_t lastTokenGroups_5_2_1_0 = lastTokenGroup_5 | lastTokenGroup_2 | lastTokenGroup_1 | lastTokenGroup_0;
@@ -889,7 +891,8 @@ class Justina_interpreter {
     static constexpr char cmd_onlyOutsideFunctionBlock = 0x05;          // command is only allowed outside a function block (so also in immediate mode)
     static constexpr char cmd_onlyImmOrInsideFuncBlock = 0x06;          // command is only allowed inside a function block or in immediare mode
     static constexpr char cmd_onlyProgramTop = 0x07;                    // only as first program statement
-    static constexpr char cmd_onlyImmediateNotWithinBlock = 0x08;       // command is only allowed in immediate mode, and only outside blocks
+    static constexpr char cmd_onlyImmModeTop = 0x08;                    // only as first user command statement
+    static constexpr char cmd_onlyImmediateNotWithinBlock = 0x09;       // command is only allowed in immediate mode, and only outside blocks
 
     // bit b7: skip command during execution
     static constexpr char cmd_skipDuringExec = 0x80;                    // command is parsed but not executed
@@ -1422,7 +1425,7 @@ private:
     LinkedList parsingStack;                                        // during parsing: parsing stack keeps track of open parentheses and open blocks
     LE_parsingStack* _pParsingStack;                                // stack used during parsing to keep track of open blocks (e.g. for...end) , functions, open parentheses
     
-    LE_parsingStack* _pFunctionDefStack;////
+    LE_parsingStack* _pFunctionDefStack;
 
     int _blockLevel = 0;                                            // current number of open block commands (during parsing) - block level + parenthesis level = parsing stack depth
     int _parenthesisLevel = 0;                                      // current number of open parentheses (during parsing)

@@ -1307,7 +1307,6 @@ void Justina_interpreter::quoteAndExpandEscSeq(char*& stringValue) {
 
 Justina_interpreter::execResult_type Justina_interpreter::checkFmtSpecifiers(bool isDispFmtCmd, int argCount, char* valueType, Val* operands, char& specifier, int& precision, int& flags) {
 
-    ////Serial.println("** checkFmtSpecifiers START");
     // format a value: one-character specifier string included ?
     bool hasSpecifierArg{ false }; // init
     if (argCount > 1) { hasSpecifierArg = (valueType[1] == value_isStringPointer); }
@@ -1335,25 +1334,20 @@ Justina_interpreter::execResult_type Justina_interpreter::checkFmtSpecifiers(boo
     int firstFmtArgIndex = 0;
     int lastFmtArgIndex = (isDispFmtCmd ? 2 : 3) - (hasSpecifierArg ? 0 : 1) - (hasReturnParameter ? 1 : 0);       // exclude return value
     if (argCount <= lastFmtArgIndex) { lastFmtArgIndex = argCount - 1; }
-    ////Serial.print("first format arg = "); Serial.println(firstFmtArgIndex);
-    ////Serial.print("last             = "); Serial.println(lastFmtArgIndex);
 
     int prec{}, fl{};
     for (int argIndex = firstFmtArgIndex; argIndex <= lastFmtArgIndex; argIndex++) {
-        ////Serial.print("loop: index = "); Serial.println(argIndex);
 
         // Width, precision, flags ? Numeric arguments expected
         if ((valueType[argIndex] != value_isLong) && (valueType[argIndex] != value_isFloat)) { return result_arg_numberExpected; }    // numeric ?
         if ((valueType[argIndex] == value_isLong) ? operands[argIndex].longConst < 0 : operands[argIndex].floatConst < 0.) { return result_arg_outsideRange; }                                           // positive ?
         int argValue = (valueType[argIndex] == value_isLong) ? operands[argIndex].longConst : (long)operands[argIndex].floatConst;
-        ////Serial.print("      value = "); Serial.println(argValue);
 
         if (argIndex == firstFmtArgIndex) { precision = argValue; }            // precision
         else if (argIndex == firstFmtArgIndex + 1) { flags = argValue; }       // flags
     }
 
     flags &= 0b11111;       // apply mask
-    ////Serial.println("** checkFmtSpecifiers END OK");
 
     return result_execOK;
 }

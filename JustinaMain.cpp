@@ -88,7 +88,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"const",           cmdcod_constVar,        cmd_noRestrictions | cmd_skipDuringExec,                1,15,   cmdPar_111,     cmdBlockNone},
     {"static",          cmdcod_static,          cmd_onlyInFunctionBlock | cmd_skipDuringExec,           1,15,   cmdPar_111,     cmdBlockNone},
 
-    {"delete",          cmdcod_deleteVar,       cmd_onlyImmediate | cmd_skipDuringExec,                 1,1,    cmdPar_110,     cmdBlockNone},//***CHECK***                  // can only delete user variables (imm. mode)
+    {"delete",          cmdcod_deleteVar,       cmd_onlyImmModeTop | cmd_skipDuringExec,                1,15,   cmdPar_110,     cmdBlockNone},                  // can only delete user variables (imm. mode)
 
     {"clearAll",        cmdcod_clearAll,        cmd_onlyImmediate | cmd_skipDuringExec,                 0,0,    cmdPar_102,     cmdBlockNone},                  // executed AFTER execution phase ends
     {"clearProg",       cmdcod_clearProg,       cmd_onlyImmediate | cmd_skipDuringExec,                 0,0,    cmdPar_102,     cmdBlockNone},                  // executed AFTER execution phase ends
@@ -162,25 +162,25 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"sendFile",        cmdcod_sendFile,        cmd_onlyImmOrInsideFuncBlock,                           1,3,    cmdPar_112,     cmdBlockNone},
     {"copy",            cmdcod_copyFile,        cmd_onlyImmOrInsideFuncBlock,                           2,3,    cmdPar_107,     cmdBlockNone},
 
-    {"dbout",           cmdcod_dbout,           cmd_onlyImmOrInsideFuncBlock,                           1,15,   cmdPar_112,     cmdBlockNone},
+    {"dbout",           cmdcod_dbout,           cmd_onlyImmOrInsideFuncBlock,                           1,15,   cmdPar_112,     cmdBlockNone},      // values (expressions) to print to debug out
     {"dboutLine",       cmdcod_dboutLine,       cmd_onlyImmOrInsideFuncBlock,                           0,15,   cmdPar_107,     cmdBlockNone},
-                                                                                                          
-    {"cout",            cmdcod_cout,            cmd_onlyImmOrInsideFuncBlock,                           1,15,   cmdPar_112,     cmdBlockNone},
+
+    {"cout",            cmdcod_cout,            cmd_onlyImmOrInsideFuncBlock,                           1,15,   cmdPar_112,     cmdBlockNone},      // values (expressions) to print to console
     {"coutLine",        cmdcod_coutLine,        cmd_onlyImmOrInsideFuncBlock,                           0,15,   cmdPar_107,     cmdBlockNone},
     {"coutList",        cmdcod_coutList,        cmd_onlyImmOrInsideFuncBlock,                           1,15,   cmdPar_112,     cmdBlockNone},
 
-    {"print",           cmdcod_print,           cmd_onlyImmOrInsideFuncBlock,                           2,16,   cmdPar_116,     cmdBlockNone},
+    {"print",           cmdcod_print,           cmd_onlyImmOrInsideFuncBlock,                           2,16,   cmdPar_116,     cmdBlockNone},      // stream, values (expressions) to print to stream
     {"printLine",       cmdcod_printLine,       cmd_onlyImmOrInsideFuncBlock,                           1,16,   cmdPar_112,     cmdBlockNone},
     {"printList",       cmdcod_printList,       cmd_onlyImmOrInsideFuncBlock,                           2,16,   cmdPar_116,     cmdBlockNone},
 
-    {"vprint",          cmdcod_printToVar,      cmd_onlyImmOrInsideFuncBlock,                           2,16,   cmdPar_116,     cmdBlockNone},
+    {"vprint",          cmdcod_printToVar,      cmd_onlyImmOrInsideFuncBlock,                           2,16,   cmdPar_116,     cmdBlockNone},      // variable, values (expressions) to print to variable
     {"vprintLine",      cmdcod_printLineToVar,  cmd_onlyImmOrInsideFuncBlock,                           1,16,   cmdPar_112,     cmdBlockNone},
     {"vprintList",      cmdcod_printListToVar,  cmd_onlyImmOrInsideFuncBlock,                           2,16,   cmdPar_116,     cmdBlockNone},
 
-    {"listVars",        cmdcod_printVars,       cmd_onlyImmOrInsideFuncBlock,                           0,1,    cmdPar_106,     cmdBlockNone},
-    {"listCallSt",      cmdcod_printCallSt,     cmd_onlyImmOrInsideFuncBlock,                           0,1,    cmdPar_106,     cmdBlockNone},
-    {"listFilesToSerial",cmdcod_listFilesToSer, cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_102,     cmdBlockNone},
-    {"listFiles",       cmdcod_listFiles,       cmd_onlyImmOrInsideFuncBlock,                           0,1,    cmdPar_106,     cmdBlockNone},
+    {"listCallSt",      cmdcod_printCallSt,     cmd_onlyImmOrInsideFuncBlock,                           0,1,    cmdPar_106,     cmdBlockNone},      // print call stack to stream (default is console)
+    {"listVars",        cmdcod_printVars,       cmd_onlyImmOrInsideFuncBlock,                           0,1,    cmdPar_106,     cmdBlockNone},      // list variables "         "         "         "
+    {"listFiles",       cmdcod_listFiles,       cmd_onlyImmOrInsideFuncBlock,                           0,1,    cmdPar_106,     cmdBlockNone},      // list files     "         "         "         "
+    {"listFilesToSerial",cmdcod_listFilesToSer, cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_102,     cmdBlockNone},      // list files to Serial with modification dates (SD library fixed)
 };
 
 
@@ -319,7 +319,7 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     {"sysval",                  fnccod_sysVal,                  1,1,    0b0},
 
     // input and output functions
-    { "cin",                     fnccod_cin,                    0,2,    0b0 },      //// min & max args aantal bekijken (compatibel met printList, ...) 
+    { "cin",                     fnccod_cin,                    0,2,    0b0 },      
     { "cinLine",                 fnccod_cinLine,                0,0,    0b0 },
     { "cinList",                 fnccod_cinParseList,           1,15,   0b0 },
     { "read",                    fnccod_read,                   1,3,    0b0 },
@@ -489,10 +489,10 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     {"QUOTE_LAST",          "2",                        value_isLong},      // print last result, quote string results 
 
     // info command: type of confirmation required (argument 2, must be a variable)
-    {"INFO_ENTER",          "0",                        value_isLong},      // confirmation required by pressing ENTER (any preceding characters are skipped)
-    {"INFO_ENT_CANC",       "1",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
-    {"INFO_YN",             "2",                        value_isLong},      // only yes or no answer allowed, by pressing 'y' or 'n' followed by ENTER   
-    {"INFO_YN_CANC",        "3",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
+    {"ANS_ENTER",           "0",                        value_isLong},      // confirmation required by pressing ENTER (any preceding characters are skipped)
+    {"ANS_ENT_CANC",        "1",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
+    {"ANS_YN",              "2",                        value_isLong},      // only yes or no answer allowed, by pressing 'y' or 'n' followed by ENTER   
+    {"ANS_YN_CANC",         "3",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
 
     // input command: default allowed  
     {"INPUT_NO_DEF",        "0",                        value_isLong},      // '\d' sequences ('default') in the input stream are ignored
@@ -1020,28 +1020,25 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
         }
     }
     else {          // parsing error, abort or kill during parsing
-        // if parsing a program from console or other external I/O stream, provide feedback immediately after user pressed abort button and process remainder of input file (flush)
-        if (_loadProgFromStreamNo <= 0) {
-            if (_programMode) {
-                if (result == result_parse_abort) { printTo(0, "\r\nAbort: "); }                                // not for other parsing errors
-                else { printTo(0, "\r\nParsing error: "); }
-                if (result != result_tokenFound) { printlnTo(0, "processing remainder of input file... please wait"); }
-            }
-
-            // process (flush) remainder of input file
-            long byteInCount{ 0 };
-            char c{};
-            do {                                                                                                // process remainder of input file (flush)
-                // NOTE: forcedStop and forcedAbort are dummy arguments here and will be ignored because already flushing input file after error, abort or kill
-                bool forcedStop{ false }, forcedAbort{ false }, stdConsDummy{ false };                          // dummy arguments (not needed here)
-                c = getCharacter(kill, forcedStop, forcedAbort, stdConsDummy, _programMode);
-                if (kill) { result = result_parse_kill; break; }                                                // kill while processing remainder of file
-                if ((++byteInCount & 0x0fff) == 0) {
-                    printTo(0, '.');
-                    if ((byteInCount & 0x03ffff) == 0) { printlnTo(0); }                                        // print a dot each 4096 lines, a crlf each 64 dots
-                }
-            } while (c != 0xFF);
+        if (_programMode && (_loadProgFromStreamNo <= 0)) {
+            if (result == result_parse_abort) { printTo(0, "\r\nAbort: "); }                                // not for other parsing errors
+            else { printTo(0, "\r\nParsing error: "); }
+            if (result != result_tokenFound) { printlnTo(0, "processing remainder of input file... please wait"); }
         }
+
+        char c{};
+        long byteInCount{ 0 };
+        do {                                                                                                // process remainder of input file (flush)
+            // NOTE: forcedStop and forcedAbort are dummy arguments here and will be ignored because already flushing input file after error, abort or kill
+            bool forcedStop{ false }, forcedAbort{ false }, stdConsDummy{ false };                          // dummy arguments (not needed here)
+            c = getCharacter(kill, forcedStop, forcedAbort, stdConsDummy, true);
+            if (kill) { result = result_parse_kill; break; }                                                // kill while processing remainder of file
+            if (_programMode && ((++byteInCount & 0x0fff) == 0)) {
+                printTo(0, '.');
+                if ((byteInCount & 0x03ffff) == 0) { printlnTo(0); }                                        // print a dot each 4096 lines, a crlf each 64 dots
+            }
+        } while (c != 0xFF);
+
 
         if (result == result_parse_abort) {
             printlnTo(0, "\r\n+++ Abort: parsing terminated +++");                                              // abort: display error message 
@@ -1085,7 +1082,9 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
     // no program error (could be immmediate mode error however), not initiating program load: only reset a couple of items here 
     else {
         parsingStack.deleteList();
-        _blockLevel = 0;
+        _blockLevel = 0;                                     // current number of open block commands (during parsing) - block level + parenthesis level = parsing stack depth
+        _parenthesisLevel = 0;                                      // current number of open parentheses (during parsing)
+
         _justinaFunctionBlockOpen = false;
     }
 
@@ -1152,6 +1151,7 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
         setStream(statementInputStreamNumber, pStatementInputStream);
         if (_loadProgFromStreamNo > 0) { SD_closeFile(_loadProgFromStreamNo); _loadProgFromStreamNo = 0; }
     }
+
 
     while (_pConsoleIn->available()) { readFrom(0); }                                                           // empty console buffer first (to allow the user to start with an empty line)
 
@@ -1247,7 +1247,7 @@ void Justina_interpreter::parseAndExecTraceString() {
         parseTokenResult_type result = parseStatement(pTraceParsingInput, pNextParseStatement, dummy);
         if (result == result_tokenFound) {
             // do NOT pretty print if parsing error, to avoid bad-looking partially printed statements (even if there will be an execution error later)
-            prettyPrintStatements(0);  
+            prettyPrintStatements(0);
             printTo(_debug_sourceStreamNumber, ": ");                                                                                   // resulting value will follow
             pTraceParsingInput = pNextParseStatement;
         }
@@ -1398,7 +1398,7 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
 
 
     printlnTo(0);
-        }
+}
 
 
 // ---------------------------------------------------------------------------------------
@@ -1426,7 +1426,7 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
         _pDebugOut->print("*** Parsed constant string objects cleanup error. Remaining: "); _pDebugOut->println(_parsedStringConstObjectCount);
     #endif
         _parsedStringConstObjectErrors += abs(_parsedStringConstObjectCount);
-}
+    }
 
     if (_globalStaticVarStringObjectCount != 0) {
     #if PRINT_OBJECT_COUNT_ERRORS
@@ -1440,7 +1440,7 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
         _pDebugOut->print("*** Array objects cleanup error. Remaining: "); _pDebugOut->println(_globalStaticArrayObjectCount);
     #endif
         _globalStaticArrayObjectErrors += abs(_globalStaticArrayObjectCount);
-}
+    }
 
 #if PRINT_DEBUG_INFO
     _pDebugOut->print("\r\n** Reset stats\r\n    parsed strings "); _pDebugOut->print(_parsedStringConstObjectCount);
@@ -1505,7 +1505,7 @@ void Justina_interpreter::initInterpreterVariables(bool fullReset) {
 
     // intialised at cold start AND each time the interpreter is reset
 
-    _blockLevel = 0;
+    _blockLevel = 0;                                     // current number of open block commands (during parsing) - block level + parenthesis level = parsing stack depth
     _justinaFunctionCount = 0;
     _paramOnlyCountInFunction = 0;
     _localVarCountInFunction = 0;
@@ -1583,7 +1583,7 @@ void Justina_interpreter::initInterpreterVariables(bool fullReset) {
     makeFormatString(_dispIntegerFmtFlags, true, _dispIntegerSpecifier, _dispIntegerFmtString);           // for integers
     makeFormatString(_dispFloatFmtFlags, false, _dispFloatSpecifier, _dispFloatFmtString);               // for floats
     makeFormatString(_dispStringFmtFlags, false, _dispStringSpecifier, _dispStringFmtString);               // for strings
-    
+
     // fmt() function settings 
     // -----------------------
     _fmt_width = DEFAULT_FMT_WIDTH;                             // width
@@ -1697,7 +1697,7 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
                 #endif
                     isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
                     delete[]  varValues[index].pStringConst;
-        }
+                }
             }
         }
         index++;
@@ -1755,8 +1755,8 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
             (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*prgmCnt.pTokenChars >> 4) & 0x0F;
         prgmCnt.pTokenChars += tokenLength;
         tokenType = *prgmCnt.pTokenChars & 0x0F;
-        }
     }
+}
 
 
 // ---------------------------------------------------------------------------------
