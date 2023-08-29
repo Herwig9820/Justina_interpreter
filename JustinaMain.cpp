@@ -189,7 +189,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
 
 // the 8 array pattern bits indicate the order of arrays and scalars; bit b0 to bit b7 refer to parameter 1 to 8, if a bit is set, an array is expected as argument
 // if more than 8 arguments are supplied, only arguments 1 to 8 can be set as array arguments
-// maximum number of parameters should be no more than 15
+// maximum number of parameters should be no more than 16
 
 const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunctions[]{
     //  name                    id code                         #arg    array pattern
@@ -246,10 +246,10 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     {"analogReadResolution",    fnccod_analogReadResolution,    1,1,    0b0},
     {"analogWriteResolution",   fnccod_analogWriteResolution,   1,1,    0b0},
     {"noTone",                  fnccod_noTone,                  1,1,    0b0},
+    {"tone",                    fnccod_tone,                    2,3,    0b0},
     {"pulseIn",                 fnccod_pulseIn,                 2,3,    0b0},
     {"shiftIn",                 fnccod_shiftIn,                 3,3,    0b0},
     {"shiftOut",                fnccod_shiftOut,                4,4,    0b0},
-    {"tone",                    fnccod_tone,                    2,3,    0b0},
     {"random",                  fnccod_random,                  1,2,    0b0},
     {"randomSeed",              fnccod_randomSeed,              1,1,    0b0},
 
@@ -259,12 +259,12 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     {"bitClear",                fnccod_bitClear,                2,2,    0b0},
     {"bitSet",                  fnccod_bitSet,                  2,2,    0b0},
     {"bitWrite",                fnccod_bitWrite,                3,3,    0b0},
+    {"byteRead",                fnccod_byteRead,                2,2,    0b0},
+    {"byteWrite",               fnccod_byteWrite,               3,3,    0b0},
     {"maskedWordBitRead",       fnccod_wordMaskedRead,          2,2,    0b0},
     {"maskedWordClear",         fnccod_wordMaskedClear,         2,2,    0b0},
     {"maskedWordSet",           fnccod_wordMaskedSet,           2,2,    0b0},
     {"maskedWordWrite",         fnccod_wordMaskedWrite,         3,3,    0b0},
-    {"byteRead",                fnccod_byteRead,                2,2,    0b0},
-    {"byteWrite",               fnccod_byteWrite,               3,3,    0b0},
 
     {"mem32Read",               fnccod_mem32Read,               1,1,    0b0},
     {"mem32Write",              fnccod_mem32Write,              2,2,    0b0},
@@ -285,9 +285,6 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     {"toUpper",                 fnccod_toupper,                 1,3,    0b0},
     {"toLower",                 fnccod_tolower,                 1,3,    0b0},
     {"space",                   fnccod_space,                   1,1,    0b0},
-    {"tab",                     fnccod_tab,                     0,1,    0b0},
-    {"col",                     fnccod_gotoColumn,              1,1,    0b0},
-    {"pos",                     fnccod_getColumnPos,            0,0,    0b0},
     {"repChar",                 fnccod_repchar,                 2,2,    0b0},
     {"findInStr",               fnccod_findsubstr,              2,3,    0b0},
     {"substInStr",              fnccod_replacesubstr,           3,4,    0b0},
@@ -315,48 +312,52 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     {"dims",                    fnccod_dims,                    1,1,    0b00000001},
     {"type",                    fnccod_valueType,               1,1,    0b0},
     {"r",                       fnccod_last,                    0,1,    0b0},               // short label for 'last result'
-    {"fmt",                     fnccod_format,                  1,6,    0b0},               // short label for 'system value'
     {"sysval",                  fnccod_sysVal,                  1,1,    0b0},
 
     // input and output functions
-    { "cin",                     fnccod_cin,                    0,2,    0b0 },      
-    { "cinLine",                 fnccod_cinLine,                0,0,    0b0 },
-    { "cinList",                 fnccod_cinParseList,           1,15,   0b0 },
-    { "read",                    fnccod_read,                   1,3,    0b0 },
-    { "readLine",                fnccod_readLine,               1,1,    0b0 },
-    { "readList",                fnccod_parseList,              2,16,   0b0 },
+    {"cin",                     fnccod_cin,                    0,2,    0b0 },
+    {"cinLine",                 fnccod_cinLine,                0,0,    0b0 },
+    {"cinList",                 fnccod_cinParseList,           1,15,   0b0 },
+    {"read",                    fnccod_read,                   1,3,    0b0 },
+    {"readLine",                fnccod_readLine,               1,1,    0b0 },
+    {"readList",                fnccod_parseList,              2,16,   0b0 },
 
-    { "vreadList",               fnccod_parseListFromVar,       2,16,   0b0 },
+    {"vreadList",               fnccod_parseListFromVar,       2,16,   0b0 },
 
-    { "find",                    fnccod_find,                   2,2,    0b0 },
-    { "findUntil",               fnccod_findUntil,              3,3,    0b0 },
-    { "peek",                    fnccod_peek,                   0,1,    0b0 },
-    { "available",               fnccod_available,              0,1,    0b0 },
-    { "flush",                   fnccod_flush,                  1,1,    0b0 },
-    { "setTimeout",              fnccod_setTimeout,             2,2,    0b0 },
-    { "getTimeout",              fnccod_getTimeout,             1,1,    0b0 },
-    { "availableForWrite",       fnccod_availableForWrite,      1,1,    0b0 },
-    { "getWriteError",           fnccod_getWriteError,          1,1,    0b0 },
-    { "clearWriteError",         fnccod_clearWriteError,        1,1,    0b0 },
+    {"find",                    fnccod_find,                   2,2,    0b0 },
+    {"findUntil",               fnccod_findUntil,              3,3,    0b0 },
+    {"peek",                    fnccod_peek,                   0,1,    0b0 },
+    {"available",               fnccod_available,              0,1,    0b0 },
+    {"flush",                   fnccod_flush,                  1,1,    0b0 },
+    {"setTimeout",              fnccod_setTimeout,             2,2,    0b0 },
+    {"getTimeout",              fnccod_getTimeout,             1,1,    0b0 },
+    {"availableForWrite",       fnccod_availableForWrite,      1,1,    0b0 },
+    {"getWriteError",           fnccod_getWriteError,          1,1,    0b0 },
+    {"clearWriteError",         fnccod_clearWriteError,        1,1,    0b0 },
+
+    {"fmt",                     fnccod_format,                  1,6,    0b0},               // short label for 'system value'
+    {"tab",                     fnccod_tab,                     0,1,    0b0},
+    {"col",                     fnccod_gotoColumn,              1,1,    0b0},
+    {"pos",                     fnccod_getColumnPos,            0,0,    0b0},
 
     // SD card only (based upon Arduino SD card library functions)
-    { "open",                    fnccod_open,                   1,2,    0b0 },
-    { "close",                   fnccod_close,                  1,1,    0b0 },
-    { "position",                fnccod_position,               1,1,    0b0 },
-    { "size",                    fnccod_size,                   1,1,    0b0 },
-    { "seek",                    fnccod_seek,                   2,2,    0b0 },
-    { "name",                    fnccod_name,                   1,1,    0b0 },
-    { "fullName",                fnccod_fullName,               1,1,    0b0 },
-    { "isDirectory",             fnccod_isDirectory,            1,1,    0b0 },
-    { "rewindDirectory",         fnccod_rewindDirectory,        1,1,    0b0 },
-    { "openNext",                fnccod_openNextFile,           1,2,    0b0 },
-    { "exists",                  fnccod_exists,                 1,1,    0b0 },
-    { "createDirectory",         fnccod_mkdir,                  1,1,    0b0 },
-    { "removeDirectory",         fnccod_rmdir,                  1,1,    0b0 },
-    { "remove",                  fnccod_remove,                 1,1,    0b0 },
-    { "fileNum",                 fnccod_fileNumber,             1,1,    0b0 },
-    { "isInUse",                 fnccod_isOpenFile,             1,1,    0b0 },
-    { "closeAll",                fnccod_closeAll,               0,0,    0b0 },
+    {"open",                    fnccod_open,                   1,2,    0b0 },
+    {"close",                   fnccod_close,                  1,1,    0b0 },
+    {"position",                fnccod_position,               1,1,    0b0 },
+    {"size",                    fnccod_size,                   1,1,    0b0 },
+    {"seek",                    fnccod_seek,                   2,2,    0b0 },
+    {"name",                    fnccod_name,                   1,1,    0b0 },
+    {"fullName",                fnccod_fullName,               1,1,    0b0 },
+    {"isDirectory",             fnccod_isDirectory,            1,1,    0b0 },
+    {"rewindDirectory",         fnccod_rewindDirectory,        1,1,    0b0 },
+    {"openNext",                fnccod_openNextFile,           1,2,    0b0 },
+    {"exists",                  fnccod_exists,                 1,1,    0b0 },
+    {"createDirectory",         fnccod_mkdir,                  1,1,    0b0 },
+    {"removeDirectory",         fnccod_rmdir,                  1,1,    0b0 },
+    {"remove",                  fnccod_remove,                 1,1,    0b0 },
+    {"fileNum",                 fnccod_fileNumber,             1,1,    0b0 },
+    {"isInUse",                 fnccod_isOpenFile,             1,1,    0b0 },
+    {"closeAll",                fnccod_closeAll,               0,0,    0b0 },
 };
 
 
@@ -489,22 +490,22 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     {"QUOTE_LAST",          "2",                        value_isLong},      // print last result, quote string results 
 
     // info command: type of confirmation required (argument 2, must be a variable)
-    {"ANS_ENTER",           "0",                        value_isLong},      // confirmation required by pressing ENTER (any preceding characters are skipped)
-    {"ANS_ENT_CANC",        "1",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
-    {"ANS_YN",              "2",                        value_isLong},      // only yes or no answer allowed, by pressing 'y' or 'n' followed by ENTER   
-    {"ANS_YN_CANC",         "3",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
+    {"CONF_ENTER",          "0",                        value_isLong},      // confirmation required by pressing ENTER (any preceding characters are skipped)
+    {"CONF_ENT_CANC",       "1",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
+    {"CONF_YN",             "2",                        value_isLong},      // only yes or no answer allowed, by pressing 'y' or 'n' followed by ENTER   
+    {"CONF_YN_CANC",        "3",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
 
     // input command: default allowed  
-    {"INPUT_NO_DEF",        "0",                        value_isLong},      // '\d' sequences ('default') in the input stream are ignored
-    {"INPUT_ALLOW_DEF",     "1",                        value_isLong},      // if '\d' sequence is encountered in the input stream, default value is returned
+    {"INP_NO_DEF",          "0",                        value_isLong},      // '\d' sequences ('default') in the input stream are ignored
+    {"INP_ALLOW_DEF",       "1",                        value_isLong},      // if '\d' sequence is encountered in the input stream, default value is returned
 
     // input and info command: flag 'user canceled' (input argument 3 / info argument 2 return value - argument must be a variable)
-    {"USER_CANCELED",       "0",                        value_isLong},      // operation was canceled by user (\c sequence encountered)
-    {"USER_SUCCESS",        "1",                        value_isLong},      // operation was NOT canceled by user
+    {"USR_CANCELED",        "0",                        value_isLong},      // operation was canceled by user (\c sequence encountered)
+    {"USR_SUCCESS",         "1",                        value_isLong},      // operation was NOT canceled by user
 
     // quit command
-    {"KEEP_MEM",            "0",                        value_isLong},      // keep Justina in memory on quitting
-    {"RELEASE_MEM",         "1",                        value_isLong},      // release memory on quitting
+    {"QUIT_KEEP_",          "0",                        value_isLong},      // keep Justina in memory on quitting
+    {"QUIT_RELEASE",        "1",                        value_isLong},      // release memory on quitting
 
     // input / output streams
     {"CONSOLE",             "0",                        value_isLong},      // IO: read from / print to console
@@ -526,9 +527,11 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     {"APPEND",              "0x4",                      value_isLong},      // writes will occur at end of file
     {"SYNC",                "0x8",                      value_isLong},      //  
     {"CREATE_OK",           "0x10",                     value_isLong},      // create new file if non-existent
-    {"EXCL",                "0x20",                     value_isLong},      // --> use together with flag 0x10 
+    {"EXCL",                "0x20",                     value_isLong},      // creation of a new file is not allowed --> what ? //// 
     {"CREATE_ONLY",         "0x30",                     value_isLong},      // create new file only - do not open an existing file
     {"TRUNC",               "0x40",                     value_isLong},      // truncate file to zero bytes on open (NOT if file is opened for read access only)
+
+    {"RW_APP",              "0x07",                     value_isLong},      // open for read write access; writes at the end
 
     // formatting flags
     {"FMT_LEFT",            "0x01",                     value_isLong},      // align output left within the print field 
@@ -722,7 +725,7 @@ bool Justina_interpreter::run() {
     bool startJustinaWithoutAutostart{ true };
 
     // initialise SD card now ?
-    // 0 = no card reader, 1 = card reader present, do not yet initialise, 2 = initialise card now, 3 = init card & run start.txt function start() now
+    // 0 = no card reader, 1 = card reader present, do not yet initialise, 2 = initialise card now, 3 = init card & run start.jus function start() now
     if ((_justinaConstraints & 0b0011) >= 2) {
         printTo(0, "\r\nLooking for an SD card...\r\n");
         execResult_type execResult = startSD();
@@ -733,14 +736,14 @@ bool Justina_interpreter::run() {
         // open startup file and retrieve file number (which would be one, normally)
         _initiateProgramLoad = _SDinitOK;
         if (_initiateProgramLoad) {
-            printlnTo(0, "Looking for 'start.txt' program...");
-            if (!SD.exists("start.txt")) { _initiateProgramLoad = false; printlnTo(0, "'start.txt' program NOT found"); }
+            printlnTo(0, "Looking for 'start.jus' program...");
+            if (!SD.exists("start.jus")) { _initiateProgramLoad = false; printlnTo(0, "'start.jus' program NOT found"); }
         }
 
         if (_initiateProgramLoad) {
-            execResult_type execResult = SD_open(_loadProgFromStreamNo, "start.txt", O_READ);                   // this performs a few card & file checks as well
+            execResult_type execResult = SD_open(_loadProgFromStreamNo, "start.jus", O_READ);                   // this performs a few card & file checks as well
             _initiateProgramLoad = (execResult == result_execOK);
-            if (!_initiateProgramLoad) { printTo(0, "Could not open 'start.txt' program - error "); printlnTo(0, execResult); }
+            if (!_initiateProgramLoad) { printTo(0, "Could not open 'start.jus' program - error "); printlnTo(0, execResult); }
         }
 
         if (_initiateProgramLoad) {                                                                             // !!! second 'if(_initiateProgramLoad)'
@@ -751,7 +754,7 @@ bool Justina_interpreter::run() {
             startJustinaWithoutAutostart = false;
             streamNumber = _loadProgFromStreamNo;                                                               // autostart step 1: temporarily switch from console input to startup file (opening the file here) 
             setStream(streamNumber, pStatementInputStream);                                                     // error checking done while opening file
-            printTo(0, "Loading program 'start.txt'...\r\n");
+            printTo(0, "Loading program 'start.jus'...\r\n");
         }
     }
 
@@ -833,7 +836,7 @@ bool Justina_interpreter::run() {
             // program mode: complete program read and parsed   /   imm. mode: all statements in command line read and parsed ?
             if (allCharsReceived || (result != result_tokenFound)) {                                            // note: if all statements have been read, they also have been parsed
                 if (kill) { quitNow = true; }
-                else { quitNow = processAndExec(result, kill, lineCount, pErrorPos, clearCmdIndicator, pStatementInputStream, streamNumber); }  // return value: quit Justina now
+                else { quitNow = processAndExec(result, kill, lineCount, pErrorPos, allCharsReceived, clearCmdIndicator, pStatementInputStream, streamNumber); }  // return value: quit Justina now
 
 
                 // parsing error occured ? reset input controlling variables
@@ -992,7 +995,7 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
 // *   finalise parsing; execute if no errors; if in debug mode, trace and print debug info; re-init machine state and exit   *
 // ----------------------------------------------------------------------------------------------------------------------------
 
-bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, int& clearIndicator,
+bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, bool allCharsReceived, int& clearIndicator,
     Stream*& pStatementInputStream, int& statementInputStreamNumber) {
 
     bool quitJustina{ false };
@@ -1031,9 +1034,11 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
         do {                                                                                                // process remainder of input file (flush)
             // NOTE: forcedStop and forcedAbort are dummy arguments here and will be ignored because already flushing input file after error, abort or kill
             bool forcedStop{ false }, forcedAbort{ false }, stdConsDummy{ false };                          // dummy arguments (not needed here)
+            if (!_programMode && allCharsReceived) { break; }                                               // last character received before call was a newline character: complete user command line was read
             c = getCharacter(kill, forcedStop, forcedAbort, stdConsDummy, true);
             if (kill) { result = result_parse_kill; break; }                                                // kill while processing remainder of file
-            if (_programMode && ((++byteInCount & 0x0fff) == 0)) {
+            if (!_programMode && (c == '\n')) { break; }                                                    // complete user command line was read
+            else if (_programMode && ((++byteInCount & 0x0fff) == 0)) {
                 printTo(0, '.');
                 if ((byteInCount & 0x03ffff) == 0) { printlnTo(0); }                                        // print a dot each 4096 lines, a crlf each 64 dots
             }
@@ -1364,8 +1369,8 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
             _systemVarStringObjectCount--;
             delete[] _pTraceString;
             _pTraceString = nullptr;                                                                            // old trace string
-        }
     }
+}
 
     // delete all elements of the immediate mode parsed statements stack
     // (parsed immediate mode statements can be temporarily pushed on the immediate mode stack to be replaced either by parsed debug command lines or parsed eval() strings) 
@@ -1419,7 +1424,7 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
         _pDebugOut->print("*** Variable / function name objects cleanup error. Remaining: "); _pDebugOut->println(_identifierNameStringObjectCount);
     #endif
         _identifierNameStringObjectErrors += abs(_identifierNameStringObjectCount);
-    }
+}
 
     if (_parsedStringConstObjectCount != 0) {
     #if PRINT_OBJECT_COUNT_ERRORS
@@ -1456,7 +1461,7 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
             _pDebugOut->print("*** User variable name objects cleanup error. Remaining: "); _pDebugOut->println(_userVarNameStringObjectCount);
         #endif
             _userVarNameStringObjectErrors += abs(_userVarNameStringObjectCount);
-        }
+    }
 
         if (_userVarStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
@@ -1570,7 +1575,6 @@ void Justina_interpreter::initInterpreterVariables(bool fullReset) {
 
     _dispFloatPrecision = DEFAULT_FLOAT_PRECISION;
     _dispIntegerPrecision = DEFAULT_INT_PRECISION;
-    _dispCharsToPrint = DEFAULT_STR_CHARS_TO_PRINT;
 
     strcpy(_dispFloatSpecifier, DEFAULT_FLOAT_SPECIFIER);
     strcpy(_dispIntegerSpecifier, DEFAULT_INT_SPECIFIER);                                                                 // here without 'd' (long integer) : will be added  
@@ -1621,7 +1625,7 @@ void Justina_interpreter::deleteIdentifierNameObjects(char** pIdentNameArray, in
         isUserVar ? _userVarNameStringObjectCount-- : _identifierNameStringObjectCount--;
         delete[] * (pIdentNameArray + index);
         index++;
-    }
+}
 }
 
 
@@ -1665,8 +1669,8 @@ void Justina_interpreter::deleteOneArrayVarStringObjects(Justina_interpreter::Va
         #endif
             isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
             delete[]  pString;                                                                                                      // applicable to string and array (same pointer)
-        }
     }
+}
 }
 
 
@@ -1689,7 +1693,7 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
             #endif
                 isUserVar ? _userArrayObjectCount-- : isLocalVar ? _localArrayObjectCount-- : _globalStaticArrayObjectCount--;
                 delete[]  varValues[index].pArray;
-            }
+        }
             else if ((varType[index] & value_typeMask) == value_isStringPointer) {                                                  // variable is a scalar containing a string
                 if (varValues[index].pStringConst != nullptr) {
                 #if PRINT_HEAP_OBJ_CREA_DEL
@@ -1697,9 +1701,9 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
                 #endif
                     isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
                     delete[]  varValues[index].pStringConst;
-                }
             }
-        }
+    }
+}
         index++;
     }
 }
@@ -1720,8 +1724,8 @@ void Justina_interpreter::deleteLastValueFiFoStringObjects() {
         #endif
             _lastValuesStringObjectCount--;
             delete[] lastResultValueFiFo[i].pStringConst;
-        }
     }
+}
 }
 
 
@@ -1749,13 +1753,13 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
             #endif
                 _parsedStringConstObjectCount--;
                 delete[] pAnum;
-            }
         }
+    }
         uint8_t tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) :
             (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*prgmCnt.pTokenChars >> 4) & 0x0F;
         prgmCnt.pTokenChars += tokenLength;
         tokenType = *prgmCnt.pTokenChars & 0x0F;
-    }
+}
 }
 
 

@@ -34,7 +34,6 @@
 #include "Arduino.h"
 #include <SD.h>
 #include <SPI.h>
-#include <avr/dtostrf.h>        
 
 #define J_productName "Justina: JUST an INterpreter for Arduino"
 #define J_legalCopyright "Copyright (C) Herwig Taveirne 2021, 2023"
@@ -713,7 +712,8 @@ class Justina_interpreter {
 
     // maximum values
     const int MAX_PRINT_WIDTH = 255;                                    // max. width of print field. Absolute limit: 255. Width as defined as in c++ printf 'format.width' sub-specifier
-    const int MAX_NUM_PRECISION = 8;                                    // max. numeric precision. Precision as defined as in c++ printf 'format.precision' sub-specifier
+    const int MAX_INT_PRECISION = 10;                                   // max. integer precision (2**31: 10 digits). Precision as defined as in c++ printf 'format.precision' sub-specifier for integers
+    const int MAX_FLOAT_PRECISION = 8;                                  // max. floating-point precision. Precision as defined as in c++ printf 'format.precision' sub-specifier for floating-point numbers
     const int MAX_STRCHAR_TO_PRINT = 255;                               // max. # of alphanumeric characters to print. Absolute limit: 255. Defined as in c++ printf 'format.precision' sub-specifier
 
     // separate defaults for display settings and fmt() function
@@ -1137,7 +1137,7 @@ private:
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na, block_na, block_na };                                      // not a 'block' command
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[67];                                                                                      // keyword names
+    static const ResWordDef _resWords[66];                                                                                      // keyword names
     static const InternCppFuncDef _internCppFunctions[137];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[38];                                                                                    // terminals (including operators)
     static const SymbNumConsts _symbNumConsts[70];                                                                              // predefined constants
@@ -1409,7 +1409,7 @@ private:
     // --------------
 
     bool _coldStart{};                                              // is this a cold start (initialising Justina) or a warm start (if Justina was stopped ('quit' command) with its memory retained)
-    int _justinaConstraints{ 0 };                                   // 0 = no card reader, 1 = card reader present, do not yet initialise, 2 = initialise card now, 3 = init card & run start.txt function start() now
+    int _justinaConstraints{ 0 };                                   // 0 = no card reader, 1 = card reader present, do not yet initialise, 2 = initialise card now, 3 = init card & run start.jus function start() now
     long _progMemorySize{};                                         // depends on processor
     char* _programStorage;                                          // pointer to start of program storage
     char _programName[MAX_IDENT_NAME_LEN + 1];
@@ -1578,7 +1578,6 @@ private:
 
     int _dispFloatPrecision = DEFAULT_FLOAT_PRECISION;
     int _dispIntegerPrecision = DEFAULT_INT_PRECISION;
-    int _dispCharsToPrint = DEFAULT_STR_CHARS_TO_PRINT;
 
     char _dispFloatSpecifier[2]{ "" };                                              // will be initialised in Justina constructor 
     char _dispIntegerSpecifier[2]{ "" };
@@ -1913,7 +1912,7 @@ private:
     bool initVariable(uint16_t varTokenStep, uint16_t constTokenStep);
 
     // process parsed input and start execution
-    bool processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, int& clearIndicator, Stream*& pStatementInputStream, int& statementInputStreamNumber);
+    bool processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, bool allCharsReceived, int& clearIndicator, Stream*& pStatementInputStream, int& statementInputStreamNumber);
 
 
     // execution

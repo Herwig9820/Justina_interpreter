@@ -1025,8 +1025,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             int varPrintColumn{ 0 };                                                                                        // only for printing to string variable: current print column
             char* assembledString{ nullptr };                                                                               // only for printing to string variable: intermediate string
 
+            char intFmtStr[10] = "%#.*l";
+            strcat(intFmtStr, doPrintList ? "d" : _dispIntegerSpecifier);
             char floatFmtStr[10] = "%#.*";
-            strcat(floatFmtStr, _dispFloatSpecifier);
+            strcat(floatFmtStr, doPrintList ? "e" : _dispFloatSpecifier);
 
             for (int i = 1; i <= cmdArgCount; i++) {
                 bool operandIsVar = (pStackLvl->varOrConst.tokenType == tok_isVariable);
@@ -1106,8 +1108,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                             printString = s;                                                                                // pointer
                             // next line is valid for long values as well (same memory locations are copied)
                             operand.floatConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pFloatConst) : pStackLvl->varOrConst.value.floatConst);
-                            if (opIsLong) { sprintf(s, "%ld", operand.longConst); }                                     // integer: just print all digits
-                            else { sprintf(s, floatFmtStr, _dispFloatPrecision, operand.floatConst); }                  // floats : with current display precision for floating point values                                             
+
+                            // print (line): take into account precision and specifier; printList: print met max. accuracy, integers: base 10, float: general format.
+                            // do not take into account formatting flags: integers: always precede hex with '0x', floats: always print decimal point.
+                            if (opIsLong) { if (doPrintList) { sprintf(s, "%#ld", operand.longConst); } else { sprintf(s, intFmtStr, _dispIntegerPrecision, operand.longConst); } }
+                            else { if (doPrintList) { sprintf(s, "%#G", operand.floatConst); } else { sprintf(s, floatFmtStr, _dispFloatPrecision, operand.floatConst); } }
                         }
                         else {
                             operand.pStringConst = operandIsVar ? (*pStackLvl->varOrConst.value.ppStringConst) : pStackLvl->varOrConst.value.pStringConst;
@@ -1371,14 +1376,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // floatFmt precision [, specifier]  [, flags] ]    : set formatting for floats 
             // intFmt precision [, specifier]  [, flags] ]      : set formatting for integers
             // NOTE: string printing : NOT affected
-            
+
             // these settings are used for printing last calculation result, user input echo, print commands output and values traced in debug mode('trace' command)
 
             // precision: 
-            // floatFmt command with 'f', 'e' or 'E' specifier: number of digits printed after the decimal point (floatFmt command only)
+            // floatFmt command with 'f', 'e' or 'E' specifier: number of digits printed after the decimal point    //// klopt niet
             //                  with 'g' or 'G' specifier: MAXIMUM number of significant digits to be printed (intFmt command only)
             // intFmt command with 'd', 'x' and 'X': MINIMUM number of digits to be written (if the integer is shorter, it will be padded with leading zeros)
-             
+
             // specifier (optional parameter):
             // floatFmt command: 'f', 'e', 'E', 'g' or 'G' specifiers allowed
             // =>  'f': fixed point, 'e' or 'E': scientific, 'g' ot 'G': shortest notation (fixed or scientific). 'E' or 'G': exponent character printed in capitals    
@@ -1392,7 +1397,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // once set, and if not provided again, specifier and flags are used as defaults for next calls to these commands
 
             // NOTE: strings are always printed unchanged, right justified. Use the fmt() function to format strings
-            
+
             bool argIsVar[3];
             bool argIsArray[3];
             char valueType[3];
@@ -1404,28 +1409,28 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // set format for numbers and strings
 
             bool isIntFmtCmd = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_intfmt);
-            char specifier= isIntFmtCmd ? _dispIntegerSpecifier[0] : _dispFloatSpecifier[0];
+            char specifier = isIntFmtCmd ? _dispIntegerSpecifier[0] : _dispFloatSpecifier[0];
             int precision{ isIntFmtCmd ? _dispIntegerPrecision : _dispFloatPrecision };
             int fmtFlags{ isIntFmtCmd ? _dispIntegerFmtFlags : _dispFloatFmtFlags };
-            char* fmtString {isIntFmtCmd ? _dispIntegerFmtString : _dispFloatFmtString};
+            char* fmtString{ isIntFmtCmd ? _dispIntegerFmtString : _dispFloatFmtString };
 
-           // !!! the last 3 arguments return the values of 1st to max. 3rd argument of the command (widh, precision, specifier, flags). Optional last argument is characters printed -> not relevant here
+            // !!! the last 3 arguments return the values of 1st to max. 3rd argument of the command (widh, precision, specifier, flags). Optional last argument is characters printed -> not relevant here
             execResult = checkFmtSpecifiers(true, cmdArgCount, valueType, args, specifier, precision, fmtFlags);
             if (execResult != result_execOK) { return execResult; }
 
-            if (specifier == 's'){return result_arg_invalid;}
+            if (specifier == 's') { return result_arg_invalid; }
             bool isIntSpecifier = (specifier == 'X') || (specifier == 'x') || (specifier == 'd');
             if (isIntFmtCmd != isIntSpecifier) { return result_arg_invalid; }
-            
-            precision = min(precision, MAX_NUM_PRECISION);                                                         // same maximum for all numeric types
+
+            precision = min(precision, isIntFmtCmd ? MAX_INT_PRECISION : MAX_FLOAT_PRECISION);
 
             // create format string for numeric values
             (isIntFmtCmd ? _dispIntegerPrecision : _dispFloatPrecision) = precision;
             (isIntFmtCmd ? _dispIntegerFmtFlags : _dispFloatFmtFlags) = fmtFlags;
             (isIntFmtCmd ? _dispIntegerSpecifier[0] : _dispFloatSpecifier[0]) = specifier;
-            
+
             // adapt the format string for integers (intFmt cmd) or floats (floatFmt cmd); NOTE that the format string for strings is fixed
-            makeFormatString(fmtFlags, isIntSpecifier, &specifier, fmtString);  
+            makeFormatString(fmtFlags, isIntSpecifier, &specifier, fmtString);
 
             // clean up
             clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings
@@ -1438,7 +1443,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         // set console display mode
         // ------------------------
 
-        case cmdcod_dispmod:      // takes two arguments: width & flags
+        case cmdcod_dispmod:      // takes two arguments
         {
             // mandatory argument 1: 0 = do not print prompt and do not echo user input; 1 = print prompt but no not echo user input; 2 = print prompt and echo user input 
             // mandatory argument 2: 0 = do not print last result; 1 = print last result; 2 = expand last result escape sequences and print last result

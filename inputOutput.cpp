@@ -784,11 +784,13 @@ char Justina_interpreter::getCharacter(bool& kill, bool& forcedStop, bool& force
 // *   read text from keyboard and store in c++ variable   *
 // ---------------------------------------------------------
 
-// read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
+// read characters and store in 'input' variable. Return on terminator character (length is stored in 'length').
 // return value 'true' indicates kill request from Justina caller
 
 bool Justina_interpreter::getConsoleCharacters(bool& forcedStop, bool& forcedAbort, bool& doCancel, bool& doDefault, char* input, int& length, char terminator) {
     bool backslashFound{ false }, quitNow{ false };
+
+    // NOTE: all characters are stored as typed, including backslash and double quote characters.
 
     int maxLength = length;  // init
     length = 0;
@@ -807,17 +809,16 @@ bool Justina_interpreter::getConsoleCharacters(bool& forcedStop, bool& forcedAbo
             else if (c < ' ') { continue; }                                                 // skip control-chars except new line (ESC is skipped here as well - flag already set)
 
             // Check for Justina ESCAPE sequence (sent by terminal as individual characters) and cancel input, or use default value, if indicated
-            // Note: if Justina ESCAPE sequence is not recognized, then backslash character is simply discarded
-            if (c == '\\') {                                                                // backslash character found
-                backslashFound = !backslashFound;
-                if (backslashFound) { continue; }                                           // first backslash in a sequence: note and do nothing
-            }
+            if (c == '\\') { backslashFound = !backslashFound; }                            // backslash character found
+
             else if (tolower(c) == 'c') {                                                   // part of a Justina ESCAPE sequence ? Cancel if allowed 
-                if (backslashFound) { backslashFound = false;  doCancel = true;  continue; }
+                if (backslashFound) { backslashFound = false;  doCancel = true; }
             }
             else if (tolower(c) == 'd') {                                                   // part of a Justina ESCAPE sequence ? Use default value if provided
-                if (backslashFound) { backslashFound = false; doDefault = true;  continue; }
+                if (backslashFound) { backslashFound = false; doDefault = true; }
             }
+
+            else { backslashFound = false; }
 
             if (length >= maxLength) { continue; }                                          // max. input length exceeded: drop character
             input[length] = c; input[++length] = '\0';
@@ -978,13 +979,13 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
     const int maxOutputLength{ 200 };
     int outputLength = 0;                                                                                                   // init: first position
 
-    char intFormatStr[10]= "%#l";                                                                                           // '#' flag: always precede hex values with 0x
+    char intFormatStr[10] = "%#l";                                                                                           // '#' flag: always precede hex values with 0x
     strcat(intFormatStr, _dispIntegerSpecifier);
     char floatFmtStr[10] = "%#.*";                                                                                          // '#' flag: always a decimal point
     strcat(floatFmtStr, _dispFloatSpecifier);
 
     // multiple instructions: only during debugging
-    int outputStream = (_parsingExecutingTraceString || multipleInstructions)  ? _debug_sourceStreamNumber : 0;
+    int outputStream = (_parsingExecutingTraceString || multipleInstructions) ? _debug_sourceStreamNumber : 0;
 
     while (tokenType != tok_no_token) {                                                                                     // for all tokens in token list
         int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) :
@@ -1367,7 +1368,7 @@ void  Justina_interpreter::makeFormatString(int flags, bool longPrefix, char* sp
     }
     fmtString[strPos] = '*'; ++strPos; fmtString[strPos] = '.'; ++strPos; fmtString[strPos] = '*'; ++strPos;                // width and precision specified with additional arguments (*.*)
     if (longPrefix) { fmtString[strPos] = 'l'; ++strPos; fmtString[strPos] = specifier[0]; ++strPos; }                           // "ld", "lx": long integer in decimal or hex format
-    else { fmtString[strPos] = specifier[0]; ++strPos; }                                                                       
+    else { fmtString[strPos] = specifier[0]; ++strPos; }
     fmtString[strPos] = '%'; ++strPos; fmtString[strPos] = 'n'; ++strPos; fmtString[strPos] = '\0'; ++strPos;                   // %n specifier (return characters printed - for fmt() function only)
 
     return;

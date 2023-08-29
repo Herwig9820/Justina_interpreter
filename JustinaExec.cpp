@@ -808,7 +808,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
     // -------------------------------------------------
 
     if (!_parsingExecutingTraceString) {
-        if (*_pConsolePrintColumn != 0) { printlnTo(0);    *_pConsolePrintColumn = 0; }
+        if (*_pConsolePrintColumn != 0) { printlnTo(0); *_pConsolePrintColumn = 0; }
         if (_lastValueIsStored && (_printLastResult > 0)) {
 
             // print last result
@@ -2062,21 +2062,17 @@ Justina_interpreter::execResult_type Justina_interpreter::execExternalCppFunctio
 
         // empty string returned by user cpp function ? replace by a null pointer  
         int len = strlen(fcnResult.pStringConst);
-        Serial.print("length 1: "); Serial.println(len);
         if (len == 0) { fcnResult.pStringConst = nullptr; }
         else {
             // string returned is not empty: CREATE NEW char string OBJECT and return pointer to this new object 
             char* temp = fcnResult.pStringConst;
             _intermediateStringObjectCount++;
             fcnResult.pStringConst = new char[len + 1];
-            Serial.print("original string: "); Serial.println(temp);
         #if PRINT_HEAP_OBJ_CREA_DEL
             _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)result.pStringConst, HEX);
         #endif
             strcpy(fcnResult.pStringConst, temp);
         }
-            Serial.print("length 2: "); Serial.println(strlen(fcnResult.pStringConst));
-            Serial.print("final string: "); Serial.println(fcnResult.pStringConst);
     }
 
     pStackLvl = pFirstArgStackLvl;                                                                             // set stack level again to first value argument
@@ -2167,7 +2163,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchJustinaFunction
         _pDebugOut->print("+++++ (LOCAL STORAGE) ");   _pDebugOut->println((uint32_t)_activeFunctionData.pLocalVarValues, HEX);
     #endif
     }
-    Serial.print("          function index: "); Serial.println((uint8_t)_activeFunctionData.functionIndex);
 
 
     // init local variables: parameters with supplied arguments (scalar and array var refs) and with default values (scalars only), local variables (scalar and array)

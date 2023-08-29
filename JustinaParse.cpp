@@ -214,7 +214,7 @@ bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result, int
     char cmdRestriction = _resWords[_tokenIndex].restrictions & cmd_usageRestrictionMask;
     if ((cmdRestriction == cmd_onlyProgramTop) && (_lastTokenStep != 0)) { result = result_cmd_onlyProgramStart; return false; }        // not a 'program' command
     if ((cmdRestriction != cmd_onlyProgramTop) && (_lastTokenStep == 0)) { result = result_cmd_programCmdMissing; return false; }
-    if ((cmdRestriction == cmd_onlyImmModeTop) && (_programCounter != _programStorage +  _progMemorySize + sizeof(TokenIsResWord) - (hasTokenStep ? 0 : 2))) { result = result_cmd_onlyImmediateMode; return false; }
+    if ((cmdRestriction == cmd_onlyImmModeTop) && (_programCounter != _programStorage + _progMemorySize + sizeof(TokenIsResWord) - (hasTokenStep ? 0 : 2))) { result = result_cmd_onlyImmediateMode; return false; }
     if (_programMode && (cmdRestriction == cmd_onlyImmediate)) { result = result_cmd_onlyImmediateMode; return false; }
     if (!_programMode && (cmdRestriction == cmd_onlyInProgram)) { result = result_cmd_onlyInsideProgram; return false; }
     if (!_justinaFunctionBlockOpen && (cmdRestriction == cmd_onlyInFunctionBlock)) { result = result_cmd_onlyInsideFunction; return false; }
@@ -2175,7 +2175,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
 
 bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_type& result) {
     result = result_tokenNotFound;                                                              // init: flag 'no token found'
-    char* pch = pNext;                                                                          // pointer to first character to parse (any spaces have been skipped already)
+    char* pch = pNext;                                                                           // pointer to first character to parse (any spaces have been skipped already)
 
     bool stay = (_isProgramCmd || _isDeleteVarCmd || _isClearAllCmd || _isClearProgCmd);
     if (!stay) { return true; }

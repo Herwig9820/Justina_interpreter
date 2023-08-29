@@ -252,7 +252,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
         // --------------------------------------------------
 
         case fnccod_close:                                                                                                  // close a file
-        case fnccod_flush:                                                                                                  // wait until all characters in output buffer are sent
+        case fnccod_flush:                                                                                                  // empty output buffert
         {
             Stream* pStream{};
             int streamNumber;
@@ -463,7 +463,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             if (stayHere) {
                 Stream* pStream{ _pConsoleIn };                                                                             // init
                 int streamNumber{ 0 };
-
                 // note: available() and peek() are only available as methods of a stream: determineStream(...) returns that stream, whereas setStream(...) sets _pStreamIn and _pStreamOut...
                 // ... for use with Justina methods
                 execResult_type execResult = (suppliedArgCount > 0) ? determineStream(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber) : determineStream(streamNumber, pStream);
@@ -471,7 +470,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
                 // read character from stream now 
                 char c{ 0xff };                                                                                             // init: no character read
-                if (functionCode == fnccod_peek) { c = pStream->peek(); }
+                if (functionCode == fnccod_peek) { delay(1000); c = pStream->peek(); }
                 else {
                     if (pStream->available()) { c = pStream->read(); }
                 }
@@ -626,18 +625,20 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
         break;
 
 
-        // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-        // reads characters from a stream or from a string, parses what is read to long, float and string values and stores these values in variables provided in the argument list   
+        // -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+        // reads characters from a stream or from a string, parses what is read to long, float and string values and stores these values in variables provided in the argument list.   
         // a character stream previously printed with statements coutList, printList and vprintList (see: commands) can be read in safely with the following functions
-        // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+        // -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
         case fnccod_cinParseList:
         case fnccod_parseList:
         case fnccod_parseListFromVar:
         {
-            // cinList   (list variable, variable, ...)    
+            // cinList   (variable, variable, ...)    
             // readList  (stream number, variable, variable, ...)
             // vreadList (string value, variable, variable, variable, ...)
+
+            // when reading from a stream, read until a newline character is encountered or a timeout occurs
 
             char* buffer{};
             execResult_type execResult{ result_execOK };
@@ -716,7 +717,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
                 // move to the first non-space character of next token 
                 while (pNext[0] == ' ') { pNext++; }                                                                        // skip leading spaces
-                if (isSpace(pNext[0])) { break; }                                                                           // end of instruction: prepare to quit parsing  
+                if (isSpace(pNext[0])) { break; }                                                                           // white space, including CR, LF, ...: end of instruction: prepare to quit parsing  
+                if (pNext[0] == '\0') { break; }                                                                            // string terminator: idem
 
                 char* pch = pNext;
 
@@ -727,7 +729,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                         if (!isComma) { parsingResult = result_separatorExpected;  break; }
                         pNext += commaLength;                                                                               // move to next character
                         while (pNext[0] == ' ') { pNext++; }                                                                // skip leading spaces
-                        if (isSpace(pNext[0])) { parsingResult = result_parseList_stringNotComplete; break; }
+                        if ((isSpace(pNext[0])) || (pNext[0] == '\0')) { parsingResult = result_parseList_stringNotComplete; break; }   // white space, including CR, LF, ... or string terminator
                     }
 
                     // parsing functions below return...
@@ -964,7 +966,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
         case fnccod_getColumnPos:
         {
             fcnResultValueType = value_isLong;                              // must be long (not float) value
-            fcnResult.longConst = long(*_pLastPrintColumn);
+            fcnResult.longConst = long(*_pLastPrintColumn) + 1;
         }
         break;
 
@@ -1245,13 +1247,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             //     - 'g' or 'G' specifier: MAXIMUM number of significant digits to be printed 
             //     - 'd', 'x' and 'X': MINIMUM number of digits to be written, if the integer is shorter, it will be padded with leading zeros (non-integer values will be converted to integers for printing)
             // (2) if expression is a string: precision is interpreted as the maximum number of characters to print
-            
+
             // specifier (optional parameter): specifies the format of the value printed
             // (1) if expression is numeric (any type): specifiers 'f', 'e', 'E', 'g', 'G', 'd', 'x' and 'X' are allowed
             //     =>  'f': fixed point, 'e' or 'E': scientific, 'g' ot 'G': shortest notation (fixed or scientific). 'E' or 'G': exponent character printed in capitals    
             //     =>  'd' signed integer, 'x' or 'X': unsigned hexadecimal integer. 'X': hex number is printed in capitals
             // (2) if expression is a string, if not omitted, the specifier needs to be 's' (string)
-             
+
             // depending on the specifier, the value to be printed will first be converted to the correct type (integer or float)
 
             // flags (optional parameter): 
@@ -1259,7 +1261,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             // ...(2) integers:  precede non-zero numbers with '0x' or '0X' if printed in hexadecimal format, value 0x10 = pad with zeros within print field
 
             // width, precision, specifier and flags are used as defaults for next calls to this function, if they are not provided again
-            
+
 
             bool valueToFormatIsString = (argValueType[0] == value_isStringPointer);        // formatting a string value ?
 
@@ -1268,7 +1270,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             int width = _fmt_width;
             int precision = valueToFormatIsString ? _fmt_strCharsToPrint : _fmt_numPrecision;
             char specifier{ valueToFormatIsString ? _fmt_stringSpecifier[0] : _fmt_numSpecifier[0] };
-            int flags = valueToFormatIsString ? _fmt_stringFmtFlags : _fmt_numFmtFlags;   ;
+            int flags = valueToFormatIsString ? _fmt_stringFmtFlags : _fmt_numFmtFlags;
 
             // test arguments and ADAPT print width, precision, specifier, flags
             // -----------------------------------------------------------------
@@ -1286,14 +1288,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 if (execResult != result_execOK) { return execResult; }
             }
 
-            // if formatting STRING with explicit change of width and without precision argument: init 'precision' (max. no of characters to print) to width.
-            if (valueToFormatIsString) { if (suppliedArgCount == 2) { precision = width; } }
-
-            // limit precision (is stored separately for numbers and strings)
-            precision = min(precision, valueToFormatIsString ? MAX_STRCHAR_TO_PRINT : MAX_NUM_PRECISION);
-
             // is specifier acceptable for data type ?
-            // ---------------------------------------
             if (valueToFormatIsString != (specifier == 's')) { return result_arg_wrongSpecifierForDataType; }                   // if more string specifiers defined, add them here with 'or' operator
 
             // prepare format string and format
@@ -1303,6 +1298,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             char fmtString[20]{};                                                                                                    // long enough to contain all format specifier parts
             bool isIntFmt = (specifier == 'X') || (specifier == 'x') || (specifier == 'd');                                                  // for ALL numeric types
 
+            // if formatting STRING with explicit change of width and without precision argument: init 'precision' (max. no of characters to print) to width.
+            if (valueToFormatIsString) { if (suppliedArgCount == 2) { precision = width; } }
+
+            // limit precision (is stored separately for numbers and strings)
+            precision = min(precision, valueToFormatIsString ? MAX_STRCHAR_TO_PRINT : isIntFmt ? MAX_INT_PRECISION : MAX_FLOAT_PRECISION);
+
             makeFormatString(flags, isIntFmt, &specifier, fmtString);
             printToString(width, precision, valueToFormatIsString, isIntFmt, argValueType, args, fmtString, fcnResult, charsPrinted);
             fcnResultValueType = value_isStringPointer;
@@ -1310,7 +1311,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             _fmt_width = width;
             (valueToFormatIsString ? _fmt_strCharsToPrint : _fmt_numPrecision) = precision;
             (valueToFormatIsString ? _fmt_stringSpecifier[0] : _fmt_numSpecifier[0]) = specifier;
-            (valueToFormatIsString ? _fmt_stringFmtFlags:  _fmt_numFmtFlags) = flags;
+            (valueToFormatIsString ? _fmt_stringFmtFlags : _fmt_numFmtFlags) = flags;
 
             // return number of characters printed into (variable) argument if it was supplied
             // -------------------------------------------------------------------------------
@@ -1366,7 +1367,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             if ((argIsLongBits & (0x1 << 0)) || (argIsFloatBits & (0x1 << 0))) {                                            // argument is long or float ?
                 _intermediateStringObjectCount++;
                 fcnResult.pStringConst = new char[30];                                                                      // provide sufficient length to store a number
-                (argIsLongBits & (0x1 << 0)) ? sprintf(fcnResult.pStringConst, "%ld", args[0].longConst) : sprintf(fcnResult.pStringConst, "%G", args[0].floatConst);
+                (argIsLongBits & (0x1 << 0)) ? sprintf(fcnResult.pStringConst, "%ld", args[0].longConst) : sprintf(fcnResult.pStringConst, "%#G", args[0].floatConst);
 
             }
             else if ((argIsStringBits & (0x1 << 0))) {                                                                      // argument is string ?
@@ -1381,7 +1382,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
             #endif
             }
-        }
+            }
         break;
 
 
@@ -1944,10 +1945,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
             int len = strlen(args[0].pStringConst);
             int first = 0, last = len - 1;                                                                                              // init: complete string
+
             for (int i = 1; i < suppliedArgCount; ++i) {                                                                                // skip if only one argument (string)
                 if (!(argIsLongBits & (0x1 << i)) && !(argIsFloatBits & (0x1 << i))) { return result_arg_numberExpected; }
                 if ((argIsFloatBits & (0x1 << i))) { args[i].longConst = int(args[i].floatConst); }                                     // all these functions need integer values
-                if (i == 1) { first = args[i].longConst - 1; last = 1; }
+                if (i == 1) { first = args[i].longConst - 1; last = first; }
                 else { last = args[i].longConst - 1; }
             }
             if ((first > last) || (first < 0) || (last >= len)) { return result_arg_outsideRange; }
@@ -2078,24 +2080,35 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
         {
             if (!(argIsLongBits & (0x1 << 0)) && !(argIsFloatBits & (0x1 << 0))) { return result_arg_numberExpected; }
             int sysVal = (argIsLongBits & (0x1 << 0)) ? args[0].longConst : int(args[0].floatConst);
-
-            fcnResultValueType = value_isLong;                                                                              // default for most system values
+            fcnResultValueType = value_isLong;                                                  // default for most system values
 
             switch (sysVal) {
-                // display (last results, echo, ...)
-                case 0: fcnResult.longConst = _dispWidth; break;
-                case 1: fcnResult.longConst = _dispFloatPrecision; break;
-                case 2: fcnResult.longConst = _dispCharsToPrint; break;
-                case 3: fcnResult.longConst = _dispFloatFmtFlags; break;            //// en integer ???
+                // display (last results, echo, ...) and formatting function fmt() settings
+                // ------------------------------------------------------------------------
+                // display (last results, echo, print commands)
+                case 0: fcnResult.longConst = _dispWidth; break;                                // display width                                                           
+                case 1: fcnResult.longConst = _dispFloatPrecision; break;                       // floating point precision and formatting flags
+                case 2: fcnResult.longConst = _dispFloatFmtFlags; break;
 
-                    // print commands
-                case 5: fcnResult.longConst = _fmt_width; break;
-                case 6: fcnResult.longConst = _fmt_numPrecision; break;
-                case 7: fcnResult.longConst = _fmt_strCharsToPrint; break;
-                case 8: fcnResult.longConst = _fmt_numFmtFlags; break;
+                case 4: fcnResult.longConst = _dispIntegerPrecision; break;                     // integers: precision and formatting flags
+                case 5: fcnResult.longConst = _dispIntegerFmtFlags; break;
 
-                case 4:
-                case 9:
+                case 7: fcnResult.longConst = _promptAndEcho; break;
+                case 8: fcnResult.longConst = _printLastResult; break;
+                case 9: fcnResult.longConst = _angleMode; break;
+
+                    // formatting function fmt()
+                case 10: fcnResult.longConst = _fmt_width; break;                               // print field width
+                case 11: fcnResult.longConst = _fmt_numPrecision; break;                        // numeric values: precision and formatting flags
+                case 12: fcnResult.longConst = _fmt_numFmtFlags; break;
+
+                case 14: fcnResult.longConst = _fmt_strCharsToPrint; break;                     // strings: number of characters to print
+
+                    // display (last results, echo, print commands)
+                case 3:                                                                         // floating point values: specifier
+                case 6:                                                                         // integer values: specifier character
+                    // formatting function fmt()
+                case 13:                                                                        // numeric values: specifier character
                 {
                     fcnResultValueType = value_isStringPointer;
                     _intermediateStringObjectCount++;
@@ -2103,16 +2116,30 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 #if PRINT_HEAP_OBJ_CREA_DEL
                     _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
                 #endif
-                    strcpy(fcnResult.pStringConst, (sysVal == 4) ? _dispFloatSpecifier : _fmt_numSpecifier);
+                    strcpy(fcnResult.pStringConst, (sysVal == 3) ? _dispFloatSpecifier : (sysVal == 6) ? _dispIntegerSpecifier : _fmt_numSpecifier);
                 }
                 break;
 
-                case 10: fcnResult.longConst = _promptAndEcho; break;
-                case 11: fcnResult.longConst = _printLastResult; break;
-                case 12: fcnResult.longConst = _openFileCount; break;
-                case 13: fcnResult.longConst = _externIOstreamCount; break;
 
-                case 14:
+                case 15: fcnResult.longConst = _openFileCount; break;                           // open file count
+                case 16: fcnResult.longConst = _externIOstreamCount; break;                     // number of external streams defined
+
+                case 17:                                                                        // product name
+                case 18:                                                                        // legal copy right
+                case 19:                                                                        // product version 
+                case 20:                                                                        // build date
+                {
+                    fcnResultValueType = value_isStringPointer;
+                    _intermediateStringObjectCount++;
+                    fcnResult.pStringConst = new char[((sysVal == 17) ? strlen(J_productName) : (sysVal == 18) ? strlen(J_legalCopyright) : (sysVal == 19) ? strlen(J_productVersion) : strlen(J_buildDate)) + 1];
+                #if PRINT_HEAP_OBJ_CREA_DEL
+                    _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+                #endif
+                    strcpy(fcnResult.pStringConst, (sysVal == 17) ? J_productName : (sysVal == 18) ? J_legalCopyright : (sysVal == 19) ? J_productVersion : J_buildDate);
+                }
+                break;
+
+                case 21:                                                                        // program name (if program loaded)
                 {
                     fcnResultValueType = value_isStringPointer;
                     _intermediateStringObjectCount++;
@@ -2124,64 +2151,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 }
                 break;
 
-                case 15:    // product name
-                case 16:    // legal copy right
-                case 17:    // product version 
-                case 18:    // build date
+                case 22:                                                                        // return trace string
                 {
                     fcnResultValueType = value_isStringPointer;
-                    _intermediateStringObjectCount++;
-                    fcnResult.pStringConst = new char[((sysVal == 15) ? strlen(J_productName) : (sysVal == 16) ? strlen(J_legalCopyright) : (sysVal == 17) ? strlen(J_productVersion) : strlen(J_buildDate)) + 1];
-                #if PRINT_HEAP_OBJ_CREA_DEL
-                    _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-                #endif
-                    strcpy(fcnResult.pStringConst, (sysVal == 15) ? J_productName : (sysVal == 16) ? J_legalCopyright : (sysVal == 17) ? J_productVersion : J_buildDate);
-                }
-                break;
-
-                // note:parsing stack element count is always zero during evaluation: no entry provided here
-                case 19:fcnResult.longConst = _callStackDepth; break;                                                       // call stack depth; this excludes stack levels used by blocks (while, if, ...)
-                case 20:fcnResult.longConst = _openDebugLevels; break;
-                case 21:fcnResult.longConst = evalStack.getElementCount(); break;                                           // evaluation stack element count
-                case 22:fcnResult.longConst = flowCtrlStack.getElementCount(); break;                                       // flow control stack element count (call stack depth + stack levels used by open blocks)
-                case 23:fcnResult.longConst = parsedCommandLineStack.getElementCount(); break;                              // immediate mode parsed programs stack element count
-
-                case 24:                                                                                                    // current active object count
-                case 1001:                                                                                                  // current accumulated object count errors since cold start
-                {
-                    fcnResultValueType = value_isStringPointer;
-                    _intermediateStringObjectCount++;
-                    fcnResult.pStringConst = new char[13 * 5];                                                              // includes place for 13 times 5 characters (3 digits max. for each number, max. 2 extra in between) and terminating \0
-                #if PRINT_HEAP_OBJ_CREA_DEL
-                    _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-                #endif
-                    if (sysVal == 24) {     // print heap object counts
-                        // (1)program variable and function NAMES-(2)user variable NAMES-(3)parsed string constants-(4)last value strings-
-                        // (5)global and static variable strings-(6)global and static array storage areas-(7)user variable strings-(8)user array storage areas-
-                        // (9)local variable strings-(10)local array storage areas-(11)local variable base value areas-(12)intermediate string constants
-                        sprintf(fcnResult.pStringConst, "%0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d",
-                            min(999, _identifierNameStringObjectCount), min(999, _userVarNameStringObjectCount), min(999, _parsedStringConstObjectCount), min(999, _lastValuesStringObjectCount),
-                            min(999, _globalStaticVarStringObjectCount), min(999, _globalStaticArrayObjectCount), min(999, _userVarStringObjectCount), min(999, _userArrayObjectCount),
-                            min(999, _localVarStringObjectCount), min(999, _localArrayObjectCount), min(999, _localVarValueAreaCount), min(999, _intermediateStringObjectCount),
-                            min(999, _systemVarStringObjectCount));
-                    }
-                    else {     // print heap object create/delete errors
-                        sprintf(fcnResult.pStringConst, "%0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d",
-                            min(999, _identifierNameStringObjectErrors), min(999, _userVarNameStringObjectErrors), min(999, _parsedStringConstObjectErrors), min(999, _lastValuesStringObjectErrors),
-                            min(999, _globalStaticVarStringObjectErrors), min(999, _globalStaticArrayObjectErrors), min(999, _userVarStringObjectErrors), min(999, _userArrayObjectErrors),
-                            min(999, _localVarStringObjectErrors), min(999, _localArrayObjectErrors), min(999, _localVarValueAreaErrors), min(999, _intermediateStringObjectErrors),
-                            min(999, _systemVarStringObjectErrors));
-                    }
-                }
-                break;
-
-                case 25: fcnResult.longConst = evalStack.getCreatedObjectCount(); break;                                    // created list object count (across linked lists: count is static)
-                case 26: fcnResult.longConst = _angleMode; break;
-
-                case 27:                                                                                                    // return trace string
-                {
-                    fcnResultValueType = value_isStringPointer;
-                    fcnResult.pStringConst = nullptr;                                                                       // init (empty string)
+                    fcnResult.pStringConst = nullptr;                                           // init (empty string)
                     if (_pTraceString != nullptr) {
                         _intermediateStringObjectCount++;
                         fcnResult.pStringConst = new char[strlen(_pTraceString) + 1];
@@ -2193,12 +2166,50 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 }
                 break;
 
+                // note:parsing stack element count is always zero during evaluation: no entry provided here
+                case 23:fcnResult.longConst = evalStack.getElementCount(); break;               // evaluation stack element count
+                case 24:fcnResult.longConst = flowCtrlStack.getElementCount(); break;           // flow control stack element count (call stack depth + stack levels used by open blocks)
+                case 25:fcnResult.longConst = _callStackDepth; break;                           // call stack depth; this excludes stack levels used by blocks (while, if, ...)
+                case 26:fcnResult.longConst = _openDebugLevels; break;                          // number of stopped programs
+                case 27:fcnResult.longConst = parsedCommandLineStack.getElementCount(); break;  // immediate mode parsed programs stack element count: stopped program count + open eval() strings (being executed)
+
+                case 28: fcnResult.longConst = evalStack.getCreatedObjectCount(); break;       // created list object count (across linked lists: count is static)
+
+                case 29:                                                                        // current active object count
+                case 30:                                                                        // current accumulated object count errors since cold start
+                {
+                    fcnResultValueType = value_isStringPointer;
+                    _intermediateStringObjectCount++;
+                    fcnResult.pStringConst = new char[13 * 5];                                  // includes place for 13 times 5 characters (3 digits max. for each number, max. 2 extra in between) and terminating \0
+                #if PRINT_HEAP_OBJ_CREA_DEL
+                    _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+                #endif
+                    if (sysVal == 29) {     // print heap object counts
+                        // (1)program variable and function NAMES-(2)user variable NAMES-(3)parsed string constants-(4)last value strings-
+                        // (5)global and static variable strings-(6)global and static array storage areas-(7)user variable strings-(8)user array storage areas-
+                        // (9)local variable strings-(10)local array storage areas-(11)local variable base value areas-(12)intermediate string constants
+                        sprintf(fcnResult.pStringConst, "%0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d",
+                            min(999, _identifierNameStringObjectCount), min(999, _userVarNameStringObjectCount), min(999, _parsedStringConstObjectCount), min(999, _lastValuesStringObjectCount),
+                            min(999, _globalStaticVarStringObjectCount), min(999, _globalStaticArrayObjectCount), min(999, _userVarStringObjectCount), min(999, _userArrayObjectCount),
+                            min(999, _localVarStringObjectCount), min(999, _localArrayObjectCount), min(999, _localVarValueAreaCount), min(999, _intermediateStringObjectCount),
+                            min(999, _systemVarStringObjectCount));
+                }
+                    else {     // print heap object create/delete errors
+                        sprintf(fcnResult.pStringConst, "%0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d",
+                            min(999, _identifierNameStringObjectErrors), min(999, _userVarNameStringObjectErrors), min(999, _parsedStringConstObjectErrors), min(999, _lastValuesStringObjectErrors),
+                            min(999, _globalStaticVarStringObjectErrors), min(999, _globalStaticArrayObjectErrors), min(999, _userVarStringObjectErrors), min(999, _userArrayObjectErrors),
+                            min(999, _localVarStringObjectErrors), min(999, _localArrayObjectErrors), min(999, _localVarValueAreaErrors), min(999, _intermediateStringObjectErrors),
+                            min(999, _systemVarStringObjectErrors));
+                    }
+            }
+                break;
+
                 default: return result_arg_invalid; break;
-            }       // switch (sysVal)
+        }                                                                                   // switch (sysVal)
         }
         break;
 
-    }       // end switch
+    }                                                                                           // end switch
 
 
         // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
