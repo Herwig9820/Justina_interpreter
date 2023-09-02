@@ -698,7 +698,7 @@ class Justina_interpreter {
 
     static constexpr int MAX_OPEN_SD_FILES{ 5 };                        // SD card: max. concurrent open files
 
-    static constexpr long LONG_WAIT_FOR_CHAR_TIMEOUT{ 15000 };          // milli seconds
+    static constexpr long LONG_WAIT_FOR_CHAR_TIMEOUT{ 10000 };          // milli seconds
     static constexpr long DEFAULT_READ_TIMEOUT{ 200 };                  // milliseconds
 
     // ------------------------------------------------------------------------------------------------------
@@ -941,7 +941,6 @@ private:
 
     // application flag bits
     //----------------------
-
 public:
     // bits 3-0: flags signaling specific Justina status conditions to the program that called Justina (periodic system (main) callbacks)
     static constexpr long appFlag_errorConditionBit = 0x01L;            // Justina parsing or execution error has occured
@@ -955,27 +954,43 @@ public:
     static constexpr long appFlag_executing = 0x04L;                    // executing status
     static constexpr long appFlag_stoppedInDebug = 0x06L;               // stopped in debug status
 
-    static constexpr long appFlag_dataInOut = 0x08L;                    // external I/O stream transmitted or received data (not SD) 
-    static constexpr long appFlag_TCPkeepAlive = 0x10L;                 // reset keep alive timer (extend keep alive period)
-
-    // bits 11-8: flags signaling specific caller status conditions to Justina
+    static constexpr long appFlag_dataInOut = 0x08L;                    // an external I/O stream transmitted or received data (not SD) 
+    
+    // bits 7-4: spare
+     
+    // bits 11-8: 4 flags signaling specific caller status conditions to Justina
     static constexpr long appFlag_requestMask = 0x0f00;                 // mask for rezquest bits
     static constexpr long appFlag_consoleRequestBit = 0x0100L;          // request to reset console to default
     static constexpr long appFlag_killRequestBit = 0x0200L;             // request to kill Justina
     static constexpr long appFlag_stopRequestBit = 0x0400L;             // request to stop a running Justina program
     static constexpr long appFlag_abortRequestBit = 0x0800L;            // request to abort running Justina code (either a Justina program or immediate mode Justina statements)
+
+    // bits 15-12: spare
+    // 
+    // bits 19-16: flags signaling data was READ from external IO stream -1 to -4
+    static constexpr long appFlag_dataRecdFromStreamMask = 0x000f0000;
+    
+    static constexpr long appFlag_dataRecdFromStream1 = 0x00010000;
+    static constexpr long appFlag_dataRecdFromStream2 = 0x00020000;
+    static constexpr long appFlag_dataRecdFromStream3 = 0x00040000;
+    static constexpr long appFlag_dataRecdFromStream4 = 0x00080000;
+
+    // bits 31-20: spare
 private:
 
 
     // system callbacks: time interval
+    // -------------------------------
     static constexpr unsigned long CALLBACK_INTERVAL = 100;             // in ms; should be considerably less than any heartbeat period defined in main program
 
 
-    // user callback procedures 
+    // user callback procedures
+    // ------------------------
     static constexpr char passCopyToCallback = 0x40;                    // flag: a pointer to a copy of a constant value was passed to a user callback (external cpp function) 
 
 
     // other
+    // -----
     static constexpr char c_JustinaFunctionFirstOccurFlag = 0x10;       // flag: min > max means not initialized
     static constexpr char c_JustinaFunctionMaxArgs = 0xF;               // must fit in 4 bits
 
@@ -1679,7 +1694,6 @@ private:
     // ------------------------------
 
     Stream** _pExternIOstreams{ nullptr };                          // available external IO streams (set by Justina caller)
-    Stream* _pTCPstream{ nullptr };                                 // pointer to TCP stream with keep alive setting implemented in code (set by Justina caller)
 
     // for use by cout..., dbout, ... commands (without explicit stream indicated)
     Stream* _pConsoleIn{ nullptr }, * _pConsoleOut{ nullptr }, * _pDebugOut{ nullptr };

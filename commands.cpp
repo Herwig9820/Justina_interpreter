@@ -691,13 +691,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 // verbose ? provide user info
                 if (verbose) {
                     if (forcedAbortRequest) {
-                        printlnTo(0, isSend ? "\r\n+++ File partially sent +++\r\n" : isReceive ? (waitForFirstChar ? "\r\n+++ NO file received +++\r\n" :
+                        printlnTo(0, isSend ? "\r\n+++ File partially sent +++\r\n" : isReceive ? (totalByteCount == 0 ? "\r\n+++ NO file received +++\r\n" :
                             "\r\n+++ File partially received +++\r\n") : "\r\n+++ File partially copied +++\r\n");
                     }
                     else {
                         char s[100];
-                        sprintf(s, isSend ? "\r\n+++ File sent, %ld bytes +++\r\n" : isReceive ? (waitForFirstChar ? "\r\n+++ NO file received +++\r\n" : "\r\n+++ File received, %ld bytes +++\r\n") :
-                            "\r\n+++ File copied, %ld bytes +++\r\n", totalByteCount);
+                        sprintf(s, (isSend ? "\r\n+++ File sent, %ld bytes +++\r\n" : isReceive ? (totalByteCount == 0 ? "\r\n+++ NO file received +++\r\n" : "\r\n+++ File received, %ld bytes +++\r\n") :
+                            "\r\n+++ File copied, %ld bytes +++\r\n"), totalByteCount);
                         printlnTo(0, s);
                     }
                 }

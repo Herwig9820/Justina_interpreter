@@ -526,9 +526,9 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     {"RDWR",                "0x3",                      value_isLong},      // open SD file for r/w access
     {"APPEND",              "0x4",                      value_isLong},      // writes will occur at end of file
     {"SYNC",                "0x8",                      value_isLong},      //  
-    {"CREATE_OK",           "0x10",                     value_isLong},      // create new file if non-existent
-    {"EXCL",                "0x20",                     value_isLong},      // creation of a new file is not allowed --> what ? //// 
-    {"CREATE_ONLY",         "0x30",                     value_isLong},      // create new file only - do not open an existing file
+    {"NEW_OK",              "0x10",                     value_isLong},      // creating new files if non-existent is allowed, open existing files
+    {"EXCL",                "0x20",                     value_isLong},      // "exclusive": use with 'NEW_OK' to create new files 'exclusively' 
+    {"NEW_ONLY",            "0x30",                     value_isLong},      // create new file only - do not open an existing file
     {"TRUNC",               "0x40",                     value_isLong},      // truncate file to zero bytes on open (NOT if file is opened for read access only)
 
     {"RW_APP",              "0x07",                     value_isLong},      // open for read write access; writes at the end
@@ -588,10 +588,6 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
 
     // set linked list debug printing. Pointer to debug out stream pointer: will follow if debug stream is changed
     parsingStack.setDebugOutStream(static_cast<Stream**> (&_pDebugOut));                                // for debug printing within linked list object
-
-    // particular stream is a TCP stream ? Retrigger TCP keep alive timer at each character read (communicated to Justina via application flags)
-    int TCP_externIOStreamIndex = ((_justinaConstraints & 0xf0) >> 4) - 1;
-    _pTCPstream = (TCP_externIOStreamIndex == -1) ? nullptr : _pExternIOstreams[TCP_externIOStreamIndex];
     initInterpreterVariables(true);
 };
 
@@ -1325,7 +1321,7 @@ void Justina_interpreter::execPeriodicHousekeeping(bool* pKillNow, bool* pForced
             if ((_appFlags & appFlag_stopRequestBit) && (pForcedStop != nullptr)) { *pForcedStop = true; }
             if ((_appFlags & appFlag_abortRequestBit) && (pForcedAbort != nullptr)) { *pForcedAbort = true; }
 
-            _appFlags &= ~(appFlag_dataInOut | appFlag_TCPkeepAlive);                                           // reset 'external IO' flags 
+            _appFlags &= ~(appFlag_dataInOut | appFlag_dataRecdFromStreamMask);                                           // reset 'external IO' flags 
         }
     }
 }
@@ -1369,8 +1365,8 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
             _systemVarStringObjectCount--;
             delete[] _pTraceString;
             _pTraceString = nullptr;                                                                            // old trace string
+        }
     }
-}
 
     // delete all elements of the immediate mode parsed statements stack
     // (parsed immediate mode statements can be temporarily pushed on the immediate mode stack to be replaced either by parsed debug command lines or parsed eval() strings) 
@@ -1424,7 +1420,7 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
         _pDebugOut->print("*** Variable / function name objects cleanup error. Remaining: "); _pDebugOut->println(_identifierNameStringObjectCount);
     #endif
         _identifierNameStringObjectErrors += abs(_identifierNameStringObjectCount);
-}
+    }
 
     if (_parsedStringConstObjectCount != 0) {
     #if PRINT_OBJECT_COUNT_ERRORS
@@ -1461,7 +1457,7 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
             _pDebugOut->print("*** User variable name objects cleanup error. Remaining: "); _pDebugOut->println(_userVarNameStringObjectCount);
         #endif
             _userVarNameStringObjectErrors += abs(_userVarNameStringObjectCount);
-    }
+        }
 
         if (_userVarStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
@@ -1625,7 +1621,7 @@ void Justina_interpreter::deleteIdentifierNameObjects(char** pIdentNameArray, in
         isUserVar ? _userVarNameStringObjectCount-- : _identifierNameStringObjectCount--;
         delete[] * (pIdentNameArray + index);
         index++;
-}
+    }
 }
 
 
@@ -1669,8 +1665,8 @@ void Justina_interpreter::deleteOneArrayVarStringObjects(Justina_interpreter::Va
         #endif
             isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
             delete[]  pString;                                                                                                      // applicable to string and array (same pointer)
+        }
     }
-}
 }
 
 
@@ -1693,7 +1689,7 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
             #endif
                 isUserVar ? _userArrayObjectCount-- : isLocalVar ? _localArrayObjectCount-- : _globalStaticArrayObjectCount--;
                 delete[]  varValues[index].pArray;
-        }
+            }
             else if ((varType[index] & value_typeMask) == value_isStringPointer) {                                                  // variable is a scalar containing a string
                 if (varValues[index].pStringConst != nullptr) {
                 #if PRINT_HEAP_OBJ_CREA_DEL
@@ -1701,9 +1697,9 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
                 #endif
                     isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
                     delete[]  varValues[index].pStringConst;
+                }
             }
-    }
-}
+        }
         index++;
     }
 }
@@ -1724,8 +1720,8 @@ void Justina_interpreter::deleteLastValueFiFoStringObjects() {
         #endif
             _lastValuesStringObjectCount--;
             delete[] lastResultValueFiFo[i].pStringConst;
+        }
     }
-}
 }
 
 
@@ -1753,13 +1749,13 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
             #endif
                 _parsedStringConstObjectCount--;
                 delete[] pAnum;
+            }
         }
-    }
         uint8_t tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) :
             (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*prgmCnt.pTokenChars >> 4) & 0x0F;
         prgmCnt.pTokenChars += tokenLength;
         tokenType = *prgmCnt.pTokenChars & 0x0F;
-}
+    }
 }
 
 

@@ -64,7 +64,7 @@ constexpr char SSID[] = SERVER_SSID, PASS[] = SERVER_PASS;                      
 // connect as TCP server: create class object myTCPconnection
 TCPconnection myTCPconnection(SSID, PASS, serverAddress, gatewayAddress, subnetMask, DNSaddress, serverPort, conn_3_TCPconnected);
 
-constexpr char menu[] = "+++ Please select:\r\n  'H' Help\r\n  '0' (Re-)start WiFi\r\n  '1' Disable WiFi\r\n  '2' Enable TCP\r\n  '3' Disable TCP\r\n  '4' Verbose TCP\r\n  '5' Silent TCP\r\n  '6' Print connection state\r\n  'J' Start Justina interpreter\r\n";
+constexpr char menu[] = "+++ Please select:\r\n  'H' Help\r\n  '0' (Re-)start WiFi\r\n  '1' Disable WiFi\r\n  '2' Enable TCP\r\n  '3' stop TCP\r\n  '4' Disable TCP\r\n  '5' Verbose TCP\r\n  '6' Silent TCP\r\n  '7' Print connection state\r\n  'J' Start Justina interpreter\r\n";
 
 #else
 constexpr char menu[] = "+++ Please select:\r\n  'J' Start Justina interpreter\r\n";
@@ -75,7 +75,7 @@ bool interpreterInMemory{ false };                                              
 
 Stream* pAlternativeIO[3]{ &Serial , &Serial , &Serial };                                                            // alternative IO ports, if defined
 constexpr int terminalCount{ 3 };
-
+int TCPstreamSet {};                                                                  
 connectionState_type _connectionState{ conn_0_wifiNotConnected };
 
 Justina_interpreter* pJustina{ nullptr };                                                    // pointer to Justina_interpreter object
@@ -212,6 +212,7 @@ void setup() {
     // stream pAlternativeIO[0] is the default (input and output) console for Justina
     // from within Justina, all alternative IO streams can be used for IO, AND can be set as Justina console (input and output)
     pAlternativeIO[1] = static_cast<Stream*>(myTCPconnection.getClient());     // Justina: stream number -2 is TCP client (alt streams 0..2 => stream numbers -1..-3)
+    TCPstreamSet = 0b0010;  // within 'pAlternativeIO' array, 
 #endif
 
     // print sample / simple main menu for the user
@@ -272,21 +273,26 @@ void execAction(char c) {
             break;
 
         case '3':
+            myTCPconnection.requestAction(action_3_TCPdisConnect, _connectionState);
+            Serial.println("TCP disconnected");
+            break;
+
+        case '4':
             myTCPconnection.requestAction(action_4_TCPdisable, _connectionState);
             Serial.println("TCP disabled");
             break;
 
-        case '4':                                                                       // set TCP server to verbose
+        case '5':                                                                       // set TCP server to verbose
             myTCPconnection.setVerbose(true);
             Serial.println("TCP server: verbose");
             break;
 
-        case '5':                                                                       // set TCP server to silent
+        case '6':                                                                       // set TCP server to silent
             myTCPconnection.setVerbose(false);
             Serial.println("TCP server: silent");
             break;
 
-        case '6':                                                                       // set TCP server to silent
+        case '7':                                                                       // set TCP server to silent
             Serial.print("Connection state: "); Serial.print(_connectionState);
             if (_connectionState == conn_3_TCPconnected) {
                 WiFiClient* client = static_cast<WiFiClient*>(myTCPconnection.getClient());
@@ -316,8 +322,7 @@ void execAction(char c) {
                 // SD card constraints argument:
                 // bits 1..0 = 0b00:no card reader, 0b01 = card reader present, do not yet initialise, 0b10 = initialise (start) card now, 0b11 = initialise (start) card and run start.jus functon start() now (if available)
                 // bit 2     = 0b0: do not allow retaining data when quitting Justina, 0b1 = allow  
-                // bits 7..4 : if TCP IO device present, 1 + index in pAlternativeIO array; zero if TCP IO device not present OR if TCP level keep alive (keep alive timer reset on incoming data) not reguired   
-                pJustina = new  Justina_interpreter(pAlternativeIO, terminalCount, progMemSize, (0x2 << 4) | 0b0100 | 0b0010);  
+                pJustina = new  Justina_interpreter(pAlternativeIO, terminalCount, progMemSize, 0b0100 | 0b0010);  
 
                 // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
                 // this callback function will be called regularly, e.g. every time the interpreter reads a character
@@ -561,7 +566,7 @@ void Justina_housekeeping(long& appFlags) {
     if (newDataLedState != dataLedState) { dataLedState = newDataLedState;  digitalWrite(DATA_IO_PIN, dataLedState); }  // only write if change detected
 
 #if withTCP
-    maintainTCP(bool(appFlags & Justina_interpreter::appFlag_TCPkeepAlive));                                                                      // maintain TCP connection
+    maintainTCP(bool(appFlags & (Justina_interpreter::appFlag_dataRecdFromStreamMask  & (TCPstreamSet << 16 ))));                                                // maintain TCP connection
 #endif
 }
 

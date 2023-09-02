@@ -50,7 +50,7 @@ enum connectionAction_type {
     action_0_disableWiFi,
     action_1_restartWiFi,                                                   // if not started: start WiFi; if started, then stop and restart
     action_2_TCPkeepAlive,                                                  // assumes WiFi is connected
-    action_3_TCPdoNotKeepAlive,                                             // assumes WiFi is connected
+    action_3_TCPdisConnect,                                             // assumes WiFi is connected
     action_4_TCPdisable
 };
 

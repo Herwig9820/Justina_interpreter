@@ -82,7 +82,7 @@ void TCPconnection::requestAction(connectionAction_type action, connectionState_
         TCPtimeout = _keepAliveTimeOut; setTimeOut = true;
     }
 
-    if ((action == action_3_TCPdoNotKeepAlive) || (action == action_4_TCPdisable)) {
+    if ((action == action_3_TCPdisConnect) || (action == action_4_TCPdisable)) {
         TCPtimeout = (_isClient ? _isClient_stopDelay : _isServer_stopDelay); setTimeOut = true;  // start of connection lost timeout period
     }
 
@@ -94,7 +94,7 @@ void TCPconnection::requestAction(connectionAction_type action, connectionState_
     _WiFiEnabled = _WiFiEnabled || (action == action_1_restartWiFi);
     _WiFiEnabled = _WiFiEnabled && (!(action == action_0_disableWiFi));
 
-    _TCPenabled = _TCPenabled || (action == action_2_TCPkeepAlive) || (action == action_3_TCPdoNotKeepAlive);
+    _TCPenabled = _TCPenabled || (action == action_2_TCPkeepAlive) || (action == action_3_TCPdisConnect);
     _TCPenabled = _TCPenabled && (!(action == action_4_TCPdisable));
 
     maintainConnection(connState);          // return new connection state 
@@ -177,7 +177,7 @@ void TCPconnection::maintainTCPconnection(bool resetKeepAliveTimer) {
             }
             break;
 
-        default:
+        default:                                                                // current state: TCP connected
 
             // current state: TCP connected => check whether this is still the case
             // NOTE 1: occasionally, a stall occurs while IN _client.connected() method and the system hangs

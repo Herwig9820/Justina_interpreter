@@ -465,16 +465,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 int streamNumber{ 0 };
                 // note: available() and peek() are only available as methods of a stream: determineStream(...) returns that stream, whereas setStream(...) sets _pStreamIn and _pStreamOut...
                 // ... for use with Justina methods
-                execResult_type execResult = (suppliedArgCount > 0) ? determineStream(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber) : determineStream(streamNumber, pStream);
+                execResult_type execResult = (functionCode == fnccod_cin) ? determineStream(streamNumber, pStream) : determineStream(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber);
                 if (execResult != result_execOK) { return execResult; }
 
                 // read character from stream now 
                 char c{ 0xff };                                                                                             // init: no character read
-                if (functionCode == fnccod_peek) { delay(1000); c = pStream->peek(); }
-                else {
-                    if (pStream->available()) { c = pStream->read(); }
-                }
-
+                if (functionCode == fnccod_peek) { c = pStream->peek(); }
+                else if (pStream->available()) { _streamNumberIn = streamNumber;_pStreamIn = pStream; c = read();  }       // set global variables 
+                                                                                          
                 // save result
                 fcnResultValueType = value_isLong;
                 fcnResult.longConst = (long)c;

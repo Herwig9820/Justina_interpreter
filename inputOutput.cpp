@@ -47,7 +47,7 @@ Justina_interpreter::execResult_type Justina_interpreter::startSD() {
     if (_SDinitOK) { return result_execOK; }                                                                                // card is initialised: nothing to do
 
     if ((_justinaConstraints & 0b0011) == 0) { return result_SD_noCardOrCardError; }
-    if (!_SDcard.init(SPI_HALF_SPEED, _SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
+    ////if (!_SDcard.init(SPI_HALF_SPEED, _SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
     if (!SD.begin(_SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
 
     _openFileCount = 0;
@@ -427,10 +427,15 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_fileChecks(File*& p
 int Justina_interpreter::readFrom(int streamNumber) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, pStream) != result_execOK) { return 0; }          // if error, zero characters written but error is not returned to caller
-    int c = pStream->read();
-    if ((streamNumber <= 0) && (c != 255)) {
-        _appFlags |= appFlag_dataInOut;
-        if (pStream == _pTCPstream) { _appFlags |= appFlag_TCPkeepAlive; }
+    char c = pStream->read();
+
+    if (c != 0xFF) {
+        int readingFromExtStreamNumber{ streamNumber };
+        if (streamNumber == 0) { readingFromExtStreamNumber = _consoleIn_sourceStreamNumber; }      // replace by real external IO stream number
+        if (readingFromExtStreamNumber < 0) {
+            _appFlags |= appFlag_dataInOut;
+            _appFlags |= (appFlag_dataRecdFromStream1 << (-1 - readingFromExtStreamNumber));              // 'readingFromExtStreamNumber' < 0
+        }
     }
     return c;
 }
@@ -438,7 +443,7 @@ int Justina_interpreter::readFrom(int streamNumber) {
 int Justina_interpreter::readFrom(int streamNumber, char* buffer, int length) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, pStream) != result_execOK) { return 0; }          // if error, zero characters written but error is not returned to caller
-    return static_cast<File*>(pStream)->read(buffer, length);                           // NOTE: stream MUST be a file (check before call) -> appFlag_dataInOut must not be set
+    return static_cast<File*>(pStream)->read(buffer, length);                           // NOTE: stream MUST be a file (check before call) -> appFlag_dataInOut  and appFlag_dataRecdFromStream1 must not be set
 }
 
 
@@ -613,16 +618,21 @@ size_t Justina_interpreter::printlnTo(int streamNumber) {
 // --------------
 
 int Justina_interpreter::read() {
-    int c = _pStreamIn->read();
-    if ((_streamNumberIn <= 0) && (c != 255)) {
-        _appFlags |= appFlag_dataInOut;
-        if (_pStreamIn == _pTCPstream) { _appFlags |= appFlag_TCPkeepAlive; }
+    char c = _pStreamIn->read();
+    if (c != 0xFF) {
+        int readingFromExtStreamNumber{ _streamNumberIn };
+        if (_streamNumberIn == 0) { readingFromExtStreamNumber = _consoleIn_sourceStreamNumber; }      // replace by real external IO stream number
+        if (readingFromExtStreamNumber < 0) {
+            _appFlags |= appFlag_dataInOut;
+            _appFlags |= (appFlag_dataRecdFromStream1 << (-1-readingFromExtStreamNumber ));              // 'readingFromExtStreamNumber' < 0
+        }
     }
+    
     return c;
 }
 
 int Justina_interpreter::read(char* buffer, int length) {
-    return (static_cast <File*>(_pStreamIn))->read(buffer, length);                     // Note: stream MUST be a file -> appFlag_dataInOut flag must not be set
+    return (static_cast <File*>(_pStreamIn))->read(buffer, length);                     // NOTE: stream MUST be a file (check before call) -> appFlag_dataInOut  and appFlag_dataRecdFromStream1 must not be set
 }
 
 
