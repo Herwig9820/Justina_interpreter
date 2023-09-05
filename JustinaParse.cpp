@@ -40,9 +40,9 @@
 // ***        class Justina_interpreter - implementation         ***
 // *****************************************************************
 
-// ----------------------------------------------------------------------------------------------------------------------
-// *   parse ONE instruction in a character string, ended by an optional ';' character and a '\0' mandatary character   *
-// ----------------------------------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------------------------------
+// *   parse ONE statement in a character string, ended by an optional ';' character and a '\0' mandatary character   *
+// --------------------------------------------------------------------------------------------------------------------
 
 Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(char*& pInputStart, char*& pNextParseStatement, int& clearIndicator) {
     _lastTokenType_hold = tok_no_token;

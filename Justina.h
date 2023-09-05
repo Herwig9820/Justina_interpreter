@@ -466,7 +466,7 @@ class Justina_interpreter {
         result_assignmNotAllowedHere,
         result_cannotChangeConstantValue,
         result_identifierNotAllowedHere,
-        result_prefixCharNotAllowedHere,                              
+        result_prefixCharNotAllowedHere,
 
         // token expected errors
         result_constantValueExpected = 1200,
@@ -723,7 +723,7 @@ class Justina_interpreter {
     // shared defaults for display settings AND fmt() function settings    
     static constexpr int DEFAULT_FLOAT_PRECISION{ 2 };                  // default precision for floating point numbers
     static constexpr int DEFAULT_INT_PRECISION{ 1 };                    // default 'minimum digits to print' for integers 
-    static constexpr int DEFAULT_STR_CHARS_TO_PRINT{DEFAULT_DISP_WIDTH };               // default # alphanumeric characters to print
+    static constexpr int DEFAULT_STR_CHARS_TO_PRINT{ DEFAULT_DISP_WIDTH };               // default # alphanumeric characters to print
 
     const char DEFAULT_FLOAT_SPECIFIER[2]{ "f" };                       // default specifier for floating point numbers. Arduino doesn't recognise uppercase "F"
     const char DEFAULT_INT_SPECIFIER[2]{ "d" };                         // default specifier for integers 
@@ -825,17 +825,17 @@ class Justina_interpreter {
 
     // type & info about of a parenthesis level (parsing)
     // --------------------------------------------------
-    static constexpr uint8_t JustinaFunctionBit            { B00000001 };
-    static constexpr uint8_t internCppFunctionBit          { B00000010 };
-    static constexpr uint8_t externCppFunctionBit          { B00000100 };   // is user-provided cpp function
-    static constexpr uint8_t openParenthesisBit            { B00001000 };   // but not a function
+    static constexpr uint8_t JustinaFunctionBit{ B00000001 };
+    static constexpr uint8_t internCppFunctionBit{ B00000010 };
+    static constexpr uint8_t externCppFunctionBit{ B00000100 };   // is user-provided cpp function
+    static constexpr uint8_t openParenthesisBit{ B00001000 };   // but not a function
 
-    static constexpr uint8_t JustinaFunctionPrevDefinedBit { B00010000 };
-    static constexpr uint8_t arrayBit                      { B00100000 };
-    static constexpr uint8_t varAssignmentAllowedBit       { B01000000 };
-    static constexpr uint8_t varHasPrefixIncrDecrBit       { B10000000 };
+    static constexpr uint8_t JustinaFunctionPrevDefinedBit{ B00010000 };
+    static constexpr uint8_t arrayBit{ B00100000 };
+    static constexpr uint8_t varAssignmentAllowedBit{ B01000000 };
+    static constexpr uint8_t varHasPrefixIncrDecrBit{ B10000000 };
 
-    static constexpr uint8_t varIsConstantBit              { B00000001 };
+    static constexpr uint8_t varIsConstantBit{ B00000001 };
 
 
     // commands (FUNCTION, FOR, ...): allowed command parameters for commands with a specific key (parsing)
@@ -955,9 +955,9 @@ public:
     static constexpr long appFlag_stoppedInDebug = 0x06L;               // stopped in debug status
 
     static constexpr long appFlag_dataInOut = 0x08L;                    // an external I/O stream transmitted or received data (not SD) 
-    
+
     // bits 7-4: spare
-     
+
     // bits 11-8: 4 flags signaling specific caller status conditions to Justina
     static constexpr long appFlag_requestMask = 0x0f00;                 // mask for rezquest bits
     static constexpr long appFlag_consoleRequestBit = 0x0100L;          // request to reset console to default
@@ -969,7 +969,7 @@ public:
     // 
     // bits 19-16: flags signaling data was READ from external IO stream -1 to -4
     static constexpr long appFlag_dataRecdFromStreamMask = 0x000f0000;
-    
+
     static constexpr long appFlag_dataRecdFromStream1 = 0x00010000;
     static constexpr long appFlag_dataRecdFromStream2 = 0x00020000;
     static constexpr long appFlag_dataRecdFromStream3 = 0x00040000;
@@ -1099,7 +1099,7 @@ private:
         const char resWordCode;
         const char restrictions;                                        // specifies where he use of a keyword is allowed (in a program, in a function, ...)
         const char minArgs;                                             // minimum & maximum number of arguments AND padding (boundary alignment)                                     
-        const char maxArgs;                                                                         
+        const char maxArgs;
         const char* pCmdAllowedParTypes;
         const CmdBlockDef cmdBlockDef;                                  // block commands: position in command block and min, max required position of previous block command 
     };
@@ -1439,7 +1439,7 @@ private:
 
     LinkedList parsingStack;                                        // during parsing: parsing stack keeps track of open parentheses and open blocks
     LE_parsingStack* _pParsingStack;                                // stack used during parsing to keep track of open blocks (e.g. for...end) , functions, open parentheses
-    
+
     LE_parsingStack* _pFunctionDefStack;
 
     int _blockLevel = 0;                                            // current number of open block commands (during parsing) - block level + parenthesis level = parsing stack depth
@@ -1926,7 +1926,8 @@ private:
     bool initVariable(uint16_t varTokenStep, uint16_t constTokenStep);
 
     // process parsed input and start execution
-    bool processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, bool allCharsReceived, int& clearIndicator, Stream*& pStatementInputStream, int& statementInputStreamNumber);
+    bool finaliseParsing(parseTokenResult_type &result, bool& kill, int lineCount, char* pErrorPos, bool allCharsReceived);
+    bool prepareForIdleMode(parseTokenResult_type result, execResult_type execResult, bool& kill, int& clearIndicator, Stream*& pStatementInputStream, int& statementInputStreamNumber);
 
 
     // execution

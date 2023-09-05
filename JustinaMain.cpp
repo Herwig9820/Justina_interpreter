@@ -446,7 +446,7 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     // name                 // value                    // value type
     // ----                 --------                    // ----------
 
-    // math: floating point constants
+    // math: floating point constants (with more precision than what will actually be used)
     {"e",                   "2.7182818284590452354",    value_isFloat},     // base of natural logarithm
     {"PI",                  "3.14159265358979323846",   value_isFloat},     // PI
     {"HALF_PI",             "1.57079632679489661923",   value_isFloat},     // PI / 2
@@ -829,22 +829,35 @@ bool Justina_interpreter::run() {
                 lastCharWasSemiColon = false;
             }
 
-            // program mode: complete program read and parsed   /   imm. mode: all statements in command line read and parsed ?
+            // program mode: complete program read and parsed   /   imm. mode: all statements in command line read and parsed OR parsing error ?
             if (allCharsReceived || (result != result_tokenFound)) {                                            // note: if all statements have been read, they also have been parsed
                 if (kill) { quitNow = true; }
-                else { quitNow = processAndExec(result, kill, lineCount, pErrorPos, allCharsReceived, clearCmdIndicator, pStatementInputStream, streamNumber); }  // return value: quit Justina now
+                else {
+                    quitNow = finaliseParsing(result, kill, lineCount, pErrorPos, allCharsReceived); // return value: quit Justina now
+
+                    // if not in program mode and no parsing error: execute
+                    execResult_type execResult{ result_execOK };
+                    if (!_programMode && (result == result_tokenFound)) {
+                        execResult = exec(_programStorage + _progMemorySize);                                                   // execute parsed user statements
+                        if (execResult == result_kill) { kill = true; }
+                        if (kill || (execResult == result_quit)) { printlnTo(0); quitNow = true; }                          // make sure Justina prompt will be printed on a new line
+                    }
+
+                    quitNow = quitNow || prepareForIdleMode(result, execResult, kill, clearCmdIndicator, pStatementInputStream, streamNumber); // return value: quit Justina now
+                }
 
 
-                // parsing error occured ? reset input controlling variables
                 if (result == result_tokenFound) {
                     if (loadingStartupProgram) { launchingStartFunction = true; }
                 }
+                // parsing error occured ? reset input controlling variables
                 else
                 {
                     statementCharCount = 0;
                     withinString = false; withinStringEscSequence = false; within1LineComment = false; withinMultiLineComment = false;
                     lastCharWasSemiColon = false;
                 }
+
                 loadingStartupProgram = false;    // if this was a startup program load, then now it's aborted because of parsing error
 
                 // reset after program (or imm. mode line) is read and processed
@@ -855,8 +868,6 @@ bool Justina_interpreter::run() {
 
                 clearCmdIndicator = 0;          // reset
                 result = result_tokenFound;
-
-                _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_idle;                                   // status 'idle'
             }
         } while (false);
 
@@ -988,15 +999,14 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
 
 
 // ----------------------------------------------------------------------------------------------------------------------------
-// *   finalise parsing; execute if no errors; if in debug mode, trace and print debug info; re-init machine state and exit   *
+// *   finalise parsing; execute if no errors; if in debug mode, trace and print debug info; re-init machine state and exit   *  ////
 // ----------------------------------------------------------------------------------------------------------------------------
 
-bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kill, int lineCount, char* pErrorPos, bool allCharsReceived, int& clearIndicator,
-    Stream*& pStatementInputStream, int& statementInputStreamNumber) {
+bool Justina_interpreter::finaliseParsing(parseTokenResult_type& result, bool& kill, int lineCount, char* pErrorPos, bool allCharsReceived) {
 
     bool quitJustina{ false };
 
-    // all statements (in program or imm. mode line) have been parsed: finalise
+    // all statements (in program or imm. mode line) have been parsed: finalise ////
     // ------------------------------------------------------------------------
 
     int funcNotDefIndex;
@@ -1056,16 +1066,17 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
         else { printParsingResult(result, funcNotDefIndex, _statement, lineCount, pErrorPos); }                 // parsing error occured: print error message
 
     }
+    return quitJustina;
+}
 
 
-    // if not in program mode and no parsing error: execute
-    // ----------------------------------------------------
-    execResult_type execResult{ result_execOK };
-    if (!_programMode && (result == result_tokenFound)) {
-        execResult = exec(_programStorage + _progMemorySize);                                                   // execute parsed user statements
-        if (execResult == result_kill) { kill = true; }
-        if (kill || (execResult == result_quit)) { printlnTo(0); quitJustina = true; }                          // make sure Justina prompt will be printed on a new line
-    }
+// ---------------------------------------------
+// *   finalise execution: prepare for idle mode
+// ---------------------------------------------
+
+bool Justina_interpreter::prepareForIdleMode(parseTokenResult_type result, execResult_type execResult, bool& kill, int& clearIndicator, Stream*& pStatementInputStream, int& statementInputStreamNumber) {
+
+    bool quitJustina{ false };
 
     // if in debug mode, trace expressions (if defined) and print debug info 
     // ---------------------------------------------------------------------
@@ -1120,7 +1131,7 @@ bool Justina_interpreter::processAndExec(parseTokenResult_type result, bool& kil
         }
     }
 
-    // execution finished (not stopping in debug mode), with or without error: delete parsed strings in imm mode command : they are on the heap and not needed any more. Identifiers must stay avaialble
+    // execution finished (not stopping in debug mode), with or without error: delete parsed strings in imm mode command : they are on the heap and not needed any more. Identifiers must stay availalble
     // -> if stopping a program for debug, do not delete parsed strings (in imm. mode command), because that command line has now been pushed on  ...
      // the parsed command line stack and included parsed constants will be deleted later (resetMachine routine)
     if (execResult != result_stopForDebug) { deleteConstStringObjects(_programStorage + _progMemorySize); } // always

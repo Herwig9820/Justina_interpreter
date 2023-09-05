@@ -322,7 +322,7 @@ void execAction(char c) {
                 // SD card constraints argument:
                 // bits 1..0 = 0b00:no card reader, 0b01 = card reader present, do not yet initialise, 0b10 = initialise (start) card now, 0b11 = initialise (start) card and run start.jus functon start() now (if available)
                 // bit 2     = 0b0: do not allow retaining data when quitting Justina, 0b1 = allow  
-                pJustina = new  Justina_interpreter(pAlternativeIO, terminalCount, progMemSize, 0b0100 | 0b0010);  
+                pJustina = new  Justina_interpreter(pAlternativeIO, terminalCount, progMemSize, 0b0100 | 0b0011);  
 
                 // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
                 // this callback function will be called regularly, e.g. every time the interpreter reads a character

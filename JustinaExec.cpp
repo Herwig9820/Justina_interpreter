@@ -399,7 +399,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                         if (isPostfixOperator) {
                             execResult = execUnaryOperation(false);                                                                     // flag postfix operation
                             if (execResult == result_execOK) { execResult = execAllProcessedOperators(); }
-                            if (execResult != result_execOK) { doCaseBreak = true;; }
+                            if (execResult != result_execOK) { doCaseBreak = true; }
                         }
                     }
 
@@ -725,7 +725,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 bool isEvent = (execResult >= result_startOfEvents);                                                                // not an error but an event ?
                 char execInfo[150] = "";
 
-                // plain error ? 
+                // plain error, or event ? 
                 if (!isEvent) {
                     int sourceErrorPos{ 0 };
                     int functionNameLength{ 0 };
