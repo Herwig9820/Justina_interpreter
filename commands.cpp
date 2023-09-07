@@ -31,8 +31,8 @@
 #include "Justina.h"
 
 #define PRINT_HEAP_OBJ_CREA_DEL 0
+#define PRINT_PARSED_CMD_STACK 0
 #define PRINT_DEBUG_INFO 0
-#define PRINT_PARSED_STAT_STACK 0
 
 
 // *****************************************************************
@@ -87,26 +87,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // RETURN with 'event' error
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
             return result_stopForDebug;
-        }
-        break;
-
-
-        // ------------------------
-        // Raise an execution error
-        // ------------------------
-
-        case cmdcod_raiseError:
-        {
-            bool operandIsVar = (pStackLvl->varOrConst.tokenType == tok_isVariable);
-            char valueType = operandIsVar ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
-            Val value;
-            value.longConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pLongConst) : pStackLvl->varOrConst.value.longConst);       // line is valid for all value types  
-
-            bool opIsLong = ((uint8_t)valueType == value_isLong);
-            bool opIsFloat = ((uint8_t)valueType == value_isFloat);
-            if (!opIsLong && !opIsFloat) { break; }                                                                                        // ignore if not a number
-
-            return (opIsLong) ? (execResult_type)value.longConst : (execResult_type)value.floatConst;
         }
         break;
 
@@ -262,7 +242,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             memcpy((_programStorage + _progMemorySize), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);          // size berekenen
             parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
             _pParsedCommandLineStackTop = parsedCommandLineStack.getLastListElement();
-        #if PRINT_PARSED_STAT_STACK
+        #if PRINT_PARSED_CMD_STACK
             _pDebugOut->print("  >> POP parsed statements (Go): last step: "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
         #endif
             --_openDebugLevels;
@@ -361,6 +341,68 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         case cmdcod_debug:
         {
             _debugCmdExecuted = true;
+
+            // clean up
+            clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
+            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
+        }
+        break;
+
+
+        // ------------------------
+        // Raise an execution error
+        // ------------------------
+
+        case cmdcod_raiseError:
+        {
+            bool operandIsVar = (pStackLvl->varOrConst.tokenType == tok_isVariable);
+            char valueType = operandIsVar ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
+            Val value;
+            value.longConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pLongConst) : pStackLvl->varOrConst.value.longConst);       // line is valid for all value types  
+
+            bool opIsLong = ((uint8_t)valueType == value_isLong);
+            bool opIsFloat = ((uint8_t)valueType == value_isFloat);
+            if (!opIsLong && !opIsFloat) { break; }                                                                                        // ignore if not a number
+
+            execResult_type errNum = (opIsLong) ? (execResult_type)value.longConst : (execResult_type)value.floatConst;
+            // if error to be raised is not within this range, simply ignore it 
+            if ((errNum != result_execOK) && (execResult < result_startOfEvents)) { return errNum; }
+
+            // clean up
+            clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
+            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
+        }
+        break;
+
+
+        // -------------------------------
+        // switch error trapping on or off
+        // -------------------------------
+
+        case cmdcod_trapErrors:
+        {
+            bool operandIsVar = (pStackLvl->varOrConst.tokenType == tok_isVariable);
+            char valueType = operandIsVar ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
+            if ((valueType != value_isLong) && (valueType != value_isFloat)) { return result_arg_numberExpected; }
+            Val value;
+            value.longConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pLongConst) : pStackLvl->varOrConst.value.longConst);    // line is valid for all value types  
+            _trapErrors = (valueType == value_isLong) ? (bool)value.longConst : (bool)value.floatConst;
+            _trappedErrorNumber = (int)result_execOK;
+
+            // clean up
+            clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
+            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
+        }
+        break;
+
+
+        // ------------------------
+        // Clear an execution error
+        // ------------------------
+
+        case cmdcod_clearError:
+        {
+            _trappedErrorNumber = (int)result_execOK;
 
             // clean up
             clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 

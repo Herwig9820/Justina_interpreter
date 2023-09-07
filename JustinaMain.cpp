@@ -133,6 +133,8 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"debug",           cmdcod_debug,           cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
 
     {"raiseError",      cmdcod_raiseError,      cmd_onlyImmOrInsideFuncBlock,                           1,1,    cmdPar_104,     cmdBlockNone},
+    {"trapErrors",      cmdcod_trapErrors,      cmd_onlyImmOrInsideFuncBlock,                           1,1,    cmdPar_104,     cmdBlockNone},
+    {"clearError",      cmdcod_clearError,      cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_104,     cmdBlockNone},
     {"quit",            cmdcod_quit,            cmd_onlyImmOrInsideFuncBlock,                           0,1,    cmdPar_106,     cmdBlockNone},
 
     // settings
@@ -311,7 +313,8 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     {"ubound",                  fnccod_ubound,                  2,2,    0b00000001},        // first parameter is array (LSB)
     {"dims",                    fnccod_dims,                    1,1,    0b00000001},
     {"type",                    fnccod_valueType,               1,1,    0b0},
-    {"r",                       fnccod_last,                    0,1,    0b0},               // short label for 'last result'
+    { "r",                      fnccod_last,                    0,1,    0b0 },               // short label for 'last result'
+    { "err",                    fnccod_getTrappedErr,           0,0,    0b0 },               
     {"sysval",                  fnccod_sysVal,                  1,1,    0b0},
 
     // input and output functions

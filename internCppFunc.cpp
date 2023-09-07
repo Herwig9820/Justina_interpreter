@@ -2047,6 +2047,17 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
         // convert a string to a new string containing all characters into 2 alphanumeric digits
         // -------------------------------------------------------------------------------------
 
+        case fnccod_getTrappedErr:
+        {
+            fcnResult.longConst = _trappedErrorNumber;
+            fcnResultValueType = value_isLong;
+        }
+        break;
+
+
+        // convert a string to a new string containing all characters into 2 alphanumeric digits
+        // -------------------------------------------------------------------------------------
+
         case fnccod_strhex:
         {
             fcnResultValueType = value_isStringPointer;                                                                     // init

@@ -187,6 +187,8 @@ class Justina_interpreter {
         cmdcod_debug,
         cmdcod_nop,
         cmdcod_raiseError,
+        cmdcod_trapErrors,
+        cmdcod_clearError,
         cmdcod_quit,
         cmdcod_info,
         cmdcod_input,
@@ -256,6 +258,7 @@ class Justina_interpreter {
         fnccod_dims,
         fnccod_valueType,
         fnccod_last,
+        fnccod_getTrappedErr,
         fnccod_asc,
         fnccod_char,
         fnccod_len,
@@ -626,6 +629,7 @@ class Justina_interpreter {
         result_eval_nothingToEvaluate = 3500,
         result_eval_parsingError,
         result_list_parsingError,
+        result_eval_nothingToEvaluate_TEMP = 3500,                                   //// TEMP
 
         // SD card
         result_SD_noCardOrCardError = 3600,
@@ -1152,8 +1156,8 @@ private:
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na, block_na, block_na };                                      // not a 'block' command
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[66];                                                                                      // keyword names
-    static const InternCppFuncDef _internCppFunctions[137];                                                                     // internal cpp function names and codes with min & max arguments allowed
+    static const ResWordDef _resWords[68];                                                                                      // keyword names
+    static const InternCppFuncDef _internCppFunctions[138];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[38];                                                                                    // terminals (including operators)
     static const SymbNumConsts _symbNumConsts[70];                                                                              // predefined constants
 
@@ -1502,7 +1506,7 @@ private:
 
 
     // remember what token type was last parsed, or even the token before that
-    // ----------------------------------------------------------------------
+    // -----------------------------------------------------------------------
 
     uint16_t _lastTokenStep, _lastVariableTokenStep;
     uint16_t _blockCmdTokenStep, _blockStartCmdTokenStep;           // remember step number (in JUSTINA program memory) of keyword starting a block command                           
@@ -1637,8 +1641,16 @@ private:
     bool _debugCmdExecuted{ false };                                // a debug command was executed
 
 
+    // error trapping
+    // --------------
+    
+    bool _trapErrors{false};
+    bool _handlingError{ false };
+    int _trappedErrorNumber { (int)result_execOK };
+
+    
     // evaluation strings ('eval("...")' and 'trace("...")' commands)
-    // --------------------------------------------------------
+    // --------------------------------------------------------------
 
     char* _pTraceString{ nullptr };
     char* _pEvalString{ nullptr };

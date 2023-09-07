@@ -31,7 +31,7 @@
 #include "Justina.h"
 
 #define PRINT_HEAP_OBJ_CREA_DEL 0
-#define printParsedTokens 0
+#define PRINT_PARSED_TOKENS 0
 #define PRINT_DEBUG_INFO 0
 #define PRINT_OBJECT_COUNT_ERRORS 0
 
@@ -79,7 +79,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
     char* pNext = pInputStart;                                                          // set to first character in instruction
     char* pNext_hold = pNext;
 
-#if printParsedTokens
+#if PRINT_PARSED_TOKENS
     _pDebugOut->println("\r\n*** START parsing 1 statement");
 #endif
 
@@ -185,7 +185,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::parseStatement(c
 
 bool Justina_interpreter::checkCommandKeyword(parseTokenResult_type& result, int& resWordIndex) {                                      // command syntax checks
 
-#if printParsedTokens
+#if PRINT_PARSED_TOKENS
     _pDebugOut->println(">> checking command keyword");
 #endif
     resWordIndex = _tokenIndex;
@@ -320,7 +320,7 @@ bool Justina_interpreter::checkCommandArgToken(parseTokenResult_type& result, in
 
     // init and adapt variables
     // ------------------------
-#if printParsedTokens
+#if PRINT_PARSED_TOKENS
     _pDebugOut->println(">> checking command argument");
 #endif
 
@@ -457,7 +457,7 @@ bool Justina_interpreter::parseAsResWord(char*& pNext, parseTokenResult_type& re
         _lastTokenType = tok_isReservedWord;
         _lastTokenIsString = false, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
-    #if printParsedTokens
+    #if PRINT_PARSED_TOKENS
         _pDebugOut->print("parsing keyword: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(_resWords[resWordIndex]._resWordName);  _pDebugOut->println("]");
         _pDebugOut->print("- token (re. word) index = "); _pDebugOut->println(resWordIndex);
     #endif
@@ -543,7 +543,7 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parseTokenResult_type& res
     bool doNonLocalVarInit = ((_isGlobalOrUserVarCmd || _isStaticVarCmd) && lastIsPureAssignmentOp);
     if (doNonLocalVarInit) { initVariable(_lastVariableTokenStep, _lastTokenStep); }                            // initialisation of global / static variable ? (operator: is always assignment)
 
-#if printParsedTokens
+#if PRINT_PARSED_TOKENS
     _pDebugOut->print("parsing number : address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); if (valueType == value_isLong) { _pDebugOut->print(lng); }
     else { _pDebugOut->print(flt); }  _pDebugOut->println("]");
 #endif
@@ -637,7 +637,7 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parseTokenResult_t
         pNext = pch;  return false;
     }
 
-#if printParsedTokens
+#if PRINT_PARSED_TOKENS
     _pDebugOut->print("parsing alphan : address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ['"); _pDebugOut->print(pStringCst);  _pDebugOut->println("']");
 #endif
 
@@ -1303,7 +1303,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
     _lastTokenIsString = false, _lastTokenIsTerminal = true;
     _lastTermCode = (termin_code)_terminals[termIndex].terminalCode;
 
-#if printParsedTokens
+#if PRINT_PARSED_TOKENS
     _pDebugOut->print("parsing termin : address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" [ "); _pDebugOut->print(_terminals[termIndex].terminalName);  _pDebugOut->println(" ]");
 #endif
 
@@ -1373,7 +1373,7 @@ bool Justina_interpreter::parseAsInternCPPfunction(char*& pNext, parseTokenResul
         _lastTokenType = tok_isInternCppFunction;
         _lastTokenIsString = false, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
-    #if printParsedTokens
+    #if PRINT_PARSED_TOKENS
         _pDebugOut->print("parsing int fcn: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(_internCppFunctions[funcIndex].funcName);  _pDebugOut->println("]");
     #endif
 
@@ -1452,7 +1452,7 @@ bool Justina_interpreter::parseAsExternCPPfunction(char*& pNext, parseTokenResul
             _lastTokenType = tok_isExternCppFunction;
             _lastTokenIsString = false, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
-        #if printParsedTokens
+        #if PRINT_PARSED_TOKENS
             _pDebugOut->print("parsing ext fcn: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(funcName);  _pDebugOut->println("]");
         #endif
 
@@ -1614,7 +1614,7 @@ bool Justina_interpreter::parseAsJustinaFunction(char*& pNext, parseTokenResult_
     _lastTokenType = tok_isJustinaFunction;
     _lastTokenIsString = false, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
-#if printParsedTokens
+#if PRINT_PARSED_TOKENS
     _pDebugOut->print("parsing ext fcn: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(JustinaFunctionNames[_functionIndex]);  _pDebugOut->println("]");
 #endif
 
@@ -2157,7 +2157,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
     _lastTokenType = tok_isVariable;
     _lastTokenIsString = false, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
-#if printParsedTokens
+#if PRINT_PARSED_TOKENS
     _pDebugOut->print("parsing var name: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(pvarNames[activeNameRange][varNameIndex]);  _pDebugOut->println("]");
 #endif
 
@@ -2245,7 +2245,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parseTokenResult_t
     _lastTokenType = tok_isGenericName;
     _lastTokenIsString = false, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
-#if printParsedTokens
+#if PRINT_PARSED_TOKENS
     _pDebugOut->print("parsing identif: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(pIdentifierName);  _pDebugOut->println("]");
 #endif
 
