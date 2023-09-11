@@ -2710,7 +2710,7 @@ Justina_interpreter::parseTokenResult_type Justina_interpreter::deleteUserVariab
                 char* programStep = _programStorage;
                 int tokenType{};
                 do {
-                    tokenType = findTokenStep(programStep, tok_isVariable, var_isUser, i + 1);
+                    tokenType = findTokenStep(programStep, true, tok_isVariable, var_isUser, i + 1);
                     if (tokenType == '\0') { break; }
                     --((TokenIsVariable*)programStep)->identValueIndex;
                 } while (true);

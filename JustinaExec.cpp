@@ -65,7 +65,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
     bool abortCommandReceived{ false };
     bool showStopmessage{ false };
     bool doSingleStep = false;
-    bool lastTokenIsSemicolon = false;                                                  // do not stop a program after an 'empty' statement (occurs when returning to caller)
     bool doSkip = false;
 
     execResult_type execResult = result_execOK;
@@ -125,8 +124,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
         int  holdCommandStartEValStackLevels{ 0 };
 
-        // 1.1 process by token type
-        // -------------------------
+        // 1. process by token type
+        // ------------------------
 
         switch (tokenType) {                                                                            // process according to token type
 
@@ -150,7 +149,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             #endif
                 bool skipStatement = ((_resWords[tokenIndex].restrictions & cmd_skipDuringExec) != 0);
                 if (skipStatement) {
-                    findTokenStep(_programCounter, tok_isTerminalGroup1, termcod_semicolon);            // find semicolon (always match)
+                    findTokenStep(_programCounter, true, tok_isTerminalGroup1, termcod_semicolon);            // find semicolon (always match)
                     _activeFunctionData.pNextStep = _programCounter;
                     break;
                 }
@@ -516,7 +515,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 #endif
                     bool doCaseBreak{ false };
 
-                    lastTokenIsSemicolon = true;
                     isEndOfStatementSeparator = true;
 
                     if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_none) {                                                 // currently not executing a command, but a simple expression
@@ -589,13 +587,14 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
             case tok_isEvalEnd:
             {
-                execResult = terminateEval();
-                if (execResult != result_execOK) { break; }                                                                         // other error: break (case label) immediately
-
-                Serial.println("********** NORMAL eval termination");
+                if (evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels >= 1) {
+                    makeIntermediateConstant(_pEvalStackTop);                                                           // expression result is always a constant
+                }
+                else { execResult = result_eval_nothingToEvaluate_TEMP; break; }  // string is not empty (""), but does not contain an expression  //// vervang door result_eval_nothingToEvaluate
+                terminateEval();
                 if (evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels >= 1) {
                     execResult = execAllProcessedOperators();                                                                       // process operators OUTSIDE terminating eval() function
-                    if (execResult != result_execOK) { return execResult; }
+                    if (execResult != result_execOK) { break; }
                 }
 
                 // after evaluation stack has been updated and before breaking because of error
@@ -608,81 +607,44 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
         } // end 'switch (tokenType)'
 
-        if (_handlingError || (_trapErrors && ((execResult != result_execOK) && (execError < result_startOfEvents)))) {
+
+
+        // 2. if error trapping is on, trap the error. This effectively clears the error. The statement with the error does not return anything to the evaluation stack
+        // ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+        if (_trapErrors && ((execResult != result_execOK) && (execResult < result_startOfEvents))) {
 
             // start handling error ? remember error number and also reset execResult variable
-            if (!_handlingError) { _trappedErrorNumber = (int)execResult; execResult = result_execOK; }
+            _trappedErrorNumber = (int)execResult; execResult = result_execOK;
 
-            do{
+            Serial.print("\r\n** TRAP error - caller eval stack levels: "); Serial.println((int)_activeFunctionData.callerEvalStackLevels);
+
+            do {
                 // clear evaluation stack levels for currently active block (function or eval block): get rid of expression(s) where error occured
                 clearEvalStackLevels(evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels);
-                
+
                 // if error occured in eval 'function' level: remove all open eval levels until a real function level (or the command line) is reached
-                if(_activeFunctionData.blockType == block_eval){
-                    terminateEval();
-                    _handlingError = true;
-                }
-            } while (_handlingError);
-            
-            // push a '0' result on the evaluation stack
-            _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(VarOrConstLvl));
-            _pEvalStackMinus1 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackTop);
-            _pEvalStackMinus2 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackMinus1);
+                bool currentBlockisEval = (_activeFunctionData.blockType == block_eval);          // remember, because terminateEval() adapts _activeFunctionData.blockType
+                if (currentBlockisEval) { terminateEval(); }
+                else { break; }
+            } while (true);
 
-            _pEvalStackTop->varOrConst.value.longConst = 0;                                                                       // long, float or pointer to string
-            _pEvalStackTop->varOrConst.valueType = value_isLong;                                                                // value type of second operand
-            _pEvalStackTop->varOrConst.tokenType = tok_isConstant;                                                              // use generic constant type
-            _pEvalStackTop->varOrConst.sourceVarScopeAndFlags = 0x00;                                                           // not an array, not an array element (it's a constant)
-            _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
-            
+            // is next step a statement separator ? if not, look for first statement separator as next step
+            if (!isEndOfStatementSeparator) { findTokenStep(_activeFunctionData.pNextStep, false, tok_isTerminalGroup1, termcod_semicolon); }             // find semicolon (always match)
+
+            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;    // if processing command, prevent execution the command 
             isComma = false;                // reset
-            
-            
-            // error is now trapped: do not raise error
-            /*
-            if (_activeFunctionData.blockType != block_eval) {
-                Serial.println("ERROR termination: is FUNCTION level **************************");
 
-                if (!_handlingError) {
-                    clearEvalStackLevels(evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels);
-
-                    _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(VarOrConstLvl));
-                    _pEvalStackMinus1 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackTop);
-                    _pEvalStackMinus2 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackMinus1);
-
-                    _pEvalStackTop->varOrConst.value.longConst = 0;                                                                       // long, float or pointer to string
-                    _pEvalStackTop->varOrConst.valueType = value_isLong;                                                                // value type of second operand
-                    _pEvalStackTop->varOrConst.tokenType = tok_isConstant;                                                              // use generic constant type
-                    _pEvalStackTop->varOrConst.sourceVarScopeAndFlags = 0x00;                                                           // not an array, not an array element (it's a constant)
-                    _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
-                }
-                _handlingError = false;                                                                                      // error is now trapped: do not raise error
-            }
-
-            else {
-                Serial.println("ERROR termination: is EVAL level ******************************");
-
-                clearEvalStackLevels(evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels);
-
-                _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(VarOrConstLvl));
-                _pEvalStackMinus1 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackTop);
-                _pEvalStackMinus2 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackMinus1);
-
-                _pEvalStackTop->varOrConst.value.longConst = 0;                                                                       // long, float or pointer to string
-                _pEvalStackTop->varOrConst.valueType = value_isLong;                                                                // value type of second operand
-                _pEvalStackTop->varOrConst.tokenType = tok_isConstant;                                                              // use generic constant type
-                _pEvalStackTop->varOrConst.sourceVarScopeAndFlags = 0x00;                                                           // not an array, not an array element (it's a constant)
-                _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
-
-                terminateEval();
-                _handlingError = true;
-            }
-            */
+        #if PRINT_DEBUG_INFO
+            _pDebugOut->print("** error: CURRENT step = "); _pDebugOut->println(_programCounter - _programStorage);
+            _pDebugOut->print("          NEXT step    = "); _pDebugOut->println(_activeFunctionData.pNextStep - _programStorage);
+            _pDebugOut->print("          token type   = "); _pDebugOut->println((*_programCounter & 0x0F)); _pDebugOut->println();
+        #endif
         }
 
 
-        // 1.2. a token has been processed (with or without error): advance to next token
-        // ------------------------------------------------------------------------------
+        // 3. a token has been processed (with or without error): advance to next token
+        // ----------------------------------------------------------------------------
 
         _programCounter = _activeFunctionData.pNextStep;                                                    // note: will be altered when calling a Justina function and upon return of a called function
         tokenType = *_activeFunctionData.pNextStep & 0x0F;                                                  // next token type (could be token within caller, if returning now)
@@ -694,16 +656,16 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
     #endif
 
 
-        // 1.3 last token processed was a statement separator ? 
-        // ----------------------------------------------------
+        // 4. last token processed was a statement separator ? 
+        // ---------------------------------------------------
 
         // this code executes after a statement was executed (simple expression or command)
 
         if (isEndOfStatementSeparator) {                                                                    // after expression AND after command
 
-        #if PRINT_PROCESSED_TOKEN        
+        #if PRINT_DEBUG_INFO        
             _pDebugOut->println("\r\n");
-            _pDebugOut->println("**** is 'end of statement separator'\r\n");
+            _pDebugOut->println("**** is 'end of statement separator' - postprocessing\r\n");
         #endif
 
             // keep track of Justina program counters
@@ -772,7 +734,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                         }
                     }
                     // skip a statement in program memory: adapt program step pointers
-                    findTokenStep(_programCounter, tok_isTerminalGroup1, termcod_semicolon);  // find next semicolon (always match)
+                    findTokenStep(_programCounter, true, tok_isTerminalGroup1, termcod_semicolon);  // find next semicolon (always match)
                     _activeFunctionData.pNextStep = _programCounter += sizeof(TokenIsTerminal);
                     tokenType = *_activeFunctionData.pNextStep & 0x0F;                                                              // next token type (could be token within caller, if returning now)
                     precedingIsComma = false;
@@ -787,11 +749,11 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
                 isFunctionReturn = false;
             }
-    }
+        }
 
 
-        // 1.4 did an execution error occur within token ? signal error
-        // ------------------------------------------------------------
+        // 5. did an execution error occur within token ? signal error
+        // -----------------------------------------------------------
 
         // do not print / handle error message / event if currently executing trace expressions
 
@@ -875,15 +837,16 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 break;
             }
         }
-}   // end 'while ( tokenType != tok_no_token )'                                                                                       
+    }   // end 'while ( tokenType != tok_no_token )'                                                                                       
 
 
-// -----------
-// 2. finalize
-// -----------
 
-// 2.1 did the execution produce a result ? print it
-// -------------------------------------------------
+    // --------------------------------------------------
+    // 3. finalize execution: prepare to return to caller
+    // --------------------------------------------------
+
+    // 3.1 did the execution produce a result ? print it
+    // -------------------------------------------------
 
     if (!_parsingExecutingTraceString) {
         if (*_pConsolePrintColumn != 0) { printlnTo(0); *_pConsolePrintColumn = 0; }
@@ -909,7 +872,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         }
     }
 
-    // 2.2 adapt imm. mode parsed statement stack, flow control stack and evaluation stack
+    // 3.2 adapt imm. mode parsed statement stack, flow control stack and evaluation stack
     // -----------------------------------------------------------------------------------
 
     if (execResult == result_stopForDebug) {              // stopping for debug now ('STOP' command or single step)
@@ -1067,7 +1030,7 @@ int Justina_interpreter::jumpTokens(int n, char*& pStep, int& tokenCode) {
 // *   advance until specific token   *
 // ------------------------------------
 
-int Justina_interpreter::findTokenStep(char*& pStep, int tokenType_spec, char criterium1, char criterium2) {
+int Justina_interpreter::findTokenStep(char*& pStep, bool excludeCurrent, int tokenType_spec, char criterium1, char criterium2) {
 
     // pStep: pointer to first token to test versus token group and (if applicable) token code
     // tokenType: if 'tok_isTerminalGroup1', test for the three terminal groups !
@@ -1077,15 +1040,18 @@ int Justina_interpreter::findTokenStep(char*& pStep, int tokenType_spec, char cr
     char& tokenCode2_spec = criterium2;                                                                         // optional second index (-1 if only one index to look for)
 
     // if looking for a specific variable
-    char& varScope_spec = criterium1;                                                                           //  variable scope to look for (user, global, ...)
+    char& varScope_spec = criterium1;                                                                           // variable scope to look for (user, global, ...)
     char& valueIndex_spec = criterium2;                                                                         // value index to look for
 
-    // exclude current token step
     int tokenType = *pStep & 0x0F;
-    // terminals and constants: token length is NOT stored in token type
-    int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) :
-        (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*pStep >> 4) & 0x0F;                         // fetch next token 
-    pStep = pStep + tokenLength;
+
+    // exclude current token step ?
+    if (excludeCurrent) {
+        // terminals and constants: token length is NOT stored in token type
+        int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) :
+            (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*pStep >> 4) & 0x0F;                         // fetch next token 
+        pStep = pStep + tokenLength;
+    }
 
     do {
         tokenType = *pStep & 0x0F;
@@ -1243,7 +1209,7 @@ void Justina_interpreter::clearEvalStack() {
     #endif
         _intermediateStringObjectErrors += abs(_intermediateStringObjectCount);
         _intermediateStringObjectCount = 0;
-}
+    }
     return;
 }
 
@@ -2063,7 +2029,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
     else if (opResultFloat) { _pDebugOut->print("    'op': stack top float value "); _pDebugOut->println(_pEvalStackTop->varOrConst.value.floatConst); }
     else { _pDebugOut->print("    'op': stack top string value "); _pDebugOut->println(_pEvalStackTop->varOrConst.value.pStringConst); }
 #endif
-    Serial.println("\r\n********** INFIX operator");
     return result_execOK;
 }
 
@@ -2324,30 +2289,31 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
 #endif
     _systemVarStringObjectCount--;
     delete[] pEvalParsingInput;
-
-    // last step of just parsed eval() string. Note: adding sizeof(tok_no_token) because not yet added
-    _lastUserCmdStep = ((result == result_tokenFound) ? _programCounter + sizeof(tok_no_token) : nullptr);  // if parsing error, store nullptr as last token position
-
     _parsingEvalString = false;
+
     if (result != result_tokenFound) {
         // immediate mode program memory now contains a PARTIALLY parsed eval() expression string...
         // ...(up to the token producing a parsing error) and a few string constants may have been created in the process.
         // restore the situation from BEFORE launching the parsing of this now partially parsed eval() expression:   
         // delete any newly parsed string constants created in the parsing attempt
         // pop the original imm.mode parsed statement stack top level again to imm. mode program memory
-        // a corresponding entry in flow ctrl stack has not yet been created either)
+        // a corresponding entry in flow ctrl stack has not yet been created: no stack element to be deleted there
 
         deleteConstStringObjects(_programStorage + _progMemorySize);      // string constants that were created just now 
         memcpy((_programStorage + _progMemorySize), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);
         parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
         _pParsedCommandLineStackTop = (char*)parsedCommandLineStack.getLastListElement();
+
     #if PRINT_PARSED_CMD_STACK
         _pDebugOut->print("  >> POP parsed statements (launch eval parse error): last step: "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
     #endif
-
+        
         _evalParseErrorCode = result;       // remember
         return result_eval_parsingError;
     }
+
+    // last step of just parsed eval() string. Note: adding sizeof(tok_no_token) because not yet added
+    _lastUserCmdStep = _programCounter + sizeof(tok_no_token);                                              // if parsing error, do not change
 
     *(_programCounter) = tok_isEvalEnd | 0x10;                                                              // replace '\0' after parsed statements with 'end eval ()' token (length 1 in upper 4 bits)
     *(_programCounter + 1) = tok_no_token;
@@ -2462,7 +2428,7 @@ void Justina_interpreter::initFunctionDefaultParamVariables(char*& pStep, int su
         tokenType = jumpTokens(1, pStep);
         // now positioned at opening parenthesis in called function (after FUNCTION token)
         // find n-th argument separator (comma), with n is number of supplied arguments (stay at left parenthesis if none provided)
-        while (count < suppliedArgCount) { tokenType = findTokenStep(pStep, tok_isTerminalGroup1, termcod_comma); count++; }
+        while (count < suppliedArgCount) { tokenType = findTokenStep(pStep, true, tok_isTerminalGroup1, termcod_comma); count++; }
 
         // now positioned before first parameter for non-supplied scalar argument. It always has an initializer
         // we only need the constant value, because we know the variable value index already (count): skip variable and assignment 
@@ -2502,7 +2468,7 @@ void Justina_interpreter::initFunctionDefaultParamVariables(char*& pStep, int su
     }
 
     // skip (remainder of) function definition
-    findTokenStep(pStep, tok_isTerminalGroup1, termcod_semicolon);
+    findTokenStep(pStep, true, tok_isTerminalGroup1, termcod_semicolon);
 };
 
 
@@ -2518,7 +2484,7 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
 
     int count = paramCount;                                                                                                 // sum of mandatory and optional parameters
     while (count != localVarCount) {
-        findTokenStep(pStep, tok_isReservedWord, cmdcod_var, cmdcod_constVar);                                              // find local 'var' or 'const' keyword (always there)
+        findTokenStep(pStep, true, tok_isReservedWord, cmdcod_var, cmdcod_constVar);                                              // find local 'var' or 'const' keyword (always there)
 
         do {
             // in case variable is not an array and it does not have an initializer: init now as zero (float). Arrays without initializer will be initialized later
@@ -2696,7 +2662,7 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateJustinaFuncti
         #endif
             _localVarValueAreaErrors += abs(_localVarValueAreaCount);
             _localVarValueAreaCount = 0;
-}
+        }
 
         if (_localVarStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
@@ -2725,13 +2691,7 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateJustinaFuncti
 // *   terminate execution of an eval() string   *
 // -----------------------------------------------
 
-Justina_interpreter::execResult_type Justina_interpreter::terminateEval() {
-
-    if (evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels >= 1) {
-        makeIntermediateConstant(_pEvalStackTop);
-    }
-    else { /*return result_eval_nothingToEvaluate;*/ Serial.println("!!!!!!!!!!!!!!!!!!!!!!!!!!! mag NIET voorkomen !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"); }  //// dit mag niet voorkomen (error trapping)
-
+void Justina_interpreter::terminateEval() {
 
     char blockType = block_none;                                                                                            // init
     do {
@@ -2761,8 +2721,6 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateEval() {
 #if PRINT_PARSED_CMD_STACK
     _pDebugOut->print("  >> POP parsed statements (terminate eval): last step: "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
 #endif
-
-    return result_execOK;
 }
 
 

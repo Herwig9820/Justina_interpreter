@@ -170,7 +170,7 @@ Justina_interpreter::CppVoidFunction  const cppVoidFunctions[]{                 
 // -------------------------------
 
 void setup() {
-    Serial.begin(1000000);
+    Serial.begin(115200);
 
     // define output pins
     pinMode(HEARTBEAT_PIN, OUTPUT);                                                   // blinking led for heartbeat

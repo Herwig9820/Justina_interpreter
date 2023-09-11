@@ -982,7 +982,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             execResult_type execResult = launchEval(pFunctionStackLvl, args[0].pStringConst);
             if (execResult != result_execOK) { return execResult; }
             // a dummy 'Justina function' (executing the parsed eval() expressions) has just been 'launched' (and will start after current (right parenthesis) token is processed)
-            // because eval function name token and single argument will be removed from stack now (see below, at end of this procedure), adapt CALLER evaluation stack levels
+            // because eval function name token and single argument will be removed from stack now (see below, at end of this procedure, after the switch() block), adapt CALLER evaluation stack levels
             _activeFunctionData.callerEvalStackLevels -= 2;
         }
         break;

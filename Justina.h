@@ -629,7 +629,7 @@ class Justina_interpreter {
         result_eval_nothingToEvaluate = 3500,
         result_eval_parsingError,
         result_list_parsingError,
-        result_eval_nothingToEvaluate_TEMP = 3500,                                   //// TEMP
+        result_eval_nothingToEvaluate_TEMP ,                                   //// TEMP
 
         // SD card
         result_SD_noCardOrCardError = 3600,
@@ -1333,7 +1333,7 @@ private:
 
         char* activeCmd_tokenAddress;                                   // address in program memory of parsed keyword token                                
 
-        // value area pointers (note: a                                 value is a long, a float or a pointer to a string or array, or (if reference): pointer to 'source' (referenced) variable))
+        // value area pointers (note: a value is a long, a float or a pointer to a string or array, or (if reference): pointer to 'source' (referenced) variable))
         Val* pLocalVarValues;                                           // points to local variable value storage area
         char** ppSourceVarTypes;                                        // only if local variable is reference to variable or array element: pointer to 'source' variable value type  
         char* pVariableAttributes;                                      // local variable: value type (float, local string or reference); 'source' (if reference) or local variable scope (user, global, static; local, param) and 'is array' and 'is constant var' flags
@@ -1645,7 +1645,6 @@ private:
     // --------------
     
     bool _trapErrors{false};
-    bool _handlingError{ false };
     int _trappedErrorNumber { (int)result_execOK };
 
     
@@ -1957,7 +1956,7 @@ private:
     execResult_type  launchJustinaFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount);
     execResult_type  launchEval(LE_evalStack*& pFunctionStackLvl, char* parsingInput);
     execResult_type  terminateJustinaFunction(bool addZeroReturnValue = false);
-    execResult_type  terminateEval();
+    void  terminateEval();
 
     // Justina functions: initialise parameter variables with provided arguments (pass by reference)
     void initFunctionParamVarWithSuppliedArg(int suppliedArgCount, LE_evalStack*& pFirstArgStackLvl);
@@ -2064,7 +2063,7 @@ private:
     void quoteAndExpandEscSeq(char*& input);
 
     // find / jump to tokens in program memory
-    int findTokenStep(char*& pStep, int tokenTypeToFind, char tokenCodeToFind, char tokenCode2ToFind = -1);
+    int findTokenStep(char*& pStep, bool excludeCurrent, int tokenTypeToFind, char tokenCodeToFind, char tokenCode2ToFind = -1);
     int jumpTokens(int n, char*& pStep, int& tokenCode);
     int jumpTokens(int n, char*& pStep);
     int jumpTokens(int n);
