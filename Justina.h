@@ -626,10 +626,10 @@ class Justina_interpreter {
         result_skipNotAllowedHere,
 
         // evaluation and list parsing function errors
-        result_eval_nothingToEvaluate = 3500,
+        result_eval_emptyString = 3500,
+        result_eval_nothingToEvaluate ,                                   
         result_eval_parsingError,
         result_list_parsingError,
-        result_eval_nothingToEvaluate_TEMP ,                                   //// TEMP
 
         // SD card
         result_SD_noCardOrCardError = 3600,
@@ -1955,7 +1955,7 @@ private:
     execResult_type  execExternalCppFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount);
     execResult_type  launchJustinaFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount);
     execResult_type  launchEval(LE_evalStack*& pFunctionStackLvl, char* parsingInput);
-    execResult_type  terminateJustinaFunction(bool addZeroReturnValue = false);
+    void  terminateJustinaFunction(bool addZeroReturnValue = false);
     void  terminateEval();
 
     // Justina functions: initialise parameter variables with provided arguments (pass by reference)

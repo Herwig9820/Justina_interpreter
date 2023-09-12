@@ -1803,7 +1803,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         {
             isFunctionReturn = true;
             bool returnWithZero = (cmdArgCount == 0);                                                                     // RETURN statement without expression, or END statement: return a zero
-            execResult = terminateJustinaFunction(returnWithZero);
+            terminateJustinaFunction(returnWithZero);
+            execResult_type execResult = execAllProcessedOperators();                                                              // continue in caller !!!
             if (execResult != result_execOK) { return execResult; }
 
             // DO NOT reset _activeFunctionData.activeCmd_ResWordCode: _activeFunctionData will receive its values in routine terminateJustinaFunction()

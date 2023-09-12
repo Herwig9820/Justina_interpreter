@@ -590,7 +590,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 if (evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels >= 1) {
                     makeIntermediateConstant(_pEvalStackTop);                                                           // expression result is always a constant
                 }
-                else { execResult = result_eval_nothingToEvaluate_TEMP; break; }  // string is not empty (""), but does not contain an expression  //// vervang door result_eval_nothingToEvaluate
+                else { execResult = result_eval_nothingToEvaluate; break; }                                             // string, although not empty (""), does not contain an expression  
                 terminateEval();
                 if (evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels >= 1) {
                     execResult = execAllProcessedOperators();                                                                       // process operators OUTSIDE terminating eval() function
@@ -2246,7 +2246,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
 
     execResult_type execResult{ result_execOK };
 
-    if (parsingInput == nullptr) { return result_eval_nothingToEvaluate; }
+    if (parsingInput == nullptr) { return result_eval_emptyString; }
 
 
     // push current command line storage to command line stack, to make room for the evaluation string (to parse) 
@@ -2608,7 +2608,7 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
 // *   terminate Justina function   *
 // ----------------------------------
 
-Justina_interpreter::execResult_type Justina_interpreter::terminateJustinaFunction(bool addZeroReturnValue) {
+void Justina_interpreter::terminateJustinaFunction(bool addZeroReturnValue) {
     if (addZeroReturnValue) {
         _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
         _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(VarOrConstLvl));
@@ -2680,10 +2680,6 @@ Justina_interpreter::execResult_type Justina_interpreter::terminateJustinaFuncti
             _localArrayObjectCount = 0;
         }
     }
-
-    execResult_type execResult = execAllProcessedOperators();  //// verplaatsen buiten routine, na call (consistensie met eval()                                                             // continue in caller !!!
-
-    return execResult;
 }
 
 
