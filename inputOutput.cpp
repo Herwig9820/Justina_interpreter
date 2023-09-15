@@ -933,10 +933,11 @@ void Justina_interpreter::printVariables(bool userVars) {
 void Justina_interpreter::printCallStack() {
     if (_callStackDepth > 0) {      // including eval() stack levels but excluding open block (for, if, ...) stack levels
         int indent = 0;
-        void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                    int blockType = block_none;
+        void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                    
+        int blockType = block_none;
         for (int i = 0; i < flowCtrlStack.getElementCount(); ++i) {
             char s[MAX_IDENT_NAME_LEN + 1] = "";
-            blockType = *(char*)pFlowCtrlStackLvl;
+            blockType = ((openBlockGeneric*)pFlowCtrlStackLvl)->blockType;
             if (blockType == block_eval) {
                 for (int space = 0; space < indent - 4; ++space) { print(" "); }
                 if (indent > 0) { print("|__ "); }

@@ -31,7 +31,7 @@
 #include "Justina.h"
 
 #define PRINT_HEAP_OBJ_CREA_DEL 0
-#define PRINT_PARSED_CMD_STACK 1
+#define PRINT_PARSED_CMD_STACK 0
 #define PRINT_PROCESSED_TOKEN 0
 #define PRINT_DEBUG_INFO 0
 #define PRINT_OBJECT_COUNT_ERRORS 0
@@ -87,6 +87,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
     _activeFunctionData.errorStatementStartStep = _programCounter;
     _activeFunctionData.errorProgramCounter = _programCounter;
     _activeFunctionData.blockType = block_JustinaFunction;                              // consider main as a Justina function      
+    _activeFunctionData.trapErrors = 0;                                                 // start execution with error trapping disabled
 
     bool setCurrentPrintColumn{ false };                                                // for print commands only
 
@@ -608,38 +609,59 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         } // end 'switch (tokenType)'
 
 
-
         // 2. if error trapping is on, trap the error. This effectively clears the error. The statement with the error does not return anything to the evaluation stack
         // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-        if (_trapErrors && ((execResult != result_execOK) && (execResult < result_startOfEvents))) {
+        // an error occured in a Justina function, the (debug) command line or an eval() string ? 
+        if (!_parsingExecutingTraceString && (execResult != result_execOK) && (execResult < result_startOfEvents)) {
+            // did the error occur in a Justina function or the (debug) command line (and not in an eval() string) AND is error trapping ON in that Justina function ? 
+            bool trapError = ((_activeFunctionData.blockType == block_JustinaFunction) && (bool)_activeFunctionData.trapErrors);
+            // if not: is error trapping ON in a caller function (possibly the (debug) command line level) in the call stack ?
+            if (!trapError && (_activeFunctionData.pNextStep < (_programStorage + _progMemorySize))) {
+                // if error trapping is ON in a caller function - possibly the (debug) command line - then the last token processed in that caller function is not a semicolon 
+                isEndOfStatementSeparator = false;
+                
+                OpenFunctionData* pFlowCtrlStackLvl = (OpenFunctionData*)_pFlowCtrlStackTop;
+                while (pFlowCtrlStackLvl != nullptr) {
+                    if ((pFlowCtrlStackLvl->blockType == block_JustinaFunction) && (bool)pFlowCtrlStackLvl->trapErrors) {  trapError = true; break; }
+                    if (pFlowCtrlStackLvl->pNextStep >= (_programStorage + _progMemorySize)) {  break;}           // (debug) command line reached and checked: do not search previously stopped programs
+                    pFlowCtrlStackLvl = (OpenFunctionData*)flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
+                }
+            }
 
-            // start handling error ? remember error number and also reset execResult variable
-            _trappedErrorNumber = (int)execResult; execResult = result_execOK;
+            // error trapping is ON in either the function where the error occured or a caller function (possibly the (debug) command line level) ?
+            if (trapError) {
+                // remove flow control levels until level with 'trap errors = ON' is reached 
+                do {
+                    // clear evaluation stack levels for currently active block (function or eval block): get rid of expression(s) at the moment the error occured
+                    clearEvalStackLevels(evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels);
 
-            Serial.print("\r\n** TRAP error - caller eval stack levels: "); Serial.println((int)_activeFunctionData.callerEvalStackLevels);
+                    if (_activeFunctionData.blockType == block_eval) { terminateEval(); }                           // eval() function: terminate and keep looking for function with error trapping
+                    else {                                                                                           // Justina function
+                        if (!_activeFunctionData.trapErrors) { terminateJustinaFunction(true); }                      // this function is not trapping errors: terminate function and keep looking for function with error trapping
+                        else {  break; }                                                                                 // function with error trapping found (always there, see previous test)
+                    }
+                } while (true);                                                                                         // 
 
-            do {
-                // clear evaluation stack levels for currently active block (function or eval block): get rid of expression(s) where error occured
-                clearEvalStackLevels(evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels);
+                // if an error is trapped before the statement separator was executed, advance to the statement separator now
+                // note that an error during processing of end of statement sperator can only occur while executing a command
+                if (!isEndOfStatementSeparator) {
+                    findTokenStep(_activeFunctionData.pNextStep, false, tok_isTerminalGroup1, termcod_semicolon);             // find semicolon (always match)
+                    jumpTokens(1, _activeFunctionData.pNextStep);                                                               // first token after semicolon
+                    isEndOfStatementSeparator = true;
+                }
 
-                // if error occured in eval 'function' level: remove all open eval levels until a real function level (or the command line) is reached
-                bool currentBlockisEval = (_activeFunctionData.blockType == block_eval);          // remember, because terminateEval() adapts _activeFunctionData.blockType
-                if (currentBlockisEval) { terminateEval(); }
-                else { break; }
-            } while (true);
+                // clear the error condition but remember error number
+                _trappedErrorNumber = (int)execResult; execResult = result_execOK;
+                _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;    // if processing command, prevent execution the command 
+                isComma = false;                // reset
 
-            // is next step a statement separator ? if not, look for first statement separator as next step
-            if (!isEndOfStatementSeparator) { findTokenStep(_activeFunctionData.pNextStep, false, tok_isTerminalGroup1, termcod_semicolon); }             // find semicolon (always match)
-
-            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;    // if processing command, prevent execution the command 
-            isComma = false;                // reset
-
-        #if PRINT_DEBUG_INFO
-            _pDebugOut->print("** error: CURRENT step = "); _pDebugOut->println(_programCounter - _programStorage);
-            _pDebugOut->print("          NEXT step    = "); _pDebugOut->println(_activeFunctionData.pNextStep - _programStorage);
-            _pDebugOut->print("          token type   = "); _pDebugOut->println((*_programCounter & 0x0F)); _pDebugOut->println();
-        #endif
+            #if PRINT_DEBUG_INFO
+                _pDebugOut->print("** error: CURRENT step = "); _pDebugOut->println(_programCounter - _programStorage);
+                _pDebugOut->print("          NEXT step    = "); _pDebugOut->println(_activeFunctionData.pNextStep - _programStorage);
+                _pDebugOut->print("          token type   = "); _pDebugOut->println((*_programCounter & 0x0F)); _pDebugOut->println();
+            #endif
+            }
         }
 
 
@@ -662,7 +684,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         // this code executes after a statement was executed (simple expression or command)
 
         if (isEndOfStatementSeparator) {                                                                    // after expression AND after command
-
         #if PRINT_DEBUG_INFO        
             _pDebugOut->println("\r\n");
             _pDebugOut->println("**** is 'end of statement separator' - postprocessing\r\n");
@@ -749,7 +770,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
                 isFunctionReturn = false;
             }
-        }
+    }
 
 
         // 5. did an execution error occur within token ? signal error
@@ -837,16 +858,16 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 break;
             }
         }
-    }   // end 'while ( tokenType != tok_no_token )'                                                                                       
+}   // end 'while ( tokenType != tok_no_token )'                                                                                       
 
 
 
-    // --------------------------------------------------
-    // 3. finalize execution: prepare to return to caller
-    // --------------------------------------------------
+// --------------------------------------------------
+// 3. finalize execution: prepare to return to caller
+// --------------------------------------------------
 
-    // 3.1 did the execution produce a result ? print it
-    // -------------------------------------------------
+// 3.1 did the execution produce a result ? print it
+// -------------------------------------------------
 
     if (!_parsingExecutingTraceString) {
         if (*_pConsolePrintColumn != 0) { printlnTo(0); *_pConsolePrintColumn = 0; }
@@ -868,8 +889,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             #endif
                 _intermediateStringObjectCount--;
                 delete[] toPrint.pStringConst;
-            }
         }
+    }
     }
 
     // 3.2 adapt imm. mode parsed statement stack, flow control stack and evaluation stack
@@ -939,7 +960,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         #endif
             _intermediateStringObjectCount--;
             delete[] toPrint.pStringConst;
-        }
+    }
 
 
         // note: flow control stack and immediate command stack (program code) are not affected: only need to clear evaluation stack
@@ -1127,9 +1148,9 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
             #endif 
                 _lastValuesStringObjectCount--;
                 delete[] lastResultValueFiFo[itemToRemove].pStringConst;                                        // note: this is always an intermediate string
-            }
         }
     }
+}
     else {
         _lastValuesCount++;                                                                                     // only adding an item, without removing previous one
     }
@@ -1176,7 +1197,7 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
         #endif
             _intermediateStringObjectCount--;
             delete[] lastvalue.value.pStringConst;
-        }
+    }
     }
 
     // store new last value type
@@ -1209,7 +1230,7 @@ void Justina_interpreter::clearEvalStack() {
     #endif
         _intermediateStringObjectErrors += abs(_intermediateStringObjectCount);
         _intermediateStringObjectCount = 0;
-    }
+}
     return;
 }
 
@@ -1264,7 +1285,7 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, b
 
         do {
             // first loop: retrieve block type of currently active function (could be 'main' level = immediate mode instruction as well)
-            char blockType = isInitialLoop ? _activeFunctionData.blockType : *(char*)pFlowCtrlStackLvl;             // first character of structure is block type
+            char blockType = isInitialLoop ? _activeFunctionData.blockType : ((openBlockGeneric*)pFlowCtrlStackLvl)->blockType;             // first character of structure is block type
 
             if (blockType == block_JustinaFunction) {                               // block type: function (can be a real program function, or an implicit 'immediate mode' function (the start of ANY program) 
                 if (!isInitialLoop) { _activeFunctionData = *((OpenFunctionData*)pFlowCtrlStackLvl); }              // after first loop, load from stack
@@ -1969,8 +1990,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
                 _intermediateStringObjectCount--;
                 // compound assignment: pointing to the unclipped result WHICH IS NON-EMPTY: so it's a heap object and must be deleted now
                 delete[] pUnclippedResultString;
-            }
         }
+    }
 
         // store value in variable and adapt variable value type - next line is valid for long integers as well
         if (opResultLong || opResultFloat) { *_pEvalStackMinus2->varOrConst.value.pFloatConst = opResult.floatConst; }
@@ -1984,7 +2005,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) |
                 (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
         }
-    }
+}
 
 
     // (7) post process
@@ -2129,7 +2150,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execExternalCppFunctio
             #endif
                 _intermediateStringObjectCount--;
                 delete[] args[i].pStringConst;                                                                      // delete temporary string
-            }
+        }
 
             // string argument was a (NON-CONSTANT) variable string: no copy was made, the string itself was passed to the user routine
             // did the user routine change it to an empty, '\0' terminated string ?
@@ -2143,8 +2164,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execExternalCppFunctio
                 (varScope[i] == var_isUser) ? _userVarStringObjectCount-- : ((varScope[i] == var_isGlobal) || (varScope[i] == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount-- : _localVarStringObjectCount--;
                 delete[]args[i].pStringConst;                                                                       // delete original variable string
                 *pStackLvl->varOrConst.value.ppStringConst = nullptr;                                               // change pointer to string (in variable) to null pointer
-            }
-        }
+    }
+}
         pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
     }
 
@@ -2307,7 +2328,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
     #if PRINT_PARSED_CMD_STACK
         _pDebugOut->print("  >> POP parsed statements (launch eval parse error): last step: "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
     #endif
-        
+
         _evalParseErrorCode = result;       // remember
         return result_eval_parsingError;
     }
@@ -2640,7 +2661,7 @@ void Justina_interpreter::terminateJustinaFunction(bool addZeroReturnValue) {
     }
     char blockType = block_none;                                                                                            // init
     do {
-        blockType = *(char*)_pFlowCtrlStackTop;                                                                             // always at least one level present for caller (because returning to it)
+        blockType = ((openBlockGeneric*)_pFlowCtrlStackTop)->blockType;                                                                             // always at least one level present for caller (because returning to it)
 
         // load local storage pointers again for caller function and restore pending step & active function information for caller function
         if ((blockType == block_JustinaFunction) || (blockType == block_eval)) { _activeFunctionData = *(OpenFunctionData*)_pFlowCtrlStackTop; }    // caller level
@@ -2662,7 +2683,7 @@ void Justina_interpreter::terminateJustinaFunction(bool addZeroReturnValue) {
         #endif
             _localVarValueAreaErrors += abs(_localVarValueAreaCount);
             _localVarValueAreaCount = 0;
-        }
+}
 
         if (_localVarStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
@@ -2691,7 +2712,7 @@ void Justina_interpreter::terminateEval() {
 
     char blockType = block_none;                                                                                            // init
     do {
-        blockType = *(char*)_pFlowCtrlStackTop;                                                                             // always at least one level present for caller (because returning to it)
+        blockType = ((openBlockGeneric*)_pFlowCtrlStackTop)->blockType;                                                                             // always at least one level present for caller (because returning to it)
 
         // load local storage pointers again for caller function and restore pending step & active function information for caller function
         if ((blockType == block_JustinaFunction) || (blockType == block_eval)) { _activeFunctionData = *(OpenFunctionData*)_pFlowCtrlStackTop; }
@@ -2938,7 +2959,7 @@ void* Justina_interpreter::fetchVarBaseAddress(TokenIsVariable* pVarToken, char*
 
             if (!isDebugCmdLevel) {       // find debug level in flow control stack instead
                 do {
-                    blockType = *(char*)pFlowCtrlStackLvl;
+                    blockType = ((openBlockGeneric*)pFlowCtrlStackLvl)->blockType;
                     isDebugCmdLevel = (blockType == block_JustinaFunction) ? (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + _progMemorySize)) : false;
                     pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                 } while (!isDebugCmdLevel);                                                                                 // stack level for open function found immediate below debug line found (always match)

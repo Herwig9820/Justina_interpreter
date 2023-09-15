@@ -202,7 +202,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 char blockType{};
                 do {
                     // skip all debug level blocks and open function block (always there). Then, check the next control flow stack level (also always there)
-                    blockType = *(char*)pFlowCtrlStackLvl;
+                    blockType = ((openBlockGeneric*)pFlowCtrlStackLvl)->blockType;
 
                     // skip command ? 
                     if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_skip) {
@@ -222,7 +222,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
                 // access the flow control stack level below the stack level for the active function, and check the blocktype: is it an open block within the function ?
                 // (if not, then it's the stack level for the caller already)
-                blockType = *(char*)pFlowCtrlStackLvl;
+                blockType = ((openBlockGeneric*)pFlowCtrlStackLvl)->blockType;
                 if ((blockType != block_for) && (blockType != block_while) && (blockType != block_if)) { OpenBlock = false; }   // is it an open block ?
 
                 // skip command (only): is skip allowed ? If not, produce error (this will not abort the program)
@@ -264,7 +264,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             char blockType = block_none;            // init
             do {
                 // always at least one open function (because returning to caller from it)
-                blockType = *(char*)_pFlowCtrlStackTop;
+                blockType = ((openBlockGeneric*)_pFlowCtrlStackTop)->blockType;
 
                 // load local storage pointers again for interrupted function and restore pending step & active function information for interrupted function
                 if (blockType == block_JustinaFunction) {
@@ -386,7 +386,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             if ((valueType != value_isLong) && (valueType != value_isFloat)) { return result_arg_numberExpected; }
             Val value;
             value.longConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pLongConst) : pStackLvl->varOrConst.value.longConst);    // line is valid for all value types  
-            _trapErrors = (valueType == value_isLong) ? (bool)value.longConst : (bool)value.floatConst;
+            bool trapErrors = (valueType == value_isLong) ? (bool)value.longConst : (bool)value.floatConst;
+            _activeFunctionData.trapErrors = trapErrors ? 1 : 0;                                                        // counts for currently executing procedure only                                                       
             _trappedErrorNumber = (int)result_execOK;
 
             // clean up
@@ -1200,8 +1201,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         #endif
                             _intermediateStringObjectCount--;
                             delete[] oldAssembString;
-                        }
                     }
+                }
 
                     else {      // print to file or console ?
                         if (printString != nullptr) {
@@ -1220,11 +1221,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] printString;
-                    }
-                }
+            }
+        }
 
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-            }
+    }
 
             // finalise
             if (isPrintToVar) {                                                                                             // print to string ? save in variable
@@ -1240,9 +1241,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] assembledString;
-                    }
-                    return execResult;
                 }
+                    return execResult;
+            }
 
                 // print line end without supplied arguments for printing: a string object does not exist yet, so create it now
                 if (doPrintLineEnd) {
@@ -1282,7 +1283,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 }
 
                 if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) { delete[] assembledString; }                            // not referenced in eval. stack (clippedString is), so will not be deleted as part of cleanup
-            }
+}
 
             else {      // print to file or external IO
                 if (doPrintLineEnd) {
@@ -1577,7 +1578,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             bool initNew{ true };        // IF...END: only one iteration (always new), FOR...END loop: always first itaration of a new loop, because only pass (command skipped for next iterations)
             if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_while) {                                                // while block: start of an iteration
                 if (flowCtrlStack.getElementCount() != 0) {                                                                 // at least one open block exists in current function (or main) ?
-                    char blockType = *(char*)_pFlowCtrlStackTop;
+                    char blockType = ((openBlockGeneric*)_pFlowCtrlStackTop)->blockType;
                     if ((blockType == block_for) || (blockType == block_if)) { initNew = true; }
                     else if (blockType == block_while) {
                         // currently executing an iteration of an outer 'if', 'while' or 'for' loop ? Then this is the start of the first iteration of a new (inner) 'if' or 'while' loop
@@ -1712,7 +1713,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             char blockType = block_none;
             bool isLoop{};
             do {
-                blockType = *(char*)_pFlowCtrlStackTop;
+                blockType = ((openBlockGeneric*)_pFlowCtrlStackTop)->blockType;
                 // inner block(s) could be IF...END blocks (before reaching loop block)
                 isLoop = ((blockType == block_while) || (blockType == block_for));
                 if (isLoop) {
@@ -1747,7 +1748,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
         case cmdcod_end:
         {
-            char blockType = *(char*)_pFlowCtrlStackTop;                                                                    // determine currently open block
+            char blockType = ((openBlockGeneric*)_pFlowCtrlStackTop)->blockType;
 
             if ((blockType == block_if) || (blockType == block_while) || (blockType == block_for)) {
 

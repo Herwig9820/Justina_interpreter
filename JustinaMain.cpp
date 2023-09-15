@@ -1185,7 +1185,7 @@ bool Justina_interpreter::prepareForIdleMode(parseTokenResult_type result, execR
 }
 
 // -------------------------------------------------------------------------
-// *   trace expressions as defined in Trace statement, print debug info   *
+// *   trace expressions as defined in trace statement, print debug info   *
 // -------------------------------------------------------------------------
 
 void Justina_interpreter::traceAndPrintDebugInfo() {
@@ -1203,7 +1203,7 @@ void Justina_interpreter::traceAndPrintDebugInfo() {
     void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;
     int blockType = block_none;
     do {                                                                                                        // there is at least one open function in the call stack
-        blockType = *(char*)pFlowCtrlStackLvl;
+        blockType = ((openBlockGeneric*)pFlowCtrlStackLvl)->blockType;
         if (blockType == block_JustinaFunction) { break; }
         pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
     } while (true);

@@ -627,7 +627,7 @@ class Justina_interpreter {
 
         // evaluation and list parsing function errors
         result_eval_emptyString = 3500,
-        result_eval_nothingToEvaluate ,                                   
+        result_eval_nothingToEvaluate,
         result_eval_parsingError,
         result_list_parsingError,
 
@@ -1307,8 +1307,14 @@ private:
     //    and flow control data for the CALLED function will now be stored in structure '_activeFunctionData'  
     //    if a function is ended, the corresponding flow control data will be COPIED to structure '_activeFunctionData' again before it is popped from the stack
 
+    struct openBlockGeneric {
+        char blockType : 6;                                                 // command block: will identify stack level as an if...end, for...end, ... block
+        char spareFlags : 2;
+    };
+
     struct OpenBlockTestData {
-        char blockType;                                                 // command block: will identify stack level as an if...end, for...end, ... block
+        char blockType : 6;                                                 // command block: will identify stack level as an if...end, for...end, ... block
+        char spareFlags : 2;
         char loopControl;                                               // flags: within iteration, request break from loop, test failed
         char testValueType;                                             // 'for' loop tests: value type used for loop tests
         char spare;                                                     // boundary alignment
@@ -1322,11 +1328,13 @@ private:
     };
 
     struct OpenFunctionData {                                           // data about all open functions (active + call stack)
-        char blockType;                                                 // command block: will identify stack level as a function block
+        char blockType : 6;                                             // command block: will identify stack level as a function block
+        char trapErrors : 1;
+        char spareFlag : 1;
         char functionIndex;                                             // user function index 
         char callerEvalStackLevels;                                     // evaluation stack levels in use by caller(s) and main (call stack)
 
-        // within a function, as in immediate mode, only one (block) command can be active at a time (ended by semicolon), in contrast to command blocks, which can be nested, so command data can be stored here:
+        // within a function, as in immediate mode, only one command can be active at a time (ended by semicolon), in contrast to command blocks, which can be nested, so command data can be stored here:
         // data is stored when a keyword is processed and it is cleared when the ending semicolon (ending the command) is processed
 
         char activeCmd_ResWordCode;                                     // keyword code (set to 'cmdcod_none' again when semicolon is processed)
@@ -1643,11 +1651,10 @@ private:
 
     // error trapping
     // --------------
-    
-    bool _trapErrors{false};
+
     int _trappedErrorNumber { (int)result_execOK };
 
-    
+
     // evaluation strings ('eval("...")' and 'trace("...")' commands)
     // --------------------------------------------------------------
 
@@ -1937,7 +1944,7 @@ private:
     bool initVariable(uint16_t varTokenStep, uint16_t constTokenStep);
 
     // process parsed input and start execution
-    bool finaliseParsing(parseTokenResult_type &result, bool& kill, int lineCount, char* pErrorPos, bool allCharsReceived);
+    bool finaliseParsing(parseTokenResult_type& result, bool& kill, int lineCount, char* pErrorPos, bool allCharsReceived);
     bool prepareForIdleMode(parseTokenResult_type result, execResult_type execResult, bool& kill, int& clearIndicator, Stream*& pStatementInputStream, int& statementInputStreamNumber);
 
 

@@ -1933,7 +1933,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parseTokenResult_type& r
                     bool isDebugCmdLevel = (blockType == block_JustinaFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + _progMemorySize)) : false;
                     if (!isDebugCmdLevel) {                                                                             // find debug level in flow control stack instead
                         do {
-                            blockType = *(char*)pFlowCtrlStackLvl;
+                            blockType = ((openBlockGeneric*)pFlowCtrlStackLvl)->blockType;
                             isDebugCmdLevel = (blockType == block_JustinaFunction) ? (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + _progMemorySize)) : false;
                             pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                         } while (!isDebugCmdLevel);                                                                     // stack level for open function found immediate below debug line found (always match)
