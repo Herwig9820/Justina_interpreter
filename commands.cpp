@@ -31,7 +31,7 @@
 #include "Justina.h"
 
 #define PRINT_HEAP_OBJ_CREA_DEL 0
-#define PRINT_PARSED_CMD_STACK 1
+#define PRINT_PARSED_CMD_STACK 0
 #define PRINT_DEBUG_INFO 0
 
 
@@ -82,7 +82,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
         case cmdcod_stop:
         {
-            // 'stop' behaves as if an error occured, in order to follow the same processing logic  
+            // 'stop' behaves as if an error occurred, in order to follow the same processing logic  
 
             // RETURN with 'event' error
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
@@ -100,7 +100,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
             // optional argument 1 clear all
             // - value is 1: keep interpreter in memory on quitting (retain data), value is 0: clear all and exit Justina 
-            // 'quit' behaves as if an error occured, in order to follow the same processing logic  
+            // 'quit' behaves as if an error occurred, in order to follow the same processing logic  
 
             if (cmdArgCount != 0) {                                                                                       // 'quit' command only                                                                                      
                 bool argIsVar[1];
@@ -158,7 +158,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         // Retart or abort stopped program again
         // -------------------------------------
 
-        // these commands behave as if an error occured, in order to follow the same processing logic  
+        // these commands behave as if an error occurred, in order to follow the same processing logic  
         // the commands are issued from the command line and restart a program stopped for debug (except the abort command)
 
         // step: executes one program step. If a 'parsing only' statement is encountered, it will simply skip it
@@ -281,9 +281,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             _stepCallStackLevel = _callStackDepth;                                      // call stack levels at time of first program step to execute after step,... command
             _stepFlowCtrlStackLevels = flowCtrlStack.getElementCount();                 // all flow control stack levels at time of first program step to execute after step,... command (includes open blocks)
 
-            _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackTop);
-            _pFlowCtrlStackMinus2 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackMinus1);
-
             // !!! DO NOT clean up: evaluation stack has been set correctly, and _activeFunctionData.activeCmd_ResWordCode:  _activeFunctionData just received its values from the flow control stack 
         }
         break;
@@ -386,8 +383,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             if ((valueType != value_isLong) && (valueType != value_isFloat)) { return result_arg_numberExpected; }
             Val value;
             value.longConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pLongConst) : pStackLvl->varOrConst.value.longConst);    // line is valid for all value types  
-            bool trapErrors = (valueType == value_isLong) ? (bool)value.longConst : (bool)value.floatConst;
-            _activeFunctionData.trapErrors = trapErrors ? 1 : 0;                                                        // counts for currently executing procedure only                                                       
+            bool trapEnable = (valueType == value_isLong) ? (bool)value.longConst : (bool)value.floatConst;
+            _activeFunctionData.trapEnable = trapEnable ? 1 : 0;                                                        // counts for currently executing procedure only                                                       
             _trappedErrorNumber = (int)result_execOK;
 
             // clean up
@@ -1577,7 +1574,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // start a new loop, or execute an existing loop ? 
             bool initNew{ true };        // IF...END: only one iteration (always new), FOR...END loop: always first itaration of a new loop, because only pass (command skipped for next iterations)
             if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_while) {                                                // while block: start of an iteration
-                if (flowCtrlStack.getElementCount() != 0) {                                                                 // at least one open block exists in current function (or main) ?
+                if (flowCtrlStack.getElementCount() != 0) {                                                                 // at least one open (outer) block exists in current function (or main) ?
                     char blockType = ((openBlockGeneric*)_pFlowCtrlStackTop)->blockType;
                     if ((blockType == block_for) || (blockType == block_if)) { initNew = true; }
                     else if (blockType == block_while) {
@@ -1588,7 +1585,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             }
 
             if (initNew) {
-                _pFlowCtrlStackMinus2 = _pFlowCtrlStackMinus1; _pFlowCtrlStackMinus1 = _pFlowCtrlStackTop;
                 _pFlowCtrlStackTop = (OpenBlockTestData*)flowCtrlStack.appendListElement(sizeof(OpenBlockTestData));
                 ((OpenBlockTestData*)_pFlowCtrlStackTop)->blockType =
                     (_activeFunctionData.activeCmd_ResWordCode == cmdcod_if) ? block_if :
@@ -1688,7 +1684,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             }
 
             bool setNextToken = fail || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_for);
-            if (setNextToken) {                                                                                                     // skip this clause ? (either a preceding test passed, or it failed but the curreent test failed as well)
+            if (setNextToken) {                                                                                                     // skip this clause ? (either a preceding test passed, or it failed but the currrent test failed as well)
                 TokenIsResWord* pToToken;
                 uint16_t toTokenStep{ 0 };
                 pToToken = (TokenIsResWord*)_activeFunctionData.activeCmd_tokenAddress;
@@ -1729,8 +1725,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 else {          // inner IF...END block: remove from flow control stack 
                     flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);
                     _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
-                    _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackTop);
-                    _pFlowCtrlStackMinus2 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackMinus1);
                 }
             } while (!isLoop);
 
@@ -1755,22 +1749,22 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 bool exitLoop{ true };
 
                 if ((blockType == block_for) || (blockType == block_while)) {
-                    exitLoop = ((OpenBlockTestData*)_pFlowCtrlStackTop)->loopControl & breakFromLoop;                       // BREAK command encountered
+                    exitLoop = ((OpenBlockTestData*)_pFlowCtrlStackTop)->loopControl & breakFromLoop;                       // BREAK command encountered: exit loop
                 }
 
-                if (!exitLoop) {                                                                                            // no BREAK encountered: loop terminated anyway ?
+                if (!exitLoop) {                                                                                            // no BREAK encountered: loop terminated anyway ? (depends on test result) 
                     if (blockType == block_for) { execResult = testForLoopCondition(exitLoop); if (execResult != result_execOK) { return execResult; } }
                     else if (blockType == block_while) { exitLoop = (((OpenBlockTestData*)_pFlowCtrlStackTop)->loopControl & testFail); }       // false: test passed
                 }
 
-                if (!exitLoop) {        // flag still not set ?
+                if (!exitLoop) {        // continue with next loop
                     if (blockType == block_for) {
-                        _activeFunctionData.pNextStep = ((OpenBlockTestData*)_pFlowCtrlStackTop)->nextTokenAddress;
+                        _activeFunctionData.pNextStep = ((OpenBlockTestData*)_pFlowCtrlStackTop)->nextTokenAddress;         // address of token following 'for' token in program memory        
                     }
                     else {      // WHILE...END block
                         TokenIsResWord* pToToken;
                         uint16_t toTokenStep{ 0 };
-                        pToToken = (TokenIsResWord*)_activeFunctionData.activeCmd_tokenAddress;
+                        pToToken = (TokenIsResWord*)_activeFunctionData.activeCmd_tokenAddress;                             
                         memcpy(&toTokenStep, pToToken->toTokenStep, sizeof(char[2]));
 
                         _activeFunctionData.pNextStep = _programStorage + toTokenStep;                                      // prepare jump to start of new loop
@@ -1785,8 +1779,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 if (exitLoop) {
                     flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);
                     _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
-                    _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackTop);
-                    _pFlowCtrlStackMinus2 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackMinus1);
                 }
                 break;                                                                                                      // break here: do not break if end function !
             }

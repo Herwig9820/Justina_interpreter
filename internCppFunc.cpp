@@ -822,7 +822,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
             // execution error ?
             if (execResult != result_execOK) {
-                _evalParseErrorCode = parsingResult;                                                                        // only relevant in case a parsing error occured
+                _evalParseErrorCode = parsingResult;                                                                        // only relevant in case a parsing error occurred
                 return execResult;
             }
 

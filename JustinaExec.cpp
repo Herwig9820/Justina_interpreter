@@ -87,7 +87,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
     _activeFunctionData.errorStatementStartStep = _programCounter;
     _activeFunctionData.errorProgramCounter = _programCounter;
     _activeFunctionData.blockType = block_JustinaFunction;                              // consider main as a Justina function      
-    _activeFunctionData.trapErrors = 0;                                                 // start execution with error trapping disabled
+    _activeFunctionData.trapEnable = 0;                                                 // start execution with error trapping disabled
 
     bool setCurrentPrintColumn{ false };                                                // for print commands only
 
@@ -609,59 +609,13 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         } // end 'switch (tokenType)'
 
 
-        // 2. if error trapping is on, trap the error. This effectively clears the error. The statement with the error does not return anything to the evaluation stack
-        // ------------------------------------------------------------------------------------------------------------------------------------------------------------
+        // 2. if error trapping is on, trap any error. This effectively clears the error condition
+        // ---------------------------------------------------------------------------------------
 
-        // an error occured in a Justina function, the (debug) command line or an eval() string ? 
-        if (!_parsingExecutingTraceString && (execResult != result_execOK) && (execResult < result_startOfEvents)) {
-            // did the error occur in a Justina function or the (debug) command line (and not in an eval() string) AND is error trapping ON in that Justina function ? 
-            bool trapError = ((_activeFunctionData.blockType == block_JustinaFunction) && (bool)_activeFunctionData.trapErrors);
-            // if not: is error trapping ON in a caller function (possibly the (debug) command line level) in the call stack ?
-            if (!trapError && (_activeFunctionData.pNextStep < (_programStorage + _progMemorySize))) {
-                // if error trapping is ON in a caller function - possibly the (debug) command line - then the last token processed in that caller function is not a semicolon 
-                isEndOfStatementSeparator = false;
-                
-                OpenFunctionData* pFlowCtrlStackLvl = (OpenFunctionData*)_pFlowCtrlStackTop;
-                while (pFlowCtrlStackLvl != nullptr) {
-                    if ((pFlowCtrlStackLvl->blockType == block_JustinaFunction) && (bool)pFlowCtrlStackLvl->trapErrors) {  trapError = true; break; }
-                    if (pFlowCtrlStackLvl->pNextStep >= (_programStorage + _progMemorySize)) {  break;}           // (debug) command line reached and checked: do not search previously stopped programs
-                    pFlowCtrlStackLvl = (OpenFunctionData*)flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
-                }
-            }
-
-            // error trapping is ON in either the function where the error occured or a caller function (possibly the (debug) command line level) ?
-            if (trapError) {
-                // remove flow control levels until level with 'trap errors = ON' is reached 
-                do {
-                    // clear evaluation stack levels for currently active block (function or eval block): get rid of expression(s) at the moment the error occured
-                    clearEvalStackLevels(evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels);
-
-                    if (_activeFunctionData.blockType == block_eval) { terminateEval(); }                           // eval() function: terminate and keep looking for function with error trapping
-                    else {                                                                                           // Justina function
-                        if (!_activeFunctionData.trapErrors) { terminateJustinaFunction(true); }                      // this function is not trapping errors: terminate function and keep looking for function with error trapping
-                        else {  break; }                                                                                 // function with error trapping found (always there, see previous test)
-                    }
-                } while (true);                                                                                         // 
-
-                // if an error is trapped before the statement separator was executed, advance to the statement separator now
-                // note that an error during processing of end of statement sperator can only occur while executing a command
-                if (!isEndOfStatementSeparator) {
-                    findTokenStep(_activeFunctionData.pNextStep, false, tok_isTerminalGroup1, termcod_semicolon);             // find semicolon (always match)
-                    jumpTokens(1, _activeFunctionData.pNextStep);                                                               // first token after semicolon
-                    isEndOfStatementSeparator = true;
-                }
-
-                // clear the error condition but remember error number
-                _trappedErrorNumber = (int)execResult; execResult = result_execOK;
-                _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;    // if processing command, prevent execution the command 
-                isComma = false;                // reset
-
-            #if PRINT_DEBUG_INFO
-                _pDebugOut->print("** error: CURRENT step = "); _pDebugOut->println(_programCounter - _programStorage);
-                _pDebugOut->print("          NEXT step    = "); _pDebugOut->println(_activeFunctionData.pNextStep - _programStorage);
-                _pDebugOut->print("          token type   = "); _pDebugOut->println((*_programCounter & 0x0F)); _pDebugOut->println();
-            #endif
-            }
+        // did an error occur in a Justina function, the (debug) command line or an eval() string ? 
+        if (!_parsingExecutingTraceString && (execResult != result_execOK) && (execResult < result_startOfEvents)) {    // Trap the error if error trapping is enabled
+            bool errorTrapped = trapError(isEndOfStatementSeparator, execResult);
+            if (errorTrapped) { isComma = false; }                // reset
         }
 
 
@@ -770,7 +724,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
                 isFunctionReturn = false;
             }
-    }
+        }
 
 
         // 5. did an execution error occur within token ? signal error
@@ -792,7 +746,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                     int functionNameLength{ 0 };
                     long programCounterOffset{ 0 };
 
-                    // if an execution error occurs, normally the info needed to correctly identify and print the statement and the function (if not an imm. mode statement) where the error occured...
+                    // if an execution error occurs, normally the info needed to correctly identify and print the statement and the function (if not an imm. mode statement) where the error occurred...
                     // will be found in structure _activeFunctionData.
                     // But if the cause of the STATEMENT execution error is actually a PARSING or EXECUTION error in a (nested or not) eval() string, the info MAY be found in the flow ctrl stack 
 
@@ -807,7 +761,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                     char* errorProgramCounter = _activeFunctionData.errorProgramCounter;
                     int functionIndex = _activeFunctionData.functionIndex;          // init
 
-                    // info to identify and print the statement where the error occured is on the flow ctrl stack ? find it there
+                    // info to identify and print the statement where the error occurred is on the flow ctrl stack ? find it there
                     if (_activeFunctionData.blockType == block_eval) {
                         void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                                                               // one level below _activeFunctionData
                         char* pImmediateCmdStackLvl = _pParsedCommandLineStackTop;
@@ -858,16 +812,16 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 break;
             }
         }
-}   // end 'while ( tokenType != tok_no_token )'                                                                                       
+    }   // end 'while ( tokenType != tok_no_token )'                                                                                       
 
 
 
-// --------------------------------------------------
-// 3. finalize execution: prepare to return to caller
-// --------------------------------------------------
+    // --------------------------------------------------
+    // 3. finalize execution: prepare to return to caller
+    // --------------------------------------------------
 
-// 3.1 did the execution produce a result ? print it
-// -------------------------------------------------
+    // 3.1 did the execution produce a result ? print it
+    // -------------------------------------------------
 
     if (!_parsingExecutingTraceString) {
         if (*_pConsolePrintColumn != 0) { printlnTo(0); *_pConsolePrintColumn = 0; }
@@ -889,8 +843,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             #endif
                 _intermediateStringObjectCount--;
                 delete[] toPrint.pStringConst;
+            }
         }
-    }
     }
 
     // 3.2 adapt imm. mode parsed statement stack, flow control stack and evaluation stack
@@ -898,7 +852,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
     if (execResult == result_stopForDebug) {              // stopping for debug now ('STOP' command or single step)
         // push caller function data (or main = user entry level in immediate mode) on FLOW CONTROL stack 
-        _pFlowCtrlStackMinus2 = _pFlowCtrlStackMinus1; _pFlowCtrlStackMinus1 = _pFlowCtrlStackTop;
 
         _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
         *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                                                             // push caller function data to stack
@@ -960,7 +913,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         #endif
             _intermediateStringObjectCount--;
             delete[] toPrint.pStringConst;
-    }
+        }
 
 
         // note: flow control stack and immediate command stack (program code) are not affected: only need to clear evaluation stack
@@ -987,6 +940,124 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
     _activeFunctionData.pNextStep = _programStorage + _progMemorySize;                                                              // only to signal 'immediate mode command level'
     return execResult;                                                                                                              // return result, in case it's needed by caller
 };
+
+
+// --------------------------------------------------------------------------------------------------------------------------
+// *   if error trapping is on, trap any error. This effectively clears the error condition                                 *
+// *   error trapping can be set in the function where the error occurs or in any caller, up to the (debug) command level   *
+// --------------------------------------------------------------------------------------------------------------------------
+
+bool Justina_interpreter::trapError(bool& isEndOfStatementSeparator, execResult_type& execResult) {
+
+    // A. Determine whether error trapping is enabled: either in 
+    //    - the Justina function (or the (debug) command line) where the error occurred
+    //    - in a caller of the Justina function or eval() string where the error occurred
+    //    Note: if the error occurred in an eval() string, it is not trapped there, but can be trapped in any caller
+    // -------------------------------------------------------------------------------------------------------------
+
+    // did the error occur in a Justina function (or the (debug) command line) where error trapping is enabled ?  
+    bool trapError = ((_activeFunctionData.blockType == block_JustinaFunction) && (bool)_activeFunctionData.trapEnable);
+
+    // error trapping is NOT enbled where the error occurred (a Justina function or possibly an eval() string): check if error trapping is enabled for caller levels
+    if (!trapError) {
+        bool levelsBeneath = (_activeFunctionData.blockType == block_eval) ||
+            ((_activeFunctionData.blockType == block_JustinaFunction) && (_activeFunctionData.pNextStep < (_programStorage + _progMemorySize)));
+
+        if (levelsBeneath) {
+            // if error trapping is ON in a caller function - possibly the (debug) command line - then the last token processed in that caller function cannot be a semicolon 
+            isEndOfStatementSeparator = false;
+
+            OpenFunctionData* pFlowCtrlStackLvl = (OpenFunctionData*)_pFlowCtrlStackTop;
+            while (pFlowCtrlStackLvl != nullptr) {
+                if ((pFlowCtrlStackLvl->blockType == block_JustinaFunction) && (bool)pFlowCtrlStackLvl->trapEnable) { trapError = true; break; }
+                bool isCmdLevel = (pFlowCtrlStackLvl->blockType == block_JustinaFunction) && (pFlowCtrlStackLvl->pNextStep >= (_programStorage + _progMemorySize));
+                if (isCmdLevel) { break; }           // (debug) command line reached and checked: do not search previously stopped programs
+                pFlowCtrlStackLvl = (OpenFunctionData*)flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
+            }
+        }
+    }
+
+    if (!trapError) { return false; }           // error not trapped: quit
+
+
+    // B. If error trapping is enabled in a CALLER (could be the (debug) command level) of the function where error trapping is enabled:
+    //    - terminate Justina functions and eval() strings until the function (or (debug) command level) with error trapping enabled is reached 
+    //    - clear evaluation stack entries for any open expression, Justina function, ... that will be terminated 
+    // ----------------------------------------------------------------------------------------------------------------------------------------
+
+    do {
+        // clear evaluation stack levels for currently active block (function or eval block): get rid of expression(s) at the moment the error occurred
+        clearEvalStackLevels(evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels);
+
+        if (_activeFunctionData.blockType == block_eval) { terminateEval(); }                           // eval() function: terminate and keep looking for function with error trapping
+        else {                                                                                           // Justina function
+            if (!_activeFunctionData.trapEnable) { terminateJustinaFunction(true); }                      // this function is not trapping errors: terminate function and keep looking for function with error trapping
+            else { break; }                                                                                 // function with error trapping found (always there, see previous test)
+        }
+    } while (true);                                                                                         // 
+
+
+    // C. If the error occurred while a BLOCK START command or BLOCK MIDDLE command is executed:
+    //    - if a flow control stack entry to control execution of the block has been created already, delete it. 
+    //      -> if a BLOCK START command is executed but the current token is not yet the statement separator, then the flow control stack entry is NOT yet cretaed
+    //    - set the next program step to the block's 'end' statement (which will not be executed: see below)
+    // -----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+    bool isBlockStartMiddleCommand = ((_activeFunctionData.activeCmd_ResWordCode == cmdcod_for) || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_while) || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_if)
+        || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_elseif));
+    
+    if (isBlockStartMiddleCommand) {    // the error occurs in a block start or block middle command ? ?
+        // has a flow ctrl stack entry for the open block been created already ? delete it
+        // -> error in block start command AND not yet executed statement separator ? block is not created yet: don't delete block
+        if ((_activeFunctionData.activeCmd_ResWordCode == cmdcod_elseif) || isEndOfStatementSeparator) {
+            flowCtrlStack.deleteListElement();                           // delete flow control stack entry for block command
+            _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
+            isEndOfStatementSeparator = false;                              // program counter will be set to 'end' statement
+        }
+
+        // set the next program step to the block's 'end' statement (which will not be executed: see next)
+        uint16_t blockEndTokenStep{ 0 };
+        TokenIsResWord* pToToken;
+        pToToken = (TokenIsResWord*)_activeFunctionData.activeCmd_tokenAddress;
+        memcpy(&blockEndTokenStep, pToToken->toTokenStep, sizeof(char[2]));
+
+        // in a statement with multiple elseif's, iterate throuth them to find the address of the 'end' statement
+        do {
+            _activeFunctionData.pNextStep = _programStorage + blockEndTokenStep;
+            int tokenIndex = ((TokenIsResWord*)_activeFunctionData.pNextStep)->tokenIndex;
+            if (_resWords[tokenIndex].resWordCode == cmdcod_end) { break; }
+            memcpy(&blockEndTokenStep, ((TokenIsResWord*)_activeFunctionData.pNextStep)->toTokenStep, sizeof(char[2]));
+        } while (true);
+    }
+
+    
+    // D. if an error is trapped before the statement separator was executed, advance to the statement separator now
+    //    -> note that an error during processing of end of statement separator can only occur while executing a command
+    // -----------------------------------------------------------------------------------------------------------------
+
+    if (!isEndOfStatementSeparator) {
+        findTokenStep(_activeFunctionData.pNextStep, false, tok_isTerminalGroup1, termcod_semicolon);             // find semicolon (always match)
+        jumpTokens(1, _activeFunctionData.pNextStep);                                                               // first token after semicolon
+        ////Serial.print("**** to token step: "); {Serial.println(_activeFunctionData.pNextStep - _programStorage); }
+        isEndOfStatementSeparator = true;
+    }
+
+
+    // D. Finalise: clear the error condition but remember error number
+    // ----------------------------------------------------------------
+
+    _trappedErrorNumber = (int)execResult; execResult = result_execOK;
+    _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;    // if processing command, prevent executing the command 
+
+#if PRINT_DEBUG_INFO
+    _pDebugOut->print("** error: CURRENT step = "); _pDebugOut->println(_programCounter - _programStorage);
+    _pDebugOut->print("          NEXT step    = "); _pDebugOut->println(_activeFunctionData.pNextStep - _programStorage);
+    _pDebugOut->print("          token type   = "); _pDebugOut->println((*_programCounter & 0x0F)); _pDebugOut->println();
+#endif
+
+    return true;            // error trapped
+    }
+
 
 
 // -----------------------------------------------------------------------------------------
@@ -1148,9 +1219,9 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
             #endif 
                 _lastValuesStringObjectCount--;
                 delete[] lastResultValueFiFo[itemToRemove].pStringConst;                                        // note: this is always an intermediate string
+            }
         }
     }
-}
     else {
         _lastValuesCount++;                                                                                     // only adding an item, without removing previous one
     }
@@ -1177,7 +1248,7 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
 
     if ((lastValueNumeric) || (!lastValueNumeric && (lastvalue.value.pStringConst == nullptr))) {
         lastResultValueFiFo[0] = lastvalue.value;
-    }
+}
     // new last value is a non-empty string: make a copy of the string and store a reference to this new string
     else {
         int stringlen = min(strlen(lastvalue.value.pStringConst), MAX_ALPHA_CONST_LEN);                         // excluding terminating \0
@@ -1197,7 +1268,7 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
         #endif
             _intermediateStringObjectCount--;
             delete[] lastvalue.value.pStringConst;
-    }
+        }
     }
 
     // store new last value type
@@ -1230,7 +1301,7 @@ void Justina_interpreter::clearEvalStack() {
     #endif
         _intermediateStringObjectErrors += abs(_intermediateStringObjectCount);
         _intermediateStringObjectCount = 0;
-}
+    }
     return;
 }
 
@@ -1312,12 +1383,12 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, b
                             delete[] _activeFunctionData.ppSourceVarTypes;
                         }
                     }
-                }
+            }
                 else {                                                              // immediate mode 'function' (the start of ANY program)
                     if (terminateOneProgramOnly) { programsYetToTerminate--; }
                 }
                 if (!isInitialLoop) { --_callStackDepth; }                          // one function removed from the call stack
-            }
+        }
 
             else if (blockType == block_eval) {
                 if (!isInitialLoop) { --_callStackDepth; }
@@ -1331,12 +1402,10 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, b
 
             if (pFlowCtrlStackLvl == nullptr) { break; }       // all done
             isInitialLoop = false;
-        } while (true);
-    }
+    } while (true);
+}
 
     _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
-    _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackTop);
-    _pFlowCtrlStackMinus2 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackMinus1);
 }
 
 
@@ -1990,7 +2059,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
                 _intermediateStringObjectCount--;
                 // compound assignment: pointing to the unclipped result WHICH IS NON-EMPTY: so it's a heap object and must be deleted now
                 delete[] pUnclippedResultString;
-        }
+            }
     }
 
         // store value in variable and adapt variable value type - next line is valid for long integers as well
@@ -2137,7 +2206,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execExternalCppFunctio
         #endif
             strcpy(fcnResult.pStringConst, temp);
         }
-    }
+        }
 
     pStackLvl = pFirstArgStackLvl;                                                                             // set stack level again to first value argument
     for (int i = 0; i < suppliedArgCount; i++) {
@@ -2150,7 +2219,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execExternalCppFunctio
             #endif
                 _intermediateStringObjectCount--;
                 delete[] args[i].pStringConst;                                                                      // delete temporary string
-        }
+            }
 
             // string argument was a (NON-CONSTANT) variable string: no copy was made, the string itself was passed to the user routine
             // did the user routine change it to an empty, '\0' terminated string ?
@@ -2164,8 +2233,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execExternalCppFunctio
                 (varScope[i] == var_isUser) ? _userVarStringObjectCount-- : ((varScope[i] == var_isGlobal) || (varScope[i] == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount-- : _localVarStringObjectCount--;
                 delete[]args[i].pStringConst;                                                                       // delete original variable string
                 *pStackLvl->varOrConst.value.ppStringConst = nullptr;                                               // change pointer to string (in variable) to null pointer
-    }
-}
+            }
+        }
         pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
     }
 
@@ -2185,7 +2254,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execExternalCppFunctio
     _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
 
     return result_execOK;
-}
+    }
 
 
 // -------------------------------
@@ -2201,7 +2270,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchJustinaFunction
     // push caller function data (or main = user entry level in immediate mode) on FLOW CONTROL stack 
     // ----------------------------------------------------------------------------------------------
 
-    _pFlowCtrlStackMinus2 = _pFlowCtrlStackMinus1; _pFlowCtrlStackMinus1 = _pFlowCtrlStackTop;
     _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
     *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                                 // push caller function data to stack
     ++_callStackDepth;                                                                              // caller can be main, another Justina function or an eval() string
@@ -2351,7 +2419,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
     // push caller function data (or main = user entry level in immediate mode) on FLOW CONTROL stack 
     // ----------------------------------------------------------------------------------------------
 
-    _pFlowCtrlStackMinus2 = _pFlowCtrlStackMinus1; _pFlowCtrlStackMinus1 = _pFlowCtrlStackTop;
     _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
     *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                                         // push caller function data to stack
     ++_callStackDepth;                                                                                      // caller can be main, another Justina function or an eval() string
@@ -2427,14 +2494,14 @@ void Justina_interpreter::initFunctionParamVarWithSuppliedArg(int suppliedArgCou
                         strcpy(_activeFunctionData.pLocalVarValues[i].pStringConst, tempString);
                     }
                 };
-            }
+                }
 
             // if intermediate constant string, then delete char string object (tested within called routine)            
             deleteIntermStringObject(pStackLvl);
             pStackLvl = (LE_evalStack*)evalStack.deleteListElement(pStackLvl);                                              // argument saved: remove argument from stack and point to next argument
+            }
+            }
         }
-    }
-}
 
 
 // ------------------------------------------------------------------------------------------------------------
@@ -2659,6 +2726,7 @@ void Justina_interpreter::terminateJustinaFunction(bool addZeroReturnValue) {
         delete[] _activeFunctionData.pVariableAttributes;
         delete[] _activeFunctionData.ppSourceVarTypes;
     }
+
     char blockType = block_none;                                                                                            // init
     do {
         blockType = ((openBlockGeneric*)_pFlowCtrlStackTop)->blockType;                                                                             // always at least one level present for caller (because returning to it)
@@ -2669,8 +2737,6 @@ void Justina_interpreter::terminateJustinaFunction(bool addZeroReturnValue) {
         // delete FLOW CONTROL stack level (any optional CALLED function open block stack level) 
         flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);
         _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
-        _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackTop);
-        _pFlowCtrlStackMinus2 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackMinus1);
 
     } while ((blockType != block_JustinaFunction) && (blockType != block_eval));                                            // caller level can be caller eval() or caller Justina function
     --_callStackDepth;                                                                                                      // caller reached: call stack depth decreased by 1
@@ -2683,7 +2749,7 @@ void Justina_interpreter::terminateJustinaFunction(bool addZeroReturnValue) {
         #endif
             _localVarValueAreaErrors += abs(_localVarValueAreaCount);
             _localVarValueAreaCount = 0;
-}
+        }
 
         if (_localVarStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
@@ -2691,7 +2757,7 @@ void Justina_interpreter::terminateJustinaFunction(bool addZeroReturnValue) {
         #endif
             _localVarStringObjectErrors += abs(_localVarStringObjectCount);
             _localVarStringObjectCount = 0;
-        }
+}
 
         if (_localArrayObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
@@ -2720,8 +2786,6 @@ void Justina_interpreter::terminateEval() {
         // delete FLOW CONTROL stack level (any optional CALLED function open block stack level) 
         flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);
         _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
-        _pFlowCtrlStackMinus1 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackTop);
-        _pFlowCtrlStackMinus2 = flowCtrlStack.getPrevListElement(_pFlowCtrlStackMinus1);
 
     } while ((blockType != block_JustinaFunction) && (blockType != block_eval));                                            // caller level can be caller eval() or caller Justina function
     --_callStackDepth;                                                                                                      // caller reached: call stack depth decreased by 1

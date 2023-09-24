@@ -735,7 +735,7 @@ bool Justina_interpreter::run() {
         // open startup file and retrieve file number (which would be one, normally)
         _initiateProgramLoad = _SDinitOK;
         if (_initiateProgramLoad) {
-            printlnTo(0, "Looking for 'start.jus' program...");
+            printlnTo(0, "Looking for 'start.jus' program file...");
             if (!SD.exists("start.jus")) { _initiateProgramLoad = false; printlnTo(0, "'start.jus' program NOT found"); }
         }
 
@@ -853,7 +853,7 @@ bool Justina_interpreter::run() {
                 if (result == result_tokenFound) {
                     if (loadingStartupProgram) { launchingStartFunction = true; }
                 }
-                // parsing error occured ? reset input controlling variables
+                // parsing error occurred ? reset input controlling variables
                 else
                 {
                     statementCharCount = 0;
@@ -1066,7 +1066,7 @@ bool Justina_interpreter::finaliseParsing(parseTokenResult_type& result, bool& k
 
         }
         else if (result == result_parse_kill) { quitJustina = true; }
-        else { printParsingResult(result, funcNotDefIndex, _statement, lineCount, pErrorPos); }                 // parsing error occured: print error message
+        else { printParsingResult(result, funcNotDefIndex, _statement, lineCount, pErrorPos); }                 // parsing error occurred: print error message
 
     }
     return quitJustina;
@@ -1170,7 +1170,7 @@ bool Justina_interpreter::prepareForIdleMode(parseTokenResult_type result, execR
 
     while (_pConsoleIn->available()) { readFrom(0); }                                                           // empty console buffer first (to allow the user to start with an empty line)
 
-    // has an error occured ? (exclude 'events' reported as an error)
+    // has an error occurred ? (exclude 'events' reported as an error)
     bool isError = (result != result_tokenFound) || ((execResult != result_execOK) && (execResult < result_startOfEvents));
     isError ? (_appFlags |= appFlag_errorConditionBit) : (_appFlags &= ~appFlag_errorConditionBit);             // set or clear error condition flag 
     (_appFlags &= ~appFlag_statusMask);
@@ -1190,8 +1190,8 @@ bool Justina_interpreter::prepareForIdleMode(parseTokenResult_type result, execR
 
 void Justina_interpreter::traceAndPrintDebugInfo() {
     // count of programs in debug:
-    // - if an error occured in a RUNNING program, the program is terminated and the number of STOPPED programs ('in debug mode') does not change.
-    // - if an error occured while executing a command line, then this count is not changed either
+    // - if an error occurred in a RUNNING program, the program is terminated and the number of STOPPED programs ('in debug mode') does not change.
+    // - if an error occurred while executing a command line, then this count is not changed either
     // flow control stack:
     // - at this point, structure '_activeFunctionData' always contains flow control data for the main program level (command line - in debug mode if the count of open programs is not zero)
     // - the flow control stack maintains data about open block commands, open functions and eval() strings in execution (call stack)
@@ -1541,8 +1541,8 @@ void Justina_interpreter::initInterpreterVariables(bool fullReset) {
 
     _programName[0] = '\0';
 
-    _pEvalStackTop = nullptr;   _pEvalStackMinus2 = nullptr; _pEvalStackMinus1 = nullptr;
-    _pFlowCtrlStackTop = nullptr;   _pFlowCtrlStackMinus2 = nullptr; _pFlowCtrlStackMinus1 = nullptr;
+    _pEvalStackTop = nullptr; _pEvalStackMinus1 = nullptr;   _pEvalStackMinus2 = nullptr;
+    _pFlowCtrlStackTop = nullptr;
     _pParsedCommandLineStackTop = nullptr;
 
     _intermediateStringObjectCount = 0;      // reset at the start of execution

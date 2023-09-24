@@ -818,7 +818,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
             if (_isJustinaFunctionCmd) {
                 if (_parenthesisLevel == 1) {                                                                               // function definition closing parenthesis
                     // stack level will not change until closing parenthesis (because within definition, no nesting of parenthesis is possible)
-                    // stack min & max values: current range of args counts that occured in previous calls (not initialized if no earlier calls occured)
+                    // stack min & max values: current range of args counts that occurred in previous calls (not initialized if no earlier calls occurred)
 
                     // if empty function parameter list, then do not increment parameter count (function taking no parameters)
 
@@ -829,9 +829,9 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                     if (!emptyParamList) { if (!checkJustinaFunctionArguments(result, justinaFunctionDef_minArgCounter, justinaFunctionDef_maxArgCounter)) { pNext = pch; return false; }; }
 
                     int funcIndex = _pParsingStack->openPar.identifierIndex;                                                // note: also stored in stack for FUNCTION definition block level; here we can pick one of both
-                    // if previous calls, check if range of actual argument counts that occured in previous calls corresponds to mandatory and optional arguments defined now
+                    // if previous calls, check if range of actual argument counts that occurred in previous calls corresponds to mandatory and optional arguments defined now
                     bool previousCalls = (JustinaFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1]) != c_JustinaFunctionFirstOccurFlag;
-                    if (previousCalls) {                                                                                    // stack contains current range of actual args occured in previous calls
+                    if (previousCalls) {                                                                                    // stack contains current range of actual args occurred in previous calls
                         if (((int)_pParsingStack->openPar.minArgs < justinaFunctionDef_minArgCounter) ||
                             (int)_pParsingStack->openPar.maxArgs > justinaFunctionDef_maxArgCounter) {
                             pNext = pch; result = result_function_prevCallsWrongArgCount; return false;                     // argument count in previous calls to this function does not correspond 
@@ -839,7 +839,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                     }
 
                     // store min required & max allowed n� of arguments in identifier storage
-                    // this replaces the range of actual argument counts that occured in previous calls (if any)
+                    // this replaces the range of actual argument counts that occurred in previous calls (if any)
                     JustinaFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1] = (justinaFunctionDef_minArgCounter << 4) | (justinaFunctionDef_maxArgCounter);
 
                     // check that order of arrays and scalar variables is consistent with previous callsand function definition
@@ -937,7 +937,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parseTokenResult_type
                     // check that max argument count is not exceeded (number must fit in 4 bits)
                     if (actualArgs > c_JustinaFunctionMaxArgs) { pNext = pch; result = result_function_maxArgsExceeded; return false; }
 
-                    // if at least one previous call (maybe a nested call) is completely parsed, retrieve current range of actual args that occured in these previous calls
+                    // if at least one previous call (maybe a nested call) is completely parsed, retrieve current range of actual args that occurred in these previous calls
                     // and update this range with the argument count of the current Justina function call that is at its closing parenthesis
                     int funcIndex = _pParsingStack->openPar.identifierIndex;                                                // of current function call: stored in stack for current PARENTHESIS level
                     bool prevJusinaFuncCompletelyParsed = (JustinaFunctionNames[funcIndex][MAX_IDENT_NAME_LEN + 1]) != c_JustinaFunctionFirstOccurFlag;

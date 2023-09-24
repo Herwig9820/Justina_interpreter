@@ -947,7 +947,7 @@ private:
     //----------------------
 public:
     // bits 3-0: flags signaling specific Justina status conditions to the program that called Justina (periodic system (main) callbacks)
-    static constexpr long appFlag_errorConditionBit = 0x01L;            // Justina parsing or execution error has occured
+    static constexpr long appFlag_errorConditionBit = 0x01L;            // Justina parsing or execution error has occurred
 
     static constexpr long appFlag_statusMask = 0x06L;                   // status bits mask
     static constexpr long appFlag_statusAbit = 0x02L;                   // status A bit 
@@ -1158,7 +1158,7 @@ private:
     // sizes MUST be specified AND must be exact
     static const ResWordDef _resWords[68];                                                                                      // keyword names
     static const InternCppFuncDef _internCppFunctions[138];                                                                     // internal cpp function names and codes with min & max arguments allowed
-    static const TerminalDef _terminals[38];                                                                                    // terminals (including operators)
+    static const TerminalDef _terminals[39];                                                                                    // terminals (including operators)
     static const SymbNumConsts _symbNumConsts[70];                                                                              // predefined constants
 
     static const int _resWordCount{ sizeof(_resWords) / sizeof(_resWords[0]) };                                                 // count of keywords in keyword table 
@@ -1329,16 +1329,14 @@ private:
 
     struct OpenFunctionData {                                           // data about all open functions (active + call stack)
         char blockType : 6;                                             // command block: will identify stack level as a function block
-        char trapErrors : 1;
+        char trapEnable : 1;                                            // enable error trapping
         char spareFlag : 1;
         char functionIndex;                                             // user function index 
         char callerEvalStackLevels;                                     // evaluation stack levels in use by caller(s) and main (call stack)
 
         // within a function, as in immediate mode, only one command can be active at a time (ended by semicolon), in contrast to command blocks, which can be nested, so command data can be stored here:
         // data is stored when a keyword is processed and it is cleared when the ending semicolon (ending the command) is processed
-
         char activeCmd_ResWordCode;                                     // keyword code (set to 'cmdcod_none' again when semicolon is processed)
-
         char* activeCmd_tokenAddress;                                   // address in program memory of parsed keyword token                                
 
         // value area pointers (note: a value is a long, a float or a pointer to a string or array, or (if reference): pointer to 'source' (referenced) variable))
@@ -1579,7 +1577,7 @@ private:
     //
     // if execution of a NEW program is started while in debug mode, the whole process as described above is repeated. So, you can have more than one program being suspended
     LinkedList flowCtrlStack;
-    void* _pFlowCtrlStackTop{ nullptr }, * _pFlowCtrlStackMinus1{ nullptr }, * _pFlowCtrlStackMinus2{ nullptr };    // pointers to flow control stack top elements
+    void* _pFlowCtrlStackTop{ nullptr };    // pointers to flow control stack top elements
     int _callStackDepth{ 0 };                                       // number of currently open Justina functions + open eval() functions + count of stopped programs (in debug mode): ...
     // ...this equals flow ctrl stack depth MINUS open loops (if, for, ...)
 
@@ -1652,7 +1650,7 @@ private:
     // error trapping
     // --------------
 
-    int _trappedErrorNumber { (int)result_execOK };
+    int _trappedErrorNumber{ (int)result_execOK };
 
 
     // evaluation strings ('eval("...")' and 'trace("...")' commands)
@@ -1964,6 +1962,7 @@ private:
     execResult_type  launchEval(LE_evalStack*& pFunctionStackLvl, char* parsingInput);
     void  terminateJustinaFunction(bool addZeroReturnValue = false);
     void  terminateEval();
+    bool trapError(bool& isEndOfStatementSeparator, execResult_type& execResult);
 
     // Justina functions: initialise parameter variables with provided arguments (pass by reference)
     void initFunctionParamVarWithSuppliedArg(int suppliedArgCount, LE_evalStack*& pFirstArgStackLvl);
