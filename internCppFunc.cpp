@@ -697,7 +697,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             }
 
             // parse constants in buffer
-            parseTokenResult_type parsingResult{ result_tokenFound };
+            parsingResult_type parsingResult{ result_parsing_OK };
 
             char* pNext = buffer;   // init
             int commaLength = strlen(term_comma);
@@ -731,20 +731,20 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                     }
 
                     // parsing functions below return...
-                    //  - true: no parsing error. parsingResult determines whether token recognised (result_tokenFound) or not (result_tokenNotFound) - in which case it can still be another token type
+                    //  - true: no parsing error. parsingResult determines whether token recognised (result_parsing_OK) or not (result_tokenNotFound) - in which case it can still be another token type
                     //  - false: parsing error. parsingResult indicates which error.
 
                     // float or integer ?
                     _initVarOrParWithUnaryOp = 0;       // needs to be zero before calling parseIntFloat()
                     if (!parseIntFloat(pNext, pch, value, valueType, parsingResult)) { break; }                             // break with error
-                    if (parsingResult == result_tokenFound) { break; }                                                      // is this token type: look no further
+                    if (parsingResult == result_parsing_OK) { break; }                                                      // is this token type: look no further
                     // string ? if string and net empty, a string object is created by routine parseString()
                     if (!parseString(pNext, pch, value.pStringConst, valueType, parsingResult, true)) { break; }            // break with error
-                    if (parsingResult == result_tokenFound) { break; }                                                      // is this token type: look no further
+                    if (parsingResult == result_parsing_OK) { break; }                                                      // is this token type: look no further
                     parsingResult = result_parseList_valueToParseExpected;
                 } while (false);        // one loop only
 
-                if (parsingResult != result_tokenFound) { execResult = result_list_parsingError;   break; }                 // exit loop if token error (syntax, ...)
+                if (parsingResult != result_parsing_OK) { execResult = result_list_parsingError;   break; }                 // exit loop if token error (syntax, ...)
 
                 // if a valid token was parsed: if it's a non-empty string (stored in value.pString), remember thar it will have to be deleted in case an errors occurs in what follows
                 if ((valueType == value_isStringPointer) && (value.pStringConst != nullptr)) { intermediateStringCreated = true; }  // parsed string is created on the heap

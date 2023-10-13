@@ -624,10 +624,10 @@ int Justina_interpreter::read() {
         if (_streamNumberIn == 0) { readingFromExtStreamNumber = _consoleIn_sourceStreamNumber; }      // replace by real external IO stream number
         if (readingFromExtStreamNumber < 0) {
             _appFlags |= appFlag_dataInOut;
-            _appFlags |= (appFlag_dataRecdFromStream1 << (-1-readingFromExtStreamNumber ));              // 'readingFromExtStreamNumber' < 0
+            _appFlags |= (appFlag_dataRecdFromStream1 << (-1 - readingFromExtStreamNumber));              // 'readingFromExtStreamNumber' < 0
         }
     }
-    
+
     return c;
 }
 
@@ -933,7 +933,7 @@ void Justina_interpreter::printVariables(bool userVars) {
 void Justina_interpreter::printCallStack() {
     if (_callStackDepth > 0) {      // including eval() stack levels but excluding open block (for, if, ...) stack levels
         int indent = 0;
-        void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                    
+        void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;
         int blockType = block_none;
         for (int i = 0; i < flowCtrlStack.getElementCount(); ++i) {
             char s[MAX_IDENT_NAME_LEN + 1] = "";
@@ -966,7 +966,6 @@ void Justina_interpreter::printCallStack() {
     else  println("(no program running)");
     println();
 }
-
 
 // -----------------------------------------
 // *   pretty print a parsed instruction   *
@@ -1021,7 +1020,8 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
                 if (nextIsTerminal) {
                     int nextTokenIndex = ((nextProgCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F);
                     nextTokenIndex += ((nextTokenType == tok_isTerminalGroup2) ? 0x10 : (nextTokenType == tok_isTerminalGroup3) ? 0x20 : 0);
-                    nextIsSemicolon = (_terminals[nextTokenIndex].terminalCode == termcod_semicolon);
+                    nextIsSemicolon = (_terminals[nextTokenIndex].terminalCode == termcod_semicolon) || (_terminals[nextTokenIndex].terminalCode == termcod_semicolon_BPset)
+                        || (_terminals[nextTokenIndex].terminalCode == termcod_semicolon_BPallowed);
                 }
 
                 sprintf(prettyToken, nextIsSemicolon ? "%s" : "%s ", _resWords[progCnt.pResW->tokenIndex]._resWordName);
@@ -1144,7 +1144,8 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
                     testNextForPostfix = false;
                 }
 
-                else if ((_terminals[index].terminalCode == termcod_comma) || (_terminals[index].terminalCode == termcod_semicolon)) {
+                else if ((_terminals[index].terminalCode == termcod_comma) || (_terminals[index].terminalCode == termcod_semicolon) || (_terminals[index].terminalCode == termcod_semicolon_BPset)
+                    || (_terminals[index].terminalCode == termcod_semicolon_BPallowed)) {
                     testNextForPostfix = false;
                     trailing[0] = ' ';                                                      // single space (already terminated by '\0')
                     hasTrailingSpace = true;
@@ -1152,7 +1153,8 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
 
                 strcat(prettyToken, _terminals[index].terminalName);                        // concatenate with empty string or single-space string
                 strcat(prettyToken, trailing);
-                isSemicolon = (_terminals[index].terminalCode == termcod_semicolon);
+                isSemicolon = (_terminals[index].terminalCode == termcod_semicolon) || (_terminals[index].terminalCode == termcod_semicolon_BPset) ||
+                    (_terminals[index].terminalCode == termcod_semicolon_BPallowed);
             }
             break;
         }
@@ -1208,10 +1210,10 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
 // *   print parsing result   *
 // ----------------------------
 
-void Justina_interpreter::printParsingResult(parseTokenResult_type result, int funcNotDefIndex, char* const pInstruction, int lineCount, char* pErrorPos) {
+void Justina_interpreter::printParsingResult(parsingResult_type result, int funcNotDefIndex, char* const pInstruction, int lineCount, char* pErrorPos) {
 
     char parsingInfo[100 + MAX_IDENT_NAME_LEN] = "";                                        // provide sufficient room for longest possible message (int: no OK message in immediate mode)
-    if (result == result_tokenFound) {                                                      // prepare message with parsing result
+    if (result == result_parsing_OK) {                                                      // prepare message with parsing result
         if (_programMode) {
             if (_lastProgramStep == _programStorage) { strcpy(parsingInfo, "\r\nNo program loaded"); }
             else {

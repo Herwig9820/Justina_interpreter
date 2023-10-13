@@ -132,6 +132,11 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"abort",           cmdcod_abort,           cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
     {"debug",           cmdcod_debug,           cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
 
+    {"setBP",           cmdcod_setBP,           cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
+    {"clearBP",         cmdcod_clearBP,         cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
+    {"enableBP",        cmdcod_enableBP,        cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
+    {"disableBP",       cmdcod_disableBP,       cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
+
     {"raiseError",      cmdcod_raiseError,      cmd_onlyImmOrInsideFuncBlock,                           1,1,    cmdPar_104,     cmdBlockNone},
     {"trapErrors",      cmdcod_trapErrors,      cmd_onlyImmOrInsideFuncBlock,                           1,1,    cmdPar_104,     cmdBlockNone},
     {"clearError",      cmdcod_clearError,      cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_104,     cmdBlockNone},
@@ -179,7 +184,8 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"vprintLine",      cmdcod_printLineToVar,  cmd_onlyImmOrInsideFuncBlock,                           1,16,   cmdPar_112,     cmdBlockNone},
     {"vprintList",      cmdcod_printListToVar,  cmd_onlyImmOrInsideFuncBlock,                           2,16,   cmdPar_116,     cmdBlockNone},
 
-    {"listCallSt",      cmdcod_printCallSt,     cmd_onlyImmOrInsideFuncBlock,                           0,1,    cmdPar_106,     cmdBlockNone},      // print call stack to stream (default is console)
+    {"listCallStack",   cmdcod_printCallSt,     cmd_onlyImmOrInsideFuncBlock,                           0,1,    cmdPar_106,     cmdBlockNone},      // print call stack to stream (default is console)
+    {"listBP",          cmdcod_printBP,         cmd_onlyImmOrInsideFuncBlock,                           0,1,    cmdPar_106,     cmdBlockNone},      // list breakpoints
     {"listVars",        cmdcod_printVars,       cmd_onlyImmOrInsideFuncBlock,                           0,1,    cmdPar_106,     cmdBlockNone},      // list variables "         "         "         "
     {"listFiles",       cmdcod_listFiles,       cmd_onlyImmOrInsideFuncBlock,                           0,1,    cmdPar_106,     cmdBlockNone},      // list files     "         "         "         "
     {"listFilesToSerial",cmdcod_listFilesToSer, cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_102,     cmdBlockNone},      // list files to Serial with modification dates (SD library fixed)
@@ -314,7 +320,7 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     {"dims",                    fnccod_dims,                    1,1,    0b00000001},
     {"type",                    fnccod_valueType,               1,1,    0b0},
     { "r",                      fnccod_last,                    0,1,    0b0 },               // short label for 'last result'
-    { "err",                    fnccod_getTrappedErr,           0,0,    0b0 },               
+    { "err",                    fnccod_getTrappedErr,           0,0,    0b0 },
     {"sysval",                  fnccod_sysVal,                  1,1,    0b0},
 
     // input and output functions
@@ -371,18 +377,20 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
 // priority 0 means operator not available for use as use as postfix, prefix, infix operator
 // bit b7 defines associativity for infix operators (bit set indicates 'right-to-left').
 // prefix operators: always right-to-left. postfix operators: always left-to-right
-// NOTE: table entries with names starting with same characters: shortest entries should come BEFORE longest (e.g. '!' before '!=', '&' before '&&')
+// NOTE: !!!!! table entries with names starting with same characters: shortest entries should come BEFORE longest (e.g. '!' before '!=', '&' before '&&') !!!!!
 // postfix operator names can only be shared with prefix operator names
 
 const Justina_interpreter::TerminalDef Justina_interpreter::_terminals[]{
 
-    //  name            id code                 prefix prio                 infix prio          postfix prio         
-    //  ----            -------                 -----------                 ----------          ------------   
+    //  name                id code                 prefix prio          infix prio                 postfix prio         
+    //  ----                -------                 -----------          ----------                 ------------   
 
     // non-operator terminals: ONE character only, character should NOT appear in operator names
 
+    {term_semicolon,        termcod_semicolon_BPset,    0x00,               0x00,                       0x00},
+    {term_semicolon,        termcod_semicolon_BPallowed,0x00,               0x00,                       0x00},
+    {term_semicolon,        termcod_semicolon,          0x00,               0x00,                       0x00},      // MUST follow previous entries
     {term_comma,            termcod_comma,              0x00,               0x00,                       0x00},
-    {term_semicolon,        termcod_semicolon,          0x00,               0x00,                       0x00},
     {term_leftPar,          termcod_leftPar,            0x00,               0x10,                       0x00},
     {term_rightPar,         termcod_rightPar,           0x00,               0x00,                       0x00},
 
@@ -553,10 +561,13 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
 
 Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int altIOstreamCount,
     long progMemSize, int JustinaConstraints, int SDcardChipSelectPin) :
-    _pExternIOstreams(pAltInputStreams), _externIOstreamCount(altIOstreamCount), _progMemorySize(progMemSize), _justinaConstraints(JustinaConstraints), _SDcardChipSelectPin(SDcardChipSelectPin) {
+    _pExternIOstreams(pAltInputStreams), _externIOstreamCount(altIOstreamCount), _progMemorySize(progMemSize), _justinaConstraints(JustinaConstraints), _SDcardChipSelectPin(SDcardChipSelectPin)
+
+{
 
     // settings to be initialized when cold starting interpreter only
     // --------------------------------------------------------------
+
     _coldStart = true;
 
     _housekeepingCallback = nullptr;
@@ -575,6 +586,12 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
 
     if (_progMemorySize + IMM_MEM_SIZE > pow(2, 16)) { _progMemorySize = pow(2, 16) - IMM_MEM_SIZE; }
     _programStorage = new char[_progMemorySize + IMM_MEM_SIZE];
+
+    _pBreakpoints= new Breakpoints();
+    _pBreakpoints->setJustinaRef(this);  //// naar Breakpoints constructor
+
+    _pBreakpoints->_BPLineRangeMemorySize = (_progMemorySize * STORAGE_RATIO_PROGMEM_BPSOURCELINES) / 100;      //// naar Breakpoints constructor 
+    _pBreakpoints->_BPlineRangeStorage = new char[_pBreakpoints->_BPLineRangeMemorySize];                       //// naar Breakpoints constructor
 
     // current print column is maintened for each stream separately: init
     _pIOprintColumns = new int[_externIOstreamCount];
@@ -604,6 +621,8 @@ Justina_interpreter::~Justina_interpreter() {
         resetMachine(true);                                                                             // delete all objects created on the heap: with = with user variables and FiFo stack
         _housekeepingCallback = nullptr;
         delete[] _programStorage;
+        delete[] _pBreakpoints;
+        delete[] _pBreakpoints->_BPlineRangeStorage;
         delete[] _pIOprintColumns;
     }
 
@@ -691,7 +710,16 @@ bool Justina_interpreter::run() {
     long parsedStatementCount{ 0 };
     int statementCharCount{ 0 };
     char* pErrorPos{};
-    parseTokenResult_type result{ result_tokenFound };                                                          // init
+    parsingResult_type result{ result_parsing_OK };                                                          // init
+
+    // variables for maintaining lines allowing breakpoints
+    bool parsedStatementStartsOnNewLine{ false };
+    bool parsedStatementStartLinesAdjacent{ false };
+    long statementStartsAtLine{ 0 };
+    long parsedStatementStartsAtLine{ 0 };
+    long BPstartLine{ 0 }, BPendLine{ 0 };
+
+    static long BPpreviousEndLine{ 0 };
 
     _appFlags = 0x0000L;                                                                                        // init application flags (for communication with Justina caller, using callbacks)
 
@@ -705,6 +733,22 @@ bool Justina_interpreter::run() {
     printTo(0, "    "); printlnTo(0, J_legalCopyright);
     printTo(0, "    Version: "); printTo(0, J_productVersion); printTo(0, " ("); printTo(0, J_buildDate); printlnTo(0, ")");
     for (int i = 0; i < 48; i++) { printTo(0, "*"); } printlnTo(0);
+
+    // find token index for terminal token 'semicolon with breakpoint allowed' 
+    int index{}, semicolonBPallowed_index{}, semicolonBPset_index{}, matches{};
+    
+    for (index = _termTokenCount - 1, matches=0; index >= 0; index--) {      // for all defined terminals
+        if (_terminals[index].terminalCode == termcod_semicolon_BPallowed) { semicolonBPallowed_index = index; matches;}                              // token corresponds to terminal code ? Then exit loop    
+        if (_terminals[index].terminalCode == termcod_semicolon_BPset) { semicolonBPset_index = index; matches++;}                              // token corresponds to terminal code ? Then exit loop    
+        if(matches==2){break;}
+    }
+    _semicolonBPallowed_token = (semicolonBPallowed_index <= 0x0F) ? tok_isTerminalGroup1 : (semicolonBPallowed_index <= 0x1F) ? tok_isTerminalGroup2 : tok_isTerminalGroup3;
+    _semicolonBPallowed_token |= ((semicolonBPallowed_index & 0x0F) << 4);
+    _semicolonBPset_token = (semicolonBPset_index <= 0x0F) ? tok_isTerminalGroup1 : (semicolonBPset_index <= 0x1F) ? tok_isTerminalGroup2 : tok_isTerminalGroup3;
+    _semicolonBPset_token |= ((semicolonBPset_index & 0x0F) << 4);
+
+    int BPmaxEntries = sizeof(_pBreakpoints->_breakpointData) / sizeof(_pBreakpoints->_breakpointData[0]);
+    for (int i = 0; i < BPmaxEntries; i++){ _pBreakpoints->_breakpointData[i].hasBPdata=0x0; }
 
     _programMode = false;
     _programCounter = _programStorage + _progMemorySize;
@@ -751,6 +795,15 @@ bool Justina_interpreter::run() {
             _programCounter = _programStorage;
             loadingStartupProgram = true;
             startJustinaWithoutAutostart = false;
+
+            parsedStatementStartsOnNewLine = false;
+            parsedStatementStartLinesAdjacent = false;
+            statementStartsAtLine = 0;
+            parsedStatementStartsAtLine = 0;
+            BPstartLine = 0;
+            BPendLine = 0;
+            BPpreviousEndLine = 0;
+
             streamNumber = _loadProgFromStreamNo;                                                               // autostart step 1: temporarily switch from console input to startup file (opening the file here) 
             setStream(streamNumber, pStatementInputStream);                                                     // error checking done while opening file
             printTo(0, "Loading program 'start.jus'...\r\n");
@@ -772,6 +825,8 @@ bool Justina_interpreter::run() {
         bool noCharAdded{ false };
         bool allCharsReceived{ false };
 
+        long currentSourceLine{ 0 };
+
         _initiateProgramLoad = false;
 
         if (startJustinaWithoutAutostart) { allCharsReceived = true; startJustinaWithoutAutostart = false; }
@@ -791,56 +846,71 @@ bool Justina_interpreter::run() {
             // if no character added: nothing to do, wait for next
             noCharAdded = !addCharacterToInput(lastCharWasSemiColon, withinString, withinStringEscSequence, within1LineComment, withinMultiLineComment, redundantSemiColon, allCharsReceived,
                 bufferOverrun, flushAllUntilEOF, lineCount, statementCharCount, c);
+            currentSourceLine = lineCount + 1;
         }
 
         do {        // one loop only
             if (bufferOverrun) { result = result_statementTooLong; }
             if (kill) { quitNow = true;  result = result_parse_kill; break; }
             if (forcedAbort) { result = result_parse_abort; }
-            if (stdConsole && !_programMode) { result = result_parse_stdConsole; }
+            if (stdConsole && !_programMode) { result = result_parse_setStdConsole; }
             if (noCharAdded) { break; }               // start a new outer loop (read a character if available, etc.)
 
-            // if a statement is complete (terminated by a semicolon or end of input), parse it
-            // --------------------------------------------------------------------------------
-            bool isStatementSeparator = (!withinString) && (!within1LineComment) && (!withinMultiLineComment) && (c == ';') && !redundantSemiColon;
+
+            // if a statement is complete (terminated by a semicolon or end of input), maintain breakpoint line ranges and parse statement
+            // ---------------------------------------------------------------------------------------------------------------------------
+            bool isStatementSeparator = (!withinString) && (!within1LineComment) && (!withinMultiLineComment) && (c == term_semicolon[0]) && !redundantSemiColon;
             isStatementSeparator = isStatementSeparator || (withinString && (c == '\n'));  // a new line character within a string is sent to parser as well
 
             bool statementReadyForParsing = !bufferOverrun && !forcedAbort && !stdConsole && !kill && (isStatementSeparator || (allCharsReceived && (statementCharCount > 0)));
 
+            if (_programMode && (statementCharCount == 1) && !noCharAdded) { statementStartsAtLine = currentSourceLine; }                                    // first character of new statement
+
             if (statementReadyForParsing) {                                                                     // if quitting anyway, just skip                                               
                 _appFlags &= ~appFlag_errorConditionBit;                                                        // clear error condition flag 
                 _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_parsing;                                // status 'parsing'
-
                 _statement[statementCharCount] = '\0';                                                          // add string terminator
 
                 char* pStatement = _statement;                                                                  // because passed by reference 
                 char* pDummy{};
                 _parsingExecutingTraceString = false; _parsingEvalString = false;
 
-                result = parseStatement(pStatement, pDummy, clearCmdIndicator);                                 // parse ONE statement only 
+                // if the statement to be parsed starts at the beginning of a source line (not preceded by a previous statement or the end of a previous statement), during execution...
+                 // ... it will be allowed to set a breakpoint for this source line (given that the statement is not 'parsing only'). This procedure stores necessary data to enable this functionality.
+                result = _pBreakpoints->addBreakpointData(_semicolonBPallowed_token, parsedStatementStartsOnNewLine, parsedStatementStartLinesAdjacent, statementStartsAtLine, parsedStatementStartsAtLine,
+                    BPstartLine, BPendLine, BPpreviousEndLine);
+
+                if (result == result_parsing_OK) { result = parseStatement(pStatement, pDummy, clearCmdIndicator); }       // parse ONE statement only 
+
                 if ((++parsedStatementCount & 0x3f) == 0) {
                     printTo(0, '.');                                                                            // print a dot each 64 parsed lines
                     if ((parsedStatementCount & 0x0fff) == 0) { printlnTo(0); }                                 // print a crlf each 64 dots
                 }
                 pErrorPos = pStatement;                                                                         // in case of error
 
-                if (result != result_tokenFound) { flushAllUntilEOF = true; }
+                if (result != result_parsing_OK) { flushAllUntilEOF = true; }
 
                 // reset after each statement read 
                 statementCharCount = 0;
                 withinString = false; withinStringEscSequence = false; within1LineComment = false; withinMultiLineComment = false;
                 lastCharWasSemiColon = false;
+                parsedStatementStartsOnNewLine = false;         // reset flag (prepare for next statement)
+            }
+
+            // last gap range and adjacent source line "start of statement" range of source file
+            if (_programMode && allCharsReceived) {
+                result = _pBreakpoints->addSourceLineRangePair(BPstartLine - BPpreviousEndLine - 1, BPendLine - BPstartLine + 1);
             }
 
             // program mode: complete program read and parsed   /   imm. mode: all statements in command line read and parsed OR parsing error ?
-            if (allCharsReceived || (result != result_tokenFound)) {                                            // note: if all statements have been read, they also have been parsed
+            if (allCharsReceived || (result != result_parsing_OK)) {                                            // note: if all statements have been read, they also have been parsed
                 if (kill) { quitNow = true; }
                 else {
                     quitNow = finaliseParsing(result, kill, lineCount, pErrorPos, allCharsReceived); // return value: quit Justina now
 
                     // if not in program mode and no parsing error: execute
                     execResult_type execResult{ result_execOK };
-                    if (!_programMode && (result == result_tokenFound)) {
+                    if (!_programMode && (result == result_parsing_OK)) {
                         execResult = exec(_programStorage + _progMemorySize);                                                   // execute parsed user statements
                         if (execResult == result_kill) { kill = true; }
                         if (kill || (execResult == result_quit)) { printlnTo(0); quitNow = true; }                          // make sure Justina prompt will be printed on a new line
@@ -850,7 +920,7 @@ bool Justina_interpreter::run() {
                 }
 
 
-                if (result == result_tokenFound) {
+                if (result == result_parsing_OK) {
                     if (loadingStartupProgram) { launchingStartFunction = true; }
                 }
                 // parsing error occurred ? reset input controlling variables
@@ -869,8 +939,16 @@ bool Justina_interpreter::run() {
                 flushAllUntilEOF = false;
                 _statement[statementCharCount] = '\0';                                                          // add string terminator
 
+                parsedStatementStartsOnNewLine = false;
+                parsedStatementStartLinesAdjacent = false;
+                statementStartsAtLine = 0;
+                parsedStatementStartsAtLine = 0;
+                BPstartLine = 0;
+                BPendLine = 0;
+                BPpreviousEndLine = 0;
+
                 clearCmdIndicator = 0;          // reset
-                result = result_tokenFound;
+                result = result_parsing_OK;
             }
         } while (false);
 
@@ -904,7 +982,7 @@ bool Justina_interpreter::run() {
 // ----------------------------------------------------------------------------------
 
 bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool& withinMultiLineComment,
-    bool& redundantSemiColon, bool ImmModeLineOrProgramRead, bool& bufferOverrun, bool _flushAllUntilEOF, int& _lineCount, int& _statementCharCount, char c) {
+    bool& redundantSemiColon, bool ImmModeLineOrProgramRead, bool& bufferOverrun, bool flushAllUntilEOF, int& lineCount, int& statementCharCount, char c) {
 
     const char commentOuterDelim = '/'; // twice: single line comment, followed by inner del.: start of multi-line comment, preceded by inner delimiter: end of multi-line comment 
     const char commentInnerDelim = '*';
@@ -912,18 +990,18 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
     static bool lastCharWasWhiteSpace{ false };
     static char lastCommentChar{ '\0' };                                                                        // init: none
 
-    bool redundantSpaces = false;                                                                               // init
+    bool redundantSpaces = false;
 
     bufferOverrun = false;
     if ((c < ' ') && (c != '\n')) { return false; }                                                             // skip control-chars except new line and EOF character
 
     // when a imm. mode line or program is completely read and the last character (part of the last statement) received from input stream is not a semicolon, add it
     if (ImmModeLineOrProgramRead) {
-        if (_statementCharCount > 0) {
-            if (_statement[_statementCharCount - 1] != ';') {
-                if (_statementCharCount == MAX_STATEMENT_LEN) { bufferOverrun = true; return false; }
-                _statement[_statementCharCount] = ';';                                                          // still room: add character
-                _statementCharCount++;
+        if (statementCharCount > 0) {
+            if (_statement[statementCharCount - 1] != term_semicolon[0]) {
+                if (statementCharCount == MAX_STATEMENT_LEN) { bufferOverrun = true; return false; }
+                _statement[statementCharCount] = term_semicolon[0];                                                          // still room: add character
+                statementCharCount++;
             }
         }
 
@@ -933,9 +1011,9 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
 
     // not at end of program or imm. mode line: process character   
     else {
-        if (_flushAllUntilEOF) { return false; }                                                                // discard characters (after parsing error)
+        if (flushAllUntilEOF) { return false; }                                                                // discard characters (after parsing error)
 
-        if (c == '\n') { _lineCount++; }                                                                        // line number used when while reading program in input file
+        if (c == '\n') { lineCount++; }                                                                        // line number used when while reading program in input file
 
         // currently within a string or within a comment ? check for ending delimiter, check for in-string backslash sequences
         if (withinString) {
@@ -959,7 +1037,7 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
 
         // NOT within a string or (single-or multi-) line comment ?
         else {
-            bool leadingWhiteSpace = (((c == ' ') || (c == '\n')) && (_statementCharCount == 0));
+            bool leadingWhiteSpace = (((c == ' ') || (c == '\n')) && (statementCharCount == 0));
             if (leadingWhiteSpace) { return false; };
 
             // start of string ?
@@ -967,11 +1045,11 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
 
             // start of (single-or multi-) line comment ?
             else if ((c == commentOuterDelim) || (c == commentInnerDelim)) {  // if previous character = same, then remove it from input buffer. It's the start of a single line comment
-                if (_statementCharCount > 0) {
-                    if (_statement[_statementCharCount - 1] == commentOuterDelim) {
+                if (statementCharCount > 0) {
+                    if (_statement[statementCharCount - 1] == commentOuterDelim) {
                         lastCommentChar = '\0';         // reset
-                        --_statementCharCount;
-                        _statement[_statementCharCount] = '\0';                                                 // add string terminator
+                        --statementCharCount;
+                        _statement[statementCharCount] = '\0';                                                 // add string terminator
 
                         ((c == commentOuterDelim) ? within1LineComment : withinMultiLineComment) = true; return false;
                     }
@@ -982,19 +1060,19 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
             else if (c == '\n') { c = ' '; }
 
             // check last character 
-            redundantSpaces = (_statementCharCount > 0) && (c == ' ') && lastCharWasWhiteSpace;
-            redundantSemiColon = (c == ';') && lastCharWasSemiColon;
+            redundantSpaces = (statementCharCount > 0) && (c == ' ') && lastCharWasWhiteSpace;
+            redundantSemiColon = (c == term_semicolon[0]) && lastCharWasSemiColon;
             lastCharWasWhiteSpace = (c == ' ');                     // remember
-            lastCharWasSemiColon = (c == ';');
+            lastCharWasSemiColon = (c == term_semicolon[0]);
         }
 
         // do NOT add character to parsing input buffer if specific conditions are met
         if (redundantSpaces || redundantSemiColon || within1LineComment || withinMultiLineComment) { return false; }    // no character added
-        if (_statementCharCount == MAX_STATEMENT_LEN) { bufferOverrun = true; return false; }
+        if (statementCharCount == MAX_STATEMENT_LEN) { bufferOverrun = true; return false; }
 
         // add character  
-        _statement[_statementCharCount] = c;                                                                    // still room: add character
-        ++_statementCharCount;
+        _statement[statementCharCount] = c;                                                                    // still room: add character
+        ++statementCharCount;
     }
 
     return true;
@@ -1005,7 +1083,7 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
 // *   finalise parsing; execute if no errors; if in debug mode, trace and print debug info; re-init machine state and exit   *  ////
 // ----------------------------------------------------------------------------------------------------------------------------
 
-bool Justina_interpreter::finaliseParsing(parseTokenResult_type& result, bool& kill, int lineCount, char* pErrorPos, bool allCharsReceived) {
+bool Justina_interpreter::finaliseParsing(parsingResult_type& result, bool& kill, int lineCount, char* pErrorPos, bool allCharsReceived) {
 
     bool quitJustina{ false };
 
@@ -1013,7 +1091,7 @@ bool Justina_interpreter::finaliseParsing(parseTokenResult_type& result, bool& k
     // ------------------------------------------------------------------------
 
     int funcNotDefIndex;
-    if (result == result_tokenFound) {
+    if (result == result_parsing_OK) {
         // checks at the end of parsing: any undefined functions (program mode only) ?  any open blocks ?
         if (_programMode && (!checkAllJustinaFunctionsDefined(funcNotDefIndex))) { result = result_function_undefinedFunctionOrArray; }
         if (_blockLevel > 0) { result = result_block_noBlockEnd; }
@@ -1021,7 +1099,7 @@ bool Justina_interpreter::finaliseParsing(parseTokenResult_type& result, bool& k
 
     (_programMode ? _lastProgramStep : _lastUserCmdStep) = _programCounter;
 
-    if (result == result_tokenFound) {
+    if (result == result_parsing_OK) {
         if (_programMode) {
             // parsing OK message (program mode only - no message in immediate mode)  
             printParsingResult(result, funcNotDefIndex, _statement, lineCount, pErrorPos);
@@ -1035,7 +1113,7 @@ bool Justina_interpreter::finaliseParsing(parseTokenResult_type& result, bool& k
         if (_programMode && (_loadProgFromStreamNo <= 0)) {
             if (result == result_parse_abort) { printTo(0, "\r\nAbort: "); }                                // not for other parsing errors
             else { printTo(0, "\r\nParsing error: "); }
-            if (result != result_tokenFound) { printlnTo(0, "processing remainder of input file... please wait"); }
+            if (result != result_parsing_OK) { printlnTo(0, "processing remainder of input file... please wait"); }
         }
 
         char c{};
@@ -1057,7 +1135,7 @@ bool Justina_interpreter::finaliseParsing(parseTokenResult_type& result, bool& k
         if (result == result_parse_abort) {
             printlnTo(0, "\r\n+++ Abort: parsing terminated +++");                                              // abort: display error message 
         }
-        else if (result == result_parse_stdConsole) {
+        else if (result == result_parse_setStdConsole) {
             printlnTo(0, "\r\n+++ console reset +++");
             _consoleIn_sourceStreamNumber = _consoleOut_sourceStreamNumber = -1;
             _pConsoleIn = _pConsoleOut = _pExternIOstreams[0];                                                  // set console to stream -1 (NOT debug out)
@@ -1077,7 +1155,7 @@ bool Justina_interpreter::finaliseParsing(parseTokenResult_type& result, bool& k
 // *   finalise execution: prepare for idle mode
 // ---------------------------------------------
 
-bool Justina_interpreter::prepareForIdleMode(parseTokenResult_type result, execResult_type execResult, bool& kill, int& clearIndicator, Stream*& pStatementInputStream, int& statementInputStreamNumber) {
+bool Justina_interpreter::prepareForIdleMode(parsingResult_type result, execResult_type execResult, bool& kill, int& clearIndicator, Stream*& pStatementInputStream, int& statementInputStreamNumber) {
 
     bool quitJustina{ false };
 
@@ -1089,7 +1167,45 @@ bool Justina_interpreter::prepareForIdleMode(parseTokenResult_type result, execR
     // ----------------------------------
 
     // if program parsing error: reset machine, because variable storage might not be consistent with program any more
-    if ((_programMode) && (result != result_tokenFound)) { resetMachine(false); }
+    if ((_programMode) && (result != result_parsing_OK)) { resetMachine(false); }
+
+#if PRINT_DEBUG_INFO
+    if (_programMode) {
+        _pDebugOut->println();
+        // reconstruct gap and adjacent source line ranges
+        int i = 0;
+        long BPpreviousEndLine{ 0 };                        // introduce offset 1 here
+        while (i < _BPlineRangeStorageUsed) {
+            long gapLineRange{}, adjacentLineRange{};
+
+            if (!(_BPlineRangeStorage[i] & 0x01)) {       // gap and adjacent source line ranges stored in one byte
+                gapLineRange = (((uint32_t)_BPlineRangeStorage[i]) >> 1) & 0x7;                 // 3 bits long
+                adjacentLineRange = (((uint32_t)_BPlineRangeStorage[i]) >> 4) & 0xF;            // 4 bits long
+                i++;
+            }
+
+            else if ((_BPlineRangeStorage[i] & 0x11) == 0x01) {       // gap and adjacent source line ranges stored in two bytes
+                uint32_t temp{};
+                memcpy(&temp, _BPlineRangeStorage + i, 2);
+                gapLineRange = (temp >> 2) & 0x7F;                                              // 7 bits long
+                adjacentLineRange = (temp >> 9) & 0x7F;
+                i += 2;
+            }
+
+            else if ((_BPlineRangeStorage[i] & 0x11) == 0x11) {       // gap and adjacent source line ranges stored in three bytes
+                uint32_t temp{};
+                memcpy(&temp, _BPlineRangeStorage + i, 3);
+                gapLineRange = (temp >> 2) & 0x7FF;                                             // 11 bits long
+                adjacentLineRange = (temp >> 13) & 0x7FF;
+                i += 3;
+            }
+            long BPstartLine = BPpreviousEndLine + gapLineRange + 1;
+            long BPendLine = BPstartLine + adjacentLineRange - 1;
+            BPpreviousEndLine = BPendLine;
+            _pDebugOut->print("RECONSTRUCT adjacent lines - start en finish: "); _pDebugOut->print(BPstartLine); _pDebugOut->print("-"); _pDebugOut->println(BPendLine);
+        }
+    }
+    #endif
 
     // before loadng a program, clear memory except user variables
     else if (execResult == result_initiateProgramLoad) { resetMachine(false); }
@@ -1107,7 +1223,7 @@ bool Justina_interpreter::prepareForIdleMode(parseTokenResult_type result, execR
     // --------------------------------------------------------------------------
 
     // first check there were no parsing or execution errors
-    if ((result == result_tokenFound) && (execResult == result_execOK)) {
+    if ((result == result_parsing_OK) && (execResult == result_execOK)) {
         if (clearIndicator != 0) {                     // 1 = clear program cmd, 2 = clear all cmd 
             while (_pConsoleIn->available() > 0) { readFrom(0); }                                               // empty console buffer first (to allow the user to start with an empty line)
             do {
@@ -1171,7 +1287,7 @@ bool Justina_interpreter::prepareForIdleMode(parseTokenResult_type result, execR
     while (_pConsoleIn->available()) { readFrom(0); }                                                           // empty console buffer first (to allow the user to start with an empty line)
 
     // has an error occurred ? (exclude 'events' reported as an error)
-    bool isError = (result != result_tokenFound) || ((execResult != result_execOK) && (execResult < result_startOfEvents));
+    bool isError = (result != result_parsing_OK) || ((execResult != result_execOK) && (execResult < result_startOfEvents));
     isError ? (_appFlags |= appFlag_errorConditionBit) : (_appFlags &= ~appFlag_errorConditionBit);             // set or clear error condition flag 
     (_appFlags &= ~appFlag_statusMask);
     (_openDebugLevels > 0) ? (_appFlags |= appFlag_stoppedInDebug) : (_appFlags |= appFlag_idle);               // status 'debug mode' or 'idle'
@@ -1179,7 +1295,9 @@ bool Justina_interpreter::prepareForIdleMode(parseTokenResult_type result, execR
     // print new prompt and exit
     // -------------------------
     _lastPrintedIsPrompt = false;
-    if ((_promptAndEcho != 0) && (execResult != result_initiateProgramLoad)) { printTo(0, "Justina> "); _lastPrintedIsPrompt = true; }
+    if ((_promptAndEcho != 0) && (execResult != result_initiateProgramLoad)) {
+        printTo(0, "Justina> "); _lastPrintedIsPrompt = true;
+    }
 
     return quitJustina;
 }
@@ -1259,8 +1377,8 @@ void Justina_interpreter::parseAndExecTraceString() {
 
         // note: application flags are not adapted (would not be passed to caller immediately)
         int dummy{};
-        parseTokenResult_type result = parseStatement(pTraceParsingInput, pNextParseStatement, dummy);
-        if (result == result_tokenFound) {
+        parsingResult_type result = parseStatement(pTraceParsingInput, pNextParseStatement, dummy);
+        if (result == result_parsing_OK) {
             // do NOT pretty print if parsing error, to avoid bad-looking partially printed statements (even if there will be an execution error later)
             prettyPrintStatements(0);
             printTo(_debug_sourceStreamNumber, ": ");                                                                                   // resulting value will follow
@@ -1278,7 +1396,7 @@ void Justina_interpreter::parseAndExecTraceString() {
 
         // if parsing went OK: execute ONE parsed expression (just parsed now)
         execResult_type execResult{ result_execOK };
-        if (result == result_tokenFound) {
+        if (result == result_parsing_OK) {
             execResult = exec(_programStorage + _progMemorySize);                                               // note: value or exec. error is printed from inside exec()
         }
 
@@ -1379,8 +1497,8 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
             _systemVarStringObjectCount--;
             delete[] _pTraceString;
             _pTraceString = nullptr;                                                                            // old trace string
-        }
     }
+}
 
     // delete all elements of the immediate mode parsed statements stack
     // (parsed immediate mode statements can be temporarily pushed on the immediate mode stack to be replaced either by parsed debug command lines or parsed eval() strings) 
@@ -1413,7 +1531,7 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
 
 
     printlnTo(0);
-}
+    }
 
 
 // ---------------------------------------------------------------------------------------
@@ -1434,7 +1552,7 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
         _pDebugOut->print("*** Variable / function name objects cleanup error. Remaining: "); _pDebugOut->println(_identifierNameStringObjectCount);
     #endif
         _identifierNameStringObjectErrors += abs(_identifierNameStringObjectCount);
-    }
+}
 
     if (_parsedStringConstObjectCount != 0) {
     #if PRINT_OBJECT_COUNT_ERRORS
@@ -1471,7 +1589,7 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
             _pDebugOut->print("*** User variable name objects cleanup error. Remaining: "); _pDebugOut->println(_userVarNameStringObjectCount);
         #endif
             _userVarNameStringObjectErrors += abs(_userVarNameStringObjectCount);
-        }
+    }
 
         if (_userVarStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
@@ -1538,6 +1656,7 @@ void Justina_interpreter::initInterpreterVariables(bool fullReset) {
     *_programStorage = tok_no_token;                                                                            //  set as current end of program 
     *(_programStorage + _progMemorySize) = tok_no_token;                                                        //  set as current end of program (immediate mode)
     _programCounter = _programStorage + _progMemorySize;                                                        // start of 'immediate mode' program area
+    _pBreakpoints->_BPlineRangeStorageUsed = 0;
 
     _programName[0] = '\0';
 
@@ -1635,8 +1754,8 @@ void Justina_interpreter::deleteIdentifierNameObjects(char** pIdentNameArray, in
         isUserVar ? _userVarNameStringObjectCount-- : _identifierNameStringObjectCount--;
         delete[] * (pIdentNameArray + index);
         index++;
-    }
 }
+    }
 
 
 // --------------------------------------------------------------------------------------------------------------
@@ -1679,9 +1798,9 @@ void Justina_interpreter::deleteOneArrayVarStringObjects(Justina_interpreter::Va
         #endif
             isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
             delete[]  pString;                                                                                                      // applicable to string and array (same pointer)
-        }
     }
 }
+        }
 
 
 // ----------------------------------------------------------------------------------------------
@@ -1703,7 +1822,7 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
             #endif
                 isUserVar ? _userArrayObjectCount-- : isLocalVar ? _localArrayObjectCount-- : _globalStaticArrayObjectCount--;
                 delete[]  varValues[index].pArray;
-            }
+        }
             else if ((varType[index] & value_typeMask) == value_isStringPointer) {                                                  // variable is a scalar containing a string
                 if (varValues[index].pStringConst != nullptr) {
                 #if PRINT_HEAP_OBJ_CREA_DEL
@@ -1711,12 +1830,12 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
                 #endif
                     isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
                     delete[]  varValues[index].pStringConst;
-                }
             }
-        }
-        index++;
     }
 }
+        index++;
+            }
+        }
 
 
 // --------------------------------------------------------------------
@@ -1734,9 +1853,9 @@ void Justina_interpreter::deleteLastValueFiFoStringObjects() {
         #endif
             _lastValuesStringObjectCount--;
             delete[] lastResultValueFiFo[i].pStringConst;
-        }
     }
 }
+        }
 
 
 // -----------------------------------------------------------------------------------------
@@ -1763,14 +1882,14 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
             #endif
                 _parsedStringConstObjectCount--;
                 delete[] pAnum;
-            }
         }
+    }
         uint8_t tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) :
             (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*prgmCnt.pTokenChars >> 4) & 0x0F;
         prgmCnt.pTokenChars += tokenLength;
         tokenType = *prgmCnt.pTokenChars & 0x0F;
-    }
 }
+        }
 
 
 // ---------------------------------------------------------------------------------

@@ -113,8 +113,11 @@ public:
 // ***                class Justina_interpreter                  ***
 // *****************************************************************
 
-class Justina_interpreter {
+class Breakpoints;
 
+class Justina_interpreter {
+    friend class Breakpoints;
+    
     // --------------------
     // *   enumerations   *
     // --------------------
@@ -159,6 +162,7 @@ class Justina_interpreter {
         cmdcod_clearProg,
         cmdcod_printVars,
         cmdcod_printCallSt,
+        cmdcod_printBP,
         cmdcod_function,
         cmdcod_static,
         cmdcod_constVar,
@@ -185,6 +189,10 @@ class Justina_interpreter {
         cmdcod_skip,
         cmdcod_trace,
         cmdcod_debug,
+        cmdcod_setBP,
+        cmdcod_clearBP,
+        cmdcod_enableBP,
+        cmdcod_disableBP,
         cmdcod_nop,
         cmdcod_raiseError,
         cmdcod_trapErrors,
@@ -423,6 +431,8 @@ class Justina_interpreter {
         // other terminals
         termcod_comma = termcod_opRangeEnd + 1,
         termcod_semicolon,
+        termcod_semicolon_BPallowed,                                    // breakpoint can be set because next statement is first statement in next source code line
+        termcod_semicolon_BPset,                                        // breakpoint is set
         termcod_leftPar,
         termcod_rightPar
     };
@@ -446,8 +456,9 @@ class Justina_interpreter {
     };
 
     // error codes for all PARSING errors
-    enum parseTokenResult_type {                                        // token parsing result
-        result_tokenFound = 0,                                          // no error
+    public:
+    enum parsingResult_type {                                        // token parsing result
+        result_parsing_OK = 0,                                          // no error
 
         // incomplete expression errors
         result_statementTooLong = 1000,
@@ -577,9 +588,13 @@ class Justina_interpreter {
         result_parseList_stringNotComplete,
         result_parseList_valueToParseExpected,
 
+        // breakpoint errors
+        result_BPlineRangeTooLong,
+        result_BPlineTableMemoryFull,
+
         // other program errors
         result_parse_abort = 2200,
-        result_parse_stdConsole,
+        result_parse_setStdConsole,
         result_parse_kill
     };
 
@@ -620,19 +635,27 @@ class Justina_interpreter {
         result_divByZero,
         result_testexpr_numberExpected,
 
-        // abort, kill, quit, debug
+        // abort, kill, quit
         result_noProgramStopped = 3400,                                 // 'go' command not allowed because not in debug mode
         result_notWithinBlock,
         result_skipNotAllowedHere,
 
+        // breakpont errors
+        result_BP_sourcelineNumberExpected = 3500,
+        result_BP_notAllowedForSourceLine,
+        result_BP_statementIsNonExecutable,
+        result_BP_maxBPentriesReached,
+        result_BP_wasNotSet,
+        result_BP_hitcountNotWithinRange,
+
         // evaluation and list parsing function errors
-        result_eval_emptyString = 3500,
+        result_eval_emptyString = 3600,
         result_eval_nothingToEvaluate,
         result_eval_parsingError,
         result_list_parsingError,
 
         // SD card
-        result_SD_noCardOrCardError = 3600,
+        result_SD_noCardOrCardError = 3700,
         result_SD_fileNotFound,
         result_SD_couldNotOpenFile,                                     // or file does not exist 
         result_SD_fileIsNotOpen,
@@ -684,6 +707,7 @@ class Justina_interpreter {
     // ---------------------------------------------------------------
 
     static constexpr uint16_t IMM_MEM_SIZE{ 400 };                      // size, in bytes, of user command memory (stores parsed user statements)
+    static constexpr uint16_t STORAGE_RATIO_PROGMEM_BPSOURCELINES{ 5 }; // source line range storage for debugging with breakpoints: % of program storage 
 
     static constexpr int MAX_USERVARNAMES{ 255 };                       // max. user variables allowed. Absolute parser limit: 255
     static constexpr int MAX_PROGVARNAMES{ 255 };                       // max. program variable NAMES allowed (same name may be reused for global, static, local & parameter variables). Absolute limit: 255
@@ -1156,9 +1180,9 @@ private:
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na, block_na, block_na };                                      // not a 'block' command
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[68];                                                                                      // keyword names
+    static const ResWordDef _resWords[73];                                                                                      // keyword names
     static const InternCppFuncDef _internCppFunctions[138];                                                                     // internal cpp function names and codes with min & max arguments allowed
-    static const TerminalDef _terminals[39];                                                                                    // terminals (including operators)
+    static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
     static const SymbNumConsts _symbNumConsts[70];                                                                              // predefined constants
 
     static const int _resWordCount{ sizeof(_resWords) / sizeof(_resWords[0]) };                                                 // count of keywords in keyword table 
@@ -1435,10 +1459,11 @@ private:
 
     bool _coldStart{};                                              // is this a cold start (initialising Justina) or a warm start (if Justina was stopped ('quit' command) with its memory retained)
     int _justinaConstraints{ 0 };                                   // 0 = no card reader, 1 = card reader present, do not yet initialise, 2 = initialise card now, 3 = init card & run start.jus function start() now
+    char* _programStorage{ nullptr };                                          // pointer to start of program storage
     long _progMemorySize{};                                         // depends on processor
-    char* _programStorage;                                          // pointer to start of program storage
     char _programName[MAX_IDENT_NAME_LEN + 1];
-    char* _lastProgramStep, * _lastUserCmdStep;                     // location in Justine program memory where final 'tok_no_token' token is placed
+    char* _lastProgramStep{ nullptr };
+    char* _lastUserCmdStep{ nullptr };                     // location in Justine program memory where final 'tok_no_token' token is placed
 
 
     // parsing 
@@ -1581,11 +1606,13 @@ private:
     int _callStackDepth{ 0 };                                       // number of currently open Justina functions + open eval() functions + count of stopped programs (in debug mode): ...
     // ...this equals flow ctrl stack depth MINUS open loops (if, for, ...)
 
-// while at least one program is stopped (debug mode), the PARSED code of the original command line from where execution started is pushed to a separate stack, and popped again ...
-// ...when the program resumes, so that execution can continue there. If multiple programs are currently stopped (see: flow control stack), this stack will contain multiple entries
+    // while at least one program is stopped (debug mode), the PARSED code of the original command line from where execution started is pushed to a separate stack, and popped again ...
+    // ...when the program resumes, so that execution can continue there. If multiple programs are currently stopped (see: flow control stack), this stack will contain multiple entries
     LinkedList parsedCommandLineStack;
     char* _pParsedCommandLineStackTop{ nullptr };
     int _openDebugLevels{ 0 };                                      // number of stopped programs: equals parsed command line stack depth minus open eval() strings (= eval() strings being executed)
+
+    char _semicolonBPallowed_token{}, _semicolonBPset_token{};      // will be initialised when Justina starts up
 
 
     // console settings and output and print commands
@@ -1646,6 +1673,7 @@ private:
 
     bool _debugCmdExecuted{ false };                                // a debug command was executed
 
+    Breakpoints* _pBreakpoints{nullptr};
 
     // error trapping
     // --------------
@@ -1657,7 +1685,7 @@ private:
     // --------------------------------------------------------------
 
     char* _pTraceString{ nullptr };
-    char* _pEvalString{ nullptr };
+
     bool _parsingExecutingTraceString{ false };
     bool _parsingEvalString{ false };
     long _evalParseErrorCode{ 0L };
@@ -1910,40 +1938,40 @@ private:
         bool& redundantSemiColon, bool isEndOfFile, bool& bufferOverrun, bool  _flushAllUntilEOF, int& _lineCount, int& _statementCharCount, char c);
 
     // parse one statement from source statement input buffer
-    parseTokenResult_type parseStatement(char*& pInputLine, char*& pNextParseStatement, int& clearIndicator);
-    bool parseAsResWord(char*& pNext, parseTokenResult_type& result);
-    bool parseAsNumber(char*& pNext, parseTokenResult_type& result);
-    bool parseAsStringConstant(char*& pNext, parseTokenResult_type& result);
-    bool parseTerminalToken(char*& pNext, parseTokenResult_type& result);
-    bool parseAsInternCPPfunction(char*& pNext, parseTokenResult_type& result);
-    bool parseAsExternCPPfunction(char*& pNext, parseTokenResult_type& result);
-    bool parseAsJustinaFunction(char*& pNext, parseTokenResult_type& result);
-    bool parseAsVariable(char*& pNext, parseTokenResult_type& result);
-    bool parseAsIdentifierName(char*& pNext, parseTokenResult_type& result);
+    parsingResult_type parseStatement(char*& pInputLine, char*& pNextParseStatement, int& clearIndicator);
+    bool parseAsResWord(char*& pNext, parsingResult_type& result);
+    bool parseAsNumber(char*& pNext, parsingResult_type& result);
+    bool parseAsStringConstant(char*& pNext, parsingResult_type& result);
+    bool parseTerminalToken(char*& pNext, parsingResult_type& result);
+    bool parseAsInternCPPfunction(char*& pNext, parsingResult_type& result);
+    bool parseAsExternCPPfunction(char*& pNext, parsingResult_type& result);
+    bool parseAsJustinaFunction(char*& pNext, parsingResult_type& result);
+    bool parseAsVariable(char*& pNext, parsingResult_type& result);
+    bool parseAsIdentifierName(char*& pNext, parsingResult_type& result);
 
     // checking command statement syntax
-    bool checkCommandKeyword(parseTokenResult_type& result, int& resWordIndex);
-    bool checkCommandArgToken(parseTokenResult_type& result, int& clearIndicatore, int resWordIndex);
+    bool checkCommandKeyword(parsingResult_type& result, int& resWordIndex);
+    bool checkCommandArgToken(parsingResult_type& result, int& clearIndicatore, int resWordIndex);
 
     // various checks while parsing
-    bool checkArrayDimCountAndSize(parseTokenResult_type& result, int* arrayDef_dims, int& dimCnt);
-    bool checkJustinaFunctionArguments(parseTokenResult_type& result, int& minArgCnt, int& maxArgCnt);
-    bool checkInternCppFuncArgArrayPattern(parseTokenResult_type& result);
-    bool checkExternCppFuncArgArrayPattern(parseTokenResult_type& result);
-    bool checkJustinaFuncArgArrayPattern(parseTokenResult_type& result, bool isFunctionClosingParenthesis);
+    bool checkArrayDimCountAndSize(parsingResult_type& result, int* arrayDef_dims, int& dimCnt);
+    bool checkJustinaFunctionArguments(parsingResult_type& result, int& minArgCnt, int& maxArgCnt);
+    bool checkInternCppFuncArgArrayPattern(parsingResult_type& result);
+    bool checkExternCppFuncArgArrayPattern(parsingResult_type& result);
+    bool checkJustinaFuncArgArrayPattern(parsingResult_type& result, bool isFunctionClosingParenthesis);
     bool checkAllJustinaFunctionsDefined(int& index);
 
     // basic parsing routines for constants, without other syntax checks etc. 
-    bool parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueType, parseTokenResult_type& result);
-    bool parseString(char*& pNext, char*& pch, char*& string, char& valueType, parseTokenResult_type& result, bool isIntermediateString);
+    bool parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueType, parsingResult_type& result);
+    bool parseString(char*& pNext, char*& pch, char*& string, char& valueType, parsingResult_type& result, bool isIntermediateString);
 
     // find an identifier (Justina variable or Justina function), init a Justina variable
     int getIdentifier(char** pIdentArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNew, bool isUserVar = false);
     bool initVariable(uint16_t varTokenStep, uint16_t constTokenStep);
 
     // process parsed input and start execution
-    bool finaliseParsing(parseTokenResult_type& result, bool& kill, int lineCount, char* pErrorPos, bool allCharsReceived);
-    bool prepareForIdleMode(parseTokenResult_type result, execResult_type execResult, bool& kill, int& clearIndicator, Stream*& pStatementInputStream, int& statementInputStreamNumber);
+    bool finaliseParsing(parsingResult_type& result, bool& kill, int lineCount, char* pErrorPos, bool allCharsReceived);
+    bool prepareForIdleMode(parsingResult_type result, execResult_type execResult, bool& kill, int& clearIndicator, Stream*& pStatementInputStream, int& statementInputStreamNumber);
 
 
     // execution
@@ -2050,7 +2078,7 @@ private:
 
     //  unparse statement and pretty print, print parsing result (OK or error number), print variables, print call stack, SD card directory
     void prettyPrintStatements(int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
-    void printParsingResult(parseTokenResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* pErrorPos);
+    void printParsingResult(parsingResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* pErrorPos);
     void printVariables(bool userVars);
     void printCallStack();
     void printDirectory(File dir, int numTabs);
@@ -2069,13 +2097,69 @@ private:
     void quoteAndExpandEscSeq(char*& input);
 
     // find / jump to tokens in program memory
-    int findTokenStep(char*& pStep, bool excludeCurrent, int tokenTypeToFind, char tokenCodeToFind, char tokenCode2ToFind = -1);
+    int findTokenStep(char*& pStep, bool excludeCurrent, int tokenTypeToFind, char criterium1, char criterium2 = -1, char criterium3 = -1, int* matchedCritNum = nullptr, int* tokenIndex = nullptr);
     int jumpTokens(int n, char*& pStep, int& tokenCode);
     int jumpTokens(int n, char*& pStep);
     int jumpTokens(int n);
 
     // delete one user variable
-    parseTokenResult_type deleteUserVariable(char* userVarName = nullptr);
+    parsingResult_type deleteUserVariable(char* userVarName = nullptr);
+
+    // replace a string stored in a sstem variable by another value
+    void replaceSystemStringValue(char*& systemString, const char* pNewString);
+
 };
+
+// ------------------------------------
+// //
+// ----------------------------------
+// 
+// maintaining breakpoints
+// -----------------------
+
+class Breakpoints {
+    friend class Justina_interpreter;
+
+
+    Justina_interpreter* _pJustina;
+
+    struct BreakpointData {
+        char hasBPdata : 1;                       // line stores information
+        char BPenabled : 1;                       // breakpoint is enabled (program will halt)
+        char BPwithViewExpr : 1;
+        char BPwithHitCount : 1;
+        char BPwithTriggerExpr : 1;
+
+        long sourceLine{ 0 };                         // if breakpoint encountered, inform user on what source line
+        char* pProgramStep{ nullptr };                // compare with current program counter to find breakpoint entry 
+        char* pView{ nullptr };                         // pointer to view expression (string)
+        char* pTrigger{ nullptr };                  // pointer to trigger expression (string)
+        long hitCount;                              // pointer to number of hits triggering breakpoint
+        long hitCounter;                                // hit counter
+    };
+
+    char* _BPlineRangeStorage{ nullptr };                                      // pointer to start of array keeping track of source line ranges for debugging with breakpoints
+    long _BPLineRangeMemorySize{};
+    long _BPlineRangeStorageUsed{ 0 };
+
+    BreakpointData _breakpointData[10];
+    int _breakpointsUsed{ 0 };
+
+    void setJustinaRef(Justina_interpreter* pJustina);
+
+    // after program parsing
+    Justina_interpreter::parsingResult_type addBreakpointData(const char semiColonBPallowed_token, bool& parsedStatementStartsOnNewLine, bool& parsedStatementStartLinesAdjacent,
+        long& statementStartsAtLine, long& parsedStatementStartsAtLine, long& BPstartLine, long& BPendLine, long& BPpreviousEndLine);
+    Justina_interpreter::parsingResult_type addSourceLineRangePair(long gapLineRange, long adjacentLineRange);
+
+    // maintaining breakpoints
+    Justina_interpreter::execResult_type maintainBPdata(long breakpointLine, char actionCmdCode, const char* viewString = nullptr, long hitCount = 0, const char* triggerString = nullptr);
+    long BPgetsourceLineSequenceNumber(long BPsourceLine);
+    Justina_interpreter::execResult_type progMem_getSetClearBP(long lineSequenceNum, char*& pProgramStep, bool& BPwasSet, bool doSet, bool doClear);
+    Justina_interpreter::execResult_type maintainBreakpointTable(long sourceLine, char* pProgramStep, bool BPwasSet, bool doSet, bool doClear, bool doEnable, bool doDisable,
+        const char* viewString, long hitCount, const char* triggerString);
+    void  printBreakpoints();
+};
+
 
 #endif

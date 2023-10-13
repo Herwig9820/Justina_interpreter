@@ -286,9 +286,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         break;
 
 
-        // -------------------------------------------------------------
-        // Define Trace expressions, define and execute Eval expressions
-        // -------------------------------------------------------------
+        // ------------------------
+        // Define Trace expressions
+        // ------------------------
 
         case cmdcod_trace:
         {
@@ -300,29 +300,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             bool opIsString = ((uint8_t)valueType == value_isStringPointer);
             if (!opIsString) { return result_arg_stringExpected; }
 
-            char* pString = _pTraceString;                                                                                              // current trace string (will be replaced now)
-            if (pString != nullptr) {
-            #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print("----- (system var str) "); _pDebugOut->println((uint32_t)pString, HEX);
-            #endif
-                _systemVarStringObjectCount--;
-                delete[] pString;
-                _pTraceString = nullptr;      // old trace or eval string
-            }
-
-            if (value.pStringConst != nullptr) {                                                                                        // new trace string
-                _systemVarStringObjectCount++;
-                pString = new char[strlen(value.pStringConst) + 2]; // room for additional semicolon (in case string is not ending with it) and terminating '\0'
-            #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print("+++++ (system var str) "); _pDebugOut->println((uint32_t)pString, HEX);
-            #endif
-
-                strcpy(pString, value.pStringConst);                                                                                    // copy the actual string
-                pString[strlen(value.pStringConst)] = term_semicolon[0];
-                pString[strlen(value.pStringConst) + 1] = '\0';
-                _pTraceString = pString;
-
-            }
+            replaceSystemStringValue(_pTraceString, value.pStringConst);
 
             // clean up
             clearEvalStackLevels(cmdArgCount);                                                                                        // clear evaluation stack and intermediate strings
@@ -338,6 +316,86 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         case cmdcod_debug:
         {
             _debugCmdExecuted = true;
+
+            // clean up
+            clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
+            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
+        }
+        break;
+
+
+        // -----------------------------------------
+        // set, clear, enable, disable breakpoint(s)
+        // -----------------------------------------
+
+        case cmdcod_setBP:
+        case cmdcod_clearBP:
+        case cmdcod_enableBP:
+        case cmdcod_disableBP:
+        {
+            // all commands:   source line number [, source line number, ...]
+            // set breakpoint: source line number, view string [, trigger string] - or -
+            //                 source line number, view string , hitcount
+
+            bool argIsVar;
+            execResult_type execResult{ result_execOK };
+
+            bool argIsArray;
+            char valueType;
+            Val arg;
+
+            bool isSetBPwithHitcountViewExpr{ false };
+            bool isWithViewExpression{ false };
+            bool isWithHitCount{ false };
+            long sourceLine{ 0 };
+            long hitCountBP1{ 0 };
+            char* triggerExprBP1{ nullptr }, * viewExprBP1{ nullptr };
+            LE_evalStack* pArg1StackLvl = pStackLvl;
+
+            if ((_activeFunctionData.activeCmd_ResWordCode == cmdcod_setBP) && ((cmdArgCount == 2) || (cmdArgCount == 3))) {
+                // possibly a single breakpoint with view expression (can be empty string) and hitcount,
+                //      or,                                                                and optional view expression (both can be empty strings)
+                for (int i = 1; i <= cmdArgCount; i++) {
+                    copyValueArgsFromStack(pStackLvl, 1, &argIsVar, &argIsArray, &valueType, &arg);
+
+                    if (i == 1) {
+                        sourceLine = (valueType == value_isLong) ? arg.longConst : (long)arg.floatConst;
+                    }
+                    else if (i == 2) {       // if string, this is a view string
+                        isWithViewExpression = (valueType == value_isStringPointer);
+                        if (isWithViewExpression) { viewExprBP1 = arg.pStringConst; }
+                        if (!isWithViewExpression) { break; }                                           // not a single breakpoint with view expression and optional hitcount or trigger expression
+                    }
+                    else if (i == 3) {
+                        isWithHitCount = ((valueType == value_isLong) || (valueType == value_isFloat));                             // third arg must be string (view expression, if provided)
+                        if (isWithHitCount) {
+                            hitCountBP1 = (valueType == value_isLong ? arg.longConst : (long)arg.floatConst);
+                            if ((hitCountBP1 < 1) || (hitCountBP1 > 100000)) { return result_BP_hitcountNotWithinRange; }
+                        }
+                        else { triggerExprBP1 = arg.pStringConst; }
+                    }
+                }
+            }
+
+            // set one breakpoint with view expression and hit count or with view expression and optional trigger expression ? 
+            if (isWithViewExpression) {
+                execResult = _pBreakpoints->maintainBPdata(sourceLine, _activeFunctionData.activeCmd_ResWordCode, viewExprBP1, hitCountBP1, triggerExprBP1);
+                if (execResult != result_execOK) { return execResult; }
+            }
+
+            // set/clear/enable/disable multiple breakpoints
+            else {
+                pStackLvl = pArg1StackLvl;          // points to first argument again
+                for (int i = 1; i <= cmdArgCount; i++) {
+                    copyValueArgsFromStack(pStackLvl, 1, &argIsVar, &argIsArray, &valueType, &arg);
+                    // values have not been tested yet for numeric type
+                    if ((valueType != value_isLong) && (valueType != value_isFloat)) { return result_BP_sourcelineNumberExpected; }
+                    sourceLine = (valueType == value_isLong) ? arg.longConst : (long)arg.floatConst;
+
+                    execResult = _pBreakpoints->maintainBPdata(sourceLine, _activeFunctionData.activeCmd_ResWordCode);
+                    if (execResult != result_execOK) { return execResult; }
+                }
+            }
 
             // clean up
             clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
@@ -1198,8 +1256,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         #endif
                             _intermediateStringObjectCount--;
                             delete[] oldAssembString;
+                        }
                     }
-                }
 
                     else {      // print to file or console ?
                         if (printString != nullptr) {
@@ -1218,11 +1276,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] printString;
-            }
-        }
+                    }
+                }
 
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-    }
+            }
 
             // finalise
             if (isPrintToVar) {                                                                                             // print to string ? save in variable
@@ -1238,9 +1296,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] assembledString;
-                }
+                    }
                     return execResult;
-            }
+                }
 
                 // print line end without supplied arguments for printing: a string object does not exist yet, so create it now
                 if (doPrintLineEnd) {
@@ -1280,7 +1338,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 }
 
                 if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) { delete[] assembledString; }                            // not referenced in eval. stack (clippedString is), so will not be deleted as part of cleanup
-}
+            }
 
             else {      // print to file or external IO
                 if (doPrintLineEnd) {
@@ -1302,6 +1360,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
         case cmdcod_printVars:
         case cmdcod_printCallSt:
+        case cmdcod_printBP:
         case cmdcod_listFiles:
         {
             bool isConsolePrint{ true };    // init
@@ -1330,27 +1389,27 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             }
 
             println();
+
             if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printVars) {
                 printVariables(true);                                                                                       // print user variables
                 printVariables(false);                                                                                      // print global program variables
             }
             else if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printCallSt) { printCallStack(); }
 
+            else if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printBP) { _pBreakpoints->printBreakpoints(); }
+
             else {
                 execResult = SD_listFiles();
                 if (execResult != result_execOK) { return execResult; };
             }
 
-            // clean up
-            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
-
             println();
             *pStreamPrintColumn = 0;
-        }
 
-        // clean up
-        clearEvalStackLevels(cmdArgCount);                                                                                // clear evaluation stack and intermediate strings 
-        _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                            // command execution ended
+            // clean up
+            clearEvalStackLevels(cmdArgCount);                                                                                // clear evaluation stack and intermediate strings 
+            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
+        }
 
         break;
 
@@ -1764,7 +1823,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     else {      // WHILE...END block
                         TokenIsResWord* pToToken;
                         uint16_t toTokenStep{ 0 };
-                        pToToken = (TokenIsResWord*)_activeFunctionData.activeCmd_tokenAddress;                             
+                        pToToken = (TokenIsResWord*)_activeFunctionData.activeCmd_tokenAddress;
                         memcpy(&toTokenStep, pToToken->toTokenStep, sizeof(char[2]));
 
                         _activeFunctionData.pNextStep = _programStorage + toTokenStep;                                      // prepare jump to start of new loop
@@ -1857,9 +1916,9 @@ Justina_interpreter::execResult_type Justina_interpreter::testForLoopCondition(b
 };
 
 
-// -------------------------------------------------------------------------------
-// copy command arguments or internal cpp function arguments from evaluation stack
-// -------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------
+// *   copy command arguments or internal cpp function arguments from evaluation stack   *
+// ---------------------------------------------------------------------------------------
 
 Justina_interpreter::execResult_type Justina_interpreter::copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsNonConstantVar, bool* argIsArray, char* valueType, Val* args, bool prepareForCallback, Val* dummyArgs) {
     execResult_type execResult;
@@ -1907,6 +1966,37 @@ Justina_interpreter::execResult_type Justina_interpreter::copyValueArgsFromStack
     }
 
     return result_execOK;
+}
+
+
+// -----------------------------------------------------------------------
+// *   replace a system string value with a copy of a new string value *** 
+// -----------------------------------------------------------------------
+
+void Justina_interpreter::replaceSystemStringValue(char*& systemString, const char* newString) {
+
+    // delete current system string (if not nullptr)
+    if (systemString != nullptr) {
+    #if PRINT_HEAP_OBJ_CREA_DEL
+        _pDebugOut->print("----- (system var str) "); _pDebugOut->println((uint32_t)pString, HEX);
+    #endif
+        _systemVarStringObjectCount--;
+        delete[] systemString;
+        systemString = nullptr;
+    }
+
+    // COPY new string in system variable (no move)
+    if (newString != nullptr) {                                                                                        // new trace string
+        _systemVarStringObjectCount++;
+        systemString = new char[strlen(newString) + 2]; // room for additional semicolon (in case string is not ending with it) and terminating '\0'
+    #if PRINT_HEAP_OBJ_CREA_DEL
+        _pDebugOut->print("+++++ (system var str) "); _pDebugOut->println((uint32_t)pString, HEX);
+    #endif
+
+        strcpy(systemString, newString);                                                                                    // copy the actual string
+        systemString[strlen(newString)] = term_semicolon[0];
+        systemString[strlen(newString) + 1] = '\0';
+    }
 }
 
 

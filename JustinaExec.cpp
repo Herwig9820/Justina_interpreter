@@ -111,7 +111,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         }
 
         bool isOperator = (isTerminal ? (_terminals[tokenIndex].terminalCode <= termcod_opRangeEnd) : false);
-        bool isSemicolon = (isTerminal ? (_terminals[tokenIndex].terminalCode == termcod_semicolon) : false);
+        bool isSemicolon = (isTerminal ? ((_terminals[tokenIndex].terminalCode == termcod_semicolon) || (_terminals[tokenIndex].terminalCode == termcod_semicolon_BPset)
+            || (_terminals[tokenIndex].terminalCode == termcod_semicolon_BPallowed)) : false);
         bool isComma = (isTerminal ? (_terminals[tokenIndex].terminalCode == termcod_comma) : false);
         bool isLeftPar = (isTerminal ? (_terminals[tokenIndex].terminalCode == termcod_leftPar) : false);
         bool isRightPar = (isTerminal ? (_terminals[tokenIndex].terminalCode == termcod_rightPar) : false);
@@ -150,7 +151,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             #endif
                 bool skipStatement = ((_resWords[tokenIndex].restrictions & cmd_skipDuringExec) != 0);
                 if (skipStatement) {
-                    findTokenStep(_programCounter, true, tok_isTerminalGroup1, termcod_semicolon);            // find semicolon (always match)
+                    findTokenStep(_programCounter, true, tok_isTerminalGroup1, termcod_semicolon, termcod_semicolon_BPset, termcod_semicolon_BPallowed);            // find semicolon (always match)
                     _activeFunctionData.pNextStep = _programCounter;
                     break;
                 }
@@ -219,8 +220,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             break;
 
 
-            // Case: process external cpp function token
-            // -----------------------------------------
+            // Case: process external (user) cpp function token
+            // ------------------------------------------------
 
             case tok_isExternCppFunction:
             {
@@ -538,7 +539,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                                 do {
                                     tokenType = jumpTokens(1, pStep, tokenCode);        // check next parsed token
                                     bool isTerminal = ((tokenType == tok_isTerminalGroup1) || (tokenType == tok_isTerminalGroup2) || (tokenType == tok_isTerminalGroup3));
-                                    bool nextExpressionFound = isTerminal ? (tokenCode != termcod_semicolon) : (tokenType != tok_isEvalEnd);
+                                    bool nextExpressionFound = isTerminal ? ((tokenCode != termcod_semicolon) && (tokenCode != termcod_semicolon_BPset) && (tokenCode != termcod_semicolon_BPallowed)) :
+                                        (tokenType != tok_isEvalEnd);
                                     if (nextExpressionFound) { break; }      // not last expression
                                 } while ((*pStep & 0x0F) != tok_isEvalEnd);             // always match
                                 if (tokenType != tok_isEvalEnd) { clearEvalStackLevels(1); }                                        // a next expression is found: delete the current expression's result
@@ -709,7 +711,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                         }
                     }
                     // skip a statement in program memory: adapt program step pointers
-                    findTokenStep(_programCounter, true, tok_isTerminalGroup1, termcod_semicolon);  // find next semicolon (always match)
+                    findTokenStep(_programCounter, true, tok_isTerminalGroup1, termcod_semicolon, termcod_semicolon_BPset, termcod_semicolon_BPallowed);  // find next semicolon (always match)
                     _activeFunctionData.pNextStep = _programCounter += sizeof(TokenIsTerminal);
                     tokenType = *_activeFunctionData.pNextStep & 0x0F;                                                              // next token type (could be token within caller, if returning now)
                     precedingIsComma = false;
@@ -956,10 +958,9 @@ bool Justina_interpreter::trapError(bool& isEndOfStatementSeparator, execResult_
     // -------------------------------------------------------------------------------------------------------------
 
     // did the error occur in a Justina function (or the (debug) command line) where error trapping is enabled ?  
-    bool trapError = ((_activeFunctionData.blockType == block_JustinaFunction) && (bool)_activeFunctionData.trapEnable);
-
+    bool trapErrorHere = ((_activeFunctionData.blockType == block_JustinaFunction) && (bool)_activeFunctionData.trapEnable);
     // error trapping is NOT enbled where the error occurred (a Justina function or possibly an eval() string): check if error trapping is enabled for caller levels
-    if (!trapError) {
+    if (!trapErrorHere) {
         bool levelsBeneath = (_activeFunctionData.blockType == block_eval) ||
             ((_activeFunctionData.blockType == block_JustinaFunction) && (_activeFunctionData.pNextStep < (_programStorage + _progMemorySize)));
 
@@ -969,15 +970,16 @@ bool Justina_interpreter::trapError(bool& isEndOfStatementSeparator, execResult_
 
             OpenFunctionData* pFlowCtrlStackLvl = (OpenFunctionData*)_pFlowCtrlStackTop;
             while (pFlowCtrlStackLvl != nullptr) {
-                if ((pFlowCtrlStackLvl->blockType == block_JustinaFunction) && (bool)pFlowCtrlStackLvl->trapEnable) { trapError = true; break; }
+                trapErrorHere = ((pFlowCtrlStackLvl->blockType == block_JustinaFunction) && (bool)pFlowCtrlStackLvl->trapEnable);
+                if (trapErrorHere) { break; }
                 bool isCmdLevel = (pFlowCtrlStackLvl->blockType == block_JustinaFunction) && (pFlowCtrlStackLvl->pNextStep >= (_programStorage + _progMemorySize));
-                if (isCmdLevel) { break; }           // (debug) command line reached and checked: do not search previously stopped programs
+                if (isCmdLevel) { trapErrorHere = false; break; }           // (debug) command line reached and checked: do not search previously stopped programs
                 pFlowCtrlStackLvl = (OpenFunctionData*)flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
             }
         }
     }
 
-    if (!trapError) { return false; }           // error not trapped: quit
+    if (!trapErrorHere) { return false; }           // error not trapped: quit
 
 
     // B. If error trapping is enabled in a CALLER (could be the (debug) command level) of the function where error trapping is enabled:
@@ -1005,7 +1007,7 @@ bool Justina_interpreter::trapError(bool& isEndOfStatementSeparator, execResult_
 
     bool isBlockStartMiddleCommand = ((_activeFunctionData.activeCmd_ResWordCode == cmdcod_for) || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_while) || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_if)
         || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_elseif));
-    
+
     if (isBlockStartMiddleCommand) {    // the error occurs in a block start or block middle command ? ?
         // has a flow ctrl stack entry for the open block been created already ? delete it
         // -> error in block start command AND not yet executed statement separator ? block is not created yet: don't delete block
@@ -1030,20 +1032,19 @@ bool Justina_interpreter::trapError(bool& isEndOfStatementSeparator, execResult_
         } while (true);
     }
 
-    
+
     // D. if an error is trapped before the statement separator was executed, advance to the statement separator now
     //    -> note that an error during processing of end of statement separator can only occur while executing a command
     // -----------------------------------------------------------------------------------------------------------------
 
     if (!isEndOfStatementSeparator) {
-        findTokenStep(_activeFunctionData.pNextStep, false, tok_isTerminalGroup1, termcod_semicolon);             // find semicolon (always match)
+        findTokenStep(_activeFunctionData.pNextStep, false, tok_isTerminalGroup1, termcod_semicolon, termcod_semicolon_BPset, termcod_semicolon_BPallowed);             // find semicolon (always match)
         jumpTokens(1, _activeFunctionData.pNextStep);                                                               // first token after semicolon
-        ////Serial.print("**** to token step: "); {Serial.println(_activeFunctionData.pNextStep - _programStorage); }
         isEndOfStatementSeparator = true;
     }
 
 
-    // D. Finalise: clear the error condition but remember error number
+    // E. Finalise: clear the error condition but remember error number
     // ----------------------------------------------------------------
 
     _trappedErrorNumber = (int)execResult; execResult = result_execOK;
@@ -1056,7 +1057,7 @@ bool Justina_interpreter::trapError(bool& isEndOfStatementSeparator, execResult_
 #endif
 
     return true;            // error trapped
-    }
+}
 
 
 
@@ -1122,7 +1123,7 @@ int Justina_interpreter::jumpTokens(int n, char*& pStep, int& tokenCode) {
 // *   advance until specific token   *
 // ------------------------------------
 
-int Justina_interpreter::findTokenStep(char*& pStep, bool excludeCurrent, int tokenType_spec, char criterium1, char criterium2) {
+int Justina_interpreter::findTokenStep(char*& pStep, bool excludeCurrent, int tokenType_spec, char criterium1, char criterium2, char criterium3, int* matchedCritNum, int* pTokenIndex) {
 
     // pStep: pointer to first token to test versus token group and (if applicable) token code
     // tokenType: if 'tok_isTerminalGroup1', test for the three terminal groups !
@@ -1130,6 +1131,8 @@ int Justina_interpreter::findTokenStep(char*& pStep, bool excludeCurrent, int to
     // if looking for a specific reserved word or a specific terminal (optionally you can specify two)
     char& tokenCode1_spec = criterium1;                                                                         // keyword index or terminal index to look for
     char& tokenCode2_spec = criterium2;                                                                         // optional second index (-1 if only one index to look for)
+    char& tokenCode3_spec = criterium3;                                                                         // optional second index (-1 if only one index to look for)
+    *matchedCritNum = 0;                                                                                          // no match yet
 
     // if looking for a specific variable
     char& varScope_spec = criterium1;                                                                           // variable scope to look for (user, global, ...)
@@ -1161,7 +1164,11 @@ int Justina_interpreter::findTokenStep(char*& pStep, bool excludeCurrent, int to
                 {
                     int tokenIndex = (((TokenIsResWord*)pStep)->tokenIndex);
                     tokenCodeMatch = _resWords[tokenIndex].resWordCode == tokenCode1_spec;
-                    if (!tokenCodeMatch && (tokenCode2_spec != -1)) { tokenCodeMatch = _resWords[tokenIndex].resWordCode == tokenCode2_spec; }
+                    if (tokenCodeMatch) { *matchedCritNum = 1; *pTokenIndex = tokenIndex;  break; }
+                    tokenCodeMatch = _resWords[tokenIndex].resWordCode == tokenCode2_spec;
+                    if (tokenCodeMatch) { *matchedCritNum = 2; *pTokenIndex = tokenIndex;  break; }
+                    tokenCodeMatch = _resWords[tokenIndex].resWordCode == tokenCode3_spec;
+                    if (tokenCodeMatch) { *matchedCritNum = 3; *pTokenIndex = tokenIndex; }
                 }
                 break;
 
@@ -1170,7 +1177,11 @@ int Justina_interpreter::findTokenStep(char*& pStep, bool excludeCurrent, int to
                     int tokenIndex = ((((TokenIsTerminal*)pStep)->tokenTypeAndIndex >> 4) & 0x0F);
                     tokenIndex += ((tokenType == tok_isTerminalGroup2) ? 0x10 : (tokenType == tok_isTerminalGroup3) ? 0x20 : 0);
                     tokenCodeMatch = _terminals[tokenIndex].terminalCode == tokenCode1_spec;
-                    if (!tokenCodeMatch && (tokenCode2_spec != -1)) { tokenCodeMatch = _resWords[tokenIndex].resWordCode == tokenCode2_spec; }
+                    if (tokenCodeMatch) { *matchedCritNum = 1; *pTokenIndex = tokenIndex; break; }
+                    tokenCodeMatch = _terminals[tokenIndex].terminalCode == tokenCode2_spec;
+                    if (tokenCodeMatch) { *matchedCritNum = 2; *pTokenIndex = tokenIndex;   break; }
+                    tokenCodeMatch = _terminals[tokenIndex].terminalCode == tokenCode3_spec;
+                    if (tokenCodeMatch) { *matchedCritNum = 3; *pTokenIndex = tokenIndex; }
                 }
                 break;
 
@@ -1179,6 +1190,7 @@ int Justina_interpreter::findTokenStep(char*& pStep, bool excludeCurrent, int to
                     int varScope = ((TokenIsVariable*)pStep)->identInfo & var_scopeMask;
                     int valueIndex = ((TokenIsVariable*)pStep)->identValueIndex;
                     tokenCodeMatch = (varScope == (varScope_spec & var_scopeMask)) && ((valueIndex_spec == -1) ? true : (valueIndex == tokenCode2_spec));
+                    if(tokenCodeMatch){*pTokenIndex=valueIndex;}
                 }
                 break;
 
@@ -1248,7 +1260,7 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
 
     if ((lastValueNumeric) || (!lastValueNumeric && (lastvalue.value.pStringConst == nullptr))) {
         lastResultValueFiFo[0] = lastvalue.value;
-}
+    }
     // new last value is a non-empty string: make a copy of the string and store a reference to this new string
     else {
         int stringlen = min(strlen(lastvalue.value.pStringConst), MAX_ALPHA_CONST_LEN);                         // excluding terminating \0
@@ -1383,12 +1395,12 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, b
                             delete[] _activeFunctionData.ppSourceVarTypes;
                         }
                     }
-            }
+                }
                 else {                                                              // immediate mode 'function' (the start of ANY program)
                     if (terminateOneProgramOnly) { programsYetToTerminate--; }
                 }
                 if (!isInitialLoop) { --_callStackDepth; }                          // one function removed from the call stack
-        }
+            }
 
             else if (blockType == block_eval) {
                 if (!isInitialLoop) { --_callStackDepth; }
@@ -1402,8 +1414,8 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, b
 
             if (pFlowCtrlStackLvl == nullptr) { break; }       // all done
             isInitialLoop = false;
-    } while (true);
-}
+        } while (true);
+    }
 
     _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
 }
@@ -1923,7 +1935,11 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
 
         case termcod_div:
         case termcod_divAssign:
-            if (opResultFloat) { if ((operand1.floatConst != 0) && (operand2.floatConst == 0)) { return result_divByZero; } }
+            if (opResultFloat) {
+                if ((operand1.floatConst != 0) && (operand2.floatConst == 0)) {
+                    return result_divByZero;
+                }
+            }
             else { if (operand2.longConst == 0) { return (operand1.longConst == 0) ? result_undefined : result_divByZero; } }
             opResultLong ? opResult.longConst = operand1.longConst / operand2.longConst : opResult.floatConst = operand1.floatConst / operand2.floatConst;
             if (opResultFloat) {
@@ -2060,7 +2076,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
                 // compound assignment: pointing to the unclipped result WHICH IS NON-EMPTY: so it's a heap object and must be deleted now
                 delete[] pUnclippedResultString;
             }
-    }
+        }
 
         // store value in variable and adapt variable value type - next line is valid for long integers as well
         if (opResultLong || opResultFloat) { *_pEvalStackMinus2->varOrConst.value.pFloatConst = opResult.floatConst; }
@@ -2074,7 +2090,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) |
                 (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
         }
-}
+    }
 
 
     // (7) post process
@@ -2206,7 +2222,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execExternalCppFunctio
         #endif
             strcpy(fcnResult.pStringConst, temp);
         }
-        }
+    }
 
     pStackLvl = pFirstArgStackLvl;                                                                             // set stack level again to first value argument
     for (int i = 0; i < suppliedArgCount; i++) {
@@ -2254,7 +2270,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execExternalCppFunctio
     _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
 
     return result_execOK;
-    }
+}
 
 
 // -------------------------------
@@ -2372,7 +2388,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
     char* pParsingInput_temp = pEvalParsingInput;                                                           // temp, because value will be changed upon return (preserve original pointer value)
     // note: application flags are not adapted (would not be passed to caller immediately)
     int dummy{};
-    parseTokenResult_type result = parseStatement(pParsingInput_temp, pDummy, dummy);                       // parse all eval() expressions in ONE go (which is not the case for standard parsing and trace string parsing)
+    parsingResult_type result = parseStatement(pParsingInput_temp, pDummy, dummy);                       // parse all eval() expressions in ONE go (which is not the case for standard parsing and trace string parsing)
 #if PRINT_HEAP_OBJ_CREA_DEL
     _pDebugOut->print("----- (system var str) "); _pDebugOut->println((uint32_t)pEvalParsingInput, HEX);
 #endif
@@ -2380,7 +2396,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
     delete[] pEvalParsingInput;
     _parsingEvalString = false;
 
-    if (result != result_tokenFound) {
+    if (result != result_parsing_OK) {
         // immediate mode program memory now contains a PARTIALLY parsed eval() expression string...
         // ...(up to the token producing a parsing error) and a few string constants may have been created in the process.
         // restore the situation from BEFORE launching the parsing of this now partially parsed eval() expression:   
@@ -2494,14 +2510,14 @@ void Justina_interpreter::initFunctionParamVarWithSuppliedArg(int suppliedArgCou
                         strcpy(_activeFunctionData.pLocalVarValues[i].pStringConst, tempString);
                     }
                 };
-                }
+            }
 
             // if intermediate constant string, then delete char string object (tested within called routine)            
             deleteIntermStringObject(pStackLvl);
             pStackLvl = (LE_evalStack*)evalStack.deleteListElement(pStackLvl);                                              // argument saved: remove argument from stack and point to next argument
-            }
-            }
         }
+    }
+}
 
 
 // ------------------------------------------------------------------------------------------------------------
@@ -2556,7 +2572,7 @@ void Justina_interpreter::initFunctionDefaultParamVariables(char*& pStep, int su
     }
 
     // skip (remainder of) function definition
-    findTokenStep(pStep, true, tok_isTerminalGroup1, termcod_semicolon);
+    findTokenStep(pStep, true, tok_isTerminalGroup1, termcod_semicolon, termcod_semicolon_BPset, termcod_semicolon_BPallowed);
 };
 
 
@@ -2757,7 +2773,7 @@ void Justina_interpreter::terminateJustinaFunction(bool addZeroReturnValue) {
         #endif
             _localVarStringObjectErrors += abs(_localVarStringObjectCount);
             _localVarStringObjectCount = 0;
-}
+        }
 
         if (_localArrayObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
