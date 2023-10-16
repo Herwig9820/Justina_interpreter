@@ -136,6 +136,8 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"clearBP",         cmdcod_clearBP,         cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
     {"enableBP",        cmdcod_enableBP,        cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
     {"disableBP",       cmdcod_disableBP,       cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
+    {"stopAtBP",        cmdcod_stopatBP,        cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
+    {"continueAtBP",    cmdcod_continueatBP,    cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
 
     {"raiseError",      cmdcod_raiseError,      cmd_onlyImmOrInsideFuncBlock,                           1,1,    cmdPar_104,     cmdBlockNone},
     {"trapErrors",      cmdcod_trapErrors,      cmd_onlyImmOrInsideFuncBlock,                           1,1,    cmdPar_104,     cmdBlockNone},
@@ -587,12 +589,8 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
     if (_progMemorySize + IMM_MEM_SIZE > pow(2, 16)) { _progMemorySize = pow(2, 16) - IMM_MEM_SIZE; }
     _programStorage = new char[_progMemorySize + IMM_MEM_SIZE];
 
-    _pBreakpoints= new Breakpoints();
-    _pBreakpoints->setJustinaRef(this);  //// naar Breakpoints constructor
-
-    _pBreakpoints->_BPLineRangeMemorySize = (_progMemorySize * STORAGE_RATIO_PROGMEM_BPSOURCELINES) / 100;      //// naar Breakpoints constructor 
-    _pBreakpoints->_BPlineRangeStorage = new char[_pBreakpoints->_BPLineRangeMemorySize];                       //// naar Breakpoints constructor
-
+    _pBreakpoints= new Breakpoints(this, (_progMemorySize * BP_LINE_RANGE_PROGMEM_STOR_RATIO) / 100, MAX_BP_COUNT);
+    
     // current print column is maintened for each stream separately: init
     _pIOprintColumns = new int[_externIOstreamCount];
     for (int i = 0; i < _externIOstreamCount; i++) {
@@ -622,7 +620,6 @@ Justina_interpreter::~Justina_interpreter() {
         _housekeepingCallback = nullptr;
         delete[] _programStorage;
         delete[] _pBreakpoints;
-        delete[] _pBreakpoints->_BPlineRangeStorage;
         delete[] _pIOprintColumns;
     }
 
@@ -746,9 +743,6 @@ bool Justina_interpreter::run() {
     _semicolonBPallowed_token |= ((semicolonBPallowed_index & 0x0F) << 4);
     _semicolonBPset_token = (semicolonBPset_index <= 0x0F) ? tok_isTerminalGroup1 : (semicolonBPset_index <= 0x1F) ? tok_isTerminalGroup2 : tok_isTerminalGroup3;
     _semicolonBPset_token |= ((semicolonBPset_index & 0x0F) << 4);
-
-    int BPmaxEntries = sizeof(_pBreakpoints->_breakpointData) / sizeof(_pBreakpoints->_breakpointData[0]);
-    for (int i = 0; i < BPmaxEntries; i++){ _pBreakpoints->_breakpointData[i].hasBPdata=0x0; }
 
     _programMode = false;
     _programCounter = _programStorage + _progMemorySize;
@@ -877,7 +871,7 @@ bool Justina_interpreter::run() {
 
                 // if the statement to be parsed starts at the beginning of a source line (not preceded by a previous statement or the end of a previous statement), during execution...
                  // ... it will be allowed to set a breakpoint for this source line (given that the statement is not 'parsing only'). This procedure stores necessary data to enable this functionality.
-                result = _pBreakpoints->addBreakpointData(_semicolonBPallowed_token, parsedStatementStartsOnNewLine, parsedStatementStartLinesAdjacent, statementStartsAtLine, parsedStatementStartsAtLine,
+                result = _pBreakpoints->collectSourceLineRangePairs(_semicolonBPallowed_token, parsedStatementStartsOnNewLine, parsedStatementStartLinesAdjacent, statementStartsAtLine, parsedStatementStartsAtLine,
                     BPstartLine, BPendLine, BPpreviousEndLine);
 
                 if (result == result_parsing_OK) { result = parseStatement(pStatement, pDummy, clearCmdIndicator); }       // parse ONE statement only 
@@ -899,7 +893,7 @@ bool Justina_interpreter::run() {
 
             // last gap range and adjacent source line "start of statement" range of source file
             if (_programMode && allCharsReceived) {
-                result = _pBreakpoints->addSourceLineRangePair(BPstartLine - BPpreviousEndLine - 1, BPendLine - BPstartLine + 1);
+                result = _pBreakpoints->addOneSourceLineRangePair(BPstartLine - BPpreviousEndLine - 1, BPendLine - BPstartLine + 1);
             }
 
             // program mode: complete program read and parsed   /   imm. mode: all statements in command line read and parsed OR parsing error ?
@@ -1519,6 +1513,8 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
     // delete parsing stack (keeps track of open parentheses and open command blocks during parsing)
     parsingStack.deleteList();
 
+    // reset Breakpoints objects and variables
+    _pBreakpoints->resetBreakpointsState();
 
     // check that all heap objects are deleted (in fact only the count is checked)
     // ---------------------------------------------------------------------------
@@ -1656,7 +1652,6 @@ void Justina_interpreter::initInterpreterVariables(bool fullReset) {
     *_programStorage = tok_no_token;                                                                            //  set as current end of program 
     *(_programStorage + _progMemorySize) = tok_no_token;                                                        //  set as current end of program (immediate mode)
     _programCounter = _programStorage + _progMemorySize;                                                        // start of 'immediate mode' program area
-    _pBreakpoints->_BPlineRangeStorageUsed = 0;
 
     _programName[0] = '\0';
 

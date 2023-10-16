@@ -113,11 +113,11 @@ public:
 // ***                class Justina_interpreter                  ***
 // *****************************************************************
 
-class Breakpoints;
+class Breakpoints;                          // forward declaration
 
 class Justina_interpreter {
     friend class Breakpoints;
-    
+
     // --------------------
     // *   enumerations   *
     // --------------------
@@ -193,6 +193,8 @@ class Justina_interpreter {
         cmdcod_clearBP,
         cmdcod_enableBP,
         cmdcod_disableBP,
+        cmdcod_stopatBP,
+        cmdcod_continueatBP,
         cmdcod_nop,
         cmdcod_raiseError,
         cmdcod_trapErrors,
@@ -456,7 +458,6 @@ class Justina_interpreter {
     };
 
     // error codes for all PARSING errors
-    public:
     enum parsingResult_type {                                        // token parsing result
         result_parsing_OK = 0,                                          // no error
 
@@ -706,8 +707,9 @@ class Justina_interpreter {
     // constants that may be changed freely within specific boundaries
     // ---------------------------------------------------------------
 
-    static constexpr uint16_t IMM_MEM_SIZE{ 400 };                      // size, in bytes, of user command memory (stores parsed user statements)
-    static constexpr uint16_t STORAGE_RATIO_PROGMEM_BPSOURCELINES{ 5 }; // source line range storage for debugging with breakpoints: % of program storage 
+    static constexpr uint16_t IMM_MEM_SIZE{ 400 };                      // size, in bytes, of user command memory (stores parsed user statements entered from the keyboard)
+    static constexpr uint16_t BP_LINE_RANGE_PROGMEM_STOR_RATIO{ 5 };    // breakpoints: source line range storage as a % of program storage 
+    static constexpr uint16_t MAX_BP_COUNT{ 10 };                         // breakpoints: maximum number of set breakpoints 
 
     static constexpr int MAX_USERVARNAMES{ 255 };                       // max. user variables allowed. Absolute parser limit: 255
     static constexpr int MAX_PROGVARNAMES{ 255 };                       // max. program variable NAMES allowed (same name may be reused for global, static, local & parameter variables). Absolute limit: 255
@@ -1180,7 +1182,7 @@ private:
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na, block_na, block_na };                                      // not a 'block' command
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[73];                                                                                      // keyword names
+    static const ResWordDef _resWords[75];                                                                                      // keyword names
     static const InternCppFuncDef _internCppFunctions[138];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
     static const SymbNumConsts _symbNumConsts[70];                                                                              // predefined constants
@@ -1673,7 +1675,7 @@ private:
 
     bool _debugCmdExecuted{ false };                                // a debug command was executed
 
-    Breakpoints* _pBreakpoints{nullptr};
+    Breakpoints* _pBreakpoints{ nullptr };
 
     // error trapping
     // --------------
@@ -2110,22 +2112,18 @@ private:
 
 };
 
-// ------------------------------------
-// //
-// ----------------------------------
-// 
-// maintaining breakpoints
-// -----------------------
+// ******************************************************************
+// ***                     class Breakpoints                      ***
+// ******************************************************************
 
 class Breakpoints {
     friend class Justina_interpreter;
 
-
     Justina_interpreter* _pJustina;
 
     struct BreakpointData {
-        char hasBPdata : 1;                       // line stores information
         char BPenabled : 1;                       // breakpoint is enabled (program will halt)
+        char stopAtBP : 1;
         char BPwithViewExpr : 1;
         char BPwithHitCount : 1;
         char BPwithTriggerExpr : 1;
@@ -2134,30 +2132,34 @@ class Breakpoints {
         char* pProgramStep{ nullptr };                // compare with current program counter to find breakpoint entry 
         char* pView{ nullptr };                         // pointer to view expression (string)
         char* pTrigger{ nullptr };                  // pointer to trigger expression (string)
-        long hitCount;                              // pointer to number of hits triggering breakpoint
-        long hitCounter;                                // hit counter
+        long hitCount{0};                              // pointer to number of hits triggering breakpoint
+        long hitCounter{0};                                // hit counter
     };
 
-    char* _BPlineRangeStorage{ nullptr };                                      // pointer to start of array keeping track of source line ranges for debugging with breakpoints
     long _BPLineRangeMemorySize{};
+    long _maxBreakpointCount{};
+    char* _BPlineRangeStorage{ nullptr };                                      // pointer to start of array keeping track of source line ranges for debugging with breakpoints
     long _BPlineRangeStorageUsed{ 0 };
-
-    BreakpointData _breakpointData[10];
+    BreakpointData* _pBreakpointData{ nullptr };
     int _breakpointsUsed{ 0 };
 
-    void setJustinaRef(Justina_interpreter* pJustina);
+    // methods
+    Breakpoints(Justina_interpreter* pJustina, long lineRanges_memorySize, long maxBreakpointCount);
+    ~Breakpoints();
+
+    void resetBreakpointsState();
 
     // after program parsing
-    Justina_interpreter::parsingResult_type addBreakpointData(const char semiColonBPallowed_token, bool& parsedStatementStartsOnNewLine, bool& parsedStatementStartLinesAdjacent,
+    Justina_interpreter::parsingResult_type collectSourceLineRangePairs(const char semiColonBPallowed_token, bool& parsedStatementStartsOnNewLine, bool& parsedStatementStartLinesAdjacent,
         long& statementStartsAtLine, long& parsedStatementStartsAtLine, long& BPstartLine, long& BPendLine, long& BPpreviousEndLine);
-    Justina_interpreter::parsingResult_type addSourceLineRangePair(long gapLineRange, long adjacentLineRange);
+    Justina_interpreter::parsingResult_type addOneSourceLineRangePair(long gapLineRange, long adjacentLineRange);
 
     // maintaining breakpoints
-    Justina_interpreter::execResult_type maintainBPdata(long breakpointLine, char actionCmdCode, const char* viewString = nullptr, long hitCount = 0, const char* triggerString = nullptr);
+    Justina_interpreter::execResult_type maintainBPdata(long breakpointLine, char actionCmdCode, int extraAttribCount=0, const char* viewString = nullptr, long hitCount = 0, const char* triggerString = nullptr);
     long BPgetsourceLineSequenceNumber(long BPsourceLine);
     Justina_interpreter::execResult_type progMem_getSetClearBP(long lineSequenceNum, char*& pProgramStep, bool& BPwasSet, bool doSet, bool doClear);
-    Justina_interpreter::execResult_type maintainBreakpointTable(long sourceLine, char* pProgramStep, bool BPwasSet, bool doSet, bool doClear, bool doEnable, bool doDisable,
-        const char* viewString, long hitCount, const char* triggerString);
+    Justina_interpreter::execResult_type maintainBreakpointTable(long sourceLine, char* pProgramStep, bool BPwasSet, bool doSet, bool doClear, bool doEnable, bool doDisable, bool stopAt, bool doContinueAt,
+        int extraAttribCount, const char* viewString, long hitCount, const char* triggerString);
     void  printBreakpoints();
 };
 

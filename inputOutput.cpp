@@ -919,7 +919,6 @@ void Justina_interpreter::printVariables(bool userVars) {
         }
     }
     if (!linesPrinted) { println("    (none)"); }
-    println();
 }
 
 
@@ -964,7 +963,6 @@ void Justina_interpreter::printCallStack() {
         }
     }
     else  println("(no program running)");
-    println();
 }
 
 // -----------------------------------------
@@ -1246,8 +1244,8 @@ void Justina_interpreter::printParsingResult(parsingResult_type result, int func
 
     if (strlen(parsingInfo) > 0) { printlnTo(0, parsingInfo); _lastPrintedIsPrompt = false; }
 
+    if (_programMode&& (result == result_parsing_OK)) { Serial.print("*** range pairs: number of bytes used = "); Serial.println(_pBreakpoints->_BPlineRangeStorageUsed); }
 };
-
 
 
 // -----------------------------------------------------------------------------------------

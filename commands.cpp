@@ -332,6 +332,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         case cmdcod_clearBP:
         case cmdcod_enableBP:
         case cmdcod_disableBP:
+        case cmdcod_stopatBP:
+        case cmdcod_continueatBP:
         {
             // all commands:   source line number [, source line number, ...]
             // set breakpoint: source line number, view string [, trigger string] - or -
@@ -377,9 +379,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 }
             }
 
-            // set one breakpoint with view expression and hit count or with view expression and optional trigger expression ? 
+            // set one breakpoint with view expression and, optionally, hit count or trigger expression ?
             if (isWithViewExpression) {
-                execResult = _pBreakpoints->maintainBPdata(sourceLine, _activeFunctionData.activeCmd_ResWordCode, viewExprBP1, hitCountBP1, triggerExprBP1);
+                int extraAttribCount = cmdArgCount - 1;
+                execResult = _pBreakpoints->maintainBPdata(sourceLine, _activeFunctionData.activeCmd_ResWordCode, extraAttribCount, viewExprBP1, hitCountBP1, triggerExprBP1);
                 if (execResult != result_execOK) { return execResult; }
             }
 
@@ -1256,8 +1259,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         #endif
                             _intermediateStringObjectCount--;
                             delete[] oldAssembString;
-                        }
                     }
+                }
 
                     else {      // print to file or console ?
                         if (printString != nullptr) {
@@ -1276,11 +1279,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] printString;
-                    }
-                }
+            }
+        }
 
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-            }
+    }
 
             // finalise
             if (isPrintToVar) {                                                                                             // print to string ? save in variable
@@ -1296,9 +1299,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] assembledString;
-                    }
-                    return execResult;
                 }
+                    return execResult;
+            }
 
                 // print line end without supplied arguments for printing: a string object does not exist yet, so create it now
                 if (doPrintLineEnd) {
@@ -1338,7 +1341,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 }
 
                 if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) { delete[] assembledString; }                            // not referenced in eval. stack (clippedString is), so will not be deleted as part of cleanup
-            }
+}
 
             else {      // print to file or external IO
                 if (doPrintLineEnd) {
@@ -1392,6 +1395,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
             if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printVars) {
                 printVariables(true);                                                                                       // print user variables
+                println();
                 printVariables(false);                                                                                      // print global program variables
             }
             else if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printCallSt) { printCallStack(); }
@@ -1983,7 +1987,7 @@ void Justina_interpreter::replaceSystemStringValue(char*& systemString, const ch
         _systemVarStringObjectCount--;
         delete[] systemString;
         systemString = nullptr;
-    }
+}
 
     // COPY new string in system variable (no move)
     if (newString != nullptr) {                                                                                        // new trace string

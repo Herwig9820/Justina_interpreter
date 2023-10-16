@@ -132,7 +132,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
             // open file and retrieve file number
             execResult_type execResult = SD_open(newFileNumber, args[0].pStringConst, mode);
-            if ((execResult != result_execOK) && (execResult != result_SD_couldNotOpenFile)) { return execResult; }
+            if (execResult != result_execOK) { return execResult; }
 
             // save file number as result
             fcnResultValueType = value_isLong;
