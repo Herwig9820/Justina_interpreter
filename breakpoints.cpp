@@ -77,28 +77,28 @@ void Breakpoints::resetBreakpointsState() {
 // ******************************
 
 /*
-A user must be able to set a breakpoint for each source line having a statement STARTING at the START of the source line (discarding spaces).
-The breakpoint can then be set for that statement. To accomplish that, during program parsing, the line number of these source lines 
-must be 'remembered' and linked to parsed statements. To do this with a minimal use of memory, Justina stores pairs of line range sizes, as follows: 
-each pair consists of the 'gap' size (number of lines) between the end of a previous range of valid lines (or the beginning of the source file) and  
+A user must be able to set a breakpoint for each source line having at least one statement STARTING at the source line.
+To accomplish that, during program parsing, the line numbers of these source lines must be 'remembered' and linked to parsed statements. 
+To do this with a minimal use of memory, Justina stores pairs of line range sizes, as follows:
+each pair consists of the 'gap' size (number of lines) between the end of a previous range of valid lines (or the beginning of the source file) and
 the beginning of a next range of 'valid' source lines (lines where a breakpoint can be set). This information is stored in a table WITHOUT any impact
 on the memory required for parsed statements (program memory).
-- gap size is less than 8 source lines and valid range size is less than 16 source lines: 1 byte are required in range pair table
+- gap size is less than 8 source lines and valid range size is less than 16 source lines: 1 byte is required in range pair table
 - gap size is less than 128 source lines and valid range size is less than 128 source lines: 2 bytes are required in range pair table
 - gap size is less than 2048 source lines and valid range size is less than 2048 source lines: 3 bytes are required in range pair table
 Larger line range sizes will produce an error.
 
-At the same time, during program parsing, statements for which setting a breakpoint is allowed, are marked by altering the statement separator preceding 
+At the same time, during program parsing, statements for which setting a breakpoint is allowed, are marked by altering the statement separator preceding
 the parsed statement. This does NOT consume any extra memory.
 
-For each source line included in the range pair table, exactly one parsed statement has received the marking 'breakpoint allowed' (1-to-1).
-When a user sets, clears, ... a breakpoint later during debugging the program, the line sequence number of the source line in the range pair table 
+For each source line included in the range pair table, exactly one parsed statement receives the marking 'breakpoint allowed' (1-to-1).
+When a user sets, clears, ... a breakpoint later during debugging the program, the line sequence number of the source line in the range pair table
 is established first. Then the parsed program is scanned, counting only statements marked as 'breakpoint allowed', until the parsed statement matching
-the source line statement is found. 
+the source line statement is found.
 
-Example: 'gap-valid range' pairs 3,5,7,2 show that the source file consists of 3+5+7+2 = 17 lines; lines 4->8 and lines 16->17 are valid source lines.
+Example: 'gap range-valid range' pairs 3,5,7,2 show that the source file consists of 3+5+7+2 = 17 lines; lines 4->8 and lines 16->17 are valid source lines.
 A total of 5+2 = 7 parsed statements have been marked as 'breakpoint allowed'.
-If the user wants to set a breakpoint for line 16 for example, as this is the 6th valid line, Justina will find the 6th parsed statement and alter the 
+If the user wants to set a breakpoint for line 16 for example, as this is the 6th valid line, Justina will find the 6th parsed statement and alter the
 preceding statement separator indicating the breakpoint is now set. Additional breakpoint attributes will be maintained in a separate table.
 */
 
@@ -116,7 +116,7 @@ Justina_interpreter::parsingResult_type Breakpoints::collectSourceLineRangePairs
 
     if (!(_pJustina->_programMode && (parsedStatementStartsOnNewLine))) { return Justina_interpreter::parsingResult_type::result_parsing_OK; }          // nothing to do
 
-    // 1. for each statement starting at the beginning of a line: alter the 'end of statement' token of the...
+    // 1. for each 'first' statement starting in a specific source line: alter the 'end of statement' token of the...
     //    ...previously parsed (preceding) statement to indicate 'setting breakpoint allowed' for the statement being parsed.
     // ----------------------------------------------------------------------------------------------------------------------
 
@@ -124,8 +124,8 @@ Justina_interpreter::parsingResult_type Breakpoints::collectSourceLineRangePairs
         *(_pJustina->_programCounter - 1) = semiColonBPallowed_token;
     }
 
-    // 2. maintain source line ranges having statements starting at the beginning of a line
-    // -------------------------------------------------------------------------------------
+    // 2. maintain source line ranges having at least one statement starting on that line
+    // ----------------------------------------------------------------------------------
 
     // start of previous source line also contained start of a parsed statement ? Also rectify for beginning of file
 
@@ -159,7 +159,7 @@ Justina_interpreter::parsingResult_type Breakpoints::collectSourceLineRangePairs
 // ---------------------------------------------------------------------------------------------------------------------------------
 // *   store a pair of program file line range lengths: gap line range length and adjacent line range length                     ***
 // *   - gap source line range length: number of source file lines between previous and this adjacent line range                 ***
-// *   - 'adjacent' source line range length: number of adjacent source file lines with a new statement starting at line start   *** 
+// *   - 'adjacent' source line range length: number of adjacent source file lines with a new statement starting at that line    *** 
 // *   purpose: keep track of source lines where setting a breakpoint (debug mode) is allowed, in a relatively dense format      *** 
 // ---------------------------------------------------------------------------------------------------------------------------------
 
@@ -205,13 +205,13 @@ Justina_interpreter::parsingResult_type Breakpoints::addOneSourceLineRangePair(l
 // *   adapt a breakpoint for a source line   *
 // --------------------------------------------
 
-Justina_interpreter::execResult_type Breakpoints::maintainBPdata(long breakpointLine, char actionCmdCode,int extraAttribCount, const char* viewString, long hitCount, const char* triggerString) {
+Justina_interpreter::execResult_type Breakpoints::maintainBPdata(long breakpointLine, char actionCmdCode, int extraAttribCount, const char* viewString, long hitCount, const char* triggerString) {
 
-    // 1. find source line sequence number (base 0) 
-    // --------------------------------------------
+    // 1. find source line sequence number for line number (base 0) 
+    // ------------------------------------------------------------
 
     // note: line sequence number = line index in the set of source lines having a statement STARTING AT THE START of the source line (discarding spaces)
-    long lineSequenceNum = BPgetsourceLineSequenceNumber(breakpointLine);
+    long lineSequenceNum = BPsourceLineFromToBPlineSequence(breakpointLine, true);
     if (lineSequenceNum == -1) { return  Justina_interpreter::result_BP_notAllowedForSourceLine; }                // not a valid source line (not within source line range or doesn't start with a Justina statement)
 
 
@@ -241,33 +241,39 @@ Justina_interpreter::execResult_type Breakpoints::maintainBPdata(long breakpoint
     // ...that a breakpoint is either set or allowed for the parsed statement).
     // in other words, for each source line with a valid line sequence number, there is exactly one parsed statement where a breakpoint is either set or allowed, and vice versa (1-to-1). 
 
-    execResult = maintainBreakpointTable(breakpointLine, pProgramStep, BPwasSetInProgMem, doSet, doClear, doEnable, doDisable, doStopAt, doContinueAt, extraAttribCount,  viewString, hitCount, triggerString);
+    execResult = maintainBreakpointTable(breakpointLine, pProgramStep, BPwasSetInProgMem, doSet, doClear, doEnable, doDisable, doStopAt, doContinueAt, extraAttribCount, viewString, hitCount, triggerString);
 
     return execResult;
 }
 
 // -------------------------------------------------------------------------------------------------------------------------------------------------------
-// *   return the sequence number of a source line in the set of source lines with statements STARTING at the START of that line (discarding spaces).    *
-// *   if the source line does not contain a statement STARTING at the START of that line (discarding spaces), return -1                                 * 
+// *   return the sequence number of a source line in the set of source lines with at least one statement STARTING at the START of that line.            *
+// *   if the source line does not contain a statement STARTING at that line (discarding spaces), return -1                                              * 
 // -------------------------------------------------------------------------------------------------------------------------------------------------------
 
-long Breakpoints::BPgetsourceLineSequenceNumber(long BPsourceLine) {
+long Breakpoints::BPsourceLineFromToBPlineSequence(long BPlineOrIndex, bool toIndex) {
 
-    long breakpointSourceLineIndex{ 0 };
-    if (BPsourceLine <= 0) { return -1; }                           // signal range error
+    // resp. value in and out; OR value out and in
+    long BPsourceLine{  };
+    long BPsourceLineIndex{  };
+
+    if (toIndex) { BPsourceLine = BPlineOrIndex; if (BPsourceLine < 1) { return -1; } }          // not valid
+    else { BPsourceLineIndex = BPlineOrIndex; if (BPsourceLineIndex < 0) { return -1; } }            // not valid
 
     int i = 0;
-    long BPpreviousEndLine{ 0 };                        // introduce offset 1 here
+    long BPpreviousEndLine{ 0 };                        
+    long BPpreviousEndLineIndex{ -1 };
+
     while (i < _BPlineRangeStorageUsed) {
         long gapLineRange{}, adjacentLineRange{};
 
-        if (!(_BPlineRangeStorage[i] & 0x01)) {       // gap and adjacent source line ranges stored in one byte
+        if (!(_BPlineRangeStorage[i] & 0b1)) {       // LSB = 0b0: gap and adjacent source line ranges stored in one byte
             gapLineRange = (((uint32_t)_BPlineRangeStorage[i]) >> 1) & 0x7;                 // 3 bits long
             adjacentLineRange = (((uint32_t)_BPlineRangeStorage[i]) >> 4) & 0xF;            // 4 bits long
             i++;
         }
 
-        else if ((_BPlineRangeStorage[i] & 0x11) == 0x01) {       // gap and adjacent source line ranges stored in two bytes
+        else if ((_BPlineRangeStorage[i] & 0b11) == 0b01) {       // LSB's = 0b01: gap and adjacent source line ranges stored in two bytes
             uint32_t temp{};
             memcpy(&temp, _BPlineRangeStorage + i, 2);
             gapLineRange = (temp >> 2) & 0x7F;                                              // each 7 bits long
@@ -275,18 +281,30 @@ long Breakpoints::BPgetsourceLineSequenceNumber(long BPsourceLine) {
             i += 2;
         }
 
-        else if ((_BPlineRangeStorage[i] & 0x11) == 0x11) {       // gap and adjacent source line ranges stored in three bytes
+        else if ((_BPlineRangeStorage[i] & 0b11) == 0b11) {       // LSB's = 0b11: gap and adjacent source line ranges stored in three bytes
             uint32_t temp{};
             memcpy(&temp, _BPlineRangeStorage + i, 3);
             gapLineRange = (temp >> 2) & 0x7FF;                                             // each 11 bits long
             adjacentLineRange = (temp >> 13) & 0x7FF;
             i += 3;
         }
-        long BPstartLine = BPpreviousEndLine + gapLineRange + 1;
-        long BPendLine = BPstartLine + adjacentLineRange - 1;
-        BPpreviousEndLine = BPendLine;
-        if ((BPsourceLine >= BPstartLine) && (BPsourceLine <= BPendLine)) { return breakpointSourceLineIndex += (BPsourceLine - BPstartLine); }                // breakpoint index: base 0
-        breakpointSourceLineIndex += BPendLine - BPstartLine + 1;
+
+        if (toIndex) {
+            long BPstartLine = BPpreviousEndLine + gapLineRange + 1;
+            long BPendLine = BPstartLine + adjacentLineRange - 1;
+            BPpreviousEndLine = BPendLine;
+
+            if ((BPsourceLine >= BPstartLine) && (BPsourceLine <= BPendLine)) { return BPsourceLineIndex += (BPsourceLine - BPstartLine); }
+            BPsourceLineIndex += BPendLine - BPstartLine + 1;
+        }
+        else {                                                                                      // to source line
+            long BPstartLineIndex = BPpreviousEndLineIndex + 1;
+            long BPendLineIndex = BPstartLineIndex + adjacentLineRange - 1;
+            BPpreviousEndLineIndex = BPendLineIndex;
+
+            if ((BPsourceLineIndex >= BPstartLineIndex) && (BPsourceLineIndex <= BPendLineIndex)) { return BPsourceLine += (BPsourceLineIndex - BPstartLineIndex) + gapLineRange + 1; }
+            BPsourceLine += BPendLineIndex - BPstartLineIndex + gapLineRange + 1;
+        }
     }
 
     return -1;             // signal range error
@@ -448,3 +466,47 @@ void Breakpoints::printBreakpoints() {
 }
 
 
+// ********************************
+// *** during program execution ***
+// ********************************
+
+// ------------------------------------------------------------------
+// *   find breakpoint table entry for a parsed statement address   *
+// ------------------------------------------------------------------
+
+Breakpoints::BreakpointData* Breakpoints::findBPtableRow(char* pParsedStatement, int &row) {
+    row =-1;
+    for (int i = 0; i < _breakpointsUsed; i++) {
+        if (_pBreakpointData[i].pProgramStep == pParsedStatement) {row=i;  return _pBreakpointData + i; }       // always match
+    }
+};
+
+
+// *********************************
+// ***                           ***
+// *********************************
+
+// ------------------------------------------------------------------
+// *                                                                *
+// ------------------------------------------------------------------
+
+long Breakpoints::findLineNumberForBPstatement(char* pProgramStepToFind) {
+
+    // !!! note that this can be slow if program consists of a large number of statements)
+
+    long lineSequenceNumber{ 0 };
+    int matchedCriteriumNumber{};
+    int matchedSemiColonTokenIndex{ 0 };
+
+    char* pProgramStep = _pJustina->_programStorage;
+
+    // parsed statement corresponding to line sequence number (and source line statement) has been found (always a matching entry): exit
+    while (pProgramStep != pProgramStepToFind - 1) {                                                         
+        // find next semicolon token. It flags whether a breakpoint is allowed for the NEXT statement (pending further tests)   
+        _pJustina->findTokenStep(pProgramStep, true, Justina_interpreter::tok_isTerminalGroup1, Justina_interpreter::termcod_semicolon,
+            Justina_interpreter::termcod_semicolon_BPset, Justina_interpreter::termcod_semicolon_BPallowed, &matchedCriteriumNumber, &matchedSemiColonTokenIndex);    // always match
+        if ((matchedCriteriumNumber >= 2)) { lineSequenceNumber++; }                               // if parsed statement can receive a breakpoint (or breakpoint is set already), increase loop counter
+    };
+
+    long sourceLineNumber = BPsourceLineFromToBPlineSequence(lineSequenceNumber, false);
+}

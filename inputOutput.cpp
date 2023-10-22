@@ -965,6 +965,92 @@ void Justina_interpreter::printCallStack() {
     else  println("(no program running)");
 }
 
+// --------------------------------------
+// *   print execution error or event   *
+// --------------------------------------
+
+void Justina_interpreter::printExecError(execResult_type execResult, bool  showStopmessage) {
+    if (*_pConsolePrintColumn != 0) { printlnTo(0);  *_pConsolePrintColumn = 0; }
+
+    bool isEvent = (execResult >= result_startOfEvents);                                                                // not an error but an event ?
+
+    // plain error, or event ? 
+    if (!isEvent) {
+        int sourceErrorPos{ 0 };
+        int functionNameLength{ 0 };
+        long programCounterOffset{ 0 };
+
+        // if an execution error occurs, normally the info needed to correctly identify and print the statement and the function (if not an imm. mode statement) where the error occurred...
+        // will be found in structure _activeFunctionData.
+        // But if the cause of the STATEMENT execution error is actually a PARSING or EXECUTION error in a (nested or not) eval() string, the info MAY be found in the flow ctrl stack 
+
+        // [1] If a PARSING error occurs while parsing an UNNESTED eval() string, as in statement  a = 3 + eval("2+5*")   (the asterisk will produce a parsing error),
+        // then the info pointing to the correct statement ('caller' of the eval() function) is still available in the active function data structure (block type 'block_JustinaFunction'),  
+        // because the data has not yet been pushed to the flow ctrl stack
+
+        // [2] If a PARSING error occurs while parsing a NESTED eval() string, or an EXECUTION error occurs while executing ANY parsed eval() string (nested or not),
+        // the info pointing to the correct statement has been pushed to the flow ctrl stack already 
+
+        char* errorStatementStartStep = _activeFunctionData.errorStatementStartStep;
+        char* errorProgramCounter = _activeFunctionData.errorProgramCounter;
+        int functionIndex = _activeFunctionData.functionIndex;          // init
+
+        // info to identify and print the statement where the error occurred is on the flow ctrl stack ? find it there
+        if (_activeFunctionData.blockType == block_eval) {
+            void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                                                               // one level below _activeFunctionData
+            char* pImmediateCmdStackLvl = _pParsedCommandLineStackTop;
+
+            while (((OpenFunctionData*)pFlowCtrlStackLvl)->blockType == block_eval) {
+                pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
+                pImmediateCmdStackLvl = parsedCommandLineStack.getPrevListElement(pImmediateCmdStackLvl);
+            }
+
+            // retrieve error statement pointers and function index (in case the 'function' block type is referring to immediate mode statements)
+            errorStatementStartStep = ((OpenFunctionData*)pFlowCtrlStackLvl)->errorStatementStartStep;
+            errorProgramCounter = ((OpenFunctionData*)pFlowCtrlStackLvl)->errorProgramCounter;
+            functionIndex = ((OpenFunctionData*)pFlowCtrlStackLvl)->functionIndex;
+
+            // if the error statement pointers refer to immediate mode code (not to a program), pretty print directly from the imm.mode parsed command stack: add an offset to the pointers 
+            bool isImmMode = (errorStatementStartStep >= (_programStorage + _progMemorySize));
+            if (isImmMode) { programCounterOffset = pImmediateCmdStackLvl + sizeof(char*) - (_programStorage + _progMemorySize); }
+        }
+
+        printTo(0, "\r\n  ");
+        prettyPrintStatements(1, errorStatementStartStep + programCounterOffset, errorProgramCounter + programCounterOffset, &sourceErrorPos);
+        for (int i = 1; i <= sourceErrorPos; ++i) { printTo(0, " "); }
+
+        char execInfo[50 + MAX_IDENT_NAME_LEN] = "";
+        sprintf(execInfo, "  ^\r\n  Exec error %d", execResult);                                                        // in main program level 
+        printTo(0, execInfo);
+
+        // errorProgramCounter is never pointing to a token directly contained in a parsed() eval() string 
+        if (errorProgramCounter >= (_programStorage + _progMemorySize)) { sprintf(execInfo, ""); }
+        else {
+            long sourceLine = _pBreakpoints->findLineNumberForBPstatement(errorStatementStartStep);
+            sprintf(execInfo, " in user function %s, source line %ld", JustinaFunctionNames[functionIndex], sourceLine);
+        }
+        printTo(0, execInfo);
+
+        if (execResult == result_eval_parsingError) { sprintf(execInfo, " (eval() parsing error %ld)\r\n", _evalParseErrorCode); }
+        else if (execResult == result_list_parsingError) { sprintf(execInfo, " (list input parsing error %ld)\r\n", _evalParseErrorCode); }
+        else { sprintf(execInfo, "\r\n"); }
+        printTo(0, execInfo);
+    }
+
+    else if (execResult == result_quit) {
+        char execInfo[50] = "";
+        strcpy(execInfo, "\r\nExecuting 'quit' command, ");
+        printTo(0, strcat(execInfo, _keepInMemory ? "data retained\r\n" : "memory released\r\n"));
+    }
+    else if (execResult == result_kill) {}      // do nothing
+    else if (execResult == result_abort) { printTo(0, "\r\n+++ Abort: code execution terminated +++\r\n"); }
+    else if (execResult == result_stopForDebug) { if (showStopmessage) { printTo(0, "\r\n+++ Program stopped +++\r\n"); } }
+    else if (execResult == result_initiateProgramLoad) {}                                                               // (nothing to do here for this event)
+
+    _lastValueIsStored = false;                                                                                         // prevent printing last result (if any)
+}
+
+
 // -----------------------------------------
 // *   pretty print a parsed instruction   *
 // -----------------------------------------
@@ -1101,7 +1187,7 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
                     strcpy(prettyToken, pAnum); strcat(prettyToken, " ");                   // generic token: just add a space at the end
                 }
                 hasTrailingSpace = !testNextForPostfix;
-            }
+        }
             break;
 
             default:  // terminal
@@ -1155,7 +1241,7 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
                     (_terminals[index].terminalCode == termcod_semicolon_BPallowed);
             }
             break;
-        }
+    }
 
 
         // print pretty token
@@ -1168,7 +1254,7 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
         if (isSemicolon) {
             if (multipleInstructions && isFirstInstruction) { pPrettyToken[1] = '\0'; }     // no space after semicolon
             if ((nextTokenType != tok_no_token) && (allInstructions || (instructionCount > 1))) { printTo(outputStream, pPrettyToken); }
-            if (isFirstInstruction && multipleInstructions) { printTo(outputStream, "]   ( ==>> "); }
+            if (isFirstInstruction && multipleInstructions) { printTo(outputStream, "   ( ==>> "); }
         }
 
         else { printTo(outputStream, pPrettyToken); }                                                  // not a semicolon
@@ -1197,7 +1283,7 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
         lastWasPostfixOperator = isPostfixOperator;
 
         if (isSemicolon) { isFirstInstruction = false; }
-    }
+}
 
     // exit
     printTo(outputStream, multipleInstructions ? " ...)\r\n" : allInstructions ? "" : "\r\n"); _lastPrintedIsPrompt = false;
@@ -1244,7 +1330,7 @@ void Justina_interpreter::printParsingResult(parsingResult_type result, int func
 
     if (strlen(parsingInfo) > 0) { printlnTo(0, parsingInfo); _lastPrintedIsPrompt = false; }
 
-    if (_programMode&& (result == result_parsing_OK)) { Serial.print("*** range pairs: number of bytes used = "); Serial.println(_pBreakpoints->_BPlineRangeStorageUsed); }
+    if (_programMode && (result == result_parsing_OK)) { Serial.print("*** range pairs: number of bytes used = "); Serial.println(_pBreakpoints->_BPlineRangeStorageUsed); }
 };
 
 
@@ -1424,7 +1510,7 @@ void  Justina_interpreter::printToString(int width, int precision, bool inputIsS
             }
         }
         sprintf(fcnResult.pStringConst, fmtString, width, precision, ((*value).pStringConst == nullptr) ? (expandStrings ? "\"\"" : "") : (*value).pStringConst, &charsPrinted);
-    }
+}
     // note: hex output for floating point numbers is not provided (Arduino)
     else if (isIntFmt) {
         sprintf(fcnResult.pStringConst, fmtString, width, precision, (*valueType == value_isLong) ? (*value).longConst : (long)(*value).floatConst, &charsPrinted);

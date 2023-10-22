@@ -31,7 +31,7 @@
 #include "Justina.h"
 
 #define PRINT_HEAP_OBJ_CREA_DEL 0
-#define PRINT_PARSED_TOKENS 0
+#define PRINT_PARSED_TOKENS 1
 #define PRINT_DEBUG_INFO 0
 #define PRINT_OBJECT_COUNT_ERRORS 0
 
@@ -232,7 +232,7 @@ bool Justina_interpreter::checkCommandKeyword(parsingResult_type& result, int& r
     // -------------------------------------------------
 
     if (cmdBlockDef.blockPosOrAction == block_startPos) {                                                           // is a block start command ?                          
-        _blockLevel++;                                                                                              // increment stack counter and create corresponding list element
+        _blockLevel++;                                                                                             // increment stack counter and create corresponding list element
         _pParsingStack = (LE_parsingStack*)parsingStack.appendListElement(sizeof(LE_parsingStack));
         _pParsingStack->openBlock.cmdBlockDef = cmdBlockDef;                                                        // store in stack: block type, block position ('start'), n/a, n/a
 
@@ -288,7 +288,7 @@ bool Justina_interpreter::checkCommandKeyword(parsingResult_type& result, int& r
         if (_pParsingStack->openBlock.cmdBlockDef.blockType == block_JustinaFunction) { _justinaFunctionBlockOpen = false; }    // FUNCTON definition blocks cannot be nested
         memcpy(((TokenIsResWord*)(_programStorage + _lastTokenStep))->toTokenStep, &_blockStartCmdTokenStep, sizeof(char[2]));
         parsingStack.deleteListElement(nullptr);                                                                    // decrement stack counter and delete corresponding list element
-        _blockLevel--;                                                                                              // also set pointer to currently last element in stack (if it exists)
+        _blockLevel--;                                                                                                // also set pointer to currently last element in stack (if it exists)
 
         if (_blockLevel + _parenthesisLevel > 0) { _pParsingStack = (LE_parsingStack*)parsingStack.getLastListElement(); }
         if (_blockLevel > 0) {

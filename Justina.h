@@ -638,7 +638,6 @@ class Justina_interpreter {
 
         // abort, kill, quit
         result_noProgramStopped = 3400,                                 // 'go' command not allowed because not in debug mode
-        result_notWithinBlock,
         result_skipNotAllowedHere,
 
         // breakpont errors
@@ -680,6 +679,7 @@ class Justina_interpreter {
 
         // abort, kill, quit, stop, skip debug: EVENTS (first handled as errors - which they are not - initially following the same flow)
         result_stopForDebug = result_startOfEvents,                     // 'Stop' command executed (from inside a program only): this enters debug mode
+        result_stopForBreakpoint,                                       // breakpoint encountered
         result_abort,                                                   // abort running program (return to Justina prompt)
         result_kill,                                                    // caller requested to exit Justina interpreter
         result_quit,                                                    // 'Quit' command executed (exit Justina interpreter)
@@ -709,7 +709,7 @@ class Justina_interpreter {
 
     static constexpr uint16_t IMM_MEM_SIZE{ 400 };                      // size, in bytes, of user command memory (stores parsed user statements entered from the keyboard)
     static constexpr uint16_t BP_LINE_RANGE_PROGMEM_STOR_RATIO{ 5 };    // breakpoints: source line range storage as a % of program storage 
-    static constexpr uint16_t MAX_BP_COUNT{ 10 };                         // breakpoints: maximum number of set breakpoints 
+    static constexpr uint16_t MAX_BP_COUNT{ 10 };                       // breakpoints: maximum number of set breakpoints 
 
     static constexpr int MAX_USERVARNAMES{ 255 };                       // max. user variables allowed. Absolute parser limit: 255
     static constexpr int MAX_PROGVARNAMES{ 255 };                       // max. program variable NAMES allowed (same name may be reused for global, static, local & parameter variables). Absolute limit: 255
@@ -1676,6 +1676,7 @@ private:
     bool _debugCmdExecuted{ false };                                // a debug command was executed
 
     Breakpoints* _pBreakpoints{ nullptr };
+    char* _pStatementWithLineNumber{ nullptr };
 
     // error trapping
     // --------------
@@ -1992,7 +1993,6 @@ private:
     execResult_type  launchEval(LE_evalStack*& pFunctionStackLvl, char* parsingInput);
     void  terminateJustinaFunction(bool addZeroReturnValue = false);
     void  terminateEval();
-    bool trapError(bool& isEndOfStatementSeparator, execResult_type& execResult);
 
     // Justina functions: initialise parameter variables with provided arguments (pass by reference)
     void initFunctionParamVarWithSuppliedArg(int suppliedArgCount, LE_evalStack*& pFirstArgStackLvl);
@@ -2061,12 +2061,14 @@ private:
     bool fileIsOpen(char* path);
 
 
-    // Justina tracing
-    // ---------------
+    // Justina error handling, debugging, tracing
+    // ------------------------------------------
 
-    void parseAndExecTraceString();
-    void traceAndPrintDebugInfo();
-
+    void checkForStopOrSkip(bool& isActiveBreakpoint, bool& doStopForDebugNow, bool& doSkip,bool& appFlagsRequestStop,bool& isFunctionReturn, char* programCnt_previousStatementStart);
+    bool trapError(bool& isEndOfStatementSeparator, execResult_type& execResult);
+    void parseAndExecTraceString(int BPindex = -1);
+    void traceAndPrintDebugInfo(execResult_type execResult);
+    bool parseAndExecTriggerString(int BPindex);
 
     // printing
     // --------    
@@ -2081,6 +2083,7 @@ private:
     //  unparse statement and pretty print, print parsing result (OK or error number), print variables, print call stack, SD card directory
     void prettyPrintStatements(int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
     void printParsingResult(parsingResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* pErrorPos);
+    void printExecError(execResult_type execResult,bool showStopmessage);
     void printVariables(bool userVars);
     void printCallStack();
     void printDirectory(File dir, int numTabs);
@@ -2132,8 +2135,8 @@ class Breakpoints {
         char* pProgramStep{ nullptr };                // compare with current program counter to find breakpoint entry 
         char* pView{ nullptr };                         // pointer to view expression (string)
         char* pTrigger{ nullptr };                  // pointer to trigger expression (string)
-        long hitCount{0};                              // pointer to number of hits triggering breakpoint
-        long hitCounter{0};                                // hit counter
+        long hitCount{ 0 };                              // pointer to number of hits triggering breakpoint
+        long hitCounter{ 0 };                                // hit counter
     };
 
     long _BPLineRangeMemorySize{};
@@ -2141,7 +2144,13 @@ class Breakpoints {
     char* _BPlineRangeStorage{ nullptr };                                      // pointer to start of array keeping track of source line ranges for debugging with breakpoints
     long _BPlineRangeStorageUsed{ 0 };
     BreakpointData* _pBreakpointData{ nullptr };
+    
+    // a selected row
+    BreakpointData* _pBreakpointDataRow{ nullptr };
+    int _BPdataRow{-1};
+    
     int _breakpointsUsed{ 0 };
+    int _breakpointIndex{ 0 };
 
     // methods
     Breakpoints(Justina_interpreter* pJustina, long lineRanges_memorySize, long maxBreakpointCount);
@@ -2155,11 +2164,13 @@ class Breakpoints {
     Justina_interpreter::parsingResult_type addOneSourceLineRangePair(long gapLineRange, long adjacentLineRange);
 
     // maintaining breakpoints
-    Justina_interpreter::execResult_type maintainBPdata(long breakpointLine, char actionCmdCode, int extraAttribCount=0, const char* viewString = nullptr, long hitCount = 0, const char* triggerString = nullptr);
-    long BPgetsourceLineSequenceNumber(long BPsourceLine);
+    Justina_interpreter::execResult_type maintainBPdata(long breakpointLine, char actionCmdCode, int extraAttribCount = 0, const char* viewString = nullptr, long hitCount = 0, const char* triggerString = nullptr);
+    long BPsourceLineFromToBPlineSequence(long BPsourceLineOrIndex, bool toIndex = true);
     Justina_interpreter::execResult_type progMem_getSetClearBP(long lineSequenceNum, char*& pProgramStep, bool& BPwasSet, bool doSet, bool doClear);
     Justina_interpreter::execResult_type maintainBreakpointTable(long sourceLine, char* pProgramStep, bool BPwasSet, bool doSet, bool doClear, bool doEnable, bool doDisable, bool stopAt, bool doContinueAt,
         int extraAttribCount, const char* viewString, long hitCount, const char* triggerString);
+    BreakpointData* findBPtableRow(char* pParsedStatement, int &row);
+    long findLineNumberForBPstatement(char* pProgramStepToFind);
     void  printBreakpoints();
 };
 
