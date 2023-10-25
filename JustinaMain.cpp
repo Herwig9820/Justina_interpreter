@@ -1383,7 +1383,7 @@ void Justina_interpreter::parseAndExecTraceString(int BPindex) {
         while ((pTraceParsingInput[0] == ' ') || (pTraceParsingInput[0] == term_semicolon[0])) { pTraceParsingInput++; }
         if (*pTraceParsingInput == '\0') { break; }                                                             // could occur if semicolons skipped
 
-        // parse ONE trace string expression only
+        // parse multiple trace string expressions ? print a comma in btween
         if (valuePrinted) { printTo(_debug_sourceStreamNumber, ", "); }                                                                 // separate values (if more than one)
 
         // note: application flags are not adapted (would not be passed to caller immediately)

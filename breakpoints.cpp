@@ -168,7 +168,7 @@ Justina_interpreter::parsingResult_type Breakpoints::addOneSourceLineRangePair(l
     // 'gap' source line range length requires 3 bits or less, 'adjacent' source line range length requires 4 bits or less: use 1 byte (1 flag bit + 3 + 4 bits = 8 bits)
     // byte 0 -> bit 0 = 0 (flag), bits 3..1: 'gap' source line range length (value range 0..7), bits 7..4: 'adjacent' source line range length (value range 0-15)
     if ((gapLineRange < 0x08) && (adjacentLineRange < 0x10)) {
-        if (_BPlineRangeStorageUsed >= _BPLineRangeMemorySize - 1) { return Justina_interpreter::result_BPlineTableMemoryFull; } // memory full
+        if (_BPlineRangeStorageUsed >= _BPLineRangeMemorySize - 1) { return Justina_interpreter::result_BP_lineTableMemoryFull; } // memory full
         _BPlineRangeStorage[_BPlineRangeStorageUsed++] = (adjacentLineRange << 4) | (gapLineRange << 1);        // flag bit 0 = 0: 1 byte used
     }
 
@@ -176,7 +176,7 @@ Justina_interpreter::parsingResult_type Breakpoints::addOneSourceLineRangePair(l
     // - byte 0-> bits 1..0 = 0b01 (flag),  bits b7..2: 6 LSB's 'gap' source line range length
     // - byte 1-> bit 0: MSB 'gap' source line range length, bits 7..1: 7 bits 'adjacent' source line range length
     else if ((gapLineRange < 0x80) && (adjacentLineRange < 0x80)) {
-        if (_BPlineRangeStorageUsed >= _BPLineRangeMemorySize - 2) { return Justina_interpreter::result_BPlineTableMemoryFull; } // memory full
+        if (_BPlineRangeStorageUsed >= _BPLineRangeMemorySize - 2) { return Justina_interpreter::result_BP_lineTableMemoryFull; } // memory full
         _BPlineRangeStorage[_BPlineRangeStorageUsed++] = (gapLineRange << 2) | 0x01;                            // flag bits 1..0 = 0b01: 2 bytes used
         _BPlineRangeStorage[_BPlineRangeStorageUsed++] = (adjacentLineRange << 1) | (char)(gapLineRange >= 0x40);
     }
@@ -186,20 +186,21 @@ Justina_interpreter::parsingResult_type Breakpoints::addOneSourceLineRangePair(l
     // - byte 1-> bits 4..0: 5 MSB's 'gap' source line range length, bits 7..5: 3 LSB's 'adjacent' source line range length
     // - byte 2-> bits 7..0: 7 MSB's 'adjacent' source line range length
     else if ((gapLineRange < 0x800) && (adjacentLineRange < 0x800)) {
-        if (_BPlineRangeStorageUsed >= _BPLineRangeMemorySize - 3) { return Justina_interpreter::result_BPlineTableMemoryFull; } // memory full
+        if (_BPlineRangeStorageUsed >= _BPLineRangeMemorySize - 3) { return Justina_interpreter::result_BP_lineTableMemoryFull; } // memory full
         uint32_t temp = ((gapLineRange << 2) & ~((0b01 << 2) - 1)) | ((adjacentLineRange << 13) & ~((0b01 << 13) - 1)) | 0x03;
         memcpy(_BPlineRangeStorage + _BPlineRangeStorageUsed, &temp, 3);
         _BPlineRangeStorageUsed += 3;
     }
-    else { return Justina_interpreter::result_BPlineRangeTooLong; } // gap range or adjacent source line range length too long
+    else { return Justina_interpreter::result_BP_lineRangeTooLong; } // gap range or adjacent source line range length too long
 
     return Justina_interpreter::result_parsing_OK;
 }
 
 
-// ******************************************************************************************
-// *** handle user commands to set or clear breakpoints, or to change breakpoint settings ***
-// ******************************************************************************************
+
+// ************************************************************************************************************************************************
+// *** handle user commands to set or clear breakpoints, to change breakpoint settings and to print out a list of all breakpoints currently set ***
+// ************************************************************************************************************************************************
 
 // --------------------------------------------
 // *   adapt a breakpoint for a source line   *
@@ -245,71 +246,6 @@ Justina_interpreter::execResult_type Breakpoints::maintainBPdata(long breakpoint
 
     return execResult;
 }
-
-// -------------------------------------------------------------------------------------------------------------------------------------------------------
-// *   return the sequence number of a source line in the set of source lines with at least one statement STARTING at the START of that line.            *
-// *   if the source line does not contain a statement STARTING at that line (discarding spaces), return -1                                              * 
-// -------------------------------------------------------------------------------------------------------------------------------------------------------
-
-long Breakpoints::BPsourceLineFromToBPlineSequence(long BPlineOrIndex, bool toIndex) {
-
-    // resp. value in and out; OR value out and in
-    long BPsourceLine{  };
-    long BPsourceLineIndex{  };
-
-    if (toIndex) { BPsourceLine = BPlineOrIndex; if (BPsourceLine < 1) { return -1; } }          // not valid
-    else { BPsourceLineIndex = BPlineOrIndex; if (BPsourceLineIndex < 0) { return -1; } }            // not valid
-
-    int i = 0;
-    long BPpreviousEndLine{ 0 };                        
-    long BPpreviousEndLineIndex{ -1 };
-
-    while (i < _BPlineRangeStorageUsed) {
-        long gapLineRange{}, adjacentLineRange{};
-
-        if (!(_BPlineRangeStorage[i] & 0b1)) {       // LSB = 0b0: gap and adjacent source line ranges stored in one byte
-            gapLineRange = (((uint32_t)_BPlineRangeStorage[i]) >> 1) & 0x7;                 // 3 bits long
-            adjacentLineRange = (((uint32_t)_BPlineRangeStorage[i]) >> 4) & 0xF;            // 4 bits long
-            i++;
-        }
-
-        else if ((_BPlineRangeStorage[i] & 0b11) == 0b01) {       // LSB's = 0b01: gap and adjacent source line ranges stored in two bytes
-            uint32_t temp{};
-            memcpy(&temp, _BPlineRangeStorage + i, 2);
-            gapLineRange = (temp >> 2) & 0x7F;                                              // each 7 bits long
-            adjacentLineRange = (temp >> 9) & 0x7F;
-            i += 2;
-        }
-
-        else if ((_BPlineRangeStorage[i] & 0b11) == 0b11) {       // LSB's = 0b11: gap and adjacent source line ranges stored in three bytes
-            uint32_t temp{};
-            memcpy(&temp, _BPlineRangeStorage + i, 3);
-            gapLineRange = (temp >> 2) & 0x7FF;                                             // each 11 bits long
-            adjacentLineRange = (temp >> 13) & 0x7FF;
-            i += 3;
-        }
-
-        if (toIndex) {
-            long BPstartLine = BPpreviousEndLine + gapLineRange + 1;
-            long BPendLine = BPstartLine + adjacentLineRange - 1;
-            BPpreviousEndLine = BPendLine;
-
-            if ((BPsourceLine >= BPstartLine) && (BPsourceLine <= BPendLine)) { return BPsourceLineIndex += (BPsourceLine - BPstartLine); }
-            BPsourceLineIndex += BPendLine - BPstartLine + 1;
-        }
-        else {                                                                                      // to source line
-            long BPstartLineIndex = BPpreviousEndLineIndex + 1;
-            long BPendLineIndex = BPstartLineIndex + adjacentLineRange - 1;
-            BPpreviousEndLineIndex = BPendLineIndex;
-
-            if ((BPsourceLineIndex >= BPstartLineIndex) && (BPsourceLineIndex <= BPendLineIndex)) { return BPsourceLine += (BPsourceLineIndex - BPstartLineIndex) + gapLineRange + 1; }
-            BPsourceLine += BPendLineIndex - BPstartLineIndex + gapLineRange + 1;
-        }
-    }
-
-    return -1;             // signal range error
-}
-
 
 // --------------------------------------------------------------------------------------------------------------------------------------
 // *  find program step and current breakpoint state (set or 'allowed') for source line; if setBP or clearBP, adapt in program memory   *
@@ -466,13 +402,14 @@ void Breakpoints::printBreakpoints() {
 }
 
 
+
 // ********************************
 // *** during program execution ***
 // ********************************
 
-// ------------------------------------------------------------------
-// *   find breakpoint table entry for a parsed statement address   *
-// ------------------------------------------------------------------
+// ------------------------------------------------------------------------
+// *   find breakpoint table entry for a parsed statement start address   *
+// ------------------------------------------------------------------------
 
 Breakpoints::BreakpointData* Breakpoints::findBPtableRow(char* pParsedStatement, int &row) {
     row =-1;
@@ -482,21 +419,20 @@ Breakpoints::BreakpointData* Breakpoints::findBPtableRow(char* pParsedStatement,
 };
 
 
-// *********************************
-// ***                           ***
-// *********************************
-
-// ------------------------------------------------------------------
-// *                                                                *
-// ------------------------------------------------------------------
+// -------------------------------------------------------------------
+// *   find sourceline number for a parsed statement start address   *
+// -------------------------------------------------------------------
 
 long Breakpoints::findLineNumberForBPstatement(char* pProgramStepToFind) {
 
-    // !!! note that this can be slow if program consists of a large number of statements)
+    // !!! note that this can be slow if program consists of a large number of statements
 
     long lineSequenceNumber{ 0 };
     int matchedCriteriumNumber{};
     int matchedSemiColonTokenIndex{ 0 };
+
+    // 1. scan the parsed program, counting all statements preceded by a semicolon, semicolon 'BP set' or semicolon 'BP allowed' token.
+    //    the very first statement, although not preceded by a semicolon, receives 'line sequence number' 0 
 
     char* pProgramStep = _pJustina->_programStorage;
 
@@ -508,5 +444,78 @@ long Breakpoints::findLineNumberForBPstatement(char* pProgramStepToFind) {
         if ((matchedCriteriumNumber >= 2)) { lineSequenceNumber++; }                               // if parsed statement can receive a breakpoint (or breakpoint is set already), increase loop counter
     };
 
+    // 2. find the soureline number (base 1) corresponding to a line sequence number (base 0)  
     long sourceLineNumber = BPsourceLineFromToBPlineSequence(lineSequenceNumber, false);
 }
+
+
+
+// *********************
+// ***    utility    ***
+// *********************
+
+// ------------------------------------------------------------------------------------------------------------------
+// *   return the sequence number of a given source line OR the source line for a given sequence number.            *
+// *   the sequence number of a source line is the index (base 0) attributed to the source line, only counting...   *
+// *   ...source lines with at least one statement STARTING at the START of that line.                              *
+// ------------------------------------------------------------------------------------------------------------------
+
+long Breakpoints::BPsourceLineFromToBPlineSequence(long BPlineOrIndex, bool toIndex) {
+
+    // resp. value in and out; OR value out and in
+    long BPsourceLine{  }, BPsourceLineIndex{  };
+
+    if (toIndex) { BPsourceLine = BPlineOrIndex; if (BPsourceLine < 1) { return -1; } }          // not valid
+    else { BPsourceLineIndex = BPlineOrIndex; if (BPsourceLineIndex < 0) { return -1; } }            // not valid
+
+    int i = 0;
+    long BPpreviousEndLine{ 0 };
+    long BPpreviousEndLineIndex{ -1 };
+
+    while (i < _BPlineRangeStorageUsed) {
+        long gapLineRange{}, adjacentLineRange{};
+
+        if (!(_BPlineRangeStorage[i] & 0b1)) {       // LSB = 0b0: gap and adjacent source line ranges stored in one byte
+            gapLineRange = (((uint32_t)_BPlineRangeStorage[i]) >> 1) & 0x7;                 // 3 bits long
+            adjacentLineRange = (((uint32_t)_BPlineRangeStorage[i]) >> 4) & 0xF;            // 4 bits long
+            i++;
+        }
+
+        else if ((_BPlineRangeStorage[i] & 0b11) == 0b01) {       // LSB's = 0b01: gap and adjacent source line ranges stored in two bytes
+            uint32_t temp{};
+            memcpy(&temp, _BPlineRangeStorage + i, 2);
+            gapLineRange = (temp >> 2) & 0x7F;                                              // each 7 bits long
+            adjacentLineRange = (temp >> 9) & 0x7F;
+            i += 2;
+        }
+
+        else if ((_BPlineRangeStorage[i] & 0b11) == 0b11) {       // LSB's = 0b11: gap and adjacent source line ranges stored in three bytes
+            uint32_t temp{};
+            memcpy(&temp, _BPlineRangeStorage + i, 3);
+            gapLineRange = (temp >> 2) & 0x7FF;                                             // each 11 bits long
+            adjacentLineRange = (temp >> 13) & 0x7FF;
+            i += 3;
+        }
+
+        if (toIndex) {
+            long BPstartLine = BPpreviousEndLine + gapLineRange + 1;
+            long BPendLine = BPstartLine + adjacentLineRange - 1;
+            BPpreviousEndLine = BPendLine;
+
+            if ((BPsourceLine >= BPstartLine) && (BPsourceLine <= BPendLine)) { return BPsourceLineIndex += (BPsourceLine - BPstartLine); }
+            BPsourceLineIndex += BPendLine - BPstartLine + 1;
+        }
+        else {                                                                                      // to source line
+            long BPstartLineIndex = BPpreviousEndLineIndex + 1;
+            long BPendLineIndex = BPstartLineIndex + adjacentLineRange - 1;
+            BPpreviousEndLineIndex = BPendLineIndex;
+
+            if ((BPsourceLineIndex >= BPstartLineIndex) && (BPsourceLineIndex <= BPendLineIndex)) { return BPsourceLine += (BPsourceLineIndex - BPstartLineIndex) + gapLineRange + 1; }
+            BPsourceLine += BPendLineIndex - BPstartLineIndex + gapLineRange + 1;
+        }
+    }
+
+    return -1;             // signal range error
+}
+
+

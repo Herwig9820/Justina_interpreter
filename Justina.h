@@ -454,7 +454,7 @@ class Justina_interpreter {
         tok_isTerminalGroup2,                                           // if index between 16 and 31
         tok_isTerminalGroup3,                                           // if index between 32 and 47
 
-        tok_isEvalEnd                                                   // execution only, signals end of parsed eval() statements
+        tok_isEvalEnd,                                                    // execution only, signals end of parsed eval() statements
     };
 
     // error codes for all PARSING errors
@@ -590,8 +590,10 @@ class Justina_interpreter {
         result_parseList_valueToParseExpected,
 
         // breakpoint errors
-        result_BPlineRangeTooLong,
-        result_BPlineTableMemoryFull,
+        result_BP_lineRangeTooLong,
+        result_BP_lineTableMemoryFull,
+        result_BP_emptyTriggerString,
+        result_BP_triggerString_nothingToEvaluate,
 
         // other program errors
         result_parse_abort = 2200,
@@ -1465,7 +1467,7 @@ private:
     long _progMemorySize{};                                         // depends on processor
     char _programName[MAX_IDENT_NAME_LEN + 1];
     char* _lastProgramStep{ nullptr };
-    char* _lastUserCmdStep{ nullptr };                     // location in Justine program memory where final 'tok_no_token' token is placed
+    char* _lastUserCmdStep{ nullptr };                     // location in Justine imm. mode program memory where final 'tok_no_token' token is placed
 
 
     // parsing 
@@ -1690,8 +1692,11 @@ private:
     char* _pTraceString{ nullptr };
 
     bool _parsingExecutingTraceString{ false };
+    bool _executingTriggerString{false};
     bool _parsingEvalString{ false };
     long _evalParseErrorCode{ 0L };
+    Val _traceResultValue{};
+    char _traceResultValueType{};
 
 
     // counting of heap objects (note: linked list element count is maintained within the linked list objects)
@@ -2068,7 +2073,7 @@ private:
     bool trapError(bool& isEndOfStatementSeparator, execResult_type& execResult);
     void parseAndExecTraceString(int BPindex = -1);
     void traceAndPrintDebugInfo(execResult_type execResult);
-    bool parseAndExecTriggerString(int BPindex);
+    parsingResult_type parseTriggerString(int BPindex);
 
     // printing
     // --------    
