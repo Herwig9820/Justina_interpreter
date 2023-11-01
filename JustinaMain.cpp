@@ -862,14 +862,16 @@ bool Justina_interpreter::run() {
             if (_programMode && (statementCharCount == 1) && !noCharAdded) { statementStartsAtLine = currentSourceLine; }                                    // first character of new statement
 
             if (statementReadyForParsing) {                                                                     // if quitting anyway, just skip                                               
-                
+
                 _appFlags &= ~appFlag_errorConditionBit;                                                        // clear error condition flag 
                 _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_parsing;                                // status 'parsing'
                 _statement[statementCharCount] = '\0';                                                          // add string terminator
 
                 char* pStatement = _statement;                                                                  // because passed by reference 
                 char* pDummy{};
-                _parsingExecutingTraceString = false; _parsingEvalString = false;
+                _parsingExecutingTraceString = false;                       // init
+                _isTriggerString = false;
+                _parsingEvalString = false;
 
                 // The user can set breakpoints for source lines having at least one statement starting on that line (given that the statement is not 'parsing only').
                 // Procedure 'collectSourceLineRangePairs' stores necessary data to enable this functionality.
@@ -1200,7 +1202,7 @@ bool Justina_interpreter::prepareForIdleMode(parsingResult_type result, execResu
             BPpreviousEndLine = BPendLine;
             _pDebugOut->print("RECONSTRUCT adjacent lines - start en finish: "); _pDebugOut->print(BPstartLine); _pDebugOut->print("-"); _pDebugOut->println(BPendLine);
         }
-    }
+}
 #endif
 
     // before loadng a program, clear memory except user variables
@@ -1335,14 +1337,16 @@ void Justina_interpreter::traceAndPrintDebugInfo(execResult_type execResult) {
 
     // print the source line, function and statement 
     char msg[50 + MAX_IDENT_NAME_LEN] = "";
-    // if source line has an entry in breakpoint table: retrieve source line from there (the other method can be slow if program consists of a large number of statements)
+    // if source line has an entry in breakpoint table: retrieve source line from there. If not, then calculate the source line number by counting...
+    // ...parsed statements with a preceding 'breakpoint set' or 'breakpoint allowed' token.
+    // note that the second method can be slow if program consists of a large number of statements
     sourceLine = (_pBreakpoints->_pBreakpointDataRow != nullptr) ? _pBreakpoints->_pBreakpointDataRow->sourceLine : _pBreakpoints->findLineNumberForBPstatement(_pStatementWithLineNumber);
     sprintf(msg, "line %ld: [%s] ", sourceLine, JustinaFunctionNames[pDeepestOpenFunction->functionIndex]);
     printTo(_debug_sourceStreamNumber, msg);
     prettyPrintStatements(1, nextStatementPointer);                                                     // print statement
 
-    if (isBreakpointStop) { parseAndExecTraceString(_pBreakpoints->_BPdataRow); }                                                          // BP view string: may not contain keywords, Justina functions, generic names
-    parseAndExecTraceString();                                                                                  // trace string: may not contain keywords, Justina functions, generic names
+    if (isBreakpointStop) { parseAndExecTraceOrBPviewString(_pBreakpoints->_BPdataRow); }                                                          // BP view string: may not contain keywords, Justina functions, generic names
+    parseAndExecTraceOrBPviewString();                                                                                  // trace string: may not contain keywords, Justina functions, generic names
 
     if (_openDebugLevels > 1) {
         sprintf(msg, "*** this + %d other programs STOPPED ***", _openDebugLevels - 1);
@@ -1350,7 +1354,7 @@ void Justina_interpreter::traceAndPrintDebugInfo(execResult_type execResult) {
     }
 
     // print an extra line to isolute Justina prompt
-    printTo(_debug_sourceStreamNumber, "\r\n");     
+    printTo(_debug_sourceStreamNumber, "\r\n");
 }
 
 
@@ -1360,7 +1364,7 @@ void Justina_interpreter::traceAndPrintDebugInfo(execResult_type execResult) {
 
 // trace string may not contain keywords, user functions, generic names
 
-void Justina_interpreter::parseAndExecTraceString(int BPindex) {
+void Justina_interpreter::parseAndExecTraceOrBPviewString(int BPindex) {
     char* pNextParseStatement{};
 
     char* pTraceParsingInput = ((BPindex == -1) ? _pTraceString : _pBreakpoints->_pBreakpointData[BPindex].pView);                                                                   // copy pointer to start of trace string
@@ -1371,9 +1375,11 @@ void Justina_interpreter::parseAndExecTraceString(int BPindex) {
     deleteConstStringObjects(_programStorage + _progMemorySize);
 
     bool valuePrinted{ false };
-    _parsingExecutingTraceString = true;
 
-    printTo(_debug_sourceStreamNumber, (BPindex == -1) ? "TRACE> " : "VIEW> ");
+    _parsingExecutingTraceString = true;
+    _isTriggerString = false;                                               // is a trace or breakpoint ('BP') view string, NOT a BP trigger string
+
+    printTo(_debug_sourceStreamNumber, (BPindex == -1) ? "TRACE> " : "BP TRACE> ");
     do {
         // init
         *(_programStorage + _progMemorySize) = tok_no_token;                                                    // in case no valid tokens will be stored
@@ -1508,8 +1514,8 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
             _systemVarStringObjectCount--;
             delete[] _pTraceString;
             _pTraceString = nullptr;                                                                            // old trace string
-        }
     }
+}
 
     // delete all elements of the immediate mode parsed statements stack
     // (parsed immediate mode statements can be temporarily pushed on the immediate mode stack to be replaced either by parsed debug command lines or parsed eval() strings) 
@@ -1565,7 +1571,7 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
         _pDebugOut->print("*** Variable / function name objects cleanup error. Remaining: "); _pDebugOut->println(_identifierNameStringObjectCount);
     #endif
         _identifierNameStringObjectErrors += abs(_identifierNameStringObjectCount);
-    }
+}
 
     if (_parsedStringConstObjectCount != 0) {
     #if PRINT_OBJECT_COUNT_ERRORS
@@ -1602,7 +1608,7 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
             _pDebugOut->print("*** User variable name objects cleanup error. Remaining: "); _pDebugOut->println(_userVarNameStringObjectCount);
         #endif
             _userVarNameStringObjectErrors += abs(_userVarNameStringObjectCount);
-        }
+    }
 
         if (_userVarStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
@@ -1766,7 +1772,7 @@ void Justina_interpreter::deleteIdentifierNameObjects(char** pIdentNameArray, in
         isUserVar ? _userVarNameStringObjectCount-- : _identifierNameStringObjectCount--;
         delete[] * (pIdentNameArray + index);
         index++;
-    }
+}
 }
 
 
@@ -1810,8 +1816,8 @@ void Justina_interpreter::deleteOneArrayVarStringObjects(Justina_interpreter::Va
         #endif
             isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
             delete[]  pString;                                                                                                      // applicable to string and array (same pointer)
-        }
     }
+}
 }
 
 
@@ -1834,7 +1840,7 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
             #endif
                 isUserVar ? _userArrayObjectCount-- : isLocalVar ? _localArrayObjectCount-- : _globalStaticArrayObjectCount--;
                 delete[]  varValues[index].pArray;
-            }
+        }
             else if ((varType[index] & value_typeMask) == value_isStringPointer) {                                                  // variable is a scalar containing a string
                 if (varValues[index].pStringConst != nullptr) {
                 #if PRINT_HEAP_OBJ_CREA_DEL
@@ -1842,9 +1848,9 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
                 #endif
                     isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
                     delete[]  varValues[index].pStringConst;
-                }
             }
-        }
+    }
+}
         index++;
     }
 }
@@ -1865,8 +1871,8 @@ void Justina_interpreter::deleteLastValueFiFoStringObjects() {
         #endif
             _lastValuesStringObjectCount--;
             delete[] lastResultValueFiFo[i].pStringConst;
-        }
     }
+}
 }
 
 
@@ -1894,13 +1900,13 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
             #endif
                 _parsedStringConstObjectCount--;
                 delete[] pAnum;
-            }
         }
+    }
         uint8_t tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) :
             (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*prgmCnt.pTokenChars >> 4) & 0x0F;
         prgmCnt.pTokenChars += tokenLength;
         tokenType = *prgmCnt.pTokenChars & 0x0F;
-    }
+}
 }
 
 

@@ -114,10 +114,10 @@ Justina_interpreter::parsingResult_type Justina_interpreter::parseStatement(char
 
         // move to the first non-space character of next token 
         while (pNext[0] == ' ') { pNext++; }                                                                        // skip leading spaces
-        if (pNext[0] == '\0') { pNextParseStatement = pNext; break; }                                               // end of instruction: prepare to quit parsing  
+        if (pNext[0] == '\0') { pNextParseStatement = pNext; break; }                                               // end of statement: prepare to quit parsing  
 
-        // trace string ? exit after each individual expression
-        if (_parsingExecutingTraceString && isSemicolon) { pNextParseStatement = pNext;  break; }                   // within trace : only parse one instruction at a time, then execute it first
+        // trace, BP view or BP trigger string ? parse one statement at a time, then execute it first (note: within BP trigger strings, only the first expression will be parsed and executed)
+        if (_parsingExecutingTraceString && isSemicolon) { pNextParseStatement = pNext;  break; }      
 
 
         _lastTokenType_hold = _lastTokenType;                                                                       // remember the last parsed token during parsing of a next token
@@ -416,7 +416,8 @@ bool Justina_interpreter::parseAsResWord(char*& pNext, parsingResult_type& resul
         if (strlen(_resWords[resWordIndex]._resWordName) != pNext - pch) { continue; }                          // token has correct length ? If not, skip remainder of loop ('continue')                            
         if (strncmp(_resWords[resWordIndex]._resWordName, pch, pNext - pch) != 0) { continue; }                 // token corresponds to keyword ? If not, skip remainder of loop ('continue') 
 
-        // token is keyword, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
+        // commands (starting with a keyword) are not allowed within trace, BP view, BP trigger strings and in eval() strings.
+        // if not allowed, reset pointer to first character to parse, indicate error and return
         if (_parsingExecutingTraceString || _parsingEvalString) { pNext = pch; result = result_trace_eval_resWordNotAllowed; return false; }
         if (_parenthesisLevel > 0) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
         if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2_0)) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
@@ -668,7 +669,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parsingResult_type& r
     int termIndex{};
 
     // for all defined terminal symbolic names: check against alphanumeric token. Search, starting at the end (because of the ordering of names in the _terminals array)
-    for (termIndex = _termTokenCount - 1; termIndex >= 0; termIndex--) {                                        
+    for (termIndex = _termTokenCount - 1; termIndex >= 0; termIndex--) {
         int len = strlen(_terminals[termIndex].terminalName);                                                   // token has correct length ? If not, skip remainder of loop ('continue')                            
         // do not look for trailing space, to use strncmp() wih number of non-space characters found, because a space is not required after an operator
         if (strncmp(_terminals[termIndex].terminalName, pch, len) == 0) { break; }                              // token corresponds to terminal name ? Then exit loop    
@@ -1294,7 +1295,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parsingResult_type& r
     // ------------
 
     // too many terminals for 1 terminal group: provide multiple groups
-    tokenType = (termIndex <= 0x0F) ? tok_isTerminalGroup1 : (termIndex <= 0x1F) ? tok_isTerminalGroup2 : tok_isTerminalGroup3;     
+    tokenType = (termIndex <= 0x0F) ? tok_isTerminalGroup1 : (termIndex <= 0x1F) ? tok_isTerminalGroup2 : tok_isTerminalGroup3;
     _tokenIndex = termIndex;
 
     TokenIsTerminal* pToken = (TokenIsTerminal*)_programCounter;
@@ -1349,7 +1350,8 @@ bool Justina_interpreter::parseAsInternCPPfunction(char*& pNext, parsingResult_t
         if (_isAnyVarCmd) { pNext = pch; result = result_functionNotAllowedHere; return false; }                        // is a variable declaration: cpp function name not allowed
         if (_isDeleteVarCmd) { pNext = pch; result = result_functionNotAllowedHere; return false; }
 
-        // eval() function can not occur within a trace string (all other internal functins are OK)
+        // eval() function can not occur within a trace, BP view or BP trigger string (all other internal functions can)
+        // note: an eval() functions are allowed in other eval() function
         if (_parsingExecutingTraceString) {
             if (_internCppFunctions[funcIndex].functionCode == fnccod_eval) { pNext = pch; result = result_trace_evalFunctonNotAllowed; return false; }
         }
@@ -1494,6 +1496,7 @@ bool Justina_interpreter::parseAsJustinaFunction(char*& pNext, parsingResult_typ
     index = getIdentifier(userVarNames, _userVarCount, MAX_USERVARNAMES, pch, pNext - pch, createNewName, true);
     if (index != -1) { pNext = pch; return true; }                                                                      // is a user variable
 
+    // user functions cannot occur within a trace, BP view or BP trigger string (they are allowed in eval() strings, however)
     if (_parsingExecutingTraceString) { pNext = pch; result = result_trace_userFunctonNotAllowed; return false; }
 
     if ((_isJustinaFunctionCmd) && (_parenthesisLevel > 0)) { pNext = pch; return true; }                               // only array parameter allowed now
@@ -1745,7 +1748,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parsingResult_type& resu
                 if (varNameIndex == -1) { pNext = pch; result = result_var_notDeclared; return false; }  // if the name doesn't exist, the variable doesn't
                 activeNameRange = secondaryNameRange;
             }
-            else { pNext = pch; result = result_var_notDeclared; return false; }                                        // if the name doesn't exist, the variable doesn't
+            else {  pNext = pch; result = result_var_notDeclared; return false; }                                        // if the name doesn't exist, the variable doesn't
         }
 
         // user variable referenced in program: set flag in user var types array (only; will not be copied in token info)
@@ -1916,35 +1919,43 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parsingResult_type& resu
             #endif
 
                 // it's neither a global or user variable declaration, nor a global or user variable reference (because storage does not exist for it). But the variable name exists,
-                 // so local or static function variables using this name have been defined already. 
-                 // in debug mode (program stopped), the name could refer to a local or static variable within the currently stopped function (open function) 
+                // so local or static function variables using this name have been defined already. 
+                // retrieve data about this function now.
+                 
+                 // in debug mode (program stopped), the name could refer to a local or static variable within the currently stopped function (open function).
+                 // if parsing a BP trigger string, debug mode is not active yet (function is not stopped yet- will depend of trigger string execution result)   
 
-                 // in debug mode now ? (if multiple programs in debug mode, only the last one stopped will be considered here
-                if (_openDebugLevels > 0) {
-
-                    // first locate the debug command level (either in active function data or down in the flow control stack)
-                    // from there onwards, find the first flow control stack level containing a 'function' block type  
-                    // The open function data (function where the program was stopped) needed to retrieve function variable data will referenced in that flow control stack level
-                    //
-                    // note: levels in between debug command level and open function level may exist, containing open block data for the debug command level
-                    // these levels can NOT refer to an eval() string execution level, because a program can not be stopped during the execution of an eval() string
-                    // (although it can during a Justina function called from an eval() string)
-
-                    int blockType = _activeFunctionData.blockType;
-                    void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;       // one level below _activeFunctionData
-                    bool isDebugCmdLevel = (blockType == block_JustinaFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + _progMemorySize)) : false;
-                    if (!isDebugCmdLevel) {                                                                             // find debug level in flow control stack instead
-                        do {
-                            blockType = ((openBlockGeneric*)pFlowCtrlStackLvl)->blockType;
-                            isDebugCmdLevel = (blockType == block_JustinaFunction) ? (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + _progMemorySize)) : false;
-                            pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
-                        } while (!isDebugCmdLevel);                                                                     // stack level for open function found immediate below debug line found (always match)
+                if ((_openDebugLevels > 0) || _isTriggerString) {
+                    void* pFlowCtrlStackLvl{};
+                    if (_isTriggerString) { 
+                        pFlowCtrlStackLvl = &_activeFunctionData;                        // program not yet stopped: function data reside in _activeFunctionData
                     }
+                    else {
 
-                    blockType = ((OpenFunctionData*)pFlowCtrlStackLvl)->blockType;
-                    while (blockType != block_JustinaFunction) {
-                        pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
+                        // first locate the debug command level (either in active function data or down in the flow control stack)
+                        // from there onwards, find the first flow control stack level containing a 'function' block type  
+                        // The 'open function data' (function where the program was stopped) that we need to retrieve function variable data, is referenced in that flow control stack level
+                        //
+                        // note: levels in between debug command level and open function level may exist, containing open block data for the debug command level
+                        // these levels can NOT refer to an eval() string execution level, because a program can not be stopped during the execution of an eval() string
+                        // (although it can during a Justina function called from an eval() string)
+
+                        int blockType = _activeFunctionData.blockType;
+                        pFlowCtrlStackLvl = _pFlowCtrlStackTop;       // one level below _activeFunctionData
+                        bool isDebugCmdLevel = (blockType == block_JustinaFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + _progMemorySize)) : false;
+                        if (!isDebugCmdLevel) {                                                                             // find debug level in flow control stack instead
+                            do {
+                                blockType = ((openBlockGeneric*)pFlowCtrlStackLvl)->blockType;
+                                isDebugCmdLevel = (blockType == block_JustinaFunction) ? (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + _progMemorySize)) : false;
+                                pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
+                            } while (!isDebugCmdLevel);                                                                     // stack level for open function found immediate below debug line found (always match)
+                        }
+
                         blockType = ((OpenFunctionData*)pFlowCtrlStackLvl)->blockType;
+                        while (blockType != block_JustinaFunction) {
+                            pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
+                            blockType = ((OpenFunctionData*)pFlowCtrlStackLvl)->blockType;
+                        }
                     }
 
                     int openFunctionIndex = ((OpenFunctionData*)pFlowCtrlStackLvl)->functionIndex;                      // function index of stopped program's deepest function in call stack
@@ -2010,9 +2021,9 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parsingResult_type& resu
                 else {
                     pNext = pch; result = result_var_notDeclared; return false;
                 }
-    }
+            }
 
-}
+        }
 
         else {
             // global PROGRAM variable exists already: check for double definition (USER variables: detected when NAME was declared a second time) 
@@ -2160,7 +2171,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parsingResult_type& resu
     _lastTokenIsString = false, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
 #if PRINT_PARSED_TOKENS
-    _pDebugOut->print("parsing var name: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(pvarNames[activeNameRange][varNameIndex]);  _pDebugOut->println("]");
+    _pDebugOut->print("** parsing var name: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(pvarNames[activeNameRange][varNameIndex]);  _pDebugOut->println("]");
 #endif
 
     _programCounter += sizeof(TokenIsVariable);
@@ -2185,7 +2196,8 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parsingResult_type
     if (!isalpha(pNext[0]) && (pNext[0] != '#')) { return true; }                                                    // first character is not a letter ? Then it's not an identifier name (it can still be something else)
     while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                                 // do until first character after alphanumeric token (can be anything, including '\0')
 
-    // token is a generic identifier, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
+    // generic identifiers cannot occur within a trace, BP view or BP trigger string, and not within an eval() string
+    // if not allowed here, reset pointer to first character to parse, indicate error and return
     if (_parsingExecutingTraceString || _parsingEvalString) { pNext = pch; result = result_trace_eval_genericNameNotAllowed; return false; }
 
     if (_parenthesisLevel > 0) { pNext = pch; result = result_identifierNotAllowedHere; return false; }
@@ -2226,8 +2238,8 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parsingResult_type
             _parsedStringConstObjectCount--;
             delete[] pIdentifierName;
             pNext = pch; return false;
+        }
     }
-}
 
     // expression syntax check 
     _thisLvl_lastIsVariable = false;
@@ -2515,7 +2527,7 @@ bool Justina_interpreter::parseString(char*& pNext, char*& pch, char*& pStringCs
             if (pSource[0] == '\\') { pSource++; escChars--; }                                  // if escape sequences found: skip first escape sequence character (backslash)
             pDestin++[0] = pSource++[0];
         }
-    }
+}
     pNext++;                                                                                    // skip closing quote
 
     valueType = value_isStringPointer;
@@ -2560,8 +2572,8 @@ int Justina_interpreter::getIdentifier(char** pIdentNameArray, int& identifiersI
         pIdentNameArray[identifiersInUse] = pIdentifierName;
         identifiersInUse++;
         return identifiersInUse - 1;                                                            // identNameIndex to newly created identifier name
-    }
 }
+            }
 
 
 // --------------------------------------------------------------
@@ -2684,7 +2696,7 @@ Justina_interpreter::parsingResult_type Justina_interpreter::deleteUserVariable(
         #endif
             delete[]  userVarValues[index].pArray;
             _userArrayObjectCount--;
-    }
+        }
 
         // 4. if variable is a scalar string value: delete string
         // ------------------------------------------------------
@@ -2695,7 +2707,7 @@ Justina_interpreter::parsingResult_type Justina_interpreter::deleteUserVariable(
             #endif
                 _userVarStringObjectCount--;
                 delete[]  userVarValues[index].pStringConst;
-}
+            }
         }
 
         // 5. move up next user variables one place

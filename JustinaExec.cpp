@@ -32,7 +32,7 @@
 
 #define PRINT_HEAP_OBJ_CREA_DEL 0
 #define PRINT_PARSED_CMD_STACK 0
-#define PRINT_PROCESSED_TOKEN 1
+#define PRINT_PROCESSED_TOKEN 0
 #define PRINT_DEBUG_INFO 0
 #define PRINT_OBJECT_COUNT_ERRORS 0
 
@@ -90,17 +90,11 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
     _lastValueIsStored = false;
 
 
-    // -----------------
-    // 1. process tokens
-    // -----------------
+    // --------------------------
+    // process tokens, one by one
+    // --------------------------
 
     while (tokenType != tok_no_token) {                                                                 // for all tokens in token list
-
-        if (_executingTriggerString) {                                                                // keep result for now (do nothing)
-            Serial.println("** SEMICOLON - executing trigger string");
-        }
-
-
 
         // if terminal token, determine which terminal type
     #if PRINT_PROCESSED_TOKEN
@@ -129,9 +123,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
         int  holdCommandStartEValStackLevels{ 0 };
 
-        delay(100);////
-        // 1. process by token type
-        // ------------------------
 
         switch (tokenType) {                                                                            // process according to token type
 
@@ -324,7 +315,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             case tok_isVariable:
             {
                 _activeFunctionData.errorProgramCounter = _programCounter;                              // in case an error occurs while processing token
-
                 pushVariable(tokenType);
 
             #if PRINT_DEBUG_INFO
@@ -523,29 +513,23 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
                     isEndOfStatementSeparator = true;
 
+                    // simple expression statement
                     if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_none) {                                                 // currently not executing a command, but a simple expression
                         if (evalStack.getElementCount() > (_activeFunctionData.callerEvalStackLevels + 1)) {
-                            // if tracing, message would not be correct. Eval stack levels will be deleted right after printing a traced value (or trace execution error)
+
                         #if PRINT_OBJECT_COUNT_ERRORS
+                            // if tracing, message would not be correct. Eval stack levels will be deleted right after printing a traced value (or trace execution error)
                             if (!_parsingExecutingTraceString) {
                                 _pDebugOut->print("*** Evaluation stack error. Remaining stack levels for current program level: "); _pDebugOut->println(evalStack.getElementCount() - (_activeFunctionData.callerEvalStackLevels + 1));
                             }
                         #endif
                         }
 
-                        // did the last expression produce a result ?  
+                        // did the expression produce a result ?  
                         else if (evalStack.getElementCount() == _activeFunctionData.callerEvalStackLevels + 1) {
-                            if (_parsingExecutingTraceString) {
-                                // store new last value
-                                _traceResultValue.floatConst = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? *_pEvalStackTop->varOrConst.value.pFloatConst : _pEvalStackTop->varOrConst.value.floatConst;  // ok for all value types
-                                _traceResultValueType = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pEvalStackTop->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackTop->varOrConst.valueType;
 
-                                if (_executingTriggerString) {                                                                // keep result for now (do nothing)
-                                    Serial.println("** SEMICOLON - executing trigger string");
-                                }
-                            }
-
-                            else if (_activeFunctionData.blockType == block_eval) {  // executing parsed eval() string
+                            // result is eval() string expression result ? check if it is the last expression occuring in the eval() string (only that value is considered the eval() result))
+                            if (_activeFunctionData.blockType == block_eval) {  // executing parsed eval() string
                                 // never store a last value; delete all expression results except the last one
                                 int tokenType, tokenCode;
                                 char* pStep = _programCounter;
@@ -556,11 +540,19 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                                         (tokenType != tok_isEvalEnd);
                                     if (nextExpressionFound) { break; }      // not last expression
                                 } while ((*pStep & 0x0F) != tok_isEvalEnd);             // always match
-                                if (tokenType != tok_isEvalEnd) { clearEvalStackLevels(1); }                                        // a next expression is found: delete the current expression's result
+                                // a next expression - still to be evaluated - is found: delete the current expression's result
+                                if (tokenType != tok_isEvalEnd) { clearEvalStackLevels(1); }
                             }
 
-                            else {                                                                                                  // not an eval() block, not tracing
+                            // trace or a BP view expression result ? Store result and delete evaluation stack level
+                            else if (_parsingExecutingTraceString && !_isTriggerString) {
+                                _traceResultValue.floatConst = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? *_pEvalStackTop->varOrConst.value.pFloatConst : _pEvalStackTop->varOrConst.value.floatConst;  // ok for all value types
+                                _traceResultValueType = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pEvalStackTop->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackTop->varOrConst.valueType;
+                                clearEvalStackLevels(1);
+                            }
 
+                            // simple expression statement result
+                            else {                                                                                                  // not an eval() block, not tracing
                                 // in main program level ? store as last value (for now, we don't know if it will be followed by other 'last' values)
                                 if (_programCounter >= (_programStorage + _progMemorySize)) {
                                     saveLastValue(_lastValueIsStored);
@@ -594,16 +586,17 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             break;  // (case label)
 
 
-            // ------------------------------
             // parsed eval() statements end ?
             // ------------------------------
 
-            case tok_isEvalEnd:
+            case tok_isEvalEnd:                                                                                         // ALL expressions in an eval() string have been executed 
             {
                 if (evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels >= 1) {
                     makeIntermediateConstant(_pEvalStackTop);                                                           // expression result is always a constant
                 }
+
                 else { execResult = result_eval_nothingToEvaluate; break; }                                             // string, although not empty (""), does not contain an expression  
+
                 terminateEval();
                 if (evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels >= 1) {
                     execResult = execAllProcessedOperators();                                                         // process operators OUTSIDE terminating eval() function
@@ -622,8 +615,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
 
 
-        // 2. if error trapping is on, trap any error. This effectively clears the error condition. A call to err() will return the error number 
-        // -------------------------------------------------------------------------------------------------------------------------------------
+        // if error trapping is on, trap any error. This effectively clears the error condition. A subsequent call to err() will return the error number 
+        // ---------------------------------------------------------------------------------------------------------------------------------------------
         // did an error occur in a Justina function, the (debug) command line or an eval() string ? 
         if (!_parsingExecutingTraceString && (execResult != result_execOK) && (execResult < result_startOfEvents)) {    // Trap the error if error trapping is enabled
             bool errorTrapped = trapError(isEndOfStatementSeparator, execResult);                               // if error trapped, execResult will be reset (no error)
@@ -631,8 +624,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         }
 
 
-        // 3. a token has been processed (with or without error): advance to next token
-        // ----------------------------------------------------------------------------
+        // token has been processed (with or without error): advance to next token
+        // -----------------------------------------------------------------------
         _programCounter = _activeFunctionData.pNextStep;                                                    // note: will be altered when calling a Justina function and upon return of a called function
         tokenType = *_activeFunctionData.pNextStep & 0x0F;                                                  // next token type (could be token within caller, if returning now)
         precedingIsComma = isComma;                                                                         // remember if this was a comma
@@ -642,9 +635,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         _pDebugOut->print("                             eval stack depth: "); _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(", list element address: "); _pDebugOut->println((uint32_t)_pEvalStackTop, HEX); _pDebugOut->println();
     #endif
 
-
-        // 4. last token processed was a statement separator ? 
-        // ---------------------------------------------------
+        // last token processed was a statement separator ? 
+        // ------------------------------------------------
         // this code executes after a statement was executed (simple expression or command)
 
         if (isEndOfStatementSeparator) {                                                                    // after expression AND after command
@@ -659,7 +651,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             holdProgramCnt_StatementStart = _programCounter;
 
             if (execResult == result_execOK) {                                                              // no error ? 
-                if (!isFunctionReturn) {  ////                                                                  // adapt error program step pointers
+                if (!isFunctionReturn) {                                                                    // adapt error program step pointers
                     // note: if returning from user function, error statement pointers retrieved from flow control stack 
                     _activeFunctionData.errorStatementStartStep = _programCounter;
                     _activeFunctionData.errorProgramCounter = _programCounter;
@@ -683,13 +675,11 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             // note: skip while executing trace expressions, parsed eval() expresions or quitting Justina
 
             bool executingEvalString = (_activeFunctionData.blockType == block_eval);
-            if (_executingTriggerString) {
-                Serial.println("** TRIGGER string executed");
-            }
-            else if (!_parsingExecutingTraceString && !executingEvalString && (execResult != result_kill) && (execResult != result_quit)) {
+
+            if (!_parsingExecutingTraceString && !executingEvalString && (execResult != result_kill) && (execResult != result_quit)) {
                 bool isActiveBreakpoint{ false }, doStopForDebugNow{ false }, doSkip{ false };
                 checkForStopOrSkip(isActiveBreakpoint, doStopForDebugNow, doSkip, appFlagsRequestStop, isFunctionReturn, programCnt_previousStatementStart);
-                tokenType = *_activeFunctionData.pNextStep & 0x0F;             // adapt next token type (could be changed bt a breakpoint trigger string)
+                tokenType = *_programCounter & 0x0F;             // adapt next token type (could be changed by a breakpoint trigger string)
 
                 if (appFlagsRequestAbort) { execResult = result_abort; }
                 else if (doStopForDebugNow || doSkip) { execResult = (isActiveBreakpoint ? result_stopForBreakpoint : result_stopForDebug); }
@@ -697,31 +687,22 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             }
         }
 
-
-        // 5. did an execution error occur within token ? signal error
-        // -----------------------------------------------------------
-
-        // do not print / handle error message / event if currently executing trace expressions
-
-        if (!_parsingExecutingTraceString) {
-            if (execResult != result_execOK) {
-                printExecError(execResult, showStopmessage);
-                break;
-            }
-        }
+        if (execResult != result_execOK) { break; }
 
     }   // end 'while ( tokenType != tok_no_token )'                                                                                       
 
 
 
-    // --------------------------------------------------
-    // 3. finalize execution: prepare to return to caller
-    // --------------------------------------------------
+    // --------------------------------------------------------
+    // finalize execution and exit: prepare to return to caller
+    // --------------------------------------------------------
 
-    // 3.1 did the execution produce a result ? print it
-    // -------------------------------------------------
+
+    // did the execution produce a result ? print it
+    // ---------------------------------------------
 
     if (_parsingExecutingTraceString) {
+
         // execution of TRACE or BP view string (so at least one program is stopped)
         // NOTE that execution of a breakpoint TRIGGER string is part of normal execution, so control doesn't pass here (same as eval() function execution)
         int charsPrinted{  };                                                                                                       // required but not used
@@ -753,38 +734,40 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             delete[] toPrint.pStringConst;
         }
 
-
         // note: flow control stack and immediate command stack (program code) are not affected: only need to clear evaluation stack
         clearEvalStackLevels(evalStack.getElementCount() - (int)_activeFunctionData.callerEvalStackLevels);
     }
 
-    else {
-        // normal execution
-        if (*_pConsolePrintColumn != 0) { printlnTo(0); *_pConsolePrintColumn = 0; }
-        if (_lastValueIsStored && (_printLastResult > 0)) {
+    else {                                              // normal execution
+        if (execResult == result_execOK) {              // no error: print last result
 
-            // print last result
-            bool isLong = (lastResultTypeFiFo[0] == value_isLong);
-            bool isFloat = (lastResultTypeFiFo[0] == value_isFloat);
-            int charsPrinted{  };                                                                                                   // required but not used
-            Val toPrint;
-            char* fmtString = isLong ? _dispIntegerFmtString : isFloat ? _dispFloatFmtString : _dispStringFmtString;
-            printToString(_dispWidth, isLong ? _dispIntegerPrecision : isFloat ? _dispFloatPrecision : MAX_STRCHAR_TO_PRINT,
-                (!isLong && !isFloat), isLong, lastResultTypeFiFo, lastResultValueFiFo, fmtString, toPrint, charsPrinted, (_printLastResult == 2));
-            printlnTo(0, toPrint.pStringConst);
+            if (*_pConsolePrintColumn != 0) { printlnTo(0); *_pConsolePrintColumn = 0; }
+            if (_lastValueIsStored && (_printLastResult > 0)) {
 
-            if (toPrint.pStringConst != nullptr) {
-            #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print("----- (Intermd str) "); _pDebugOut->println((uint32_t)toPrint.pStringConst, HEX);
-            #endif
-                _intermediateStringObjectCount--;
-                delete[] toPrint.pStringConst;
+                bool isLong = (lastResultTypeFiFo[0] == value_isLong);
+                bool isFloat = (lastResultTypeFiFo[0] == value_isFloat);
+                int charsPrinted{  };                                                                                                   // required but not used
+                Val toPrint;
+                char* fmtString = isLong ? _dispIntegerFmtString : isFloat ? _dispFloatFmtString : _dispStringFmtString;
+                printToString(_dispWidth, isLong ? _dispIntegerPrecision : isFloat ? _dispFloatPrecision : MAX_STRCHAR_TO_PRINT,
+                    (!isLong && !isFloat), isLong, lastResultTypeFiFo, lastResultValueFiFo, fmtString, toPrint, charsPrinted, (_printLastResult == 2));
+                printlnTo(0, toPrint.pStringConst);
+
+                if (toPrint.pStringConst != nullptr) {
+                #if PRINT_HEAP_OBJ_CREA_DEL
+                    _pDebugOut->print("----- (Intermd str) "); _pDebugOut->println((uint32_t)toPrint.pStringConst, HEX);
+                #endif
+                    _intermediateStringObjectCount--;
+                    delete[] toPrint.pStringConst;
+                }
+            }
         }
+        else { printExecError(execResult, showStopmessage); }
     }
-}
 
-    // 3.2 adapt imm. mode parsed statement stack, flow control stack and evaluation stack
-    // -----------------------------------------------------------------------------------
+
+    // adapt imm. mode parsed statement stack, flow control stack and evaluation stack
+    // -------------------------------------------------------------------------------
 
     if ((execResult == result_stopForDebug) || (execResult == result_stopForBreakpoint)) {              // stopping for debug now ('STOP' command or single step)
         // push caller function data (or main = user entry level in immediate mode) on FLOW CONTROL stack 
@@ -814,7 +797,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         clearParsedCommandLineStack(parsedCommandLineStack.getElementCount());
         clearFlowCtrlStack(dummy);                                                                                                  // and remaining local storage + local variable string and array values
         clearEvalStack();
-        Serial.println("** finalising: clear all stacks");
     }
 
     // program or command line exec error (could be an app flags abort request), OR abort command entered by the user,
@@ -960,6 +942,67 @@ bool Justina_interpreter::trapError(bool& isEndOfStatementSeparator, execResult_
 // ------------------------------------------------
 
 void Justina_interpreter::checkForStopOrSkip(bool& isActiveBreakpoint, bool& doStopForDebugNow, bool& doSkip, bool& appFlagsRequestStop, bool& isFunctionReturn, char* programCnt_previousStatementStart) {
+
+    // parsed statement has a preceding 'BP set' or 'BP allowed' token ? Then this statement has an associated sourceline number
+    // Store the starting program step of this parsed statement, because we might need it later
+    if ((*(_programCounter - 1) == _semicolonBPallowed_token) || (*(_programCounter - 1) == _semicolonBPset_token)) { _pStatementWithLineNumber = _programCounter; }
+
+    _pBreakpoints->_pBreakpointDataRow = nullptr;
+    _pBreakpoints->_BPdataRow = -1;
+    isActiveBreakpoint = (*(_programCounter - 1) == _semicolonBPset_token);
+
+    if (isActiveBreakpoint) {                                                                             // check attributes in breakpoints table
+        _pBreakpoints->_pBreakpointDataRow = _pBreakpoints->findBPtableRow(_programCounter, _pBreakpoints->_BPdataRow);     // find table entry
+
+        // breakpoint is not enabled ? breakpoint is not active
+        if (_pBreakpoints->_pBreakpointDataRow->BPenabled == 0b0) { isActiveBreakpoint = false; }
+
+        // enabled breakpoint has a hitcount set as trigger condition ? check hitcount
+        else if (_pBreakpoints->_pBreakpointDataRow->BPwithHitCount == 0b1) {
+            isActiveBreakpoint = (_pBreakpoints->_pBreakpointDataRow->hitCount == ++_pBreakpoints->_pBreakpointDataRow->hitCounter);        // hitcount reached ?
+            if (isActiveBreakpoint) { _pBreakpoints->_pBreakpointDataRow->hitCounter = 0; }                                              // if hitcount reached, reset hit counter
+        }
+
+        // enabled breakpoint has a trigger expression set as trigger condition ? parse trigger expression
+        // if parsing error, then condition is considered false (no breakpoint set)
+        // if no parsing error, then launch execution of trigger expression
+        else if (_pBreakpoints->_pBreakpointDataRow->BPwithTriggerExpr == 0b1) {
+            parsingResult_type result = parseTriggerString(_pBreakpoints->_BPdataRow);
+            isActiveBreakpoint = (result == result_parsing_OK);
+
+            if (!isActiveBreakpoint) {
+                _parsingExecutingTraceString = false;
+                _isTriggerString = false;
+            }
+            else {
+                _isTriggerString = true;
+                // push caller function data (or main = user entry level in immediate mode) on FLOW CONTROL stack 
+                _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
+                *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                                         // push caller function data to stack
+                ++_callStackDepth;                                                                                      // caller can be main, another Justina function or an eval() string
+
+                _activeFunctionData.blockType = block_eval;                                                            // now executing parsed 'eval' string
+                _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                // command execution ended 
+
+                _activeFunctionData.callerEvalStackLevels = evalStack.getElementCount();                                // store evaluation stack levels in use by callers (call stack)
+
+                // set next step to start of called function
+                // -----------------------------------------
+
+                _programCounter = _programStorage + _progMemorySize;                                      // first step in first statement in parsed eval() string
+                int tokenType = *_programCounter & 0x0F;             // adapt next token type (could be changed bt a breakpoint trigger string)
+                int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*_programCounter >> 4) & 0x0F;
+                _activeFunctionData.pNextStep = _programCounter + tokenLength;                                  // look ahead
+
+                _activeFunctionData.errorStatementStartStep = _programStorage + _progMemorySize;
+                _activeFunctionData.errorProgramCounter = _programStorage + _progMemorySize;
+            }
+        }
+    }
+
+
+    // stop for debug now ? (program was interrupted, one of the 'step...' commands was executed (imm. mode), the program encountered a STOP command or a breakpoint
+
     bool nextIsSameLvlEnd{ false };
     if ((_stepCmdExecuted == db_stepToBlockEnd) && (flowCtrlStack.getElementCount() == _stepFlowCtrlStackLevels)
         && ((*_activeFunctionData.pNextStep & 0x0F) == tok_isReservedWord)) {
@@ -971,67 +1014,6 @@ void Justina_interpreter::checkForStopOrSkip(bool& isActiveBreakpoint, bool& doS
     bool executedStepIsprogram = programCnt_previousStatementStart < (_programStorage + _progMemorySize); // always a program function step
     bool nextStepIsprogram = (_programCounter < (_programStorage + _progMemorySize));
 
-    // debugging: store, to retrieve line number later
-    if ((*(_programCounter - 1) == _semicolonBPallowed_token) || (*(_programCounter - 1) == _semicolonBPset_token)) { _pStatementWithLineNumber = _programCounter; }
-
-    // stop for debug now ? (program was interrupted, one of the 'step...' commands was executed (imm. mode), the program encountered a STOP command or a breakpoint
-    _pBreakpoints->_pBreakpointDataRow = nullptr;
-    _pBreakpoints->_BPdataRow = -1;
-    isActiveBreakpoint = (*(_programCounter - 1) == _semicolonBPset_token);
-    if (isActiveBreakpoint) {                                                                             // check attributes in breakpoints table
-        _pBreakpoints->_pBreakpointDataRow = _pBreakpoints->findBPtableRow(_programCounter, _pBreakpoints->_BPdataRow);     // find table entry
-        if (_pBreakpoints->_pBreakpointDataRow->BPenabled == 0b0) { isActiveBreakpoint = false; }               // breakpoint is not enabled
-        else if (executedStepIsprogram) {
-            if (_pBreakpoints->_pBreakpointDataRow->BPwithHitCount == 0b1) {
-                isActiveBreakpoint = (_pBreakpoints->_pBreakpointDataRow->hitCount == ++_pBreakpoints->_pBreakpointDataRow->hitCounter);        // hitcount reached ?
-                if (isActiveBreakpoint) { _pBreakpoints->_pBreakpointDataRow->hitCounter = 0; }                                              // if hitcount reached, reset hit counter
-            }
-            else if (_pBreakpoints->_pBreakpointDataRow->BPwithTriggerExpr == 0b1) {
-                isActiveBreakpoint = (parseTriggerString(_pBreakpoints->_BPdataRow) == result_parsing_OK);
-                Serial.print("** trigger parsing error (0 = ok): "); Serial.println(isActiveBreakpoint);
-
-                // ** TEMP *****************************
-                // indien trigger string parsing OK, staat parsed trigger string nog in imm.mode geheugen
-                // verwijderen moet op einde van exec trigger string (to do) gebeuren
-                /*
-                if (isActiveBreakpoint) {
-                    deleteConstStringObjects(_programStorage + _progMemorySize);      // string constants that were created just now
-                    long parsedUserCmdLen = *(char**)_pParsedCommandLineStackTop - (_programStorage + _progMemorySize) + 1;;
-                    memcpy((_programStorage + _progMemorySize), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);
-                    parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
-                    _pParsedCommandLineStackTop = (char*)parsedCommandLineStack.getLastListElement();
-                 }
-                 */
-                 // *************************************
-
-                if (!isActiveBreakpoint) { _parsingExecutingTraceString = false; }
-                else {
-                    // push caller function data (or main = user entry level in immediate mode) on FLOW CONTROL stack 
-                    _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
-                    *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                                         // push caller function data to stack
-                    ++_callStackDepth;                                                                                      // caller can be main, another Justina function or an eval() string
-
-                    _activeFunctionData.blockType = block_eval;  ////                                                           // now executing parsed 'eval' string
-                    _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                // command execution ended 
-
-                    _activeFunctionData.callerEvalStackLevels = evalStack.getElementCount();                                // store evaluation stack levels in use by callers (call stack)
-
-                    // set next step to start of called function
-                    // -----------------------------------------
-
-                    _activeFunctionData.pNextStep = _programStorage + _progMemorySize;                                      // first step in first statement in parsed eval() string
-                    _activeFunctionData.errorStatementStartStep = _programStorage + _progMemorySize;
-                    _activeFunctionData.errorProgramCounter = _programStorage + _progMemorySize;
-
-                    _executingTriggerString = true;
-
-                    Serial.println("** LAUNCHING trigger string exec");
-
-                }
-            }
-        }
-    }
-
     bool isStepCommand = (_stepCmdExecuted == db_singleStep) ||
         ((_stepCmdExecuted == db_stepOut) && (_callStackDepth < _stepCallStackLevel)) ||
         ((_stepCmdExecuted == db_stepOver) && (_callStackDepth <= _stepCallStackLevel)) ||
@@ -1040,7 +1022,6 @@ void Justina_interpreter::checkForStopOrSkip(bool& isActiveBreakpoint, bool& doS
 
     doStopForDebugNow = (appFlagsRequestStop || _debugCmdExecuted || isActiveBreakpoint || isStepCommand)
         && executedStepIsprogram && nextStepIsprogram && !isFunctionReturn;
-
 
     // skipping a statement and stopping again for debug ?
     doSkip = (_stepCmdExecuted == db_skip) && nextStepIsprogram && !isFunctionReturn;
@@ -1078,6 +1059,9 @@ Justina_interpreter::parsingResult_type Justina_interpreter::parseTriggerString(
     char* pTriggerParsingInput = _pBreakpoints->_pBreakpointData[BPindex].pTrigger;                                                                   // copy pointer to start of trace string
     if (pTriggerParsingInput == nullptr) { return result_BP_emptyTriggerString; }                                                                   // no trace string: nothing to trace
 
+    _parsingExecutingTraceString = true;
+    _isTriggerString = true;
+
     // push current command line storage to command line stack, to make room for the parsed trigger string (will be parsed now) 
     // ------------------------------------------------------------------------------------------------------------------------
 
@@ -1094,12 +1078,7 @@ Justina_interpreter::parsingResult_type Justina_interpreter::parseTriggerString(
     char* pDummy{};
     char* holdProgramCounter = _programCounter;
     _programCounter = _programStorage + _progMemorySize;                                                    // parsed statements go to immediate mode program memory
-
-    _parsingExecutingTraceString = true;
-
-    // init
     *(_programStorage + _progMemorySize) = tok_no_token;                                                    // in case no valid tokens will be stored
-    _programCounter = _programStorage + _progMemorySize;                                                    // start of 'immediate mode' program area
 
     // skip any spaces and semi-colons in the input stream
     while ((pTriggerParsingInput[0] == ' ') || (pTriggerParsingInput[0] == term_semicolon[0])) { pTriggerParsingInput++; }
@@ -1109,10 +1088,9 @@ Justina_interpreter::parsingResult_type Justina_interpreter::parseTriggerString(
 
     // note: application flags are not adapted (would not be passed to caller immediately)
     int dummy{};
-    ////Serial.print("** trigger parsing input: "); Serial.println(pTriggerParsingInput);
-
     parsingResult_type parsingResult = parseStatement(pTriggerParsingInput, pDummy, dummy);
 
+    ////
     Serial.print("** trigger parsing result: "); Serial.println(parsingResult);
     Serial.print("** parsed statement: "); prettyPrintStatements(1, _programStorage + _progMemorySize);
 
@@ -1132,8 +1110,17 @@ Justina_interpreter::parsingResult_type Justina_interpreter::parseTriggerString(
         memcpy((_programStorage + _progMemorySize), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);
         parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
         _pParsedCommandLineStackTop = (char*)parsedCommandLineStack.getLastListElement();
+    }
 
-}
+    ////
+    Serial.print("** end of trigger string parsing: "); Serial.println(*(_programCounter) & 0xff, HEX);
+
+    /* ////
+    // insert an 'end of parsed expression' token (length 1 in upper 4 bits), indicating the end of either a parsed eval() string (that may contain multiple expressions)...
+    // or the end of a parsed breakpoint trigger expression
+    *(_programCounter) = tok_isEvalEnd | 0x10;
+    *(_programCounter + 1) = tok_no_token;
+    */
 
     _programCounter = holdProgramCounter;                                                                   // original program counter 
     return parsingResult;
@@ -1310,9 +1297,9 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
             #endif 
                 _lastValuesStringObjectCount--;
                 delete[] lastResultValueFiFo[itemToRemove].pStringConst;                                        // note: this is always an intermediate string
+            }
         }
     }
-}
     else {
         _lastValuesCount++;                                                                                     // only adding an item, without removing previous one
     }
@@ -1359,7 +1346,7 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
         #endif
             _intermediateStringObjectCount--;
             delete[] lastvalue.value.pStringConst;
-    }
+        }
     }
 
     // store new last value type
@@ -1392,7 +1379,7 @@ void Justina_interpreter::clearEvalStack() {
     #endif
         _intermediateStringObjectErrors += abs(_intermediateStringObjectCount);
         _intermediateStringObjectCount = 0;
-}
+    }
     return;
 }
 
@@ -2154,8 +2141,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
                 _intermediateStringObjectCount--;
                 // compound assignment: pointing to the unclipped result WHICH IS NON-EMPTY: so it's a heap object and must be deleted now
                 delete[] pUnclippedResultString;
+            }
         }
-    }
 
         // store value in variable and adapt variable value type - next line is valid for long integers as well
         if (opResultLong || opResultFloat) { *_pEvalStackMinus2->varOrConst.value.pFloatConst = opResult.floatConst; }
@@ -2169,7 +2156,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) |
                 (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
         }
-}
+    }
 
 
     // (7) post process
@@ -2314,7 +2301,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execExternalCppFunctio
             #endif
                 _intermediateStringObjectCount--;
                 delete[] args[i].pStringConst;                                                                      // delete temporary string
-        }
+            }
 
             // string argument was a (NON-CONSTANT) variable string: no copy was made, the string itself was passed to the user routine
             // did the user routine change it to an empty, '\0' terminated string ?
@@ -2329,9 +2316,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execExternalCppFunctio
                 delete[]args[i].pStringConst;                                                                       // delete original variable string
                 *pStackLvl->varOrConst.value.ppStringConst = nullptr;                                               // change pointer to string (in variable) to null pointer
             }
-    }
+        }
         pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-}
+    }
 
     clearEvalStackLevels(suppliedArgCount + 1);                                                                         // clean up: delete evaluation stack elements for supplied arguments
 
@@ -2349,7 +2336,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execExternalCppFunctio
     _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
 
     return result_execOK;
-    }
+}
 
 
 // -------------------------------
@@ -2501,8 +2488,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
 
     *(_programCounter) = tok_isEvalEnd | 0x10;                                                              // replace '\0' after parsed statements with 'end eval ()' token (length 1 in upper 4 bits)
     *(_programCounter + 1) = tok_no_token;
-    if (pFunctionStackLvl != nullptr) { _programCounter = holdProgramCounter; }                                                                   // original program counter (points to closing par. of eval() function)
 
+    if (pFunctionStackLvl != nullptr) { _programCounter = holdProgramCounter; }                                                                   // original program counter (points to closing par. of eval() function)
 
 
     // note current token (Justina function 'eval' token) position, in case an error happens IN THE CALLER immediately upon return from function to be called
@@ -2844,7 +2831,7 @@ void Justina_interpreter::terminateJustinaFunction(bool addZeroReturnValue) {
         #endif
             _localVarValueAreaErrors += abs(_localVarValueAreaCount);
             _localVarValueAreaCount = 0;
-    }
+        }
 
         if (_localVarStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
@@ -2852,7 +2839,7 @@ void Justina_interpreter::terminateJustinaFunction(bool addZeroReturnValue) {
         #endif
             _localVarStringObjectErrors += abs(_localVarStringObjectCount);
             _localVarStringObjectCount = 0;
-}
+        }
 
         if (_localArrayObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
@@ -3113,7 +3100,8 @@ void* Justina_interpreter::fetchVarBaseAddress(TokenIsVariable* pVarToken, char*
         // then the variable is a local variable of a stopped program's open function 
         bool isStoppedFunctionVar = (blockType == block_JustinaFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + _progMemorySize)) : true;     // command line or eval() block type
 
-        if (isStoppedFunctionVar) {
+        // if a trigger string is being executed, this means a program is running. Function data for the function where control is, is currently stored in _activeFunctionData
+        if (isStoppedFunctionVar && !_isTriggerString) {
             bool isDebugCmdLevel = (blockType == block_JustinaFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + _progMemorySize)) : false;
 
             if (!isDebugCmdLevel) {       // find debug level in flow control stack instead

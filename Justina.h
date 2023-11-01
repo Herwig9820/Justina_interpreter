@@ -454,7 +454,7 @@ class Justina_interpreter {
         tok_isTerminalGroup2,                                           // if index between 16 and 31
         tok_isTerminalGroup3,                                           // if index between 32 and 47
 
-        tok_isEvalEnd,                                                    // execution only, signals end of parsed eval() statements
+        tok_isEvalEnd,                                                    // execution only, signals end of parsed eval() statements and of trigger strings
     };
 
     // error codes for all PARSING errors
@@ -1606,9 +1606,9 @@ private:
     //
     // if execution of a NEW program is started while in debug mode, the whole process as described above is repeated. So, you can have more than one program being suspended
     LinkedList flowCtrlStack;
-    void* _pFlowCtrlStackTop{ nullptr };    // pointers to flow control stack top elements
-    int _callStackDepth{ 0 };                                       // number of currently open Justina functions + open eval() functions + count of stopped programs (in debug mode): ...
-    // ...this equals flow ctrl stack depth MINUS open loops (if, for, ...)
+    void* _pFlowCtrlStackTop{ nullptr };                                        // pointers to flow control stack top elements
+    int _callStackDepth{ 0 };                                                   // number of currently open Justina functions + open eval() functions + count of stopped programs (in debug mode): ...
+                                                                                // ...this equals flow ctrl stack depth MINUS open loops (if, for, ...)
 
     // while at least one program is stopped (debug mode), the PARSED code of the original command line from where execution started is pushed to a separate stack, and popped again ...
     // ...when the program resumes, so that execution can continue there. If multiple programs are currently stopped (see: flow control stack), this stack will contain multiple entries
@@ -1674,11 +1674,12 @@ private:
     int _stepCallStackLevel{ 0 };                                   // call stack levels at the moment of a step, skip... debugging command 
     int _stepFlowCtrlStackLevels{ 0 };                              // total flow control stack levels at the moment of a step, skip... debugging command
     int _stepCmdExecuted{ db_continue };                            // type of debugging command executed (step, skip, ...)
-
     bool _debugCmdExecuted{ false };                                // a debug command was executed
+    
+    // parsed statement has a preceding 'BP set' or 'BP allowed' token ? Then this statement has an associated sourceline number
+    char* _pStatementWithLineNumber{ nullptr };
 
     Breakpoints* _pBreakpoints{ nullptr };
-    char* _pStatementWithLineNumber{ nullptr };
 
     // error trapping
     // --------------
@@ -1692,7 +1693,7 @@ private:
     char* _pTraceString{ nullptr };
 
     bool _parsingExecutingTraceString{ false };
-    bool _executingTriggerString{false};
+    bool _isTriggerString{false};
     bool _parsingEvalString{ false };
     long _evalParseErrorCode{ 0L };
     Val _traceResultValue{};
@@ -2071,7 +2072,7 @@ private:
 
     void checkForStopOrSkip(bool& isActiveBreakpoint, bool& doStopForDebugNow, bool& doSkip,bool& appFlagsRequestStop,bool& isFunctionReturn, char* programCnt_previousStatementStart);
     bool trapError(bool& isEndOfStatementSeparator, execResult_type& execResult);
-    void parseAndExecTraceString(int BPindex = -1);
+    void parseAndExecTraceOrBPviewString(int BPindex = -1);
     void traceAndPrintDebugInfo(execResult_type execResult);
     parsingResult_type parseTriggerString(int BPindex);
 

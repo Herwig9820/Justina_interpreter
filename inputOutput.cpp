@@ -1078,7 +1078,7 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
     char floatFmtStr[10] = "%#.*";                                                                                          // '#' flag: always a decimal point
     strcat(floatFmtStr, _dispFloatSpecifier);
 
-    // multiple instructions: only during debugging
+    // print multiple instructions: only during debugging
     int outputStream = (_parsingExecutingTraceString || multipleInstructions) ? _debug_sourceStreamNumber : 0;
 
     while (tokenType != tok_no_token) {                                                                                     // for all tokens in token list
