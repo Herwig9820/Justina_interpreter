@@ -117,7 +117,7 @@ Justina_interpreter::parsingResult_type Justina_interpreter::parseStatement(char
         if (pNext[0] == '\0') { pNextParseStatement = pNext; break; }                                               // end of statement: prepare to quit parsing  
 
         // trace, BP view or BP trigger string ? parse one statement at a time, then execute it first (note: within BP trigger strings, only the first expression will be parsed and executed)
-        if (_parsingExecutingTraceString && isSemicolon) { pNextParseStatement = pNext;  break; }      
+        if ((_parsingExecutingTraceString  || _parsingExecutingTriggerString) && isSemicolon) { pNextParseStatement = pNext;  break; }      
 
 
         _lastTokenType_hold = _lastTokenType;                                                                       // remember the last parsed token during parsing of a next token
@@ -134,8 +134,9 @@ Justina_interpreter::parsingResult_type Justina_interpreter::parseStatement(char
             // if a function returns true, then either proceed OR skip reminder of loop ('continue') if 'result' indicates a token has been found
             // if a function returns false, then break with 'result' containing the error
 
+            // check that there is still room to store the longest possible token + 2 extra ('tok_isEvalEnd' and ending '\0')
             char* lastProgramByte = _programStorage + _progMemorySize + (_programMode ? 0 : IMM_MEM_SIZE) - 1;
-            if ((_programCounter + sizeof(TokenIsConstant) + 1) > lastProgramByte) { result = result_progMemoryFull; break; };
+            if ((_programCounter + sizeof(TokenIsConstant) + 2) > lastProgramByte) { result = result_progMemoryFull; break; };
 
             if (!parseAsResWord(pNext, result)) { break; } if (result == result_parsing_OK) { break; }              // check before checking for identifier  
             if (!parseTerminalToken(pNext, result)) { break; }  if (result == result_parsing_OK) { break; }         // check before checking for number
@@ -418,7 +419,7 @@ bool Justina_interpreter::parseAsResWord(char*& pNext, parsingResult_type& resul
 
         // commands (starting with a keyword) are not allowed within trace, BP view, BP trigger strings and in eval() strings.
         // if not allowed, reset pointer to first character to parse, indicate error and return
-        if (_parsingExecutingTraceString || _parsingEvalString) { pNext = pch; result = result_trace_eval_resWordNotAllowed; return false; }
+        if (_parsingExecutingTraceString || _parsingExecutingTriggerString || _parsingEvalString) { pNext = pch; result = result_trace_eval_resWordNotAllowed; return false; }
         if (_parenthesisLevel > 0) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
         if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2_0)) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
         if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
@@ -1352,7 +1353,7 @@ bool Justina_interpreter::parseAsInternCPPfunction(char*& pNext, parsingResult_t
 
         // eval() function can not occur within a trace, BP view or BP trigger string (all other internal functions can)
         // note: an eval() functions are allowed in other eval() function
-        if (_parsingExecutingTraceString) {
+        if (_parsingExecutingTraceString || _parsingExecutingTriggerString) {
             if (_internCppFunctions[funcIndex].functionCode == fnccod_eval) { pNext = pch; result = result_trace_evalFunctonNotAllowed; return false; }
         }
 
@@ -1497,7 +1498,7 @@ bool Justina_interpreter::parseAsJustinaFunction(char*& pNext, parsingResult_typ
     if (index != -1) { pNext = pch; return true; }                                                                      // is a user variable
 
     // user functions cannot occur within a trace, BP view or BP trigger string (they are allowed in eval() strings, however)
-    if (_parsingExecutingTraceString) { pNext = pch; result = result_trace_userFunctonNotAllowed; return false; }
+    if (_parsingExecutingTraceString || _parsingExecutingTriggerString) { pNext = pch; result = result_trace_userFunctonNotAllowed; return false; }
 
     if ((_isJustinaFunctionCmd) && (_parenthesisLevel > 0)) { pNext = pch; return true; }                               // only array parameter allowed now
 
@@ -1925,9 +1926,9 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parsingResult_type& resu
                  // in debug mode (program stopped), the name could refer to a local or static variable within the currently stopped function (open function).
                  // if parsing a BP trigger string, debug mode is not active yet (function is not stopped yet- will depend of trigger string execution result)   
 
-                if ((_openDebugLevels > 0) || _isTriggerString) {
+                if ((_openDebugLevels > 0) || _parsingExecutingTriggerString) {
                     void* pFlowCtrlStackLvl{};
-                    if (_isTriggerString) { 
+                    if (_parsingExecutingTriggerString) {
                         pFlowCtrlStackLvl = &_activeFunctionData;                        // program not yet stopped: function data reside in _activeFunctionData
                     }
                     else {
@@ -2198,7 +2199,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parsingResult_type
 
     // generic identifiers cannot occur within a trace, BP view or BP trigger string, and not within an eval() string
     // if not allowed here, reset pointer to first character to parse, indicate error and return
-    if (_parsingExecutingTraceString || _parsingEvalString) { pNext = pch; result = result_trace_eval_genericNameNotAllowed; return false; }
+    if (_parsingExecutingTraceString || _parsingExecutingTriggerString || _parsingEvalString) { pNext = pch; result = result_trace_eval_genericNameNotAllowed; return false; }
 
     if (_parenthesisLevel > 0) { pNext = pch; result = result_identifierNotAllowedHere; return false; }
     if (_isDeleteVarCmd) {        // delete variable: previous token can only be a reserved word ("delete") or a comma (token group one)

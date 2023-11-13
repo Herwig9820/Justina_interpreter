@@ -168,12 +168,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         // step to block end: if in an open block (while, for, ...), continues execution until the next statement to execute is the 'block end' statement...
         // ... this allows you to execute a 'for' loop one loop at the time, for instance. If outside an open block, behaves like 'step' 
         // go: continues execution until control returns to the user
-        // skip: skip a statement (see notes)
-        // abort a program while it is stopped
+       // abort a program while it is stopped
 
         // notes: when the next statement to execute is a block start command (if, while, ...), control is still OUTSIDE the loop
-        //        you can not skip a block start command (if, while, ...). However, you can skip all statements inside it, including the block 'end' statement 
-        //        you can not skip a function 'end' command
+        //        you cannot skip a block start command (if, while, ...). However, you can skip all statements inside it, including the block 'end' statement 
+        //        you cannot skip a function 'end' command
 
         case cmdcod_step:
         case cmdcod_stepOver:
@@ -181,7 +180,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         case cmdcod_stepOutOfBlock:
         case cmdcod_stepToBlockEnd:
         case cmdcod_go:
-        case cmdcod_skip:
         case cmdcod_abort:
         {
 
@@ -193,30 +191,19 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // debugging command requiring an open block ? (-> step out of block, step to block end commands)
             // debugging command not applicable to block start and block end commands ? (-> skip command)
             if (((_activeFunctionData.activeCmd_ResWordCode == cmdcod_stepOutOfBlock) ||
-                (_activeFunctionData.activeCmd_ResWordCode == cmdcod_stepToBlockEnd) ||
-                (_activeFunctionData.activeCmd_ResWordCode == cmdcod_skip))) {
+                (_activeFunctionData.activeCmd_ResWordCode == cmdcod_stepToBlockEnd))) {
 
                 // determine whether an open block exists within the active function:
-                // to do that, locate flow control control stack level below the open function data (function level and one level below are always present)
+                // to do that, locate flow control control stack level below the stopped function data 
+                // note: because program is currently stopped, _activeFunctionData represents the debug level command line. FlowCtrlStack top levels contain...
+                // ...any open blocks for the debug level, then the level representing the stopped function and only then any open blocks for that stopped function, ...
+                // followed by levels for other open functions in the call stack with their open blocks... and finally a level representing the command line...
+                // ...from where the program was called, with any open blocks (if any programs are stopped, additional levels are present, basically repeating the same scheme).
                 void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;
                 char blockType{};
                 do {
                     // skip all debug level blocks and open function block (always there). Then, check the next control flow stack level (also always there)
                     blockType = ((openBlockGeneric*)pFlowCtrlStackLvl)->blockType;
-
-                    // skip command ? 
-                    if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_skip) {
-                        // If open function block found, check that skipping next step is allowed
-                        if (blockType == block_JustinaFunction) {                                               // open function block (not an open loop block)
-                            // check if next step is start of a command (reserved word) and that it is the start or end of a block command
-                            char* pNextStep = ((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep;
-                            int tokenType = *pNextStep & 0x0F;                                                  // always first character (any token)
-                            if (tokenType != tok_isReservedWord) { break; }                                     // ok
-                            int tokenindex = ((TokenIsResWord*)pNextStep)->tokenIndex;
-                            nextStepBlockAction = _resWords[tokenindex].cmdBlockDef.blockPosOrAction;
-                        }
-                    }
-
                     pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                 } while ((blockType != block_JustinaFunction) && (blockType != block_eval));
 
@@ -224,12 +211,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 // (if not, then it's the stack level for the caller already)
                 blockType = ((openBlockGeneric*)pFlowCtrlStackLvl)->blockType;
                 if ((blockType != block_for) && (blockType != block_while) && (blockType != block_if)) { OpenBlock = false; }   // is it an open block ?
-
-                // skip command (only): is skip allowed ? If not, produce error (this will not abort the program)
-                if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_skip) {
-                    if (!OpenBlock && (nextStepBlockAction == block_endPos)) { return result_skipNotAllowedHere; }          // end function: skip not allowed
-                    if (nextStepBlockAction == block_startPos) { return result_skipNotAllowedHere; }
-                }
             }
 
 
@@ -243,7 +224,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
             _pParsedCommandLineStackTop = parsedCommandLineStack.getLastListElement();
         #if PRINT_PARSED_CMD_STACK
-            _pDebugOut->print("  >> POP parsed statements (Go): last step: "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
+            _pDebugOut->print("  >> POP parsed statements (Go): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
         #endif
             --_openDebugLevels;
 
@@ -256,7 +237,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 (_activeFunctionData.activeCmd_ResWordCode == cmdcod_stepOver) ? db_stepOver :
                 (_activeFunctionData.activeCmd_ResWordCode == cmdcod_stepOutOfBlock) ? (OpenBlock ? db_stepOutOfBlock : db_singleStep) :
                 (_activeFunctionData.activeCmd_ResWordCode == cmdcod_stepToBlockEnd) ? (OpenBlock ? db_stepToBlockEnd : db_singleStep) :
-                (_activeFunctionData.activeCmd_ResWordCode == cmdcod_skip) ? db_skip :
                 db_continue;
 
             // currently, at least one program is stopped (we are in debug mode)

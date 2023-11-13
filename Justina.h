@@ -133,7 +133,8 @@ class Justina_interpreter {
         block_alterFlow,                                                // alter flow in specific open block types
         block_genericEnd,                                               // ends anytype of open block
 
-        block_eval,                                                     // execution only, signals execution of eval() string 
+        block_eval,                                                     // execution only, signals execution of parsed eval() string 
+        block_trigger,                                                  // execution only, signals execution of parsed trigger string
 
         // value 2, 3, 4: position in open block, min & max position of previous block command within same block level
         block_na,                                                       // not applicable for this block type
@@ -186,7 +187,7 @@ class Justina_interpreter {
         cmdcod_stepOver,
         cmdcod_stepOutOfBlock,
         cmdcod_stepToBlockEnd,
-        cmdcod_skip,
+        cmdcod_setNextLine,
         cmdcod_trace,
         cmdcod_debug,
         cmdcod_setBP,
@@ -640,7 +641,6 @@ class Justina_interpreter {
 
         // abort, kill, quit
         result_noProgramStopped = 3400,                                 // 'go' command not allowed because not in debug mode
-        result_skipNotAllowedHere,
 
         // breakpont errors
         result_BP_sourcelineNumberExpected = 3500,
@@ -679,7 +679,7 @@ class Justina_interpreter {
         // *** ------------------------------------------ ***
         result_startOfEvents = 9000,
 
-        // abort, kill, quit, stop, skip debug: EVENTS (first handled as errors - which they are not - initially following the same flow)
+        // abort, kill, quit, stop EVENTS (first handled as errors - which they are not - initially following the same flow)
         result_stopForDebug = result_startOfEvents,                     // 'Stop' command executed (from inside a program only): this enters debug mode
         result_stopForBreakpoint,                                       // breakpoint encountered
         result_abort,                                                   // abort running program (return to Justina prompt)
@@ -697,7 +697,6 @@ class Justina_interpreter {
         db_stepOver,
         db_stepOutOfBlock,
         db_stepToBlockEnd,
-        db_skip
     };
 
 
@@ -1671,13 +1670,11 @@ private:
     // debugging
     // ---------
 
-    int _stepCallStackLevel{ 0 };                                   // call stack levels at the moment of a step, skip... debugging command 
-    int _stepFlowCtrlStackLevels{ 0 };                              // total flow control stack levels at the moment of a step, skip... debugging command
-    int _stepCmdExecuted{ db_continue };                            // type of debugging command executed (step, skip, ...)
+    int _stepCallStackLevel{ 0 };                                   // call stack levels at the moment of a step, ... debugging command 
+    int _stepFlowCtrlStackLevels{ 0 };                              // total flow control stack levels at the moment of a step, ... debugging command
+    int _stepCmdExecuted{ db_continue };                            // type of debugging command executed (step, ...)
     bool _debugCmdExecuted{ false };                                // a debug command was executed
-    
-    // parsed statement has a preceding 'BP set' or 'BP allowed' token ? Then this statement has an associated sourceline number
-    char* _pStatementWithLineNumber{ nullptr };
+    bool _pendingStopForDebug{false};                               // remember to stop anyway if trigger string result (not yet calculated) is zero
 
     Breakpoints* _pBreakpoints{ nullptr };
 
@@ -1687,17 +1684,18 @@ private:
     int _trappedErrorNumber{ (int)result_execOK };
 
 
-    // evaluation strings ('eval("...")' and 'trace("...")' commands)
-    // --------------------------------------------------------------
+    // evaluation strings (eval("...")), trace and trigger strings
+    // -----------------------------------------------------------
 
-    char* _pTraceString{ nullptr };
-
-    bool _parsingExecutingTraceString{ false };
-    bool _isTriggerString{false};
     bool _parsingEvalString{ false };
     long _evalParseErrorCode{ 0L };
+
+    bool _parsingExecutingTraceString{ false };
+    char* _pTraceString{ nullptr };
     Val _traceResultValue{};
     char _traceResultValueType{};
+
+    bool _parsingExecutingTriggerString{false};   
 
 
     // counting of heap objects (note: linked list element count is maintained within the linked list objects)
@@ -2070,8 +2068,9 @@ private:
     // Justina error handling, debugging, tracing
     // ------------------------------------------
 
-    void checkForStopOrSkip(bool& isActiveBreakpoint, bool& doStopForDebugNow, bool& doSkip,bool& appFlagsRequestStop,bool& isFunctionReturn, char* programCnt_previousStatementStart);
     bool trapError(bool& isEndOfStatementSeparator, execResult_type& execResult);
+    void checkTriggerResult(execResult_type &execResult);
+    void checkForStop(bool& isActiveBreakpoint, bool& doStopForDebugNow, bool& appFlagsRequestStop,bool& isFunctionReturn, char* programCnt_previousStatementStart);
     void parseAndExecTraceOrBPviewString(int BPindex = -1);
     void traceAndPrintDebugInfo(execResult_type execResult);
     parsingResult_type parseTriggerString(int BPindex);
@@ -2151,12 +2150,7 @@ class Breakpoints {
     long _BPlineRangeStorageUsed{ 0 };
     BreakpointData* _pBreakpointData{ nullptr };
     
-    // a selected row
-    BreakpointData* _pBreakpointDataRow{ nullptr };
-    int _BPdataRow{-1};
-    
     int _breakpointsUsed{ 0 };
-    int _breakpointIndex{ 0 };
 
     // methods
     Breakpoints(Justina_interpreter* pJustina, long lineRanges_memorySize, long maxBreakpointCount);

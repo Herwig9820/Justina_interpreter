@@ -78,7 +78,7 @@ void Breakpoints::resetBreakpointsState() {
 
 /*
 A user must be able to set a breakpoint for each source line having at least one statement STARTING at the source line.
-To accomplish that, during program parsing, the line numbers of these source lines must be 'remembered' and linked to parsed statements. 
+To accomplish that, during program parsing, the line numbers of these source lines must be 'remembered' and linked to parsed statements.
 To do this with a minimal use of memory, Justina stores pairs of line range sizes, as follows:
 each pair consists of the 'gap' size (number of lines) between the end of a previous range of valid lines (or the beginning of the source file) and
 the beginning of a next range of 'valid' source lines (lines where a breakpoint can be set). This information is stored in a table WITHOUT any impact
@@ -216,11 +216,11 @@ Justina_interpreter::execResult_type Breakpoints::maintainBPdata(long breakpoint
     if (lineSequenceNum == -1) { return  Justina_interpreter::result_BP_notAllowedForSourceLine; }                // not a valid source line (not within source line range or doesn't start with a Justina statement)
 
 
-    // 2. find parsed program statement and current breakpoint state (set or 'allowed') for source line; if setBP or clearBP, adapt in program memory
-    // ----------------------------------------------------------------------------------------------------------------------------------------------
+    // 2. find parsed program statement and current breakpoint state ('set' or 'allowed but not set') for source line; if setBP or clearBP, adapt in program memory
+    // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-    // parsed statements for statements STARTING AT THE START of a source line: 
-    // the semicolon step (statement separator) preceding these parsed statements is altered to indicate that a breakpoint is either set or allowed for this statement
+    // parsed statement for the first statement STARTING on a source line: 
+    // the semicolon step (statement separator) preceding the parsed statement is altered to indicate that a breakpoint is either set or allowed for this statement
 
     char* pProgramStep{ nullptr };
     bool BPwasSetInProgMem{};
@@ -411,11 +411,12 @@ void Breakpoints::printBreakpoints() {
 // *   find breakpoint table entry for a parsed statement start address   *
 // ------------------------------------------------------------------------
 
-Breakpoints::BreakpointData* Breakpoints::findBPtableRow(char* pParsedStatement, int &row) {
-    row =-1;
+Breakpoints::BreakpointData* Breakpoints::findBPtableRow(char* pParsedStatement, int& row) {
     for (int i = 0; i < _breakpointsUsed; i++) {
-        if (_pBreakpointData[i].pProgramStep == pParsedStatement) {row=i;  return _pBreakpointData + i; }       // always match
+        if (_pBreakpointData[i].pProgramStep == pParsedStatement) { row = i;  return _pBreakpointData + i; }
     }
+    row = -1;               // no match
+    return nullptr;
 };
 
 
@@ -436,12 +437,13 @@ long Breakpoints::findLineNumberForBPstatement(char* pProgramStepToFind) {
 
     char* pProgramStep = _pJustina->_programStorage;
 
-    // parsed statement corresponding to line sequence number (and source line statement) has been found (always a matching entry): exit
-    while (pProgramStep != pProgramStepToFind - 1) {                                                         
+    // do until parsed statement corresponding to line sequence number (and source line statement) has been found (always a matching entry)
+    while (pProgramStep != pProgramStepToFind - 1) {
         // find next semicolon token. It flags whether a breakpoint is allowed for the NEXT statement (pending further tests)   
         _pJustina->findTokenStep(pProgramStep, true, Justina_interpreter::tok_isTerminalGroup1, Justina_interpreter::termcod_semicolon,
             Justina_interpreter::termcod_semicolon_BPset, Justina_interpreter::termcod_semicolon_BPallowed, &matchedCriteriumNumber, &matchedSemiColonTokenIndex);    // always match
-        if ((matchedCriteriumNumber >= 2)) { lineSequenceNumber++; }                               // if parsed statement can receive a breakpoint (or breakpoint is set already), increase loop counter
+        // if parsed statement can receive a breakpoint (or breakpoint is set already), increase loop counter
+        if ((matchedCriteriumNumber >= 2)) { lineSequenceNumber++; }
     };
 
     // 2. find the soureline number (base 1) corresponding to a line sequence number (base 0)  
@@ -457,7 +459,7 @@ long Breakpoints::findLineNumberForBPstatement(char* pProgramStepToFind) {
 // ------------------------------------------------------------------------------------------------------------------
 // *   return the sequence number of a given source line OR the source line for a given sequence number.            *
 // *   the sequence number of a source line is the index (base 0) attributed to the source line, only counting...   *
-// *   ...source lines with at least one statement STARTING at the START of that line.                              *
+// *   ...source lines with at least one statement STARTING on that line.                              *
 // ------------------------------------------------------------------------------------------------------------------
 
 long Breakpoints::BPsourceLineFromToBPlineSequence(long BPlineOrIndex, bool toIndex) {
