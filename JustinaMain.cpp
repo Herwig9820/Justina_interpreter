@@ -124,7 +124,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"stepOut",         cmdcod_stepOut,         cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
     {"stepOver",        cmdcod_stepOver,        cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
     {"bStepOut",        cmdcod_stepOutOfBlock,  cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
-    {"b1loop",          cmdcod_stepToBlockEnd,  cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
+    {"loop",            cmdcod_stepToBlockEnd,  cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
     {"setNextLine",     cmdcod_setNextLine,     cmd_onlyImmediate,                                      1,1,    cmdPar_104,     cmdBlockNone},
 
     {"trace",           cmdcod_trace,           cmd_onlyImmOrInsideFuncBlock,                           1,1,    cmdPar_104,     cmdBlockNone},
@@ -132,12 +132,13 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"abort",           cmdcod_abort,           cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
     {"debug",           cmdcod_debug,           cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
 
+    {"BPon",            cmdcod_BPon,            cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
+    {"BPoff",           cmdcod_BPoff,           cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
+    {"debug",           cmdcod_debug,           cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
     {"setBP",           cmdcod_setBP,           cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
     {"clearBP",         cmdcod_clearBP,         cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
     {"enableBP",        cmdcod_enableBP,        cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
     {"disableBP",       cmdcod_disableBP,       cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
-    {"stopAtBP",        cmdcod_stopatBP,        cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
-    {"continueAtBP",    cmdcod_continueatBP,    cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
 
     {"raiseError",      cmdcod_raiseError,      cmd_onlyImmOrInsideFuncBlock,                           1,1,    cmdPar_104,     cmdBlockNone},
     {"trapErrors",      cmdcod_trapErrors,      cmd_onlyImmOrInsideFuncBlock,                           1,1,    cmdPar_104,     cmdBlockNone},
@@ -616,13 +617,16 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
 // ---------------------
 
 Justina_interpreter::~Justina_interpreter() {
-    if (!_keepInMemory) {
+        Serial.println("deconstructor-B");
         resetMachine(true);                                                                             // delete all objects created on the heap: with = with user variables and FiFo stack
+        Serial.println("deconstructor-C");
         _housekeepingCallback = nullptr;
         delete[] _programStorage;
-        delete[] _pBreakpoints;
+        Serial.println("deconstructor-D");
         delete[] _pIOprintColumns;
-    }
+        Serial.println("deconstructor-E");
+        delete[] _pBreakpoints;
+        Serial.println("deconstructor-F");
 
     printlnTo(0, "\r\nJustina: bye\r\n");
     for (int i = 0; i < 48; i++) { printTo(0, "="); } printlnTo(0, "\r\n");
@@ -949,7 +953,6 @@ bool Justina_interpreter::run() {
                 result = result_parsing_OK;
             }
         } while (false);
-
         if (quitNow) { break; }                                                                                 // user gave quit command
 
 
@@ -962,9 +965,12 @@ bool Justina_interpreter::run() {
     if (kill) { _keepInMemory = false; printlnTo(0, "\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
 
     SD_closeAllFiles();                                                                                         // safety (in case an SD card is present: close all files 
+    Serial.println("E");
     _SDinitOK = false;
     SD.end();                                                                                                   // stop SD card
+    Serial.println("F");
     while (_pConsoleIn->available() > 0) { readFrom(0); }                                                       //  empty console buffer before quitting
+    Serial.println("G");
 
     if (_keepInMemory) {                                                                                        // NOTE: if remove from memory: message given in destructor
         printlnTo(0, "\r\nJustina: bye\r\n");
@@ -1131,7 +1137,7 @@ bool Justina_interpreter::finaliseParsing(parsingResult_type& result, bool& kill
 
 
         if (result == result_parse_abort) {
-            printlnTo(0, "\r\n+++ Abort: parsing terminated +++");                                              // abort: display error message 
+            printlnTo(0, _programMode ? "\r\n+++ Abort: parsing terminated +++" : "");                       // abort: display error message if aborting program parsing
         }
         else if (result == result_parse_setStdConsole) {
             printlnTo(0, "\r\n+++ console reset +++");
@@ -1347,7 +1353,6 @@ void Justina_interpreter::traceAndPrintDebugInfo(execResult_type execResult) {
     bool lineHasBPtableEntry = (*(nextStatementPointer - 1) == _semicolonBPset_token);                             // (note that BP can be disabled, hitcount not yet reached or trigger result = false)
     if (lineHasBPtableEntry) {                                                                             // check attributes in breakpoints table
         pBreakpointDataRow = _pBreakpoints->findBPtableRow(nextStatementPointer, BPdataRow);     // find table entry
-        Serial.print("<BP>");
     }
     sourceLine = (lineHasBPtableEntry) ? pBreakpointDataRow->sourceLine : _pBreakpoints->findLineNumberForBPstatement(nextStatementPointer);
     sprintf(msg, "line %ld: [%s] ", sourceLine, JustinaFunctionNames[pDeepestOpenFunction->functionIndex]);
@@ -1387,7 +1392,7 @@ void Justina_interpreter::parseAndExecTraceOrBPviewString(int BPindex) {
 
     _parsingExecutingTraceString = true;
 
-    printTo(_debug_sourceStreamNumber, (BPindex == -1) ? "TRACE> " : "BP TRACE> ");
+    printTo(_debug_sourceStreamNumber, (BPindex == -1) ? "TRACE> " : "BP TR> ");
 
     // in each loop, parse and execute ONE expression 
     do {
@@ -1494,14 +1499,17 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
 
     // delete all objects created on the heap
     // --------------------------------------
+    Serial.println("reset machine-A");
 
     // note: objects living only during execution do not need to be deleted: they are all always deleted when the execution phase ends (even if with execution errors)
     // more in particular: evaluation stack, intermediate alphanumeric constants, local storage areas, local variable strings, local array objects
 
     // delete identifier name objects on the heap (variable names, Justina function names) 
     deleteIdentifierNameObjects(programVarNames, _programVarNameCount);
+    Serial.println("reset machine-B");
     deleteIdentifierNameObjects(JustinaFunctionNames, _justinaFunctionCount);
     if (withUserVariables) { deleteIdentifierNameObjects(userVarNames, _userVarCount, true); }
+    Serial.println("reset machine-C");
 
     // delete variable heap objects: array variable element string objects
     deleteStringArrayVarsStringObjects(globalVarValues, globalVarType, _programVarNameCount, 0, true);
@@ -1775,6 +1783,7 @@ void Justina_interpreter::initInterpreterVariables(bool fullReset) {
 
 void Justina_interpreter::deleteIdentifierNameObjects(char** pIdentNameArray, int identifiersInUse, bool isUserVar) {
     int index = 0;          // points to last variable in use
+    Serial.print("identifiers in use: ");Serial.println(identifiersInUse);
     while (index < identifiersInUse) {                       // points to variable in use
     #if PRINT_HEAP_OBJ_CREA_DEL
         _pDebugOut->print(isUserVar ? "----- (usrvar name) " : "----- (ident name ) "); _pDebugOut->println((uint32_t) * (pIdentNameArray + index), HEX);

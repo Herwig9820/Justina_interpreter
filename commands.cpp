@@ -304,6 +304,20 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         break;
 
 
+        // -----------------------------
+        // switch breakpoints on are off
+        // -----------------------------
+        
+        case cmdcod_BPon:
+        case cmdcod_BPoff:
+        {
+            _pBreakpoints->_breakPontsAreOn = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_BPon);
+
+            // clean up
+            clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
+            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
+        }
+
         // -----------------------------------------
         // set, clear, enable, disable breakpoint(s)
         // -----------------------------------------
@@ -312,8 +326,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         case cmdcod_clearBP:
         case cmdcod_enableBP:
         case cmdcod_disableBP:
-        case cmdcod_stopatBP:
-        case cmdcod_continueatBP:
         {
             // all commands:   source line number [, source line number, ...]
             // set breakpoint: source line number, view string [, trigger string] - or -

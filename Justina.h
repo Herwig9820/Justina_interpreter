@@ -190,12 +190,12 @@ class Justina_interpreter {
         cmdcod_setNextLine,
         cmdcod_trace,
         cmdcod_debug,
+        cmdcod_BPon,
+        cmdcod_BPoff,
         cmdcod_setBP,
         cmdcod_clearBP,
         cmdcod_enableBP,
         cmdcod_disableBP,
-        cmdcod_stopatBP,
-        cmdcod_continueatBP,
         cmdcod_nop,
         cmdcod_raiseError,
         cmdcod_trapErrors,
@@ -1183,7 +1183,7 @@ private:
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na, block_na, block_na };                                      // not a 'block' command
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[75];                                                                                      // keyword names
+    static const ResWordDef _resWords[76];                                                                                      // keyword names
     static const InternCppFuncDef _internCppFunctions[138];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
     static const SymbNumConsts _symbNumConsts[70];                                                                              // predefined constants
@@ -2131,7 +2131,6 @@ class Breakpoints {
 
     struct BreakpointData {
         char BPenabled : 1;                       // breakpoint is enabled (program will halt)
-        char stopAtBP : 1;
         char BPwithViewExpr : 1;
         char BPwithHitCount : 1;
         char BPwithTriggerExpr : 1;
@@ -2151,6 +2150,7 @@ class Breakpoints {
     BreakpointData* _pBreakpointData{ nullptr };
     
     int _breakpointsUsed{ 0 };
+    bool _breakPontsAreOn{false};
 
     // methods
     Breakpoints(Justina_interpreter* pJustina, long lineRanges_memorySize, long maxBreakpointCount);
@@ -2167,7 +2167,7 @@ class Breakpoints {
     Justina_interpreter::execResult_type maintainBPdata(long breakpointLine, char actionCmdCode, int extraAttribCount = 0, const char* viewString = nullptr, long hitCount = 0, const char* triggerString = nullptr);
     long BPsourceLineFromToBPlineSequence(long BPsourceLineOrIndex, bool toIndex = true);
     Justina_interpreter::execResult_type progMem_getSetClearBP(long lineSequenceNum, char*& pProgramStep, bool& BPwasSet, bool doSet, bool doClear);
-    Justina_interpreter::execResult_type maintainBreakpointTable(long sourceLine, char* pProgramStep, bool BPwasSet, bool doSet, bool doClear, bool doEnable, bool doDisable, bool stopAt, bool doContinueAt,
+    Justina_interpreter::execResult_type maintainBreakpointTable(long sourceLine, char* pProgramStep, bool BPwasSet, bool doSet, bool doClear, bool doEnable, bool doDisable, 
         int extraAttribCount, const char* viewString, long hitCount, const char* triggerString);
     BreakpointData* findBPtableRow(char* pParsedStatement, int &row);
     long findLineNumberForBPstatement(char* pProgramStepToFind);

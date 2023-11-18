@@ -471,8 +471,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 // read character from stream now 
                 char c{ 0xff };                                                                                             // init: no character read
                 if (functionCode == fnccod_peek) { c = pStream->peek(); }
-                else if (pStream->available()) { _streamNumberIn = streamNumber;_pStreamIn = pStream; c = read();  }       // set global variables 
-                                                                                          
+                else if (pStream->available()) { _streamNumberIn = streamNumber; _pStreamIn = pStream; c = read(); }       // set global variables 
+
                 // save result
                 fcnResultValueType = value_isLong;
                 fcnResult.longConst = (long)c;
@@ -1380,7 +1380,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
             #endif
             }
-            }
+        }
         break;
 
 
@@ -2094,7 +2094,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             switch (sysVal) {
                 // display (last results, echo, ...) and formatting function fmt() settings
                 // ------------------------------------------------------------------------
-                // display (last results, echo, print commands)
+
+                    // display (last results, echo, print commands)
                 case 0: fcnResult.longConst = _dispWidth; break;                                // display width                                                           
                 case 1: fcnResult.longConst = _dispFloatPrecision; break;                       // floating point precision and formatting flags
                 case 2: fcnResult.longConst = _dispFloatFmtFlags; break;
@@ -2129,26 +2130,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 }
                 break;
 
+                case 15: fcnResult.longConst = _lastValuesCount;break;                                // current depth of last values FiF0
+                
 
-                case 15: fcnResult.longConst = _openFileCount; break;                           // open file count
-                case 16: fcnResult.longConst = _externIOstreamCount; break;                     // number of external streams defined
+                case 16: fcnResult.longConst = _openFileCount; break;                           // open file count
+                case 17: fcnResult.longConst = _externIOstreamCount; break;                     // number of external streams defined
 
-                case 17:                                                                        // product name
-                case 18:                                                                        // legal copy right
-                case 19:                                                                        // product version 
-                case 20:                                                                        // build date
-                {
-                    fcnResultValueType = value_isStringPointer;
-                    _intermediateStringObjectCount++;
-                    fcnResult.pStringConst = new char[((sysVal == 17) ? strlen(J_productName) : (sysVal == 18) ? strlen(J_legalCopyright) : (sysVal == 19) ? strlen(J_productVersion) : strlen(J_buildDate)) + 1];
-                #if PRINT_HEAP_OBJ_CREA_DEL
-                    _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-                #endif
-                    strcpy(fcnResult.pStringConst, (sysVal == 17) ? J_productName : (sysVal == 18) ? J_legalCopyright : (sysVal == 19) ? J_productVersion : J_buildDate);
-                }
-                break;
-
-                case 21:                                                                        // program name (if program loaded)
+                case 18:                                                                        // program name (if program loaded)
                 {
                     fcnResultValueType = value_isStringPointer;
                     _intermediateStringObjectCount++;
@@ -2160,7 +2148,34 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 }
                 break;
 
-                case 22:                                                                        // return trace string
+
+
+                
+                
+                
+                
+                
+                
+                
+                case 31:                                                                        // product name
+                case 32:                                                                        // legal copy right
+                case 33:                                                                        // product version 
+                case 34:                                                                        // build date
+                {
+                    fcnResultValueType = value_isStringPointer;
+                    _intermediateStringObjectCount++;
+                    fcnResult.pStringConst = new char[((sysVal == 31) ? strlen(J_productName) : (sysVal == 32) ? strlen(J_legalCopyright) : (sysVal == 33) ? strlen(J_productVersion) : strlen(J_buildDate)) + 1];
+                #if PRINT_HEAP_OBJ_CREA_DEL
+                    _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+                #endif
+                    strcpy(fcnResult.pStringConst, (sysVal == 31) ? J_productName : (sysVal == 32) ? J_legalCopyright : (sysVal == 33) ? J_productVersion : J_buildDate);
+                }
+                break;
+
+
+
+
+                case 35:                                                                        // return trace string
                 {
                     fcnResultValueType = value_isStringPointer;
                     fcnResult.pStringConst = nullptr;                                           // init (empty string)
@@ -2176,16 +2191,16 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 break;
 
                 // note:parsing stack element count is always zero during evaluation: no entry provided here
-                case 23:fcnResult.longConst = evalStack.getElementCount(); break;               // evaluation stack element count
-                case 24:fcnResult.longConst = flowCtrlStack.getElementCount(); break;           // flow control stack element count (call stack depth + stack levels used by open blocks)
-                case 25:fcnResult.longConst = _callStackDepth; break;                           // call stack depth; this excludes stack levels used by blocks (while, if, ...)
-                case 26:fcnResult.longConst = _openDebugLevels; break;                          // number of stopped programs
-                case 27:fcnResult.longConst = parsedCommandLineStack.getElementCount(); break;  // immediate mode parsed programs stack element count: stopped program count + open eval() strings (being executed)
+                case 36:fcnResult.longConst = evalStack.getElementCount(); break;               // evaluation stack element count
+                case 37:fcnResult.longConst = flowCtrlStack.getElementCount(); break;           // flow control stack element count (call stack depth + stack levels used by open blocks)
+                case 38:fcnResult.longConst = _callStackDepth; break;                           // call stack depth; this excludes stack levels used by blocks (while, if, ...)
+                case 39:fcnResult.longConst = _openDebugLevels; break;                          // number of stopped programs
+                case 40:fcnResult.longConst = parsedCommandLineStack.getElementCount(); break;  // immediate mode parsed programs stack element count: stopped program count + open eval() strings (being executed)
 
-                case 28: fcnResult.longConst = evalStack.getCreatedObjectCount(); break;       // created list object count (across linked lists: count is static)
+                case 41: fcnResult.longConst = evalStack.getCreatedObjectCount(); break;       // created list object count (across linked lists: count is static)
 
-                case 29:                                                                        // current active object count
-                case 30:                                                                        // current accumulated object count errors since cold start
+                case 42:                                                                        // current active object count
+                case 43:                                                                        // current accumulated object count errors since cold start
                 {
                     fcnResultValueType = value_isStringPointer;
                     _intermediateStringObjectCount++;
@@ -2193,7 +2208,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 #if PRINT_HEAP_OBJ_CREA_DEL
                     _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
                 #endif
-                    if (sysVal == 29) {     // print heap object counts
+                    if (sysVal == 42) {     // print heap object counts
                         // (1)program variable and function NAMES-(2)user variable NAMES-(3)parsed string constants-(4)last value strings-
                         // (5)global and static variable strings-(6)global and static array storage areas-(7)user variable strings-(8)user array storage areas-
                         // (9)local variable strings-(10)local array storage areas-(11)local variable base value areas-(12)intermediate string constants
@@ -2202,7 +2217,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                             min(999, _globalStaticVarStringObjectCount), min(999, _globalStaticArrayObjectCount), min(999, _userVarStringObjectCount), min(999, _userArrayObjectCount),
                             min(999, _localVarStringObjectCount), min(999, _localArrayObjectCount), min(999, _localVarValueAreaCount), min(999, _intermediateStringObjectCount),
                             min(999, _systemVarStringObjectCount));
-                }
+                    }
                     else {     // print heap object create/delete errors
                         sprintf(fcnResult.pStringConst, "%0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d",
                             min(999, _identifierNameStringObjectErrors), min(999, _userVarNameStringObjectErrors), min(999, _parsedStringConstObjectErrors), min(999, _lastValuesStringObjectErrors),
@@ -2210,11 +2225,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                             min(999, _localVarStringObjectErrors), min(999, _localArrayObjectErrors), min(999, _localVarValueAreaErrors), min(999, _intermediateStringObjectErrors),
                             min(999, _systemVarStringObjectErrors));
                     }
-            }
+                }
                 break;
 
                 default: return result_arg_invalid; break;
-        }                                                                                   // switch (sysVal)
+            }                                                                                   // switch (sysVal)
         }
         break;
 

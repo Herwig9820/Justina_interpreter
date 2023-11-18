@@ -52,8 +52,9 @@ Breakpoints::Breakpoints(Justina_interpreter* pJustina, long lineRanges_memorySi
 // *   deconstructor   *
 // ---------------------
 Breakpoints::~Breakpoints() {
-    delete[] _BPlineRangeStorage;
     resetBreakpointsState();             // remove any heap objects created for non-empty view or trigger strings    
+     delete[] _pBreakpointData;
+   delete[] _BPlineRangeStorage;
 }
 
 
@@ -228,8 +229,6 @@ Justina_interpreter::execResult_type Breakpoints::maintainBPdata(long breakpoint
     bool doClear = (actionCmdCode == Justina_interpreter::cmdcod_clearBP);
     bool doEnable = (actionCmdCode == Justina_interpreter::cmdcod_enableBP);
     bool doDisable = (actionCmdCode == Justina_interpreter::cmdcod_disableBP);
-    bool doStopAt = (actionCmdCode == Justina_interpreter::cmdcod_stopatBP);
-    bool doContinueAt = (actionCmdCode == Justina_interpreter::cmdcod_continueatBP);
 
     Justina_interpreter::execResult_type execResult = progMem_getSetClearBP(lineSequenceNum, pProgramStep, BPwasSetInProgMem, doSet, doClear);
     if (execResult != Justina_interpreter::result_execOK) { return execResult; }
@@ -242,7 +241,7 @@ Justina_interpreter::execResult_type Breakpoints::maintainBPdata(long breakpoint
     // ...that a breakpoint is either set or allowed for the parsed statement).
     // in other words, for each source line with a valid line sequence number, there is exactly one parsed statement where a breakpoint is either set or allowed, and vice versa (1-to-1). 
 
-    execResult = maintainBreakpointTable(breakpointLine, pProgramStep, BPwasSetInProgMem, doSet, doClear, doEnable, doDisable, doStopAt, doContinueAt, extraAttribCount, viewString, hitCount, triggerString);
+    execResult = maintainBreakpointTable(breakpointLine, pProgramStep, BPwasSetInProgMem, doSet, doClear, doEnable, doDisable, extraAttribCount, viewString, hitCount, triggerString);
 
     return execResult;
 }
@@ -291,7 +290,7 @@ Justina_interpreter::execResult_type Breakpoints::progMem_getSetClearBP(long lin
 // *   Maintain breakpoint settings for all breakpoints currently set   *
 // ----------------------------------------------------------------------
 
-Justina_interpreter::execResult_type Breakpoints::maintainBreakpointTable(long sourceLine, char* pProgramStep, bool BPwasSet, bool doSet, bool doClear, bool doEnable, bool doDisable, bool doStop, bool doContinue,
+Justina_interpreter::execResult_type Breakpoints::maintainBreakpointTable(long sourceLine, char* pProgramStep, bool BPwasSet, bool doSet, bool doClear, bool doEnable, bool doDisable, 
     int extraArribCount, const char* viewString, long hitCount, const char* triggerString) {
 
     int entry{ 0 };
@@ -304,18 +303,16 @@ Justina_interpreter::execResult_type Breakpoints::maintainBreakpointTable(long s
         }
 
         if (doSet) {}                                                                                 // do nothing
-        // clear ,enable, disable, stop or continue after BP: if BP was not set, then control returned to caller already
+        // clear ,enable, disable bp: if BP was not set, then control returned to caller already
         else if (doClear) { _breakpointsUsed--; }                                                   // (entry will be moved to end of defined breakpoints when corresponding objects have been deleted)   
         else if (doEnable) { _pBreakpointData[entry].BPenabled = 0b1; }
         else if (doDisable) { _pBreakpointData[entry].BPenabled = 0b0; }
-        else if (doStop) { _pBreakpointData[entry].stopAtBP = 0b1; }
-        else if (doContinue) { _pBreakpointData[entry].stopAtBP = 0b0; }
     }
 
     else {      // BP was not yet set: action is 'set BP'. Create breakpoint entry in breakpoint data array
         if (_breakpointsUsed == _maxBreakpointCount) { return Justina_interpreter::result_BP_maxBPentriesReached; }
         entry = _breakpointsUsed;                                    // first free entry 
-        _pBreakpointData[entry].BPenabled = _pBreakpointData[entry].stopAtBP = 0b1;
+        _pBreakpointData[entry].BPenabled = 0b1;
         _pBreakpointData[entry].sourceLine = sourceLine;
         _pBreakpointData[entry].pProgramStep = pProgramStep;
         _pBreakpointData[entry].pView = nullptr;
@@ -373,8 +370,8 @@ Justina_interpreter::execResult_type Breakpoints::maintainBreakpointTable(long s
 void Breakpoints::printBreakpoints() {
 
     // print table header
-    _pJustina->println("source   enabled   stop   view &\r\n  line                    trigger\r\n------   -------   ----   -------");
-
+    _pJustina->print("Breakpoints are currently "); _pJustina->println(_breakPontsAreOn ? "ON\r\n" : "OFF\r\n");
+    _pJustina->println("source   enabled   view &\r\n  line             trigger\r\n------   -------   -------");
 
     char line[50];     // sufficient length for all line elements in first sprintf
 
@@ -382,17 +379,17 @@ void Breakpoints::printBreakpoints() {
     for (int i = 0; i < _breakpointsUsed; i++) {
 
         // print breakpoint settings line 1
-        sprintf(line, "%6ld%7c%10s   view : ", _pBreakpointData[i].sourceLine, _pBreakpointData[i].BPenabled == 0b1 ? 'x' : ' ', _pBreakpointData[i].stopAtBP == 0b1 ? "stop" : "    ");
+        sprintf(line, "%6ld%7c      view : ", _pBreakpointData[i].sourceLine, _pBreakpointData[i].BPenabled == 0b1 ? 'x' : ' ');
         _pJustina->print(line);
         _pJustina->println(_pBreakpointData[i].BPwithViewExpr == 0b1 ? _pBreakpointData[i].pView : "-");
 
         // print breakpoint settings line 2
-        sprintf(line, "%26s%0s", "", _pBreakpointData[i].BPwithHitCount == 0b1 ? "hitcount is " : _pBreakpointData[i].BPwithTriggerExpr == 0b1 ? "true ? " : "always true\r\n");
+        sprintf(line, "%19s%0s", "", _pBreakpointData[i].BPwithHitCount == 0b1 ? "hitcount: " : _pBreakpointData[i].BPwithTriggerExpr == 0b1 ? "trigger: " : "always trigger\r\n");
         _pJustina->print(line);
 
         if (_pBreakpointData[i].BPwithTriggerExpr == 0b1) { _pJustina->println(_pBreakpointData[i].pTrigger); }
         else if (_pBreakpointData[i].BPwithHitCount == 0b1) {
-            sprintf(line, "%1ld ? (current is %0ld)", _pBreakpointData[i].hitCount, _pBreakpointData[i].hitCounter);
+            sprintf(line, "%1ld (current is %0ld)", _pBreakpointData[i].hitCount, _pBreakpointData[i].hitCounter);
             _pJustina->println(line);
         }
         BPprinted++;
