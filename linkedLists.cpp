@@ -60,9 +60,9 @@ LinkedList::LinkedList() {
 }
 
 
-// ---------------------
-// *   deconstructor   *
-// ---------------------
+// ------------------
+// *   destructor   *
+// ------------------
 
 LinkedList::~LinkedList() {
     _listIDcounter--;                                                                               // static variable

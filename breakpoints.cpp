@@ -54,11 +54,11 @@ Breakpoints::Breakpoints(Justina_interpreter* pJustina, long lineRanges_memorySi
 }
 
 
-// ---------------------
-// *   deconstructor   *
-// ---------------------
+// ------------------
+// *   destructor   *
+// ------------------
+/*
 Breakpoints::~Breakpoints() {
-    ////resetBreakpointsState(); //// dubbel met resetMachine ?            // remove any heap objects created for non-empty view or trigger strings    
 #if PRINT_HEAP_OBJ_CREA_DEL
     _pJustina->_pDebugOut->print("----- (BP data table)  "); _pJustina->_pDebugOut->println((uint32_t)_pBreakpointData, HEX);
     _pJustina->_pDebugOut->print("----- (BP line ranges) "); _pJustina->_pDebugOut->println((uint32_t)_BPlineRangeStorage, HEX);
@@ -66,7 +66,7 @@ Breakpoints::~Breakpoints() {
     delete[] _pBreakpointData;
     delete[] _BPlineRangeStorage;
 }
-
+*/
 
 // -------------
 // *   reset   *

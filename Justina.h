@@ -91,7 +91,7 @@ class LinkedList {
 
 public:
     LinkedList();                                                       // constructor
-    ~LinkedList();                                                      // deconstructor
+    ~LinkedList();                                                      // destructor
 
     char* appendListElement(int size);
     char* deleteListElement(void* pPayload = nullptr);                  // pointer to payload of list element to be removed
@@ -1833,7 +1833,7 @@ public:
     // -----------------
 
     Justina_interpreter(Stream** const pAltInputStreams, int altIOstreamCount, long progMemSize, int SDcardConstraints = 0, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);
-    ~Justina_interpreter();
+    ////~Justina_interpreter();
 
 
     // set pointer to system (main) call back function
@@ -2154,7 +2154,7 @@ class Breakpoints {
 
     // methods
     Breakpoints(Justina_interpreter* pJustina, long lineRanges_memorySize, long maxBreakpointCount);
-    ~Breakpoints();
+    ////~Breakpoints();
 
     void resetBreakpointsState();
 
