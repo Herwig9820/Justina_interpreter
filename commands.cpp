@@ -30,7 +30,7 @@
 
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 0
+#define PRINT_HEAP_OBJ_CREA_DEL 1
 #define PRINT_PARSED_CMD_STACK 0
 #define PRINT_DEBUG_INFO 0
 
@@ -307,7 +307,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         // -----------------------------
         // switch breakpoints on are off
         // -----------------------------
-        
+
         case cmdcod_BPon:
         case cmdcod_BPoff:
         {
@@ -1251,8 +1251,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         #endif
                             _intermediateStringObjectCount--;
                             delete[] oldAssembString;
+                        }
                     }
-                }
 
                     else {      // print to file or console ?
                         if (printString != nullptr) {
@@ -1271,11 +1271,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] printString;
-            }
-        }
+                    }
+                }
 
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-    }
+            }
 
             // finalise
             if (isPrintToVar) {                                                                                             // print to string ? save in variable
@@ -1291,9 +1291,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] assembledString;
-                }
+                    }
                     return execResult;
-            }
+                }
 
                 // print line end without supplied arguments for printing: a string object does not exist yet, so create it now
                 if (doPrintLineEnd) {
@@ -1333,7 +1333,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 }
 
                 if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) { delete[] assembledString; }                            // not referenced in eval. stack (clippedString is), so will not be deleted as part of cleanup
-}
+            }
 
             else {      // print to file or external IO
                 if (doPrintLineEnd) {
@@ -1974,19 +1974,19 @@ void Justina_interpreter::replaceSystemStringValue(char*& systemString, const ch
     // delete current system string (if not nullptr)
     if (systemString != nullptr) {
     #if PRINT_HEAP_OBJ_CREA_DEL
-        _pDebugOut->print("----- (system var str) "); _pDebugOut->println((uint32_t)pString, HEX);
+        _pDebugOut->print("----- (system var str) "); _pDebugOut->println((uint32_t)systemString, HEX);
     #endif
         _systemVarStringObjectCount--;
         delete[] systemString;
         systemString = nullptr;
-}
+    }
 
     // COPY new string in system variable (no move)
     if (newString != nullptr) {                                                                                        // new trace string
         _systemVarStringObjectCount++;
         systemString = new char[strlen(newString) + 2]; // room for additional semicolon (in case string is not ending with it) and terminating '\0'
     #if PRINT_HEAP_OBJ_CREA_DEL
-        _pDebugOut->print("+++++ (system var str) "); _pDebugOut->println((uint32_t)pString, HEX);
+        _pDebugOut->print("+++++ (system var str) "); _pDebugOut->println((uint32_t)systemString, HEX);
     #endif
 
         strcpy(systemString, newString);                                                                                    // copy the actual string

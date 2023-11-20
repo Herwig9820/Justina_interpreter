@@ -30,6 +30,8 @@
 
 #include "Justina.h"
 
+#define PRINT_HEAP_OBJ_CREA_DEL 1
+
 
 // *****************************************************************
 // ***            class Breakpoints - implementation             ***
@@ -42,6 +44,10 @@
 Breakpoints::Breakpoints(Justina_interpreter* pJustina, long lineRanges_memorySize, long maxBreakpointCount) :_pJustina(pJustina), _BPLineRangeMemorySize(lineRanges_memorySize), _maxBreakpointCount(maxBreakpointCount) {
     _BPlineRangeStorage = new char[_BPLineRangeMemorySize];
     _pBreakpointData = new BreakpointData[_maxBreakpointCount];         // store active breakpoint
+#if PRINT_HEAP_OBJ_CREA_DEL
+    _pJustina->_pDebugOut->print("+++++ (BP line ranges) "); _pJustina->_pDebugOut->println((uint32_t)_BPlineRangeStorage, HEX);
+    _pJustina->_pDebugOut->print("+++++ (BP data table)  "); _pJustina->_pDebugOut->println((uint32_t)_pBreakpointData, HEX);
+#endif
 
     _BPlineRangeStorageUsed = 0;                        // in bytes
     _breakpointsUsed = 0;                               // no breakpoints set
@@ -52,9 +58,13 @@ Breakpoints::Breakpoints(Justina_interpreter* pJustina, long lineRanges_memorySi
 // *   deconstructor   *
 // ---------------------
 Breakpoints::~Breakpoints() {
-    resetBreakpointsState();             // remove any heap objects created for non-empty view or trigger strings    
-     delete[] _pBreakpointData;
-   delete[] _BPlineRangeStorage;
+    ////resetBreakpointsState(); //// dubbel met resetMachine ?            // remove any heap objects created for non-empty view or trigger strings    
+#if PRINT_HEAP_OBJ_CREA_DEL
+    _pJustina->_pDebugOut->print("----- (BP data table)  "); _pJustina->_pDebugOut->println((uint32_t)_pBreakpointData, HEX);
+    _pJustina->_pDebugOut->print("----- (BP line ranges) "); _pJustina->_pDebugOut->println((uint32_t)_BPlineRangeStorage, HEX);
+#endif
+    delete[] _pBreakpointData;
+    delete[] _BPlineRangeStorage;
 }
 
 
@@ -290,7 +300,7 @@ Justina_interpreter::execResult_type Breakpoints::progMem_getSetClearBP(long lin
 // *   Maintain breakpoint settings for all breakpoints currently set   *
 // ----------------------------------------------------------------------
 
-Justina_interpreter::execResult_type Breakpoints::maintainBreakpointTable(long sourceLine, char* pProgramStep, bool BPwasSet, bool doSet, bool doClear, bool doEnable, bool doDisable, 
+Justina_interpreter::execResult_type Breakpoints::maintainBreakpointTable(long sourceLine, char* pProgramStep, bool BPwasSet, bool doSet, bool doClear, bool doEnable, bool doDisable,
     int extraArribCount, const char* viewString, long hitCount, const char* triggerString) {
 
     int entry{ 0 };

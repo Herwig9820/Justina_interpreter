@@ -30,7 +30,7 @@
 
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 0
+#define PRINT_HEAP_OBJ_CREA_DEL 1
 #define PRINT_DEBUG_INFO 0
 #define PRINT_OBJECT_COUNT_ERRORS 0
 
@@ -587,12 +587,6 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
     flowCtrlStack.setListName("flowCtrl");
     parsedCommandLineStack.setListName("cmd line");
 
-    if (_progMemorySize + IMM_MEM_SIZE > pow(2, 16)) { _progMemorySize = pow(2, 16) - IMM_MEM_SIZE; }
-    _programStorage = new char[_progMemorySize + IMM_MEM_SIZE];
-
-    // create a 'breakpoints' object, containing the breakpoints table and is responsible for handling breakpoints 
-    _pBreakpoints = new Breakpoints(this, (_progMemorySize * BP_LINE_RANGE_PROGMEM_STOR_RATIO) / 100, MAX_BP_COUNT);
-
     // current print column is maintened for each stream separately: init
     _pIOprintColumns = new int[_externIOstreamCount];
     for (int i = 0; i < _externIOstreamCount; i++) {
@@ -608,6 +602,19 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
 
     // set linked list debug printing. Pointer to debug out stream pointer: will follow if debug stream is changed
     parsingStack.setDebugOutStream(static_cast<Stream**> (&_pDebugOut));                                // for debug printing within linked list object
+    
+    if (_progMemorySize + IMM_MEM_SIZE > pow(2, 16)) { _progMemorySize = pow(2, 16) - IMM_MEM_SIZE; }
+    _programStorage = new char[_progMemorySize + IMM_MEM_SIZE];
+
+    // create a 'breakpoints' object, containing the breakpoints table and is responsible for handling breakpoints 
+    _pBreakpoints = new Breakpoints(this, (_progMemorySize * BP_LINE_RANGE_PROGMEM_STOR_RATIO) / 100, MAX_BP_COUNT);
+
+#if PRINT_HEAP_OBJ_CREA_DEL
+    _pDebugOut->print("+++++ (ext IO streams) "); _pDebugOut->println((uint32_t)_pIOprintColumns, HEX);
+    _pDebugOut->print("+++++ (program memory) "); _pDebugOut->println((uint32_t)_programStorage, HEX);
+    _pDebugOut->print("+++++ (BP object)      "); _pDebugOut->println((uint32_t)_pBreakpoints, HEX);
+#endif
+
     initInterpreterVariables(true);
 };
 
@@ -617,20 +624,17 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
 // ---------------------
 
 Justina_interpreter::~Justina_interpreter() {
-        Serial.println("deconstructor-B");
-        resetMachine(true);                                                                             // delete all objects created on the heap: with = with user variables and FiFo stack
-        Serial.println("deconstructor-C");
-        _housekeepingCallback = nullptr;
-        delete[] _programStorage;
-        Serial.println("deconstructor-D");
-        delete[] _pIOprintColumns;
-        Serial.println("deconstructor-E");
-        delete[] _pBreakpoints;
-        Serial.println("deconstructor-F");
-
-    printlnTo(0, "\r\nJustina: bye\r\n");
-    for (int i = 0; i < 48; i++) { printTo(0, "="); } printlnTo(0, "\r\n");
-
+Serial.println("A");
+#if PRINT_HEAP_OBJ_CREA_DEL
+    _pDebugOut->print("----- (BP object)      "); _pDebugOut->println((uint32_t)_pBreakpoints, HEX);
+    _pDebugOut->print("----- (program memory) "); _pDebugOut->println((uint32_t)_programStorage, HEX);
+    _pDebugOut->print("----- (ext IO streams) "); _pDebugOut->println((uint32_t)_pIOprintColumns, HEX);
+#endif
+    Serial.println("B");
+    delete[] _pBreakpoints;
+    delete[] _programStorage;
+    delete[] _pIOprintColumns;
+    Serial.println("C");
 };
 
 
@@ -965,17 +969,14 @@ bool Justina_interpreter::run() {
     if (kill) { _keepInMemory = false; printlnTo(0, "\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
 
     SD_closeAllFiles();                                                                                         // safety (in case an SD card is present: close all files 
-    Serial.println("E");
     _SDinitOK = false;
     SD.end();                                                                                                   // stop SD card
-    Serial.println("F");
     while (_pConsoleIn->available() > 0) { readFrom(0); }                                                       //  empty console buffer before quitting
-    Serial.println("G");
 
-    if (_keepInMemory) {                                                                                        // NOTE: if remove from memory: message given in destructor
-        printlnTo(0, "\r\nJustina: bye\r\n");
-        for (int i = 0; i < 48; i++) { printTo(0, "="); } printlnTo(0, "\r\n");
-    }
+    resetMachine(true);                                                                             // delete all objects created on the heap: with = with user variables and FiFo stack
+    _housekeepingCallback = nullptr;
+    printlnTo(0, "\r\nJustina: bye\r\n");
+    for (int i = 0; i < 48; i++) { printTo(0, "="); } printlnTo(0, "\r\n");
 
     return _keepInMemory;                                                                                       // return to calling program
 }
@@ -1499,17 +1500,14 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
 
     // delete all objects created on the heap
     // --------------------------------------
-    Serial.println("reset machine-A");
 
     // note: objects living only during execution do not need to be deleted: they are all always deleted when the execution phase ends (even if with execution errors)
     // more in particular: evaluation stack, intermediate alphanumeric constants, local storage areas, local variable strings, local array objects
 
     // delete identifier name objects on the heap (variable names, Justina function names) 
     deleteIdentifierNameObjects(programVarNames, _programVarNameCount);
-    Serial.println("reset machine-B");
     deleteIdentifierNameObjects(JustinaFunctionNames, _justinaFunctionCount);
     if (withUserVariables) { deleteIdentifierNameObjects(userVarNames, _userVarCount, true); }
-    Serial.println("reset machine-C");
 
     // delete variable heap objects: array variable element string objects
     deleteStringArrayVarsStringObjects(globalVarValues, globalVarType, _programVarNameCount, 0, true);
@@ -1783,7 +1781,6 @@ void Justina_interpreter::initInterpreterVariables(bool fullReset) {
 
 void Justina_interpreter::deleteIdentifierNameObjects(char** pIdentNameArray, int identifiersInUse, bool isUserVar) {
     int index = 0;          // points to last variable in use
-    Serial.print("identifiers in use: ");Serial.println(identifiersInUse);
     while (index < identifiersInUse) {                       // points to variable in use
     #if PRINT_HEAP_OBJ_CREA_DEL
         _pDebugOut->print(isUserVar ? "----- (usrvar name) " : "----- (ident name ) "); _pDebugOut->println((uint32_t) * (pIdentNameArray + index), HEX);

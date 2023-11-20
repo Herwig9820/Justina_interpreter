@@ -30,7 +30,7 @@
 
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 0
+#define PRINT_HEAP_OBJ_CREA_DEL 1
 #define PRINT_PARSED_CMD_STACK 0
 #define PRINT_PROCESSED_TOKEN 0
 #define PRINT_DEBUG_INFO 0
@@ -802,13 +802,9 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
     else if ((_openDebugLevels == 0) || (execResult == result_quit) || (execResult == result_kill)) {                               // do not clear flow control stack while in debug mode
         int dummy{};
         _openDebugLevels = 0;       // (if not yet zero)
-        Serial.println("A");
         clearParsedCommandLineStack(parsedCommandLineStack.getElementCount());
-        Serial.println("B");
         clearFlowCtrlStack(dummy);                                                                                                  // and remaining local storage + local variable string and array values
-        Serial.println("C");
         clearEvalStack();
-        Serial.println("D");
     }
 
     // program or command line exec error (could be an app flags abort request), OR abort command entered by the user,

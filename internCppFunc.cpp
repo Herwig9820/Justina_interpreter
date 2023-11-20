@@ -30,7 +30,7 @@
 
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 0
+#define PRINT_HEAP_OBJ_CREA_DEL 1
 
 
 // *****************************************************************
@@ -559,10 +559,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                     char c = getCharacter(kill, doStop, doAbort, stdConsDummy, (streamNumber <= 0));                        // time out only required if external IO
                     if (kill) {                                                                                             // kill request from caller ? 
                         _intermediateStringObjectCount--;
-                        delete[] buffer;
                     #if PRINT_HEAP_OBJ_CREA_DEL
                         _pDebugOut->print("----- (Intermd str) ");   _pDebugOut->println((uint32_t)buffer, HEX);
                     #endif
+                        delete[] buffer;
                         return result_kill;
                     }
                     if (doAbort) { forcedAbortRequest = true; break; }                                                      // stop a running Justina program (buffer is now flushed until nex line character) 
@@ -673,10 +673,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                     if (kill) {                            // kill request from caller ? 
                         if (kill) {                                                                                         // kill request from caller ? 
                             _intermediateStringObjectCount--;
-                            delete[] buffer;
                         #if PRINT_HEAP_OBJ_CREA_DEL
                             _pDebugOut->print("----- (Intermd str) ");   _pDebugOut->println((uint32_t)buffer, HEX);
                         #endif
+                            delete[] buffer;
                             return result_kill;
                         }
                     }
