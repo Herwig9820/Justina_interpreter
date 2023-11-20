@@ -91,7 +91,7 @@ class LinkedList {
 
 public:
     LinkedList();                                                       // constructor
-    ~LinkedList();                                                      // deconstructor
+    ~LinkedList();                                                      // destructor
 
     char* appendListElement(int size);
     char* deleteListElement(void* pPayload = nullptr);                  // pointer to payload of list element to be removed
@@ -2145,7 +2145,9 @@ class Breakpoints {
 
     // methods
     Breakpoints(Justina_interpreter* pJustina, long lineRanges_memorySize, long maxBreakpointCount);
-    ~Breakpoints();
+    
+    //// 'QUIT Justina' bug: Breakpoints destructor wordt 36 keer opgeroepen (why ??). Workaround: release memory reeds in Justina destructor
+    ////~Breakpoints();      
 
     void resetBreakpointsState();
 

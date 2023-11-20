@@ -48,14 +48,18 @@ Breakpoints::Breakpoints(Justina_interpreter* pJustina, long lineRanges_memorySi
 }
 
 
-// ---------------------
-// *   deconstructor   *
-// ---------------------
-Breakpoints::~Breakpoints() {
-    delete[] _BPlineRangeStorage;
-    resetBreakpointsState();             // remove any heap objects created for non-empty view or trigger strings    
-}
+// ------------------
+// *   destructor   *
+// ------------------
 
+//// 'QUIT Justina' bug: Breakpoints destructor wordt 36 keer opgeroepen (why ??). Workaround: release memory reeds in Justina destructor
+/*
+Breakpoints::~Breakpoints() {
+    Serial.print("BREAKPOINTS destructor: "); Serial.println((uint32_t)_BPlineRangeStorage, HEX);
+    delete[] _pBreakpointData;
+    delete[] _BPlineRangeStorage; 
+}
+*/
 
 // -------------
 // *   reset   *
@@ -78,9 +82,9 @@ void Breakpoints::resetBreakpointsState() {
 
 /*
 A user must be able to set a breakpoint for each source line having a statement STARTING at the START of the source line (discarding spaces).
-The breakpoint can then be set for that statement. To accomplish that, during program parsing, the line number of these source lines 
-must be 'remembered' and linked to parsed statements. To do this with a minimal use of memory, Justina stores pairs of line range sizes, as follows: 
-each pair consists of the 'gap' size (number of lines) between the end of a previous range of valid lines (or the beginning of the source file) and  
+The breakpoint can then be set for that statement. To accomplish that, during program parsing, the line number of these source lines
+must be 'remembered' and linked to parsed statements. To do this with a minimal use of memory, Justina stores pairs of line range sizes, as follows:
+each pair consists of the 'gap' size (number of lines) between the end of a previous range of valid lines (or the beginning of the source file) and
 the beginning of a next range of 'valid' source lines (lines where a breakpoint can be set). This information is stored in a table WITHOUT any impact
 on the memory required for parsed statements (program memory).
 - gap size is less than 8 source lines and valid range size is less than 16 source lines: 1 byte are required in range pair table
@@ -88,17 +92,17 @@ on the memory required for parsed statements (program memory).
 - gap size is less than 2048 source lines and valid range size is less than 2048 source lines: 3 bytes are required in range pair table
 Larger line range sizes will produce an error.
 
-At the same time, during program parsing, statements for which setting a breakpoint is allowed, are marked by altering the statement separator preceding 
+At the same time, during program parsing, statements for which setting a breakpoint is allowed, are marked by altering the statement separator preceding
 the parsed statement. This does NOT consume any extra memory.
 
 For each source line included in the range pair table, exactly one parsed statement has received the marking 'breakpoint allowed' (1-to-1).
-When a user sets, clears, ... a breakpoint later during debugging the program, the line sequence number of the source line in the range pair table 
+When a user sets, clears, ... a breakpoint later during debugging the program, the line sequence number of the source line in the range pair table
 is established first. Then the parsed program is scanned, counting only statements marked as 'breakpoint allowed', until the parsed statement matching
-the source line statement is found. 
+the source line statement is found.
 
 Example: 'gap-valid range' pairs 3,5,7,2 show that the source file consists of 3+5+7+2 = 17 lines; lines 4->8 and lines 16->17 are valid source lines.
 A total of 5+2 = 7 parsed statements have been marked as 'breakpoint allowed'.
-If the user wants to set a breakpoint for line 16 for example, as this is the 6th valid line, Justina will find the 6th parsed statement and alter the 
+If the user wants to set a breakpoint for line 16 for example, as this is the 6th valid line, Justina will find the 6th parsed statement and alter the
 preceding statement separator indicating the breakpoint is now set. Additional breakpoint attributes will be maintained in a separate table.
 */
 
@@ -205,7 +209,7 @@ Justina_interpreter::parsingResult_type Breakpoints::addOneSourceLineRangePair(l
 // *   adapt a breakpoint for a source line   *
 // --------------------------------------------
 
-Justina_interpreter::execResult_type Breakpoints::maintainBPdata(long breakpointLine, char actionCmdCode,int extraAttribCount, const char* viewString, long hitCount, const char* triggerString) {
+Justina_interpreter::execResult_type Breakpoints::maintainBPdata(long breakpointLine, char actionCmdCode, int extraAttribCount, const char* viewString, long hitCount, const char* triggerString) {
 
     // 1. find source line sequence number (base 0) 
     // --------------------------------------------
@@ -241,7 +245,7 @@ Justina_interpreter::execResult_type Breakpoints::maintainBPdata(long breakpoint
     // ...that a breakpoint is either set or allowed for the parsed statement).
     // in other words, for each source line with a valid line sequence number, there is exactly one parsed statement where a breakpoint is either set or allowed, and vice versa (1-to-1). 
 
-    execResult = maintainBreakpointTable(breakpointLine, pProgramStep, BPwasSetInProgMem, doSet, doClear, doEnable, doDisable, doStopAt, doContinueAt, extraAttribCount,  viewString, hitCount, triggerString);
+    execResult = maintainBreakpointTable(breakpointLine, pProgramStep, BPwasSetInProgMem, doSet, doClear, doEnable, doDisable, doStopAt, doContinueAt, extraAttribCount, viewString, hitCount, triggerString);
 
     return execResult;
 }

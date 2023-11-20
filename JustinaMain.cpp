@@ -589,8 +589,8 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
     if (_progMemorySize + IMM_MEM_SIZE > pow(2, 16)) { _progMemorySize = pow(2, 16) - IMM_MEM_SIZE; }
     _programStorage = new char[_progMemorySize + IMM_MEM_SIZE];
 
-    _pBreakpoints= new Breakpoints(this, (_progMemorySize * BP_LINE_RANGE_PROGMEM_STOR_RATIO) / 100, MAX_BP_COUNT);
-    
+    _pBreakpoints = new Breakpoints(this, (_progMemorySize * BP_LINE_RANGE_PROGMEM_STOR_RATIO) / 100, MAX_BP_COUNT);
+
     // current print column is maintened for each stream separately: init
     _pIOprintColumns = new int[_externIOstreamCount];
     for (int i = 0; i < _externIOstreamCount; i++) {
@@ -610,22 +610,21 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
 };
 
 
-// ---------------------
-// *   deconstructor   *
-// ---------------------
+// ------------------
+// *   destructor   *
+// ------------------
 
 Justina_interpreter::~Justina_interpreter() {
-    if (!_keepInMemory) {
-        resetMachine(true);                                                                             // delete all objects created on the heap: with = with user variables and FiFo stack
-        _housekeepingCallback = nullptr;
-        delete[] _programStorage;
-        delete[] _pBreakpoints;
-        delete[] _pIOprintColumns;
-    }
 
     printlnTo(0, "\r\nJustina: bye\r\n");
     for (int i = 0; i < 48; i++) { printTo(0, "="); } printlnTo(0, "\r\n");
-
+  
+    //// 'QUIT Justina' bug: Breakpoints destructor wordt 36 keer opgeroepen (why ??). Workaround: release memory reeds in Justina destructor
+    delete[] _pBreakpoints->_pBreakpointData;
+    delete[] _pBreakpoints->_BPlineRangeStorage;
+    delete[] _pBreakpoints;             //// roept Breakpoints destructor 36 keer op
+    delete[] _programStorage;
+    delete[] _pIOprintColumns;      // after last IO via Justina streams !
 };
 
 
@@ -733,11 +732,11 @@ bool Justina_interpreter::run() {
 
     // find token index for terminal token 'semicolon with breakpoint allowed' 
     int index{}, semicolonBPallowed_index{}, semicolonBPset_index{}, matches{};
-    
-    for (index = _termTokenCount - 1, matches=0; index >= 0; index--) {      // for all defined terminals
-        if (_terminals[index].terminalCode == termcod_semicolon_BPallowed) { semicolonBPallowed_index = index; matches;}                              // token corresponds to terminal code ? Then exit loop    
-        if (_terminals[index].terminalCode == termcod_semicolon_BPset) { semicolonBPset_index = index; matches++;}                              // token corresponds to terminal code ? Then exit loop    
-        if(matches==2){break;}
+
+    for (index = _termTokenCount - 1, matches = 0; index >= 0; index--) {      // for all defined terminals
+        if (_terminals[index].terminalCode == termcod_semicolon_BPallowed) { semicolonBPallowed_index = index; matches; }                              // token corresponds to terminal code ? Then exit loop    
+        if (_terminals[index].terminalCode == termcod_semicolon_BPset) { semicolonBPset_index = index; matches++; }                              // token corresponds to terminal code ? Then exit loop    
+        if (matches == 2) { break; }
     }
     _semicolonBPallowed_token = (semicolonBPallowed_index <= 0x0F) ? tok_isTerminalGroup1 : (semicolonBPallowed_index <= 0x1F) ? tok_isTerminalGroup2 : tok_isTerminalGroup3;
     _semicolonBPallowed_token |= ((semicolonBPallowed_index & 0x0F) << 4);
@@ -965,6 +964,10 @@ bool Justina_interpreter::run() {
     if (_keepInMemory) {                                                                                        // NOTE: if remove from memory: message given in destructor
         printlnTo(0, "\r\nJustina: bye\r\n");
         for (int i = 0; i < 48; i++) { printTo(0, "="); } printlnTo(0, "\r\n");
+    }
+    else {
+        resetMachine(true);                                                                             // delete all objects created on the heap: with = with user variables and FiFo stack
+        _housekeepingCallback = nullptr;
     }
 
     return _keepInMemory;                                                                                       // return to calling program
@@ -1199,7 +1202,7 @@ bool Justina_interpreter::prepareForIdleMode(parsingResult_type result, execResu
             _pDebugOut->print("RECONSTRUCT adjacent lines - start en finish: "); _pDebugOut->print(BPstartLine); _pDebugOut->print("-"); _pDebugOut->println(BPendLine);
         }
     }
-    #endif
+#endif
 
     // before loadng a program, clear memory except user variables
     else if (execResult == result_initiateProgramLoad) { resetMachine(false); }
@@ -1491,8 +1494,8 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
             _systemVarStringObjectCount--;
             delete[] _pTraceString;
             _pTraceString = nullptr;                                                                            // old trace string
+        }
     }
-}
 
     // delete all elements of the immediate mode parsed statements stack
     // (parsed immediate mode statements can be temporarily pushed on the immediate mode stack to be replaced either by parsed debug command lines or parsed eval() strings) 
@@ -1527,7 +1530,7 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
 
 
     printlnTo(0);
-    }
+}
 
 
 // ---------------------------------------------------------------------------------------
@@ -1548,7 +1551,7 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
         _pDebugOut->print("*** Variable / function name objects cleanup error. Remaining: "); _pDebugOut->println(_identifierNameStringObjectCount);
     #endif
         _identifierNameStringObjectErrors += abs(_identifierNameStringObjectCount);
-}
+    }
 
     if (_parsedStringConstObjectCount != 0) {
     #if PRINT_OBJECT_COUNT_ERRORS
@@ -1585,7 +1588,7 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
             _pDebugOut->print("*** User variable name objects cleanup error. Remaining: "); _pDebugOut->println(_userVarNameStringObjectCount);
         #endif
             _userVarNameStringObjectErrors += abs(_userVarNameStringObjectCount);
-    }
+        }
 
         if (_userVarStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
@@ -1749,8 +1752,8 @@ void Justina_interpreter::deleteIdentifierNameObjects(char** pIdentNameArray, in
         isUserVar ? _userVarNameStringObjectCount-- : _identifierNameStringObjectCount--;
         delete[] * (pIdentNameArray + index);
         index++;
-}
     }
+}
 
 
 // --------------------------------------------------------------------------------------------------------------
@@ -1793,9 +1796,9 @@ void Justina_interpreter::deleteOneArrayVarStringObjects(Justina_interpreter::Va
         #endif
             isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
             delete[]  pString;                                                                                                      // applicable to string and array (same pointer)
+        }
     }
 }
-        }
 
 
 // ----------------------------------------------------------------------------------------------
@@ -1817,7 +1820,7 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
             #endif
                 isUserVar ? _userArrayObjectCount-- : isLocalVar ? _localArrayObjectCount-- : _globalStaticArrayObjectCount--;
                 delete[]  varValues[index].pArray;
-        }
+            }
             else if ((varType[index] & value_typeMask) == value_isStringPointer) {                                                  // variable is a scalar containing a string
                 if (varValues[index].pStringConst != nullptr) {
                 #if PRINT_HEAP_OBJ_CREA_DEL
@@ -1825,12 +1828,12 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
                 #endif
                     isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
                     delete[]  varValues[index].pStringConst;
-            }
-    }
-}
-        index++;
+                }
             }
         }
+        index++;
+    }
+}
 
 
 // --------------------------------------------------------------------
@@ -1848,9 +1851,9 @@ void Justina_interpreter::deleteLastValueFiFoStringObjects() {
         #endif
             _lastValuesStringObjectCount--;
             delete[] lastResultValueFiFo[i].pStringConst;
+        }
     }
 }
-        }
 
 
 // -----------------------------------------------------------------------------------------
@@ -1877,14 +1880,14 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
             #endif
                 _parsedStringConstObjectCount--;
                 delete[] pAnum;
+            }
         }
-    }
         uint8_t tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) :
             (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*prgmCnt.pTokenChars >> 4) & 0x0F;
         prgmCnt.pTokenChars += tokenLength;
         tokenType = *prgmCnt.pTokenChars & 0x0F;
+    }
 }
-        }
 
 
 // ---------------------------------------------------------------------------------

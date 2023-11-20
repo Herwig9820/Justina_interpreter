@@ -353,7 +353,7 @@ void execAction(char c) {
                 pJustina = nullptr;                                                  // only to indicate memory is released
             }
 
-            heartbeatPeriod = 500;
+            heartbeatPeriod = 750;
             withinApplication = false;                                                  // return from application
             break;
 

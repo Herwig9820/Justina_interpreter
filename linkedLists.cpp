@@ -61,7 +61,7 @@ LinkedList::LinkedList() {
 
 
 // ---------------------
-// *   deconstructor   *
+// *   destructor   *
 // ---------------------
 
 LinkedList::~LinkedList() {
