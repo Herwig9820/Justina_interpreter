@@ -602,7 +602,7 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
 
     // set linked list debug printing. Pointer to debug out stream pointer: will follow if debug stream is changed
     parsingStack.setDebugOutStream(static_cast<Stream**> (&_pDebugOut));                                // for debug printing within linked list object
-    
+
     if (_progMemorySize + IMM_MEM_SIZE > pow(2, 16)) { _progMemorySize = pow(2, 16) - IMM_MEM_SIZE; }
     _programStorage = new char[_progMemorySize + IMM_MEM_SIZE];
 
@@ -965,38 +965,29 @@ bool Justina_interpreter::run() {
 
     } while (true);
 
-    Serial.println("**************** A");
-
     // returning control to Justina caller
     _appFlags = 0x0000L;                                                                                        // clear all application flags
-    ////_housekeepingCallback(_appFlags);  //// temp: quit Justina bug                                                                         // pass application flags to caller immediately
-    Serial.println("**************** B");
+    _housekeepingCallback(_appFlags);  //// temp: quit Justina bug                                                                         // pass application flags to caller immediately
 
     if (kill) { _keepInMemory = false; printlnTo(0, "\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
 
-    Serial.println("**************** C");
     SD_closeAllFiles();                                                                                         // safety (in case an SD card is present: close all files 
     _SDinitOK = false;
     SD.end();                                                                                                   // stop SD card
-    Serial.println("**************** D");
+
     while (_pConsoleIn->available() > 0) { readFrom(0); }                                                       //  empty console buffer before quitting
-    Serial.println("**************** E");
     printlnTo(0, "\r\nJustina: bye\r\n");
     for (int i = 0; i < 48; i++) { printTo(0, "="); } printlnTo(0, "\r\n");
-    Serial.println("**************** F");
 
-    resetMachine(true);                                                                             // delete all objects created on the heap: with = with user variables and FiFo stack
-    _housekeepingCallback = nullptr;
-    Serial.println("**************** G");
+    if(!_keepInMemory){     //// NAAR DESTRUCTOR na oplossen 'Quit Justina' bug
+        resetMachine(true);                                                                             // delete all objects created on the heap: with = with user variables and FiFo stack
+        delete[] _pBreakpoints->_pBreakpointData;
+        delete[] _pBreakpoints->_BPlineRangeStorage;
 
-    delete[] _pBreakpoints->_pBreakpointData;
-    delete[] _pBreakpoints->_BPlineRangeStorage;
-
-    delete[] _pBreakpoints;
-    delete[] _programStorage;
-    delete[] _pIOprintColumns;
-
-    Serial.println("**************** H");
+        delete[] _pBreakpoints;
+        delete[] _programStorage;
+        delete[] _pIOprintColumns;
+    }
     return _keepInMemory;                                                                                       // return to calling program
 }
 
@@ -1228,7 +1219,7 @@ bool Justina_interpreter::prepareForIdleMode(parsingResult_type result, execResu
             BPpreviousEndLine = BPendLine;
             _pDebugOut->print("RECONSTRUCT adjacent lines - start en finish: "); _pDebugOut->print(BPstartLine); _pDebugOut->print("-"); _pDebugOut->println(BPendLine);
         }
-    }
+}
 #endif
 
     // before loadng a program, clear memory except user variables
@@ -1606,7 +1597,7 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
         _pDebugOut->print("*** Variable / function name objects cleanup error. Remaining: "); _pDebugOut->println(_identifierNameStringObjectCount);
     #endif
         _identifierNameStringObjectErrors += abs(_identifierNameStringObjectCount);
-    }
+}
 
     if (_parsedStringConstObjectCount != 0) {
     #if PRINT_OBJECT_COUNT_ERRORS
@@ -1643,7 +1634,7 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
             _pDebugOut->print("*** User variable name objects cleanup error. Remaining: "); _pDebugOut->println(_userVarNameStringObjectCount);
         #endif
             _userVarNameStringObjectErrors += abs(_userVarNameStringObjectCount);
-        }
+    }
 
         if (_userVarStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS

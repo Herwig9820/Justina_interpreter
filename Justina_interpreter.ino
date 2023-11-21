@@ -86,7 +86,7 @@ long progMemSize = pow(2, 16);
 long progMemSize = 2000;
 #endif 
 
-unsigned long heartbeatPeriod{ 500 };                                               // do not go lower than 500 ms
+unsigned long heartbeatPeriod{ 1000 };                                               // do not go lower than 500 ms
 void heartbeat();
 void execAction(char c);
 
@@ -347,15 +347,12 @@ void execAction(char c) {
                 // >>> ---------------------------------------------------------------------------------------------
             }
             interpreterInMemory = pJustina->run();                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
-            Serial.println("** INO ********* INO A");
-
 
             if (!interpreterInMemory) {                                               // return from interpreter: remove from memory as well ?
-                Serial.println("** INO ********* INO B");
+                Serial.println(">> INO ********* voor delete pJustina");
                 delete[] pJustina;                                                     // cleanup and delete calculator object itself
-                Serial.println("** INO ********* INO C");
+                Serial.println(">> INO ********* na delete pJustina");
             }
-            Serial.println("** INO ********* INO D");
 
             heartbeatPeriod = 500;
             withinApplication = false;                                                  // return from application
@@ -542,7 +539,7 @@ void Justina_housekeeping(long& appFlags) {
     // request stop if debounced stop/abort key release is detected AND debounced key down time is less than the defined alternate function time
     // request abort if debounced stop/abort key down time is equal or more than the defined 'alternate function' time
     // --------------------------------------------------------------------------------------------------------------------------------------------
-
+    
     static bool errorCondition = false, statusA = false, statusB = false, dataInOut = false;
 
     uint8_t debouncedStates, wentDown, wentUp, isShortPress, isLongPress;
@@ -568,7 +565,7 @@ void Justina_housekeeping(long& appFlags) {
     if (appFlags & Justina_interpreter::appFlag_dataInOut) { newDataLedState = !dataLedState; }
     else { newDataLedState = false; }      // if data, toggle state, otherwise reset state
     if (newDataLedState != dataLedState) { dataLedState = newDataLedState;  digitalWrite(DATA_IO_PIN, dataLedState); }  // only write if change detected
-
+    
 #if withTCP
     maintainTCP(bool(appFlags & (Justina_interpreter::appFlag_dataRecdFromStreamMask  & (TCPstreamSet << 16 ))));                                                // maintain TCP connection
 #endif
@@ -687,7 +684,7 @@ long userFcn_returnLong(const void** pdata, const char* valueType, const int arg
 long userFcn_returnLong_2(const void** pdata, const char* valueType, const int argCount, int& execError) { return 456; }
 
 float userFcn_returnFloat(const void** pdata, const char* valueType, const int argCount, int& execError) {
-    Serial.println(" * **within 'userFcn_return float'");
+    Serial.println("*** within 'userFcn_return float'");
 
     bool isLong = ((valueType[1] & 0x03) == 0x01);                                  // bits 2-0: value indicates value type (1=long, 2=float, 3=char*) 
     bool isFloat = ((valueType[1] & 0x03) == 0x02);
