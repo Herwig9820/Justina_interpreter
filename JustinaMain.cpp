@@ -606,13 +606,9 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
     if (_progMemorySize + IMM_MEM_SIZE > pow(2, 16)) { _progMemorySize = pow(2, 16) - IMM_MEM_SIZE; }
     _programStorage = new char[_progMemorySize + IMM_MEM_SIZE];
 
-    // create a 'breakpoints' object, containing the breakpoints table and is responsible for handling breakpoints 
-    _pBreakpoints = new Breakpoints(this, (_progMemorySize * BP_LINE_RANGE_PROGMEM_STOR_RATIO) / 100, MAX_BP_COUNT);
-
 #if PRINT_HEAP_OBJ_CREA_DEL
-    _pDebugOut->print("+++++ (ext IO streams) "); _pDebugOut->println((uint32_t)_pIOprintColumns, HEX);
-    _pDebugOut->print("+++++ (program memory) "); _pDebugOut->println((uint32_t)_programStorage, HEX);
-    _pDebugOut->print("+++++ (BP object)      "); _pDebugOut->println((uint32_t)_pBreakpoints, HEX);
+    /*temp*/Serial.print("+++++ (ext IO streams) "); /*temp*/Serial.println((uint32_t)_pIOprintColumns, HEX);
+    /*temp*/Serial.print("+++++ (program memory) "); /*temp*/Serial.println((uint32_t)_programStorage, HEX);
 #endif
 
     initInterpreterVariables(true);
@@ -624,20 +620,6 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
 // ------------------
 /*
 Justina_interpreter::~Justina_interpreter() {
-Serial.println("A");
-#if PRINT_HEAP_OBJ_CREA_DEL
-    _pDebugOut->print("----- (BP object)      "); _pDebugOut->println((uint32_t)_pBreakpoints, HEX);
-    _pDebugOut->print("----- (program memory) "); _pDebugOut->println((uint32_t)_programStorage, HEX);
-    _pDebugOut->print("----- (ext IO streams) "); _pDebugOut->println((uint32_t)_pIOprintColumns, HEX);
-#endif
-    Serial.println("B");
-    //delete[] _pBreakpoints->_pBreakpointData;
-    //delete[] _pBreakpoints->_BPlineRangeStorage;
-
-    //delete[] _pBreakpoints;
-    delete[] _programStorage;
-    delete[] _pIOprintColumns;
-    Serial.println("C");
 };
 */
 
@@ -886,9 +868,9 @@ bool Justina_interpreter::run() {
 
                 // The user can set breakpoints for source lines having at least one statement starting on that line (given that the statement is not 'parsing only').
                 // Procedure 'collectSourceLineRangePairs' stores necessary data to enable this functionality.
-                result = _pBreakpoints->collectSourceLineRangePairs(_semicolonBPallowed_token, parsedStatementStartsOnNewLine, parsedStatementStartLinesAdjacent, statementStartsAtLine, parsedStatementStartsAtLine,
-                    BPstartLine, BPendLine, BPpreviousEndLine);
-
+                ////result = _pBreakpoints->collectSourceLineRangePairs(_semicolonBPallowed_token, parsedStatementStartsOnNewLine, parsedStatementStartLinesAdjacent, statementStartsAtLine, parsedStatementStartsAtLine,
+                ////    BPstartLine, BPendLine, BPpreviousEndLine);
+                result = result_parsing_OK; //// temp
                 if (result == result_parsing_OK) { result = parseStatement(pStatement, pDummy, clearCmdIndicator); }       // parse ONE statement only 
 
                 if ((++parsedStatementCount & 0x3f) == 0) {
@@ -908,7 +890,8 @@ bool Justina_interpreter::run() {
 
             // last 'gap' source line range and 'adjacent' source line "start of statement" range of source file
             if (_programMode && allCharsReceived) {
-                result = _pBreakpoints->addOneSourceLineRangePair(BPstartLine - BPpreviousEndLine - 1, BPendLine - BPstartLine + 1);
+                ////result = _pBreakpoints->addOneSourceLineRangePair(BPstartLine - BPpreviousEndLine - 1, BPendLine - BPstartLine + 1);
+                result = result_parsing_OK; //// temp
             }
 
             // program mode: complete program read and parsed   /   imm. mode: all statements in command line read and parsed OR parsing error ?
@@ -981,10 +964,6 @@ bool Justina_interpreter::run() {
 
     if(!_keepInMemory){     //// NAAR DESTRUCTOR na oplossen 'Quit Justina' bug
         resetMachine(true);                                                                             // delete all objects created on the heap: with = with user variables and FiFo stack
-        delete[] _pBreakpoints->_pBreakpointData;
-        delete[] _pBreakpoints->_BPlineRangeStorage;
-
-        delete[] _pBreakpoints;
         delete[] _programStorage;
         delete[] _pIOprintColumns;
     }
@@ -1176,51 +1155,13 @@ bool Justina_interpreter::prepareForIdleMode(parsingResult_type result, execResu
 
     // if in debug mode, trace expressions (if defined) and print debug info 
     // ---------------------------------------------------------------------
-    if ((_openDebugLevels > 0) && (execResult != result_kill) && (execResult != result_quit) && (execResult != result_initiateProgramLoad)) { traceAndPrintDebugInfo(execResult); }
+    if ((_openDebugLevels > 0) && (execResult != result_kill) && (execResult != result_quit) && (execResult != result_initiateProgramLoad)) ; //// temp { traceAndPrintDebugInfo(execResult); }
 
     // re-init or reset interpreter state 
     // ----------------------------------
 
     // if program parsing error: reset machine, because variable storage might not be consistent with program any more
     if ((_programMode) && (result != result_parsing_OK)) { resetMachine(false); }
-
-#if PRINT_DEBUG_INFO
-    if (_programMode) {
-        _pDebugOut->println();
-        // reconstruct gap and adjacent source line ranges
-        int i = 0;
-        long BPpreviousEndLine{ 0 };                        // introduce offset 1 here
-        while (i < _BPlineRangeStorageUsed) {
-            long gapLineRange{}, adjacentLineRange{};
-
-            if (!(_BPlineRangeStorage[i] & 0x01)) {       // gap and adjacent source line ranges stored in one byte
-                gapLineRange = (((uint32_t)_BPlineRangeStorage[i]) >> 1) & 0x7;                 // 3 bits long
-                adjacentLineRange = (((uint32_t)_BPlineRangeStorage[i]) >> 4) & 0xF;            // 4 bits long
-                i++;
-            }
-
-            else if ((_BPlineRangeStorage[i] & 0x11) == 0x01) {       // gap and adjacent source line ranges stored in two bytes
-                uint32_t temp{};
-                memcpy(&temp, _BPlineRangeStorage + i, 2);
-                gapLineRange = (temp >> 2) & 0x7F;                                              // 7 bits long
-                adjacentLineRange = (temp >> 9) & 0x7F;
-                i += 2;
-            }
-
-            else if ((_BPlineRangeStorage[i] & 0x11) == 0x11) {       // gap and adjacent source line ranges stored in three bytes
-                uint32_t temp{};
-                memcpy(&temp, _BPlineRangeStorage + i, 3);
-                gapLineRange = (temp >> 2) & 0x7FF;                                             // 11 bits long
-                adjacentLineRange = (temp >> 13) & 0x7FF;
-                i += 3;
-            }
-            long BPstartLine = BPpreviousEndLine + gapLineRange + 1;
-            long BPendLine = BPstartLine + adjacentLineRange - 1;
-            BPpreviousEndLine = BPendLine;
-            _pDebugOut->print("RECONSTRUCT adjacent lines - start en finish: "); _pDebugOut->print(BPstartLine); _pDebugOut->print("-"); _pDebugOut->println(BPendLine);
-        }
-}
-#endif
 
     // before loadng a program, clear memory except user variables
     else if (execResult == result_initiateProgramLoad) { resetMachine(false); }
@@ -1232,37 +1173,6 @@ bool Justina_interpreter::prepareForIdleMode(parsingResult_type result, execResu
         _parenthesisLevel = 0;                                      // current number of open parentheses (during parsing)
 
         _justinaFunctionBlockOpen = false;
-    }
-
-    // the clear memory / clear all command is executed AFTER the execution phase
-    // --------------------------------------------------------------------------
-
-    // first check there were no parsing or execution errors
-    if ((result == result_parsing_OK) && (execResult == result_execOK)) {
-        if (clearIndicator != 0) {                     // 1 = clear program cmd, 2 = clear all cmd 
-            while (_pConsoleIn->available() > 0) { readFrom(0); }                                               // empty console buffer first (to allow the user to start with an empty line)
-            do {
-                char s[50];
-                sprintf(s, "===== Clear %s ? (please answer Y or N) =====", ((clearIndicator == 2) ? "memory" : "program"));
-                printlnTo(0, s);
-
-                // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
-                // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
-                bool doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };      // not used but mandatory
-                int length{ 1 };
-                char input[1 + 1] = "";                                                                         // init: empty string. Provide room for 1 character + terminating '\0'
-                // NOTE: stop, cancel land default arguments have no function here (execution has ended already), but abort and kill do
-                if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { kill = true; quitJustina = true; break; }  // kill request from caller ?
-
-                if (doAbort) { break; }        // avoid a next loop (getConsoleCharacters exits immediately when abort request received, not waiting for any characters)
-                bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
-                if (validAnswer) {
-                    // 1 = clear program, 2 = clear all (including user variables)
-                    if (tolower(input[0]) == 'y') { printlnTo(0, (clearIndicator == 2) ? "clearing memory" : "clearing program"); resetMachine(clearIndicator == 2); }
-                    break;
-                }
-            } while (true);
-        }
     }
 
     // execution finished (not stopping in debug mode), with or without error: delete parsed strings in imm mode command : they are on the heap and not needed any more. Identifiers must stay availalble
@@ -1316,147 +1226,6 @@ bool Justina_interpreter::prepareForIdleMode(parsingResult_type result, execResu
 
     return quitJustina;
 }
-
-// -------------------------------------------------------------------------
-// *   trace expressions as defined in trace statement, print debug info   *
-// -------------------------------------------------------------------------
-
-void Justina_interpreter::traceAndPrintDebugInfo(execResult_type execResult) {
-    // count of programs in debug:
-    // - if an error occurred in a RUNNING program, the program is terminated and the number of STOPPED programs ('in debug mode') does not change.
-    // - if an error occurred while executing a command line, then this count is not changed either
-    // flow control stack:
-    // - at this point, structure '_activeFunctionData' always contains flow control data for the main program level (command line - in debug mode if the count of open programs is not zero)
-    // - the flow control stack maintains data about open block commands, open functions and eval() strings in execution (call stack)
-    // => skip stack elements for any command line open block commands or eval() strings in execution, and fetch the data for the function where control will resume when started again
-
-    char* nextStatementPointer = _programCounter;
-    OpenFunctionData* pDeepestOpenFunction = &_activeFunctionData;
-
-    void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;
-    int blockType = block_none;
-    do {                                                                                                        // there is at least one open function in the call stack
-        blockType = ((openBlockGeneric*)pFlowCtrlStackLvl)->blockType;
-        if (blockType == block_JustinaFunction) { break; }
-        pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
-    } while (true);
-
-    pDeepestOpenFunction = (OpenFunctionData*)pFlowCtrlStackLvl;                                                // deepest level of nested functions
-    nextStatementPointer = pDeepestOpenFunction->pNextStep;
-
-    // print the debug 'header' line
-    int length{ 0 };
-    long sourceLine{};
-    bool isBreakpointStop = (execResult == result_stopForBreakpoint);
-    printlnTo(_debug_sourceStreamNumber);
-    length = printTo(_debug_sourceStreamNumber, isBreakpointStop ? "-- BREAKPOINT " : "-- STOP ");
-    for (int i = 1; i <= _dispWidth - length; i++) { printTo(_debug_sourceStreamNumber, "-"); } printlnTo(_debug_sourceStreamNumber);
-
-    // print the source line, function and statement 
-    char msg[50 + MAX_IDENT_NAME_LEN] = "";
-
-    // if source line has an entry in breakpoint table: retrieve source line from there. If not, then calculate the source line number by counting...
-    // ...parsed statements with a preceding 'breakpoint set' or 'breakpoint allowed' token.
-    // note that the second method can be slow(er) if program consists of a large number of statements
-
-    Breakpoints::BreakpointData* pBreakpointDataRow{ nullptr };
-    int BPdataRow{};
-    bool lineHasBPtableEntry = (*(nextStatementPointer - 1) == _semicolonBPset_token);                             // (note that BP can be disabled, hitcount not yet reached or trigger result = false)
-    if (lineHasBPtableEntry) {                                                                             // check attributes in breakpoints table
-        pBreakpointDataRow = _pBreakpoints->findBPtableRow(nextStatementPointer, BPdataRow);     // find table entry
-    }
-    sourceLine = (lineHasBPtableEntry) ? pBreakpointDataRow->sourceLine : _pBreakpoints->findLineNumberForBPstatement(nextStatementPointer);
-    sprintf(msg, "line %ld: [%s] ", sourceLine, JustinaFunctionNames[pDeepestOpenFunction->functionIndex]);
-    printTo(_debug_sourceStreamNumber, msg);
-    prettyPrintStatements(1, nextStatementPointer);                                                     // print statement
-
-    if (isBreakpointStop) { parseAndExecTraceOrBPviewString(BPdataRow); }                                                          // BP view string: may not contain keywords, Justina functions, generic names
-    parseAndExecTraceOrBPviewString();                                                                                  // trace string: may not contain keywords, Justina functions, generic names
-
-    if (_openDebugLevels > 1) {
-        sprintf(msg, "*** this + %d other programs STOPPED ***", _openDebugLevels - 1);
-        printlnTo(_debug_sourceStreamNumber, msg);
-    }
-
-    // print an extra line to isolute Justina prompt
-    printTo(_debug_sourceStreamNumber, "\r\n");
-}
-
-
-// -----------------------------------------------
-// *   parse and exec trace string expressions   *
-// -----------------------------------------------
-
-// trace string may not contain keywords, user functions, generic names
-
-void Justina_interpreter::parseAndExecTraceOrBPviewString(int BPindex) {
-    char* pNextParseStatement{};
-
-    char* pTraceParsingInput = ((BPindex == -1) ? _pTraceString : _pBreakpoints->_pBreakpointData[BPindex].pView);                                                                   // copy pointer to start of trace string
-    if (pTraceParsingInput == nullptr) { return; }                                                                   // no trace string: nothing to trace
-
-    // trace string expressions will be parsed and executed from immediate mode program storage: 
-    // before overwriting user statements that were just parsed and executed, delete parsed strings
-    deleteConstStringObjects(_programStorage + _progMemorySize);
-
-    bool valuePrinted{ false };
-
-    _parsingExecutingTraceString = true;
-
-    printTo(_debug_sourceStreamNumber, (BPindex == -1) ? "TRACE> " : "BP TR> ");
-
-    // in each loop, parse and execute ONE expression 
-    do {
-        // init
-        *(_programStorage + _progMemorySize) = tok_no_token;                                                    // in case no valid tokens will be stored
-        _programCounter = _programStorage + _progMemorySize;                                                    // start of 'immediate mode' program area
-
-        // skip any spaces and semi-colons in the input stream
-        while ((pTraceParsingInput[0] == ' ') || (pTraceParsingInput[0] == term_semicolon[0])) { pTraceParsingInput++; }
-        if (*pTraceParsingInput == '\0') { break; }                                                             // could occur if semicolons skipped
-
-        // parse multiple trace string expressions ? print a comma in btween
-        if (valuePrinted) { printTo(_debug_sourceStreamNumber, ", "); }                                                                 // separate values (if more than one)
-
-        // note: application flags are not adapted (would not be passed to caller immediately)
-        int dummy{};
-        parsingResult_type result = parseStatement(pTraceParsingInput, pNextParseStatement, dummy);             // parse ONE statement
-        if (result == result_parsing_OK) {
-            // do NOT pretty print if parsing error, to avoid bad-looking partially printed statements (even if there will be an execution error later)
-            prettyPrintStatements(0);
-            printTo(_debug_sourceStreamNumber, ": ");                                                                                   // resulting value will follow
-            pTraceParsingInput = pNextParseStatement;
-        }
-        else {
-            char  errStr[12];                                                                                   // includes place for terminating '\0'
-            // if parsing error, print error instead of value AND CONTINUE with next trace expression (if any)
-            sprintf(errStr, "<ErrP%d>", (int)result);
-            printTo(_debug_sourceStreamNumber, errStr);
-            // pNextParseStatement not yet correctly positioned: set to next statement
-            while ((pTraceParsingInput[0] != term_semicolon[0]) && (pTraceParsingInput[0] != '\0')) { ++pTraceParsingInput; }
-            if (pTraceParsingInput[0] == term_semicolon[0]) { ++pTraceParsingInput; }
-        }
-
-        // if parsing went OK: execute ONE parsed expression (just parsed now)
-        execResult_type execResult{ result_execOK };
-        if (result == result_parsing_OK) {
-            execResult = exec(_programStorage + _progMemorySize);                                               // note: value or exec. error is printed from inside exec()
-        }
-
-        valuePrinted = true;
-
-        // execution finished: delete parsed strings in imm mode command (they are on the heap and not needed any more)
-        deleteConstStringObjects(_programStorage + _progMemorySize);                                            // always
-        *(_programStorage + _progMemorySize) = tok_no_token;                                                    //  current end of program (immediate mode)
-
-    } while (*pTraceParsingInput != '\0');                                                                      // exit loop if all expressions handled
-
-    _parsingExecutingTraceString = false;
-    printlnTo(_debug_sourceStreamNumber);       // go to next output line
-
-    return;
-}
-
 
 // -------------------------------------------------------------
 // *   check if all Justina functions referenced are defined   *
@@ -1535,7 +1304,7 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
 
         if (_pTraceString != nullptr) {        // internal trace 'variable'
         #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print("----- (system var str) "); _pDebugOut->println((uint32_t)_pTraceString, HEX);
+            /*temp*/Serial.print("----- (system var str) "); /*temp*/Serial.println((uint32_t)_pTraceString, HEX);
         #endif
             _systemVarStringObjectCount--;
             delete[] _pTraceString;
@@ -1561,9 +1330,6 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
 
     // delete parsing stack (keeps track of open parentheses and open command blocks during parsing)
     parsingStack.deleteList();
-
-    // reset Breakpoints objects and variables
-    _pBreakpoints->resetBreakpointsState();
 
     // check that all heap objects are deleted (in fact only the count is checked)
     // ---------------------------------------------------------------------------
@@ -1594,82 +1360,82 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
     // string and array heap objects: any objects left ?
     if (_identifierNameStringObjectCount != 0) {
     #if PRINT_OBJECT_COUNT_ERRORS
-        _pDebugOut->print("*** Variable / function name objects cleanup error. Remaining: "); _pDebugOut->println(_identifierNameStringObjectCount);
+        /*temp*/Serial.print("*** Variable / function name objects cleanup error. Remaining: "); /*temp*/Serial.println(_identifierNameStringObjectCount);
     #endif
         _identifierNameStringObjectErrors += abs(_identifierNameStringObjectCount);
 }
 
     if (_parsedStringConstObjectCount != 0) {
     #if PRINT_OBJECT_COUNT_ERRORS
-        _pDebugOut->print("*** Parsed constant string objects cleanup error. Remaining: "); _pDebugOut->println(_parsedStringConstObjectCount);
+        /*temp*/Serial.print("*** Parsed constant string objects cleanup error. Remaining: "); /*temp*/Serial.println(_parsedStringConstObjectCount);
     #endif
         _parsedStringConstObjectErrors += abs(_parsedStringConstObjectCount);
     }
 
     if (_globalStaticVarStringObjectCount != 0) {
     #if PRINT_OBJECT_COUNT_ERRORS
-        _pDebugOut->print("*** Variable string objects cleanup error. Remaining: "); _pDebugOut->println(_globalStaticVarStringObjectCount);
+        /*temp*/Serial.print("*** Variable string objects cleanup error. Remaining: "); /*temp*/Serial.println(_globalStaticVarStringObjectCount);
     #endif
         _globalStaticVarStringObjectErrors += abs(_globalStaticVarStringObjectCount);
     }
 
     if (_globalStaticArrayObjectCount != 0) {
     #if PRINT_OBJECT_COUNT_ERRORS
-        _pDebugOut->print("*** Array objects cleanup error. Remaining: "); _pDebugOut->println(_globalStaticArrayObjectCount);
+        /*temp*/Serial.print("*** Array objects cleanup error. Remaining: "); /*temp*/Serial.println(_globalStaticArrayObjectCount);
     #endif
         _globalStaticArrayObjectErrors += abs(_globalStaticArrayObjectCount);
     }
 
 #if PRINT_DEBUG_INFO
-    _pDebugOut->print("\r\n** Reset stats\r\n    parsed strings "); _pDebugOut->print(_parsedStringConstObjectCount);
+    /*temp*/Serial.print("\r\n** Reset stats\r\n    parsed strings "); /*temp*/Serial.print(_parsedStringConstObjectCount);
 
-    _pDebugOut->print(", prog name strings "); _pDebugOut->print(_identifierNameStringObjectCount);
-    _pDebugOut->print(", prog var strings "); _pDebugOut->print(_globalStaticVarStringObjectCount);
-    _pDebugOut->print(", prog arrays "); _pDebugOut->print(_globalStaticArrayObjectCount);
+    /*temp*/Serial.print(", prog name strings "); /*temp*/Serial.print(_identifierNameStringObjectCount);
+    /*temp*/Serial.print(", prog var strings "); /*temp*/Serial.print(_globalStaticVarStringObjectCount);
+    /*temp*/Serial.print(", prog arrays "); /*temp*/Serial.print(_globalStaticArrayObjectCount);
 #endif
 
     if (withUserVariables) {
         if (_userVarNameStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
-            _pDebugOut->print("*** User variable name objects cleanup error. Remaining: "); _pDebugOut->println(_userVarNameStringObjectCount);
+            /*temp*/Serial.print("*** User variable name objects cleanup error. Remaining: "); /*temp*/Serial.println(_userVarNameStringObjectCount);
         #endif
             _userVarNameStringObjectErrors += abs(_userVarNameStringObjectCount);
     }
 
         if (_userVarStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
-            _pDebugOut->print("*** User variable string objects cleanup error. Remaining: "); _pDebugOut->println(_userVarStringObjectCount);
+            /*temp*/Serial.print("*** User variable string objects cleanup error. Remaining: "); /*temp*/Serial.println(_userVarStringObjectCount);
         #endif
             _userVarStringObjectErrors += abs(_userVarStringObjectCount);
         }
 
         if (_userArrayObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
-            _pDebugOut->print("*** User array objects cleanup error. Remaining: "); _pDebugOut->println(_userArrayObjectCount);
+            /*temp*/Serial.print("*** User array objects cleanup error. Remaining: "); /*temp*/Serial.println(_userArrayObjectCount);
         #endif
             _userArrayObjectErrors += abs(_userArrayObjectCount);
         }
 
         if (_systemVarStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
-            _pDebugOut->print("*** System variable string objects cleanup error. Remaining: "); _pDebugOut->println(_systemVarStringObjectCount);
+            /*temp*/Serial.print("*** System variable string objects cleanup error. Remaining: "); /*temp*/Serial.println(_systemVarStringObjectCount);
         #endif
             _systemVarStringObjectErrors += abs(_systemVarStringObjectCount);
         }
 
         if (_lastValuesStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
-            _pDebugOut->print("*** Last value FiFo string objects cleanup error. Remaining: "); _pDebugOut->print(_lastValuesStringObjectCount);
+            /*temp*/Serial.print("*** Last value FiFo string objects cleanup error. Remaining: "); /*temp*/Serial.print(_lastValuesStringObjectCount);
         #endif
             _lastValuesStringObjectErrors += abs(_lastValuesStringObjectCount);
         }
 
     #if PRINT_DEBUG_INFO
-        _pDebugOut->print(", user var names "); _pDebugOut->print(_userVarNameStringObjectCount);
-        _pDebugOut->print(", user var strings "); _pDebugOut->print(_userVarStringObjectCount);
-        _pDebugOut->print(", user arrays "); _pDebugOut->print(_userArrayObjectCount);
+        /*temp*/Serial.print(", user var names "); /*temp*/Serial.print(_userVarNameStringObjectCount);
+        /*temp*/Serial.print(", user var strings "); /*temp*/Serial.print(_userVarStringObjectCount);
+        /*temp*/Serial.print(", user arrays "); /*temp*/Serial.print(_userArrayObjectCount);
 
-        _pDebugOut->print(", last value strings "); _pDebugOut->print(_lastValuesStringObjectCount);
+        /*temp*/Serial.print(", last value strings "); /*temp*/Serial.print(_lastValuesStringObjectCount);
     #endif
     }
 }
@@ -1793,7 +1559,7 @@ void Justina_interpreter::deleteIdentifierNameObjects(char** pIdentNameArray, in
     int index = 0;          // points to last variable in use
     while (index < identifiersInUse) {                       // points to variable in use
     #if PRINT_HEAP_OBJ_CREA_DEL
-        _pDebugOut->print(isUserVar ? "----- (usrvar name) " : "----- (ident name ) "); _pDebugOut->println((uint32_t) * (pIdentNameArray + index), HEX);
+        /*temp*/Serial.print(isUserVar ? "----- (usrvar name) " : "----- (ident name ) "); /*temp*/Serial.println((uint32_t) * (pIdentNameArray + index), HEX);
     #endif
         isUserVar ? _userVarNameStringObjectCount-- : _identifierNameStringObjectCount--;
         delete[] * (pIdentNameArray + index);
@@ -1838,7 +1604,7 @@ void Justina_interpreter::deleteOneArrayVarStringObjects(Justina_interpreter::Va
         uint32_t stringPointerAddress = (uint32_t) & (((char**)pArrayStorage)[arrayElem]);
         if (pString != nullptr) {
         #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print(isUserVar ? "----- (usr arr str) " : isLocalVar ? "-----(loc arr str)" : "----- (arr string ) "); _pDebugOut->println((uint32_t)pString, HEX);     // applicable to string and array (same pointer)
+            /*temp*/Serial.print(isUserVar ? "----- (usr arr str) " : isLocalVar ? "-----(loc arr str)" : "----- (arr string ) "); /*temp*/Serial.println((uint32_t)pString, HEX);     // applicable to string and array (same pointer)
         #endif
             isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
             delete[]  pString;                                                                                                      // applicable to string and array (same pointer)
@@ -1862,7 +1628,7 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
             // check for arrays before checking for strings (if both 'var_isArray' and 'value_isStringPointer' bits are set: array of strings, with strings already deleted)
             if (((varType[index] & value_typeMask) != value_isVarRef) && (varType[index] & var_isArray)) {                          // variable is an array: delete array storage          
             #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print(isUserVar ? "----- (usr ar stor) " : isLocalVar ? "----- (loc ar stor) " : "----- (array stor ) "); _pDebugOut->println((uint32_t)varValues[index].pArray, HEX);
+                /*temp*/Serial.print(isUserVar ? "----- (usr ar stor) " : isLocalVar ? "----- (loc ar stor) " : "----- (array stor ) "); /*temp*/Serial.println((uint32_t)varValues[index].pArray, HEX);
             #endif
                 isUserVar ? _userArrayObjectCount-- : isLocalVar ? _localArrayObjectCount-- : _globalStaticArrayObjectCount--;
                 delete[]  varValues[index].pArray;
@@ -1870,7 +1636,7 @@ void Justina_interpreter::deleteVariableValueObjects(Justina_interpreter::Val* v
             else if ((varType[index] & value_typeMask) == value_isStringPointer) {                                                  // variable is a scalar containing a string
                 if (varValues[index].pStringConst != nullptr) {
                 #if PRINT_HEAP_OBJ_CREA_DEL
-                    _pDebugOut->print(isUserVar ? "----- (usr var str) " : isLocalVar ? "----- (loc var str)" : "----- (var string ) "); _pDebugOut->println((uint32_t)varValues[index].pStringConst, HEX);
+                    /*temp*/Serial.print(isUserVar ? "----- (usr var str) " : isLocalVar ? "----- (loc var str)" : "----- (var string ) "); /*temp*/Serial.println((uint32_t)varValues[index].pStringConst, HEX);
                 #endif
                     isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
                     delete[]  varValues[index].pStringConst;
@@ -1893,7 +1659,7 @@ void Justina_interpreter::deleteLastValueFiFoStringObjects() {
         bool isNonEmptyString = (lastResultTypeFiFo[i] == value_isStringPointer) ? (lastResultValueFiFo[i].pStringConst != nullptr) : false;
         if (isNonEmptyString) {
         #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print("----- (FiFo string) "); _pDebugOut->println((uint32_t)lastResultValueFiFo[i].pStringConst, HEX);
+            /*temp*/Serial.print("----- (FiFo string) "); /*temp*/Serial.println((uint32_t)lastResultValueFiFo[i].pStringConst, HEX);
         #endif
             _lastValuesStringObjectCount--;
             delete[] lastResultValueFiFo[i].pStringConst;
@@ -1922,7 +1688,7 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
             memcpy(&pAnum, prgmCnt.pCstToken->cstValue.pStringConst, sizeof(pAnum));                                                // pointer not necessarily aligned with word size: copy memory instead
             if (pAnum != nullptr) {
             #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print("----- (parsed str ) ");   _pDebugOut->println((uint32_t)pAnum, HEX);
+                /*temp*/Serial.print("----- (parsed str ) ");   /*temp*/Serial.println((uint32_t)pAnum, HEX);
             #endif
                 _parsedStringConstObjectCount--;
                 delete[] pAnum;
@@ -1951,8 +1717,8 @@ Justina_interpreter::execResult_type Justina_interpreter::deleteVarStringObject(
 
     // delete variable string object
 #if PRINT_HEAP_OBJ_CREA_DEL
-    _pDebugOut->print((varScope == var_isUser) ? "----- (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "----- (var string ) " : "----- (loc var str) ");
-    _pDebugOut->println((uint32_t)*pStackLvl->varOrConst.value.ppStringConst, HEX);
+    /*temp*/Serial.print((varScope == var_isUser) ? "----- (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "----- (var string ) " : "----- (loc var str) ");
+    /*temp*/Serial.println((uint32_t)*pStackLvl->varOrConst.value.ppStringConst, HEX);
 #endif
     (varScope == var_isUser) ? _userVarStringObjectCount-- : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount-- : _localVarStringObjectCount--;
     delete[] * pStackLvl->varOrConst.value.ppStringConst;
@@ -1972,7 +1738,7 @@ Justina_interpreter::execResult_type Justina_interpreter::deleteIntermStringObje
     if (pStackLvl->varOrConst.valueType != value_isStringPointer) { return result_execOK; }                                         // not a string object
     if (pStackLvl->varOrConst.value.pStringConst == nullptr) { return result_execOK; }
 #if PRINT_HEAP_OBJ_CREA_DEL
-    _pDebugOut->print("----- (Intermd str) ");   _pDebugOut->println((uint32_t)_pEvalStackTop->varOrConst.value.pStringConst, HEX);
+    /*temp*/Serial.print("----- (Intermd str) ");   /*temp*/Serial.println((uint32_t)_pEvalStackTop->varOrConst.value.pStringConst, HEX);
 #endif
     _intermediateStringObjectCount--;
     delete[] pStackLvl->varOrConst.value.pStringConst;

@@ -1026,8 +1026,9 @@ void Justina_interpreter::printExecError(execResult_type execResult, bool  showS
         // errorProgramCounter is never pointing to a token directly contained in a parsed() eval() string 
         if (errorProgramCounter >= (_programStorage + _progMemorySize)) { sprintf(execInfo, ""); }
         else {
-            long sourceLine = _pBreakpoints->findLineNumberForBPstatement(errorStatementStartStep);
-            sprintf(execInfo, " in user function %s, source line %ld", JustinaFunctionNames[functionIndex], sourceLine);
+            //// quit Justina bug 
+            //// long sourceLine = _pBreakpoints->findLineNumberForBPstatement(errorStatementStartStep);
+            //// sprintf(execInfo, " in user function %s, source line %ld", JustinaFunctionNames[functionIndex], sourceLine);
         }
         printTo(0, execInfo);
 
