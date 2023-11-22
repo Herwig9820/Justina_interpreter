@@ -1,6 +1,6 @@
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 1
+#define PRINT_HEAP_OBJ_CREA_DEL 0
 #define PRINT_PARSED_CMD_STACK 0
 #define PRINT_DEBUG_INFO 0
 
@@ -72,7 +72,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
                     do {
                         bool doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };
-                        printlnTo(0, "===== Quit Justina: keep in memory ? (please answer Y, N or \\c to cancel) =====");
+                        /*temp*/Serial.println( "===== Quit Justina: keep in memory ? (please answer Y, N or \\c to cancel) =====");
 
                         // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
                         // return flags doStop, doAbort, doCancel, doDefault if user included corresponding escape sequences in input string.

@@ -30,7 +30,7 @@
 
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 1
+#define PRINT_HEAP_OBJ_CREA_DEL 0
 #define PRINT_PARSED_CMD_STACK 0
 #define PRINT_PROCESSED_TOKEN 0
 #define PRINT_DEBUG_INFO 0
@@ -709,7 +709,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 char* fmtString = isLong ? _dispIntegerFmtString : isFloat ? _dispFloatFmtString : _dispStringFmtString;
                 printToString(_dispWidth, isLong ? _dispIntegerPrecision : isFloat ? _dispFloatPrecision : MAX_STRCHAR_TO_PRINT,
                     (!isLong && !isFloat), isLong, lastResultTypeFiFo, lastResultValueFiFo, fmtString, toPrint, charsPrinted, (_printLastResult == 2));
-                printlnTo(0, toPrint.pStringConst);
+                /*temp*/Serial.println( toPrint.pStringConst);
 
                 if (toPrint.pStringConst != nullptr) {
                 #if PRINT_HEAP_OBJ_CREA_DEL

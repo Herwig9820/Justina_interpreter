@@ -30,7 +30,7 @@
 
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 1
+#define PRINT_HEAP_OBJ_CREA_DEL 0
 
 
 // *****************************************************************
@@ -1015,13 +1015,13 @@ void Justina_interpreter::printExecError(execResult_type execResult, bool  showS
             if (isImmMode) { programCounterOffset = pImmediateCmdStackLvl + sizeof(char*) - (_programStorage + _progMemorySize); }
         }
 
-        printTo(0, "\r\n  ");
+        /*temp*/Serial.print("\r\n  ");
         prettyPrintStatements(1, errorStatementStartStep + programCounterOffset, errorProgramCounter + programCounterOffset, &sourceErrorPos);
-        for (int i = 1; i <= sourceErrorPos; ++i) { printTo(0, " "); }
+        for (int i = 1; i <= sourceErrorPos; ++i) { /*temp*/Serial.print(" "); }
 
         char execInfo[50 + MAX_IDENT_NAME_LEN] = "";
         sprintf(execInfo, "  ^\r\n  Exec error %d", execResult);                                                        // in main program level 
-        printTo(0, execInfo);
+        /*temp*/Serial.print(execInfo);
 
         // errorProgramCounter is never pointing to a token directly contained in a parsed() eval() string 
         if (errorProgramCounter >= (_programStorage + _progMemorySize)) { sprintf(execInfo, ""); }
@@ -1030,22 +1030,22 @@ void Justina_interpreter::printExecError(execResult_type execResult, bool  showS
             //// long sourceLine = _pBreakpoints->findLineNumberForBPstatement(errorStatementStartStep);
             //// sprintf(execInfo, " in user function %s, source line %ld", JustinaFunctionNames[functionIndex], sourceLine);
         }
-        printTo(0, execInfo);
+        /*temp*/Serial.print(execInfo);
 
         if (execResult == result_eval_parsingError) { sprintf(execInfo, " (eval() parsing error %ld)\r\n", _evalParseErrorCode); }
         else if (execResult == result_list_parsingError) { sprintf(execInfo, " (list input parsing error %ld)\r\n", _evalParseErrorCode); }
         else { sprintf(execInfo, "\r\n"); }
-        printTo(0, execInfo);
+        /*temp*/Serial.print(execInfo);
     }
 
     else if (execResult == result_quit) {
         char execInfo[50] = "";
         strcpy(execInfo, "\r\nExecuting 'quit' command, ");
-        printTo(0, strcat(execInfo, _keepInMemory ? "data retained\r\n" : "memory released\r\n"));
+        /*temp*/Serial.print(strcat(execInfo, _keepInMemory ? "data retained\r\n" : "memory released\r\n"));
     }
     else if (execResult == result_kill) {}      // do nothing
-    else if (execResult == result_abort) { printTo(0, "\r\n+++ Abort: code execution terminated +++\r\n"); }
-    else if (execResult == result_stopForDebug) { if (showStopmessage) { printTo(0, "\r\n+++ Program stopped +++\r\n"); } }
+    else if (execResult == result_abort) { /*temp*/Serial.print("\r\n+++ Abort: code execution terminated +++\r\n"); }
+    else if (execResult == result_stopForDebug) { if (showStopmessage) { /*temp*/Serial.print("\r\n+++ Program stopped +++\r\n"); } }
     else if (execResult == result_initiateProgramLoad) {}                                                               // (nothing to do here for this event)
 
     _lastValueIsStored = false;                                                                                         // prevent printing last result (if any)
@@ -1318,18 +1318,18 @@ void Justina_interpreter::printParsingResult(parsingResult_type result, int func
         // instruction not parsed (because of error): print source instruction where error is located (can not 'unparse' yet for printing instruction)
         if (result == result_statementTooLong) { pErrorPos = pInstruction; }
 
-        printTo(0, "\r\n  "); printlnTo(0, pInstruction);
+        /*temp*/Serial.print("\r\n  "); /*temp*/Serial.println( pInstruction);
         char point[pErrorPos - pInstruction + 3];                                           // 2 extra positions for 2 leading spaces, 2 for '^' and '\0' characters
         memset(point, ' ', pErrorPos - pInstruction + 2);
         point[pErrorPos - pInstruction + 2] = '^';
         point[pErrorPos - pInstruction + 3] = '\0';
-        printlnTo(0, point);
+        /*temp*/Serial.println( point);
 
         if (_programMode) { sprintf(parsingInfo, "  Parsing error %d: statement ending at line %d", result, lineCount + 1); }
         else { sprintf(parsingInfo, "  Parsing error %d", result); }
     }
 
-    if (strlen(parsingInfo) > 0) { printlnTo(0, parsingInfo); _lastPrintedIsPrompt = false; }
+    if (strlen(parsingInfo) > 0) { /*temp*/Serial.println( parsingInfo); _lastPrintedIsPrompt = false; }
 };
 
 

@@ -30,7 +30,7 @@
 
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 1
+#define PRINT_HEAP_OBJ_CREA_DEL 0
 #define PRINT_DEBUG_INFO 0
 #define PRINT_OBJECT_COUNT_ERRORS 0
 
@@ -715,15 +715,15 @@ bool Justina_interpreter::run() {
     _appFlags = 0x0000L;                                                                                        // init application flags (for communication with Justina caller, using callbacks)
 
     printlnTo(0);
-    for (int i = 0; i < 13; i++) { printTo(0, "*"); } printTo(0, "____");
-    for (int i = 0; i < 4; i++) { printTo(0, "*"); } printTo(0, "__");
-    for (int i = 0; i < 14; i++) { printTo(0, "*"); } printTo(0, "_");
-    for (int i = 0; i < 10; i++) { printTo(0, "*"); }printlnTo(0);
+    for (int i = 0; i < 13; i++) { /*temp*/Serial.print("*"); } /*temp*/Serial.print("____");
+    for (int i = 0; i < 4; i++) { /*temp*/Serial.print("*"); } /*temp*/Serial.print("__");
+    for (int i = 0; i < 14; i++) { /*temp*/Serial.print("*"); } /*temp*/Serial.print("_");
+    for (int i = 0; i < 10; i++) { /*temp*/Serial.print("*"); }printlnTo(0);
 
-    printTo(0, "    "); printlnTo(0, J_productName);
-    printTo(0, "    "); printlnTo(0, J_legalCopyright);
-    printTo(0, "    Version: "); printTo(0, J_productVersion); printTo(0, " ("); printTo(0, J_buildDate); printlnTo(0, ")");
-    for (int i = 0; i < 48; i++) { printTo(0, "*"); } printlnTo(0);
+    /*temp*/Serial.print("    "); /*temp*/Serial.println( J_productName);
+    /*temp*/Serial.print("    "); /*temp*/Serial.println( J_legalCopyright);
+    /*temp*/Serial.print("    Version: "); /*temp*/Serial.print(J_productVersion); /*temp*/Serial.print(" ("); /*temp*/Serial.print(J_buildDate); /*temp*/Serial.println( ")");
+    for (int i = 0; i < 48; i++) { /*temp*/Serial.print("*"); } printlnTo(0);
 
     // find token index for terminal token 'semicolon with breakpoint allowed' 
     int index{}, semicolonBPallowed_index{}, semicolonBPset_index{}, matches{};
@@ -758,23 +758,23 @@ bool Justina_interpreter::run() {
     // initialise SD card now ?
     // 0 = no card reader, 1 = card reader present, do not yet initialise, 2 = initialise card now, 3 = init card & run start.jus function start() now
     if ((_justinaConstraints & 0b0011) >= 2) {
-        printTo(0, "\r\nLooking for an SD card...\r\n");
+        /*temp*/Serial.print("\r\nLooking for an SD card...\r\n");
         execResult_type execResult = startSD();
-        printTo(0, _SDinitOK ? "SD card found\r\n" : "SD card error: SD card NOT found\r\n");
+        /*temp*/Serial.print(_SDinitOK ? "SD card found\r\n" : "SD card error: SD card NOT found\r\n");
     }
 
     if ((_justinaConstraints & 0b0011) == 3) {
         // open startup file and retrieve file number (which would be one, normally)
         _initiateProgramLoad = _SDinitOK;
         if (_initiateProgramLoad) {
-            printlnTo(0, "Looking for 'start.jus' program file...");
-            if (!SD.exists("start.jus")) { _initiateProgramLoad = false; printlnTo(0, "'start.jus' program NOT found"); }
+            /*temp*/Serial.println( "Looking for 'start.jus' program file...");
+            if (!SD.exists("start.jus")) { _initiateProgramLoad = false; /*temp*/Serial.println( "'start.jus' program NOT found"); }
         }
 
         if (_initiateProgramLoad) {
             execResult_type execResult = SD_open(_loadProgFromStreamNo, "start.jus", O_READ);                   // this performs a few card & file checks as well
             _initiateProgramLoad = (execResult == result_execOK);
-            if (!_initiateProgramLoad) { printTo(0, "Could not open 'start.jus' program - error "); printlnTo(0, execResult); }
+            if (!_initiateProgramLoad) { /*temp*/Serial.print("Could not open 'start.jus' program - error "); /*temp*/Serial.println( execResult); }
         }
 
         if (_initiateProgramLoad) {                                                                             // !!! second 'if(_initiateProgramLoad)'
@@ -794,7 +794,7 @@ bool Justina_interpreter::run() {
 
             streamNumber = _loadProgFromStreamNo;                                                               // autostart step 1: temporarily switch from console input to startup file (opening the file here) 
             setStream(streamNumber, pStatementInputStream);                                                     // error checking done while opening file
-            printTo(0, "Loading program 'start.jus'...\r\n");
+            /*temp*/Serial.print("Loading program 'start.jus'...\r\n");
         }
     }
 
@@ -874,7 +874,7 @@ bool Justina_interpreter::run() {
                 if (result == result_parsing_OK) { result = parseStatement(pStatement, pDummy, clearCmdIndicator); }       // parse ONE statement only 
 
                 if ((++parsedStatementCount & 0x3f) == 0) {
-                    printTo(0, '.');                                                                            // print a dot each 64 parsed lines
+                    /*temp*/Serial.print('.');                                                                            // print a dot each 64 parsed lines
                     if ((parsedStatementCount & 0x0fff) == 0) { printlnTo(0); }                                 // print a crlf each 64 dots
                 }
                 pErrorPos = pStatement;                                                                         // in case of error
@@ -952,15 +952,15 @@ bool Justina_interpreter::run() {
     _appFlags = 0x0000L;                                                                                        // clear all application flags
     _housekeepingCallback(_appFlags);  //// temp: quit Justina bug                                                                         // pass application flags to caller immediately
 
-    if (kill) { _keepInMemory = false; printlnTo(0, "\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
+    if (kill) { _keepInMemory = false; /*temp*/Serial.println( "\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
 
     SD_closeAllFiles();                                                                                         // safety (in case an SD card is present: close all files 
     _SDinitOK = false;
     SD.end();                                                                                                   // stop SD card
 
     while (_pConsoleIn->available() > 0) { readFrom(0); }                                                       //  empty console buffer before quitting
-    printlnTo(0, "\r\nJustina: bye\r\n");
-    for (int i = 0; i < 48; i++) { printTo(0, "="); } printlnTo(0, "\r\n");
+    /*temp*/Serial.println( "\r\nJustina: bye\r\n");
+    for (int i = 0; i < 48; i++) { /*temp*/Serial.print("="); } /*temp*/Serial.println( "\r\n");
 
     if(!_keepInMemory){     //// NAAR DESTRUCTOR na oplossen 'Quit Justina' bug
         resetMachine(true);                                                                             // delete all objects created on the heap: with = with user variables and FiFo stack
@@ -1105,9 +1105,9 @@ bool Justina_interpreter::finaliseParsing(parsingResult_type& result, bool& kill
     }
     else {          // parsing error, abort or kill during parsing
         if (_programMode && (_loadProgFromStreamNo <= 0)) {
-            if (result == result_parse_abort) { printTo(0, "\r\nAbort: "); }                                // not for other parsing errors
-            else { printTo(0, "\r\nParsing error: "); }
-            if (result != result_parsing_OK) { printlnTo(0, "processing remainder of input file... please wait"); }
+            if (result == result_parse_abort) { /*temp*/Serial.print("\r\nAbort: "); }                                // not for other parsing errors
+            else { /*temp*/Serial.print("\r\nParsing error: "); }
+            if (result != result_parsing_OK) { /*temp*/Serial.println( "processing remainder of input file... please wait"); }
         }
 
         char c{};
@@ -1120,17 +1120,17 @@ bool Justina_interpreter::finaliseParsing(parsingResult_type& result, bool& kill
             if (kill) { result = result_parse_kill; break; }                                                // kill while processing remainder of file
             if (!_programMode && (c == '\n')) { break; }                                                    // complete user command line was read
             else if (_programMode && ((++byteInCount & 0x0fff) == 0)) {
-                printTo(0, '.');
+                /*temp*/Serial.print('.');
                 if ((byteInCount & 0x03ffff) == 0) { printlnTo(0); }                                        // print a dot each 4096 lines, a crlf each 64 dots
             }
         } while (c != 0xFF);
 
 
         if (result == result_parse_abort) {
-            printlnTo(0, _programMode ? "\r\n+++ Abort: parsing terminated +++" : "");                       // abort: display error message if aborting program parsing
+            /*temp*/Serial.println( _programMode ? "\r\n+++ Abort: parsing terminated +++" : "");                       // abort: display error message if aborting program parsing
         }
         else if (result == result_parse_setStdConsole) {
-            printlnTo(0, "\r\n+++ console reset +++");
+            /*temp*/Serial.println( "\r\n+++ console reset +++");
             _consoleIn_sourceStreamNumber = _consoleOut_sourceStreamNumber = -1;
             _pConsoleIn = _pConsoleOut = _pExternIOstreams[0];                                                  // set console to stream -1 (NOT debug out)
             _pConsolePrintColumn = &_pIOprintColumns[0];
@@ -1191,7 +1191,7 @@ bool Justina_interpreter::prepareForIdleMode(parsingResult_type result, execResu
         _programCounter = _programStorage;
 
         if (_lastPrintedIsPrompt) { printlnTo(0); }                                                             // print new line if last printed was a prompt
-        printTo(0, (_loadProgFromStreamNo > 0) ? "Loading program...\r\n" : "Loading program... please wait\r\n");
+        /*temp*/Serial.print((_loadProgFromStreamNo > 0) ? "Loading program...\r\n" : "Loading program... please wait\r\n");
         _lastPrintedIsPrompt = false;
 
         statementInputStreamNumber = _loadProgFromStreamNo;
@@ -1221,7 +1221,7 @@ bool Justina_interpreter::prepareForIdleMode(parsingResult_type result, execResu
     // -------------------------
     _lastPrintedIsPrompt = false;
     if ((_promptAndEcho != 0) && (execResult != result_initiateProgramLoad)) {
-        printTo(0, "Justina> "); _lastPrintedIsPrompt = true;
+        /*temp*/Serial.print("Justina> "); _lastPrintedIsPrompt = true;
     }
 
     return quitJustina;
