@@ -30,7 +30,7 @@
 
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 1
+#define PRINT_HEAP_OBJ_CREA_DEL 0
 #define PRINT_PARSED_CMD_STACK 0
 #define PRINT_DEBUG_INFO 0
 
@@ -756,7 +756,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         if (newData) { buffer[bufferCharCount++] = c; progressDotsByteCount++; totalByteCount++; }
                         waitForFirstChar = false;                                                                           // for all next characters
                     }
-                    if (verbose && (progressDotsByteCount > 5000)) {
+                    if (verbose && (progressDotsByteCount > 300)) { 
                         progressDotsByteCount = 0;  printTo(0, '.');
                         if ((++dotCount & 0x3f) == 0) { printlnTo(0); }                                                     // print a crlf each 64 dots
                     }

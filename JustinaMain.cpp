@@ -30,7 +30,7 @@
 
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 1
+#define PRINT_HEAP_OBJ_CREA_DEL 0
 #define PRINT_DEBUG_INFO 0
 #define PRINT_OBJECT_COUNT_ERRORS 0
 
@@ -622,24 +622,23 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
 // ------------------
 // *   destructor   *
 // ------------------
-/*
+
 Justina_interpreter::~Justina_interpreter() {
-Serial.println("A");
+    Serial.println("A");
 #if PRINT_HEAP_OBJ_CREA_DEL
     _pDebugOut->print("----- (BP object)      "); _pDebugOut->println((uint32_t)_pBreakpoints, HEX);
     _pDebugOut->print("----- (program memory) "); _pDebugOut->println((uint32_t)_programStorage, HEX);
     _pDebugOut->print("----- (ext IO streams) "); _pDebugOut->println((uint32_t)_pIOprintColumns, HEX);
 #endif
     Serial.println("B");
-    //delete[] _pBreakpoints->_pBreakpointData;
-    //delete[] _pBreakpoints->_BPlineRangeStorage;
+    resetMachine(true);                                                                             // delete all objects created on the heap: with = with user variables and FiFo stack
 
-    //delete[] _pBreakpoints;
+    delete _pBreakpoints;
     delete[] _programStorage;
     delete[] _pIOprintColumns;
     Serial.println("C");
 };
-*/
+
 
 // --------------------------------------------
 // *   set system (main) call back functons   *
@@ -891,7 +890,7 @@ bool Justina_interpreter::run() {
 
                 if (result == result_parsing_OK) { result = parseStatement(pStatement, pDummy, clearCmdIndicator); }       // parse ONE statement only 
 
-                if ((++parsedStatementCount & 0x3f) == 0) {
+                if ((++parsedStatementCount & 0x0f) == 0) {
                     printTo(0, '.');                                                                            // print a dot each 64 parsed lines
                     if ((parsedStatementCount & 0x0fff) == 0) { printlnTo(0); }                                 // print a crlf each 64 dots
                 }
@@ -979,15 +978,6 @@ bool Justina_interpreter::run() {
     printlnTo(0, "\r\nJustina: bye\r\n");
     for (int i = 0; i < 48; i++) { printTo(0, "="); } printlnTo(0, "\r\n");
 
-    if(!_keepInMemory){     //// NAAR DESTRUCTOR na oplossen 'Quit Justina' bug
-        resetMachine(true);                                                                             // delete all objects created on the heap: with = with user variables and FiFo stack
-        delete[] _pBreakpoints->_pBreakpointData;
-        delete[] _pBreakpoints->_BPlineRangeStorage;
-
-        delete[] _pBreakpoints;
-        delete[] _programStorage;
-        delete[] _pIOprintColumns;
-    }
     return _keepInMemory;                                                                                       // return to calling program
 }
 
@@ -1140,7 +1130,7 @@ bool Justina_interpreter::finaliseParsing(parsingResult_type& result, bool& kill
             c = getCharacter(kill, forcedStop, forcedAbort, stdConsDummy, true);
             if (kill) { result = result_parse_kill; break; }                                                // kill while processing remainder of file
             if (!_programMode && (c == '\n')) { break; }                                                    // complete user command line was read
-            else if (_programMode && ((++byteInCount & 0x0fff) == 0)) {
+            else if (_programMode && ((++byteInCount & 0x02ff) == 0)) {
                 printTo(0, '.');
                 if ((byteInCount & 0x03ffff) == 0) { printlnTo(0); }                                        // print a dot each 4096 lines, a crlf each 64 dots
             }
@@ -1184,42 +1174,13 @@ bool Justina_interpreter::prepareForIdleMode(parsingResult_type result, execResu
     // if program parsing error: reset machine, because variable storage might not be consistent with program any more
     if ((_programMode) && (result != result_parsing_OK)) { resetMachine(false); }
 
-#if PRINT_DEBUG_INFO
+
+#if PRINT_DEBUG_INFO  
+    // NOTE !!! Also set PRINT_DEBUG_INFO to 1 in file Breakpoints !!!
     if (_programMode) {
         _pDebugOut->println();
-        // reconstruct gap and adjacent source line ranges
-        int i = 0;
-        long BPpreviousEndLine{ 0 };                        // introduce offset 1 here
-        while (i < _BPlineRangeStorageUsed) {
-            long gapLineRange{}, adjacentLineRange{};
-
-            if (!(_BPlineRangeStorage[i] & 0x01)) {       // gap and adjacent source line ranges stored in one byte
-                gapLineRange = (((uint32_t)_BPlineRangeStorage[i]) >> 1) & 0x7;                 // 3 bits long
-                adjacentLineRange = (((uint32_t)_BPlineRangeStorage[i]) >> 4) & 0xF;            // 4 bits long
-                i++;
-            }
-
-            else if ((_BPlineRangeStorage[i] & 0x11) == 0x01) {       // gap and adjacent source line ranges stored in two bytes
-                uint32_t temp{};
-                memcpy(&temp, _BPlineRangeStorage + i, 2);
-                gapLineRange = (temp >> 2) & 0x7F;                                              // 7 bits long
-                adjacentLineRange = (temp >> 9) & 0x7F;
-                i += 2;
-            }
-
-            else if ((_BPlineRangeStorage[i] & 0x11) == 0x11) {       // gap and adjacent source line ranges stored in three bytes
-                uint32_t temp{};
-                memcpy(&temp, _BPlineRangeStorage + i, 3);
-                gapLineRange = (temp >> 2) & 0x7FF;                                             // 11 bits long
-                adjacentLineRange = (temp >> 13) & 0x7FF;
-                i += 3;
-            }
-            long BPstartLine = BPpreviousEndLine + gapLineRange + 1;
-            long BPendLine = BPstartLine + adjacentLineRange - 1;
-            BPpreviousEndLine = BPendLine;
-            _pDebugOut->print("RECONSTRUCT adjacent lines - start en finish: "); _pDebugOut->print(BPstartLine); _pDebugOut->print("-"); _pDebugOut->println(BPendLine);
-        }
-}
+        _pBreakpoints->printLineRangesToDebugOut(_pDebugOut);
+    }
 #endif
 
     // before loadng a program, clear memory except user variables
@@ -1597,7 +1558,7 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
         _pDebugOut->print("*** Variable / function name objects cleanup error. Remaining: "); _pDebugOut->println(_identifierNameStringObjectCount);
     #endif
         _identifierNameStringObjectErrors += abs(_identifierNameStringObjectCount);
-}
+    }
 
     if (_parsedStringConstObjectCount != 0) {
     #if PRINT_OBJECT_COUNT_ERRORS
@@ -1634,7 +1595,7 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
             _pDebugOut->print("*** User variable name objects cleanup error. Remaining: "); _pDebugOut->println(_userVarNameStringObjectCount);
         #endif
             _userVarNameStringObjectErrors += abs(_userVarNameStringObjectCount);
-    }
+        }
 
         if (_userVarStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS

@@ -30,7 +30,7 @@
 
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 1
+#define PRINT_HEAP_OBJ_CREA_DEL 0
 #define PRINT_PARSED_CMD_STACK 0
 #define PRINT_PROCESSED_TOKEN 0
 #define PRINT_DEBUG_INFO 0
