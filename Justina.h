@@ -1833,7 +1833,7 @@ public:
     // -----------------
 
     Justina_interpreter(Stream** const pAltInputStreams, int altIOstreamCount, long progMemSize, int SDcardConstraints = 0, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);
-    ////~Justina_interpreter();
+    ~Justina_interpreter();
 
 
     // set pointer to system (main) call back function
@@ -2154,7 +2154,7 @@ class Breakpoints {
 
     // methods
     Breakpoints(Justina_interpreter* pJustina, long lineRanges_memorySize, long maxBreakpointCount);
-    ////~Breakpoints();
+    ~Breakpoints();
 
     void resetBreakpointsState();
 
@@ -2172,6 +2172,7 @@ class Breakpoints {
     BreakpointData* findBPtableRow(char* pParsedStatement, int &row);
     long findLineNumberForBPstatement(char* pProgramStepToFind);
     void  printBreakpoints();
+    void printLineRangesToDebugOut(Stream* output);
 };
 
 

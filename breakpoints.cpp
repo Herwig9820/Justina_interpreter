@@ -30,8 +30,8 @@
 
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 1
-
+#define PRINT_HEAP_OBJ_CREA_DEL 0
+#define PRINT_DEBUG_INFO  0
 
 // *****************************************************************
 // ***            class Breakpoints - implementation             ***
@@ -57,7 +57,7 @@ Breakpoints::Breakpoints(Justina_interpreter* pJustina, long lineRanges_memorySi
 // ------------------
 // *   destructor   *
 // ------------------
-/*
+
 Breakpoints::~Breakpoints() {
 #if PRINT_HEAP_OBJ_CREA_DEL
     _pJustina->_pDebugOut->print("----- (BP data table)  "); _pJustina->_pDebugOut->println((uint32_t)_pBreakpointData, HEX);
@@ -66,7 +66,7 @@ Breakpoints::~Breakpoints() {
     delete[] _pBreakpointData;
     delete[] _BPlineRangeStorage;
 }
-*/
+
 
 // -------------
 // *   reset   *
@@ -459,9 +459,9 @@ long Breakpoints::findLineNumberForBPstatement(char* pProgramStepToFind) {
 
 
 
-// *********************
-// ***    utility    ***
-// *********************
+// ***********************
+// ***    utilities    ***
+// ***********************
 
 // ------------------------------------------------------------------------------------------------------------------
 // *   return the sequence number of a given source line OR the source line for a given sequence number.            *
@@ -528,3 +528,43 @@ long Breakpoints::BPsourceLineFromToBPlineSequence(long BPlineOrIndex, bool toIn
 }
 
 
+#if PRINT_DEBUG_INFO  
+// ----------------------------------------------------------------------------------------
+// *   print ranges of source lines with at least one statement starting on these lines   *
+// ----------------------------------------------------------------------------------------
+
+void Breakpoints::printLineRangesToDebugOut(Stream * output) {
+    // reconstruct gap and adjacent source line ranges
+    int i = 0;
+    long BPpreviousEndLine{ 0 };                        // introduce offset 1 here
+    while (i < _BPlineRangeStorageUsed) {
+        long gapLineRange{}, adjacentLineRange{};
+
+        if (!(_BPlineRangeStorage[i] & 0x01)) {       // gap and adjacent source line ranges stored in one byte
+            gapLineRange = (((uint32_t)_BPlineRangeStorage[i]) >> 1) & 0x7;                 // 3 bits long
+            adjacentLineRange = (((uint32_t)_BPlineRangeStorage[i]) >> 4) & 0xF;            // 4 bits long
+            i++;
+        }
+
+        else if ((_BPlineRangeStorage[i] & 0x11) == 0x01) {       // gap and adjacent source line ranges stored in two bytes
+            uint32_t temp{};
+            memcpy(&temp, _BPlineRangeStorage + i, 2);
+            gapLineRange = (temp >> 2) & 0x7F;                                              // 7 bits long
+            adjacentLineRange = (temp >> 9) & 0x7F;
+            i += 2;
+        }
+
+        else if ((_BPlineRangeStorage[i] & 0x11) == 0x11) {       // gap and adjacent source line ranges stored in three bytes
+            uint32_t temp{};
+            memcpy(&temp, _BPlineRangeStorage + i, 3);
+            gapLineRange = (temp >> 2) & 0x7FF;                                             // 11 bits long
+            adjacentLineRange = (temp >> 13) & 0x7FF;
+            i += 3;
+        }
+        long BPstartLine = BPpreviousEndLine + gapLineRange + 1;
+        long BPendLine = BPstartLine + adjacentLineRange - 1;
+        BPpreviousEndLine = BPendLine;
+         output->print("RECONSTRUCT adjacent lines - start en finish: "); output->print(BPstartLine); output->print("-"); output->println(BPendLine);
+    }
+}
+#endif
