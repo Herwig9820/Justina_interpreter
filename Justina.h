@@ -270,6 +270,7 @@ class Justina_interpreter {
         fnccod_valueType,
         fnccod_last,
         fnccod_getTrappedErr,
+        fnccod_isColdStart,
         fnccod_asc,
         fnccod_char,
         fnccod_len,
@@ -649,6 +650,8 @@ class Justina_interpreter {
         result_BP_maxBPentriesReached,
         result_BP_wasNotSet,
         result_BP_hitcountNotWithinRange,
+        result_BP_sourceLineNotInStoppedFunction,
+        result_BP_canOnlyMoveOutOfOpenBlocks,
 
         // evaluation and list parsing function errors
         result_eval_emptyString = 3600,
@@ -1184,7 +1187,7 @@ private:
 
     // sizes MUST be specified AND must be exact
     static const ResWordDef _resWords[76];                                                                                      // keyword names
-    static const InternCppFuncDef _internCppFunctions[138];                                                                     // internal cpp function names and codes with min & max arguments allowed
+    static const InternCppFuncDef _internCppFunctions[139];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
     static const SymbNumConsts _symbNumConsts[70];                                                                              // predefined constants
 
@@ -1232,8 +1235,8 @@ private:
         OpenCmdBlockLvl openBlock;
     };
 
-    // structure to collect data about parsed Justina functions
-    // --------------------------------------------------------
+    // structure to collect data about Justina functions during parsing
+    // ----------------------------------------------------------------
 
     struct JustinaFunctionData {
         char* pJustinaFunctionStartToken;                               // Justina function: pointer to start of parsed function (token)
@@ -1460,6 +1463,7 @@ private:
     // basic settings
     // --------------
 
+    bool _constructorInvoked{};
     bool _coldStart{};                                              // is this a cold start (initialising Justina) or a warm start (if Justina was stopped ('quit' command) with its memory retained)
     int _justinaConstraints{ 0 };                                   // 0 = no card reader, 1 = card reader present, do not yet initialise, 2 = initialise card now, 3 = init card & run start.jus function start() now
     char* _programStorage{ nullptr };                                          // pointer to start of program storage
@@ -1607,10 +1611,10 @@ private:
     LinkedList flowCtrlStack;
     void* _pFlowCtrlStackTop{ nullptr };                                        // pointers to flow control stack top elements
     int _callStackDepth{ 0 };                                                   // number of currently open Justina functions + open eval() functions + count of stopped programs (in debug mode): ...
-                                                                                // ...this equals flow ctrl stack depth MINUS open loops (if, for, ...)
+    // ...this equals flow ctrl stack depth MINUS open loops (if, for, ...)
 
-    // while at least one program is stopped (debug mode), the PARSED code of the original command line from where execution started is pushed to a separate stack, and popped again ...
-    // ...when the program resumes, so that execution can continue there. If multiple programs are currently stopped (see: flow control stack), this stack will contain multiple entries
+// while at least one program is stopped (debug mode), the PARSED code of the original command line from where execution started is pushed to a separate stack, and popped again ...
+// ...when the program resumes, so that execution can continue there. If multiple programs are currently stopped (see: flow control stack), this stack will contain multiple entries
     LinkedList parsedCommandLineStack;
     char* _pParsedCommandLineStackTop{ nullptr };
     int _openDebugLevels{ 0 };                                      // number of stopped programs: equals parsed command line stack depth minus open eval() strings (= eval() strings being executed)
@@ -1674,7 +1678,7 @@ private:
     int _stepFlowCtrlStackLevels{ 0 };                              // total flow control stack levels at the moment of a step, ... debugging command
     int _stepCmdExecuted{ db_continue };                            // type of debugging command executed (step, ...)
     bool _debugCmdExecuted{ false };                                // a debug command was executed
-    bool _pendingStopForDebug{false};                               // remember to stop anyway if trigger string result (not yet calculated) is zero
+    bool _pendingStopForDebug{ false };                               // remember to stop anyway if trigger string result (not yet calculated) is zero
 
     Breakpoints* _pBreakpoints{ nullptr };
 
@@ -1695,7 +1699,7 @@ private:
     Val _traceResultValue{};
     char _traceResultValueType{};
 
-    bool _parsingExecutingTriggerString{false};   
+    bool _parsingExecutingTriggerString{ false };
 
 
     // counting of heap objects (note: linked list element count is maintained within the linked list objects)
@@ -1945,7 +1949,7 @@ private:
         bool& redundantSemiColon, bool isEndOfFile, bool& bufferOverrun, bool  _flushAllUntilEOF, int& _lineCount, int& _statementCharCount, char c);
 
     // parse one statement from source statement input buffer
-    parsingResult_type parseStatement(char*& pInputLine, char*& pNextParseStatement, int& clearIndicator);
+    parsingResult_type parseStatement(char*& pInputLine, char*& pNextParseStatement, int& clearIndicator, bool isNewSourceLine=false, long sourceLine=0);
     bool parseAsResWord(char*& pNext, parsingResult_type& result);
     bool parseAsNumber(char*& pNext, parsingResult_type& result);
     bool parseAsStringConstant(char*& pNext, parsingResult_type& result);
@@ -2069,8 +2073,8 @@ private:
     // ------------------------------------------
 
     bool trapError(bool& isEndOfStatementSeparator, execResult_type& execResult);
-    void checkTriggerResult(execResult_type &execResult);
-    void checkForStop(bool& isActiveBreakpoint, bool& doStopForDebugNow, bool& appFlagsRequestStop,bool& isFunctionReturn, char* programCnt_previousStatementStart);
+    void checkTriggerResult(execResult_type& execResult);
+    void checkForStop(bool& isActiveBreakpoint, bool& doStopForDebugNow, bool& appFlagsRequestStop, bool& isFunctionReturn, char* programCnt_previousStatementStart);
     void parseAndExecTraceOrBPviewString(int BPindex = -1);
     void traceAndPrintDebugInfo(execResult_type execResult);
     parsingResult_type parseTriggerString(int BPindex);
@@ -2088,7 +2092,7 @@ private:
     //  unparse statement and pretty print, print parsing result (OK or error number), print variables, print call stack, SD card directory
     void prettyPrintStatements(int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
     void printParsingResult(parsingResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* pErrorPos);
-    void printExecError(execResult_type execResult,bool showStopmessage);
+    void printExecError(execResult_type execResult, bool showStopmessage);
     void printVariables(bool userVars);
     void printCallStack();
     void printDirectory(File dir, int numTabs);
@@ -2143,14 +2147,13 @@ class Breakpoints {
         long hitCounter{ 0 };                                // hit counter
     };
 
+    bool _breakPontsAreOn{ true };
+    int _breakpointsUsed{ 0 };
     long _BPLineRangeMemorySize{};
     long _maxBreakpointCount{};
     char* _BPlineRangeStorage{ nullptr };                                      // pointer to start of array keeping track of source line ranges for debugging with breakpoints
     long _BPlineRangeStorageUsed{ 0 };
     BreakpointData* _pBreakpointData{ nullptr };
-    
-    int _breakpointsUsed{ 0 };
-    bool _breakPontsAreOn{false};
 
     // methods
     Breakpoints(Justina_interpreter* pJustina, long lineRanges_memorySize, long maxBreakpointCount);
@@ -2160,16 +2163,18 @@ class Breakpoints {
 
     // after program parsing
     Justina_interpreter::parsingResult_type collectSourceLineRangePairs(const char semiColonBPallowed_token, bool& parsedStatementStartsOnNewLine, bool& parsedStatementStartLinesAdjacent,
-        long& statementStartsAtLine, long& parsedStatementStartsAtLine, long& BPstartLine, long& BPendLine, long& BPpreviousEndLine);
+        long statementStartsAtLine, long& parsedStatementStartsAtLine, long& BPstartLine, long& BPendLine, long& BPpreviousEndLine);
     Justina_interpreter::parsingResult_type addOneSourceLineRangePair(long gapLineRange, long adjacentLineRange);
 
     // maintaining breakpoints
-    Justina_interpreter::execResult_type maintainBPdata(long breakpointLine, char actionCmdCode, int extraAttribCount = 0, const char* viewString = nullptr, long hitCount = 0, const char* triggerString = nullptr);
+    Justina_interpreter::execResult_type maintainBP(long breakpointLine, char actionCmdCode, int extraAttribCount = 0, const char* viewString = nullptr, long hitCount = 0, const char* triggerString = nullptr);
+    Justina_interpreter::execResult_type findParsedStatementForSourceLine(long sourceLine, char* & pProgramStep);
+
     long BPsourceLineFromToBPlineSequence(long BPsourceLineOrIndex, bool toIndex = true);
-    Justina_interpreter::execResult_type progMem_getSetClearBP(long lineSequenceNum, char*& pProgramStep, bool& BPwasSet, bool doSet, bool doClear);
-    Justina_interpreter::execResult_type maintainBreakpointTable(long sourceLine, char* pProgramStep, bool BPwasSet, bool doSet, bool doClear, bool doEnable, bool doDisable, 
+    Justina_interpreter::execResult_type progMem_getSetClearBP(long lineSequenceNum, char*& pProgramStep, bool& BPwasSet, bool doSet=false, bool doClear=false);
+    Justina_interpreter::execResult_type maintainBreakpointTable(long sourceLine, char* pProgramStep, bool BPwasSet, bool doSet, bool doClear, bool doEnable, bool doDisable,
         int extraAttribCount, const char* viewString, long hitCount, const char* triggerString);
-    BreakpointData* findBPtableRow(char* pParsedStatement, int &row);
+    BreakpointData* findBPtableRow(char* pParsedStatement, int& row);
     long findLineNumberForBPstatement(char* pProgramStepToFind);
     void  printBreakpoints();
     void printLineRangesToDebugOut(Stream* output);

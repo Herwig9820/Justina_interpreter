@@ -349,9 +349,7 @@ void execAction(char c) {
             interpreterInMemory = pJustina->run();                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
 
             if (!interpreterInMemory) {                                               // return from interpreter: remove from memory as well ?
-                Serial.println(">> INO ********* voor delete pJustina");
                 delete pJustina;                                                     // cleanup and delete calculator object itself
-                Serial.println(">> INO ********* na delete pJustina");
             }
 
             heartbeatPeriod = 500;

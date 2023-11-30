@@ -118,12 +118,12 @@ preceding statement separator indicating the breakpoint is now set. Additional b
 // -----------------------------------------------------------------------------------------------------------------
 
 Justina_interpreter::parsingResult_type Breakpoints::collectSourceLineRangePairs(const char semiColonBPallowed_token, bool& parsedStatementStartsOnNewLine, bool& parsedStatementStartLinesAdjacent,
-    long& statementStartsAtLine, long& parsedStatementStartsAtLine, long& BPstartLine, long& BPendLine, long& BPpreviousEndLine) {
+    long statementStartsAtLine, long& parsedStatementAllowingBPstartsAtLine, long& BPstartLine, long& BPendLine, long& BPpreviousEndLine) {
 
     static long gapLineRange{ 0 };
 
     // if the statement yet to parse starts on the same line as the previous statement, it doesn't start on a new line
-    parsedStatementStartsOnNewLine = (statementStartsAtLine != parsedStatementStartsAtLine);
+    parsedStatementStartsOnNewLine = (statementStartsAtLine != parsedStatementAllowingBPstartsAtLine);
 
     if (!(_pJustina->_programMode && (parsedStatementStartsOnNewLine))) { return Justina_interpreter::parsingResult_type::result_parsing_OK; }          // nothing to do
 
@@ -139,13 +139,13 @@ Justina_interpreter::parsingResult_type Breakpoints::collectSourceLineRangePairs
     // ----------------------------------------------------------------------------------
 
     // start of previous source line also contained start of a parsed statement ? Also rectify for beginning of file
+    parsedStatementStartLinesAdjacent = (parsedStatementAllowingBPstartsAtLine == statementStartsAtLine - 1) && (statementStartsAtLine != 1);
 
-    parsedStatementStartLinesAdjacent = (parsedStatementStartsAtLine == statementStartsAtLine - 1) && (statementStartsAtLine != 1);
-    parsedStatementStartsAtLine = statementStartsAtLine;
+    parsedStatementAllowingBPstartsAtLine = statementStartsAtLine;
 
     // still in a source line range with a new statement starting at the beginning of each line (disregarding white space) 
     if (parsedStatementStartLinesAdjacent) {
-        BPendLine = parsedStatementStartsAtLine;
+        BPendLine = parsedStatementAllowingBPstartsAtLine;
     }
 
     // first line of an 'adjacent source line range': time to calculate length of last gap range and previous 'adjacent' source line range
@@ -159,8 +159,8 @@ Justina_interpreter::parsingResult_type Breakpoints::collectSourceLineRangePairs
         }
         BPpreviousEndLine = BPendLine;
 
-        gapLineRange = parsedStatementStartsAtLine - BPendLine - 1;            // GAP range between previous and this start of new gap range 
-        BPstartLine = parsedStatementStartsAtLine; BPendLine = BPstartLine;
+        gapLineRange = parsedStatementAllowingBPstartsAtLine - BPendLine - 1;            // GAP range between previous and this start of new gap range 
+        BPstartLine = parsedStatementAllowingBPstartsAtLine; BPendLine = BPstartLine;
     }
 
     return Justina_interpreter::result_parsing_OK;
@@ -217,7 +217,7 @@ Justina_interpreter::parsingResult_type Breakpoints::addOneSourceLineRangePair(l
 // *   adapt a breakpoint for a source line   *
 // --------------------------------------------
 
-Justina_interpreter::execResult_type Breakpoints::maintainBPdata(long breakpointLine, char actionCmdCode, int extraAttribCount, const char* viewString, long hitCount, const char* triggerString) {
+Justina_interpreter::execResult_type Breakpoints::maintainBP(long breakpointLine, char actionCmdCode, int extraAttribCount, const char* viewString, long hitCount, const char* triggerString) {
 
     // 1. find source line sequence number for line number (base 0) 
     // ------------------------------------------------------------
@@ -255,6 +255,32 @@ Justina_interpreter::execResult_type Breakpoints::maintainBPdata(long breakpoint
 
     return execResult;
 }
+
+
+// ------------------------------------------------------------------------------------------------------------------
+// * find the address of the parsed program step corresponding to the first statement starting on a a source line   *
+// ------------------------------------------------------------------------------------------------------------------
+
+Justina_interpreter::execResult_type Breakpoints::findParsedStatementForSourceLine(long sourceLine, char*& pProgramStep) {
+
+    // 1. find source line sequence number for line number (base 0) 
+    // ------------------------------------------------------------
+
+    // note: line sequence number = line index in the set of source lines having a statement STARTING AT THE START of the source line (discarding spaces)
+    long lineSequenceNum = BPsourceLineFromToBPlineSequence(sourceLine, true);
+    if (lineSequenceNum == -1) { return  Justina_interpreter::result_BP_notAllowedForSourceLine; }                // not a valid source line (not within source line range or doesn't start with a Justina statement)
+
+    // 2. find parsed program statement
+    // --------------------------------
+
+    // parsed statement for the first statement STARTING on a source line: 
+    // the semicolon step (statement separator) preceding the parsed statement is altered to indicate that a breakpoint is either set or allowed for this statement
+    // the (set or allowed) breakpoint is only used to check that this sourceline can be set as next line to execute (given next constraints are fulfilled) 
+    bool BPwasSetInProgMem{};
+    Justina_interpreter::execResult_type execResult = progMem_getSetClearBP(lineSequenceNum, pProgramStep, BPwasSetInProgMem);
+    if (execResult != Justina_interpreter::result_execOK) { return execResult; }
+}
+
 
 // --------------------------------------------------------------------------------------------------------------------------------------
 // *  find program step and current breakpoint state (set or 'allowed') for source line; if setBP or clearBP, adapt in program memory   *
@@ -440,7 +466,7 @@ long Breakpoints::findLineNumberForBPstatement(char* pProgramStepToFind) {
     int matchedSemiColonTokenIndex{ 0 };
 
     // 1. scan the parsed program, counting all statements preceded by a semicolon, semicolon 'BP set' or semicolon 'BP allowed' token.
-    //    the very first statement, although not preceded by a semicolon, receives 'line sequence number' 0 
+    //    the very first valid statement, although not preceded by a semicolon, receives 'line sequence number' 0 
 
     char* pProgramStep = _pJustina->_programStorage;
 
@@ -533,7 +559,7 @@ long Breakpoints::BPsourceLineFromToBPlineSequence(long BPlineOrIndex, bool toIn
 // *   print ranges of source lines with at least one statement starting on these lines   *
 // ----------------------------------------------------------------------------------------
 
-void Breakpoints::printLineRangesToDebugOut(Stream * output) {
+void Breakpoints::printLineRangesToDebugOut(Stream* output) {
     // reconstruct gap and adjacent source line ranges
     int i = 0;
     long BPpreviousEndLine{ 0 };                        // introduce offset 1 here
@@ -564,7 +590,7 @@ void Breakpoints::printLineRangesToDebugOut(Stream * output) {
         long BPstartLine = BPpreviousEndLine + gapLineRange + 1;
         long BPendLine = BPstartLine + adjacentLineRange - 1;
         BPpreviousEndLine = BPendLine;
-         output->print("RECONSTRUCT adjacent lines - start en finish: "); output->print(BPstartLine); output->print("-"); output->println(BPendLine);
+        output->print("RECONSTRUCT adjacent lines - start en finish: "); output->print(BPstartLine); output->print("-"); output->println(BPendLine);
     }
 }
 #endif

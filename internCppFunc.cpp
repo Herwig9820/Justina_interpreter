@@ -956,6 +956,19 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
         break;
 
 
+        // -------
+        // 
+        // -------
+        
+        case fnccod_isColdStart:
+        {
+            fcnResultValueType = value_isLong;                              // must be long (not float) value
+            fcnResult.longConst = (long)_coldStart;
+        }
+        break;
+
+
+
         // ----------------------------------------------------------------------------------------------------------------------
         // if in a print command, return last column that was printed for this stream before this print command started executing
         // if not within a print command, last column that was printed for the stream where last print command was executed

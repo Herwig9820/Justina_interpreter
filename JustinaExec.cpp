@@ -687,13 +687,13 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             bool executingEvalString = (_activeFunctionData.blockType == block_eval);
 
             if (!_parsingExecutingTraceString && !_parsingExecutingTriggerString && !executingEvalString && (execResult == result_execOK)) {
-                bool isActiveBreakpoint{ false }, doStopForDebugNow{ false }, doSkip{ false };
+                bool isActiveBreakpoint{ false }, doStopForDebugNow{ false };
                 checkForStop(isActiveBreakpoint, doStopForDebugNow, appFlagsRequestStop, isFunctionReturn, programCnt_previousStatementStart);
                 tokenType = *_programCounter & 0x0F;             // adapt next token type (could be changed by a breakpoint trigger string)
 
                 if (appFlagsRequestAbort) { execResult = result_abort; }
-                else if (doStopForDebugNow || doSkip) { execResult = (isActiveBreakpoint ? result_stopForBreakpoint : result_stopForDebug); }
-                if (doSkip) { precedingIsComma = false; }   //// ??? check
+                else if (doStopForDebugNow) { execResult = (isActiveBreakpoint ? result_stopForBreakpoint : result_stopForDebug); }
+                ////if (doSkip) { precedingIsComma = false; }   //// ??? check
             }
         }
 
@@ -951,8 +951,8 @@ bool Justina_interpreter::trapError(bool& isEndOfStatementSeparator, execResult_
 
 void Justina_interpreter::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNow, bool& appFlagsRequestStop, bool& isFunctionReturn, char* programCnt_previousStatementStart) {
 
-    // prohibit breakpoint stop when specific conditions are met
-    // ---------------------------------------------------------
+    // A. prohibit breakpoint stop when specific conditions are met
+    // ------------------------------------------------------------
     bool executedStepIsprogram = programCnt_previousStatementStart < (_programStorage + _progMemorySize); // always a program function step
     bool nextStepIsprogram = (_programCounter < (_programStorage + _progMemorySize));
     if (!(executedStepIsprogram && nextStepIsprogram)) { return; }           // breakpoint / stop: only possible if last and next steps are program steps
@@ -961,8 +961,8 @@ void Justina_interpreter::checkForStop(bool& isActiveBreakpoint, bool& requestSt
     bool isResWord = (tokenType == tok_isReservedWord);
     int index = isResWord ? ((TokenIsResWord*)(_programCounter))->tokenIndex : 0;
 
-    if (isResWord) {
-        // breakpoint: stop: not for non-executable statements (note that BREAKPOINTS CANNOT BE SET for non-executable statements anyway)
+    if (isResWord) {                    //// nodig ???
+        // breakpoint / stop: not for non-executable statements (note that BREAKPOINTS CANNOT BE SET for non-executable statements anyway)  
         bool nextIsExecutable = isResWord ? !(_resWords[index].restrictions & cmd_skipDuringExec) : true;                // next step is executable
         if (!nextIsExecutable) { return; }
 
@@ -978,8 +978,8 @@ void Justina_interpreter::checkForStop(bool& isActiveBreakpoint, bool& requestSt
     }
 
 
-    // is a breakpoint set for this statement, is it enabled and does it have a hitcount or trigger condition ?
-    // -------------------------------------------------------------------------------------------------------
+    // B. is a breakpoint set for this statement, is it enabled and does it have a hitcount or trigger condition ?
+    // -----------------------------------------------------------------------------------------------------------
 
     Breakpoints::BreakpointData* pBreakpointDataRow = nullptr;
     int BPdataRow = -1;                                                                         // init: no valid row
@@ -1032,8 +1032,8 @@ void Justina_interpreter::checkForStop(bool& isActiveBreakpoint, bool& requestSt
     }
 
 
-    // stop execution and enter debug mode bug now ?
-    // --------------------------------------------- 
+    // C. stop execution and enter debug mode bug now ?
+    // ------------------------------------------------ 
 
     // check if specific step command is applicable now
     bool nextIsSameLvlEnd{ false };
@@ -1067,7 +1067,6 @@ void Justina_interpreter::checkForStop(bool& isActiveBreakpoint, bool& requestSt
         appFlagsRequestStop = false;
         _debugCmdExecuted = false;                                  // reset main program request to stop program
     }
-
 
     return;
 }
@@ -1419,7 +1418,7 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
     overWritePrevious = true;
 
     return;
-}
+        }
 
 // ------------------------------------------------------------------------
 // *   Clear evaluation stack and associated intermediate string object   * 
@@ -1529,7 +1528,7 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, b
             else if (blockType == block_eval) {
                 if (!isInitialLoop) { --_callStackDepth; }
                 ++deleteImmModeCmdStackLevels;                                      // update count of 'parsed command line' stack levels to be deleted (parsedCommandLineStack)
-            }
+        }
 
             if (!isInitialLoop) {                                                   // delete stack top
                 flowCtrlStack.deleteListElement(nullptr);
@@ -1538,11 +1537,11 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, b
 
             if (pFlowCtrlStackLvl == nullptr) { break; }       // all done
             isInitialLoop = false;
-        } while (true);
-    }
+    } while (true);
+}
 
     _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
-}
+    }
 
 
 // ------------------------------------------------------------
@@ -1585,7 +1584,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execParenthesesPair(LE
     if (pPrecedingStackLvl == nullptr) {
         makeIntermediateConstant(_pEvalStackTop);                                                               // left parenthesis already removed from evaluation stack
         return result_execOK;
-    }
+}
 
     // stack level preceding left parenthesis is internal cpp function ? execute function
     else if (pPrecedingStackLvl->genericToken.tokenType == tok_isInternCppFunction) {
@@ -1775,10 +1774,10 @@ Justina_interpreter::execResult_type  Justina_interpreter::execAllProcessedOpera
 
         // token preceding the operand is not an operator ? (it can be a left parenthesis or a generic name) ? exit while loop (nothing to do for now)
         else { break; }
-    }
+        }
 
     return result_execOK;
-}
+    }
 
 
 // -----------------------------------------------------
@@ -2374,9 +2373,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execExternalCppFunctio
                 delete[]args[i].pStringConst;                                                                       // delete original variable string
                 *pStackLvl->varOrConst.value.ppStringConst = nullptr;                                               // change pointer to string (in variable) to null pointer
             }
-        }
+            }
         pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-    }
+            }
 
     clearEvalStackLevels(suppliedArgCount + 1);                                                                         // clean up: delete evaluation stack elements for supplied arguments
 
@@ -2394,7 +2393,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execExternalCppFunctio
     _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
 
     return result_execOK;
-}
+        }
 
 
 // -------------------------------
@@ -2543,7 +2542,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
 
         _evalParseErrorCode = result;       // remember
         return result_eval_parsingError;
-    }
+}
 
     // last step of just parsed eval() string. Note: adding sizeof(tok_no_token) because not yet added
     _lastUserCmdStep = _programCounter + sizeof(tok_no_token);                                              // if parsing error, do not change
@@ -2581,7 +2580,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
     _activeFunctionData.errorProgramCounter = _programStorage + _progMemorySize;
 
     return  result_execOK;
-}
+    }
 
 
 // ------------------------------------------------------------------------------------------------
@@ -2643,9 +2642,9 @@ void Justina_interpreter::initFunctionParamVarWithSuppliedArg(int suppliedArgCou
             // if intermediate constant string, then delete char string object (tested within called routine)            
             deleteIntermStringObject(pStackLvl);
             pStackLvl = (LE_evalStack*)evalStack.deleteListElement(pStackLvl);                                              // argument saved: remove argument from stack and point to next argument
-        }
-    }
-}
+                    }
+                }
+            }
 
 
 // ------------------------------------------------------------------------------------------------------------
@@ -2820,7 +2819,7 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
                 }
 
                 tokenType = jumpTokens(1, pStep, terminalCode);                                                             // comma or semicolon
-            }
+        }
 
             else {  // no initializer: if array, initialize it now (scalar has been initialized already)
                 if ((_activeFunctionData.pVariableAttributes[count] & var_isArray) == var_isArray) {
@@ -2830,10 +2829,10 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
             }
             count++;
 
-        } while (terminalCode == termcod_comma);
+                } while (terminalCode == termcod_comma);
 
-    }
-};
+            }
+    };
 
 
 // ----------------------------------
@@ -2931,20 +2930,20 @@ void Justina_interpreter::terminateEval() {
         flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);
         _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
 
-    } while ((blockType != block_JustinaFunction) && (blockType != block_eval));                                            // caller level can be caller eval() or caller Justina function
-    --_callStackDepth;                                                                                                      // caller reached: call stack depth decreased by 1
+} while ((blockType != block_JustinaFunction) && (blockType != block_eval));                                            // caller level can be caller eval() or caller Justina function
+--_callStackDepth;                                                                                                      // caller reached: call stack depth decreased by 1
 
-    // overwrite the parsed 'EVAL' string expressions
-    // before removing, delete any parsed strng constants for that command line
+// overwrite the parsed 'EVAL' string expressions
+// before removing, delete any parsed strng constants for that command line
 
-    _lastUserCmdStep = *(char**)_pParsedCommandLineStackTop;                                                                     // pop parsed user cmd length
-    long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + _progMemorySize) + 1;
-    deleteConstStringObjects(_programStorage + _progMemorySize);
-    memcpy((_programStorage + _progMemorySize), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);
-    parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
-    _pParsedCommandLineStackTop = (char*)parsedCommandLineStack.getLastListElement();
+_lastUserCmdStep = *(char**)_pParsedCommandLineStackTop;                                                                     // pop parsed user cmd length
+long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + _progMemorySize) + 1;
+deleteConstStringObjects(_programStorage + _progMemorySize);
+memcpy((_programStorage + _progMemorySize), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);
+parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
+_pParsedCommandLineStackTop = (char*)parsedCommandLineStack.getLastListElement();
 #if PRINT_PARSED_CMD_STACK
-    _pDebugOut->print("  >> POP parsed statements (terminate eval): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
+_pDebugOut->print("  >> POP parsed statements (terminate eval): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
 #endif
 }
 

@@ -188,7 +188,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"vprintList",      cmdcod_printListToVar,  cmd_onlyImmOrInsideFuncBlock,                           2,16,   cmdPar_116,     cmdBlockNone},
 
     {"listCallStack",   cmdcod_printCallSt,     cmd_onlyImmOrInsideFuncBlock,                           0,1,    cmdPar_106,     cmdBlockNone},      // print call stack to stream (default is console)
-    {"listBP",          cmdcod_printBP,         cmd_onlyImmOrInsideFuncBlock,                           0,1,    cmdPar_106,     cmdBlockNone},      // list breakpoints
+    { "listBP",         cmdcod_printBP,         cmd_onlyImmOrInsideFuncBlock,                           0,1,    cmdPar_106,     cmdBlockNone},      // list breakpoints
     {"listVars",        cmdcod_printVars,       cmd_onlyImmOrInsideFuncBlock,                           0,1,    cmdPar_106,     cmdBlockNone},      // list variables "         "         "         "
     {"listFiles",       cmdcod_listFiles,       cmd_onlyImmOrInsideFuncBlock,                           0,1,    cmdPar_106,     cmdBlockNone},      // list files     "         "         "         "
     {"listFilesToSerial",cmdcod_listFilesToSer, cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_102,     cmdBlockNone},      // list files to Serial with modification dates (SD library fixed)
@@ -324,7 +324,8 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     {"type",                    fnccod_valueType,               1,1,    0b0},
     { "r",                      fnccod_last,                    0,1,    0b0 },               // short label for 'last result'
     { "err",                    fnccod_getTrappedErr,           0,0,    0b0 },
-    {"sysval",                  fnccod_sysVal,                  1,1,    0b0},
+    { "isColdStart",            fnccod_isColdStart,             0,0,    0b0 },
+    {"sysVal",                  fnccod_sysVal,                  1,1,    0b0},
 
     // input and output functions
     {"cin",                     fnccod_cin,                    0,2,    0b0 },
@@ -571,7 +572,7 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
     // settings to be initialized when cold starting interpreter only
     // --------------------------------------------------------------
 
-    _coldStart = true;
+    _constructorInvoked = true;
 
     _housekeepingCallback = nullptr;
 
@@ -624,19 +625,16 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
 // ------------------
 
 Justina_interpreter::~Justina_interpreter() {
-    Serial.println("A");
 #if PRINT_HEAP_OBJ_CREA_DEL
     _pDebugOut->print("----- (BP object)      "); _pDebugOut->println((uint32_t)_pBreakpoints, HEX);
     _pDebugOut->print("----- (program memory) "); _pDebugOut->println((uint32_t)_programStorage, HEX);
     _pDebugOut->print("----- (ext IO streams) "); _pDebugOut->println((uint32_t)_pIOprintColumns, HEX);
 #endif
-    Serial.println("B");
     resetMachine(true);                                                                             // delete all objects created on the heap: with = with user variables and FiFo stack
 
     delete _pBreakpoints;
     delete[] _programStorage;
     delete[] _pIOprintColumns;
-    Serial.println("C");
 };
 
 
@@ -724,7 +722,7 @@ bool Justina_interpreter::run() {
     bool parsedStatementStartsOnNewLine{ false };
     bool parsedStatementStartLinesAdjacent{ false };
     long statementStartsAtLine{ 0 };
-    long parsedStatementStartsAtLine{ 0 };
+    long parsedStatementAllowingBPstartsAtLine{ 0 };
     long BPstartLine{ 0 }, BPendLine{ 0 };
 
     static long BPpreviousEndLine{ 0 };
@@ -760,7 +758,9 @@ bool Justina_interpreter::run() {
     *(_programStorage + _progMemorySize) = tok_no_token;                                                        //  current end of program (FIRST byte of immediate mode command line)
     _lastPrintedIsPrompt = false;
 
-    _coldStart = false;                                                                                         // can be used if needed in this procedure, to determine whether this was a cold or warm start
+    _coldStart = _constructorInvoked;
+    Serial.print("cold start ?"); Serial.println(_coldStart);
+    _constructorInvoked = false;                                                                                         // reset
 
     Stream* pStatementInputStream = static_cast<Stream*>(_pConsoleIn);                                          // init: load program from console
     int streamNumber{ 0 };
@@ -804,7 +804,7 @@ bool Justina_interpreter::run() {
             parsedStatementStartsOnNewLine = false;
             parsedStatementStartLinesAdjacent = false;
             statementStartsAtLine = 0;
-            parsedStatementStartsAtLine = 0;
+            parsedStatementAllowingBPstartsAtLine = 0;
             BPstartLine = 0;
             BPendLine = 0;
             BPpreviousEndLine = 0;
@@ -885,10 +885,10 @@ bool Justina_interpreter::run() {
 
                 // The user can set breakpoints for source lines having at least one statement starting on that line (given that the statement is not 'parsing only').
                 // Procedure 'collectSourceLineRangePairs' stores necessary data to enable this functionality.
-                result = _pBreakpoints->collectSourceLineRangePairs(_semicolonBPallowed_token, parsedStatementStartsOnNewLine, parsedStatementStartLinesAdjacent, statementStartsAtLine, parsedStatementStartsAtLine,
-                    BPstartLine, BPendLine, BPpreviousEndLine);
+                result = _pBreakpoints->collectSourceLineRangePairs(_semicolonBPallowed_token, parsedStatementStartsOnNewLine, parsedStatementStartLinesAdjacent, 
+                    statementStartsAtLine, parsedStatementAllowingBPstartsAtLine, BPstartLine, BPendLine, BPpreviousEndLine);
 
-                if (result == result_parsing_OK) { result = parseStatement(pStatement, pDummy, clearCmdIndicator); }       // parse ONE statement only 
+                if (result == result_parsing_OK) { result = parseStatement(pStatement, pDummy, clearCmdIndicator, parsedStatementStartsOnNewLine, parsedStatementAllowingBPstartsAtLine); }       // parse ONE statement only 
 
                 if ((++parsedStatementCount & 0x0f) == 0) {
                     printTo(0, '.');                                                                            // print a dot each 64 parsed lines
@@ -950,7 +950,7 @@ bool Justina_interpreter::run() {
                 parsedStatementStartsOnNewLine = false;
                 parsedStatementStartLinesAdjacent = false;
                 statementStartsAtLine = 0;
-                parsedStatementStartsAtLine = 0;
+                parsedStatementAllowingBPstartsAtLine = 0;
                 BPstartLine = 0;
                 BPendLine = 0;
                 BPpreviousEndLine = 0;
