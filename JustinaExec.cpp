@@ -621,7 +621,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         // did an error occur in a Justina function, the (debug) command line or an eval() string ? 
         if (!_parsingExecutingTraceString && !_parsingExecutingTriggerString && (execResult != result_execOK) && (execResult < result_startOfEvents)) {    // Trap the error if error trapping is enabled
             bool errorTrapped = trapError(isEndOfStatementSeparator, execResult);                               // if error trapped, execResult will be reset (no error)
-            if (errorTrapped) { isComma = false; }                                                              // reset
+            // reset 'isComma', because error trapping moves the next step to first step after the statement producing an execution error, in the function were error trapping is enabled 
+            if (errorTrapped) { isComma = false; }                                                              
         }
 
         // If a trigger string was evaluated (with or without execution error), then check evaluation result. Only if (numeric AND not equal to zero), stop for breakpoint 
@@ -693,7 +694,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
                 if (appFlagsRequestAbort) { execResult = result_abort; }
                 else if (doStopForDebugNow) { execResult = (isActiveBreakpoint ? result_stopForBreakpoint : result_stopForDebug); }
-                ////if (doSkip) { precedingIsComma = false; }   //// ??? check
             }
         }
 
@@ -961,7 +961,7 @@ void Justina_interpreter::checkForStop(bool& isActiveBreakpoint, bool& requestSt
     bool isResWord = (tokenType == tok_isReservedWord);
     int index = isResWord ? ((TokenIsResWord*)(_programCounter))->tokenIndex : 0;
 
-    if (isResWord) {                    //// nodig ???
+    if (isResWord) {                    
         // breakpoint / stop: not for non-executable statements (note that BREAKPOINTS CANNOT BE SET for non-executable statements anyway)  
         bool nextIsExecutable = isResWord ? !(_resWords[index].restrictions & cmd_skipDuringExec) : true;                // next step is executable
         if (!nextIsExecutable) { return; }
@@ -1145,6 +1145,7 @@ Justina_interpreter::parsingResult_type Justina_interpreter::parseTriggerString(
 
 void Justina_interpreter::checkTriggerResult(execResult_type& execResult) {
 
+    // pop parsed statement stack (imm. mode program storage was used to store parsed trigger string, which has been evaluated now))
     _lastUserCmdStep = *(char**)_pParsedCommandLineStackTop;
     long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + _progMemorySize) + 1;
     deleteConstStringObjects(_programStorage + _progMemorySize);      // string constants that were created just now 
@@ -1177,7 +1178,9 @@ void Justina_interpreter::checkTriggerResult(execResult_type& execResult) {
     _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
     _parsingExecutingTriggerString = false;
 
-    execResult = isActiveBreakpoint ? result_stopForBreakpoint : _pendingStopForDebug ? result_stopForDebug : result_execOK;                     // clear error
+    // if trigger expression evaluated to true, return with breakpoint event
+    // if not, but a 'stop' command was pending (until after execution of trigger string, so until now), return with stop event
+    execResult = isActiveBreakpoint ? result_stopForBreakpoint : _pendingStopForDebug ? result_stopForDebug : result_execOK;                     
     _pendingStopForDebug = false;
 
     return;
@@ -3180,8 +3183,8 @@ void* Justina_interpreter::fetchVarBaseAddress(TokenIsVariable* pVarToken, char*
             }
         }
 
-        //// correct niveau in if ... end ?
-        else {                                                                                                              // the variable is a local variable of the function referenced in _activeFunctionData
+        else {                                                                                                              
+            // the variable is a local variable of the function referenced in _activeFunctionData
             pFlowCtrlStackLvl = &_activeFunctionData;
         }
 

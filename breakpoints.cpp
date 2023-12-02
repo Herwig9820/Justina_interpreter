@@ -232,6 +232,7 @@ Justina_interpreter::execResult_type Breakpoints::maintainBP(long breakpointLine
 
     // parsed statement for the first statement STARTING on a source line: 
     // the semicolon step (statement separator) preceding the parsed statement is altered to indicate that a breakpoint is either set or allowed for this statement
+    // note: the FIRST statement STARTING on that source line must be an executable statement. Otherwise that sourceline does not accept breakpoints
 
     char* pProgramStep{ nullptr };
     bool BPwasSetInProgMem{};

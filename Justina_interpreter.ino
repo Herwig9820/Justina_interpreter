@@ -212,7 +212,7 @@ void setup() {
     // stream pAlternativeIO[0] is the default (input and output) console for Justina
     // from within Justina, all alternative IO streams can be used for IO, AND can be set as Justina console (input and output)
     pAlternativeIO[1] = static_cast<Stream*>(myTCPconnection.getClient());     // Justina: stream number -2 is TCP client (alt streams 0..2 => stream numbers -1..-3)
-    TCPstreamSet = 0b0010;  // within 'pAlternativeIO' array //// ???
+    TCPstreamSet = 0b0010;  // bitset: within 'pAlternativeIO' array 
 #endif
 
     // print sample / simple main menu for the user

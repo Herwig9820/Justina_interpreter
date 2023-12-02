@@ -759,7 +759,6 @@ bool Justina_interpreter::run() {
     _lastPrintedIsPrompt = false;
 
     _coldStart = _constructorInvoked;
-    Serial.print("cold start ?"); Serial.println(_coldStart);
     _constructorInvoked = false;                                                                                         // reset
 
     Stream* pStatementInputStream = static_cast<Stream*>(_pConsoleIn);                                          // init: load program from console
@@ -966,7 +965,7 @@ bool Justina_interpreter::run() {
 
     // returning control to Justina caller
     _appFlags = 0x0000L;                                                                                        // clear all application flags
-    _housekeepingCallback(_appFlags);  //// temp: quit Justina bug                                                                         // pass application flags to caller immediately
+    _housekeepingCallback(_appFlags);                                                                           // pass application flags to caller immediately
 
     if (kill) { _keepInMemory = false; printlnTo(0, "\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
 
@@ -1084,16 +1083,13 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
 }
 
 
-// ----------------------------------------------------------------------------------------------------------------------------
-// *   finalise parsing; execute if no errors; if in debug mode, trace and print debug info; re-init machine state and exit   *  ////
-// ----------------------------------------------------------------------------------------------------------------------------
+// ------------------------
+// *   finalise parsing   *  
+// ------------------------
 
 bool Justina_interpreter::finaliseParsing(parsingResult_type& result, bool& kill, int lineCount, char* pErrorPos, bool allCharsReceived) {
 
     bool quitJustina{ false };
-
-    // all statements (in program or imm. mode line) have been parsed: finalise ////
-    // ------------------------------------------------------------------------
 
     int funcNotDefIndex;
     if (result == result_parsing_OK) {

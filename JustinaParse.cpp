@@ -1127,7 +1127,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parsingResult_type& r
         break;
 
 
-        case termcod_semicolon:////
+        case termcod_semicolon:
         {
             // ----------------------------------------
             // Case 4: is token a semicolon separator ?

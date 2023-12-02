@@ -651,7 +651,7 @@ class Justina_interpreter {
         result_BP_wasNotSet,
         result_BP_hitcountNotWithinRange,
         result_BP_sourceLineNotInStoppedFunction,
-        result_BP_canOnlyMoveOutOfOpenBlocks,
+        result_BP_cannotMoveIntoBlocks,
 
         // evaluation and list parsing function errors
         result_eval_emptyString = 3600,
@@ -1760,9 +1760,9 @@ private:
 
     Stream* _pStreamIn{ nullptr }, * _pStreamOut{ nullptr };
     int _streamNumberIn{ 0 }, _streamNumberOut{ 0 };
-public://// temp (quit Justina bug)
+
     int _externIOstreamCount = 0;
-private://// temp (quit Justina bug)
+
     Sd2Card _SDcard;
     OpenFile openFiles[MAX_OPEN_SD_FILES];                          // open files: file paths and attributed file numbers
     int _openFileCount = 0;
