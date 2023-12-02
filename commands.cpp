@@ -84,6 +84,19 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         {
             // 'stop' behaves as if an error occurred, in order to follow the same processing logic  
 
+            // skip non-executable commands
+            do {
+                int tokenType = *_activeFunctionData.pNextStep & 0x0F;
+                if (tokenType != tok_isReservedWord) { break; }
+                int tokenIndex = ((TokenIsResWord*)_activeFunctionData.pNextStep)->tokenIndex;
+                if ((_resWords[tokenIndex].restrictions & cmd_skipDuringExec) == 0) { break; }
+                findTokenStep(_activeFunctionData.pNextStep, true, tok_isTerminalGroup1, termcod_semicolon, termcod_semicolon_BPset, termcod_semicolon_BPallowed);             // find semicolon (always match)
+                jumpTokens(1, _activeFunctionData.pNextStep);             // first token after semicolon
+            } while (true);
+
+            _activeFunctionData.errorStatementStartStep = _activeFunctionData.pNextStep;
+            _activeFunctionData.errorProgramCounter = _activeFunctionData.pNextStep;
+
             // RETURN with 'event' error
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
             return result_stopForDebug;
@@ -154,14 +167,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         break;
 
 
-        // -------------------------------------
-        // Retart or abort stopped program again
-        // -------------------------------------
+        // --------------------------------------
+        // Restart or abort stopped program again
+        // --------------------------------------
 
         // these commands behave as if an error occurred, in order to follow the same processing logic  
         // the commands are issued from the command line and restart a program stopped for debug (except the abort command)
 
-        // step: executes one program step. If a 'parsing only' statement is encountered, it will simply skip it
+        // step: executes one program step. If a 'parsing only' statement is encountered, it will simply be skipped
         // step over: if the statement is a function call, executes the function without stopping until control returns to the caller. For other statements, behaves like 'step'
         // step out: continues execution without stopping, until control is passed to the caller
         // step out of block: if in an open block (while, for, ...), continues execution until control passes to a statement outside the open block. Otherwise, behaves like 'step'
@@ -169,10 +182,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         // ... this allows you to execute a 'for' loop one loop at the time, for instance. If outside an open block, behaves like 'step' 
         // go: continues execution until control returns to the user
        // abort a program while it is stopped
-
-        // notes: when the next statement to execute is a block start command (if, while, ...), control is still OUTSIDE the loop
-        //        you cannot skip a block start command (if, while, ...). However, you can skip all statements inside it, including the block 'end' statement 
-        //        you cannot skip a function 'end' command
 
         case cmdcod_step:
         case cmdcod_stepOver:
@@ -188,8 +197,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
             if (_openDebugLevels == 0) { return result_noProgramStopped; }
 
-            // debugging command requiring an open block ? (-> step out of block, step to block end commands)
-            // debugging command not applicable to block start and block end commands ? (-> skip command)
+            // is this a debugging command requiring an open block ? (-> step out of block, step to block end commands)
             if (((_activeFunctionData.activeCmd_ResWordCode == cmdcod_stepOutOfBlock) ||
                 (_activeFunctionData.activeCmd_ResWordCode == cmdcod_stepToBlockEnd))) {
 
@@ -231,7 +239,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // abort: all done
             if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_abort) { return result_abort; }
 
-
             _stepCmdExecuted = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_step) ? db_singleStep :
                 (_activeFunctionData.activeCmd_ResWordCode == cmdcod_stepOut) ? db_stepOut :
                 (_activeFunctionData.activeCmd_ResWordCode == cmdcod_stepOver) ? db_stepOver :
@@ -247,9 +254,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 blockType = ((openBlockGeneric*)_pFlowCtrlStackTop)->blockType;
 
                 // load local storage pointers again for interrupted function and restore pending step & active function information for interrupted function
-                if (blockType == block_JustinaFunction) {
-                    _activeFunctionData = *(OpenFunctionData*)_pFlowCtrlStackTop;
-                }
+                if (blockType == block_JustinaFunction) { _activeFunctionData = *(OpenFunctionData*)_pFlowCtrlStackTop; }
 
                 // delete FLOW CONTROL stack level that contained caller function storage pointers and return address (all just retrieved to _activeFunctionData)
                 flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);
@@ -317,6 +322,152 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
         }
+        break;
+
+        // ------------------------------------------------------------------------
+        // set next line to continue execution (pass control to that line and stop)
+        // ------------------------------------------------------------------------
+
+        case cmdcod_setNextLine:
+        {
+            // is at least one program stopped in debug mode ?
+            if (_openDebugLevels == 0) { return result_noProgramStopped; }
+
+
+            // A. check argument (source line)
+            // -------------------------------
+            bool operandIsVar = (pStackLvl->varOrConst.tokenType == tok_isVariable);
+            int valueType = (int)(operandIsVar ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType);
+            Val value;
+            if ((valueType != value_isLong) && (valueType != value_isFloat)) { return result_BP_sourcelineNumberExpected; }
+            value.floatConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pFloatConst) : pStackLvl->varOrConst.value.floatConst);    // line is valid for all value types  
+            long sourceLine = (valueType == value_isLong) ? value.longConst : (long)value.floatConst;
+
+
+            // B. locate the parsed program step for the source line to go to
+            // --------------------------------------------------------------
+
+            // note: the FIRST statement STARTING on that source line must be an executable statement. Otherwise the next line cannot be set to that sourceline
+            char* nextStep_tobe{};
+            execResult_type execResult = _pBreakpoints->findParsedStatementForSourceLine(sourceLine, nextStep_tobe);
+            if (execResult != result_execOK) { return execResult; }
+
+
+            // C. is the parsed program step the start of a statement WITHIN the currently stopped function ?
+            // ----------------------------------------------------------------------------------------------
+
+            // in the flow control stack, skip any optional debug command line open blocks (top of flow ctrl stack) and find stopped function data to find out
+            int debugLineNestingLevel = 0;
+            OpenFunctionData* pFlowCtrlStackLvl = (OpenFunctionData*)_pFlowCtrlStackTop;
+            while (pFlowCtrlStackLvl->blockType != block_JustinaFunction) {
+                debugLineNestingLevel++;
+                pFlowCtrlStackLvl = (OpenFunctionData*)flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
+            }
+            // pFlowCtrlStackLvl now points to the stopped function's data
+            int functionIndex = (int)pFlowCtrlStackLvl->functionIndex;
+            // compare the address of the function start token with the address of the program step
+            if (justinaFunctionData[functionIndex].pJustinaFunctionStartToken > nextStep_tobe) { return result_BP_sourceLineNotInStoppedFunction; }
+            if (functionIndex < _justinaFunctionCount - 1) {        // is function NOT the last parsed function in program memory ? Check against next function then
+                if (justinaFunctionData[functionIndex + 1].pJustinaFunctionStartToken < nextStep_tobe) { return result_BP_sourceLineNotInStoppedFunction; }
+            }
+
+
+            // D. Check that setting a next line doesn't pass control to an inner block 
+            // ------------------------------------------------------------------------
+
+            // control cannot pass to a block (e.g. for...end) that doesn't contain the deepest block where control was until now
+            // however, it is allowed to quit inner blocks, setting control to an outer block or even the function level
+            // during the scan, for each 'block start' statement, a corresponding 'block end' statement must be encountered as well
+
+            // the check is done by scanning all steps between the currently set next statement (next step-as is) and the parsed statement...
+            // ...that would be set as next statement (next step-to be)
+            // the check always starts with the lowest numbered of the two statements, moving forward in memory (even if jumping backward)
+
+            // examples (BS = block start statement, BE = block end statement, .. = other statements):
+            // - jumping forward:  (statement jumped from)..BS..BE..BS..BS..BE..(statement jumped to)         NOT OK
+            // - jumping forward:  (statement jumped from)..BS..BE..BS..BS..BE..BE..(statement jumped to)     OK
+            // - jumping forward:  (statement jumped from)..BS..BE..BS..BS..BE..BE..BE..(statement jumped to) OK
+            // - jumping forward:  (statement jumped from)..BE..BS..BS..BE..BE..BE..(statement jumped to)     OK
+            
+            // - jumping backward:   (statement jumped to)..BE (stop scan: result known)                      NOT OK
+            // - jumping backward:   (statement jumped to)..BS..BE..BS..BS..BE..(statement jumped from)       OK
+
+            char*& nextStep_asis = pFlowCtrlStackLvl->pNextStep;            // where control is currently
+            int relativeNestingLevel = 0;                                   // block nesting level within the function, relative to the block nesting level at the start of this check
+
+            // scan from the lower program step to the higher one (even if setting a next line moves control backward in the source file)
+            if (nextStep_asis != nextStep_tobe) {
+                bool AsIsBeforeToBe = nextStep_asis < nextStep_tobe;            // true: jumping forward
+                char* lowStep = min(nextStep_asis, nextStep_tobe);              // lowest step to scan
+                char* highStep = max(nextStep_asis, nextStep_tobe);             // highest step to scan
+                int minimumRelativeNestingLevel = 0;                            // moving out of a block decreases this number, moving into a block increases it                       
+                
+                char* step = lowStep;                                               // start with the lowest step
+                bool incRelativeLevel{ false }, decRelativeLvel{ false };           // flags: move into a block, move out of a block
+                
+                do {
+                    int matchedCritNum = 0;
+                    int tokenType = *step & 0x0F;
+                    if (incRelativeLevel) {relativeNestingLevel++;}     // ok, if the corresponding block end statement will be encountered as well
+                    else if (decRelativeLvel) {
+                        relativeNestingLevel--;
+                        if (relativeNestingLevel < minimumRelativeNestingLevel) {
+                            minimumRelativeNestingLevel--;
+                            // if jumping backward, the check for an invalid sourceline to jump to, can be made during each loop, because...
+                            // ...if minimumRelativeNestingLevel is negative at any one time, this indicates that...
+                            // ...control would pass to a block that doesn't contain the deepest block where control was until now
+                            if (!AsIsBeforeToBe && (minimumRelativeNestingLevel < 0)) { { return result_BP_cannotMoveIntoBlocks; }
+                            }
+                        }
+                    }
+                    if (step == highStep) { break; }            // all done
+
+                    incRelativeLevel = false, decRelativeLvel = false;
+
+                    // check for start and end block statements
+                    if (tokenType == tok_isReservedWord) {
+                        int tokenIndex = (int)((TokenIsResWord*)step)->tokenIndex;
+                        char resWordCode = _resWords[tokenIndex].resWordCode;
+                        
+                        // during execution, it's only AFTER executing start / end of block statements that control moves in or out of a block: remember until next loop
+                        if ((resWordCode == cmdcod_for) || (resWordCode == cmdcod_while) || (resWordCode == cmdcod_if)) { incRelativeLevel = true; }
+                        else if (resWordCode == cmdcod_end) { decRelativeLvel = true; }       // also safe for setting next line to end of procedure
+                    }
+
+                    // find next statement. This statement starts after the first statement separator flagging a set or allowed breakpoint
+                    do {
+                        findTokenStep(step, true, tok_isTerminalGroup1, termcod_semicolon, termcod_semicolon_BPset, termcod_semicolon_BPallowed, &matchedCritNum);             // find semicolon (always match)
+                    } while (matchedCritNum == 1);           // skip statements not allowing breakpoints
+                    jumpTokens(1, step);             // first token after semicolon
+                } while (true);
+
+                // if jumping forward (relative nesting level of 'to be step' only known at the end), the check for an invalid sourceline to jump to, can be made only here...
+                // ...because the relative nesting level of that statement is only known at the end (only then it's known whether that statement would jump into a block)
+                if ((AsIsBeforeToBe) && (relativeNestingLevel > minimumRelativeNestingLevel)) { return result_BP_cannotMoveIntoBlocks; }
+            }
+
+
+            // E. set next step to statement corresponding to sourceline
+            // ---------------------------------------------------------
+            pFlowCtrlStackLvl->pNextStep = nextStep_tobe;           // points again to stopped function data level
+            pFlowCtrlStackLvl->errorStatementStartStep = nextStep_tobe;
+            pFlowCtrlStackLvl->errorProgramCounter = nextStep_tobe;
+
+
+            // F. If moving out of open blocks, delete corresponding flow control stack levels
+            // ------------------------------------------------------------------------------
+            for (int i = 1; i <= (-relativeNestingLevel); i++) {
+                pFlowCtrlStackLvl = (OpenFunctionData*)flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);     // inner open block to be deleted 
+                pFlowCtrlStackLvl = (OpenFunctionData*)flowCtrlStack.deleteListElement(pFlowCtrlStackLvl);     // points again to stopped function data level
+            }
+
+
+            // clean up
+            clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
+            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
+        }
+        break;
+
 
         // -----------------------------------------
         // set, clear, enable, disable breakpoint(s)
@@ -374,7 +525,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // set one breakpoint with view expression and, optionally, hit count or trigger expression ?
             if (isWithViewExpression) {
                 int extraAttribCount = cmdArgCount - 1;
-                execResult = _pBreakpoints->maintainBPdata(sourceLine, _activeFunctionData.activeCmd_ResWordCode, extraAttribCount, viewExprBP1, hitCountBP1, triggerExprBP1);
+                execResult = _pBreakpoints->maintainBP(sourceLine, _activeFunctionData.activeCmd_ResWordCode, extraAttribCount, viewExprBP1, hitCountBP1, triggerExprBP1);
                 if (execResult != result_execOK) { return execResult; }
             }
 
@@ -387,7 +538,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     if ((valueType != value_isLong) && (valueType != value_isFloat)) { return result_BP_sourcelineNumberExpected; }
                     sourceLine = (valueType == value_isLong) ? arg.longConst : (long)arg.floatConst;
 
-                    execResult = _pBreakpoints->maintainBPdata(sourceLine, _activeFunctionData.activeCmd_ResWordCode);
+                    execResult = _pBreakpoints->maintainBP(sourceLine, _activeFunctionData.activeCmd_ResWordCode);
                     if (execResult != result_execOK) { return execResult; }
                 }
             }
@@ -756,7 +907,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         if (newData) { buffer[bufferCharCount++] = c; progressDotsByteCount++; totalByteCount++; }
                         waitForFirstChar = false;                                                                           // for all next characters
                     }
-                    if (verbose && (progressDotsByteCount > 300)) { 
+                    if (verbose && (progressDotsByteCount > 300)) {
                         progressDotsByteCount = 0;  printTo(0, '.');
                         if ((++dotCount & 0x3f) == 0) { printlnTo(0); }                                                     // print a crlf each 64 dots
                     }
@@ -1190,8 +1341,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                                 _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)assembledString, HEX);
                             #endif
                             }
+                            }
                         }
-                    }
 
                     if (!isTabFunction && !isColFunction) {                                                                 // go for normal flow
                         // prepare one value for printing
@@ -1252,7 +1403,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                             _intermediateStringObjectCount--;
                             delete[] oldAssembString;
                         }
-                    }
+                        }
 
                     else {      // print to file or console ?
                         if (printString != nullptr) {
@@ -1272,10 +1423,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         _intermediateStringObjectCount--;
                         delete[] printString;
                     }
-                }
+                    }
 
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-            }
+                    }
 
             // finalise
             if (isPrintToVar) {                                                                                             // print to string ? save in variable
@@ -1305,7 +1456,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)assembledString, HEX);
                     #endif
                     }
-                }
+                    }
 
                 // save new string in variable 
                 *pFirstArgStackLvl->varOrConst.value.ppStringConst = assembledString;                                       // init: copy pointer (OK if string length not above limit)
@@ -1333,7 +1484,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 }
 
                 if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) { delete[] assembledString; }                            // not referenced in eval. stack (clippedString is), so will not be deleted as part of cleanup
-            }
+                }
 
             else {      // print to file or external IO
                 if (doPrintLineEnd) {
@@ -1345,7 +1496,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // clean up
             clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
-        }
+                }
         break;
 
 
@@ -1475,8 +1626,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // these settings are used for printing last calculation result, user input echo, print commands output and values traced in debug mode('trace' command)
 
             // precision: 
-            // floatFmt command with 'f', 'e' or 'E' specifier: number of digits printed after the decimal point    //// klopt niet
-            //                  with 'g' or 'G' specifier: MAXIMUM number of significant digits to be printed (intFmt command only)
+            // floatFmt command with 'f', 'e' or 'E' specifier: number of digits printed after the decimal point    
+            //                  with 'g' or 'G' specifier: MAXIMUM number of significant digits to be printed 
             // intFmt command with 'd', 'x' and 'X': MINIMUM number of digits to be written (if the integer is shorter, it will be padded with leading zeros)
 
             // specifier (optional parameter):
@@ -1859,10 +2010,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         }
         break;
 
-    }       // end switch
+            }       // end switch
 
     return result_execOK;
-}
+                }
 
 
 // -------------------------------

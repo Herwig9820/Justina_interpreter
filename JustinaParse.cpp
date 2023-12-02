@@ -44,7 +44,7 @@
 // *   parse ONE statement in a character string, ended by an optional ';' character and a '\0' mandatary character   *
 // --------------------------------------------------------------------------------------------------------------------
 
-Justina_interpreter::parsingResult_type Justina_interpreter::parseStatement(char*& pInputStart, char*& pNextParseStatement, int& clearIndicator) {
+Justina_interpreter::parsingResult_type Justina_interpreter::parseStatement(char*& pInputStart, char*& pNextParseStatement, int& clearIndicator, bool isNewSourceLine, long sourceLine) {
     _lastTokenType_hold = tok_no_token;
     _lastTokenType = tok_no_token;                                                      // no token yet
     _lastTokenIsString = false;
@@ -1127,7 +1127,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parsingResult_type& r
         break;
 
 
-        case termcod_semicolon:////
+        case termcod_semicolon:
         {
             // ----------------------------------------
             // Case 4: is token a semicolon separator ?
@@ -1560,7 +1560,7 @@ bool Justina_interpreter::parseAsJustinaFunction(char*& pNext, parsingResult_typ
         funcName[MAX_IDENT_NAME_LEN + 1] = c_JustinaFunctionFirstOccurFlag;                                             // max (bits 7654) < (bits 3210): indicates value is not yet updated by parsing previous calls closing parenthesis
         justinaFunctionData[index].pJustinaFunctionStartToken = nullptr;                                                // initialize. Pointer will be set when function definition is parsed (checked further down)
         justinaFunctionData[index].paramIsArrayPattern[1] = 0x80;                                                       // set flag to indicate a new function name is parsed (definition or call)
-        justinaFunctionData[index].paramIsArrayPattern[0] = 0x00;                                                       // boundary alignment 
+        justinaFunctionData[index].paramIsArrayPattern[0] = 0x00;                                                        
     }
 
     // if function storage was created already: check for double function definition

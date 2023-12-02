@@ -211,7 +211,7 @@ char* LinkedList::getNextListElement(void* pPayload) {
     if (pPayload == nullptr) { return nullptr; }                                                    // nullptr: return
     ListElemHead* pElem = ((ListElemHead*)pPayload) - 1;                                            // points to list element header
     if (pElem->pNext == nullptr) { return nullptr; }
-    return (char*)(pElem->pNext + 1);                                                               // points to payload of previous element
+    return (char*)(pElem->pNext + 1);                                                               // points to payload of next element
 }
 
 
