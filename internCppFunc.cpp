@@ -982,6 +982,25 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
         break;
 
 
+        // ---------------------------------------------
+        // evaluate expression contained within quotes
+        // NOTE: eval() is the exact opposite of quote()
+        // ---------------------------------------------
+
+        case fnccod_eval:
+        {
+            // only one argument possible (eval() string)
+            if (!(argIsStringBits & (0x1 << 0))) { return result_arg_stringExpected; }
+            char resultValueType;
+            execResult_type execResult = launchEval(pFunctionStackLvl, args[0].pStringConst);
+            if (execResult != result_execOK) { return execResult; }
+            // a dummy 'Justina function' (executing the parsed eval() expressions) has just been 'launched' (and will start after current (right parenthesis) token is processed)
+            // because eval function name token and single argument will be removed from stack now (see below, at end of this procedure, after the switch() block), adapt CALLER evaluation stack levels
+            _activeFunctionData.callerEvalStackLevels -= 2;
+        }
+        break;
+
+
         // ------------------------------------------------------------------------------------
         // if the argument is a number, converts it to a string
         // if the argument is a string, add surrounding double quotes as part of the string,...
