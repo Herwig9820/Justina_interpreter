@@ -4,7 +4,7 @@
 *    Tested with Nano 33 IoT and Arduino RP2040                                                             *
 *                                                                                                           *
 *    Version:    v1.01 - 12/07/2023                                                                         *
-*    Author:     Herwig Taveirne, 2021-2023                                                                 *
+*    Author:     Herwig Taveirne, 2021-2024                                                                 *
 *                                                                                                           *
 *    Justina is an interpreter which does NOT require you to use an IDE to write and compile programs.      *
 *    Programs are written on the PC using any text processor and transferred to the Arduino using any       *
@@ -72,7 +72,7 @@ class LinkedList {
     // -----------------
 
 
-    static Stream** _ppDebugOutStream;                                  // pointer to pointer to debug stream
+    static Print** _ppDebugOutStream;                                  // pointer to pointer to debug stream
     static int _listIDcounter;                                          // number of lists created
     static long _createdListObjectCounter;                              // count of created objects accross lists
 
@@ -104,7 +104,7 @@ public:
     int getListID();
     void setListName(char* listName);
     char* getListName();
-    void setDebugOutStream(Stream** pDebugOutStream);
+    void setDebugOutStream(Print** pDebugOutStream);
     static long getCreatedObjectCount();
 };
 
@@ -627,11 +627,8 @@ class Justina_interpreter {
         result_arg_tooManyArgs,
         result_arg_wrongSpecifierForDataType,
 
-        // user callback errors
-        result_userCB_aliasNotDeclared = 3200,
-
         // numbers and strings
-        result_integerTypeExpected = 3300,
+        result_integerTypeExpected = 3200,
         result_numberExpected,
         result_operandsNumOrStringExpected,
         result_undefined,
@@ -641,10 +638,10 @@ class Justina_interpreter {
         result_testexpr_numberExpected,
 
         // abort, kill, quit
-        result_noProgramStopped = 3400,                                 // 'go' command not allowed because not in debug mode
+        result_noProgramStopped = 3300,                                 // 'go' command not allowed because not in debug mode
 
         // breakpont errors
-        result_BP_sourcelineNumberExpected = 3500,
+        result_BP_sourcelineNumberExpected = 3400,
         result_BP_notAllowedForSourceLine,
         result_BP_statementIsNonExecutable,
         result_BP_maxBPentriesReached,
@@ -654,13 +651,13 @@ class Justina_interpreter {
         result_BP_cannotMoveIntoBlocks,
 
         // evaluation and list parsing function errors
-        result_eval_emptyString = 3600,
+        result_eval_emptyString = 3500,
         result_eval_nothingToEvaluate,
         result_eval_parsingError,
         result_list_parsingError,
 
         // SD card
-        result_SD_noCardOrCardError = 3700,
+        result_SD_noCardOrCardError = 3600,
         result_SD_fileNotFound,
         result_SD_couldNotOpenFile,                                     // or file does not exist 
         result_SD_fileIsNotOpen,
@@ -676,7 +673,9 @@ class Justina_interpreter {
         result_SD_fileNotAllowedHere,
 
         // IO streams
-        result_IO_invalidStreamNumber,
+        result_IO_invalidStreamNumber=3700,
+        result_IO_noDeviceOrNotForInput,
+        result_IO_noDeviceOrNotForOutput,
 
         // *** MANDATORY =>LAST<= range of errors: events ***
         // *** ------------------------------------------ ***
@@ -690,7 +689,7 @@ class Justina_interpreter {
         result_quit,                                                    // 'Quit' command executed (exit Justina interpreter)
 
         result_initiateProgramLoad                                      // command processed to start loading a program
-    };
+    };  
 
     // debug codes
     enum dbType_type {
@@ -745,7 +744,10 @@ class Justina_interpreter {
 
 
     // maximum values
-    const int MAX_PRINT_WIDTH = 255;                                    // max. width of print field. Absolute limit: 255. Width as defined as in c++ printf 'format.width' sub-specifier
+    const int MIN_CONSOLE_PRINT_WIDTH = 20;                             // min. width of console line. Width as in c++ printf 'format.width' sub-specifier
+    const int MAX_CONSOLE_PRINT_WIDTH = 255;                            // min. width of console line. Width as in c++ printf 'format.width' sub-specifier
+
+    const int MAX_PRINT_WIDTH = 255;                                    // max. width of print field. Absolute limit: 255. Width as in c++ printf 'format.width' sub-specifier
     const int MAX_INT_PRECISION = 10;                                   // max. integer precision (2**31: 10 digits). Precision as defined as in c++ printf 'format.precision' sub-specifier for integers
     const int MAX_FLOAT_PRECISION = 8;                                  // max. floating-point precision. Precision as defined as in c++ printf 'format.precision' sub-specifier for floating-point numbers
     const int MAX_STRCHAR_TO_PRINT = 255;                               // max. # of alphanumeric characters to print. Absolute limit: 255. Defined as in c++ printf 'format.precision' sub-specifier
@@ -1748,17 +1750,20 @@ private:
     // external IO, SD card and files
     // ------------------------------
 
-    Stream** _pExternIOstreams{ nullptr };                          // available external IO streams (set by Justina caller)
+    Stream** _pExternInputStreams{ nullptr };                          // available external IO streams (set by Justina caller)
+    Print** _pExternOutputStreams{ nullptr };
 
     // for use by cout..., dbout, ... commands (without explicit stream indicated)
-    Stream* _pConsoleIn{ nullptr }, * _pConsoleOut{ nullptr }, * _pDebugOut{ nullptr };
+    Stream* _pConsoleIn{ nullptr };
+    Print* _pConsoleOut{ nullptr }, * _pDebugOut{ nullptr };
     int _consoleIn_sourceStreamNumber{}, _consoleOut_sourceStreamNumber{}, _debug_sourceStreamNumber{};     // != 0: always originating stream (external or SD)
 
-    int* _pIOprintColumns{};                                        // maintains current print column per output stream ( points to array on the heap)
+    int* _pPrintColumns{};                                        // maintains current print column per output stream ( points to array on the heap)
     int* _pConsolePrintColumn{ nullptr }, * _pDebugPrintColumn{ nullptr };
     int* _pLastPrintColumn{ nullptr };
 
-    Stream* _pStreamIn{ nullptr }, * _pStreamOut{ nullptr };
+    Stream* _pStreamIn{ nullptr };
+    Print* _pStreamOut{ nullptr };
     int _streamNumberIn{ 0 }, _streamNumberOut{ 0 };
 
     int _externIOstreamCount = 0;
@@ -1836,7 +1841,7 @@ public:
     // (de-) constructor
     // -----------------
 
-    Justina_interpreter(Stream** const pAltInputStreams, int altIOstreamCount, long progMemSize, int SDcardConstraints = 0, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);
+    Justina_interpreter(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, long progMemSize, int SDcardConstraints = 0, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);
     ~Justina_interpreter();
 
 
@@ -1949,7 +1954,7 @@ private:
         bool& redundantSemiColon, bool isEndOfFile, bool& bufferOverrun, bool  _flushAllUntilEOF, int& _lineCount, int& _statementCharCount, char c);
 
     // parse one statement from source statement input buffer
-    parsingResult_type parseStatement(char*& pInputLine, char*& pNextParseStatement, int& clearIndicator, bool isNewSourceLine=false, long sourceLine=0);
+    parsingResult_type parseStatement(char*& pInputLine, char*& pNextParseStatement, int& clearIndicator, bool isNewSourceLine = false, long sourceLine = 0);
     bool parseAsResWord(char*& pNext, parsingResult_type& result);
     bool parseAsNumber(char*& pNext, parsingResult_type& result);
     bool parseAsStringConstant(char*& pNext, parsingResult_type& result);
@@ -2090,7 +2095,7 @@ private:
         Val& fcnResult, int& charsPrinted, bool expandStrings = false);
 
     //  unparse statement and pretty print, print parsing result (OK or error number), print variables, print call stack, SD card directory
-    void prettyPrintStatements(int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
+    void prettyPrintStatements(int outputStream, int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
     void printParsingResult(parsingResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* pErrorPos);
     void printExecError(execResult_type execResult, bool showStopmessage);
     void printVariables(bool userVars);
@@ -2168,10 +2173,10 @@ class Breakpoints {
 
     // maintaining breakpoints
     Justina_interpreter::execResult_type maintainBP(long breakpointLine, char actionCmdCode, int extraAttribCount = 0, const char* viewString = nullptr, long hitCount = 0, const char* triggerString = nullptr);
-    Justina_interpreter::execResult_type findParsedStatementForSourceLine(long sourceLine, char* & pProgramStep);
+    Justina_interpreter::execResult_type findParsedStatementForSourceLine(long sourceLine, char*& pProgramStep);
 
     long BPsourceLineFromToBPlineSequence(long BPsourceLineOrIndex, bool toIndex = true);
-    Justina_interpreter::execResult_type progMem_getSetClearBP(long lineSequenceNum, char*& pProgramStep, bool& BPwasSet, bool doSet=false, bool doClear=false);
+    Justina_interpreter::execResult_type progMem_getSetClearBP(long lineSequenceNum, char*& pProgramStep, bool& BPwasSet, bool doSet = false, bool doClear = false);
     Justina_interpreter::execResult_type maintainBreakpointTable(long sourceLine, char* pProgramStep, bool BPwasSet, bool doSet, bool doClear, bool doEnable, bool doDisable,
         int extraAttribCount, const char* viewString, long hitCount, const char* triggerString);
     BreakpointData* findBPtableRow(char* pParsedStatement, int& row);

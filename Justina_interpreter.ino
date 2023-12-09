@@ -25,15 +25,25 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ***************************************************************************************/
 
-#define withTCP 1
-
+#define WITH_TCPIP 1
+#define WITH_OLED_SW_SPI 1              // note: hw SPI interferes with SD card breakout box (SD card gets corrupted) -> use SW SPI
+#define WITH_OLED_HW_I2C 1              
 
 // includes
 // --------
-
 #include "Justina.h"
 
-#if withTCP
+/*
+#include <LiquidCrystal_i2c.h>             // Velleman library
+*/
+
+// oled display
+// https://github.com/olikraus/u8g2   
+#include <U8g2lib.h>
+#include <Wire.h>
+
+
+#if WITH_TCPIP
 #include "secrets.h"
 #include "TCPclientServer.h"
 #endif
@@ -56,7 +66,7 @@ constexpr int ERROR_PIN{ 8 };
 
 constexpr int HEARTBEAT_PIN{ 9 };                                                // indicator leds
 
-#if withTCP
+#if WITH_TCPIP
 constexpr pin_size_t WiFi_CONNECTED_PIN{ 14 };
 constexpr pin_size_t TCP_CONNECTED_PIN{ 15 };
 
@@ -70,23 +80,64 @@ constexpr char menu[] = "+++ Please select:\r\n  'H' Help\r\n  '0' (Re-)start Wi
 constexpr char menu[] = "+++ Please select:\r\n  'J' Start Justina interpreter\r\n";
 #endif
 
-bool withinApplication{ false };                                                       // init: currently not within an application
-bool interpreterInMemory{ false };                                                     // init: interpreter is not in memory
+// OLED displays
+#if WITH_OLED_SW_SPI || WITH_OLED_HW_I2C
+constexpr int VMA437_OLED_CLK_PIN{ 20 };
+constexpr int VMA437_OLED_MOSI_PIN{ 21 };
+constexpr int VMA437_OLED_CS_PIN{ 16 };
+constexpr int VMA437_OLED_DC_PIN{ 17 };
 
-Stream* pAlternativeIO[3]{ &Serial , &Serial , &Serial };                                                            // alternative IO ports, if defined
-constexpr int terminalCount{ 3 };
-int TCPstreamSet {};                                                                  
+// Define the dimension of the U8x8log window
+#define U8LOG_WIDTH 16
+#define U8LOG_HEIGHT 8
+#endif
+
+#if WITH_OLED_SW_SPI
+U8X8_SH1106_128X64_NONAME_4W_SW_SPI u8x8_spi(VMA437_OLED_CLK_PIN, VMA437_OLED_MOSI_PIN, VMA437_OLED_CS_PIN, VMA437_OLED_DC_PIN);  // SW SPI
+U8X8LOG u8x8log_spi;        // Create a U8x8log object
+uint8_t u8log_buffer_spi[U8LOG_WIDTH * U8LOG_HEIGHT];
+#endif
+
+#if WITH_OLED_HW_I2C
+U8X8_SSD1306_128X64_NONAME_HW_I2C u8x8_i2c;                                         // HW I2C
+U8X8LOG u8x8log_i2c;        // Create a U8x8log object
+uint8_t u8log_buffer_i2c[U8LOG_WIDTH * U8LOG_HEIGHT];
+#endif
+
+////U8X8_SH1106_128X64_NONAME_4W_HW_SPI u8x8(VMA437_OLED_CS_PIN, VMA437_OLED_DC_PIN);  // HW SPI
+
+
+
+
+// base class (Print) pointer naar derived class object voor virtual print methods: OK
+
+
+// Allocate static memory for the U8x8log window
+
+// (Stream) pAltInput[0] & (Print) pAltOutput[0] are the default input and output channels for Justina
+// higher array elements can be set to additional input or output devices (before calling Justina)
+
+Stream* pAltInput[4]{ &Serial, nullptr, nullptr , nullptr };                                                            // alternative input ports
+Print* pAltOutput[4]{ &Serial, nullptr, nullptr , nullptr };                                                            // alternative output ports
+
+constexpr int terminalCount{ sizeof(pAltInput) / sizeof(pAltInput[1]) };
+
+int TCPstreamSet{};
 connectionState_type _connectionState{ conn_0_wifiNotConnected };
 
 Justina_interpreter* pJustina{ nullptr };                                                    // pointer to Justina_interpreter object
 
+bool withinApplication{ false };                                                       // init: currently not within an application
+bool interpreterInMemory{ false };                                                     // init: interpreter is not in memory
+
 #ifdef ARDUINO_ARCH_RP2040
-long progMemSize = pow(2, 16);
+long progMemSize = 1 << 16;
 #else
 long progMemSize = 2000;
 #endif 
 
 unsigned long heartbeatPeriod{ 1000 };                                               // do not go lower than 500 ms
+
 void heartbeat();
 void execAction(char c);
 
@@ -183,7 +234,7 @@ void setup() {
     pinMode(KILL_PIN, INPUT_PULLUP);
 
 
-#if withTCP
+#if WITH_TCPIP
     pinMode(WiFi_CONNECTED_PIN, OUTPUT);                                              // 'TCP connected' led
     pinMode(TCP_CONNECTED_PIN, OUTPUT);                                               // 'TCP connected' led
 #endif
@@ -202,18 +253,62 @@ void setup() {
         else { delay(1000); }
     } while (true);
 
-#if withTCP
+#if WITH_OLED_SW_SPI
+    // Startup U8x8
+    u8x8_spi.begin();
+
+    // Set a suitable font. This font will be used for U8x8log
+    u8x8_spi.setFont(u8x8_font_chroma48medium8_r);
+
+    // Start U8x8log, connect to U8x8, set the dimension and assign the static memory
+    u8x8log_spi.begin(u8x8_spi, U8LOG_WIDTH, U8LOG_HEIGHT, u8log_buffer_spi);
+
+    // Set the U8x8log redraw mode
+    u8x8log_spi.setRedrawMode(0);		// 0: Update screen with newline, 1: Update screen for every char  
+#endif
+
+#if WITH_OLED_HW_I2C
+    u8x8_i2c.begin();
+    u8x8_i2c.setFont(u8x8_font_chroma48medium8_r);
+    u8x8log_i2c.begin(u8x8_i2c, U8LOG_WIDTH, U8LOG_HEIGHT, u8log_buffer_i2c);
+    u8x8log_i2c.setRedrawMode(0);		// 0: Update screen with newline, 1: Update screen for every char
+#endif
+
+#if WITH_TCPIP
     Serial.println("\r\nStarting TCP server");
     Serial.print("WiFi firmware version  "); Serial.println(WiFi.firmwareVersion()); Serial.println();
     myTCPconnection.setVerbose(false);                                                // disable debug messages from within myTCPconnection
     myTCPconnection.setKeepAliveTimeout(20 * 60 * 1000);                                // 20 minutes TCP keep alive timeout
     Serial.println("On the remote terminal, press ENTER to connect\r\n");
 
-    // stream pAlternativeIO[0] is the default (input and output) console for Justina
-    // from within Justina, all alternative IO streams can be used for IO, AND can be set as Justina console (input and output)
-    pAlternativeIO[1] = static_cast<Stream*>(myTCPconnection.getClient());     // Justina: stream number -2 is TCP client (alt streams 0..2 => stream numbers -1..-3)
-    TCPstreamSet = 0b0010;  // bitset: within 'pAlternativeIO' array 
+    pAltInput[1] = static_cast<Stream*>(myTCPconnection.getClient());     // Justina: stream number -2 is TCP client (alt streams 0..2 => stream numbers -1..-3)
+    pAltOutput[1] = static_cast<Print*>(myTCPconnection.getClient());     // Justina: stream number -2 is TCP client (alt streams 0..2 => stream numbers -1..-3)
+    TCPstreamSet = 0b0010;  // bitset: within 'pAltInput' array
 #endif
+
+    
+#if WITH_OLED_SW_SPI
+    pAltOutput[2] = static_cast<Print*> (&u8x8log_spi);
+    pAltOutput[2]->println("OLED (SPI) OK");
+    #endif
+
+#if WITH_OLED_HW_I2C
+    pAltOutput[3] = static_cast<Print*> (&u8x8log_i2c);
+    pAltOutput[3]->println("OLED (I2C) OK");
+#endif
+
+
+    ////if (!lcd.begin(20, 4)) { Serial.println("*** LCD niet gevonden ***\r\n"); }
+    ////else { lcd.println("hello Herwig"); }
+
+    /*
+    lcd.begin();                // Velleman
+    delay(1000);
+    lcd.println(" Hello World (^__^)");
+    lcd.setCursor(0, 1);
+    lcd.print("Velleman for makers");
+    delay(5000);
+    */
 
     // print sample / simple main menu for the user
     Serial.println(menu);
@@ -231,7 +326,7 @@ void setup() {
 
 void loop() {
     heartbeat();                                                                        // blink a led to show program is running 
-#if withTCP
+#if WITH_TCPIP
     maintainTCP(false);
 #endif
 
@@ -255,7 +350,7 @@ void execAction(char c) {
 
     switch (tolower(c)) {
 
-    #if withTCP
+    #if WITH_TCPIP
         // !!!!! NOTE: RP2040 MBED OS crashes if '0' or '1' menu options are entered twice in succession
         case '0':
             myTCPconnection.requestAction(action_1_restartWiFi, _connectionState);      // always
@@ -304,8 +399,8 @@ void execAction(char c) {
             Serial.println();
             break;
 
-        break;
-    #endif
+            break;
+        #endif
 
 
         case 'j':
@@ -317,12 +412,13 @@ void execAction(char c) {
             // start interpreter: control will not return to here until the user quits, because it has its own 'main loop'
             heartbeatPeriod = 200;
             withinApplication = true;                                                   // flag that control will be transferred to an 'application'
+
             if (!interpreterInMemory) {                                                 // if interpreter not running: create an interpreter object on the heap
 
                 // SD card constraints argument:
                 // bits 1..0 = 0b00:no card reader, 0b01 = card reader present, do not yet initialise, 0b10 = initialise (start) card now, 0b11 = initialise (start) card and run start.jus functon start() now (if available)
                 // bit 2     = 0b0: do not allow retaining data when quitting Justina, 0b1 = allow  
-                pJustina = new  Justina_interpreter(pAlternativeIO, terminalCount, progMemSize, 0b0100 | 0b0011);  
+                pJustina = new  Justina_interpreter(pAltInput, pAltOutput, terminalCount, progMemSize, 0b0100 | 0b0011);
 
                 // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
                 // this callback function will be called regularly, e.g. every time the interpreter reads a character
@@ -398,7 +494,7 @@ void heartbeat() {
 // *   TCP library: maintain connection and handle leds
 // ----------------------------------------------------
 
-#if withTCP
+#if WITH_TCPIP
 void maintainTCP(bool resetKeepAliveTimer) {
 
     myTCPconnection.maintainConnection(_connectionState, resetKeepAliveTimer);                                               // maintain TCP connection
@@ -406,8 +502,8 @@ void maintainTCP(bool resetKeepAliveTimer) {
     // control WiFi and TCP indicator leds
     // -----------------------------------
 
-    static connectionState_type oldConnectionState{conn_0_wifiNotConnected};
-    static uint32_t lastLedChangeTime{0};
+    static connectionState_type oldConnectionState{ conn_0_wifiNotConnected };
+    static uint32_t lastLedChangeTime{ 0 };
     static bool TCPledState{ false };
 
     // TCP enabled and waiting for a client to connect ? blink 'TCP' led
@@ -537,7 +633,7 @@ void Justina_housekeeping(long& appFlags) {
     // request stop if debounced stop/abort key release is detected AND debounced key down time is less than the defined alternate function time
     // request abort if debounced stop/abort key down time is equal or more than the defined 'alternate function' time
     // --------------------------------------------------------------------------------------------------------------------------------------------
-    
+
     static bool errorCondition = false, statusA = false, statusB = false, dataInOut = false;
 
     uint8_t debouncedStates, wentDown, wentUp, isShortPress, isLongPress;
@@ -563,9 +659,9 @@ void Justina_housekeeping(long& appFlags) {
     if (appFlags & Justina_interpreter::appFlag_dataInOut) { newDataLedState = !dataLedState; }
     else { newDataLedState = false; }      // if data, toggle state, otherwise reset state
     if (newDataLedState != dataLedState) { dataLedState = newDataLedState;  digitalWrite(DATA_IO_PIN, dataLedState); }  // only write if change detected
-    
-#if withTCP
-    maintainTCP(bool(appFlags & (Justina_interpreter::appFlag_dataRecdFromStreamMask  & (TCPstreamSet << 16 ))));                                                // maintain TCP connection
+
+#if WITH_TCPIP
+    maintainTCP(bool(appFlags & (Justina_interpreter::appFlag_dataRecdFromStreamMask & (TCPstreamSet << 16))));                                                // maintain TCP connection
 #endif
 }
 
@@ -610,7 +706,7 @@ void Justina_housekeeping(long& appFlags) {
 
 void userFcn_readPort(const void** pdata, const char* valueType, const int argCount, int& execError) {     // data: can be anything, as long as user function knows what to expect
 
-    pAlternativeIO[0]->print("=== control is now in user c++ callback function: arg count = "); pAlternativeIO[0]->println(argCount);
+    pAltOutput[0]->print("=== control is now in user c++ callback function: arg count = "); pAltOutput[0]->println(argCount);
 
     for (int i = 0; i < argCount; i++) {
         // data available ?
@@ -641,13 +737,13 @@ void userFcn_readPort(const void** pdata, const char* valueType, const int argCo
         }
 
         // print a value
-        pAlternativeIO[0]->print("    adapted value (argument "); pAlternativeIO[0]->print(i); pAlternativeIO[0]->print(") is now: ");      // but value
-        if (isLong) { pAlternativeIO[0]->println(*pLong); }
-        else if (isFloat) { pAlternativeIO[0]->println(*pFloat); }
-        else { pAlternativeIO[0]->println(pText); }
+        pAltOutput[0]->print("    adapted value (argument "); pAltOutput[0]->print(i); pAltOutput[0]->print(") is now: ");      // but value
+        if (isLong) { pAltOutput[0]->println(*pLong); }
+        else if (isFloat) { pAltOutput[0]->println(*pFloat); }
+        else { pAltOutput[0]->println(pText); }
 
     };
-    pAlternativeIO[0]->println("=== leaving user c++ callback function");
+    pAltOutput[0]->println("=== leaving user c++ callback function");
     return;
 }
 
@@ -657,13 +753,13 @@ void userFcn_readPort(const void** pdata, const char* valueType, const int argCo
 // --------------------------------------
 
 void userFcn_writePort(const void** pdata, const char* valueType, const int argCount, int& execError) {
-    pAlternativeIO[0]->println("*** Justina was here ***");
+    pAltOutput[0]->println("*** Justina was here ***");
     // do your thing here
 };
 
 
 void userFcn_togglePort(const void** pdata, const char* valueType, const int argCount, int& execError) {
-    pAlternativeIO[0]->println("*** Justina just passed by ***");
+    pAltOutput[0]->println("*** Justina just passed by ***");
     // do your thing here
 };
 
@@ -705,9 +801,9 @@ char* userFcn_return_pChar(const void** pdata, const char* valueType, const int 
     pText[1] = 'Z';
     Serial.print("               char[0] changed to "); Serial.println(pText[0]);
     Serial.print("               char[1] changed to "); Serial.println(pText[1]);
-    
+
     bool isVariable = (valueType[0] & 0x80);                                        // bit b7: '1' indicates 'variable', '0' means 'constant'
 
     return ((char**)(pdata))[0];
-    }
-    // >>> --------------------------------------------------------------------------------------------------------------------
+}
+// >>> --------------------------------------------------------------------------------------------------------------------

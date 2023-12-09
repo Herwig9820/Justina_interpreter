@@ -44,8 +44,7 @@
 
 int LinkedList::_listIDcounter = 0;
 long LinkedList::_createdListObjectCounter = 0;
-Stream* defaultStream = &Serial;
-Stream** LinkedList::_ppDebugOutStream = &defaultStream;
+Print** LinkedList::_ppDebugOutStream {};
 
 // -------------------
 // *   constructor   *
@@ -75,7 +74,7 @@ LinkedList::~LinkedList() {
 
 // NOTE: it's caller's responsibility that stream pointer this pointer is pointing to is valid (e.g. file is open)
 
-void LinkedList::setDebugOutStream(Stream** ppDebugOutStream) {
+void LinkedList::setDebugOutStream(Print** ppDebugOutStream) {
     _ppDebugOutStream = ppDebugOutStream;
 }
 

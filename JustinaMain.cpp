@@ -134,7 +134,6 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
 
     {"BPon",            cmdcod_BPon,            cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
     {"BPoff",           cmdcod_BPoff,           cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
-    {"debug",           cmdcod_debug,           cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
     {"setBP",           cmdcod_setBP,           cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
     {"clearBP",         cmdcod_clearBP,         cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
     {"enableBP",        cmdcod_enableBP,        cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
@@ -515,7 +514,7 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     {"INP_ALLOW_DEF",       "1",                        value_isLong},      // if '\d' sequence is encountered in the input stream, default value is returned
 
     // input and info command: flag 'user canceled' (input argument 3 / info argument 2 return value - argument must be a variable)
-    {"USR_CANCELED",        "0",                        value_isLong},      // operation was canceled by user (\c sequence encountered)
+    {"USR_CANCEL",          "0",                        value_isLong},      // operation was canceled by user (\c sequence encountered)
     {"USR_SUCCESS",         "1",                        value_isLong},      // operation was NOT canceled by user
 
     // quit command
@@ -563,9 +562,9 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
 // *   constructor   *
 // -------------------
 
-Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int altIOstreamCount,
-    long progMemSize, int JustinaConstraints, int SDcardChipSelectPin) :
-    _pExternIOstreams(pAltInputStreams), _externIOstreamCount(altIOstreamCount), _progMemorySize(progMemSize), _justinaConstraints(JustinaConstraints), _SDcardChipSelectPin(SDcardChipSelectPin)
+Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, long progMemSize, int JustinaConstraints, int SDcardChipSelectPin) :
+    _pExternInputStreams(pAltInputStreams), _pExternOutputStreams(pAltOutputStreams), _externIOstreamCount(altIOstreamCount),
+    _progMemorySize(progMemSize), _justinaConstraints(JustinaConstraints), _SDcardChipSelectPin(SDcardChipSelectPin)
 
 {
 
@@ -589,20 +588,21 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
     parsedCommandLineStack.setListName("cmd line");
 
     // current print column is maintened for each stream separately: init
-    _pIOprintColumns = new int[_externIOstreamCount];
+    _pPrintColumns = new int[_externIOstreamCount];
     for (int i = 0; i < _externIOstreamCount; i++) {
-        _pExternIOstreams[i]->setTimeout(DEFAULT_READ_TIMEOUT);                                         // NOTE: will only have effect for existing connections (e.g. TCP)
-        _pIOprintColumns[i] = 0;
+        if(_pExternInputStreams[i] != nullptr){ _pExternInputStreams[i]->setTimeout(DEFAULT_READ_TIMEOUT);}              // NOTE: will only have effect for currently established connections (e.g. TCP)
+        _pPrintColumns[i] = 0;
     }
 
-    // by default, console and debug out are first element in _pExternIOstreams[]
+    // by default, console in/out and debug out are first element in _pExternInputStreams[], _pExternOutputStreams[]
     _consoleIn_sourceStreamNumber = _consoleOut_sourceStreamNumber = _debug_sourceStreamNumber = -1;
-    _pConsoleIn = _pConsoleOut = _pDebugOut = _pExternIOstreams[0];
-    _pConsolePrintColumn = _pDebugPrintColumn = _pIOprintColumns;                                       //  point to its current print column
-    _pLastPrintColumn = _pIOprintColumns;
+    _pConsoleIn = _pExternInputStreams[0];
+    _pConsoleOut = _pDebugOut = _pExternOutputStreams[0];
+    _pConsolePrintColumn = _pDebugPrintColumn = _pPrintColumns;                                       //  point to its current print column
+    _pLastPrintColumn = _pPrintColumns;
 
     // set linked list debug printing. Pointer to debug out stream pointer: will follow if debug stream is changed
-    parsingStack.setDebugOutStream(static_cast<Stream**> (&_pDebugOut));                                // for debug printing within linked list object
+    parsingStack.setDebugOutStream(&_pDebugOut);                                // for debug printing within linked list object
 
     if (_progMemorySize + IMM_MEM_SIZE > pow(2, 16)) { _progMemorySize = pow(2, 16) - IMM_MEM_SIZE; }
     _programStorage = new char[_progMemorySize + IMM_MEM_SIZE];
@@ -611,7 +611,7 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, int al
     _pBreakpoints = new Breakpoints(this, (_progMemorySize * BP_LINE_RANGE_PROGMEM_STOR_RATIO) / 100, MAX_BP_COUNT);
 
 #if PRINT_HEAP_OBJ_CREA_DEL
-    _pDebugOut->print("+++++ (ext IO streams) "); _pDebugOut->println((uint32_t)_pIOprintColumns, HEX);
+    _pDebugOut->print("+++++ (ext IO streams) "); _pDebugOut->println((uint32_t)_pPrintColumns, HEX);
     _pDebugOut->print("+++++ (program memory) "); _pDebugOut->println((uint32_t)_programStorage, HEX);
     _pDebugOut->print("+++++ (BP object)      "); _pDebugOut->println((uint32_t)_pBreakpoints, HEX);
 #endif
@@ -628,13 +628,13 @@ Justina_interpreter::~Justina_interpreter() {
 #if PRINT_HEAP_OBJ_CREA_DEL
     _pDebugOut->print("----- (BP object)      "); _pDebugOut->println((uint32_t)_pBreakpoints, HEX);
     _pDebugOut->print("----- (program memory) "); _pDebugOut->println((uint32_t)_programStorage, HEX);
-    _pDebugOut->print("----- (ext IO streams) "); _pDebugOut->println((uint32_t)_pIOprintColumns, HEX);
+    _pDebugOut->print("----- (ext IO streams) "); _pDebugOut->println((uint32_t)_pPrintColumns, HEX);
 #endif
     resetMachine(true);                                                                             // delete all objects created on the heap: with = with user variables and FiFo stack
 
     delete _pBreakpoints;
     delete[] _programStorage;
-    delete[] _pIOprintColumns;
+    delete[] _pPrintColumns;
 };
 
 
@@ -761,7 +761,7 @@ bool Justina_interpreter::run() {
     _coldStart = _constructorInvoked;
     _constructorInvoked = false;                                                                                         // reset
 
-    Stream* pStatementInputStream = static_cast<Stream*>(_pConsoleIn);                                          // init: load program from console
+    Stream* pStatementInputStream = _pConsoleIn;                                          // init: load program from console
     int streamNumber{ 0 };
     setStream(0);                                                                                               // set _pStreamIn to console, for use by Justina methods
 
@@ -1106,7 +1106,7 @@ bool Justina_interpreter::finaliseParsing(parsingResult_type& result, bool& kill
             printParsingResult(result, funcNotDefIndex, _statement, lineCount, pErrorPos);
         }
         else {
-            if (_promptAndEcho == 2) { prettyPrintStatements(0); printlnTo(0); }                                // immediate mode and result OK: pretty print input line
+            if (_promptAndEcho == 2) { prettyPrintStatements(0,0); printlnTo(0); }                                // immediate mode and result OK: pretty print input line
             else if (_promptAndEcho == 1) { printlnTo(0); }
         }
     }
@@ -1139,8 +1139,9 @@ bool Justina_interpreter::finaliseParsing(parsingResult_type& result, bool& kill
         else if (result == result_parse_setStdConsole) {
             printlnTo(0, "\r\n+++ console reset +++");
             _consoleIn_sourceStreamNumber = _consoleOut_sourceStreamNumber = -1;
-            _pConsoleIn = _pConsoleOut = _pExternIOstreams[0];                                                  // set console to stream -1 (NOT debug out)
-            _pConsolePrintColumn = &_pIOprintColumns[0];
+            _pConsoleIn = _pExternInputStreams[0];                                                  // set console to stream -1 (NOT debug out)
+            _pConsoleOut = _pExternOutputStreams[0];                                                  // set console to stream -1 (NOT debug out)
+            _pConsolePrintColumn = &_pPrintColumns[0];
             *_pConsolePrintColumn = 0;
 
         }
@@ -1302,16 +1303,15 @@ void Justina_interpreter::traceAndPrintDebugInfo(execResult_type execResult) {
     nextStatementPointer = pDeepestOpenFunction->pNextStep;
 
     // print the debug 'header' line
-    int length{ 0 };
-    long sourceLine{};
     bool isBreakpointStop = (execResult == result_stopForBreakpoint);
-    printlnTo(_debug_sourceStreamNumber);
-    length = printTo(_debug_sourceStreamNumber, isBreakpointStop ? "-- BREAKPOINT " : "-- STOP ");
-    for (int i = 1; i <= _dispWidth - length; i++) { printTo(_debug_sourceStreamNumber, "-"); } printlnTo(_debug_sourceStreamNumber);
-
-    // print the source line, function and statement 
     char msg[50 + MAX_IDENT_NAME_LEN] = "";
-
+    int length = sprintf(msg, "%s", (isBreakpointStop ? "\r\n-- BREAK " : "\r\n-- STOP "),    _openDebugLevels - 1);
+    if (_openDebugLevels > 1){length += sprintf(msg+length, "-- [%ld] ", _openDebugLevels); }
+    for (int i = 0; i < _dispWidth - length+2; i++) {msg[length+i] = '-'; }
+    strcpy(msg+ _dispWidth + 2, "\r\n");
+    printTo(_debug_sourceStreamNumber, msg);
+    
+    // print the source line, function and statement 
     // if source line has an entry in breakpoint table: retrieve source line from there. If not, then calculate the source line number by counting...
     // ...parsed statements with a preceding 'breakpoint set' or 'breakpoint allowed' token.
     // note that the second method can be slow(er) if program consists of a large number of statements
@@ -1322,18 +1322,15 @@ void Justina_interpreter::traceAndPrintDebugInfo(execResult_type execResult) {
     if (lineHasBPtableEntry) {                                                                             // check attributes in breakpoints table
         pBreakpointDataRow = _pBreakpoints->findBPtableRow(nextStatementPointer, BPdataRow);     // find table entry
     }
-    sourceLine = (lineHasBPtableEntry) ? pBreakpointDataRow->sourceLine : _pBreakpoints->findLineNumberForBPstatement(nextStatementPointer);
+    long sourceLine = (lineHasBPtableEntry) ? pBreakpointDataRow->sourceLine : _pBreakpoints->findLineNumberForBPstatement(nextStatementPointer);
     sprintf(msg, "line %ld: [%s] ", sourceLine, JustinaFunctionNames[pDeepestOpenFunction->functionIndex]);
     printTo(_debug_sourceStreamNumber, msg);
-    prettyPrintStatements(1, nextStatementPointer);                                                     // print statement
+    prettyPrintStatements(_debug_sourceStreamNumber, 1, nextStatementPointer);                                                     // print statement
 
-    if (isBreakpointStop) { parseAndExecTraceOrBPviewString(BPdataRow); }                                                          // BP view string: may not contain keywords, Justina functions, generic names
-    parseAndExecTraceOrBPviewString();                                                                                  // trace string: may not contain keywords, Justina functions, generic names
-
-    if (_openDebugLevels > 1) {
-        sprintf(msg, "*** this + %d other programs STOPPED ***", _openDebugLevels - 1);
-        printlnTo(_debug_sourceStreamNumber, msg);
-    }
+    // if this is a breakpoint stop, parse and evaluate expression (if any) stored in BP view string
+    // for all stops: parse and evaluate expression (if any) stored in overall trace string
+    if (isBreakpointStop) { parseAndExecTraceOrBPviewString(BPdataRow); }                        // BP view string: may not contain keywords, Justina functions, generic names
+    parseAndExecTraceOrBPviewString();                                                          // trace string: may not contain keywords, Justina functions, generic names
 
     // print an extra line to isolute Justina prompt
     printTo(_debug_sourceStreamNumber, "\r\n");
@@ -1360,7 +1357,7 @@ void Justina_interpreter::parseAndExecTraceOrBPviewString(int BPindex) {
 
     _parsingExecutingTraceString = true;
 
-    printTo(_debug_sourceStreamNumber, (BPindex == -1) ? "TRACE> " : "BP TR> ");
+    printTo(_debug_sourceStreamNumber, (BPindex == -1) ? "<TRACE> " : "<BP TR> ");
 
     // in each loop, parse and execute ONE expression 
     do {
@@ -1380,7 +1377,7 @@ void Justina_interpreter::parseAndExecTraceOrBPviewString(int BPindex) {
         parsingResult_type result = parseStatement(pTraceParsingInput, pNextParseStatement, dummy);             // parse ONE statement
         if (result == result_parsing_OK) {
             // do NOT pretty print if parsing error, to avoid bad-looking partially printed statements (even if there will be an execution error later)
-            prettyPrintStatements(0);
+            prettyPrintStatements(_debug_sourceStreamNumber, 0);
             printTo(_debug_sourceStreamNumber, ": ");                                                                                   // resulting value will follow
             pTraceParsingInput = pNextParseStatement;
         }

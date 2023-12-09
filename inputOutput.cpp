@@ -177,7 +177,7 @@ void Justina_interpreter::SD_closeFile(int fileNumber) {
 
     // checks must have been done before calling this function
 
-    if (static_cast <Stream*>(&openFiles[fileNumber - 1].file) == _pDebugOut) { _pDebugOut = _pConsoleOut; }
+    if (static_cast <Stream*>(&openFiles[fileNumber - 1].file) == static_cast <Stream*>(_pDebugOut)) { _pDebugOut = _pConsoleOut; }
     openFiles[fileNumber - 1].file.close();                                                                                 // does not return errors
     openFiles[fileNumber - 1].fileNumberInUse = false;
     delete[] openFiles[fileNumber - 1].filePath;                                                                            // not counted for memory leak testing
@@ -195,7 +195,7 @@ void  Justina_interpreter::SD_closeAllFiles() {
 
     for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
         if (openFiles[i].fileNumberInUse) {
-            if (static_cast <Stream*>(&openFiles[i].file) == _pDebugOut) {    // debug out could also be an external io stream: test for file (which is open; otherwise debug would not point to it)
+            if (static_cast <Stream*>(&openFiles[i].file) == static_cast <Stream*>(_pDebugOut)) {    // debug out could also be an external io stream: test for file (which is open; otherwise debug would not point to it)
                 _pDebugOut = _pConsoleOut;
             }
             openFiles[i].fileNumberInUse = false;                                                                           // slot is open again
@@ -330,8 +330,8 @@ Justina_interpreter::execResult_type Justina_interpreter::setStream(int streamNu
 
     execResult_type execResult = determineStream(streamNumber, pTemp, forOutput); if (execResult != result_execOK) { return execResult; }
     (forOutput ? _streamNumberOut : _streamNumberIn) = streamNumber;
-    (forOutput ? _pStreamOut : _pStreamIn) = pTemp;                                                                         // set global variables instead (forOutput argument doesn't play)
-
+    if (forOutput) { _pStreamOut = static_cast<Print*> (pTemp); }
+    else { _pStreamIn = pTemp; }
     return result_execOK;
 }
 
@@ -342,7 +342,8 @@ Justina_interpreter::execResult_type Justina_interpreter::setStream(int streamNu
 
     execResult_type execResult = determineStream(streamNumber, pStream, forOutput); if (execResult != result_execOK) { return execResult; }
     (forOutput ? _streamNumberOut : _streamNumberIn) = streamNumber;
-    (forOutput ? _pStreamOut : _pStreamIn) = pStream;                                                                       // set global variables instead (forOutput argument doesn't play)
+    if (forOutput) { _pStreamOut = static_cast<Print*> (pStream); }
+    else { _pStreamIn = pStream; }
 
     return result_execOK;
 }
@@ -364,9 +365,14 @@ Justina_interpreter::execResult_type Justina_interpreter::determineStream(long a
 
 Justina_interpreter::execResult_type  Justina_interpreter::determineStream(int streamNumber, Stream*& pStream, bool forOutput) {
 
-    if (streamNumber == 0) { pStream = forOutput ? _pConsoleOut : _pConsoleIn; }  // init: assume console
+    if (streamNumber == 0) { pStream = forOutput ? static_cast<Stream*> (_pConsoleOut) : _pConsoleIn; }  // init: assume console
     else if ((-streamNumber) > _externIOstreamCount) { return result_IO_invalidStreamNumber; }
-    else if (streamNumber < 0) { pStream = _pExternIOstreams[(-streamNumber) - 1]; }    // external IO: stream number -1 => array index 0, etc.
+    else if (streamNumber < 0) {
+        if ((forOutput ? _pExternOutputStreams[(-streamNumber) - 1] : _pExternInputStreams[(-streamNumber) - 1]) == nullptr) {
+            return forOutput ?  result_IO_noDeviceOrNotForOutput :result_IO_noDeviceOrNotForInput ;
+        }
+        pStream = forOutput ? static_cast<Stream*>(_pExternOutputStreams[(-streamNumber) - 1]) : _pExternInputStreams[(-streamNumber) - 1];
+    }    // external IO: stream number -1 => array index 0, etc.
     else {
         File* pFile{};
         execResult_type execResult = SD_fileChecks(pFile, streamNumber);                                                        // operand: file number
@@ -1016,7 +1022,7 @@ void Justina_interpreter::printExecError(execResult_type execResult, bool  showS
         }
 
         printTo(0, "\r\n  ");
-        prettyPrintStatements(1, errorStatementStartStep + programCounterOffset, errorProgramCounter + programCounterOffset, &sourceErrorPos);
+        prettyPrintStatements(0, 1, errorStatementStartStep + programCounterOffset, errorProgramCounter + programCounterOffset, &sourceErrorPos);
         for (int i = 1; i <= sourceErrorPos; ++i) { printTo(0, " "); }
 
         char execInfo[50 + MAX_IDENT_NAME_LEN] = "";
@@ -1053,7 +1059,7 @@ void Justina_interpreter::printExecError(execResult_type execResult, bool  showS
 // -----------------------------------------
 // *   pretty print a parsed instruction   *
 // -----------------------------------------
-void Justina_interpreter::prettyPrintStatements(int instructionCount, char* startToken, char* errorProgCounter, int* sourceErrorPos) {
+void Justina_interpreter::prettyPrintStatements(int outputStream, int instructionCount, char* startToken, char* errorProgCounter, int* sourceErrorPos) {
 
     // input: stored tokens
     TokenPointer progCnt;
@@ -1076,9 +1082,6 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
     strcat(intFormatStr, _dispIntegerSpecifier);
     char floatFmtStr[10] = "%#.*";                                                                                          // '#' flag: always a decimal point
     strcat(floatFmtStr, _dispFloatSpecifier);
-
-    // print multiple instructions: only during debugging
-    int outputStream = (_parsingExecutingTraceString || multipleInstructions) ? _debug_sourceStreamNumber : 0;
 
     while (tokenType != tok_no_token) {                                                                                     // for all tokens in token list
         int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) :
@@ -1186,7 +1189,7 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
                     strcpy(prettyToken, pAnum); strcat(prettyToken, " ");                   // generic token: just add a space at the end
                 }
                 hasTrailingSpace = !testNextForPostfix;
-        }
+            }
             break;
 
             default:  // terminal
@@ -1240,7 +1243,7 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
                     (_terminals[index].terminalCode == termcod_semicolon_BPallowed);
             }
             break;
-    }
+        }
 
 
         // print pretty token
@@ -1282,7 +1285,7 @@ void Justina_interpreter::prettyPrintStatements(int instructionCount, char* star
         lastWasPostfixOperator = isPostfixOperator;
 
         if (isSemicolon) { isFirstInstruction = false; }
-}
+    }
 
     // exit
     printTo(outputStream, multipleInstructions ? " ...)\r\n" : allInstructions ? "" : "\r\n"); _lastPrintedIsPrompt = false;
@@ -1507,7 +1510,7 @@ void  Justina_interpreter::printToString(int width, int precision, bool inputIsS
             }
         }
         sprintf(fcnResult.pStringConst, fmtString, width, precision, ((*value).pStringConst == nullptr) ? (expandStrings ? "\"\"" : "") : (*value).pStringConst, &charsPrinted);
-}
+    }
     // note: hex output for floating point numbers is not provided (Arduino)
     else if (isIntFmt) {
         sprintf(fcnResult.pStringConst, fmtString, width, precision, (*valueType == value_isLong) ? (*value).longConst : (long)(*value).floatConst, &charsPrinted);

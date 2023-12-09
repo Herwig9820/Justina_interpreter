@@ -388,7 +388,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // - jumping forward:  (statement jumped from)..BS..BE..BS..BS..BE..BE..(statement jumped to)     OK
             // - jumping forward:  (statement jumped from)..BS..BE..BS..BS..BE..BE..BE..(statement jumped to) OK
             // - jumping forward:  (statement jumped from)..BE..BS..BS..BE..BE..BE..(statement jumped to)     OK
-            
+
             // - jumping backward:   (statement jumped to)..BE (stop scan: result known)                      NOT OK
             // - jumping backward:   (statement jumped to)..BS..BE..BS..BS..BE..(statement jumped from)       OK
 
@@ -401,14 +401,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 char* lowStep = min(nextStep_asis, nextStep_tobe);              // lowest step to scan
                 char* highStep = max(nextStep_asis, nextStep_tobe);             // highest step to scan
                 int minimumRelativeNestingLevel = 0;                            // moving out of a block decreases this number, moving into a block increases it                       
-                
+
                 char* step = lowStep;                                               // start with the lowest step
                 bool incRelativeLevel{ false }, decRelativeLvel{ false };           // flags: move into a block, move out of a block
-                
+
                 do {
                     int matchedCritNum = 0;
                     int tokenType = *step & 0x0F;
-                    if (incRelativeLevel) {relativeNestingLevel++;}     // ok, if the corresponding block end statement will be encountered as well
+                    if (incRelativeLevel) { relativeNestingLevel++; }     // ok, if the corresponding block end statement will be encountered as well
                     else if (decRelativeLvel) {
                         relativeNestingLevel--;
                         if (relativeNestingLevel < minimumRelativeNestingLevel) {
@@ -428,7 +428,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     if (tokenType == tok_isReservedWord) {
                         int tokenIndex = (int)((TokenIsResWord*)step)->tokenIndex;
                         char resWordCode = _resWords[tokenIndex].resWordCode;
-                        
+
                         // during execution, it's only AFTER executing start / end of block statements that control moves in or out of a block: remember until next loop
                         if ((resWordCode == cmdcod_for) || (resWordCode == cmdcod_while) || (resWordCode == cmdcod_if)) { incRelativeLevel = true; }
                         else if (resWordCode == cmdcod_end) { decRelativeLvel = true; }       // also safe for setting next line to end of procedure
@@ -677,9 +677,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             bool setDebugOut = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_setDebugOut);
             if (setDebugOut) {
                 if (streamNumber < 0) {
+                    if(_pExternOutputStreams[(-streamNumber) - 1] == nullptr){return result_IO_noDeviceOrNotForOutput ;}
                     _debug_sourceStreamNumber = streamNumber;
-                    _pDebugOut = static_cast<Stream*>(_pExternIOstreams[(-streamNumber) - 1]);                              // external IO (stream number -1 => array index 0, etc.)
-                    _pDebugPrintColumn = &_pIOprintColumns[(-streamNumber) - 1];
+                    _pDebugOut = _pExternOutputStreams[(-streamNumber) - 1];                              // external IO (stream number -1 => array index 0, etc.)
+                    _pDebugPrintColumn = &_pPrintColumns[(-streamNumber) - 1];
                 }
                 else {
                     // NOTE: debug out (in contrast to console in & out) can point to an SD file
@@ -723,14 +724,19 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         printlnTo(0, msg);
                         if (tolower(input[0]) == 'y') {
                             if (setConsIn || setConsole) {
-                                _consoleIn_sourceStreamNumber = streamNumber;
-                                _pConsoleIn = static_cast<Stream*>(_pExternIOstreams[(-streamNumber) - 1]);
-                            }    // external IO (stream number -1 => array index 0, etc.)
-                            if (setConsOut || setConsole) {
-                                _consoleOut_sourceStreamNumber = streamNumber;
-                                _pConsoleOut = static_cast<Stream*>(_pExternIOstreams[(-streamNumber) - 1]);                // external IO (stream number -1 => array index 0, etc.)
-                                _pConsolePrintColumn = &_pIOprintColumns[(-streamNumber) - 1];
+                                if (_pExternInputStreams[(-streamNumber) - 1] == nullptr) { return result_IO_noDeviceOrNotForInput; }
                             }
+                            if (setConsOut || setConsole) {
+                                if (_pExternOutputStreams[(-streamNumber) - 1] == nullptr) { return result_IO_noDeviceOrNotForOutput; }
+                                _consoleOut_sourceStreamNumber = streamNumber;
+                                _pConsoleOut = _pExternOutputStreams[(-streamNumber) - 1];                // external IO (stream number -1 => array index 0, etc.)
+                                _pConsolePrintColumn = &_pPrintColumns[(-streamNumber) - 1];
+                            }
+                            // only after all tests are done !
+                            if (setConsIn || setConsole) {
+                                _consoleIn_sourceStreamNumber = streamNumber;
+                                _pConsoleIn = _pExternInputStreams[(-streamNumber) - 1];
+                            } 
                         }
                         break;
                     }
@@ -1341,8 +1347,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                                 _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)assembledString, HEX);
                             #endif
                             }
-                            }
                         }
+                    }
 
                     if (!isTabFunction && !isColFunction) {                                                                 // go for normal flow
                         // prepare one value for printing
@@ -1403,7 +1409,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                             _intermediateStringObjectCount--;
                             delete[] oldAssembString;
                         }
-                        }
+                    }
 
                     else {      // print to file or console ?
                         if (printString != nullptr) {
@@ -1423,10 +1429,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         _intermediateStringObjectCount--;
                         delete[] printString;
                     }
-                    }
+                }
 
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-                    }
+            }
 
             // finalise
             if (isPrintToVar) {                                                                                             // print to string ? save in variable
@@ -1456,7 +1462,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)assembledString, HEX);
                     #endif
                     }
-                    }
+                }
 
                 // save new string in variable 
                 *pFirstArgStackLvl->varOrConst.value.ppStringConst = assembledString;                                       // init: copy pointer (OK if string length not above limit)
@@ -1484,7 +1490,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 }
 
                 if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) { delete[] assembledString; }                            // not referenced in eval. stack (clippedString is), so will not be deleted as part of cleanup
-                }
+            }
 
             else {      // print to file or external IO
                 if (doPrintLineEnd) {
@@ -1496,7 +1502,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // clean up
             clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
-                }
+        }
         break;
 
 
@@ -1530,7 +1536,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 Stream* p{};
                 execResult = setStream(streamNumber, p, true); if (execResult != result_execOK) { return execResult; }       // stream for output
                 isConsolePrint = (p == _pConsoleOut);
-                pStreamPrintColumn = (streamNumber == 0) ? _pConsolePrintColumn : (streamNumber < 0) ? _pIOprintColumns + (-streamNumber) - 1 : &(openFiles[streamNumber - 1].currentPrintColumn);
+                pStreamPrintColumn = (streamNumber == 0) ? _pConsolePrintColumn : (streamNumber < 0) ? _pPrintColumns + (-streamNumber) - 1 : &(openFiles[streamNumber - 1].currentPrintColumn);
                 *pStreamPrintColumn = 0;                                                                                    // will not be used here, but must be set to zero
             }
 
@@ -1599,11 +1605,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             char valueType[1];
             Val args[1];
             copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
-
             if ((valueType[0] != value_isLong) && (valueType[0] != value_isFloat)) { return result_arg_numberExpected; }    // numeric ?
-            if ((valueType[0] == value_isLong) ? args[0].longConst < 0 : args[0].floatConst < 0.) { return result_arg_outsideRange; }                                           // positive ?
-            _dispWidth = (valueType[0] == value_isLong) ? args[0].longConst : (long)args[0].floatConst;
-            _dispWidth = min(_dispWidth, MAX_PRINT_WIDTH);                                                                                                    // limit width to MAX_PRINT_WIDTH
+
+            int width = (valueType[0] == value_isLong) ? (int)args[0].longConst : (int)args[0].floatConst;
+            if ((width < MIN_CONSOLE_PRINT_WIDTH) || (width > MAX_CONSOLE_PRINT_WIDTH)) { return result_arg_outsideRange; }                     // positive ?
+            _dispWidth = width;
 
             // clean up
             clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings
@@ -2010,10 +2016,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         }
         break;
 
-            }       // end switch
+    }       // end switch
 
     return result_execOK;
-                }
+}
 
 
 // -------------------------------

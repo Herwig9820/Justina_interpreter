@@ -439,7 +439,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                         int streamNumber = opIsLong ? value.longConst : value.floatConst;                                                                   // always a long or a float value
 
                         // set pointer to last printed column (current position: start of line = 0) for this stream
-                        _pLastPrintColumn = (streamNumber == 0) ? _pConsolePrintColumn : (streamNumber < 0) ? _pIOprintColumns + (-streamNumber) - 1 : &(openFiles[streamNumber - 1].currentPrintColumn);
+                        _pLastPrintColumn = (streamNumber == 0) ? _pConsolePrintColumn : (streamNumber < 0) ? _pPrintColumns + (-streamNumber) - 1 : &(openFiles[streamNumber - 1].currentPrintColumn);
                         setCurrentPrintColumn = false;      // reset
                     }
                 }
