@@ -1188,10 +1188,10 @@ private:
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na, block_na, block_na };                                      // not a 'block' command
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[76];                                                                                      // keyword names
+    static const ResWordDef _resWords[75];                                                                                      // keyword names
     static const InternCppFuncDef _internCppFunctions[139];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
-    static const SymbNumConsts _symbNumConsts[70];                                                                              // predefined constants
+    static const SymbNumConsts _symbNumConsts[66];                                                                              // predefined constants
 
     static const int _resWordCount{ sizeof(_resWords) / sizeof(_resWords[0]) };                                                 // count of keywords in keyword table 
     static const int _internCppFunctionCount{ (sizeof(_internCppFunctions)) / sizeof(_internCppFunctions[0]) };                 // count of internal cpp functions in functions table

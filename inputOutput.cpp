@@ -369,7 +369,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::determineStream(int s
     else if ((-streamNumber) > _externIOstreamCount) { return result_IO_invalidStreamNumber; }
     else if (streamNumber < 0) {
         if ((forOutput ? _pExternOutputStreams[(-streamNumber) - 1] : _pExternInputStreams[(-streamNumber) - 1]) == nullptr) {
-            return forOutput ?  result_IO_noDeviceOrNotForOutput :result_IO_noDeviceOrNotForInput ;
+            return forOutput ? result_IO_noDeviceOrNotForOutput : result_IO_noDeviceOrNotForInput;
         }
         pStream = forOutput ? static_cast<Stream*>(_pExternOutputStreams[(-streamNumber) - 1]) : _pExternInputStreams[(-streamNumber) - 1];
     }    // external IO: stream number -1 => array index 0, etc.

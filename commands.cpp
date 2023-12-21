@@ -589,7 +589,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             value.longConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pLongConst) : pStackLvl->varOrConst.value.longConst);    // line is valid for all value types  
             bool trapEnable = (valueType == value_isLong) ? (bool)value.longConst : (bool)value.floatConst;
             _activeFunctionData.trapEnable = trapEnable ? 1 : 0;                                                        // counts for currently executing procedure only                                                       
-            _trappedErrorNumber = (int)result_execOK;
+            if (trapEnable) {_trappedErrorNumber = (int)result_execOK;} // reset err() only when enabling, to allow testing for error after setting error trapping off
 
             // clean up
             clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
@@ -1032,7 +1032,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             //        if a '\' character is followed by a character other then 'c' or 'd', the backslash character is discarded
 
 
-            // the 'input' and 'info' statements do not accept constants for specific arguments. IN contrast to functions, which can only test this at runtime,...
+            // the 'input' and 'info' statements only accept variables for specific arguments. IN contrast to functions, which can only test this at runtime,...
             // ... statements can test this during parsing. This is why there are no tests related to constants here. 
 
             bool argIsVar[3];

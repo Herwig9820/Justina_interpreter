@@ -169,7 +169,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
 
     {"receiveFile",     cmdcod_receiveFile,     cmd_onlyImmOrInsideFuncBlock,                           1,3,    cmdPar_112,     cmdBlockNone},
     {"sendFile",        cmdcod_sendFile,        cmd_onlyImmOrInsideFuncBlock,                           1,3,    cmdPar_112,     cmdBlockNone},
-    {"copy",            cmdcod_copyFile,        cmd_onlyImmOrInsideFuncBlock,                           2,3,    cmdPar_107,     cmdBlockNone},
+    {"copyFile",        cmdcod_copyFile,        cmd_onlyImmOrInsideFuncBlock,                           2,3,    cmdPar_107,     cmdBlockNone},
 
     {"dbout",           cmdcod_dbout,           cmd_onlyImmOrInsideFuncBlock,                           1,15,   cmdPar_112,     cmdBlockNone},      // values (expressions) to print to debug out
     {"dboutLine",       cmdcod_dboutLine,       cmd_onlyImmOrInsideFuncBlock,                           0,15,   cmdPar_107,     cmdBlockNone},
@@ -187,7 +187,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"vprintList",      cmdcod_printListToVar,  cmd_onlyImmOrInsideFuncBlock,                           2,16,   cmdPar_116,     cmdBlockNone},
 
     {"listCallStack",   cmdcod_printCallSt,     cmd_onlyImmOrInsideFuncBlock,                           0,1,    cmdPar_106,     cmdBlockNone},      // print call stack to stream (default is console)
-    { "listBP",         cmdcod_printBP,         cmd_onlyImmOrInsideFuncBlock,                           0,1,    cmdPar_106,     cmdBlockNone},      // list breakpoints
+    {"listBP",          cmdcod_printBP,         cmd_onlyImmOrInsideFuncBlock,                           0,1,    cmdPar_106,     cmdBlockNone},      // list breakpoints
     {"listVars",        cmdcod_printVars,       cmd_onlyImmOrInsideFuncBlock,                           0,1,    cmdPar_106,     cmdBlockNone},      // list variables "         "         "         "
     {"listFiles",       cmdcod_listFiles,       cmd_onlyImmOrInsideFuncBlock,                           0,1,    cmdPar_106,     cmdBlockNone},      // list files     "         "         "         "
     {"listFilesToSerial",cmdcod_listFilesToSer, cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_102,     cmdBlockNone},      // list files to Serial with modification dates (SD library fixed)
@@ -244,7 +244,7 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     // Arduino digital I/O, timing and other functions
     {"millis",                  fnccod_millis,                  0,0,    0b0},
     {"micros",                  fnccod_micros,                  0,0,    0b0},
-    {"delay",                   fnccod_delay,                   1,1,    0b0},               // delay microseconds: doesn't make sense, because execution is not fast enough (interpreter)
+    {"wait",                    fnccod_delay,                   1,1,    0b0},               // delay microseconds: doesn't make sense, because execution is not fast enough (interpreter)
     {"digitalRead",             fnccod_digitalRead,             1,1,    0b0},
     {"digitalWrite",            fnccod_digitalWrite,            2,2,    0b0},
     {"pinMode",                 fnccod_pinMode,                 2,2,    0b0},
@@ -321,9 +321,9 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     {"ubound",                  fnccod_ubound,                  2,2,    0b00000001},        // first parameter is array (LSB)
     {"dims",                    fnccod_dims,                    1,1,    0b00000001},
     {"type",                    fnccod_valueType,               1,1,    0b0},
-    { "r",                      fnccod_last,                    0,1,    0b0 },               // short label for 'last result'
-    { "err",                    fnccod_getTrappedErr,           0,0,    0b0 },
-    { "isColdStart",            fnccod_isColdStart,             0,0,    0b0 },
+    {"r",                       fnccod_last,                    0,1,    0b0 },               // short label for 'last result'
+    {"err",                     fnccod_getTrappedErr,           0,0,    0b0 },
+    {"isColdStart",             fnccod_isColdStart,             0,0,    0b0 },
     {"sysVal",                  fnccod_sysVal,                  1,1,    0b0},
 
     // input and output functions
@@ -503,11 +503,11 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     {"PRINT_LAST",          "1",                        value_isLong},      // print last result
     {"QUOTE_LAST",          "2",                        value_isLong},      // print last result, quote string results 
 
-    // info command: type of confirmation required (argument 2, must be a variable)
-    {"CONF_ENTER",          "0",                        value_isLong},      // confirmation required by pressing ENTER (any preceding characters are skipped)
-    {"CONF_ENT_CANC",       "1",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
-    {"CONF_YN",             "2",                        value_isLong},      // only yes or no answer allowed, by pressing 'y' or 'n' followed by ENTER   
-    {"CONF_YN_CANC",        "3",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
+    // info command: type of confirmation required ("request answer yes/no, ...")
+    {"REQ_ENTER",           "0",                        value_isLong},      // confirmation required by pressing ENTER (any preceding characters are skipped)
+    {"REQ_ENT_CANC",        "1",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
+    {"REQ_YN",              "2",                        value_isLong},      // only yes or no answer allowed, by pressing 'y' or 'n' followed by ENTER   
+    {"REQ_YN_CANC",         "3",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
 
     // input command: default allowed  
     {"INP_NO_DEF",          "0",                        value_isLong},      // '\d' sequences ('default') in the input stream are ignored
@@ -518,7 +518,7 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     {"USR_SUCCESS",         "1",                        value_isLong},      // operation was NOT canceled by user
 
     // quit command
-    {"QUIT_KEEP_",          "0",                        value_isLong},      // keep Justina in memory on quitting
+    {"QUIT_KEEP",           "0",                        value_isLong},      // keep Justina in memory on quitting
     {"QUIT_RELEASE",        "1",                        value_isLong},      // release memory on quitting
 
     // input / output streams
@@ -545,7 +545,7 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     {"NEW_ONLY",            "0x30",                     value_isLong},      // create new file only - do not open an existing file
     {"TRUNC",               "0x40",                     value_isLong},      // truncate file to zero bytes on open (NOT if file is opened for read access only)
 
-    {"RW_APP",              "0x07",                     value_isLong},      // open for read write access; writes at the end
+    {"RW_APPEND",           "0x07",                     value_isLong},      // open for read write access; writes at the end
 
     // formatting flags
     {"FMT_LEFT",            "0x01",                     value_isLong},      // align output left within the print field 

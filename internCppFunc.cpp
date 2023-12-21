@@ -2162,6 +2162,23 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 break;
 
 
+                case 19:                                                                        // return trace string
+                {
+                    fcnResultValueType = value_isStringPointer;
+                    fcnResult.pStringConst = nullptr;                                           // init (empty string)
+                    if (_pTraceString != nullptr) {
+                        _intermediateStringObjectCount++;
+                        fcnResult.pStringConst = new char[strlen(_pTraceString) + 1];
+                    #if PRINT_HEAP_OBJ_CREA_DEL
+                        _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+                    #endif
+                        strcpy(fcnResult.pStringConst, _pTraceString);
+                    }
+                }
+                break;
+
+
+
 
                 
                 
@@ -2186,22 +2203,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 break;
 
 
-
-
-                case 35:                                                                        // return trace string
-                {
-                    fcnResultValueType = value_isStringPointer;
-                    fcnResult.pStringConst = nullptr;                                           // init (empty string)
-                    if (_pTraceString != nullptr) {
-                        _intermediateStringObjectCount++;
-                        fcnResult.pStringConst = new char[strlen(_pTraceString) + 1];
-                    #if PRINT_HEAP_OBJ_CREA_DEL
-                        _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-                    #endif
-                        strcpy(fcnResult.pStringConst, _pTraceString);
-                    }
-                }
-                break;
 
                 // note:parsing stack element count is always zero during evaluation: no entry provided here
                 case 36:fcnResult.longConst = evalStack.getElementCount(); break;               // evaluation stack element count
