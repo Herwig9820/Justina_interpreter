@@ -139,9 +139,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
                         // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
                         // return flags doStop, doAbort, doCancel, doDefault if user included corresponding escape sequences in input string.
-                        int length{ 1 };
-                        char input[1 + 1] = "";                                                                          // init: empty string
+                        int length{ 2 };
+                        char input[2 + 1] = "";                                                                          // init: empty string
                         // NOTE: quitting has higher priority than aborting or stopping, and quitting anyway, so not needed to check abort and stop flags
+                        // NOTE: doDefault is a dummy argument here
                         if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return result_kill; }  // kill request from caller ? 
                         if (doAbort) { forcedAbortRequest = true; break; }                                                  // abort running code (program or immediate mode statements)
                         else if (doStop) { forcedStopRequest = true; }                                                      // stop a running program (do not produce stop event yet, wait until program statement executed)
@@ -347,7 +348,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // B. locate the parsed program step for the source line to go to
             // --------------------------------------------------------------
 
-            // note: the FIRST statement STARTING on that source line must be an executable statement. Otherwise the next line cannot be set to that sourceline
+            // note: the FIRST statement STARTING on that source line must be an executable statement. Otherwise this sourceline cannot be set as the 'next line'
             char* nextStep_tobe{};
             execResult_type execResult = _pBreakpoints->findParsedStatementForSourceLine(sourceLine, nextStep_tobe);
             if (execResult != result_execOK) { return execResult; }
@@ -589,7 +590,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             value.longConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pLongConst) : pStackLvl->varOrConst.value.longConst);    // line is valid for all value types  
             bool trapEnable = (valueType == value_isLong) ? (bool)value.longConst : (bool)value.floatConst;
             _activeFunctionData.trapEnable = trapEnable ? 1 : 0;                                                        // counts for currently executing procedure only                                                       
-            if (trapEnable) {_trappedErrorNumber = (int)result_execOK;} // reset err() only when enabling, to allow testing for error after setting error trapping off
+            if (trapEnable) { _trappedErrorNumber = (int)result_execOK; } // reset err() only when enabling, to allow testing for error after setting error trapping off
 
             // clean up
             clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
@@ -677,7 +678,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             bool setDebugOut = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_setDebugOut);
             if (setDebugOut) {
                 if (streamNumber < 0) {
-                    if(_pExternOutputStreams[(-streamNumber) - 1] == nullptr){return result_IO_noDeviceOrNotForOutput ;}
+                    if (_pExternOutputStreams[(-streamNumber) - 1] == nullptr) { return result_IO_noDeviceOrNotForOutput; }
                     _debug_sourceStreamNumber = streamNumber;
                     _pDebugOut = _pExternOutputStreams[(-streamNumber) - 1];                              // external IO (stream number -1 => array index 0, etc.)
                     _pDebugPrintColumn = &_pPrintColumns[(-streamNumber) - 1];
@@ -711,9 +712,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
                 do {
                     printlnTo(0, msg);
-                    int length{ 1 };
-                    char input[1 + 1] = "";                                                                                 // init: empty string
+                    int length{ 2 };
+                    char input[2 + 1] = "";                                                                                 // init: empty string
                     bool doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };
+                    // NOTE: doCancel and doDefault are dummy arguments here
                     if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return result_kill; }  // kill request from caller ? 
                     if (doAbort) { forcedAbortRequest = true; break; }                                                      // abort running code (program or immediate mode statements)
                     else if (doStop) { forcedStopRequest = true; }                                                          // stop a running program (do not produce stop event yet, wait until program statement executed)
@@ -736,7 +738,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                             if (setConsIn || setConsole) {
                                 _consoleIn_sourceStreamNumber = streamNumber;
                                 _pConsoleIn = _pExternInputStreams[(-streamNumber) - 1];
-                            } 
+                            }
                         }
                         break;
                     }
@@ -824,22 +826,30 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 // if file exists, ask if overwriting it is OK
                 if (SD.exists(args[receivingFileArgIndex].pStringConst)) {
                     if (verbose) {
-                        while (_pConsoleIn->available() > 0) { readFrom(0); }                                                               // empty console buffer first (to allow the user to start with an empty line)
-
+                        printlnTo(0, "\r\n===== File exists already. Overwrite ? (please answer Y or N) =====");
                         do {
-                            char s[70] = "===== File exists already. Overwrite ? (please answer Y or N) =====";
-                            printlnTo(0, s);
+                            // flush 'console in' characters  
                             // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
+                            int length{ 2 };                                // traps input > 1 character
+                            char input[2 + 1] = "";                                                                                         // init: empty string
+                            // NOTE: doCancel and doDefault are dummy arguments here
                             bool doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };
-                            int length{ 1 };
-                            char input[1 + 1] = "";                                                                                         // init: empty string
                             if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return result_kill; }    // kill request from caller ?
                             if (doAbort) { proceed = false; forcedAbortRequest = true; break; }                                             // ' abort running code (program or immediate mode statements)
-                            else if (doStop) { forcedStopRequest = true; }                                                                  // stop a running program (do not produce stop event yet, wait until program statement executed)
-                            else if (doCancel) { break; }
+                            if (doStop) { forcedStopRequest = true; }                                                                  // stop a running program (do not produce stop event yet, wait until program statement executed)
 
                             bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
                             if (validAnswer) { proceed = (tolower(input[0]) == 'y');  break; }
+                            printlnTo(0, "\r\nYour answer is not valid. Please answer Y or N");
+
+                            bool kill{false};
+                            flushConsoleBuffer(kill, doStop, doAbort);
+                            if (kill) { return result_kill; }
+                            if (doAbort) { proceed = false; forcedAbortRequest = true; break; }                                             // ' abort running code (program or immediate mode statements)
+                            if (doStop) { forcedStopRequest = true; }                                                                  // stop a running program (do not produce stop event yet, wait until program statement executed)
+
+                            printlnTo(0, "\r\n===== File exists already. Overwrite ? (please answer Y or N) =====");
+
                         } while (true);
                     }
                 }
@@ -864,7 +874,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 if (proceed) {
                     // open receiving file for writing. Create it if it doesn't exist yet, truncate it if it does 
                     execResult = SD_open(destinationStreamNumber, args[receivingFileArgIndex].pStringConst, O_WRITE + O_CREAT + O_TRUNC);
-                    if (execResult != result_execOK) { return execResult; }
+                    if (execResult != result_execOK) { return execResult; }         // file not opened
                 }
             }
 
@@ -884,8 +894,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 // copy data from source stream to destination stream
                 if (verbose) { printlnTo(0, isSend ? "\r\nSending file... please wait" : isReceive ? "\r\nReceiving file... please wait" : "\r\nCopying file..."); }
 
-                execResult = setStream(sourceStreamNumber); if (execResult != result_execOK) { return execResult; }                 // set stream for output
-                execResult = setStream(destinationStreamNumber, true); if (execResult != result_execOK) { return execResult; }      // set stream for output
+                execResult = setStream(sourceStreamNumber);                                                                     // set input stream
+                if (execResult == result_execOK) { execResult = setStream(destinationStreamNumber, true); }                     // set output stream for output
+                if (execResult != result_execOK) {
+                    if (isSend || isCopy) { SD_closeFile(sourceStreamNumber); }
+                    if (isReceive || isCopy) { SD_closeFile(destinationStreamNumber); }
+                    return execResult;
+                }
 
                 bool kill{ false }, doStop{ false }, doAbort{ false }, stdConsDummy{ false };
                 char c{};
@@ -913,13 +928,17 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         if (newData) { buffer[bufferCharCount++] = c; progressDotsByteCount++; totalByteCount++; }
                         waitForFirstChar = false;                                                                           // for all next characters
                     }
-                    if (verbose && (progressDotsByteCount > 300)) {
+                    if (verbose && (progressDotsByteCount > 2000)) {
                         progressDotsByteCount = 0;  printTo(0, '.');
                         if ((++dotCount & 0x3f) == 0) { printlnTo(0); }                                                     // print a crlf each 64 dots
                     }
 
                     // handle kill, abort and stop requests
-                    if (kill) { return result_kill; }                                                                       // kill request from caller ?
+                    if (kill) {                                                                                                // kill request from caller ?
+                        if (isSend || isCopy) { SD_closeFile(sourceStreamNumber); }
+                        if (isReceive || isCopy) { SD_closeFile(destinationStreamNumber); }
+                        return result_kill;
+                    }
                     if (doAbort) {                                                                                          // abort running code (program or immediate mode statements) ?
                         if (isSend || isCopy) { forcedAbortRequest = true; break; }
                         else {                                                                                              // receive: process (flush) 
@@ -1348,7 +1367,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                             #endif
                             }
                         }
-                    }
+                            }
 
                     if (!isTabFunction && !isColFunction) {                                                                 // go for normal flow
                         // prepare one value for printing
@@ -1409,7 +1428,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                             _intermediateStringObjectCount--;
                             delete[] oldAssembString;
                         }
-                    }
+                        }
 
                     else {      // print to file or console ?
                         if (printString != nullptr) {
@@ -1429,10 +1448,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         _intermediateStringObjectCount--;
                         delete[] printString;
                     }
-                }
+                    }
 
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-            }
+                        }
 
             // finalise
             if (isPrintToVar) {                                                                                             // print to string ? save in variable
@@ -1490,7 +1509,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 }
 
                 if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) { delete[] assembledString; }                            // not referenced in eval. stack (clippedString is), so will not be deleted as part of cleanup
-            }
+                }
 
             else {      // print to file or external IO
                 if (doPrintLineEnd) {
@@ -1502,7 +1521,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // clean up
             clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
-        }
+                    }
         break;
 
 
@@ -2016,10 +2035,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         }
         break;
 
-    }       // end switch
+                }       // end switch
 
     return result_execOK;
-}
+            }
 
 
 // -------------------------------

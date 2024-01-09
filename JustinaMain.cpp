@@ -590,7 +590,7 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, Print*
     // current print column is maintened for each stream separately: init
     _pPrintColumns = new int[_externIOstreamCount];
     for (int i = 0; i < _externIOstreamCount; i++) {
-        if(_pExternInputStreams[i] != nullptr){ _pExternInputStreams[i]->setTimeout(DEFAULT_READ_TIMEOUT);}              // NOTE: will only have effect for currently established connections (e.g. TCP)
+        if (_pExternInputStreams[i] != nullptr) { _pExternInputStreams[i]->setTimeout(DEFAULT_READ_TIMEOUT); }              // NOTE: will only have effect for currently established connections (e.g. TCP)
         _pPrintColumns[i] = 0;
     }
 
@@ -842,6 +842,11 @@ bool Justina_interpreter::run() {
         }
         else {     // note: while waiting for first program character, allow a longer time out              
             c = getCharacter(kill, forcedStop, forcedAbort, stdConsole, true, waitForFirstProgramCharacter);    // forced stop has no effect here
+            if (c != 0xff){
+                _appFlags &= ~appFlag_errorConditionBit;                                                        // clear error condition flag 
+                _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_parsing;                                // status 'parsing'
+            }
+            
             if (kill) { break; }
             // start processing input buffer when (1) in program mode: time out occurs and at least one character received, or (2) in immediate mode: when a new line character is detected
             allCharsReceived = _programMode ? ((c == 0xFF) && programCharsReceived) : (c == '\n');              // programCharsReceived: at least one program character received
@@ -850,7 +855,7 @@ bool Justina_interpreter::run() {
             // if no character added: nothing to do, wait for next
             noCharAdded = !addCharacterToInput(lastCharWasSemiColon, withinString, withinStringEscSequence, within1LineComment, withinMultiLineComment, redundantSemiColon, allCharsReceived,
                 bufferOverrun, flushAllUntilEOF, lineCount, statementCharCount, c);
-            currentSourceLine = lineCount + 1;
+            currentSourceLine = lineCount + 1;      // adjustment only
         }
 
         do {        // one loop only
@@ -858,7 +863,6 @@ bool Justina_interpreter::run() {
             if (kill) { quitNow = true;  result = result_parse_kill; break; }
             if (forcedAbort) { result = result_parse_abort; }
             if (stdConsole && !_programMode) { result = result_parse_setStdConsole; }
-            if (noCharAdded) { break; }               // start a new outer loop (read a character if available, etc.)
 
 
             // if a statement is complete (terminated by a semicolon or end of input), maintain breakpoint line ranges and parse statement
@@ -872,8 +876,6 @@ bool Justina_interpreter::run() {
 
             if (statementReadyForParsing) {                                                                     // if quitting anyway, just skip                                               
 
-                _appFlags &= ~appFlag_errorConditionBit;                                                        // clear error condition flag 
-                _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_parsing;                                // status 'parsing'
                 _statement[statementCharCount] = '\0';                                                          // add string terminator
 
                 char* pStatement = _statement;                                                                  // because passed by reference 
@@ -884,7 +886,7 @@ bool Justina_interpreter::run() {
 
                 // The user can set breakpoints for source lines having at least one statement starting on that line (given that the statement is not 'parsing only').
                 // Procedure 'collectSourceLineRangePairs' stores necessary data to enable this functionality.
-                result = _pBreakpoints->collectSourceLineRangePairs(_semicolonBPallowed_token, parsedStatementStartsOnNewLine, parsedStatementStartLinesAdjacent, 
+                result = _pBreakpoints->collectSourceLineRangePairs(_semicolonBPallowed_token, parsedStatementStartsOnNewLine, parsedStatementStartLinesAdjacent,
                     statementStartsAtLine, parsedStatementAllowingBPstartsAtLine, BPstartLine, BPendLine, BPpreviousEndLine);
 
                 if (result == result_parsing_OK) { result = parseStatement(pStatement, pDummy, clearCmdIndicator, parsedStatementStartsOnNewLine, parsedStatementAllowingBPstartsAtLine); }       // parse ONE statement only 
@@ -1106,7 +1108,7 @@ bool Justina_interpreter::finaliseParsing(parsingResult_type& result, bool& kill
             printParsingResult(result, funcNotDefIndex, _statement, lineCount, pErrorPos);
         }
         else {
-            if (_promptAndEcho == 2) { prettyPrintStatements(0,0); printlnTo(0); }                                // immediate mode and result OK: pretty print input line
+            if (_promptAndEcho == 2) { prettyPrintStatements(0, 0); printlnTo(0); }                                // immediate mode and result OK: pretty print input line
             else if (_promptAndEcho == 1) { printlnTo(0); }
         }
     }
@@ -1114,24 +1116,8 @@ bool Justina_interpreter::finaliseParsing(parsingResult_type& result, bool& kill
         if (_programMode && (_loadProgFromStreamNo <= 0)) {
             if (result == result_parse_abort) { printTo(0, "\r\nAbort: "); }                                // not for other parsing errors
             else { printTo(0, "\r\nParsing error: "); }
-            if (result != result_parsing_OK) { printlnTo(0, "processing remainder of input file... please wait"); }
+            printlnTo(0, "processing remainder of input file... please wait"); 
         }
-
-        char c{};
-        long byteInCount{ 0 };
-        do {                                                                                                // process remainder of input file (flush)
-            // NOTE: forcedStop and forcedAbort are dummy arguments here and will be ignored because already flushing input file after error, abort or kill
-            bool forcedStop{ false }, forcedAbort{ false }, stdConsDummy{ false };                          // dummy arguments (not needed here)
-            if (!_programMode && allCharsReceived) { break; }                                               // last character received before call was a newline character: complete user command line was read
-            c = getCharacter(kill, forcedStop, forcedAbort, stdConsDummy, true);
-            if (kill) { result = result_parse_kill; break; }                                                // kill while processing remainder of file
-            if (!_programMode && (c == '\n')) { break; }                                                    // complete user command line was read
-            else if (_programMode && ((++byteInCount & 0x02ff) == 0)) {
-                printTo(0, '.');
-                if ((byteInCount & 0x03ffff) == 0) { printlnTo(0); }                                        // print a dot each 4096 lines, a crlf each 64 dots
-            }
-        } while (c != 0xFF);
-
 
         if (result == result_parse_abort) {
             printlnTo(0, _programMode ? "\r\n+++ Abort: parsing terminated +++" : "");                       // abort: display error message if aborting program parsing
@@ -1198,7 +1184,7 @@ bool Justina_interpreter::prepareForIdleMode(parsingResult_type result, execResu
     // first check there were no parsing or execution errors
     if ((result == result_parsing_OK) && (execResult == result_execOK)) {
         if (clearIndicator != 0) {                     // 1 = clear program cmd, 2 = clear all cmd 
-            while (_pConsoleIn->available() > 0) { readFrom(0); }                                               // empty console buffer first (to allow the user to start with an empty line)
+            while (_pConsoleIn->available() > 0) { readFrom(0); }                                              // empty console buffer first (to allow the user to start with an empty line)
             do {
                 char s[50];
                 sprintf(s, "===== Clear %s ? (please answer Y or N) =====", ((clearIndicator == 2) ? "memory" : "program"));
@@ -1206,10 +1192,10 @@ bool Justina_interpreter::prepareForIdleMode(parsingResult_type result, execResu
 
                 // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
                 // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
-                bool doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };      // not used but mandatory
-                int length{ 1 };
-                char input[1 + 1] = "";                                                                         // init: empty string. Provide room for 1 character + terminating '\0'
-                // NOTE: stop, cancel land default arguments have no function here (execution has ended already), but abort and kill do
+                bool doCancel{ false }, doStop{ false }, doAbort{ false }, doDefault{ false };      // not used but mandatory
+                int length{ 2 };
+                char input[2 + 1] = "";                                                                         // init: empty string. Provide room for 1 character + terminating '\0'
+                // NOTE: stop, cancel and default arguments have no function here (execution has ended already), but abort and kill do
                 if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { kill = true; quitJustina = true; break; }  // kill request from caller ?
 
                 if (doAbort) { break; }        // avoid a next loop (getConsoleCharacters exits immediately when abort request received, not waiting for any characters)
@@ -1256,14 +1242,16 @@ bool Justina_interpreter::prepareForIdleMode(parsingResult_type result, execResu
         if (_loadProgFromStreamNo > 0) { SD_closeFile(_loadProgFromStreamNo); _loadProgFromStreamNo = 0; }
     }
 
-
-    while (_pConsoleIn->available()) { readFrom(0); }                                                           // empty console buffer first (to allow the user to start with an empty line)
-
+    // flush console in characters 
+    bool stop{ false }, abort{ false };     // dummy, we are entering idle mode anyway
+    if (_pConsoleIn->available() > 0) {flushConsoleBuffer(kill, stop, abort);  }  // skip if initially buffer is empty; kill, stop & abort dummy (end of execution, preparing for idle mode)
+  
     // has an error occurred ? (exclude 'events' reported as an error)
     bool isError = (result != result_parsing_OK) || ((execResult != result_execOK) && (execResult < result_startOfEvents));
     isError ? (_appFlags |= appFlag_errorConditionBit) : (_appFlags &= ~appFlag_errorConditionBit);             // set or clear error condition flag 
+    // status 'idle in debug mode' or 'idle' 
     (_appFlags &= ~appFlag_statusMask);
-    (_openDebugLevels > 0) ? (_appFlags |= appFlag_stoppedInDebug) : (_appFlags |= appFlag_idle);               // status 'debug mode' or 'idle'
+    (_openDebugLevels > 0) ? (_appFlags |= appFlag_stoppedInDebug) : (_appFlags |= appFlag_idle);           
 
     // print new prompt and exit
     // -------------------------
@@ -1303,37 +1291,39 @@ void Justina_interpreter::traceAndPrintDebugInfo(execResult_type execResult) {
     nextStatementPointer = pDeepestOpenFunction->pNextStep;
 
     // print the debug 'header' line
+    // -----------------------------
     bool isBreakpointStop = (execResult == result_stopForBreakpoint);
     char msg[50 + MAX_IDENT_NAME_LEN] = "";
-    int length = sprintf(msg, "%s", (isBreakpointStop ? "\r\n-- BREAK " : "\r\n-- STOP "),    _openDebugLevels - 1);
-    if (_openDebugLevels > 1){length += sprintf(msg+length, "-- [%ld] ", _openDebugLevels); }
-    for (int i = 0; i < _dispWidth - length+2; i++) {msg[length+i] = '-'; }
-    strcpy(msg+ _dispWidth + 2, "\r\n");
+    int length = sprintf(msg, "%s", (isBreakpointStop ? "\r\n-- BREAK " : "\r\n-- STOP "), _openDebugLevels - 1);
+    if (_openDebugLevels > 1) { length += sprintf(msg + length, "-- [%ld] ", _openDebugLevels); }
+    for (int i = 0; i < _dispWidth - length + 2; i++) { msg[length + i] = '-'; }
+    strcpy(msg + _dispWidth + 2, "\r\n");
     printTo(_debug_sourceStreamNumber, msg);
-    
-    // print the source line, function and statement 
-    // if source line has an entry in breakpoint table: retrieve source line from there. If not, then calculate the source line number by counting...
-    // ...parsed statements with a preceding 'breakpoint set' or 'breakpoint allowed' token.
-    // note that the second method can be slow(er) if program consists of a large number of statements
 
+    // print trace and breakpoint trace string, if any
+    // -----------------------------------------------
+    // if this is a breakpoint stop, parse and evaluate expression (if any) stored in BP view string
+    // for all stops: parse and evaluate expression (if any) stored in overall trace string
     Breakpoints::BreakpointData* pBreakpointDataRow{ nullptr };
     int BPdataRow{};
     bool lineHasBPtableEntry = (*(nextStatementPointer - 1) == _semicolonBPset_token);                             // (note that BP can be disabled, hitcount not yet reached or trigger result = false)
     if (lineHasBPtableEntry) {                                                                             // check attributes in breakpoints table
         pBreakpointDataRow = _pBreakpoints->findBPtableRow(nextStatementPointer, BPdataRow);     // find table entry
     }
+    if (isBreakpointStop) { parseAndExecTraceOrBPviewString(BPdataRow); }                        // BP view string: may not contain keywords, Justina functions, generic names
+    parseAndExecTraceOrBPviewString();                                                          // trace string: may not contain keywords, Justina functions, generic names
+
+
+    // print the source line, function and statement 
+    // ---------------------------------------------
+    // if source line has an entry in breakpoint table: retrieve source line from there. If not,...
+    // ...then calculate the source line number by counting parsed statements with a preceding 'breakpoint set' or 'breakpoint allowed' token.
+    // note that the second method can be slow(er) if program consists of a large number of statements
     long sourceLine = (lineHasBPtableEntry) ? pBreakpointDataRow->sourceLine : _pBreakpoints->findLineNumberForBPstatement(nextStatementPointer);
     sprintf(msg, "line %ld: [%s] ", sourceLine, JustinaFunctionNames[pDeepestOpenFunction->functionIndex]);
     printTo(_debug_sourceStreamNumber, msg);
     prettyPrintStatements(_debug_sourceStreamNumber, 1, nextStatementPointer);                                                     // print statement
-
-    // if this is a breakpoint stop, parse and evaluate expression (if any) stored in BP view string
-    // for all stops: parse and evaluate expression (if any) stored in overall trace string
-    if (isBreakpointStop) { parseAndExecTraceOrBPviewString(BPdataRow); }                        // BP view string: may not contain keywords, Justina functions, generic names
-    parseAndExecTraceOrBPviewString();                                                          // trace string: may not contain keywords, Justina functions, generic names
-
-    // print an extra line to isolute Justina prompt
-    printTo(_debug_sourceStreamNumber, "\r\n");
+    printTo(_debug_sourceStreamNumber, "\r\n");    // print an extra line to isolute Justina prompt
 }
 
 
@@ -1416,7 +1406,7 @@ void Justina_interpreter::parseAndExecTraceOrBPviewString(int BPindex) {
 // *   check if all Justina functions referenced are defined   *
 // -------------------------------------------------------------
 
-bool Justina_interpreter::checkAllJustinaFunctionsDefined(int& index) {
+bool Justina_interpreter::checkAllJustinaFunctionsDefined(int& index) const {
     index = 0;
     while (index < _justinaFunctionCount) {                                                                     // points to variable in use
         if (justinaFunctionData[index].pJustinaFunctionStartToken == nullptr) { return false; }

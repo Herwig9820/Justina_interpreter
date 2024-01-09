@@ -796,6 +796,34 @@ char Justina_interpreter::getCharacter(bool& kill, bool& forcedStop, bool& force
 
 }
 
+// ----------------------------
+// *   flush console buffer   *
+// ----------------------------
+
+void Justina_interpreter::flushConsoleBuffer(bool& kill, bool& stop, bool& abort) {
+    // flush console in characters 
+    char c{};
+    unsigned long start = millis();
+    bool messageGiven{ false };
+    long charCounter{ 0 };
+    do {                                                                                                // process remainder of input file (flush)
+        // NOTE: forcedStop and forcedAbort are dummy arguments here and will be ignored because already flushing input file after error, abort or kill
+        bool forcedStop{ false }, stdConsDummy{ false };                          // dummy arguments (not needed here)
+        c = getCharacter(kill, forcedStop, abort, stdConsDummy, true);
+        if (((millis() - start) > 1000) && !messageGiven) { messageGiven = true; printlnTo(0, "\r\nFlushing incoming console characters. Please wait..."); }
+
+        // after a set time, start showing progress by printing dots 
+        if (messageGiven) {
+            if ((++charCounter & 0x1fff) == 0) {                             // print a dot each 512 characters
+                printTo(0, '.');                                             
+                if ((charCounter & 0xfffff) == 0) { printlnTo(0); }          // print a crlf each 64 dots
+            }
+        }
+    } while ((c != 0xFF) && !kill);     // kill: exit immediately
+    printlnTo(0);
+}
+
+
 // ---------------------------------------------------------
 // *   read text from keyboard and store in c++ variable   *
 // ---------------------------------------------------------

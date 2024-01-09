@@ -26,8 +26,8 @@
 ***************************************************************************************/
 
 #define WITH_TCPIP 1
-#define WITH_OLED_SW_SPI 1              // note: hw SPI interferes with SD card breakout box (SD card gets corrupted) -> use SW SPI
-#define WITH_OLED_HW_I2C 1              
+#define WITH_OLED_SW_SPI 0              // note: hw SPI interferes with SD card breakout box (SD card gets corrupted) -> use SW SPI
+#define WITH_OLED_HW_I2C 0              
 
 // includes
 // --------
@@ -448,6 +448,7 @@ void execAction(char c) {
                 delete pJustina;                                                     // cleanup and delete calculator object itself
             }
 
+            Serial.println("+++ Enter 'H' for Help\r\n");
             heartbeatPeriod = 500;
             withinApplication = false;                                                  // return from application
             break;

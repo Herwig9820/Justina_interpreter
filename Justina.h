@@ -36,8 +36,8 @@
 #include <SPI.h>
 
 #define J_productName "Justina: JUST an INterpreter for Arduino"
-#define J_legalCopyright "Copyright (C) Herwig Taveirne 2021, 2023"
-#define J_productVersion "1.0.1"
+#define J_legalCopyright "Copyright (C) Herwig Taveirne 2021 - 2024"
+#define J_productVersion "1.1.1"            // major.minor.build
 #define J_buildDate "July 12, 2023"
 
 
@@ -673,7 +673,7 @@ class Justina_interpreter {
         result_SD_fileNotAllowedHere,
 
         // IO streams
-        result_IO_invalidStreamNumber=3700,
+        result_IO_invalidStreamNumber = 3700,
         result_IO_noDeviceOrNotForInput,
         result_IO_noDeviceOrNotForOutput,
 
@@ -689,7 +689,7 @@ class Justina_interpreter {
         result_quit,                                                    // 'Quit' command executed (exit Justina interpreter)
 
         result_initiateProgramLoad                                      // command processed to start loading a program
-    };  
+    };
 
     // debug codes
     enum dbType_type {
@@ -732,7 +732,7 @@ class Justina_interpreter {
     static constexpr int MAX_OPEN_SD_FILES{ 5 };                        // SD card: max. concurrent open files
 
     static constexpr long LONG_WAIT_FOR_CHAR_TIMEOUT{ 10000 };          // milli seconds
-    static constexpr long DEFAULT_READ_TIMEOUT{ 200 };                  // milliseconds
+    static constexpr long DEFAULT_READ_TIMEOUT{ 500 };                  // milliseconds
 
     // ------------------------------------------------------------------------------------------------------
     // constants that should NOT be changed without carefully examining the impact on the Justina application
@@ -1949,6 +1949,8 @@ private:
     // read one character from a stream (stream must be set prior to call)
     char getCharacter(bool& killNow, bool& forcedStop, bool& forcedAbort, bool& setStdConsole, bool enableTimeOut = false, bool useLongTimeout = false);
 
+    void flushConsoleBuffer(bool& killNow, bool& stop, bool& forcedAbort);
+
     // add character (as read from stream) to the source statement input buffer; strip comment characters, redundant white space; handle escape sequences within source; ... 
     bool addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool& withinMultiLineComment,
         bool& redundantSemiColon, bool isEndOfFile, bool& bufferOverrun, bool  _flushAllUntilEOF, int& _lineCount, int& _statementCharCount, char c);
@@ -1975,7 +1977,7 @@ private:
     bool checkInternCppFuncArgArrayPattern(parsingResult_type& result);
     bool checkExternCppFuncArgArrayPattern(parsingResult_type& result);
     bool checkJustinaFuncArgArrayPattern(parsingResult_type& result, bool isFunctionClosingParenthesis);
-    bool checkAllJustinaFunctionsDefined(int& index);
+    bool checkAllJustinaFunctionsDefined(int& index) const;
 
     // basic parsing routines for constants, without other syntax checks etc. 
     bool parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueType, parsingResult_type& result);
