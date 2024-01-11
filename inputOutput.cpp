@@ -782,7 +782,8 @@ char Justina_interpreter::getCharacter(bool& kill, bool& forcedStop, bool& force
         if (_pStreamIn->available() > 0) { c = read(); }                // get character (if available)
 
         if (kill) { return c; }                                         // flag 'kill' (request from Justina caller): return immediately
-        forcedAbort = forcedAbort || abort;                             // do not exit immediately
+        forcedAbort = forcedAbort || abort;                             // do not exit immediately, except if waiting for a 'first' character (with a long timeout)
+        if(forcedAbort && useLongTimeout){break;}                           
         forcedStop = forcedStop || stop;                                // flag 'stop': continue looking for a character (do not exit immediately). Upon exit, signal 'stop' flag has been raised
         setStdConsole = setStdConsole || stdCons;
         if (c != 0xff) { break; }
@@ -800,27 +801,32 @@ char Justina_interpreter::getCharacter(bool& kill, bool& forcedStop, bool& force
 // *   flush console buffer   *
 // ----------------------------
 
-void Justina_interpreter::flushConsoleBuffer(bool& kill, bool& stop, bool& abort) {
-    // flush console in characters 
+bool Justina_interpreter::flushInputCharacters(bool& forcedStop, bool& forcedAbort) {
+    // flush incoming characters from a stream. The stream must be set before calling this procedure. 
     char c{};
     unsigned long start = millis();
     bool messageGiven{ false };
     long charCounter{ 0 };
+    bool kill{ false };
     do {                                                                                                // process remainder of input file (flush)
         // NOTE: forcedStop and forcedAbort are dummy arguments here and will be ignored because already flushing input file after error, abort or kill
-        bool forcedStop{ false }, stdConsDummy{ false };                          // dummy arguments (not needed here)
-        c = getCharacter(kill, forcedStop, abort, stdConsDummy, true);
-        if (((millis() - start) > 1000) && !messageGiven) { messageGiven = true; printlnTo(0, "\r\nFlushing incoming console characters. Please wait..."); }
+        bool stop{ false },abort{false}, stdConsDummy{ false };                          // dummy arguments (not needed here)
+        c = getCharacter(kill, stop, abort, stdConsDummy, true);
+        if (kill) { break; }                                                          // return value true: kill Justina interpreter (buffer is now flushed until next line character)
+        if (abort) { forcedAbort = true; }                                    // do NOT exit immediately, keep on flushing
+        if (stop) { forcedStop = true; }
+        if (((millis() - start) > 1000) && !messageGiven) { messageGiven = true; printlnTo(0, "Flushing incoming characters. Please wait..."); }
 
         // after a set time, start showing progress by printing dots 
         if (messageGiven) {
             if ((++charCounter & 0x1fff) == 0) {                             // print a dot each 512 characters
-                printTo(0, '.');                                             
+                printTo(0, '.');
                 if ((charCounter & 0xfffff) == 0) { printlnTo(0); }          // print a crlf each 64 dots
             }
         }
-    } while ((c != 0xFF) && !kill);     // kill: exit immediately
+    } while (c != 0xFF);     // kill: exit immediately
     printlnTo(0);
+    return kill;
 }
 
 
@@ -838,11 +844,11 @@ bool Justina_interpreter::getConsoleCharacters(bool& forcedStop, bool& forcedAbo
 
     int maxLength = length;  // init
     length = 0;
+    setStream(0);                                                                       // set _pStreamIn to console, for use by Justina methods
     do {                                                                                    // until new line character encountered
         // read a character, if available in buffer
         char c{ };                                                                          // init: no character available
         bool kill{ false }, stop{ false }, abort{ false }, stdConsDummy{ false };
-        setStream(0);                                                                       // set _pStreamIn to console, for use by Justina methods
         c = getCharacter(kill, stop, abort, stdConsDummy);                                  // get a key (character from console) if available and perform a regular housekeeping callback as well
         if (kill) { return true; }                                                          // return value true: kill Justina interpreter (buffer is now flushed until next line character)
         if (abort) { forcedAbort = true; return false; }                                    // exit immediately

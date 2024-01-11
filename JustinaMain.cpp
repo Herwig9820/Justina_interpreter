@@ -842,11 +842,11 @@ bool Justina_interpreter::run() {
         }
         else {     // note: while waiting for first program character, allow a longer time out              
             c = getCharacter(kill, forcedStop, forcedAbort, stdConsole, true, waitForFirstProgramCharacter);    // forced stop has no effect here
-            if (c != 0xff){
+            if (c != 0xff) {
                 _appFlags &= ~appFlag_errorConditionBit;                                                        // clear error condition flag 
                 _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_parsing;                                // status 'parsing'
             }
-            
+
             if (kill) { break; }
             // start processing input buffer when (1) in program mode: time out occurs and at least one character received, or (2) in immediate mode: when a new line character is detected
             allCharsReceived = _programMode ? ((c == 0xFF) && programCharsReceived) : (c == '\n');              // programCharsReceived: at least one program character received
@@ -1116,7 +1116,7 @@ bool Justina_interpreter::finaliseParsing(parsingResult_type& result, bool& kill
         if (_programMode && (_loadProgFromStreamNo <= 0)) {
             if (result == result_parse_abort) { printTo(0, "\r\nAbort: "); }                                // not for other parsing errors
             else { printTo(0, "\r\nParsing error: "); }
-            printlnTo(0, "processing remainder of input file... please wait"); 
+            printlnTo(0, "processing remainder of input file... please wait");
         }
 
         if (result == result_parse_abort) {
@@ -1209,9 +1209,10 @@ bool Justina_interpreter::prepareForIdleMode(parsingResult_type result, execResu
         }
     }
 
-    // execution finished (not stopping in debug mode), with or without error: delete parsed strings in imm mode command : they are on the heap and not needed any more. Identifiers must stay availalble
-    // -> if stopping a program for debug, do not delete parsed strings (in imm. mode command), because that command line has now been pushed on  ...
-     // the parsed command line stack and included parsed constants will be deleted later (resetMachine routine)
+    // execution finished (not stopping in debug mode), with or without error: delete parsed strings in imm mode command : they are on the heap and not needed any more. 
+    // Identifiers must stay available.
+    // -> if stopping a program for debug, do not delete parsed strings (in imm. mode command), because that command line has now been pushed on...
+     // ...the parsed command line stack and included parsed constants will be deleted later (resetMachine routine).
     if ((execResult != result_stopForDebug) && (execResult != result_stopForBreakpoint)) { deleteConstStringObjects(_programStorage + _progMemorySize); } // always
 
     // finalize: last actions before 'ready' mode (prompt displayed depending on settings)
@@ -1229,7 +1230,7 @@ bool Justina_interpreter::prepareForIdleMode(parsingResult_type result, execResu
         _lastPrintedIsPrompt = false;
 
         statementInputStreamNumber = _loadProgFromStreamNo;
-        setStream(statementInputStreamNumber, pStatementInputStream);
+        setStream(statementInputStreamNumber, pStatementInputStream);           // set stream to program input stream (is a valid stream, already checked)
 
         // useful for remote terminals (characters sent to connect are flushed, this way)
         if (_loadProgFromStreamNo <= 0) { while (pStatementInputStream->available()) { readFrom(statementInputStreamNumber); } }
@@ -1237,21 +1238,25 @@ bool Justina_interpreter::prepareForIdleMode(parsingResult_type result, execResu
         _initiateProgramLoad = true;
     }
     else {      // with or without parsing or execution error
-        statementInputStreamNumber = 0;
+        // flush any remaining input characters:
+        // - if a program was loaded now, then the stream is still the stream from where the program was loaded (only flush if an external IO stream)
+        // - if not in program load mode, then the stream will be the console
+        if ((statementInputStreamNumber <= 0) && (pStatementInputStream->available() > 0)) {  // skip if initially buffer is empty
+            bool stop{ false }, abort{ false };     // dummy, as we are entering idle mode anyway
+            setStream(statementInputStreamNumber); flushInputCharacters(stop, abort);
+        }
+        statementInputStreamNumber = 0;               // set stream for statement input back to console (if it wasn't)
         setStream(statementInputStreamNumber, pStatementInputStream);
-        if (_loadProgFromStreamNo > 0) { SD_closeFile(_loadProgFromStreamNo); _loadProgFromStreamNo = 0; }
+        if (_loadProgFromStreamNo > 0) { SD_closeFile(_loadProgFromStreamNo); }
+        _loadProgFromStreamNo = 0;
     }
 
-    // flush console in characters 
-    bool stop{ false }, abort{ false };     // dummy, we are entering idle mode anyway
-    if (_pConsoleIn->available() > 0) {flushConsoleBuffer(kill, stop, abort);  }  // skip if initially buffer is empty; kill, stop & abort dummy (end of execution, preparing for idle mode)
-  
     // has an error occurred ? (exclude 'events' reported as an error)
     bool isError = (result != result_parsing_OK) || ((execResult != result_execOK) && (execResult < result_startOfEvents));
     isError ? (_appFlags |= appFlag_errorConditionBit) : (_appFlags &= ~appFlag_errorConditionBit);             // set or clear error condition flag 
     // status 'idle in debug mode' or 'idle' 
     (_appFlags &= ~appFlag_statusMask);
-    (_openDebugLevels > 0) ? (_appFlags |= appFlag_stoppedInDebug) : (_appFlags |= appFlag_idle);           
+    (_openDebugLevels > 0) ? (_appFlags |= appFlag_stoppedInDebug) : (_appFlags |= appFlag_idle);
 
     // print new prompt and exit
     // -------------------------

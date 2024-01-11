@@ -643,6 +643,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     _loadProgFromStreamNo = ((valueType[0] == value_isLong) ? args[0].longConst : args[0].floatConst);
                     if (_loadProgFromStreamNo > 0) { return result_IO_invalidStreamNumber; }
                     else if ((-_loadProgFromStreamNo) > _externIOstreamCount) { return result_IO_invalidStreamNumber; }
+                    else if (_pExternInputStreams[(-_loadProgFromStreamNo) - 1] == nullptr) { return result_IO_noDeviceOrNotForInput; }
                 }
             }
 
@@ -798,7 +799,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             }
 
             // send or copy file: source is a file
-            if ((isSend || isCopy)) {
+            if (isSend || isCopy) {
                 if (valueType[0] != value_isStringPointer) { return result_arg_stringExpected; }                            // mandatory file name
                 if (!pathValid(args[0].pStringConst)) { return result_SD_pathIsNotValid; }
 
@@ -828,28 +829,36 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     if (verbose) {
                         printlnTo(0, "\r\n===== File exists already. Overwrite ? (please answer Y or N) =====");
                         do {
-                            // flush 'console in' characters  
-                            // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
-                            int length{ 2 };                                // traps input > 1 character
+                            // read answer and store first one or two characters in 'input' variable. Return on '\n' (length is stored in 'length').
+                            int length{ 2 };                                // detects input > 1 character
                             char input[2 + 1] = "";                                                                                         // init: empty string
                             // NOTE: doCancel and doDefault are dummy arguments here
-                            bool doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };
+                            bool kill{ false }, doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };
                             if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return result_kill; }    // kill request from caller ?
                             if (doAbort) { proceed = false; forcedAbortRequest = true; break; }                                             // ' abort running code (program or immediate mode statements)
                             if (doStop) { forcedStopRequest = true; }                                                                  // stop a running program (do not produce stop event yet, wait until program statement executed)
 
+                            // check answer
                             bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
-                            if (validAnswer) { proceed = (tolower(input[0]) == 'y');  break; }
-                            printlnTo(0, "\r\nYour answer is not valid. Please answer Y or N");
+                            proceed = validAnswer && (tolower(input[0]) == 'y');
 
-                            bool kill{false};
-                            flushConsoleBuffer(kill, doStop, doAbort);
-                            if (kill) { return result_kill; }
-                            if (doAbort) { proceed = false; forcedAbortRequest = true; break; }                                             // ' abort running code (program or immediate mode statements)
-                            if (doStop) { forcedStopRequest = true; }                                                                  // stop a running program (do not produce stop event yet, wait until program statement executed)
+                            if (!validAnswer) { printlnTo(0, "\r\nYour answer is not valid. Please answer Y or N"); }
 
-                            printlnTo(0, "\r\n===== File exists already. Overwrite ? (please answer Y or N) =====");
+                            // receiving from external IO  AND  answer is either invalid or 'no': flush source stream
+                            // - if answer is invalid: if reading file from console stream, you might have started file transfer too early (Justina was waiting for answer)
+                            // - if answer is 'No' and reading from other external stream: you might have started file transfer by mistake
+                            Stream* pSourceStream{ nullptr };
+                            execResult = setStream(sourceStreamNumber, pSourceStream); if (execResult != result_execOK) { return execResult; }
+                            bool flushInput = isReceive && ((pSourceStream == _pConsoleIn) ? !validAnswer : (validAnswer && !proceed));
+                            if (flushInput) {
+                                if (pSourceStream->available() > 0) { kill = flushInputCharacters(doStop, doAbort); }
+                                if (kill) { return result_kill; }
+                                if (doAbort) { proceed = false; forcedAbortRequest = true; break; }                                        // abort running code (program or immediate mode statements)
+                                if (doStop) { forcedStopRequest = true; }                                                                  // stop a running program (do not produce stop event yet, wait until program statement executed)
+                            }
 
+                            if (!validAnswer) { printlnTo(0, "\r\n===== File exists already. Overwrite ? (please answer Y or N) ====="); }
+                            else { break; }
                         } while (true);
                     }
                 }
@@ -943,7 +952,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         if (isSend || isCopy) { forcedAbortRequest = true; break; }
                         else {                                                                                              // receive: process (flush) 
                             if (!forcedAbortRequest) {
-                                printlnTo(0, "\r\nAbort: processing remainder of input file... please wait");
+                                printlnTo(0, "\r\nAbort request received. Receiving remainder of input file... please wait");      // message, because user might expect immediate abort
                                 forcedAbortRequest = true;
                             }
                         }
@@ -951,17 +960,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     else if (doStop) { forcedStopRequest = true; }                                                          // stop a running program (do not produce stop event yet, wait until program statement executed)
 
                     // write data to destination stream
-                    if (!forcedAbortRequest) {                                                                              // (receive only): if abort is requested, incoming characters need to be flushed (so, not written anymore) 
-                        bool doWrite = isReceive ? ((bufferCharCount == 128) || (!newData && (bufferCharCount > 0))) : newData;
-                        if (newData) { write(buffer, bufferCharCount); bufferCharCount = 0; }
-                    }
+                    bool doWrite = isReceive ? ((bufferCharCount == 128) || (!newData && (bufferCharCount > 0))) : newData;
+                    if (doWrite) { write(buffer, bufferCharCount); bufferCharCount = 0; }
                 } while (newData);
 
                 // verbose ? provide user info
                 if (verbose) {
-                    if (forcedAbortRequest) {
-                        printlnTo(0, isSend ? "\r\n+++ File partially sent +++\r\n" : isReceive ? (totalByteCount == 0 ? "\r\n+++ NO file received +++\r\n" :
-                            "\r\n+++ File partially received +++\r\n") : "\r\n+++ File partially copied +++\r\n");
+                    if (forcedAbortRequest && !isReceive) {     // forced abort while receiving: receive complete file (-> immediate abort: abort at the sender side)
+                        printlnTo(0, isSend ? "\r\n+++ File partially sent +++\r\n" : "\r\n+++ File partially copied +++\r\n");
                     }
                     else {
                         char s[100];

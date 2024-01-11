@@ -1949,7 +1949,7 @@ private:
     // read one character from a stream (stream must be set prior to call)
     char getCharacter(bool& killNow, bool& forcedStop, bool& forcedAbort, bool& setStdConsole, bool enableTimeOut = false, bool useLongTimeout = false);
 
-    void flushConsoleBuffer(bool& killNow, bool& stop, bool& forcedAbort);
+    bool flushInputCharacters(bool& stop, bool& forcedAbort);
 
     // add character (as read from stream) to the source statement input buffer; strip comment characters, redundant white space; handle escape sequences within source; ... 
     bool addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool& withinMultiLineComment,

@@ -28,6 +28,7 @@
 #define WITH_TCPIP 1
 #define WITH_OLED_SW_SPI 0              // note: hw SPI interferes with SD card breakout box (SD card gets corrupted) -> use SW SPI
 #define WITH_OLED_HW_I2C 0              
+#define WITH_OLED WITH_OLED_SW_SPI || WITH_OLED_SW_I2C
 
 // includes
 // --------
@@ -39,8 +40,10 @@
 
 // oled display
 // https://github.com/olikraus/u8g2   
+#if WITH_OLED
 #include <U8g2lib.h>
 #include <Wire.h>
+#endif
 
 
 #if WITH_TCPIP
@@ -286,11 +289,11 @@ void setup() {
     TCPstreamSet = 0b0010;  // bitset: within 'pAltInput' array
 #endif
 
-    
+
 #if WITH_OLED_SW_SPI
     pAltOutput[2] = static_cast<Print*> (&u8x8log_spi);
     pAltOutput[2]->println("OLED (SPI) OK");
-    #endif
+#endif
 
 #if WITH_OLED_HW_I2C
     pAltOutput[3] = static_cast<Print*> (&u8x8log_i2c);
