@@ -54,7 +54,7 @@ class LinkedList {
     // --------------------
 
     static const int listNameSize = 9;                                  // including terminating '\0'
-
+  
 
     // ------------------
     // *   structures   *

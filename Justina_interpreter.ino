@@ -70,8 +70,8 @@ constexpr int ERROR_PIN{ 8 };
 constexpr int HEARTBEAT_PIN{ 9 };                                                // indicator leds
 
 #if WITH_TCPIP
-constexpr pin_size_t WiFi_CONNECTED_PIN{ 14 };
-constexpr pin_size_t TCP_CONNECTED_PIN{ 15 };
+constexpr int WiFi_CONNECTED_PIN{ 14 };
+constexpr int TCP_CONNECTED_PIN{ 15 };
 
 constexpr char SSID[] = SERVER_SSID, PASS[] = SERVER_PASS;                            // WiFi SSID and password                           
 // connect as TCP server: create class object myTCPconnection
@@ -133,8 +133,11 @@ Justina_interpreter* pJustina{ nullptr };                                       
 bool withinApplication{ false };                                                       // init: currently not within an application
 bool interpreterInMemory{ false };                                                     // init: interpreter is not in memory
 
-#ifdef ARDUINO_ARCH_RP2040
-long progMemSize = 1 << 16;
+#if defined ARDUINO_ARCH_RP2040 
+long progMemSize = 1 << 16;             // 64 kByte
+#elif defined (ESP32)
+long progMemSize = 1 << 16;             // 64 kByte
+#define SD_CHIP_SELECT_PIN 10           // predefined in library for other boards
 #else
 long progMemSize = 2000;
 #endif 
@@ -407,7 +410,7 @@ void execAction(char c) {
 
 
         case 'j':
-        #if !defined(ARDUINO_SAMD_NANO_33_IOT) && !defined(ARDUINO_ARCH_RP2040)
+        #if !defined(ARDUINO_SAMD_NANO_33_IOT) && !defined(ARDUINO_ARCH_RP2040) && !defined(ESP32)
             Serial.println("interpreter does not run on this processor");            // interpreter does not run on this processor
             break;
         #endif
@@ -421,7 +424,7 @@ void execAction(char c) {
                 // SD card constraints argument:
                 // bits 1..0 = 0b00:no card reader, 0b01 = card reader present, do not yet initialise, 0b10 = initialise (start) card now, 0b11 = initialise (start) card and run start.jus functon start() now (if available)
                 // bit 2     = 0b0: do not allow retaining data when quitting Justina, 0b1 = allow  
-                pJustina = new  Justina_interpreter(pAltInput, pAltOutput, terminalCount, progMemSize, 0b0100 | 0b0011);
+                pJustina = new  Justina_interpreter(pAltInput, pAltOutput, terminalCount, progMemSize, 0b0100 | 0b0011, SD_CHIP_SELECT_PIN);
 
                 // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
                 // this callback function will be called regularly, e.g. every time the interpreter reads a character

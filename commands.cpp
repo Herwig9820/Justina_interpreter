@@ -952,7 +952,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         if (isSend || isCopy) { forcedAbortRequest = true; break; }
                         else {                                                                                              // receive: process (flush) 
                             if (!forcedAbortRequest) {
-                                printlnTo(0, "\r\nAbort request received. Receiving remainder of input file... please wait");      // message, because user might expect immediate abort
+                                printlnTo(0, "\r\nAbort request is noted. Receiving remainder of input file... please wait");      // message, because user might expect immediate abort
                                 forcedAbortRequest = true;
                             }
                         }

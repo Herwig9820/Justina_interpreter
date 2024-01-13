@@ -47,9 +47,8 @@ Justina_interpreter::execResult_type Justina_interpreter::startSD() {
     if (_SDinitOK) { return result_execOK; }                                                                                // card is initialised: nothing to do
 
     if ((_justinaConstraints & 0b0011) == 0) { return result_SD_noCardOrCardError; }
-    if (!_SDcard.init(SPI_HALF_SPEED, _SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
     if (!SD.begin(_SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
-
+    
     _openFileCount = 0;
     for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) { openFiles[i].fileNumberInUse = false; }
     _SDinitOK = true;

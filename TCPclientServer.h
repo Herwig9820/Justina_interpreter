@@ -27,9 +27,11 @@
 
 #ifndef _TCP_CLIENT_SERVER.h
 #define _TCP_CLIENT_SERVER.h
-
+#
 #if defined(ARDUINO_ARCH_RP2040)
 #include <WiFiNINA_Generic.h>
+#elif defined (ESP32)
+#include <WiFi.h>
 #else
 #include <WiFiNINA.h>
 #endif

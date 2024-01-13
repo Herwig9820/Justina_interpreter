@@ -35,7 +35,7 @@
 #define PRINT_OBJECT_COUNT_ERRORS 0
 
 // progMemSize defines the size of Justina program memory in bytes, which depends on the available RAM 
-#if !defined (ARDUINO_ARCH_RP2040) && !defined (ARDUINO_ARCH_SAMD)
+#if !defined (ARDUINO_ARCH_RP2040) && !defined (ARDUINO_ARCH_SAMD)  && !defined (ESP32)
 #error Justina library does not support boards with this processor.
 #endif 
 
@@ -792,7 +792,7 @@ bool Justina_interpreter::run() {
             _initiateProgramLoad = (execResult == result_execOK);
             if (!_initiateProgramLoad) { printTo(0, "Could not open 'start.jus' program - error "); printlnTo(0, execResult); }
         }
-
+        
         if (_initiateProgramLoad) {                                                                             // !!! second 'if(_initiateProgramLoad)'
             resetMachine(false);                                                                                // if 'warm' start, previous program (with its variables) may still exist
             _programMode = true;
