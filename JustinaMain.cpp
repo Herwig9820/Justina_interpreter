@@ -565,7 +565,6 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
 Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, long progMemSize, int JustinaConstraints, int SDcardChipSelectPin) :
     _pExternInputStreams(pAltInputStreams), _pExternOutputStreams(pAltOutputStreams), _externIOstreamCount(altIOstreamCount),
     _progMemorySize(progMemSize), _justinaConstraints(JustinaConstraints), _SDcardChipSelectPin(SDcardChipSelectPin)
-
 {
 
     // settings to be initialized when cold starting interpreter only

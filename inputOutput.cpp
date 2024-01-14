@@ -48,7 +48,7 @@ Justina_interpreter::execResult_type Justina_interpreter::startSD() {
 
     if ((_justinaConstraints & 0b0011) == 0) { return result_SD_noCardOrCardError; }
     if (!SD.begin(_SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
-    
+
     _openFileCount = 0;
     for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) { openFiles[i].fileNumberInUse = false; }
     _SDinitOK = true;
@@ -56,12 +56,22 @@ Justina_interpreter::execResult_type Justina_interpreter::startSD() {
 }
 
 
+// -------------------------------------------------------
+// *   ESP32 only: convert file access modes for ESP32   *
+// -------------------------------------------------------
+
+#if defined ESP32
+    char* Justina_interpreter::SD_ESP32_convert_accessMode(int mode){
+    ////
+    }
+#endif
+
+
 // -----------------------
 // *   open an SD file   *
 // -----------------------
 
 Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumber, char* filePath, int mode) {
-
     fileNumber = 0;                                                                                                         // init: no file number yet
 
     if (!_SDinitOK) { return result_SD_noCardOrCardError; }
@@ -86,7 +96,13 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumbe
     // find a free file number 
     for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
         if (!openFiles[i].fileNumberInUse) {
+            
+        #if defined ESP32
+            char* ESPmode{};
+            openFiles[i].file = SD.open(filePathInCapitals, SD_ESP32_convert_accessMode(mode));
+        #else
             openFiles[i].file = SD.open(filePathInCapitals, mode);
+        #endif
             if (!openFiles[i].file) {
                 delete[] filePathInCapitals;                                                                                // not counted for memory leak testing
                 return result_SD_couldNotOpenFile;
@@ -114,7 +130,6 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumbe
 // ----------------------------------------
 
 Justina_interpreter::execResult_type Justina_interpreter::SD_openNext(int dirFileNumber, int& fileNumber, File* pDirectory, int mode) {
-
     fileNumber = 0;                                                                                                         // init: no next file opened
 
     if (!_SDinitOK) { return result_SD_noCardOrCardError; }
@@ -128,7 +143,11 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_openNext(int dirFil
     // find a free file number and assign it to this file
     for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
         if (!openFiles[i].fileNumberInUse) {
+        #if defined ESP32
+            openFiles[i].file = pDirectory->openNextFile( SD_ESP32_convert_accessMode(mode));
+        #else
             openFiles[i].file = pDirectory->openNextFile(mode);
+        #endif
             // file evaluates to false: assume last file in directory is currently open (if any) and no more files are available. Do not return error, file number 0 indicates 'last file reached'
             if (!openFiles[i].file) { return result_execOK; }
 
@@ -216,11 +235,9 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_listFiles() {
 
     // print to console (default), or to any other defined I/O device, or to a file, but without date and time stamp (unfortunately this fixed in SD library)
     // before calling this function, output stream must be set by function 'setStream(...)'
-
-    SDLib::File SDroot = SD.open("/");
+    File SDroot = SD.open("/");
     println("SD card: files (name, size in bytes): ");
     printDirectory(SDroot, 0);
-
     return result_execOK;
 }
 
@@ -252,7 +269,7 @@ void Justina_interpreter::printDirectory(File dir, int indentLevel) {
         else {
             // files have sizes, directories do not
             int len = indentLevel * step + strlen(entry.name());
-            if (len < defaultSizeAttrColumn - minimumColumnSpacing) {      // 
+            if (len < defaultSizeAttrColumn - minimumColumnSpacing) {      
                 for (int i = len; i < defaultSizeAttrColumn; i++) { print(" "); }
             }
             else {
@@ -448,7 +465,7 @@ int Justina_interpreter::readFrom(int streamNumber) {
 int Justina_interpreter::readFrom(int streamNumber, char* buffer, int length) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, pStream) != result_execOK) { return 0; }          // if error, zero characters written but error is not returned to caller
-    return static_cast<File*>(pStream)->read(buffer, length);                           // NOTE: stream MUST be a file (check before call) -> appFlag_dataInOut  and appFlag_dataRecdFromStream1 must not be set
+    return static_cast<File*>(pStream)->read((uint8_t*)buffer, length);                           // NOTE: stream MUST be a file (check before call) -> appFlag_dataInOut  and appFlag_dataRecdFromStream1 must not be set
 }
 
 
@@ -637,7 +654,7 @@ int Justina_interpreter::read() {
 }
 
 int Justina_interpreter::read(char* buffer, int length) {
-    return (static_cast <File*>(_pStreamIn))->read(buffer, length);                     // NOTE: stream MUST be a file (check before call) -> appFlag_dataInOut  and appFlag_dataRecdFromStream1 must not be set
+    return (static_cast <File*>(_pStreamIn))->read((uint8_t*)buffer, length);                     // NOTE: stream MUST be a file (check before call) -> appFlag_dataInOut  and appFlag_dataRecdFromStream1 must not be set
 }
 
 
@@ -782,7 +799,7 @@ char Justina_interpreter::getCharacter(bool& kill, bool& forcedStop, bool& force
 
         if (kill) { return c; }                                         // flag 'kill' (request from Justina caller): return immediately
         forcedAbort = forcedAbort || abort;                             // do not exit immediately, except if waiting for a 'first' character (with a long timeout)
-        if(forcedAbort && useLongTimeout){break;}                           
+        if (forcedAbort && useLongTimeout) { break; }
         forcedStop = forcedStop || stop;                                // flag 'stop': continue looking for a character (do not exit immediately). Upon exit, signal 'stop' flag has been raised
         setStdConsole = setStdConsole || stdCons;
         if (c != 0xff) { break; }
@@ -809,7 +826,7 @@ bool Justina_interpreter::flushInputCharacters(bool& forcedStop, bool& forcedAbo
     bool kill{ false };
     do {                                                                                                // process remainder of input file (flush)
         // NOTE: forcedStop and forcedAbort are dummy arguments here and will be ignored because already flushing input file after error, abort or kill
-        bool stop{ false },abort{false}, stdConsDummy{ false };                          // dummy arguments (not needed here)
+        bool stop{ false }, abort{ false }, stdConsDummy{ false };                          // dummy arguments (not needed here)
         c = getCharacter(kill, stop, abort, stdConsDummy, true);
         if (kill) { break; }                                                          // return value true: kill Justina interpreter (buffer is now flushed until next line character)
         if (abort) { forcedAbort = true; }                                    // do NOT exit immediately, keep on flushing

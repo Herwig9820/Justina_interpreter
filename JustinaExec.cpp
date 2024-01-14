@@ -1389,7 +1389,7 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
     }
     // new last value is a non-empty string: make a copy of the string and store a reference to this new string
     else {
-        int stringlen = min(strlen(lastvalue.value.pStringConst), MAX_ALPHA_CONST_LEN);                         // excluding terminating \0
+        int stringlen = min(int(strlen(lastvalue.value.pStringConst)), MAX_ALPHA_CONST_LEN);                         // excluding terminating \0
         _lastValuesStringObjectCount++;
 
         lastResultValueFiFo[0].pStringConst = new char[stringlen + 1];
@@ -2182,7 +2182,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
             // make a copy of the character string and store a pointer to this copy as result (even if operand string is already an intermediate constant)
             // because the value will be stored in a variable, limit to the maximum allowed string length
             char* pUnclippedResultString = opResult.pStringConst;
-            int stringlen = min(strlen(pUnclippedResultString), MAX_ALPHA_CONST_LEN);
+            int stringlen = min(int(strlen(pUnclippedResultString)), MAX_ALPHA_CONST_LEN);
             (varScope == var_isUser) ? _userVarStringObjectCount++ : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount++ : _localVarStringObjectCount++;
             opResult.pStringConst = new char[stringlen + 1];
         #if PRINT_HEAP_OBJ_CREA_DEL

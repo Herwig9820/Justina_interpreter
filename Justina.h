@@ -54,7 +54,7 @@ class LinkedList {
     // --------------------
 
     static const int listNameSize = 9;                                  // including terminating '\0'
-  
+
 
     // ------------------
     // *   structures   *
@@ -1767,8 +1767,13 @@ private:
     int _streamNumberIn{ 0 }, _streamNumberOut{ 0 };
 
     int _externIOstreamCount = 0;
-
+#if defined ESP32
+    static const uint O_READ{ 0x01 };
+    static const uint O_WRITE{ 0x02 };
+#else
     Sd2Card _SDcard;
+#endif
+
     OpenFile openFiles[MAX_OPEN_SD_FILES];                          // open files: file paths and attributed file numbers
     int _openFileCount = 0;
     int _SDcardChipSelectPin{ 10 };
@@ -1841,7 +1846,11 @@ public:
     // (de-) constructor
     // -----------------
 
+#if defined ESP32
+    Justina_interpreter(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, long progMemSize, int SDcardConstraints,int SDcardChipSelectPin);
+#else
     Justina_interpreter(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, long progMemSize, int SDcardConstraints = 0, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);
+#endif
     ~Justina_interpreter();
 
 
@@ -2059,8 +2068,13 @@ private:
 
     execResult_type startSD();
     void SD_closeAllFiles();
+
+#if defined ESP32
+    char* SD_ESP32_convert_accessMode(int mode);
+#endif
     execResult_type SD_open(int& fileNumber, char* filePath, int mod = O_READ);
     execResult_type SD_openNext(int dirFileNumber, int& fileNumber, File* pDirectory, int mod = O_READ);
+
     void SD_closeFile(int fileNumber);
     execResult_type SD_listFiles();
     execResult_type SD_fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File*& pFile, int allowFileTypes = 1);

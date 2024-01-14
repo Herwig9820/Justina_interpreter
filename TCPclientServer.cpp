@@ -142,7 +142,9 @@ void TCPconnection::maintainWiFiConnection() {
             if (_resetWiFi || (WiFi.status() != WL_CONNECTED)) {
                 changeConnectionState(conn_0_wifiNotConnected);
                 WiFi.disconnect();
+#if !defined ESP32
                 WiFi.end();
+#endif
                 _lastWifiConnectAttempt = millis();                             // remember time of last TCP connection attempt
                 _resetWiFi = false;
             }
@@ -179,12 +181,15 @@ void TCPconnection::maintainTCPconnection(bool resetKeepAliveTimer) {
 
         default:                                                                // current state: TCP connected
 
+#if defined ESP32
+            bool clientConnectionEnd = (!_client.connected() || (_TCPconnTimeoutEnabled && (_keepAliveUntil < millis())));
+#else
             // current state: TCP connected => check whether this is still the case
             // NOTE 1: occasionally, a stall occurs while IN _client.connected() method and the system hangs
             // NOTE 2: sometimes, _client.connected() does not catch terminal disconnect
             // => _client.connected() method replaced by _client.status() method
             bool clientConnectionEnd = ((_client.status() != 4) || (_TCPconnTimeoutEnabled && (_keepAliveUntil < millis())));
-
+#endif
             if (clientConnectionEnd) {   // client still connected ? (or still unread data)
                 changeConnectionState(conn_1_wifiConnected);
                 _client.stop();

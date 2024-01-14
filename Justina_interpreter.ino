@@ -107,7 +107,8 @@ U8X8LOG u8x8log_i2c;        // Create a U8x8log object
 uint8_t u8log_buffer_i2c[U8LOG_WIDTH * U8LOG_HEIGHT];
 #endif
 
-////U8X8_SH1106_128X64_NONAME_4W_HW_SPI u8x8(VMA437_OLED_CS_PIN, VMA437_OLED_DC_PIN);  // HW SPI
+// NOTE (cfr. next line): OLED HW SPI is not compatible with SD card HW SPI
+//U8X8_SH1106_128X64_NONAME_4W_HW_SPI u8x8(VMA437_OLED_CS_PIN, VMA437_OLED_DC_PIN);  
 
 
 
@@ -135,9 +136,9 @@ bool interpreterInMemory{ false };                                              
 
 #if defined ARDUINO_ARCH_RP2040 
 long progMemSize = 1 << 16;             // 64 kByte
-#elif defined (ESP32)
+#elif defined ESP32
 long progMemSize = 1 << 16;             // 64 kByte
-#define SD_CHIP_SELECT_PIN 10           // predefined in library for other boards
+int SD_CHIP_SELECT_PIN {10};           // predefined in library for other boards
 #else
 long progMemSize = 2000;
 #endif 
@@ -282,7 +283,9 @@ void setup() {
 
 #if WITH_TCPIP
     Serial.println("\r\nStarting TCP server");
+#if !ESP32
     Serial.print("WiFi firmware version  "); Serial.println(WiFi.firmwareVersion()); Serial.println();
+    #endif
     myTCPconnection.setVerbose(false);                                                // disable debug messages from within myTCPconnection
     myTCPconnection.setKeepAliveTimeout(20 * 60 * 1000);                                // 20 minutes TCP keep alive timeout
     Serial.println("On the remote terminal, press ENTER to connect\r\n");
@@ -320,7 +323,7 @@ void setup() {
     Serial.println(menu);
     Serial.print("Main> ");
 
-#ifdef RTClock
+#if defined RTClock
     SdFile::dateTimeCallback((dateTime));
 #endif
 }
@@ -547,7 +550,7 @@ void maintainTCP(bool resetKeepAliveTimer) {
 
 // this callback function is called by the SD library
 
-#ifdef RTClock
+#if defined RTClock
 void dateTime(uint16_t* date, uint16_t* time)
 {
     unsigned int year = 1980;

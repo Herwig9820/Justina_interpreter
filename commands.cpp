@@ -1146,7 +1146,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         else {
                             // note that for reference variables, the variable type fetched is the SOURCE variable type
                             int varScope = pStackLvl->varOrConst.sourceVarScopeAndFlags & var_scopeMask;
-                            int stringlen = min(strlen(input), MAX_ALPHA_CONST_LEN);
+                            int stringlen = min(int(strlen(input)), MAX_ALPHA_CONST_LEN);
 
                             (varScope == var_isUser) ? _userVarStringObjectCount++ : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount++ : _localVarStringObjectCount++;
                             args[1].pStringConst = new char[stringlen + 1];
@@ -1373,7 +1373,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                             #endif
                             }
                         }
-                            }
+                    }
 
                     if (!isTabFunction && !isColFunction) {                                                                 // go for normal flow
                         // prepare one value for printing
@@ -1434,7 +1434,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                             _intermediateStringObjectCount--;
                             delete[] oldAssembString;
                         }
-                        }
+                    }
 
                     else {      // print to file or console ?
                         if (printString != nullptr) {
@@ -1454,10 +1454,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         _intermediateStringObjectCount--;
                         delete[] printString;
                     }
-                    }
+                }
 
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-                        }
+            }
 
             // finalise
             if (isPrintToVar) {                                                                                             // print to string ? save in variable
@@ -1515,7 +1515,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 }
 
                 if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) { delete[] assembledString; }                            // not referenced in eval. stack (clippedString is), so will not be deleted as part of cleanup
-                }
+            }
 
             else {      // print to file or external IO
                 if (doPrintLineEnd) {
@@ -1527,7 +1527,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // clean up
             clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
-                    }
+        }
         break;
 
 
@@ -1596,13 +1596,17 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         // print all SD files, with 'last modified' dates, to Serial
         // ---------------------------------------------------------
 
-        // to print to any output stream, look for command code cmdcod_listFiles
+    #if defined ESP32
+        printlnTo(0, "\nNot available on ESP32: use other List Files Command instead");
+    #else
+    // to print to any output stream, look for command code cmdcod_listFiles
 
         case cmdcod_listFilesToSer:
         {
             if (!_SDinitOK) { return result_SD_noCardOrCardError; }
 
             // print to SERIAL (fixed in SD library), including date and time stamp
+
             SdVolume volume{};
             SdFile root{};
             // ===>>> to serial !!!
@@ -1616,8 +1620,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
         }
+    #endif
         break;
-
 
         // ------------------------------------------------------
         // Set display width for printing last calculation result
@@ -2041,10 +2045,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         }
         break;
 
-                }       // end switch
+    }       // end switch
 
     return result_execOK;
-            }
+}
 
 
 // -------------------------------

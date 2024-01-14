@@ -959,7 +959,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
         // -------
         // 
         // -------
-        
+
         case fnccod_isColdStart:
         {
             fcnResultValueType = value_isLong;                              // must be long (not float) value
@@ -1661,7 +1661,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             else if (functionCode == fnccod_digitalWrite) { digitalWrite(args[0].longConst, args[1].longConst); }           // args: pin, value
             else if (functionCode == fnccod_pinMode) { pinMode(args[0].longConst, args[1].longConst); }                     // args: pin, pin mode
             else if (functionCode == fnccod_analogRead) { fcnResult.longConst = analogRead(args[0].longConst); }            // arg: pin
-        #if !defined(ARDUINO_ARCH_RP2040)                                                                                   // Arduino RP2040: prevent linker error
+        #if defined(ARDUINO_ARCH_SAMD)                                                                                  // analog reference only for 
             else if (functionCode == fnccod_analogReference) { analogReference(args[0].longConst); }                        // arg: reference type (0 to 5: see Arduino doc - 2 is external reference)
         #endif
             else if (functionCode == fnccod_analogWrite) { analogWrite(args[0].longConst, args[1].longConst); }             // args: pin, value
@@ -1673,10 +1673,18 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                     pulseIn(args[0].longConst, args[1].bytes[0], (uint32_t)args[2].longConst);
             }
             else if (functionCode == fnccod_shiftIn) {                                                                      // args: data pin, clock pin, bit order
+            #if defined ESP32 
+                fcnResult.longConst = shiftIn(args[0].longConst, args[1].longConst, args[2].longConst);
+            #else
                 fcnResult.longConst = shiftIn(args[0].longConst, args[1].longConst, (BitOrder)args[2].longConst);
+            #endif
             }
             else if (functionCode == fnccod_shiftOut) {                                                                     // args: data pin, clock pin, bit order, value
+            #if defined ESP32
+                shiftOut(args[0].longConst, args[1].longConst, args[2].longConst, args[3].longConst);
+            #else
                 shiftOut(args[0].longConst, args[1].longConst, (BitOrder)args[2].longConst, args[3].longConst);
+            #endif
             }
             else if (functionCode == fnccod_tone) {                                                                         // args: pin, frequency, (optional) duration
                 (suppliedArgCount == 2) ? tone(args[0].longConst, args[1].longConst) : tone(args[0].longConst, args[1].longConst, args[2].longConst);
@@ -2143,8 +2151,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 }
                 break;
 
-                case 15: fcnResult.longConst = _lastValuesCount;break;                                // current depth of last values FiF0
-                
+                case 15: fcnResult.longConst = _lastValuesCount; break;                                // current depth of last values FiF0
+
 
                 case 16: fcnResult.longConst = _openFileCount; break;                           // open file count
                 case 17: fcnResult.longConst = _externIOstreamCount; break;                     // number of external streams defined
@@ -2180,13 +2188,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
 
 
-                
-                
-                
-                
-                
-                
-                
+
+
+
+
+
+
+
                 case 31:                                                                        // product name
                 case 32:                                                                        // legal copy right
                 case 33:                                                                        // product version 
