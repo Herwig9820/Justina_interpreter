@@ -71,7 +71,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
     _activeFunctionData.errorProgramCounter = _activeFunctionData.activeCmd_tokenAddress;
 
 #if PRINT_DEBUG_INFO
-    _pDebugOut->print("                 process command code: "); _pDebugOut->println((int)_activeFunctionData.activeCmd_ResWordCode);
+    _pDebugOut->print("   process command code: "); _pDebugOut->println((int)_activeFunctionData.activeCmd_ResWordCode);
 #endif
 
     switch (_activeFunctionData.activeCmd_ResWordCode) {                                                                    // command code 
@@ -233,7 +233,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
             _pParsedCommandLineStackTop = parsedCommandLineStack.getLastListElement();
         #if PRINT_PARSED_CMD_STACK
-            _pDebugOut->print("  >> POP parsed statements (Go): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
+            _pDebugOut->print("   >> POP parsed statements (Go): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
         #endif
             --_openDebugLevels;
 
@@ -1596,13 +1596,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         // print all SD files, with 'last modified' dates, to Serial
         // ---------------------------------------------------------
 
-    #if defined ESP32
-        printlnTo(0, "\nNot available on ESP32: use other List Files Command instead");
-    #else
     // to print to any output stream, look for command code cmdcod_listFiles
 
         case cmdcod_listFilesToSer:
         {
+        #if defined ESP32
+            printlnTo(0, "\n'List files to Serial' command not available on ESP32: use other 'List Files' command instead");
+        #else
             if (!_SDinitOK) { return result_SD_noCardOrCardError; }
 
             // print to SERIAL (fixed in SD library), including date and time stamp
@@ -1612,15 +1612,16 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // ===>>> to serial !!!
             Serial.println("\nSD card: files (name, date, size in bytes): ");
 
+            Sd2Card _SDcard;
             volume.init(_SDcard);
             root.openRoot(volume);
             root.ls(LS_R | LS_DATE | LS_SIZE);                                                                              // to SERIAL (not to _console)
-
-            // clean up
-            clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
-            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
+        #endif
         }
-    #endif
+
+        // clean up
+        clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
+        _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
         break;
 
         // ------------------------------------------------------

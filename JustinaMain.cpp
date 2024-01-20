@@ -34,11 +34,6 @@
 #define PRINT_DEBUG_INFO 0
 #define PRINT_OBJECT_COUNT_ERRORS 0
 
-// progMemSize defines the size of Justina program memory in bytes, which depends on the available RAM 
-#if !defined (ARDUINO_ARCH_RP2040) && !defined (ARDUINO_ARCH_SAMD)  && !defined (ESP32)
-#error Justina library does not support boards with this processor.
-#endif 
-
 
 // *****************************************************************
 // ***        class Justina_interpreter - implementation         ***
@@ -100,7 +95,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"program",         cmdcod_program,         cmd_onlyProgramTop | cmd_skipDuringExec,                1,1,    cmdPar_103,     cmdBlockNone},
     {"function",        cmdcod_function,        cmd_onlyInProgram | cmd_skipDuringExec,                 1,1,    cmdPar_108,     cmdBlockJustinaFunction},
 
-    {"for",             cmdcod_for,             cmd_onlyImmOrInsideFuncBlock,                           1,3,    cmdPar_109,     cmdBlockFor},
+    {"for",             cmdcod_for,             cmd_onlyImmOrInsideFuncBlock,                           2,3,    cmdPar_109,     cmdBlockFor},
     {"while",           cmdcod_while,           cmd_onlyImmOrInsideFuncBlock,                           1,1,    cmdPar_104,     cmdBlockWhile},
     {"if",              cmdcod_if,              cmd_onlyImmOrInsideFuncBlock,                           1,1,    cmdPar_104,     cmdBlockIf},
     {"elseif",          cmdcod_elseif,          cmd_onlyImmOrInsideFuncBlock,                           1,1,    cmdPar_104,     cmdBlockIf_elseIf},
@@ -249,9 +244,7 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     {"digitalWrite",            fnccod_digitalWrite,            2,2,    0b0},
     {"pinMode",                 fnccod_pinMode,                 2,2,    0b0},
     {"analogRead",              fnccod_analogRead,              1,1,    0b0},
-#if !defined(ARDUINO_ARCH_RP2040)                                                           // Arduino RP2040: prevent linker error
     {"analogReference",         fnccod_analogReference,         1,1,    0b0},
-#endif
     {"analogWrite",             fnccod_analogWrite,             2,2,    0b0},
     {"analogReadResolution",    fnccod_analogReadResolution,    1,1,    0b0},
     {"analogWriteResolution",   fnccod_analogWriteResolution,   1,1,    0b0},
@@ -609,12 +602,6 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, Print*
     // create a 'breakpoints' object, containing the breakpoints table and is responsible for handling breakpoints 
     _pBreakpoints = new Breakpoints(this, (_progMemorySize * BP_LINE_RANGE_PROGMEM_STOR_RATIO) / 100, MAX_BP_COUNT);
 
-#if PRINT_HEAP_OBJ_CREA_DEL
-    _pDebugOut->print("+++++ (ext IO streams) "); _pDebugOut->println((uint32_t)_pPrintColumns, HEX);
-    _pDebugOut->print("+++++ (program memory) "); _pDebugOut->println((uint32_t)_programStorage, HEX);
-    _pDebugOut->print("+++++ (BP object)      "); _pDebugOut->println((uint32_t)_pBreakpoints, HEX);
-#endif
-
     initInterpreterVariables(true);
 };
 
@@ -624,11 +611,7 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, Print*
 // ------------------
 
 Justina_interpreter::~Justina_interpreter() {
-#if PRINT_HEAP_OBJ_CREA_DEL
-    _pDebugOut->print("----- (BP object)      "); _pDebugOut->println((uint32_t)_pBreakpoints, HEX);
-    _pDebugOut->print("----- (program memory) "); _pDebugOut->println((uint32_t)_programStorage, HEX);
-    _pDebugOut->print("----- (ext IO streams) "); _pDebugOut->println((uint32_t)_pPrintColumns, HEX);
-#endif
+
     resetMachine(true);                                                                             // delete all objects created on the heap: with = with user variables and FiFo stack
 
     delete _pBreakpoints;
@@ -641,7 +624,7 @@ Justina_interpreter::~Justina_interpreter() {
 // *   set system (main) call back functons   *
 // --------------------------------------------
 
-bool Justina_interpreter::setMainLoopCallback(void (*func)(long& appFlags)) {
+void Justina_interpreter::setMainLoopCallback(void (*func)(long& appFlags)) {
 
     // this function is directly called from the Arduino program starting Justina
     // it stores the address of an optional 'user callback' function
@@ -649,7 +632,6 @@ bool Justina_interpreter::setMainLoopCallback(void (*func)(long& appFlags)) {
     // ...to execute a specific routine regularly (e.g. to maintain a TCP connection, to implement a heartbeat, ...)
 
     _housekeepingCallback = func;
-    return true;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -657,37 +639,37 @@ bool Justina_interpreter::setMainLoopCallback(void (*func)(long& appFlags)) {
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------
 
     // these functions are directly called from the Arduino program starting Justina
-    // each function stores the starting address of an array with information about external (user callback) functions with a specific return type 
+    // each function stores the starting address of an array with information about external (user callback) functions with a specific CPP return type 
     // for instance, _pExtCppFunctions[0] stores the adress of the array containing information about cpp functions returning a boolean value
     // a null pointer indicates there are no functions of a specific type
-    // return types are: 0 = bool, 1 = char, 2 = int, 3 = long, 4 = float, 5 = char*, 6 = void (but returns zero to Justina)
+    // cpp function return types are: 0 = bool, 1 = char, 2 = int, 3 = long, 4 = float, 5 = char*, 6 = void (but returns zero to Justina)
 
-bool Justina_interpreter::setUserBoolCppFunctionsEntryPoint(const CppBoolFunction* const  pCppBoolFunctions, int cppBoolFunctionCount) {
+void Justina_interpreter::setUserBoolCppFunctionsEntryPoint(const CppBoolFunction* const  pCppBoolFunctions, int cppBoolFunctionCount) {
     _pExtCppFunctions[0] = (CppBoolFunction*)pCppBoolFunctions;
     _ExtCppFunctionCounts[0] = cppBoolFunctionCount;
 };
 
-char Justina_interpreter::setUserCharCppFunctionsEntryPoint(const CppCharFunction* const  pCppCharFunctions, int cppCharFunctionCount) {
+void Justina_interpreter::setUserCharCppFunctionsEntryPoint(const CppCharFunction* const  pCppCharFunctions, int cppCharFunctionCount) {
     _pExtCppFunctions[1] = (CppCharFunction*)pCppCharFunctions;
     _ExtCppFunctionCounts[1] = cppCharFunctionCount;
 };
 
-int Justina_interpreter::setUserIntCppFunctionsEntryPoint(const CppIntFunction* const  pCppIntFunctions, int cppIntFunctionCount) {
+void Justina_interpreter::setUserIntCppFunctionsEntryPoint(const CppIntFunction* const  pCppIntFunctions, int cppIntFunctionCount) {
     _pExtCppFunctions[2] = (CppIntFunction*)pCppIntFunctions;
     _ExtCppFunctionCounts[2] = cppIntFunctionCount;
 };
 
-long Justina_interpreter::setUserLongCppFunctionsEntryPoint(const CppLongFunction* const pCppLongFunctions, int cppLongFunctionCount) {
+void Justina_interpreter::setUserLongCppFunctionsEntryPoint(const CppLongFunction* const pCppLongFunctions, int cppLongFunctionCount) {
     _pExtCppFunctions[3] = (CppLongFunction*)pCppLongFunctions;
     _ExtCppFunctionCounts[3] = cppLongFunctionCount;
 };
 
-float Justina_interpreter::setUserFloatCppFunctionsEntryPoint(const CppFloatFunction* const pCppFloatFunctions, int cppFloatFunctionCount) {
+void Justina_interpreter::setUserFloatCppFunctionsEntryPoint(const CppFloatFunction* const pCppFloatFunctions, int cppFloatFunctionCount) {
     _pExtCppFunctions[4] = (CppFloatFunction*)pCppFloatFunctions;
     _ExtCppFunctionCounts[4] = cppFloatFunctionCount;
 };
 
-char* Justina_interpreter::setUser_pCharCppFunctionsEntryPoint(const Cpp_pCharFunction* const pCpp_pCharFunctions, int cpp_pCharFunctionCount) {
+void Justina_interpreter::setUser_pCharCppFunctionsEntryPoint(const Cpp_pCharFunction* const pCpp_pCharFunctions, int cpp_pCharFunctionCount) {
     _pExtCppFunctions[5] = (Cpp_pCharFunction*)pCpp_pCharFunctions;
     _ExtCppFunctionCounts[5] = cpp_pCharFunctionCount;
 };
@@ -738,6 +720,13 @@ bool Justina_interpreter::run() {
     printTo(0, "    "); printlnTo(0, J_legalCopyright);
     printTo(0, "    Version: "); printTo(0, J_productVersion); printTo(0, " ("); printTo(0, J_buildDate); printlnTo(0, ")");
     for (int i = 0; i < 48; i++) { printTo(0, "*"); } printlnTo(0);
+
+#if PRINT_HEAP_OBJ_CREA_DEL
+    int col{}; 
+    _pDebugOut->println();
+    _pDebugOut->print("+++++ (Justina object) at 0x"); col = 10 - _pDebugOut->print((uint32_t)this, HEX); _pDebugOut->print(", size "); _pDebugOut->println(sizeof(*this));
+    _pDebugOut->print("+++++ (program memory) at 0x"); col = 10 - _pDebugOut->print((uint32_t)_programStorage, HEX); _pDebugOut->print(", size "); _pDebugOut->println(_progMemorySize + IMM_MEM_SIZE);
+#endif
 
     // find token index for terminal token 'semicolon with breakpoint allowed' 
     int index{}, semicolonBPallowed_index{}, semicolonBPset_index{}, matches{};
@@ -791,7 +780,7 @@ bool Justina_interpreter::run() {
             _initiateProgramLoad = (execResult == result_execOK);
             if (!_initiateProgramLoad) { printTo(0, "Could not open 'start.jus' program - error "); printlnTo(0, execResult); }
         }
-        
+
         if (_initiateProgramLoad) {                                                                             // !!! second 'if(_initiateProgramLoad)'
             resetMachine(false);                                                                                // if 'warm' start, previous program (with its variables) may still exist
             _programMode = true;
@@ -1161,8 +1150,8 @@ bool Justina_interpreter::prepareForIdleMode(parsingResult_type result, execResu
     // NOTE !!! Also set PRINT_DEBUG_INFO to 1 in file Breakpoints !!!
     if (_programMode) {
         _pDebugOut->println();
-        _pBreakpoints->printLineRangesToDebugOut(_pDebugOut);
-    }
+        _pBreakpoints->printLineRangesToDebugOut(static_cast<Stream*>(_pDebugOut));
+}
 #endif
 
     // before loadng a program, clear memory except user variables
@@ -1542,35 +1531,34 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
     // string and array heap objects: any objects left ?
     if (_identifierNameStringObjectCount != 0) {
     #if PRINT_OBJECT_COUNT_ERRORS
-        _pDebugOut->print("*** Variable / function name objects cleanup error. Remaining: "); _pDebugOut->println(_identifierNameStringObjectCount);
+        _pDebugOut->print("**** Variable / function name objects cleanup error. Remaining: "); _pDebugOut->println(_identifierNameStringObjectCount);
     #endif
         _identifierNameStringObjectErrors += abs(_identifierNameStringObjectCount);
-    }
+}
 
     if (_parsedStringConstObjectCount != 0) {
     #if PRINT_OBJECT_COUNT_ERRORS
-        _pDebugOut->print("*** Parsed constant string objects cleanup error. Remaining: "); _pDebugOut->println(_parsedStringConstObjectCount);
+        _pDebugOut->print("**** Parsed constant string objects cleanup error. Remaining: "); _pDebugOut->println(_parsedStringConstObjectCount);
     #endif
         _parsedStringConstObjectErrors += abs(_parsedStringConstObjectCount);
     }
 
     if (_globalStaticVarStringObjectCount != 0) {
     #if PRINT_OBJECT_COUNT_ERRORS
-        _pDebugOut->print("*** Variable string objects cleanup error. Remaining: "); _pDebugOut->println(_globalStaticVarStringObjectCount);
+        _pDebugOut->print("**** Variable string objects cleanup error. Remaining: "); _pDebugOut->println(_globalStaticVarStringObjectCount);
     #endif
         _globalStaticVarStringObjectErrors += abs(_globalStaticVarStringObjectCount);
     }
 
     if (_globalStaticArrayObjectCount != 0) {
     #if PRINT_OBJECT_COUNT_ERRORS
-        _pDebugOut->print("*** Array objects cleanup error. Remaining: "); _pDebugOut->println(_globalStaticArrayObjectCount);
+        _pDebugOut->print("**** Array objects cleanup error. Remaining: "); _pDebugOut->println(_globalStaticArrayObjectCount);
     #endif
         _globalStaticArrayObjectErrors += abs(_globalStaticArrayObjectCount);
     }
 
 #if PRINT_DEBUG_INFO
-    _pDebugOut->print("\r\n** Reset stats\r\n    parsed strings "); _pDebugOut->print(_parsedStringConstObjectCount);
-
+    _pDebugOut->print("\r\n   Reset stats\r\n   parsed strings "); _pDebugOut->print(_parsedStringConstObjectCount);
     _pDebugOut->print(", prog name strings "); _pDebugOut->print(_identifierNameStringObjectCount);
     _pDebugOut->print(", prog var strings "); _pDebugOut->print(_globalStaticVarStringObjectCount);
     _pDebugOut->print(", prog arrays "); _pDebugOut->print(_globalStaticArrayObjectCount);
@@ -1579,35 +1567,35 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
     if (withUserVariables) {
         if (_userVarNameStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
-            _pDebugOut->print("*** User variable name objects cleanup error. Remaining: "); _pDebugOut->println(_userVarNameStringObjectCount);
+            _pDebugOut->print("**** User variable name objects cleanup error. Remaining: "); _pDebugOut->println(_userVarNameStringObjectCount);
         #endif
             _userVarNameStringObjectErrors += abs(_userVarNameStringObjectCount);
-        }
+    }
 
         if (_userVarStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
-            _pDebugOut->print("*** User variable string objects cleanup error. Remaining: "); _pDebugOut->println(_userVarStringObjectCount);
+            _pDebugOut->print("**** User variable string objects cleanup error. Remaining: "); _pDebugOut->println(_userVarStringObjectCount);
         #endif
             _userVarStringObjectErrors += abs(_userVarStringObjectCount);
         }
 
         if (_userArrayObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
-            _pDebugOut->print("*** User array objects cleanup error. Remaining: "); _pDebugOut->println(_userArrayObjectCount);
+            _pDebugOut->print("**** User array objects cleanup error. Remaining: "); _pDebugOut->println(_userArrayObjectCount);
         #endif
             _userArrayObjectErrors += abs(_userArrayObjectCount);
         }
 
         if (_systemVarStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
-            _pDebugOut->print("*** System variable string objects cleanup error. Remaining: "); _pDebugOut->println(_systemVarStringObjectCount);
+            _pDebugOut->print("**** System variable string objects cleanup error. Remaining: "); _pDebugOut->println(_systemVarStringObjectCount);
         #endif
             _systemVarStringObjectErrors += abs(_systemVarStringObjectCount);
         }
 
         if (_lastValuesStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
-            _pDebugOut->print("*** Last value FiFo string objects cleanup error. Remaining: "); _pDebugOut->print(_lastValuesStringObjectCount);
+            _pDebugOut->print("**** Last value FiFo string objects cleanup error. Remaining: "); _pDebugOut->print(_lastValuesStringObjectCount);
         #endif
             _lastValuesStringObjectErrors += abs(_lastValuesStringObjectCount);
         }

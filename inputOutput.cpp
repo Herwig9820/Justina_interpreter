@@ -98,7 +98,6 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumbe
         if (!openFiles[i].fileNumberInUse) {
             
         #if defined ESP32
-            char* ESPmode{};
             openFiles[i].file = SD.open(filePathInCapitals, SD_ESP32_convert_accessMode(mode));
         #else
             openFiles[i].file = SD.open(filePathInCapitals, mode);
@@ -831,7 +830,7 @@ bool Justina_interpreter::flushInputCharacters(bool& forcedStop, bool& forcedAbo
         if (kill) { break; }                                                          // return value true: kill Justina interpreter (buffer is now flushed until next line character)
         if (abort) { forcedAbort = true; }                                    // do NOT exit immediately, keep on flushing
         if (stop) { forcedStop = true; }
-        if (((millis() - start) > 1000) && !messageGiven) { messageGiven = true; printlnTo(0, "Flushing incoming characters. Please wait..."); }
+        if (((millis() - start) > 1000) && !messageGiven) { messageGiven = true; printlnTo(0, "Flushing incoming characters... Please wait"); }
 
         // after a set time, start showing progress by printing dots 
         if (messageGiven) {

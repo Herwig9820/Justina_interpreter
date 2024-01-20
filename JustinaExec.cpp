@@ -48,7 +48,7 @@
 
 Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere) {
 #if PRINT_PROCESSED_TOKEN
-    _pDebugOut->print("\r\n*** enter exec: eval stack depth: "); _pDebugOut->println(evalStack.getElementCount());
+    _pDebugOut->print("\r\n**** enter exec: eval stack depth: "); _pDebugOut->println(evalStack.getElementCount());
 #endif
     // init
     _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_executing;     // status 'executing'
@@ -98,7 +98,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
         // if terminal token, determine which terminal type
     #if PRINT_PROCESSED_TOKEN
-        _pDebugOut->print("** START exec 1 token step: address = "); _pDebugOut->println(_programCounter - _programStorage);
+        _pDebugOut->print("** START exec 1 token step: step = "); _pDebugOut->println(_programCounter - _programStorage);
     #endif
 
         bool isTerminal = ((tokenType == tok_isTerminalGroup1) || (tokenType == tok_isTerminalGroup2) || (tokenType == tok_isTerminalGroup3));
@@ -136,20 +136,18 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
                 tokenIndex = ((TokenIsResWord*)_programCounter)->tokenIndex;
 
-            #if PRINT_DEBUG_INFO
-                _pDebugOut->print("eval stack depth "); _pDebugOut->print(evalStack.getElementCount());  _pDebugOut->print(" - keyword: "); _pDebugOut->print(_resWords[tokenIndex]._resWordName);
-                _pDebugOut->print("   ["); _pDebugOut->print(_programCounter - _programStorage); _pDebugOut->println("]");
-            #endif
             #if PRINT_PROCESSED_TOKEN
-                _pDebugOut->print("process keyword: address "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth "); _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [");
-                _pDebugOut->print(_resWords[tokenIndex]._resWordName); _pDebugOut->println("]");
+                _pDebugOut->print("   process keyword: step "); _pDebugOut->print(_programCounter - _programStorage);
+                _pDebugOut->print(", eval stack depth "); _pDebugOut->print(evalStack.getElementCount());
+                _pDebugOut->print(" ["); _pDebugOut->print(_resWords[tokenIndex]._resWordName); _pDebugOut->println("]");
             #endif
+
                 bool skipStatement = ((_resWords[tokenIndex].restrictions & cmd_skipDuringExec) != 0);
                 if (skipStatement) {
                     // a function can only stop on its first statement if it's NOT called from the command line (or from within an eval() function). To circumvent that,...
                     // ...when the function was launched, the function() statement itself has been made the 'first' function statement to execute. Because it is non_executable,...
                     // ...it is skipped anyway (here). BUT variable 'holdProgramCnt_StatementStart' must be set to the current program counter here 
-                    if (_resWords[tokenIndex].resWordCode == cmdcod_function) {
+                    if (_resWords[tokenIndex].resWordCode == (char)cmdcod_function) {
                         holdProgramCnt_StatementStart = _programCounter;
                     }
 
@@ -210,8 +208,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 pushInternCppFunctionName(tokenType);
 
             #if PRINT_PROCESSED_TOKEN
-                _pDebugOut->print("process "); _pDebugOut->print(tokenType == tok_isInternCppFunction ? "internal cpp fcn" : tokenType == tok_isExternCppFunction ? "external cpp fcn" : "Justina fcn");
-                _pDebugOut->print(": address "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth ");
+                _pDebugOut->print("   process "); _pDebugOut->print(tokenType == tok_isInternCppFunction ? "internal fcn" : tokenType == tok_isExternCppFunction ? "external user cpp fcn" : "Justina fcn");
+                _pDebugOut->print(": step "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth ");
                 _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [");
 
                 int funcNameIndex = ((TokenIsInternCppFunction*)_programCounter)->tokenIndex;
@@ -230,8 +228,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 pushExternCppFunctionName(tokenType);
 
             #if PRINT_PROCESSED_TOKEN
-                _pDebugOut->print("process "); _pDebugOut->print(tokenType == tok_isInternCppFunction ? "internal cpp fcn" : tokenType == tok_isExternCppFunction ? "external cpp fcn" : "Justina fcn");
-                _pDebugOut->print(": address "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth ");
+                _pDebugOut->print("   process "); _pDebugOut->print(tokenType == tok_isInternCppFunction ? "internal cpp fcn" : tokenType == tok_isExternCppFunction ? "external cpp fcn" : "Justina fcn");
+                _pDebugOut->print(": step "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth ");
                 _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [");
 
                 int returnValueType = ((TokenIsExternCppFunction*)_programCounter)->returnValueType;
@@ -252,18 +250,12 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 pushJustinaFunctionName(tokenType);
 
             #if PRINT_PROCESSED_TOKEN
-                _pDebugOut->print("process "); _pDebugOut->print(tokenType == tok_isInternCppFunction ? "internal cpp fcn" : tokenType == tok_isExternCppFunction ? "external cpp fcn" : "Justina fcn");
-                _pDebugOut->print(": address "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth ");
+                _pDebugOut->print("   process "); _pDebugOut->print(tokenType == tok_isInternCppFunction ? "internal cpp fcn" : tokenType == tok_isExternCppFunction ? "external cpp fcn" : "Justina fcn");
+                _pDebugOut->print(": step "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth ");
                 _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [");
 
                 int funcNameIndex = ((TokenIsJustinaFunction*)_programCounter)->identNameIndex;
                 _pDebugOut->print(JustinaFunctionNames[funcNameIndex]); _pDebugOut->println("]");
-            #endif
-
-            #if PRINT_DEBUG_INFO
-                int index = ((TokenIsJustinaFunction*)_programCounter)->identNameIndex;
-                _pDebugOut->print("eval stack depth "); _pDebugOut->print(evalStack.getElementCount());  _pDebugOut->print(" - function name: "); _pDebugOut->print(JustinaFunctionNames[index]);
-                _pDebugOut->print("   ["); _pDebugOut->print(_programCounter - _programStorage); _pDebugOut->println("]");
             #endif
             }
             break;
@@ -277,7 +269,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 pushGenericName(tokenType);
 
             #if PRINT_PROCESSED_TOKEN
-                _pDebugOut->print("process identif: address "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth "); _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [");
+                _pDebugOut->print("   process identifier: step "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth "); _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [");
                 _pDebugOut->print(_pEvalStackTop->varOrConst.value.pStringConst); _pDebugOut->print("]");
             #endif
             }
@@ -294,17 +286,16 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
                 pushConstant(tokenType);
 
-            #if PRINT_DEBUG_INFO
-                _pDebugOut->print("eval stack depth "); _pDebugOut->print(evalStack.getElementCount());  _pDebugOut->print(" - constant");
-                _pDebugOut->print("   ["); _pDebugOut->print(_programCounter - _programStorage); _pDebugOut->println("]");
-            #endif
-
             #if PRINT_PROCESSED_TOKEN
-                _pDebugOut->print("process const  : address "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth "); _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [");
+                _pDebugOut->print("   process constant  : step "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth "); _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [");
                 char valueType = _pEvalStackTop->varOrConst.valueType;
                 if (valueType == value_isLong) { _pDebugOut->print(_pEvalStackTop->varOrConst.value.longConst); _pDebugOut->println("]"); }
                 else if (valueType == value_isFloat) { _pDebugOut->print(_pEvalStackTop->varOrConst.value.floatConst); _pDebugOut->println("]"); }
                 else { _pDebugOut->print("'"); _pDebugOut->print(_pEvalStackTop->varOrConst.value.pStringConst); _pDebugOut->println("']"); }
+
+                char* pPayload = ((char*)_pEvalStackTop);
+                _pDebugOut->print("   eval stack top (constant): payload starting at "); _pDebugOut->print((uint32_t)pPayload, HEX); _pDebugOut->print(" (size "); _pDebugOut->print(sizeof(VarOrConstLvl)); _pDebugOut->print(") : ");
+                for (int i = 0; i < sizeof(VarOrConstLvl); i++) { _pDebugOut->print(((char*)pPayload)[i], HEX); _pDebugOut->print(" "); }_pDebugOut->println();
             #endif
 
                 // check if (an) operation(s) can be executed. 
@@ -323,17 +314,16 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 _activeFunctionData.errorProgramCounter = _programCounter;                              // in case an error occurs while processing token
                 pushVariable(tokenType);
 
-            #if PRINT_DEBUG_INFO
-                _pDebugOut->print("eval stack depth "); _pDebugOut->print(evalStack.getElementCount());  _pDebugOut->print(" - variable");
-                _pDebugOut->print("   ["); _pDebugOut->print(_programCounter - _programStorage); _pDebugOut->println("]");
-            #endif
-
             #if PRINT_PROCESSED_TOKEN
-                _pDebugOut->print("process var name: address "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth "); _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [");
+                _pDebugOut->print("   process var name: step "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth "); _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [");
                 int varNameIndex = ((TokenIsVariable*)_programCounter)->identNameIndex;
                 char scopeMask = ((TokenIsVariable*)_programCounter)->identInfo & var_scopeMask;
                 char* varName = (scopeMask == var_isUser) ? userVarNames[varNameIndex] : programVarNames[varNameIndex];
                 _pDebugOut->print(varName); _pDebugOut->println("]");
+
+                char* pPayload = ((char*)_pEvalStackTop);
+                _pDebugOut->print("   eval stack top (variable): payload starting at "); _pDebugOut->print((uint32_t)pPayload, HEX); _pDebugOut->print(" (size "); _pDebugOut->print(sizeof(VarOrConstLvl)); _pDebugOut->print(") : ");
+                for (int i = 0; i < sizeof(VarOrConstLvl); i++) { _pDebugOut->print(((char*)pPayload)[i], HEX); _pDebugOut->print(" "); }_pDebugOut->println();
             #endif
 
                 // next token
@@ -355,10 +345,6 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
                 execResult = execAllProcessedOperators();
                 if (execResult != result_execOK) { break; }
-
-            #if PRINT_DEBUG_INFO
-                _pDebugOut->println("=== processed var name");
-            #endif
             }
             break;
 
@@ -375,22 +361,21 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 // ------------------------------
 
                 if (isOperator || isLeftPar) {
-                #if PRINT_PROCESSED_TOKEN        // after evaluation stack has been updated and before breaking 
-                    _pDebugOut->print("process operator OR left parenthesis : address "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth "); _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [ ");
-                    _pDebugOut->print(_terminals[tokenIndex].terminalName);   _pDebugOut->println(" ]");
-                #endif
-
-
                     bool doCaseBreak{ false };
 
                     // terminal tokens: only operators and left parentheses are pushed on the stack
                     pushTerminalToken(tokenType);
 
-                #if PRINT_DEBUG_INFO
-                    _pDebugOut->print("eval stack depth "); _pDebugOut->print(evalStack.getElementCount());  _pDebugOut->print(" - terminal: "); _pDebugOut->print(_terminals[_pEvalStackTop->terminal.index & 0x7F].terminalName);
-                    _pDebugOut->print("   ["); _pDebugOut->print(_programCounter - _programStorage); _pDebugOut->println("]");
-                #endif
                     if (precedingIsComma) { _pEvalStackTop->terminal.index |= 0x80;   doCaseBreak = true; }                             // flag that preceding token is comma separator 
+
+                #if PRINT_PROCESSED_TOKEN        // after evaluation stack has been updated and before breaking 
+                    _pDebugOut->print("   process operator OR left parenthesis : step "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth "); _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [ ");
+                    _pDebugOut->print(_terminals[tokenIndex].terminalName);   _pDebugOut->println(" ]");
+
+                    char* pPayload = ((char*)_pEvalStackTop);
+                    _pDebugOut->print("   eval stack top (operator or '(' token): payload starting at "); _pDebugOut->print((uint32_t)pPayload, HEX); _pDebugOut->print(" (size "); _pDebugOut->print(sizeof(TerminalTokenLvl)); _pDebugOut->print(") : ");
+                    for (int i = 0; i < sizeof(TerminalTokenLvl); i++) { _pDebugOut->print(((char*)pPayload)[i], HEX); _pDebugOut->print(" "); }_pDebugOut->println();
+                #endif
 
                     if (!doCaseBreak) {
                         if (evalStack.getElementCount() < _activeFunctionData.callerEvalStackLevels + 2) { doCaseBreak = true; }        // no preceding token exist on the stack      
@@ -418,7 +403,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
                 else if (isComma) {
                 #if PRINT_PROCESSED_TOKEN        // after evaluation stack has been updated and before breaking 
-                    _pDebugOut->print("process comma : address "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth "); _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [ ");
+                    _pDebugOut->print("   process comma : step "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth "); _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [ ");
                     _pDebugOut->print(_terminals[tokenIndex].terminalName);   _pDebugOut->println(" ]");
                 #endif
 
@@ -450,13 +435,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
                 else if (isRightPar) {
                 #if PRINT_PROCESSED_TOKEN        // after evaluation stack has been updated and before breaking 
-                    _pDebugOut->print("process right parenthesis : address "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth "); _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [ ");
-                    _pDebugOut->print(_terminals[tokenIndex].terminalName);   _pDebugOut->println(" ]");
-                #endif
-
-                #if PRINT_DEBUG_INFO
-                    _pDebugOut->print("eval stack depth "); _pDebugOut->print(evalStack.getElementCount());  _pDebugOut->print(" - right par");
-                    _pDebugOut->print("   ["); _pDebugOut->print(_programCounter - _programStorage); _pDebugOut->println("]");
+                    _pDebugOut->print("   process right parenthesis : step "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth "); 
+                    _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [ "); _pDebugOut->print(_terminals[tokenIndex].terminalName);   _pDebugOut->println(" ]");
                 #endif
 
                     bool doCaseBreak{ false };
@@ -477,8 +457,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                     // remove left parenthesis stack level
                     pStackLvl = (LE_evalStack*)evalStack.deleteListElement(pStackLvl);                                              // pStackLvl now pointing to first function argument or array subscript (or nullptr if none)
                 #if PRINT_DEBUG_INFO
-                    _pDebugOut->println("REMOVE left parenthesis from stack");
-                    _pDebugOut->print("                 "); _pDebugOut->print(evalStack.getElementCount());  _pDebugOut->println(" - first argument");
+                    _pDebugOut->println("   REMOVE left parenthesis from stack");
                 #endif
 
                     // correct pointers (now wrong, if from 0 to 2 arguments)
@@ -489,7 +468,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                     // execute internal cpp, external cpp or Justina function, OR (if array closing parenthesis) calculate array element address OR remove parenthesis around single argument 
                     execResult = execParenthesesPair(pPrecedingStackLvl, pStackLvl, argCount, appFlagsRequestStop, appFlagsRequestAbort);
                 #if PRINT_DEBUG_INFO
-                    _pDebugOut->print("    right par.: exec result "); _pDebugOut->println(execResult);
+                    _pDebugOut->print("   right par.: exec parentheses pair. Error = "); _pDebugOut->println(execResult);
                 #endif
                     if (execResult != result_execOK) { doCaseBreak = true; }
 
@@ -509,8 +488,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
                 else if (isSemicolon) {
                 #if PRINT_DEBUG_INFO
-                    _pDebugOut->print("=== process semicolon : eval stack depth "); _pDebugOut->print(evalStack.getElementCount());  _pDebugOut->print(" - semicolon");
-                    _pDebugOut->print("   ["); _pDebugOut->print(_programCounter - _programStorage); _pDebugOut->println("]");
+                    _pDebugOut->print("   process semicolon : step "); _pDebugOut->print(_programCounter - _programStorage); _pDebugOut->print(", eval stack depth "); 
+                    _pDebugOut->print(evalStack.getElementCount());  _pDebugOut->print(" [ "); _pDebugOut->print(_terminals[tokenIndex].terminalName);   _pDebugOut->println(" ]");
                 #endif
 
                     bool doCaseBreak{ false };
@@ -526,7 +505,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                         #if PRINT_OBJECT_COUNT_ERRORS
                             if (!_parsingExecutingTraceString && !_parsingExecutingTriggerString) {
                                 // if tracing, message would not be correct. Eval stack levels will be deleted right after printing a traced value (or trace execution error)
-                                _pDebugOut->print("*** Evaluation stack error. Remaining stack levels for current program level: "); _pDebugOut->println(evalStack.getElementCount() - (_activeFunctionData.callerEvalStackLevels + 1));
+                                _pDebugOut->print("**** Evaluation stack error. Remaining stack levels for current program level: "); _pDebugOut->println(evalStack.getElementCount() - (_activeFunctionData.callerEvalStackLevels + 1));
                             }
                         #endif
                         }
@@ -578,7 +557,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                     }
 
                 #if PRINT_DEBUG_INFO
-                    _pDebugOut->print("                 "); _pDebugOut->print(evalStack.getElementCount());  _pDebugOut->println(" - semicolon processed");
+                    _pDebugOut->print("   semicolon processed. eval stack depth: "); _pDebugOut->println(evalStack.getElementCount());
                 #endif
                     if (doCaseBreak) { break; }
                 }
@@ -592,8 +571,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             case tok_isEvalEnd:                                                                                         // ALL expressions in an eval() string have been executed 
             {
             #if PRINT_PROCESSED_TOKEN        
-                _pDebugOut->print("process 'eval end' token : address "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth "); _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [ ");
-                _pDebugOut->print("(eval end token)");   _pDebugOut->println(" ]");
+                _pDebugOut->print("   process 'eval end' token : step "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth ");
+                _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [ "); _pDebugOut->print("(eval end token)");   _pDebugOut->println(" ]");
             #endif
 
                 if (evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels >= 1) {
@@ -622,7 +601,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         if (!_parsingExecutingTraceString && !_parsingExecutingTriggerString && (execResult != result_execOK) && (execResult < result_startOfEvents)) {    // Trap the error if error trapping is enabled
             bool errorTrapped = trapError(isEndOfStatementSeparator, execResult);                               // if error trapped, execResult will be reset (no error)
             // reset 'isComma', because error trapping moves the next step to first step after the statement producing an execution error, in the function were error trapping is enabled 
-            if (errorTrapped) { isComma = false; }                                                              
+            if (errorTrapped) { isComma = false; }
         }
 
         // If a trigger string was evaluated (with or without execution error), then check evaluation result. Only if (numeric AND not equal to zero), stop for breakpoint 
@@ -631,8 +610,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         if (_parsingExecutingTriggerString) {
             // stop evaluation if done evaluating OR if an execution error occured during evaluation
             bool isTriggerEvalEnd = (isEndOfStatementSeparator || (execResult != result_execOK) && (execResult < result_startOfEvents));
-            if (isTriggerEvalEnd) { checkTriggerResult(execResult); isEndOfStatementSeparator = false;}     // avoid end of statement processing (below)
-             
+            if (isTriggerEvalEnd) { checkTriggerResult(execResult); isEndOfStatementSeparator = false; }     // avoid end of statement processing (below)
+
         }
 
         // token has been processed (with or without error): advance to next token
@@ -642,8 +621,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         precedingIsComma = isComma;                                                                         // remember if this was a comma
 
     #if PRINT_DEBUG_INFO
-        _pDebugOut->print("** token has been processed: next step = "); _pDebugOut->println(_activeFunctionData.pNextStep - _programStorage);
-        _pDebugOut->print("                             eval stack depth: "); _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(", list element address: "); _pDebugOut->println((uint32_t)_pEvalStackTop, HEX); _pDebugOut->println();
+        _pDebugOut->print("   token has been processed: next step = "); _pDebugOut->println(_activeFunctionData.pNextStep - _programStorage);
+        _pDebugOut->print("   eval stack depth: "); _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(", list element address: "); _pDebugOut->println((uint32_t)_pEvalStackTop, HEX); _pDebugOut->println();
     #endif
 
 
@@ -655,7 +634,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
         #if PRINT_DEBUG_INFO        
             _pDebugOut->println("\r\n");
-            _pDebugOut->println("**** is 'end of statement separator' - postprocessing\r\n");
+            _pDebugOut->println("** is 'end of statement separator' - postprocessing\r\n");
         #endif
 
             // keep track of Justina program counters
@@ -790,7 +769,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
         // push current command line storage to command line stack, to make room for debug commands
     #if PRINT_PARSED_CMD_STACK
-        _pDebugOut->print("  >> PUSH parsed statements (stop for debug): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
+        _pDebugOut->print("   >> PUSH parsed statements (stop for debug): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
     #endif
         long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + _progMemorySize) + 1;
         _pParsedCommandLineStackTop = (char*)parsedCommandLineStack.appendListElement(sizeof(char*) + parsedUserCmdLen);
@@ -822,9 +801,9 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
     _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_idle;                                                                   // status 'idle'
 
 #if PRINT_DEBUG_INFO
-    _pDebugOut->print("*** exit exec: eval stack depth: "); _pDebugOut->println(evalStack.getElementCount());
-    _pDebugOut->print("** EXEC: return error code: "); _pDebugOut->println(execResult);
-    _pDebugOut->println("**** returning to main");
+    _pDebugOut->print("**** exit exec: eval stack depth: "); _pDebugOut->println(evalStack.getElementCount());
+    _pDebugOut->print("     EXEC: return error code: "); _pDebugOut->println(execResult);
+    _pDebugOut->println("     returning to main");
 #endif
     _activeFunctionData.pNextStep = _programStorage + _progMemorySize;                                                              // only to signal 'immediate mode command level'
     return execResult;                                                                                                              // return result, in case it's needed by caller
@@ -938,9 +917,9 @@ bool Justina_interpreter::trapError(bool& isEndOfStatementSeparator, execResult_
     _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;    // if processing command, prevent executing the command 
 
 #if PRINT_DEBUG_INFO
-    _pDebugOut->print("** error: CURRENT step = "); _pDebugOut->println(_programCounter - _programStorage);
-    _pDebugOut->print("          NEXT step    = "); _pDebugOut->println(_activeFunctionData.pNextStep - _programStorage);
-    _pDebugOut->print("          token type   = "); _pDebugOut->println((*_programCounter & 0x0F)); _pDebugOut->println();
+    _pDebugOut->print("== trapped error: CURRENT step = "); _pDebugOut->println(_programCounter - _programStorage);
+    _pDebugOut->print("   NEXT step   = "); _pDebugOut->println(_activeFunctionData.pNextStep - _programStorage);
+    _pDebugOut->print("   token type  = "); _pDebugOut->println((*_programCounter & 0x0F)); _pDebugOut->println();
 #endif
 
     return true;            // error trapped
@@ -963,7 +942,7 @@ void Justina_interpreter::checkForStop(bool& isActiveBreakpoint, bool& requestSt
     bool isResWord = (tokenType == tok_isReservedWord);
     int index = isResWord ? ((TokenIsResWord*)(_programCounter))->tokenIndex : 0;
 
-    if (isResWord) {                    
+    if (isResWord) {
         // breakpoint / stop: not for non-executable statements (note that BREAKPOINTS CANNOT BE SET for non-executable statements anyway)  
         bool nextIsExecutable = isResWord ? !(_resWords[index].restrictions & cmd_skipDuringExec) : true;                // next step is executable
         if (!nextIsExecutable) { return; }
@@ -1091,7 +1070,7 @@ Justina_interpreter::parsingResult_type Justina_interpreter::parseTriggerString(
     // ------------------------------------------------------------------------------------------------------------------------
 
 #if PRINT_PARSED_CMD_STACK
-    _pDebugOut->print("  >> PUSH parsed statements (start parsing trigger string): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
+    _pDebugOut->print("   >> PUSH parsed statements (start parsing trigger string): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
 #endif
     long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + _progMemorySize) + 1;
     _pParsedCommandLineStackTop = (char*)parsedCommandLineStack.appendListElement(sizeof(char*) + parsedUserCmdLen);
@@ -1130,7 +1109,7 @@ Justina_interpreter::parsingResult_type Justina_interpreter::parseTriggerString(
         _pParsedCommandLineStackTop = (char*)parsedCommandLineStack.getLastListElement();
 
     #if PRINT_PARSED_CMD_STACK
-        _pDebugOut->print("  >> POP parsed statements (trigger string parsing error): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
+        _pDebugOut->print("   >> POP parsed statements (trigger string parsing error): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
     #endif
     }
 
@@ -1154,7 +1133,7 @@ void Justina_interpreter::checkTriggerResult(execResult_type& execResult) {
     _pParsedCommandLineStackTop = (char*)parsedCommandLineStack.getLastListElement();
 
 #if PRINT_PARSED_CMD_STACK
-    _pDebugOut->print("  >> POP parsed statements (trigger evaluation done): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
+    _pDebugOut->print("   >> POP parsed statements (trigger evaluation done): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
 #endif
 
     // trigger expression executed without error ? If evaluation result is numeric and net equal to zero, then stop at breakpoint 
@@ -1180,7 +1159,7 @@ void Justina_interpreter::checkTriggerResult(execResult_type& execResult) {
 
     // if trigger expression evaluated to true, return with breakpoint event
     // if not, but a 'stop' command was pending (until after execution of trigger string, so until now), return with stop event
-    execResult = isActiveBreakpoint ? result_stopForBreakpoint : _pendingStopForDebug ? result_stopForDebug : result_execOK;                     
+    execResult = isActiveBreakpoint ? result_stopForBreakpoint : _pendingStopForDebug ? result_stopForDebug : result_execOK;
     _pendingStopForDebug = false;
 
     return;
@@ -1249,22 +1228,22 @@ int Justina_interpreter::jumpTokens(int n, char*& pStep, int& tokenCode) {
 // *   advance until specific token   *
 // ------------------------------------
 
-int Justina_interpreter::findTokenStep(char*& pStep, bool excludeCurrent, int tokenType_spec, char criterium1, char criterium2, char criterium3, int* matchedCritNum, int* pTokenIndex) {
+int Justina_interpreter::findTokenStep(char*& pStep, bool excludeCurrent, char tokenType_spec, char criterium1, char criterium2, char criterium3, int* matchedCritNum, int* pTokenIndex) {
 
     // pStep: pointer to first token to test versus token group and (if applicable) token code
-    // tokenType: if 'tok_isTerminalGroup1', test for the three terminal groups !
+    // tokenType_spec: if looking for a reserved word: 'tok_isReservedWord', if looking for a terminal, ALWAYS use tok_isTerminalGroup1 as argument
 
-    // if looking for a specific reserved word or a specific terminal (optionally you can specify two)
-    char& tokenCode1_spec = criterium1;                                                                         // keyword index or terminal index to look for
-    char& tokenCode2_spec = criterium2;                                                                         // optional second index (-1 if only one index to look for)
-    char& tokenCode3_spec = criterium3;                                                                         // optional second index (-1 if only one index to look for)
-    *matchedCritNum = 0;                                                                                          // no match yet
+    // if looking for a specific reserved word or a specific terminal (optionally you can specify three terminals to look for)
+    char& tokenCode1_spec = criterium1;                                                                         // keyword code or terminal code to look for
+    char& tokenCode2_spec = criterium2;                                                                         // optional second code (-1 if only one code to look for)
+    char& tokenCode3_spec = criterium3;                                                                         // optional second code (-1 if 1 or 2 codes to look for)
+    if (matchedCritNum != nullptr) { *matchedCritNum = 0; }                                                                                          // no match yet
 
     // if looking for a specific variable
     char& varScope_spec = criterium1;                                                                           // variable scope to look for (user, global, ...)
     char& valueIndex_spec = criterium2;                                                                         // value index to look for
 
-    int tokenType = *pStep & 0x0F;
+    char tokenType = *pStep & 0x0F;
 
     // exclude current token step ?
     if (excludeCurrent) {
@@ -1277,7 +1256,6 @@ int Justina_interpreter::findTokenStep(char*& pStep, bool excludeCurrent, int to
     do {
         tokenType = *pStep & 0x0F;
         if (tokenType == '\0') { return tokenType; }                                                            // signal 'not found'
-
         bool tokenTypeMatch = (tokenType_spec == tokenType);
 
         if (tokenType_spec == tok_isTerminalGroup1) { tokenTypeMatch = tokenTypeMatch || (tokenType == tok_isTerminalGroup2) || (tokenType == tok_isTerminalGroup3); }
@@ -1288,13 +1266,13 @@ int Justina_interpreter::findTokenStep(char*& pStep, bool excludeCurrent, int to
             switch (tokenType_spec) {
                 case tok_isReservedWord:
                 {
-                    int tokenIndex = (((TokenIsResWord*)pStep)->tokenIndex);
+                    uint tokenIndex = (((TokenIsResWord*)pStep)->tokenIndex);
                     tokenCodeMatch = _resWords[tokenIndex].resWordCode == tokenCode1_spec;
-                    if (tokenCodeMatch) { *matchedCritNum = 1; *pTokenIndex = tokenIndex;  break; }
+                    if (tokenCodeMatch) { if (matchedCritNum != nullptr) { *matchedCritNum = 1; }; if (pTokenIndex != nullptr) { *pTokenIndex = tokenIndex; }; break; }
                     tokenCodeMatch = _resWords[tokenIndex].resWordCode == tokenCode2_spec;
-                    if (tokenCodeMatch) { *matchedCritNum = 2; *pTokenIndex = tokenIndex;  break; }
+                    if (tokenCodeMatch) { if (matchedCritNum != nullptr) { *matchedCritNum = 2; }; if (pTokenIndex != nullptr) { *pTokenIndex = tokenIndex; };  break; }
                     tokenCodeMatch = _resWords[tokenIndex].resWordCode == tokenCode3_spec;
-                    if (tokenCodeMatch) { *matchedCritNum = 3; *pTokenIndex = tokenIndex; }
+                    if (tokenCodeMatch) { if (matchedCritNum != nullptr) { *matchedCritNum = 3; }; if (pTokenIndex != nullptr) { *pTokenIndex = tokenIndex; }; }
                 }
                 break;
 
@@ -1303,11 +1281,11 @@ int Justina_interpreter::findTokenStep(char*& pStep, bool excludeCurrent, int to
                     int tokenIndex = ((((TokenIsTerminal*)pStep)->tokenTypeAndIndex >> 4) & 0x0F);
                     tokenIndex += ((tokenType == tok_isTerminalGroup2) ? 0x10 : (tokenType == tok_isTerminalGroup3) ? 0x20 : 0);
                     tokenCodeMatch = _terminals[tokenIndex].terminalCode == tokenCode1_spec;
-                    if (tokenCodeMatch) { *matchedCritNum = 1; *pTokenIndex = tokenIndex; break; }
+                    if (tokenCodeMatch) { if (matchedCritNum != nullptr) { *matchedCritNum = 1; }; if (pTokenIndex != nullptr) { *pTokenIndex = tokenIndex; };   break; }
                     tokenCodeMatch = _terminals[tokenIndex].terminalCode == tokenCode2_spec;
-                    if (tokenCodeMatch) { *matchedCritNum = 2; *pTokenIndex = tokenIndex;   break; }
+                    if (tokenCodeMatch) { if (matchedCritNum != nullptr) { *matchedCritNum = 2; }; if (pTokenIndex != nullptr) { *pTokenIndex = tokenIndex; };    break; }
                     tokenCodeMatch = _terminals[tokenIndex].terminalCode == tokenCode3_spec;
-                    if (tokenCodeMatch) { *matchedCritNum = 3; *pTokenIndex = tokenIndex; }
+                    if (tokenCodeMatch) { if (matchedCritNum != nullptr) { *matchedCritNum = 3; }; if (pTokenIndex != nullptr) { *pTokenIndex = tokenIndex; }; }
                 }
                 break;
 
@@ -1316,7 +1294,7 @@ int Justina_interpreter::findTokenStep(char*& pStep, bool excludeCurrent, int to
                     int varScope = ((TokenIsVariable*)pStep)->identInfo & var_scopeMask;
                     int valueIndex = ((TokenIsVariable*)pStep)->identValueIndex;
                     tokenCodeMatch = (varScope == (varScope_spec & var_scopeMask)) && ((valueIndex_spec == -1) ? true : (valueIndex == tokenCode2_spec));
-                    if (tokenCodeMatch) { *pTokenIndex = valueIndex; }
+                    if (tokenCodeMatch && (pTokenIndex != nullptr)) { *pTokenIndex = valueIndex; }
                 }
                 break;
 
@@ -1421,7 +1399,7 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
     overWritePrevious = true;
 
     return;
-        }
+}
 
 // ------------------------------------------------------------------------
 // *   Clear evaluation stack and associated intermediate string object   * 
@@ -1435,7 +1413,7 @@ void Justina_interpreter::clearEvalStack() {
     // error if not all intermediate string objects deleted (this does NOT indicate a user or Justina program error but instead it points to an internal Justina issue)
     if (_intermediateStringObjectCount != 0) {
     #if PRINT_OBJECT_COUNT_ERRORS
-        _pDebugOut->print("*** Intermediate string cleanup error. Remaining: "); _pDebugOut->println(_intermediateStringObjectCount);
+        _pDebugOut->print("**** Intermediate string cleanup error. Remaining: "); _pDebugOut->println(_intermediateStringObjectCount);
     #endif
         _intermediateStringObjectErrors += abs(_intermediateStringObjectCount);
         _intermediateStringObjectCount = 0;
@@ -1531,7 +1509,7 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, b
             else if (blockType == block_eval) {
                 if (!isInitialLoop) { --_callStackDepth; }
                 ++deleteImmModeCmdStackLevels;                                      // update count of 'parsed command line' stack levels to be deleted (parsedCommandLineStack)
-        }
+            }
 
             if (!isInitialLoop) {                                                   // delete stack top
                 flowCtrlStack.deleteListElement(nullptr);
@@ -1540,11 +1518,11 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, b
 
             if (pFlowCtrlStackLvl == nullptr) { break; }       // all done
             isInitialLoop = false;
-    } while (true);
-}
+        } while (true);
+    }
 
     _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
-    }
+}
 
 
 // ------------------------------------------------------------
@@ -1567,7 +1545,7 @@ void Justina_interpreter::clearParsedCommandLineStack(int n) {
         parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
         _pParsedCommandLineStackTop = parsedCommandLineStack.getLastListElement();
     #if PRINT_PARSED_CMD_STACK
-        _pDebugOut->print("  >> POP parsed statements (clr imm cmd stack): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
+        _pDebugOut->print("   >> POP parsed statements (clr imm cmd stack): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
     #endif
     }
 
@@ -1587,7 +1565,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execParenthesesPair(LE
     if (pPrecedingStackLvl == nullptr) {
         makeIntermediateConstant(_pEvalStackTop);                                                               // left parenthesis already removed from evaluation stack
         return result_execOK;
-}
+    }
 
     // stack level preceding left parenthesis is internal cpp function ? execute function
     else if (pPrecedingStackLvl->genericToken.tokenType == tok_isInternCppFunction) {
@@ -1718,7 +1696,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::execAllProcessedOpera
     bool currentOpHasPriority{ false };
 
 #if PRINT_DEBUG_INFO
-    _pDebugOut->print("** exec processed infix operators -stack levels: "); _pDebugOut->println(evalStack.getElementCount());
+    _pDebugOut->print("** exec processed infix operators - stack levels: "); _pDebugOut->println(evalStack.getElementCount());
 #endif
     // check if (an) operation(s) can be executed 
     // when an operation is executed, check whether lower priority operations can now be executed as well (example: 3+5*7: first execute 5*7 yielding 35, then execute 3+35)
@@ -1777,10 +1755,10 @@ Justina_interpreter::execResult_type  Justina_interpreter::execAllProcessedOpera
 
         // token preceding the operand is not an operator ? (it can be a left parenthesis or a generic name) ? exit while loop (nothing to do for now)
         else { break; }
-        }
+    }
 
     return result_execOK;
-    }
+}
 
 
 // -----------------------------------------------------
@@ -2253,13 +2231,9 @@ Justina_interpreter::execResult_type  Justina_interpreter::execInfixOperation() 
     _pEvalStackTop->varOrConst.valueAttributes &= ~(isPrintTabRequest | isPrintColumnRequest);                  // clear tab() and col() function flags
 
 #if PRINT_DEBUG_INFO
-    _pDebugOut->print("eval stack depth "); _pDebugOut->print(evalStack.getElementCount());  _pDebugOut->println(" - infix operation done");
-    _pDebugOut->print("                 result = "); _pDebugOut->println(_pEvalStackTop->varOrConst.value.longConst);
-
-    _pDebugOut->print("    eval stack depth: "); _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(", list element address: "); _pDebugOut->println((uint32_t)_pEvalStackTop, HEX);
-    if (opResultLong) { _pDebugOut->print("    'op': stack top long value "); _pDebugOut->println(_pEvalStackTop->varOrConst.value.longConst); }
-    else if (opResultFloat) { _pDebugOut->print("    'op': stack top float value "); _pDebugOut->println(_pEvalStackTop->varOrConst.value.floatConst); }
-    else { _pDebugOut->print("    'op': stack top string value "); _pDebugOut->println(_pEvalStackTop->varOrConst.value.pStringConst); }
+    _pDebugOut->print("   eval stack depth "); _pDebugOut->print(evalStack.getElementCount());  _pDebugOut->println(" - infix operation done");
+    _pDebugOut->print("   result = "); _pDebugOut->println(_pEvalStackTop->varOrConst.value.longConst);
+    _pDebugOut->print("   list element address: "); _pDebugOut->println((uint32_t)_pEvalStackTop, HEX);
 #endif
     return result_execOK;
 }
@@ -2376,9 +2350,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execExternalCppFunctio
                 delete[]args[i].pStringConst;                                                                       // delete original variable string
                 *pStackLvl->varOrConst.value.ppStringConst = nullptr;                                               // change pointer to string (in variable) to null pointer
             }
-            }
+        }
         pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-            }
+    }
 
     clearEvalStackLevels(suppliedArgCount + 1);                                                                         // clean up: delete evaluation stack elements for supplied arguments
 
@@ -2396,7 +2370,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execExternalCppFunctio
     _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
 
     return result_execOK;
-        }
+}
 
 
 // -------------------------------
@@ -2491,7 +2465,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
     // this is either an outer level parsed eval() string, or the parsed command line where execution started  
 
 #if PRINT_PARSED_CMD_STACK
-    _pDebugOut->print("  >> PUSH parsed statements (launch eval): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
+    _pDebugOut->print("   >> PUSH parsed statements (launch eval): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
 #endif
     long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + _progMemorySize) + 1;
     _pParsedCommandLineStackTop = (char*)parsedCommandLineStack.appendListElement(sizeof(char*) + parsedUserCmdLen);
@@ -2540,12 +2514,12 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
         _pParsedCommandLineStackTop = (char*)parsedCommandLineStack.getLastListElement();
 
     #if PRINT_PARSED_CMD_STACK
-        _pDebugOut->print("  >> POP parsed statements (launch eval parse error): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
+        _pDebugOut->print("   >> POP parsed statements (launch eval parse error): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
     #endif
 
         _evalParseErrorCode = result;       // remember
         return result_eval_parsingError;
-}
+    }
 
     // last step of just parsed eval() string. Note: adding sizeof(tok_no_token) because not yet added
     _lastUserCmdStep = _programCounter + sizeof(tok_no_token);                                              // if parsing error, do not change
@@ -2583,7 +2557,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
     _activeFunctionData.errorProgramCounter = _programStorage + _progMemorySize;
 
     return  result_execOK;
-    }
+}
 
 
 // ------------------------------------------------------------------------------------------------
@@ -2593,9 +2567,9 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
 void Justina_interpreter::initFunctionParamVarWithSuppliedArg(int suppliedArgCount, LE_evalStack*& pFirstArgStackLvl) {
     // save function caller's arguments to function's local storage and remove them from evaluation stack
 
-#if DEBUG_PRINT
-    _pDebugOut->println("******** INIT SUPPLIED FUNCTION PARAMETERS");
-    _pDebugOut->print("         supplied argument count: "); _pDebugOut->println(suppliedArgCount);
+#if PRINT_DEBUG_INFO
+    _pDebugOut->println("** INIT SUPPLIED FUNCTION PARAMETERS");
+    _pDebugOut->print("   supplied argument count: "); _pDebugOut->println(suppliedArgCount);
 #endif
     if (suppliedArgCount > 0) {
         LE_evalStack* pStackLvl = pFirstArgStackLvl;                                                                        // pointing to first argument on stack
@@ -2620,10 +2594,10 @@ void Justina_interpreter::initFunctionParamVarWithSuppliedArg(int suppliedArgCou
                 if (operandIsLong || operandIsFloat) {
                     _activeFunctionData.pLocalVarValues[i].floatConst = operandIsVariable ? *pStackLvl->varOrConst.value.pFloatConst : pStackLvl->varOrConst.value.floatConst;
 
-                #if DEBUG_OUT
-                    _pDebugOut->print("**** INIT SUPPLIED FUNCTION PARAMETER ** value: "); _pDebugOut->println(pStackLvl->varOrConst.value.longConst);
-                    _pDebugOut->print("              start local values at address   : "); _pDebugOut->println((uint32_t)(_activeFunctionData.pLocalVarValues), HEX);
-                    _pDebugOut->print("              variable address                : "); _pDebugOut->println((uint32_t)(_activeFunctionData.pLocalVarValues + i), HEX);
+                #if PRINT_DEBUG_INFO
+                    _pDebugOut->print("** INIT SUPPLIED FUNCTION PARAMETER - value: "); _pDebugOut->println(pStackLvl->varOrConst.value.longConst);
+                    _pDebugOut->print("   start local values at address: "); _pDebugOut->println((uint32_t)(_activeFunctionData.pLocalVarValues), HEX);
+                    _pDebugOut->print("   variable address             : "); _pDebugOut->println((uint32_t)(_activeFunctionData.pLocalVarValues + i), HEX);
                 #endif
                 }
                 else {                                                                                                      // function argument is string constant: create a local copy
@@ -2645,9 +2619,9 @@ void Justina_interpreter::initFunctionParamVarWithSuppliedArg(int suppliedArgCou
             // if intermediate constant string, then delete char string object (tested within called routine)            
             deleteIntermStringObject(pStackLvl);
             pStackLvl = (LE_evalStack*)evalStack.deleteListElement(pStackLvl);                                              // argument saved: remove argument from stack and point to next argument
-                    }
-                }
-            }
+        }
+    }
+}
 
 
 // ------------------------------------------------------------------------------------------------------------
@@ -2822,7 +2796,7 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
                 }
 
                 tokenType = jumpTokens(1, pStep, terminalCode);                                                             // comma or semicolon
-        }
+            }
 
             else {  // no initializer: if array, initialize it now (scalar has been initialized already)
                 if ((_activeFunctionData.pVariableAttributes[count] & var_isArray) == var_isArray) {
@@ -2832,10 +2806,10 @@ void Justina_interpreter::initFunctionLocalNonParamVariables(char* pStep, int pa
             }
             count++;
 
-                } while (terminalCode == termcod_comma);
+        } while (terminalCode == termcod_comma);
 
-            }
-    };
+    }
+};
 
 
 // ----------------------------------
@@ -2891,7 +2865,7 @@ void Justina_interpreter::terminateJustinaFunction(bool addZeroReturnValue) {
     if ((_activeFunctionData.pNextStep >= (_programStorage + _progMemorySize)) && (_callStackDepth == 0)) {                 // not within a function, not within eval() execution, and not in debug mode       
         if (_localVarValueAreaCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
-            _pDebugOut->print("*** Local variable storage area objects cleanup error. Remaining: "); _pDebugOut->println(_localVarValueAreaCount);
+            _pDebugOut->print("**** Local variable storage area objects cleanup error. Remaining: "); _pDebugOut->println(_localVarValueAreaCount);
         #endif
             _localVarValueAreaErrors += abs(_localVarValueAreaCount);
             _localVarValueAreaCount = 0;
@@ -2899,7 +2873,7 @@ void Justina_interpreter::terminateJustinaFunction(bool addZeroReturnValue) {
 
         if (_localVarStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
-            _pDebugOut->print("*** Local variable string objects cleanup error. Remaining: "); _pDebugOut->println(_localVarStringObjectCount);
+            _pDebugOut->print("**** Local variable string objects cleanup error. Remaining: "); _pDebugOut->println(_localVarStringObjectCount);
         #endif
             _localVarStringObjectErrors += abs(_localVarStringObjectCount);
             _localVarStringObjectCount = 0;
@@ -2907,7 +2881,7 @@ void Justina_interpreter::terminateJustinaFunction(bool addZeroReturnValue) {
 
         if (_localArrayObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
-            _pDebugOut->print("*** Local array objects cleanup error. Remaining: "); _pDebugOut->println(_localArrayObjectCount);
+            _pDebugOut->print("**** Local array objects cleanup error. Remaining: "); _pDebugOut->println(_localArrayObjectCount);
         #endif
             _localArrayObjectErrors += abs(_localArrayObjectCount);
             _localArrayObjectCount = 0;
@@ -2933,20 +2907,20 @@ void Justina_interpreter::terminateEval() {
         flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);
         _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
 
-} while ((blockType != block_JustinaFunction) && (blockType != block_eval));                                            // caller level can be caller eval() or caller Justina function
---_callStackDepth;                                                                                                      // caller reached: call stack depth decreased by 1
+    } while ((blockType != block_JustinaFunction) && (blockType != block_eval));                                            // caller level can be caller eval() or caller Justina function
+    --_callStackDepth;                                                                                                      // caller reached: call stack depth decreased by 1
 
-// overwrite the parsed 'EVAL' string expressions
-// before removing, delete any parsed strng constants for that command line
+    // overwrite the parsed 'EVAL' string expressions
+    // before removing, delete any parsed strng constants for that command line
 
-_lastUserCmdStep = *(char**)_pParsedCommandLineStackTop;                                                                     // pop parsed user cmd length
-long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + _progMemorySize) + 1;
-deleteConstStringObjects(_programStorage + _progMemorySize);
-memcpy((_programStorage + _progMemorySize), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);
-parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
-_pParsedCommandLineStackTop = (char*)parsedCommandLineStack.getLastListElement();
+    _lastUserCmdStep = *(char**)_pParsedCommandLineStackTop;                                                                     // pop parsed user cmd length
+    long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + _progMemorySize) + 1;
+    deleteConstStringObjects(_programStorage + _progMemorySize);
+    memcpy((_programStorage + _progMemorySize), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);
+    parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
+    _pParsedCommandLineStackTop = (char*)parsedCommandLineStack.getLastListElement();
 #if PRINT_PARSED_CMD_STACK
-_pDebugOut->print("  >> POP parsed statements (terminate eval): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
+    _pDebugOut->print("   >> POP parsed statements (terminate eval): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
 #endif
 }
 
@@ -3089,10 +3063,10 @@ void Justina_interpreter::pushVariable(int& tokenType) {                        
     _pEvalStackTop->varOrConst.value.pBaseValue = varAddress;                                                               // base address of variable
     _pEvalStackTop->varOrConst.valueAttributes = 0;                                                                         // init
 
-#if DEBUG_PRINT
-    _pDebugOut->print("\r\n**** PUSH ** stack element address: "); _pDebugOut->println((uint32_t)_pEvalStackTop, HEX);
-    _pDebugOut->print("     variable address: "); _pDebugOut->println((uint32_t)varAddress, HEX);
-    _pDebugOut->print("     variable value: "); _pDebugOut->println(*(long*)varAddress);
+#if PRINT_DEBUG_INFO
+    _pDebugOut->print("\r\n** PUSH stack element address: "); _pDebugOut->println((uint32_t)_pEvalStackTop, HEX);
+    _pDebugOut->print("   variable address: "); _pDebugOut->println((uint32_t)varAddress, HEX);
+    _pDebugOut->print("   variable value: "); _pDebugOut->println(*(long*)varAddress);
 #endif
 }
 
@@ -3183,7 +3157,7 @@ void* Justina_interpreter::fetchVarBaseAddress(TokenIsVariable* pVarToken, char*
             }
         }
 
-        else {                                                                                                              
+        else {
             // the variable is a local variable of the function referenced in _activeFunctionData
             pFlowCtrlStackLvl = &_activeFunctionData;
         }

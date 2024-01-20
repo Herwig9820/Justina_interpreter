@@ -80,7 +80,7 @@ Justina_interpreter::parsingResult_type Justina_interpreter::parseStatement(char
     char* pNext_hold = pNext;
 
 #if PRINT_PARSED_TOKENS
-    _pDebugOut->println("\r\n*** START parsing 1 statement");
+    _pDebugOut->println("\r\n** START parsing 1 statement");
 #endif
 
     do {                                                                                // parse ONE token in an instruction
@@ -117,7 +117,7 @@ Justina_interpreter::parsingResult_type Justina_interpreter::parseStatement(char
         if (pNext[0] == '\0') { pNextParseStatement = pNext; break; }                                               // end of statement: prepare to quit parsing  
 
         // trace, BP view or BP trigger string ? parse one statement at a time, then execute it first (note: within BP trigger strings, only the first expression will be parsed and executed)
-        if ((_parsingExecutingTraceString  || _parsingExecutingTriggerString) && isSemicolon) { pNextParseStatement = pNext;  break; }      
+        if ((_parsingExecutingTraceString || _parsingExecutingTriggerString) && isSemicolon) { pNextParseStatement = pNext;  break; }
 
 
         _lastTokenType_hold = _lastTokenType;                                                                       // remember the last parsed token during parsing of a next token
@@ -187,7 +187,7 @@ Justina_interpreter::parsingResult_type Justina_interpreter::parseStatement(char
 bool Justina_interpreter::checkCommandKeyword(parsingResult_type& result, int& resWordIndex) {                                      // command syntax checks
 
 #if PRINT_PARSED_TOKENS
-    _pDebugOut->println(">> checking command keyword");
+    _pDebugOut->println("   checking command keyword");
 #endif
     resWordIndex = _tokenIndex;
     _pCmdAllowedParTypes = _resWords[_tokenIndex].pCmdAllowedParTypes;                                              // remember allowed parameter types
@@ -322,7 +322,7 @@ bool Justina_interpreter::checkCommandArgToken(parsingResult_type& result, int& 
     // init and adapt variables
     // ------------------------
 #if PRINT_PARSED_TOKENS
-    _pDebugOut->println(">> checking command argument");
+    _pDebugOut->println("   checking command argument");
 #endif
 
     static uint8_t allowedParType = cmdPar_none;                                                                    // init
@@ -460,8 +460,8 @@ bool Justina_interpreter::parseAsResWord(char*& pNext, parsingResult_type& resul
         _lastTokenIsString = false, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
     #if PRINT_PARSED_TOKENS
-        _pDebugOut->print("parsing keyword: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(_resWords[resWordIndex]._resWordName);  _pDebugOut->println("]");
-        _pDebugOut->print("- token (res.word) index = "); _pDebugOut->println(resWordIndex);
+        _pDebugOut->print("   parsed keyword: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(_resWords[resWordIndex]._resWordName);  _pDebugOut->println("]");
+        _pDebugOut->print("   token (res.word) index = "); _pDebugOut->println(resWordIndex);
     #endif
 
         _programCounter += sizeof(TokenIsResWord) - (hasTokenStep ? 0 : 2);
@@ -546,7 +546,7 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parsingResult_type& result
     if (doNonLocalVarInit) { initVariable(_lastVariableTokenStep, _lastTokenStep); }                            // initialisation of global / static variable ? (operator: is always assignment)
 
 #if PRINT_PARSED_TOKENS
-    _pDebugOut->print("parsing number : address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); if (valueType == value_isLong) { _pDebugOut->print(lng); }
+    _pDebugOut->print("   parsed number: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); if (valueType == value_isLong) { _pDebugOut->print(lng); }
     else { _pDebugOut->print(flt); }  _pDebugOut->println("]");
 #endif
 
@@ -640,7 +640,7 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parsingResult_type
     }
 
 #if PRINT_PARSED_TOKENS
-    _pDebugOut->print("parsing alphan : address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ['"); _pDebugOut->print(pStringCst);  _pDebugOut->println("']");
+    _pDebugOut->print("   parsed string: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ['"); _pDebugOut->print(pStringCst);  _pDebugOut->println("']");
 #endif
 
     _programCounter += sizeof(TokenIsConstant);
@@ -1308,7 +1308,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parsingResult_type& r
     _lastTermCode = (termin_code)_terminals[termIndex].terminalCode;
 
 #if PRINT_PARSED_TOKENS
-    _pDebugOut->print("parsing termin : address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" [ "); _pDebugOut->print(_terminals[termIndex].terminalName);  _pDebugOut->println(" ]");
+    _pDebugOut->print("   parsed terminal: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" [ "); _pDebugOut->print(_terminals[termIndex].terminalName);  _pDebugOut->println(" ]");
 #endif
 
     _programCounter += sizeof(TokenIsTerminal);
@@ -1379,7 +1379,7 @@ bool Justina_interpreter::parseAsInternCPPfunction(char*& pNext, parsingResult_t
         _lastTokenIsString = false, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
     #if PRINT_PARSED_TOKENS
-        _pDebugOut->print("parsing int fcn: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(_internCppFunctions[funcIndex].funcName);  _pDebugOut->println("]");
+        _pDebugOut->print("   parsed internal function: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(_internCppFunctions[funcIndex].funcName);  _pDebugOut->println("]");
     #endif
 
         _programCounter += sizeof(TokenIsInternCppFunction);
@@ -1458,7 +1458,7 @@ bool Justina_interpreter::parseAsExternCPPfunction(char*& pNext, parsingResult_t
             _lastTokenIsString = false, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
         #if PRINT_PARSED_TOKENS
-            _pDebugOut->print("parsing ext fcn: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(funcName);  _pDebugOut->println("]");
+            _pDebugOut->print("   parsed user CPP function: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(funcName);  _pDebugOut->println("]");
         #endif
 
             _programCounter += sizeof(TokenIsExternCppFunction);
@@ -1560,7 +1560,7 @@ bool Justina_interpreter::parseAsJustinaFunction(char*& pNext, parsingResult_typ
         funcName[MAX_IDENT_NAME_LEN + 1] = c_JustinaFunctionFirstOccurFlag;                                             // max (bits 7654) < (bits 3210): indicates value is not yet updated by parsing previous calls closing parenthesis
         justinaFunctionData[index].pJustinaFunctionStartToken = nullptr;                                                // initialize. Pointer will be set when function definition is parsed (checked further down)
         justinaFunctionData[index].paramIsArrayPattern[1] = 0x80;                                                       // set flag to indicate a new function name is parsed (definition or call)
-        justinaFunctionData[index].paramIsArrayPattern[0] = 0x00;                                                        
+        justinaFunctionData[index].paramIsArrayPattern[0] = 0x00;
     }
 
     // if function storage was created already: check for double function definition
@@ -1621,7 +1621,7 @@ bool Justina_interpreter::parseAsJustinaFunction(char*& pNext, parsingResult_typ
     _lastTokenIsString = false, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
 #if PRINT_PARSED_TOKENS
-    _pDebugOut->print("parsing ext fcn: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(JustinaFunctionNames[_functionIndex]);  _pDebugOut->println("]");
+    _pDebugOut->print("   parsed Justina user function: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(JustinaFunctionNames[_functionIndex]);  _pDebugOut->println("]");
 #endif
 
     _programCounter += sizeof(TokenIsJustinaFunction);
@@ -1749,7 +1749,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parsingResult_type& resu
                 if (varNameIndex == -1) { pNext = pch; result = result_var_notDeclared; return false; }  // if the name doesn't exist, the variable doesn't
                 activeNameRange = secondaryNameRange;
             }
-            else {  pNext = pch; result = result_var_notDeclared; return false; }                                        // if the name doesn't exist, the variable doesn't
+            else { pNext = pch; result = result_var_notDeclared; return false; }                                        // if the name doesn't exist, the variable doesn't
         }
 
         // user variable referenced in program: set flag in user var types array (only; will not be copied in token info)
@@ -1890,20 +1890,20 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parsingResult_type& resu
         if (isProgramVar) { varType[activeNameRange][varNameIndex] = (varType[activeNameRange][varNameIndex] & ~var_scopeMask) | var_isGlobal; }
 
     #if PRINT_DEBUG_INFO
-        _pDebugOut->print("*** 4.2 - var NAME index: "); _pDebugOut->println(varNameIndex);
+        _pDebugOut->print("   (4.2) var NAME index: "); _pDebugOut->println(varNameIndex);
     #endif
 
         // variable not yet declared as global or user variable ? (If in debug mode, it can still be a static or local variable of a stopped function)
         if (globalVarStorageMissingOrIsNotGlobal) {
 
         #if PRINT_DEBUG_INFO
-            _pDebugOut->println("\r\n*** 4.2 - var not yet known");
+            _pDebugOut->println("\r\n   (4.2) var not yet known");
         #endif
 
             // but this can still be a global or user variable declaration 
             if (_isGlobalOrUserVarCmd) {                                                                                // is it a declaration ?  define storage location now
             #if PRINT_DEBUG_INFO
-                _pDebugOut->println("*** 4.2 - is global or user var");
+                _pDebugOut->println("   (4.2) is global or user var");
             #endif
 
                 // is a declaration of a new program global variable (in program mode), or a new user user variable (in immediate mode) 
@@ -1916,13 +1916,13 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parsingResult_type& resu
             }
             else {  // not a variable declaration, but a variable reference
             #if PRINT_DEBUG_INFO
-                _pDebugOut->println("*** 4.2 - is not a global or user var");
+                _pDebugOut->println("   (4.2) is not a global or user var");
             #endif
 
                 // it's neither a global or user variable declaration, nor a global or user variable reference (because storage does not exist for it). But the variable name exists,
                 // so local or static function variables using this name have been defined already. 
                 // retrieve data about this function now.
-                 
+
                  // in debug mode (program stopped), the name could refer to a local or static variable within the currently stopped function (open function).
                  // if parsing a BP trigger string, debug mode is not active yet (function is not stopped yet- will depend of trigger string execution result)   
 
@@ -1992,14 +1992,14 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parsingResult_type& resu
                             // supplied argument is a variable ? (scalar or array)
                             bool isSourceVarRef = ((OpenFunctionData*)pFlowCtrlStackLvl)->pVariableAttributes[openFunctionVar_valueIndex] & value_isVarRef;
                         #if PRINT_DEBUG_INFO
-                            _pDebugOut->print("     is open function 'var ref': "); _pDebugOut->println(isSourceVarRef);
+                            _pDebugOut->print("   is open function 'var ref': "); _pDebugOut->println(isSourceVarRef);
                         #endif
 
 
                             // has this local variable been defined as a scalar or array ?
                             isOpenFunctionLocalArrayVariable = ((OpenFunctionData*)pFlowCtrlStackLvl)->pVariableAttributes[openFunctionVar_valueIndex] & var_isArray;
-                        #if PRINT_DEBUG_INFO
-                            _pDebugOut->print("------ is open function local array: "); _pDebugOut->println(isOpenFunctionLocalArrayVariable);
+                        #if PRINT_DEBUG_INFO 
+                            _pDebugOut->print("   is open function local array: "); _pDebugOut->println(isOpenFunctionLocalArrayVariable);
                         #endif
 
                             if (isOpenFunctionLocalArrayVariable) {
@@ -2007,7 +2007,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parsingResult_type& resu
                                     ((OpenFunctionData*)pFlowCtrlStackLvl)->pLocalVarValues[openFunctionVar_valueIndex].pArray;
                                 openFunctionArray_dimCount = ((char*)pArray)[3];
                             #if PRINT_DEBUG_INFO
-                                _pDebugOut->print("------ open function local var dim count: "); _pDebugOut->println(openFunctionArray_dimCount);
+                                _pDebugOut->print("   open function local var dim count: "); _pDebugOut->println(openFunctionArray_dimCount);
                             #endif
 
                             }
@@ -2029,7 +2029,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parsingResult_type& resu
         else {
             // global PROGRAM variable exists already: check for double definition (USER variables: detected when NAME was declared a second time) 
         #if PRINT_DEBUG_INFO
-            _pDebugOut->println("*** 4.2 - is existing global");
+            _pDebugOut->println("   (4.2) is existing global");
         #endif
 
             if (_isGlobalOrUserVarCmd) {
@@ -2044,7 +2044,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parsingResult_type& resu
     // --------------------------------------------------------------------------------------------------------------------------------------------
 
 #if PRINT_DEBUG_INFO
-    _pDebugOut->println("*** 5 further checks");
+    _pDebugOut->println("   (5) further checks");
 #endif
 
     uint8_t varScope = isOpenFunctionStaticVariable ? var_isStaticInFunc :
@@ -2154,7 +2154,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parsingResult_type& resu
     // --------------------------------
 
 #if PRINT_DEBUG_INFO
-    _pDebugOut->println("*** 6 - store token");
+    _pDebugOut->println("   (6) store token");
 #endif
 
     TokenIsVariable* pToken = (TokenIsVariable*)_programCounter;
@@ -2172,7 +2172,7 @@ bool Justina_interpreter::parseAsVariable(char*& pNext, parsingResult_type& resu
     _lastTokenIsString = false, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
 #if PRINT_PARSED_TOKENS
-    _pDebugOut->print("** parsing var name: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(pvarNames[activeNameRange][varNameIndex]);  _pDebugOut->println("]");
+    _pDebugOut->print("   parsed var name: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(pvarNames[activeNameRange][varNameIndex]);  _pDebugOut->println("]");
 #endif
 
     _programCounter += sizeof(TokenIsVariable);
@@ -2261,7 +2261,7 @@ bool Justina_interpreter::parseAsIdentifierName(char*& pNext, parsingResult_type
     _lastTokenIsString = false, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
 #if PRINT_PARSED_TOKENS
-    _pDebugOut->print("parsing identif: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(pIdentifierName);  _pDebugOut->println("]");
+    _pDebugOut->print("   parsed identifier: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ["); _pDebugOut->print(pIdentifierName);  _pDebugOut->println("]");
 #endif
 
     _programCounter += sizeof(TokenIsConstant);
@@ -2528,7 +2528,7 @@ bool Justina_interpreter::parseString(char*& pNext, char*& pch, char*& pStringCs
             if (pSource[0] == '\\') { pSource++; escChars--; }                                  // if escape sequences found: skip first escape sequence character (backslash)
             pDestin++[0] = pSource++[0];
         }
-}
+    }
     pNext++;                                                                                    // skip closing quote
 
     valueType = value_isStringPointer;
@@ -2559,7 +2559,7 @@ int Justina_interpreter::getIdentifier(char** pIdentNameArray, int& identifiersI
 
     // create new identifier if it does not exist yet ?
     // upon return, createNew indicates whether new identifier storage NEEDED to be created ...
-    // and if it was possible, identifiersInUse will be set to the new identifier count
+    // and, if creating was succesful, identifiersInUse will be set to the new identifier count
 
     if (createNewName) {
         if (identifiersInUse == maxIdentifiers) { return index; }                               // create identifier name failed: return -1 with createNewName = true
@@ -2573,8 +2573,9 @@ int Justina_interpreter::getIdentifier(char** pIdentNameArray, int& identifiersI
         pIdentNameArray[identifiersInUse] = pIdentifierName;
         identifiersInUse++;
         return identifiersInUse - 1;                                                            // identNameIndex to newly created identifier name
+    }
+    else {return index;}                               
 }
-            }
 
 
 // --------------------------------------------------------------

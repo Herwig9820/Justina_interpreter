@@ -70,8 +70,14 @@ constexpr int ERROR_PIN{ 8 };
 constexpr int HEARTBEAT_PIN{ 9 };                                                // indicator leds
 
 #if WITH_TCPIP
+
+#if ESP32
+constexpr int WiFi_CONNECTED_PIN{ 17 };
+constexpr int TCP_CONNECTED_PIN{ 18 };
+#else
 constexpr int WiFi_CONNECTED_PIN{ 14 };
 constexpr int TCP_CONNECTED_PIN{ 15 };
+#endif
 
 constexpr char SSID[] = SERVER_SSID, PASS[] = SERVER_PASS;                            // WiFi SSID and password                           
 // connect as TCP server: create class object myTCPconnection
@@ -126,8 +132,10 @@ Print* pAltOutput[4]{ &Serial, nullptr, nullptr , nullptr };                    
 
 constexpr int terminalCount{ sizeof(pAltInput) / sizeof(pAltInput[1]) };
 
+#if WITH_TCPIP
 int TCPstreamSet{};
 connectionState_type _connectionState{ conn_0_wifiNotConnected };
+#endif
 
 Justina_interpreter* pJustina{ nullptr };                                                    // pointer to Justina_interpreter object
 
@@ -135,10 +143,10 @@ bool withinApplication{ false };                                                
 bool interpreterInMemory{ false };                                                     // init: interpreter is not in memory
 
 #if defined ARDUINO_ARCH_RP2040 
-long progMemSize = 1 << 16;             // 64 kByte
+long progMemSize = 1 << 16;             // 64 kByte (is max)
 #elif defined ESP32
-long progMemSize = 1 << 16;             // 64 kByte
-int SD_CHIP_SELECT_PIN {10};           // predefined in library for other boards
+long progMemSize = 1 << 16;             // 64 kByte (is max)
+int SD_CHIP_SELECT_PIN{ 10 };           // predefined in library for other boards
 #else
 long progMemSize = 2000;
 #endif 
@@ -164,7 +172,7 @@ void execAction(char c);
 
 bool userFcn_returnBool(const void** pdata, const char* valueType, const int argCount, int& execError);
 char userFcn_returnChar(const void** pdata, const char* valueType, const int argCount, int& execError);
-int userFcn_returnInt(const void** pdata, const char* valueType, const int argCount, int& execError);
+int  userFcn_returnInt(const void** pdata, const char* valueType, const int argCount, int& execError);
 long userFcn_returnLong(const void** pdata, const char* valueType, const int argCount, int& execError);
 long userFcn_returnLong_2(const void** pdata, const char* valueType, const int argCount, int& execError);
 float userFcn_returnFloat(const void** pdata, const char* valueType, const int argCount, int& execError);
@@ -285,7 +293,7 @@ void setup() {
     Serial.println("\r\nStarting TCP server");
 #if !ESP32
     Serial.print("WiFi firmware version  "); Serial.println(WiFi.firmwareVersion()); Serial.println();
-    #endif
+#endif
     myTCPconnection.setVerbose(false);                                                // disable debug messages from within myTCPconnection
     myTCPconnection.setKeepAliveTimeout(20 * 60 * 1000);                                // 20 minutes TCP keep alive timeout
     Serial.println("On the remote terminal, press ENTER to connect\r\n");
@@ -413,7 +421,7 @@ void execAction(char c) {
 
 
         case 'j':
-        #if !defined(ARDUINO_SAMD_NANO_33_IOT) && !defined(ARDUINO_ARCH_RP2040) && !defined(ESP32)
+        #if !defined(ARDUINO_ARCH_SAMD) && !defined(ARDUINO_ARCH_RP2040) && !defined(ESP32)
             Serial.println("interpreter does not run on this processor");            // interpreter does not run on this processor
             break;
         #endif
@@ -432,7 +440,6 @@ void execAction(char c) {
                 // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
                 // this callback function will be called regularly, e.g. every time the interpreter reads a character
                 pJustina->setMainLoopCallback((&Justina_housekeeping));                    // set callback function to Justina_housekeeping routine in this .ino file (pass 'Justina_housekeeping' routine address to Justina_interpreter library)
-
 
                 //--------------------------------------------
                 // >>> CPP user functions: pass entry points
@@ -754,7 +761,6 @@ void userFcn_readPort(const void** pdata, const char* valueType, const int argCo
 
     };
     pAltOutput[0]->println("=== leaving user c++ callback function");
-    return;
 }
 
 
@@ -765,6 +771,7 @@ void userFcn_readPort(const void** pdata, const char* valueType, const int argCo
 void userFcn_writePort(const void** pdata, const char* valueType, const int argCount, int& execError) {
     pAltOutput[0]->println("*** Justina was here ***");
     // do your thing here
+
 };
 
 

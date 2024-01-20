@@ -72,8 +72,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
     int functionIndex = pFunctionStackLvl->function.index;
     char functionCode = _internCppFunctions[functionIndex].functionCode;
 
-    char fcnResultValueType{};  // init
+    char fcnResultValueType{ value_isLong };  // init
     Val fcnResult;
+    fcnResult.longConst = 0;
 
     char argValueType[16];
     Val args[16];
@@ -1661,8 +1662,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             else if (functionCode == fnccod_digitalWrite) { digitalWrite(args[0].longConst, args[1].longConst); }           // args: pin, value
             else if (functionCode == fnccod_pinMode) { pinMode(args[0].longConst, args[1].longConst); }                     // args: pin, pin mode
             else if (functionCode == fnccod_analogRead) { fcnResult.longConst = analogRead(args[0].longConst); }            // arg: pin
-        #if defined(ARDUINO_ARCH_SAMD)                                                                                  // analog reference only for 
+        #if defined(ARDUINO_ARCH_SAMD)                                                                                      // analog reference only for 
             else if (functionCode == fnccod_analogReference) { analogReference(args[0].longConst); }                        // arg: reference type (0 to 5: see Arduino doc - 2 is external reference)
+        #else
+            else if (functionCode == fnccod_analogReference) {}                                                             // reference type not available
         #endif
             else if (functionCode == fnccod_analogWrite) { analogWrite(args[0].longConst, args[1].longConst); }             // args: pin, value
             else if (functionCode == fnccod_analogReadResolution) { analogReadResolution(args[0].longConst); }              // arg: bits

@@ -1280,7 +1280,7 @@ private:
     // during execution, data is pushed to / popped from an evaluation stack, using the structures below
 
     struct GenericTokenLvl {                                            // only to determine token type and for finding source error position during unparsing (for printing)
-        tokenType_type tokenType;
+        char tokenType;
         char spare[3];                                                  // boundary alignment
         char* tokenAddress;                                             // must be second 4-byte word
     };
@@ -1770,8 +1770,6 @@ private:
 #if defined ESP32
     static const uint O_READ{ 0x01 };
     static const uint O_WRITE{ 0x02 };
-#else
-    Sd2Card _SDcard;
 #endif
 
     OpenFile openFiles[MAX_OPEN_SD_FILES];                          // open files: file paths and attributed file numbers
@@ -1857,18 +1855,18 @@ public:
     // set pointer to system (main) call back function
     // -----------------------------------------------
 
-    bool setMainLoopCallback(void (*func)(long& appFlags));
+    void setMainLoopCallback(void (*func)(long& appFlags));
 
 
     // sets pointers to the locations where the Arduino program stored information about user-defined (external) cpp functions (user callback functions)
     // -------------------------------------------------------------------------------------------------------------------------------------------------
 
-    bool setUserBoolCppFunctionsEntryPoint(const CppBoolFunction* const  pCppBoolFunctions, int cppBoolFunctionCount);
-    char setUserCharCppFunctionsEntryPoint(const CppCharFunction* const  pCppCharFunctions, int cppCharFunctionCount);
-    int setUserIntCppFunctionsEntryPoint(const CppIntFunction* const  pCppIntFunctions, int cppIntFunctionCount);
-    long setUserLongCppFunctionsEntryPoint(const CppLongFunction* const pCppLongFunctions, int cppLongFunctionCount);
-    float setUserFloatCppFunctionsEntryPoint(const CppFloatFunction* const pCppFloatFunctions, int cppfloatFunctionCount);
-    char* setUser_pCharCppFunctionsEntryPoint(const Cpp_pCharFunction* const pCpp_pCharFunctions, int cpp_pCharFunctionCount);
+    void setUserBoolCppFunctionsEntryPoint(const CppBoolFunction* const  pCppBoolFunctions, int cppBoolFunctionCount);
+    void setUserCharCppFunctionsEntryPoint(const CppCharFunction* const  pCppCharFunctions, int cppCharFunctionCount);
+    void setUserIntCppFunctionsEntryPoint(const CppIntFunction* const  pCppIntFunctions, int cppIntFunctionCount);
+    void setUserLongCppFunctionsEntryPoint(const CppLongFunction* const pCppLongFunctions, int cppLongFunctionCount);
+    void setUserFloatCppFunctionsEntryPoint(const CppFloatFunction* const pCppFloatFunctions, int cppfloatFunctionCount);
+    void setUser_pCharCppFunctionsEntryPoint(const Cpp_pCharFunction* const pCpp_pCharFunctions, int cpp_pCharFunctionCount);
     void setUserCppCommandsEntryPoint(const CppVoidFunction* const pCppVoidCommands, int cppVoidCommandCount);
 
 
@@ -2132,7 +2130,7 @@ private:
     void quoteAndExpandEscSeq(char*& input);
 
     // find / jump to tokens in program memory
-    int findTokenStep(char*& pStep, bool excludeCurrent, int tokenTypeToFind, char criterium1, char criterium2 = -1, char criterium3 = -1, int* matchedCritNum = nullptr, int* tokenIndex = nullptr);
+    int findTokenStep(char*& pStep, bool excludeCurrent, char tokenTypeToFind, char criterium1, char criterium2 = -1, char criterium3 = -1, int* matchedCritNum = nullptr, int* tokenIndex = nullptr);
     int jumpTokens(int n, char*& pStep, int& tokenCode);
     int jumpTokens(int n, char*& pStep);
     int jumpTokens(int n);
