@@ -1770,8 +1770,9 @@ private:
 #if defined ESP32
     static const uint O_READ{ 0x01 };
     static const uint O_WRITE{ 0x02 };
+#else
+    Sd2Card _SDcard{};
 #endif
-
     OpenFile openFiles[MAX_OPEN_SD_FILES];                          // open files: file paths and attributed file numbers
     int _openFileCount = 0;
     int _SDcardChipSelectPin{ 10 };
@@ -1845,7 +1846,7 @@ public:
     // -----------------
 
 #if defined ESP32
-    Justina_interpreter(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, long progMemSize, int SDcardConstraints,int SDcardChipSelectPin);
+    Justina_interpreter(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, long progMemSize, int SDcardConstraints, int SDcardChipSelectPin);
 #else
     Justina_interpreter(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, long progMemSize, int SDcardConstraints = 0, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);
 #endif
@@ -2081,8 +2082,8 @@ private:
     execResult_type setStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, int& streamNumber, bool forOutput = false);
     execResult_type setStream(int streamNumber, bool forOutput = false);
     execResult_type setStream(int streamNumber, Stream*& pStream, bool forOutput = false);
-    execResult_type determineStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, Stream*& pStream, int& streamNumber, bool forOutput = false);
-    execResult_type determineStream(int streamNumber, Stream*& pStream, bool forOutput = false);
+    execResult_type determineStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, Stream*& pStream, int& streamNumber, bool forOutput = false, int allowFileTypes = 1);
+    execResult_type determineStream(int streamNumber, Stream*& pStream, bool forOutput = false, int allowFileTypes = 1);
 
     bool pathValid(char* path);
     bool fileIsOpen(char* path);

@@ -103,8 +103,8 @@ void TCPconnection::requestAction(connectionAction_type action, connectionState_
 void TCPconnection::maintainConnection(connectionState_type& conn_state, bool resetKeepAliveTimer) {
     // variable 'connectionState' controls proper sequencing of tasks in these procedures:
     maintainWiFiConnection();                                                    // if currently not connected to wifi (or connection lost): (try to re-)connect
-    maintainTCPconnection(resetKeepAliveTimer);                                                  
-    
+    maintainTCPconnection(resetKeepAliveTimer);
+
     // 'conn_2_TCPwaitForConnection': return value only. Internal status remains 'conn_1_wifiConnected'
     conn_state = ((_connectionState == conn_1_wifiConnected) && _TCPenabled) ? conn_2_TCPwaitForConnection : _connectionState;
 }

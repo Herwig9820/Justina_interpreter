@@ -688,7 +688,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     // NOTE: debug out (in contrast to console in & out) can point to an SD file
                     // NOTE: debug out will be automatically reset to console out if file is subsequently closed
                     File* pFile{};
-                    execResult_type execResult = SD_fileChecks(pFile, streamNumber, 1);
+                    execResult_type execResult = SD_fileChecks(pFile, streamNumber);                    // do not allow file type 'directory'
                     if (execResult != result_execOK) { return execResult; }
                     _debug_sourceStreamNumber = streamNumber;
                     _pDebugOut = static_cast<Stream*> (pFile);
@@ -1605,17 +1605,16 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         #else
             if (!_SDinitOK) { return result_SD_noCardOrCardError; }
 
+            printlnTo(0, "SD card: file list is printed to Serial port");
             // print to SERIAL (fixed in SD library), including date and time stamp
-
-            SdVolume volume{};
-            SdFile root{};
             // ===>>> to serial !!!
             Serial.println("\nSD card: files (name, date, size in bytes): ");
 
-            Sd2Card _SDcard;
+            SdVolume volume{};
+            SdFile root{};
             volume.init(_SDcard);
             root.openRoot(volume);
-            root.ls(LS_R | LS_DATE | LS_SIZE);                                                                              // to SERIAL (not to _console)
+            root.ls(LS_R | LS_DATE | LS_SIZE);                                                                        // to SERIAL (not to _console)
         #endif
         }
 

@@ -71,7 +71,7 @@ constexpr int HEARTBEAT_PIN{ 9 };                                               
 
 #if WITH_TCPIP
 
-#if ESP32
+#if defined ESP32
 constexpr int WiFi_CONNECTED_PIN{ 17 };
 constexpr int TCP_CONNECTED_PIN{ 18 };
 #else
@@ -291,7 +291,7 @@ void setup() {
 
 #if WITH_TCPIP
     Serial.println("\r\nStarting TCP server");
-#if !ESP32
+#if !defined ESP32
     Serial.print("WiFi firmware version  "); Serial.println(WiFi.firmwareVersion()); Serial.println();
 #endif
     myTCPconnection.setVerbose(false);                                                // disable debug messages from within myTCPconnection

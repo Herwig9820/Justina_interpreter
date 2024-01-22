@@ -47,6 +47,9 @@ Justina_interpreter::execResult_type Justina_interpreter::startSD() {
     if (_SDinitOK) { return result_execOK; }                                                                                // card is initialised: nothing to do
 
     if ((_justinaConstraints & 0b0011) == 0) { return result_SD_noCardOrCardError; }
+#if !defined ESP32
+    _SDcard.init(SPI_FULL_SPEED, _SDcardChipSelectPin);         // needed for listFilesToSerial command (not for nano ESP32)
+#endif
     if (!SD.begin(_SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
 
     _openFileCount = 0;
@@ -61,9 +64,9 @@ Justina_interpreter::execResult_type Justina_interpreter::startSD() {
 // -------------------------------------------------------
 
 #if defined ESP32
-    char* Justina_interpreter::SD_ESP32_convert_accessMode(int mode){
+char* Justina_interpreter::SD_ESP32_convert_accessMode(int mode) {
     ////
-    }
+}
 #endif
 
 
@@ -96,7 +99,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumbe
     // find a free file number 
     for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
         if (!openFiles[i].fileNumberInUse) {
-            
+
         #if defined ESP32
             openFiles[i].file = SD.open(filePathInCapitals, SD_ESP32_convert_accessMode(mode));
         #else
@@ -143,7 +146,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_openNext(int dirFil
     for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
         if (!openFiles[i].fileNumberInUse) {
         #if defined ESP32
-            openFiles[i].file = pDirectory->openNextFile( SD_ESP32_convert_accessMode(mode));
+            openFiles[i].file = pDirectory->openNextFile(SD_ESP32_convert_accessMode(mode));
         #else
             openFiles[i].file = pDirectory->openNextFile(mode);
         #endif
@@ -268,7 +271,7 @@ void Justina_interpreter::printDirectory(File dir, int indentLevel) {
         else {
             // files have sizes, directories do not
             int len = indentLevel * step + strlen(entry.name());
-            if (len < defaultSizeAttrColumn - minimumColumnSpacing) {      
+            if (len < defaultSizeAttrColumn - minimumColumnSpacing) {
                 for (int i = len; i < defaultSizeAttrColumn; i++) { print(" "); }
             }
             else {
@@ -369,16 +372,18 @@ Justina_interpreter::execResult_type Justina_interpreter::setStream(int streamNu
 // *   WITHOUT setting _streamNumberIn, _pStreamIn or _streamNumberOut, _pStreamOut                                              *
 // -------------------------------------------------------------------------------------------------------------------------------
 
-Justina_interpreter::execResult_type Justina_interpreter::determineStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, Stream*& pStream, int& streamNumber, bool forOutput) {
+Justina_interpreter::execResult_type Justina_interpreter::determineStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, 
+    Stream*& pStream, int& streamNumber, bool forOutput, int allowFileTypes) {
+
     // check file number (also perform related file and SD card object checks)
     if ((!(argIsLongBits & (0x1 << argIndex))) && (!(argIsFloatBits & (0x1 << argIndex)))) { return result_numberExpected; }    // stream number
     streamNumber = (argIsLongBits & (0x1 << argIndex)) ? arg.longConst : arg.floatConst;
 
-    return determineStream(streamNumber, pStream, forOutput);
+    return determineStream(streamNumber, pStream, forOutput, allowFileTypes);
 }
 
 
-Justina_interpreter::execResult_type  Justina_interpreter::determineStream(int streamNumber, Stream*& pStream, bool forOutput) {
+Justina_interpreter::execResult_type  Justina_interpreter::determineStream(int streamNumber, Stream*& pStream, bool forOutput, int allowFileTypes) {
 
     if (streamNumber == 0) { pStream = forOutput ? static_cast<Stream*> (_pConsoleOut) : _pConsoleIn; }  // init: assume console
     else if ((-streamNumber) > _externIOstreamCount) { return result_IO_invalidStreamNumber; }
@@ -390,7 +395,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::determineStream(int s
     }    // external IO: stream number -1 => array index 0, etc.
     else {
         File* pFile{};
-        execResult_type execResult = SD_fileChecks(pFile, streamNumber);                                                        // operand: file number
+        execResult_type execResult = SD_fileChecks(pFile, streamNumber,allowFileTypes);                                                        // operand: file number
         if (execResult != result_execOK) { return execResult; }
         pStream = static_cast<Stream*> (pFile);
     }
@@ -790,12 +795,11 @@ char Justina_interpreter::getCharacter(bool& kill, bool& forcedStop, bool& force
     long startWaitForReadTime = millis();                               // note the time
     bool readCharWindowExpired{};
     long timeOutValue = _pStreamIn->getTimeout();                       // get timeout value for the stream
-
     bool stop{ false }, abort{ false }, stdCons{ false };
     do {
         execPeriodicHousekeeping(&kill, &stop, &abort, &stdCons);       // get housekeeping flags
-        if (_pStreamIn->available() > 0) { c = read(); }                // get character (if available)
-
+        // get character (if available)
+        if (_pStreamIn->available() > 0) { c = read(); }
         if (kill) { return c; }                                         // flag 'kill' (request from Justina caller): return immediately
         forcedAbort = forcedAbort || abort;                             // do not exit immediately, except if waiting for a 'first' character (with a long timeout)
         if (forcedAbort && useLongTimeout) { break; }
@@ -807,7 +811,6 @@ char Justina_interpreter::getCharacter(bool& kill, bool& forcedStop, bool& force
         // try to read character only once or keep trying until timeout occurs ?
         readCharWindowExpired = (!allowWaitTime || (startWaitForReadTime + (useLongTimeout ? LONG_WAIT_FOR_CHAR_TIMEOUT : timeOutValue) < millis()));
     } while (!readCharWindowExpired);
-
     return c;
 
 }
@@ -859,7 +862,7 @@ bool Justina_interpreter::getConsoleCharacters(bool& forcedStop, bool& forcedAbo
 
     int maxLength = length;  // init
     length = 0;
-    setStream(0);                                                                       // set _pStreamIn to console, for use by Justina methods
+    setStream(0);                                                                           // set _pStreamIn to console, for use by Justina methods
     do {                                                                                    // until new line character encountered
         // read a character, if available in buffer
         char c{ };                                                                          // init: no character available

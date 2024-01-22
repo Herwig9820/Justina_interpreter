@@ -253,11 +253,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
         // --------------------------------------------------
 
         case fnccod_close:                                                                                                  // close a file
-        case fnccod_flush:                                                                                                  // empty output buffert
+        case fnccod_flush:                                                                                                  // empty output buffer
         {
             Stream* pStream{};
             int streamNumber;
-            execResult_type execResult = determineStream(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber, true);   // stream for output (flush() )           
+            // flush(): stream is output stream; not for directories )
+            execResult_type execResult = determineStream(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber, true, (functionCode == fnccod_close) ? 0 : 1);              
             if (execResult != result_execOK) { return execResult; }
             if (functionCode == fnccod_close) {
                 if (streamNumber <= 0) { return result_SD_invalidFileNumber; }
@@ -333,16 +334,15 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
         break;
 
 
-        // ---------------------------
-        // set time out for stream
-        // get time out set for stream
-        // ---------------------------
+        // ---------------------------------------------------------------------
+        // set or get time to wait for incoming characters for a specific stream
+        // ---------------------------------------------------------------------
 
-        case fnccod_setTimeout:                                                                                             // for incoming characters
+        case fnccod_setTimeout:
         case fnccod_getTimeout:
         {
-            // NOTE: setting a timeout value only works for established connections, and only as long as the connection is maintained (cfr. TCP)
-            //       if stream does not point to an established connection, an error is only produced for SD streams. For other I/O streams, no warning is given (nothing happens)
+            // setting a timeout value only works for established connections, and only as long as the connection is maintained (cfr. TCP)
+            // if stream does not point to an established connection, an error is only produced for SD streams. For other I/O streams, no warning is given (nothing happens)
 
 
             Stream* pStream{ _pConsoleIn };
