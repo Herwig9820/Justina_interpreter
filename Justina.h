@@ -1002,14 +1002,14 @@ public:
     static constexpr long appFlag_abortRequestBit = 0x0800L;            // request to abort running Justina code (either a Justina program or immediate mode Justina statements)
 
     // bits 15-12: spare
-    // 
-    // bits 19-16: flags signaling data was READ from external IO stream -1 to -4
+    
+    // bits 19-16: bitmask for flags signaling that Justina READ data from external IO stream -1 to -4
     static constexpr long appFlag_dataRecdFromStreamMask = 0x000f0000;
 
-    static constexpr long appFlag_dataRecdFromStream1 = 0x00010000;
-    static constexpr long appFlag_dataRecdFromStream2 = 0x00020000;
-    static constexpr long appFlag_dataRecdFromStream3 = 0x00040000;
-    static constexpr long appFlag_dataRecdFromStream4 = 0x00080000;
+    static constexpr long appFlag_dataRecdFromStream1 = 0x00010000;     // Justina READ data from external IO stream - 1
+    static constexpr long appFlag_dataRecdFromStream2 = 0x00020000;     // Justina READ data from external IO stream - 2
+    static constexpr long appFlag_dataRecdFromStream3 = 0x00040000;     // Justina READ data from external IO stream - 3
+    static constexpr long appFlag_dataRecdFromStream4 = 0x00080000;     // Justina READ data from external IO stream - 4
 
     // bits 31-20: spare
 private:

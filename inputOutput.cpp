@@ -469,7 +469,7 @@ int Justina_interpreter::readFrom(int streamNumber) {
 int Justina_interpreter::readFrom(int streamNumber, char* buffer, int length) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, pStream) != result_execOK) { return 0; }          // if error, zero characters written but error is not returned to caller
-    return static_cast<File*>(pStream)->read((uint8_t*)buffer, length);                           // NOTE: stream MUST be a file (check before call) -> appFlag_dataInOut  and appFlag_dataRecdFromStream1 must not be set
+    return static_cast<File*>(pStream)->read((uint8_t*)buffer, length);                 // NOTE: stream MUST be a file (check before call) -> appFlag_dataInOut  and appFlag_dataRecdFromStream1 must not be set
 }
 
 

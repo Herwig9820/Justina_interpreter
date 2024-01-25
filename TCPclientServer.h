@@ -40,10 +40,11 @@
 
 
 enum connectionState_type {
-    conn_0_wifiNotConnected,                                            // wifi not yet connected
-    conn_1_wifiConnected,                                               // wifi connected, but server not yet connected to a client
-    conn_2_TCPwaitForConnection,                                        // TCP enabled but not connected
-    conn_3_TCPconnected,                                                 // server connected to a client 
+    conn_0_wifi_notConnected,                                            // wifi not yet connected
+    conn_1_wifi_waitForConnecton,
+    conn_2_wifi_connected,                                               // wifi connected, but server not yet connected to a client
+    conn_3_TCP_waitForConnection,                                        // TCP enabled but not connected
+    conn_4_TCP_connected,                                                 // server connected to a client 
     
     conn_11_wifiNoSuccessConnecting                                     // only used for [sys] message
 };
@@ -64,27 +65,28 @@ private:
     const char* _SSID, * _PASS;
     IPAddress _serverAddress, _gatewayAddress, _subnetMask, _DNSaddress; //// const
 
-    //// keep alive delay: default aanpassen via function call
     static const unsigned long _wifiConnectDelay { 500 };                   // minimum delay between two attempts to connect to wifi (milliseconds) //// static weg ???
     static const unsigned long _TCPconnectDelay { 500 };                  // minimum delay between stopping and connecting client
-    static const unsigned long _isServer_stopDelay { 1000 };              // server: delay before stopping connection to client (and continue listening foe new client)
+    static const unsigned long _isServer_stopDelay { 1000 };              // server: delay before stopping connection to client (and continue listening for new client)
     static const unsigned long _isServer_keepAliveTimeOut { 60 * 60 * 1000 };       // server: default connection timeout after connection to client
     static const unsigned long _isClient_stopDelay { 1000 };              // client: delay before stopping connection
     static const unsigned long _isClient_keepAliveTimeOut { 10 * 1000 };            // client: default connection timeout after connection to server  
 
-    bool _verbose;
-    bool _resetWiFi;
-    bool _isClient;
-    int _serverPort;
+    bool _verbose{};
+    bool _resetWiFi{};
+    bool _isClient{};
+    int _serverPort{};
 
-    bool _WiFiEnabled;
-    bool _TCPenabled;
-    bool _TCPconnTimeoutEnabled;
-    connectionState_type _connectionState;                       // state machine: wifi and client connection state
-    unsigned long _lastWifiConnectAttempt;                            // timestamps in milliseconds
-    unsigned long _lastTCPconnectAttempt;
-    unsigned long _keepAliveUntil;
-    unsigned long _keepAliveTimeOut;
+    bool _WiFiEnabled{};
+    bool _TCPenabled{};
+    bool _TCPconnTimeoutEnabled{};
+    connectionState_type _connectionState{};                       // state machine: wifi and client connection state
+    unsigned long _WiFiConnectBeginAt{};
+    unsigned long _WiFiWaitingForConnectonAt{};
+    unsigned long _lastWifiMaintenanceTime{};                            // timestamps in milliseconds
+    unsigned long _lastTCPmaintenanceTime{};
+    unsigned long _keepAliveUntil{};
+    unsigned long _keepAliveTimeOut{};
 
     WiFiServer _server;                                                     // wifi server object
     WiFiClient _client;                                                     // wifi client object

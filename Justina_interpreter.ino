@@ -81,9 +81,9 @@ constexpr int TCP_CONNECTED_PIN{ 15 };
 
 constexpr char SSID[] = SERVER_SSID, PASS[] = SERVER_PASS;                            // WiFi SSID and password                           
 // connect as TCP server: create class object myTCPconnection
-TCPconnection myTCPconnection(SSID, PASS, serverAddress, gatewayAddress, subnetMask, DNSaddress, serverPort, conn_3_TCPconnected);
+TCPconnection myTCPconnection(SSID, PASS, serverAddress, gatewayAddress, subnetMask, DNSaddress, serverPort, conn_4_TCP_connected);
 
-constexpr char menu[] = "+++ Please select:\r\n  'H' Help\r\n  '0' (Re-)start WiFi\r\n  '1' Disable WiFi\r\n  '2' Enable TCP\r\n  '3' stop TCP\r\n  '4' Disable TCP\r\n  '5' Verbose TCP\r\n  '6' Silent TCP\r\n  '7' Print connection state\r\n  'J' Start Justina interpreter\r\n";
+constexpr char menu[] = "+++ Please select:\r\n  'H' Help\r\n  '0' Disable WiFi\r\n  '1' (Re-)start WiFi\r\n  '2' Enable TCP\r\n  '3' stop TCP\r\n  '4' Disable TCP\r\n  '5' Verbose TCP\r\n  '6' Silent TCP\r\n  '7' Print connection state\r\n  'J' Start Justina interpreter\r\n";
 
 #else
 constexpr char menu[] = "+++ Please select:\r\n  'J' Start Justina interpreter\r\n";
@@ -133,8 +133,8 @@ Print* pAltOutput[4]{ &Serial, nullptr, nullptr , nullptr };                    
 constexpr int terminalCount{ sizeof(pAltInput) / sizeof(pAltInput[1]) };
 
 #if WITH_TCPIP
-int TCPstreamSet{};
-connectionState_type _connectionState{ conn_0_wifiNotConnected };
+int TCPstreamBits{};                                                                // set of 4 bits, indicating TCP streams in the set of external streams  
+connectionState_type _connectionState{ conn_0_wifi_notConnected };
 #endif
 
 Justina_interpreter* pJustina{ nullptr };                                                    // pointer to Justina_interpreter object
@@ -259,13 +259,8 @@ void setup() {
     do {
         ledState = !ledState;
         loopCount++;
-        digitalWrite(HEARTBEAT_PIN, ledState);
-        digitalWrite(ERROR_PIN, ledState);
-        digitalWrite(STATUS_A_PIN, ledState);
-        digitalWrite(STATUS_B_PIN, ledState);
-
-        if (Serial && (loopCount > 3)) { if (!ledState) { break; } }            // wait minimum 3 seconds (a non-native USB port will always return 'true')
-        else { delay(1000); }
+        if (loopCount == 6) { break; }            // wait minimum 3 seconds (a non-native USB port will always return 'true')
+        else { delay(500); }
     } while (true);
 
 #if WITH_OLED_SW_SPI
@@ -300,7 +295,8 @@ void setup() {
 
     pAltInput[1] = static_cast<Stream*>(myTCPconnection.getClient());     // Justina: stream number -2 is TCP client (alt streams 0..2 => stream numbers -1..-3)
     pAltOutput[1] = static_cast<Print*>(myTCPconnection.getClient());     // Justina: stream number -2 is TCP client (alt streams 0..2 => stream numbers -1..-3)
-    TCPstreamSet = 0b0010;  // bitset: within 'pAltInput' array
+
+    TCPstreamBits = 0b0010;                         // set of 4 bits, indicating TCP streams in the set of external streams (b0: stream -1 -> b3: stream -4)
 #endif
 
 
@@ -370,13 +366,13 @@ void execAction(char c) {
     #if WITH_TCPIP
         // !!!!! NOTE: RP2040 MBED OS crashes if '0' or '1' menu options are entered twice in succession
         case '0':
-            myTCPconnection.requestAction(action_1_restartWiFi, _connectionState);      // always
-            Serial.println("(Re-)starting WiFi... this can take a moment");
+            myTCPconnection.requestAction(action_0_disableWiFi, _connectionState);
+            Serial.println("WiFi disabled");
             break;
 
         case '1':
-            myTCPconnection.requestAction(action_0_disableWiFi, _connectionState);
-            Serial.println("WiFi disabled");
+            myTCPconnection.requestAction(action_1_restartWiFi, _connectionState);      // always
+            Serial.println("(Re-)starting WiFi... this can take a moment");
             break;
 
         case '2':
@@ -406,7 +402,7 @@ void execAction(char c) {
 
         case '7':                                                                       // set TCP server to silent
             Serial.print("Connection state: "); Serial.print(_connectionState);
-            if (_connectionState == conn_3_TCPconnected) {
+            if (_connectionState == conn_4_TCP_connected) {
                 WiFiClient* client = static_cast<WiFiClient*>(myTCPconnection.getClient());
                 IPAddress IP = client->remoteIP();
                 char IPstring[16];
@@ -513,18 +509,17 @@ void heartbeat() {
 
 #if WITH_TCPIP
 void maintainTCP(bool resetKeepAliveTimer) {
-
     myTCPconnection.maintainConnection(_connectionState, resetKeepAliveTimer);                                               // maintain TCP connection
 
     // control WiFi and TCP indicator leds
     // -----------------------------------
 
-    static connectionState_type oldConnectionState{ conn_0_wifiNotConnected };
+    static connectionState_type oldConnectionState{ conn_0_wifi_notConnected };
     static uint32_t lastLedChangeTime{ 0 };
     static bool TCPledState{ false };
 
     // TCP enabled and waiting for a client to connect ? blink 'TCP' led
-    bool TCPwaitForConnect = (_connectionState == conn_2_TCPwaitForConnection);
+    bool TCPwaitForConnect = (_connectionState == conn_3_TCP_waitForConnection);
     if (TCPwaitForConnect) {           // blink TCP led
         uint32_t currentTime = millis();
         // also handle millis() overflow after about 47 days
@@ -537,11 +532,11 @@ void maintainTCP(bool resetKeepAliveTimer) {
 
     // set WiFi connected & TCP connected leds
     if (oldConnectionState != _connectionState) {
-        bool WiFiConnected = (_connectionState != conn_0_wifiNotConnected);
+        bool WiFiConnected = (_connectionState != conn_0_wifi_notConnected) && (_connectionState != conn_1_wifi_waitForConnecton);
         digitalWrite(WiFi_CONNECTED_PIN, WiFiConnected);                                  // led indicates 'client connected' status
 
-        if (_connectionState != conn_2_TCPwaitForConnection) {                   // do not interfere with blinking TCP led
-            bool TCPconnected = (_connectionState == conn_3_TCPconnected);
+        if (_connectionState != conn_3_TCP_waitForConnection) {                   // do not interfere with blinking TCP led
+            bool TCPconnected = (_connectionState == conn_4_TCP_connected);
             digitalWrite(TCP_CONNECTED_PIN, TCPconnected);                        // led indicates 'client connected' status
         }
     }
@@ -678,7 +673,10 @@ void Justina_housekeeping(long& appFlags) {
     if (newDataLedState != dataLedState) { dataLedState = newDataLedState;  digitalWrite(DATA_IO_PIN, dataLedState); }  // only write if change detected
 
 #if WITH_TCPIP
-    maintainTCP(bool(appFlags & (Justina_interpreter::appFlag_dataRecdFromStreamMask & (TCPstreamSet << 16))));                                                // maintain TCP connection
+    // appFlag bits 19-16 signal that Justina READ data from external IO streams -1 to -4
+    // TCPstreamBits bits 3-0: set of 4 bits, indicating which streams in the set of external streams are TCP streams (b0: stream -1 -> b3: stream -4)
+    // if characters sent by a TCP stream were read, this resets the TCP stream keepalive timer (NOT related to keepalive in a HTTP protocol) 
+    maintainTCP(bool(appFlags & (TCPstreamBits << 16)));                                                // maintain TCP connection
 #endif
 }
 
