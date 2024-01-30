@@ -65,7 +65,9 @@ Justina_interpreter::execResult_type Justina_interpreter::startSD() {
 
 #if defined ESP32
 char* Justina_interpreter::SD_ESP32_convert_accessMode(int mode) {
-    ////
+    if (mode & 0x04){return "a"; }
+    if (mode & 0x02) { return "w"; }
+    return "r";
 }
 #endif
 

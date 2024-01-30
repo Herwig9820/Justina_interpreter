@@ -340,10 +340,10 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     {"getWriteError",           fnccod_getWriteError,          1,1,    0b0 },
     {"clearWriteError",         fnccod_clearWriteError,        1,1,    0b0 },
 
-    {"fmt",                     fnccod_format,                  1,6,    0b0},               // short label for 'system value'
-    {"tab",                     fnccod_tab,                     0,1,    0b0},
-    {"col",                     fnccod_gotoColumn,              1,1,    0b0},
-    {"pos",                     fnccod_getColumnPos,            0,0,    0b0},
+    {"fmt",                     fnccod_format,                 1,6,    0b0},               // short label for 'system value'
+    {"tab",                     fnccod_tab,                    0,1,    0b0},
+    {"col",                     fnccod_gotoColumn,             1,1,    0b0},
+    {"pos",                     fnccod_getColumnPos,           0,0,    0b0},
 
     // SD card only (based upon Arduino SD card library functions)
     {"open",                    fnccod_open,                   1,2,    0b0 },
@@ -528,17 +528,22 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     {"FILE_5",              "5",                        value_isLong},      // IO: read from / print to open SD file 5 
 
     // file access type on open
+ #if defined ESP32
+    {"READ",                "r",                        value_isStringPointer},      // open SD file for read access
+    {"WRITE",               "w",                        value_isStringPointer},      // open SD file for write access
+    {"APPEND",              "a",                        value_isStringPointer},      // writes will occur at end of file
+ #else
     {"READ",                "0x1",                      value_isLong},      // open SD file for read access
     {"WRITE",               "0x2",                      value_isLong},      // open SD file for write access
     {"RDWR",                "0x3",                      value_isLong},      // open SD file for r/w access
     {"APPEND",              "0x4",                      value_isLong},      // writes will occur at end of file
     {"SYNC",                "0x8",                      value_isLong},      //  
     {"NEW_OK",              "0x10",                     value_isLong},      // creating new files if non-existent is allowed, open existing files
-    {"EXCL",                "0x20",                     value_isLong},      // "exclusive": use with 'NEW_OK' to create new files 'exclusively' 
     {"NEW_ONLY",            "0x30",                     value_isLong},      // create new file only - do not open an existing file
     {"TRUNC",               "0x40",                     value_isLong},      // truncate file to zero bytes on open (NOT if file is opened for read access only)
 
     {"RW_APPEND",           "0x07",                     value_isLong},      // open for read write access; writes at the end
+ #endif
 
     // formatting flags
     {"FMT_LEFT",            "0x01",                     value_isLong},      // align output left within the print field 
@@ -722,7 +727,7 @@ bool Justina_interpreter::run() {
     for (int i = 0; i < 48; i++) { printTo(0, "*"); } printlnTo(0);
 
 #if PRINT_HEAP_OBJ_CREA_DEL
-    int col{}; 
+    int col{};
     _pDebugOut->println();
     _pDebugOut->print("+++++ (Justina object) at 0x"); col = 10 - _pDebugOut->print((uint32_t)this, HEX); _pDebugOut->print(", size "); _pDebugOut->println(sizeof(*this));
     _pDebugOut->print("+++++ (program memory) at 0x"); col = 10 - _pDebugOut->print((uint32_t)_programStorage, HEX); _pDebugOut->print(", size "); _pDebugOut->println(_progMemorySize + IMM_MEM_SIZE);
@@ -1151,7 +1156,7 @@ bool Justina_interpreter::prepareForIdleMode(parsingResult_type result, execResu
     if (_programMode) {
         _pDebugOut->println();
         _pBreakpoints->printLineRangesToDebugOut(static_cast<Stream*>(_pDebugOut));
-}
+    }
 #endif
 
     // before loadng a program, clear memory except user variables
@@ -1534,7 +1539,7 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
         _pDebugOut->print("**** Variable / function name objects cleanup error. Remaining: "); _pDebugOut->println(_identifierNameStringObjectCount);
     #endif
         _identifierNameStringObjectErrors += abs(_identifierNameStringObjectCount);
-}
+    }
 
     if (_parsedStringConstObjectCount != 0) {
     #if PRINT_OBJECT_COUNT_ERRORS
@@ -1570,7 +1575,7 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
             _pDebugOut->print("**** User variable name objects cleanup error. Remaining: "); _pDebugOut->println(_userVarNameStringObjectCount);
         #endif
             _userVarNameStringObjectErrors += abs(_userVarNameStringObjectCount);
-    }
+        }
 
         if (_userVarStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS

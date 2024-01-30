@@ -1002,7 +1002,7 @@ public:
     static constexpr long appFlag_abortRequestBit = 0x0800L;            // request to abort running Justina code (either a Justina program or immediate mode Justina statements)
 
     // bits 15-12: spare
-    
+
     // bits 19-16: bitmask for flags signaling that Justina READ data from external IO stream -1 to -4
     static constexpr long appFlag_dataRecdFromStreamMask = 0x000f0000;
 
@@ -1191,8 +1191,11 @@ private:
     static const ResWordDef _resWords[75];                                                                                      // keyword names
     static const InternCppFuncDef _internCppFunctions[139];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
-    static const SymbNumConsts _symbNumConsts[66];                                                                              // predefined constants
-
+#if defined ESP32
+    static const SymbNumConsts _symbNumConsts[59];                                                                              // predefined constants
+#else
+    static const SymbNumConsts _symbNumConsts[65];                                                                              // predefined constants
+#endif
     static const int _resWordCount{ sizeof(_resWords) / sizeof(_resWords[0]) };                                                 // count of keywords in keyword table 
     static const int _internCppFunctionCount{ (sizeof(_internCppFunctions)) / sizeof(_internCppFunctions[0]) };                 // count of internal cpp functions in functions table
     static const int _termTokenCount{ sizeof(_terminals) / sizeof(_terminals[0]) };                                             // count of operators and other terminals in terminals table

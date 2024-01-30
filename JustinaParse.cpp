@@ -485,7 +485,7 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parsingResult_type& result
 
     // try to parse as number (int or float)
     Val value; char valueType{};
-    if (!parseIntFloat(pNext, pch, value, valueType, result)) { return false; }                                 // return with error, 'result' contains error number
+    if (!parseIntFloat(pNext, pch, value, valueType, result)) { return false; }                                 // if returning with error, 'result' contains error number
     if (result != result_parsing_OK) { return true; }                                                           // is not a number, but can still be another valid token
 
     float flt{ 0 }; long lng{ 0 };
@@ -564,42 +564,61 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parsingResult_type& result
 bool Justina_interpreter::parseAsStringConstant(char*& pNext, parsingResult_type& result) {
     result = result_tokenNotFound;                                                                              // init: flag 'no token found'
     char* pch = pNext;                                                                                          // pointer to first character to parse (any spaces have been skipped already)
-    if ((pNext[0] != '\"')) { return true; }                                                                    // no opening quote ? Is not an alphanumeric cst (it can still be something else)
-
-    if (_programCounter == _programStorage) { pNext = pch; result = result_cmd_programCmdMissing; return false; }   // program mode and no PROGRAM command
-
-    // token is an alphanumeric constant, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
-    if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2_1_0)) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
-    if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
-
-    // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
-    if (_initVarOrParWithUnaryOp != 0) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; } // can only happen with only with initialiser, if constant string is preceded by unary plus or minus operator
-    bool tokenAllowed = (_isCommand || (!_programMode) || _justinaFunctionBlockOpen);
-    if (!tokenAllowed) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
-
-    // is a variable required instead of a constant ?
-    bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_incr) || (_lastTermCode == termcod_decr)) : false;
-    varRequired = varRequired || (_isConstVarCmd && ((_lastTokenIsTerminal) ? (_lastTermCode == termcod_comma) : (_lastTokenType == tok_isReservedWord)));
-    if (varRequired) { pNext = pch; result = result_variableNameExpected; return false; }
-
-    // Function command: check that constant can only appear after an equal sign
-    // (in a variable declaration statement (VAR,...), this is handled by the keyword 'allowed command parameter' key)
-    // Note: in a (variable or parameter) declaration statement, operators other than assignment operators are not allowed, which is detected in terminal token parsing
-    bool isPureAssignmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;          // not a compound assignment
-    if (_isJustinaFunctionCmd && !isPureAssignmentOp) { pNext = pch; result = result_alphaConstNotAllowedHere; return false; }
-
-    // array declaration: dimensions must be number constants (global, static, local arrays)
-    bool isArrayDimSpec = _isAnyVarCmd && (_parenthesisLevel > 0);
-    if (isArrayDimSpec) { pNext = pch; result = result_arrayDef_dimNotValid; return false; }
-
-    if (_leadingSpaceCheck) { pNext = pch; result = result_spaceMissing; return false; }
+    // no opening quote and not an alpha character ? Is not a string literal not a symbolic string constant (it can still be something else)
+    if ((pNext[0] != '\"') && !isalpha(pNext[0])) { return true; }
 
     // try to parse as string now
     char* pStringCst = nullptr;                                                                                 // init: is empty string (prevent creating a string object to conserve memory)
     char valueType; //dummy
 
-    if (!parseString(pNext, pch, pStringCst, valueType, result, false)) { return false; };                      // return with error, 'result' contains error number
-    if (result != result_parsing_OK) { return true; }                                                           // is not a number, but can still be another valid token
+    bool isPureAssignmentOp{ false };
+
+    // string is parsed here, because next error messages suppose it's an alphanumeric constant
+    if (!parseString(pNext, pch, pStringCst, valueType, result, false)) {return false;}                             // error (before a parsed string is created)
+    if (result != result_parsing_OK) { return true; }              // is a symbolic constant but NOT a symbolic string constant: continue parsing (no error)
+
+    // a parsed string (object) has been created: in case of an error (ni next lines) it must be deleted again
+    result = result_tokenNotFound;                                                                              // init: flag 'no token found'
+    do {
+        if (_programCounter == _programStorage) { pNext = pch; result = result_cmd_programCmdMissing; break; }   // program mode and no PROGRAM command
+
+        // token is an alphanumeric constant, but is it allowed here ? If not, reset pointer to first character to parse, indicate error and return
+        if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_5_2_1_0)) { pNext = pch; result = result_alphaConstNotAllowedHere; break; }
+        if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp) { pNext = pch; result = result_alphaConstNotAllowedHere; break; }
+
+        // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
+        if (_initVarOrParWithUnaryOp != 0) { pNext = pch; result = result_alphaConstNotAllowedHere; break; } // can only happen with only with initialiser, if constant string is preceded by unary plus or minus operator
+        bool tokenAllowed = (_isCommand || (!_programMode) || _justinaFunctionBlockOpen);
+        if (!tokenAllowed) { pNext = pch; result = result_alphaConstNotAllowedHere; break; }
+
+        // is a variable required instead of a constant ?
+        bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_incr) || (_lastTermCode == termcod_decr)) : false;
+        varRequired = varRequired || (_isConstVarCmd && ((_lastTokenIsTerminal) ? (_lastTermCode == termcod_comma) : (_lastTokenType == tok_isReservedWord)));
+        if (varRequired) { pNext = pch; result = result_variableNameExpected; break; }
+
+        // Function command: check that constant can only appear after an equal sign
+        // (in a variable declaration statement (VAR,...), this is handled by the keyword 'allowed command parameter' key)
+        // Note: in a (variable or parameter) declaration statement, operators other than assignment operators are not allowed, which is detected in terminal token parsing
+        isPureAssignmentOp = _lastTokenIsTerminal ? (_lastTermCode == termcod_assign) : false;          // not a compound assignment
+        if (_isJustinaFunctionCmd && !isPureAssignmentOp) { pNext = pch; result = result_alphaConstNotAllowedHere; break; }
+
+        // array declaration: dimensions must be number constants (global, static, local arrays)
+        bool isArrayDimSpec = _isAnyVarCmd && (_parenthesisLevel > 0);
+        if (isArrayDimSpec) { pNext = pch; result = result_arrayDef_dimNotValid; break; }
+
+        if (_leadingSpaceCheck) { pNext = pch; result = result_spaceMissing; break; }
+    } while (false);
+
+    if (result != result_tokenNotFound) {
+        if (result == result_arrayDef_emptyInitStringExpected) {
+        #if PRINT_HEAP_OBJ_CREA_DEL
+            _pDebugOut->print("----- (parsed str ) ");   _pDebugOut->println((uint32_t)pStringCst, HEX);
+        #endif
+            _parsedStringConstObjectCount--;
+            delete[] pStringCst;
+            pNext = pch;  return false;
+        }
+    }
 
     // expression syntax check 
     _thisLvl_lastIsVariable = false;
@@ -2434,12 +2453,12 @@ bool Justina_interpreter::parseIntFloat(char*& pNext, char*& pch, Val& value, ch
                 else { value.floatConst = strtof(_symbNumConsts[index].symbolValue, nullptr); }
                 valueType = _symbNumConsts[index].valueType;
                 result = result_parsing_OK;
+                return true;                               // is a symbolic NUMBER constant: return 
             }
-            // no error; result indicates whether token for numeric value symbol was found or search for valid token needs to be continued
-            else { pNext = pch; }
-            return true;
+
+            else { pNext = pch;  return true; }             // is a symbolic constant but NOT a symbolic NUMBER constant:  reset first input stream character and return
         }
-        pNext = pch; return true;                                                               // no match: no error, search for valid token needs to be continued
+        pNext = pch; return true;                          // is not a symbolic constant, nor a literal constant (but it can still be another token type): reset first input stream character and return
     }
 
     // is not a symbolic number: numeric literal ?
@@ -2495,6 +2514,40 @@ bool Justina_interpreter::parseString(char*& pNext, char*& pch, char*& pStringCs
 
     result = result_tokenNotFound;                                                              // init: flag 'no token found'
     pch = pNext;                                                                                // pointer to first character to parse (any spaces have been skipped already)
+
+    // first, check for symbolic string
+    char* tokenStart = pNext;
+    if (isalpha(pNext[0])) {                                                                    // first character is a letter ? could be symbolic constant
+        while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                             // position as if symbolic constant was found, for now
+        for (int index = _symbvalueCount - 1; index >= 0; index--) {                            // for all defined symbolic names: check against alphanumeric token (NOT ending by '\0')
+            if (strlen(_symbNumConsts[index].symbolName) != pNext - pch) { continue; }          // token has correct length ? If not, skip remainder of loop ('continue')                            
+            if (strncmp(_symbNumConsts[index].symbolName, pch, pNext - pch) != 0) { continue; } // token corresponds to symbolic name ? If not, skip remainder of loop ('continue')    
+            // symbol found: 
+            bool isString = (_symbNumConsts[index].valueType == value_isStringPointer);
+            if (isString) {
+                // for predefined (symbolic) strings, we assume that the string does not contain '\' or '#' characters, has a valid length and is not an empty string
+                isIntermediateString ? _intermediateStringObjectCount++ : _parsedStringConstObjectCount++;
+                pStringCst = new char[strlen(_symbNumConsts[index].symbolValue) + 1];                                // create char array on the heap to store copy of alphanumeric constant, including terminating '\0'
+            #if PRINT_HEAP_OBJ_CREA_DEL
+                _pDebugOut->print(isIntermediateString ? "+++++ (Intermd str) " : "+++++ (parsed str ) "); _pDebugOut->println((uint32_t)pStringCst, HEX);
+            #endif
+                // store copy of alphanumeric constant in newly created character array
+                strcpy(pStringCst, _symbNumConsts[index].symbolValue);
+                valueType = value_isStringPointer;
+                result = result_parsing_OK;
+                return true;                               // is a symbolic STRING constant: return
+            }
+
+            else { pNext = pch;  return true; }             // is a symbolic constant but NOT a symbolic STRING constant: reset first input stream character and return
+        }
+        pNext = pch; return true;                          // is not a symbolic constant, nor a literal constant (but it can still be another token type): reset first input stream character and return
+    }
+
+
+
+
+
+    // is not a symbolic string constant: string literal ?
 
     if ((pNext[0] != '\"')) { return true; }                                                    // no opening quote ? Is not an alphanumeric cst (it can still be something else)
     pNext++;                                                                                    // skip opening quote
@@ -2574,7 +2627,7 @@ int Justina_interpreter::getIdentifier(char** pIdentNameArray, int& identifiersI
         identifiersInUse++;
         return identifiersInUse - 1;                                                            // identNameIndex to newly created identifier name
     }
-    else {return index;}                               
+    else { return index; }
 }
 
 
