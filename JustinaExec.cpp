@@ -3036,7 +3036,7 @@ void Justina_interpreter::pushGenericName(int& tokenType) {                     
 
     // just push the string pointer to the generic name (no indexes, ...)
     _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(GenericNameLvl));
-    _pEvalStackTop->varOrConst.tokenType = tok_isGenericName;                                                               // use generic constant type
+    _pEvalStackTop->varOrConst.tokenType = tok_isGenericName;                                                               
     _pEvalStackTop->varOrConst.tokenAddress = _programCounter;                                                              // only for finding source error position during unparsing (for printing)
 
     char* pAnum{ nullptr };
