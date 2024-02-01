@@ -1138,8 +1138,8 @@ void Justina_interpreter::prettyPrintStatements(int outputStream, int instructio
     strcat(floatFmtStr, _dispFloatSpecifier);
 
     while (tokenType != tok_no_token) {                                                                                     // for all tokens in token list
-        int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) :
-            (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*progCnt.pTokenChars >> 4) & 0x0F;
+        int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) :
+            (tokenType == tok_isSymbolicConstant) ? sizeof(TokenIsSymbolicConstant) : (*progCnt.pTokenChars >> 4) & 0x0F;
         TokenPointer nextProgCnt;
         nextProgCnt.pTokenChars = progCnt.pTokenChars + tokenLength;
         int nextTokenType = *nextProgCnt.pTokenChars & 0x0F;                                                                // next token type (look ahead)
@@ -1192,6 +1192,14 @@ void Justina_interpreter::prettyPrintStatements(int outputStream, int instructio
                 bool isUserVar = (progCnt.pVar->identInfo & var_scopeMask) == var_isUser;
                 char* identifierName = isUserVar ? userVarNames[identNameIndex] : programVarNames[identNameIndex];
                 sprintf(prettyToken, "%s%s", (isForcedFunctionVar ? "#" : ""), identifierName);
+                testNextForPostfix = true;
+            }
+            break;
+
+            case tok_isSymbolicConstant:
+            {
+                int nameIndex = progCnt.pSymbCstToken->nameIndex;
+                sprintf(prettyToken, "%s", _symbNumConsts[nameIndex].symbolName);
                 testNextForPostfix = true;
             }
             break;

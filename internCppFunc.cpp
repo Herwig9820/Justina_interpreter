@@ -258,7 +258,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             Stream* pStream{};
             int streamNumber;
             // flush(): stream is output stream; not for directories )
-            execResult_type execResult = determineStream(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber, true, (functionCode == fnccod_close) ? 0 : 1);              
+            execResult_type execResult = determineStream(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber, true, (functionCode == fnccod_close) ? 0 : 1);
             if (execResult != result_execOK) { return execResult; }
             if (functionCode == fnccod_close) {
                 if (streamNumber <= 0) { return result_SD_invalidFileNumber; }
@@ -702,7 +702,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
             char* pNext = buffer;   // init
             int commaLength = strlen(term_comma);
-            bool intermediateStringCreated{ false };
+            bool stringObjectCreated{ false };
             Val value; char valueType{};
             LE_evalStack* pStackLvl = pFirstArgStackLvl;                                                                    // now points to first receiving variable (or, if present: stream number or string to parse)
             if (sourceArgPresent) { pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl); }                   // now points to first receiving variable
@@ -712,7 +712,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             // -------------------------------------------------------------------------
 
             // second argument, ... last argument
-            for (int argIndex = firstArgIndex; argIndex < suppliedArgCount; ++argIndex, intermediateStringCreated = false) {    //initialise 'intermediateStringCreated' to false after each loop
+            for (int argIndex = firstArgIndex; argIndex < suppliedArgCount; ++argIndex, stringObjectCreated = false) {    //initialise 'stringObjectCreated' to false after each loop
 
                 // move to the first non-space character of next token 
                 while (pNext[0] == ' ') { pNext++; }                                                                        // skip leading spaces
@@ -720,6 +720,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 if (pNext[0] == '\0') { break; }                                                                            // string terminator: idem
 
                 char* pch = pNext;
+                int predefinedConstIndex{};
 
                 do {    // one loop only
                     if (argIndex > firstArgIndex) {      // first look for a separator
@@ -737,18 +738,32 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
                     // float or integer ?
                     _initVarOrParWithUnaryOp = 0;       // needs to be zero before calling parseIntFloat()
-                    if (!parseIntFloat(pNext, pch, value, valueType, parsingResult)) { break; }                             // break with error
+                    if (!parseIntFloat(pNext, pch, value, valueType, predefinedConstIndex, parsingResult)) { break; }                             // break with error
                     if (parsingResult == result_parsing_OK) { break; }                                                      // is this token type: look no further
-                    // string ? if string and net empty, a string object is created by routine parseString()
-                    if (!parseString(pNext, pch, value.pStringConst, valueType, parsingResult, true)) { break; }            // break with error
+                    // string ? if string and not empty, a string object is created by routine parseString() - except if predefined symbolic string constant
+                    if (!parseString(pNext, pch, value.pStringConst, valueType, predefinedConstIndex, parsingResult, true)) { break; }            // break with error
                     if (parsingResult == result_parsing_OK) { break; }                                                      // is this token type: look no further
                     parsingResult = result_parseList_valueToParseExpected;
                 } while (false);        // one loop only
 
                 if (parsingResult != result_parsing_OK) { execResult = result_list_parsingError;   break; }                 // exit loop if token error (syntax, ...)
 
-                // if a valid token was parsed: if it's a non-empty string (stored in value.pString), remember thar it will have to be deleted in case an errors occurs in what follows
-                if ((valueType == value_isStringPointer) && (value.pStringConst != nullptr)) { intermediateStringCreated = true; }  // parsed string is created on the heap
+                // if a valid token was parsed and it's a non-empty string: if it's a predefined string, then we still need to create a copy (a ref. to the original predefined string was returned)...
+                // ...because we will store it in a variable. If it's NOT a predefined string, then a string object was created on the heap already
+                
+                if ((valueType == value_isStringPointer) && (value.pStringConst != nullptr)) {
+                    if (predefinedConstIndex >= 0) {                    // predefined string: copy on the heap is not yet made
+                        _intermediateStringObjectCount++;
+                        char* strCopy = new char[strlen(value.pStringConst) + 1];
+                    #if PRINT_HEAP_OBJ_CREA_DEL
+                        _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+                    #endif            
+                        strcpy(strCopy, value.pStringConst);
+                        value.pStringConst = strCopy;                   // copy pointer
+                    }
+
+                    stringObjectCreated = true;
+                }
 
 
                 // parsing OK: assign value to receiving variable
@@ -779,9 +794,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
                 ++valuesSaved;                                                                                              // number of values saved will be returned
 
-                // if the new value is a non-empty (intermediate) string, simply reference it in the Justina variable 
-                if ((valueType == value_isStringPointer) && (value.pStringConst != nullptr)) {
-                    intermediateStringCreated = false;                                                                      // it's becoming a Justina variable value now
+                // if the new value is a (non-empty) temporary string, simply reference it in the Justina variable 
+                if (stringObjectCreated) {
+                    stringObjectCreated = false;                                                                      // it's becoming a Justina variable value now
                 #if PRINT_HEAP_OBJ_CREA_DEL
                     _pDebugOut->print("----- (Intermd str) ");   _pDebugOut->println((uint32_t)value.pStringConst, HEX);
                 #endif
@@ -803,7 +818,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             }
 
             // delete input temporary buffer
-            if (functionCode == fnccod_parseList) {
+            if (parseListFromStream) {
             #if PRINT_HEAP_OBJ_CREA_DEL
                 _pDebugOut->print("----- (Intermd str) ");   _pDebugOut->println((uint32_t)buffer, HEX);
             #endif
@@ -811,7 +826,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 delete[] buffer;
             }
 
-            if (intermediateStringCreated) {
+            // if an error occured while processing an argument, then an intermediate string object might still exist on the heap
+            if (stringObjectCreated) {
             #if PRINT_HEAP_OBJ_CREA_DEL
                 _pDebugOut->print("----- (Intermd str) ");   _pDebugOut->println((uint32_t)value.pStringConst, HEX);
             #endif
@@ -2189,15 +2205,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 break;
 
 
-
-
-
-
-
-
-
-
-
                 case 31:                                                                        // product name
                 case 32:                                                                        // legal copy right
                 case 33:                                                                        // product version 
@@ -2212,7 +2219,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                     strcpy(fcnResult.pStringConst, (sysVal == 31) ? J_productName : (sysVal == 32) ? J_legalCopyright : (sysVal == 33) ? J_productVersion : J_buildDate);
                 }
                 break;
-
 
 
                 // note:parsing stack element count is always zero during evaluation: no entry provided here

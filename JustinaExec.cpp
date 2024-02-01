@@ -115,7 +115,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         bool isRightPar = (isTerminal ? (_terminals[tokenIndex].terminalCode == termcod_rightPar) : false);
 
         // fetch next token (for some token types, the size is stored in the upper 4 bits of the token type byte)
-        int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*_programCounter >> 4) & 0x0F;
+        int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : 
+            (tokenType == tok_isSymbolicConstant) ? sizeof(TokenIsSymbolicConstant) : (*_programCounter >> 4) & 0x0F;
         _activeFunctionData.pNextStep = _programCounter + tokenLength;                                  // look ahead
 
         lastWasEndOfStatementSeparator = isEndOfStatementSeparator;
@@ -280,10 +281,12 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
             // -------------------------------------------------------------------
 
             case tok_isConstant:
+            case tok_isSymbolicConstant:
             {
-
                 _activeFunctionData.errorProgramCounter = _programCounter;                              // in case an error occurs while processing token
 
+                // name index of predefined symbolic constants is not needed any more, and rest of structure is identical to literal constant structure                                                      
+                tokenType = tok_isConstant;                                                 
                 pushConstant(tokenType);
 
             #if PRINT_PROCESSED_TOKEN
@@ -380,8 +383,8 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                     if (!doCaseBreak) {
                         if (evalStack.getElementCount() < _activeFunctionData.callerEvalStackLevels + 2) { doCaseBreak = true; }        // no preceding token exist on the stack      
                     }
-                    if (!doCaseBreak) {
-                        if (!(_pEvalStackMinus1->genericToken.tokenType == tok_isConstant) && !(_pEvalStackMinus1->genericToken.tokenType == tok_isVariable)) { doCaseBreak = true;; };
+                    if (!doCaseBreak) {     // note: symbolic constants already converted to literal constants on the stack
+                        if (!(_pEvalStackMinus1->genericToken.tokenType == tok_isConstant) && !(_pEvalStackMinus1->genericToken.tokenType == tok_isVariable)) { doCaseBreak = true; }
                     }
                     if (!doCaseBreak) {
                         // previous token is constant or variable: check if current token is an infix or a postfix operator (it cannot be a prefix operator)
@@ -1003,7 +1006,8 @@ void Justina_interpreter::checkForStop(bool& isActiveBreakpoint, bool& requestSt
                 // -----------------------------------------------
                 _programCounter = _programStorage + _progMemorySize;                                      // first step in first statement in parsed eval() string
                 int tokenType = *_programCounter & 0x0F;             // adapt next token type (could be changed by a breakpoint trigger string)
-                int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*_programCounter >> 4) & 0x0F;
+                int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : 
+                    (tokenType == tok_isSymbolicConstant) ? sizeof(TokenIsSymbolicConstant) : (*_programCounter >> 4) & 0x0F;
                 _activeFunctionData.pNextStep = _programCounter + tokenLength;                                  // look ahead
 
                 _activeFunctionData.errorStatementStartStep = _programStorage + _progMemorySize;
@@ -1194,8 +1198,8 @@ int Justina_interpreter::jumpTokens(int n, char*& pStep, int& tokenCode) {
         tokenType = *pStep & 0x0F;
         if (tokenType == tok_no_token) { return tok_no_token; }                                                 // end of program reached
         // terminals and constants: token length is NOT stored in token type
-        int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) :
-            (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*pStep >> 4) & 0x0F;
+        int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : 
+            (tokenType == tok_isSymbolicConstant) ? sizeof(TokenIsSymbolicConstant) : (*pStep >> 4) & 0x0F;
         pStep = pStep + tokenLength;
     }
 
@@ -1248,8 +1252,8 @@ int Justina_interpreter::findTokenStep(char*& pStep, bool excludeCurrent, char t
     // exclude current token step ?
     if (excludeCurrent) {
         // terminals and constants: token length is NOT stored in token type
-        int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) :
-            (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*pStep >> 4) & 0x0F;                         // fetch next token 
+        int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) :
+            (tokenType == tok_isSymbolicConstant) ? sizeof(TokenIsSymbolicConstant) : (*pStep >> 4) & 0x0F;                         // fetch next token 
         pStep = pStep + tokenLength;
     }
 
@@ -1305,8 +1309,8 @@ int Justina_interpreter::findTokenStep(char*& pStep, bool excludeCurrent, char t
             if (tokenCodeMatch) { return tokenType; }                                                           // if terminal, then return exact group (entry: use terminalGroup1) 
         }
 
-        int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) :
-            (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*pStep >> 4) & 0x0F;    // fetch next token 
+        int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) :
+            (tokenType == tok_isSymbolicConstant) ? sizeof(TokenIsSymbolicConstant) : (*pStep >> 4) & 0x0F;    // fetch next token 
         pStep = pStep + tokenLength;
     } while (true);
 }
@@ -2929,7 +2933,7 @@ void Justina_interpreter::terminateEval() {
 // *   push terminal token to evaluation stack   *
 // -----------------------------------------------
 
-void Justina_interpreter::pushTerminalToken(int& tokenType) {                                                               // terminal token is assumed
+void Justina_interpreter::pushTerminalToken(int tokenType) {                                                               // terminal token is assumed
 
     // push terminal index to stack
 
@@ -2948,7 +2952,7 @@ void Justina_interpreter::pushTerminalToken(int& tokenType) {                   
 // *   push internal cpp function name token to evaluation stack   *
 // -----------------------------------------------------------------
 
-void Justina_interpreter::pushInternCppFunctionName(int& tokenType) {                                                       // internal cpp function token is assumed
+void Justina_interpreter::pushInternCppFunctionName(int tokenType) {                                                       // internal cpp function token is assumed
 
     // push internal cpp function index to stack
     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
@@ -2965,7 +2969,7 @@ void Justina_interpreter::pushInternCppFunctionName(int& tokenType) {           
 // *   push external cpp function name token to evaluation stack   *
 // -----------------------------------------------------------------
 
-void Justina_interpreter::pushExternCppFunctionName(int& tokenType) {                                                       // external cpp function token is assumed
+void Justina_interpreter::pushExternCppFunctionName(int tokenType) {                                                       // external cpp function token is assumed
 
     // push external cpp function return value type and index within functions for a specific return value type to stack
     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
@@ -2983,7 +2987,7 @@ void Justina_interpreter::pushExternCppFunctionName(int& tokenType) {           
 // *   push Justina function name token to evaluation stack   *
 // ------------------------------------------------------------
 
-void Justina_interpreter::pushJustinaFunctionName(int& tokenType) {                                                         // Justina function token is assumed
+void Justina_interpreter::pushJustinaFunctionName(int tokenType) {                                                         // Justina function token is assumed
 
     // push Justina function index to stack
     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
@@ -3000,13 +3004,14 @@ void Justina_interpreter::pushJustinaFunctionName(int& tokenType) {             
 // *   push real or string constant token to evaluation stack   *
 // -------------------------------------------------------------
 
-void Justina_interpreter::pushConstant(int& tokenType) {                                                                                    // float or string constant token is assumed
+void Justina_interpreter::pushConstant(int tokenType) {                                                                                    // float or string constant token is assumed
 
     // push real or string parsed constant, value type and array flag (false) to stack
     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
 
     _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(VarOrConstLvl));
-    _pEvalStackTop->varOrConst.tokenType = tok_isConstant;                                                                                  // use generic constant type
+    // also for predefined symbolic constants: in evaluation stack as ordinary parsed constant
+    _pEvalStackTop->varOrConst.tokenType = tok_isConstant;                                                                                  
     _pEvalStackTop->varOrConst.tokenAddress = _programCounter;                                                                              // only for finding source error position during unparsing (for printing)
 
     _pEvalStackTop->varOrConst.valueType = ((*(char*)_programCounter) >> 4) & value_typeMask;                                               // for constants, upper 4 bits contain the value type
@@ -3029,7 +3034,7 @@ void Justina_interpreter::pushConstant(int& tokenType) {                        
 // *   push generic name token to evaluation stack   *
 // ---------------------------------------------------
 
-void Justina_interpreter::pushGenericName(int& tokenType) {                                                                 // float or string constant token is assumed
+void Justina_interpreter::pushGenericName(int tokenType) {                                                                 // float or string constant token is assumed
 
     // push real or string parsed constant, value type and array flag (false) to stack
     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
@@ -3049,7 +3054,7 @@ void Justina_interpreter::pushGenericName(int& tokenType) {                     
 // *   push variable token to evaluation stack   *
 // ----------------------------------------------
 
-void Justina_interpreter::pushVariable(int& tokenType) {                                                                    // with variable token type
+void Justina_interpreter::pushVariable(int tokenType) {                                                                    // with variable token type
 
     // push variable base address, variable value type (real, string) and array flag to stack
     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;

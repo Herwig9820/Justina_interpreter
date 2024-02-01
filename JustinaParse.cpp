@@ -103,7 +103,7 @@ Justina_interpreter::parsingResult_type Justina_interpreter::parseStatement(char
         _lastTokenGroup_sequenceCheck_bit = isOperator ? lastTokenGroup_0 :
             isComma ? lastTokenGroup_1 :
             ((t == tok_no_token) || isSemicolon || (t == tok_isReservedWord)) ? lastTokenGroup_2 :
-            ((t == tok_isConstant) || isRightPar) ? lastTokenGroup_3 :
+            ((t == tok_isConstant) || (t == tok_isSymbolicConstant) || isRightPar) ? lastTokenGroup_3 :
             ((t == tok_isInternCppFunction) || (t == tok_isExternCppFunction) || (t == tok_isJustinaFunction)) ? lastTokenGroup_4 :
             isLeftPar ? lastTokenGroup_5 : lastTokenGroup_6;                                                        // token group 6: scalar or array variable name
 
@@ -485,7 +485,9 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parsingResult_type& result
 
     // try to parse as number (int or float)
     Val value; char valueType{};
-    if (!parseIntFloat(pNext, pch, value, valueType, result)) { return false; }                                 // if returning with error, 'result' contains error number
+    int predefinedConstIndex{};
+
+    if (!parseIntFloat(pNext, pch, value, valueType, predefinedConstIndex, result)) { return false; }                                 // if returning with error, 'result' contains error number
     if (result != result_parsing_OK) { return true; }                                                           // is not a number, but can still be another valid token
 
     float flt{ 0 }; long lng{ 0 };
@@ -533,13 +535,14 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parsingResult_type& result
     // command argument constraints check
     _lvl0_withinExpression = true;
 
-    TokenIsConstant* pToken = (TokenIsConstant*)_programCounter;
-    pToken->tokenType = tok_isConstant | (valueType << 4);
+    TokenIsSymbolicConstant* pToken = (TokenIsSymbolicConstant*)_programCounter;                // OK for literal constants as well
+    pToken->tokenType = ((predefinedConstIndex == -1) ? tok_isConstant : tok_isSymbolicConstant) | (valueType << 4);
     if (valueType == value_isLong) { memcpy(pToken->cstValue.longConst, &lng, sizeof(lng)); }
     else { memcpy(pToken->cstValue.floatConst, &flt, sizeof(flt)); }                                            // float not necessarily aligned with word size: copy memory instead
+    if (predefinedConstIndex >= 0) { pToken->nameIndex = predefinedConstIndex; }
     _lastTokenStep = _programCounter - _programStorage;                                                         // before referencing _lastTokenStep
 
-    _lastTokenType = tok_isConstant;
+    _lastTokenType = (predefinedConstIndex == -1) ? tok_isConstant : tok_isSymbolicConstant;
     _lastTokenIsString = false, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
     bool doNonLocalVarInit = ((_isGlobalOrUserVarCmd || _isStaticVarCmd) && lastIsPureAssignmentOp);
@@ -550,7 +553,7 @@ bool Justina_interpreter::parseAsNumber(char*& pNext, parsingResult_type& result
     else { _pDebugOut->print(flt); }  _pDebugOut->println("]");
 #endif
 
-    _programCounter += sizeof(TokenIsConstant);
+    _programCounter += (predefinedConstIndex == -1) ? sizeof(TokenIsConstant) : sizeof(TokenIsSymbolicConstant);
     *_programCounter = tok_no_token;                                                                            // indicates end of program
     result = result_parsing_OK;                                                                                 // flag 'valid token found'
     return true;
@@ -570,14 +573,15 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parsingResult_type
     // try to parse as string now
     char* pStringCst = nullptr;                                                                                 // init: is empty string (prevent creating a string object to conserve memory)
     char valueType; //dummy
+    int predefinedConstIndex{};
 
     bool isPureAssignmentOp{ false };
 
     // string is parsed here, because next error messages suppose it's an alphanumeric constant
-    if (!parseString(pNext, pch, pStringCst, valueType, result, false)) {return false;}                             // error (before a parsed string is created)
+    if (!parseString(pNext, pch, pStringCst, valueType, predefinedConstIndex, result, false)) { return false; }                             // error (before a parsed string is created)
     if (result != result_parsing_OK) { return true; }              // is a symbolic constant but NOT a symbolic string constant: continue parsing (no error)
 
-    // a parsed string (object) has been created: in case of an error (ni next lines) it must be deleted again
+    // if not a symbolic constant, then a parsed string (object) has been created: in case of an error (in next lines) it must be deleted again
     result = result_tokenNotFound;                                                                              // init: flag 'no token found'
     do {
         if (_programCounter == _programStorage) { pNext = pch; result = result_cmd_programCmdMissing; break; }   // program mode and no PROGRAM command
@@ -627,12 +631,13 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parsingResult_type
     // command argument constraints check
     _lvl0_withinExpression = true;
 
-    TokenIsConstant* pToken = (TokenIsConstant*)_programCounter;
-    pToken->tokenType = tok_isConstant | (value_isStringPointer << 4);
+    TokenIsSymbolicConstant* pToken = (TokenIsSymbolicConstant*)_programCounter;                // OK for literal constants as well
+    pToken->tokenType = ((predefinedConstIndex == -1) ? tok_isConstant : tok_isSymbolicConstant) | (valueType << 4);
     memcpy(pToken->cstValue.pStringConst, &pStringCst, sizeof(pStringCst));                                     // pointer not necessarily aligned with word size: copy pointer instead
-
+    if (predefinedConstIndex >= 0) { pToken->nameIndex = predefinedConstIndex; }
     _lastTokenStep = _programCounter - _programStorage;
-    _lastTokenType = tok_isConstant;
+
+    _lastTokenType = (predefinedConstIndex == -1) ? tok_isConstant : tok_isSymbolicConstant;
     _lastTokenIsString = true, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
     bool isLocalVarInitCheck = (_isLocalVarCmd && isPureAssignmentOp);
@@ -649,11 +654,13 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parsingResult_type
     }
 
     if (result == result_arrayDef_emptyInitStringExpected) {
-    #if PRINT_HEAP_OBJ_CREA_DEL
-        _pDebugOut->print("----- (parsed str ) ");   _pDebugOut->println((uint32_t)pStringCst, HEX);
-    #endif
-        _parsedStringConstObjectCount--;
-        delete[] pStringCst;
+        if (predefinedConstIndex == -1) {                       // an ordinary (not a symbolic) parsed string constant ?
+        #if PRINT_HEAP_OBJ_CREA_DEL
+            _pDebugOut->print("----- (parsed str ) ");   _pDebugOut->println((uint32_t)pStringCst, HEX);
+        #endif
+            _parsedStringConstObjectCount--;
+            delete[] pStringCst;
+        }
         pToken->tokenType = tok_no_token;       // because already set
         pNext = pch;  return false;
     }
@@ -662,7 +669,7 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parsingResult_type
     _pDebugOut->print("   parsed string: address is "); _pDebugOut->print(_lastTokenStep); _pDebugOut->print(" ['"); _pDebugOut->print(pStringCst);  _pDebugOut->println("']");
 #endif
 
-    _programCounter += sizeof(TokenIsConstant);
+    _programCounter += (predefinedConstIndex == -1) ? sizeof(TokenIsConstant) : sizeof(TokenIsSymbolicConstant);
     *_programCounter = tok_no_token;                                                                            // indicates end of program
     result = result_parsing_OK;                                                                                 // flag 'valid token found'
 
@@ -1210,7 +1217,7 @@ bool Justina_interpreter::parseTerminalToken(char*& pNext, parsingResult_type& r
                 // prefix increment operators before variable to be declared are not detected in command argument checking: test here
                 else if (!_lvl0_withinExpression) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
                 // initialiser is constant only: not followed by any operators
-                else if (_lastTokenType == tok_isConstant) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
+                else if ((_lastTokenType == tok_isConstant) || (_lastTokenType == tok_isSymbolicConstant)) { pNext = pch; result = result_operatorNotAllowedHere; return false; }
             }
 
             if (_isJustinaFunctionCmd) {
@@ -2433,10 +2440,11 @@ bool Justina_interpreter::checkJustinaFuncArgArrayPattern(parsingResult_type& re
 
 // called while parsing expressions and while executing specifing print commands (e.g. 'readList')
 
-bool Justina_interpreter::parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueType, parsingResult_type& result) {
+bool Justina_interpreter::parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueType, int& predefinedConstIndex, parsingResult_type& result) {
 
     result = result_tokenNotFound;                                                              // init: flag 'no token found'
     pch = pNext;                                                                                // pointer to first character to parse (any spaces have been skipped already)
+    predefinedConstIndex = -1;                                                                  // init: assume literal constant
 
     // first, check for symbolic number
     char* tokenStart = pNext;
@@ -2452,6 +2460,7 @@ bool Justina_interpreter::parseIntFloat(char*& pNext, char*& pch, Val& value, ch
                 if ((_symbNumConsts[index].valueType == value_isLong)) { value.longConst = strtol(_symbNumConsts[index].symbolValue, nullptr, 0); }
                 else { value.floatConst = strtof(_symbNumConsts[index].symbolValue, nullptr); }
                 valueType = _symbNumConsts[index].valueType;
+                predefinedConstIndex = index;
                 result = result_parsing_OK;
                 return true;                               // is a symbolic NUMBER constant: return 
             }
@@ -2510,14 +2519,15 @@ bool Justina_interpreter::parseIntFloat(char*& pNext, char*& pch, Val& value, ch
 
 // called while parsing expressions and while executing specifing print commands (e.g. 'readList')
 
-bool Justina_interpreter::parseString(char*& pNext, char*& pch, char*& pStringCst, char& valueType, parsingResult_type& result, bool isIntermediateString) {
+bool Justina_interpreter::parseString(char*& pNext, char*& pch, char*& pStringCst, char& valueType, int& predefinedConstIndex, parsingResult_type& result, bool isIntermediateString) {
 
     result = result_tokenNotFound;                                                              // init: flag 'no token found'
     pch = pNext;                                                                                // pointer to first character to parse (any spaces have been skipped already)
+    predefinedConstIndex = -1;                                                                  // init: assume literal constant
 
     // first, check for symbolic string
     char* tokenStart = pNext;
-    if (isalpha(pNext[0])) {                                                                    // first character is a letter ? could be symbolic constant
+    if (isalpha(pNext[0])) {                                                                    // first character is a letter ? could be predefined symbolic constant
         while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                             // position as if symbolic constant was found, for now
         for (int index = _symbvalueCount - 1; index >= 0; index--) {                            // for all defined symbolic names: check against alphanumeric token (NOT ending by '\0')
             if (strlen(_symbNumConsts[index].symbolName) != pNext - pch) { continue; }          // token has correct length ? If not, skip remainder of loop ('continue')                            
@@ -2525,15 +2535,9 @@ bool Justina_interpreter::parseString(char*& pNext, char*& pch, char*& pStringCs
             // symbol found: 
             bool isString = (_symbNumConsts[index].valueType == value_isStringPointer);
             if (isString) {
-                // for predefined (symbolic) strings, we assume that the string does not contain '\' or '#' characters, has a valid length and is not an empty string
-                isIntermediateString ? _intermediateStringObjectCount++ : _parsedStringConstObjectCount++;
-                pStringCst = new char[strlen(_symbNumConsts[index].symbolValue) + 1];                                // create char array on the heap to store copy of alphanumeric constant, including terminating '\0'
-            #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print(isIntermediateString ? "+++++ (Intermd str) " : "+++++ (parsed str ) "); _pDebugOut->println((uint32_t)pStringCst, HEX);
-            #endif
-                // store copy of alphanumeric constant in newly created character array
-                strcpy(pStringCst, _symbNumConsts[index].symbolValue);
+                pStringCst = (char*)_symbNumConsts[index].symbolValue;                         // no copy of the string itself: point to the table value entry
                 valueType = value_isStringPointer;
+                predefinedConstIndex = index;                                                   // this flags parsed constant as predefined symbolic constant
                 result = result_parsing_OK;
                 return true;                               // is a symbolic STRING constant: return
             }
@@ -2542,10 +2546,6 @@ bool Justina_interpreter::parseString(char*& pNext, char*& pch, char*& pStringCs
         }
         pNext = pch; return true;                          // is not a symbolic constant, nor a literal constant (but it can still be another token type): reset first input stream character and return
     }
-
-
-
-
 
     // is not a symbolic string constant: string literal ?
 

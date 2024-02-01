@@ -1244,10 +1244,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
 
         // -------------------------------------------------------------------------------------------------------------------------------------------------------------
-        // print all arguments (longs, floats and strings) in succession. Floats are printed in compact format with maximum 3 digits / decimals and an optional exponent
+        // print all arguments (longs, floats and strings) in succession. Floats are printed in compact format with maximum 3 digits / decimals and an optional exponent //// check
         // -------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-        // note: the print command does not take into account the display format set to print the last calculation result
+        // note: the print command does not take into account the display format set to print calculation results
         // to format output produced with the print command, use the formatting function provided (function code: fnccod_format) 
 
         case cmdcod_dbout:

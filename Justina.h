@@ -448,11 +448,12 @@ class Justina_interpreter {
         tok_isExternCppFunction,
         tok_isJustinaFunction,
         tok_isConstant,
-        tok_isVariable,
+        tok_isSymbolicConstant,                                         // predefined Justina constant
+        tok_isVariable,                                                 // including constant variables (CONST)
         tok_isGenericName,
 
         // all terminal tokens: at the end of the list ! (occupy only one character in program, combining token type and index)
-        tok_isTerminalGroup1,                                           // if index < 15 -    because too many operators to fit in 4 bits
+        tok_isTerminalGroup1,                                           // if index in terminal table < 15 (too many operators to fit in 4 bits)
         tok_isTerminalGroup2,                                           // if index between 16 and 31
         tok_isTerminalGroup3,                                           // if index between 32 and 47
 
@@ -844,7 +845,7 @@ class Justina_interpreter {
     static constexpr uint8_t lastTokenGroup_0 = 1 << 0;                 // operator
     static constexpr uint8_t lastTokenGroup_1 = 1 << 1;                 // comma
     static constexpr uint8_t lastTokenGroup_2 = 1 << 2;                 // (line start), semicolon, keyword, generic identifier
-    static constexpr uint8_t lastTokenGroup_3 = 1 << 3;                 // number, alphanumeric constant, right bracket
+    static constexpr uint8_t lastTokenGroup_3 = 1 << 3;                 // number or alphanumeric (literal or symbolic) constant, right bracket
     static constexpr uint8_t lastTokenGroup_4 = 1 << 4;                 // internal cpp, external cpp or Justina function 
     static constexpr uint8_t lastTokenGroup_5 = 1 << 5;                 // left parenthesis
     static constexpr uint8_t lastTokenGroup_6 = 1 << 6;                 // variable, generic identifier
@@ -1080,6 +1081,13 @@ private:
         CstValue cstValue;
     };
 
+    // NOTE: tokenType and cstValue members in same order as in TokenIsConstant struct 
+    struct TokenIsSymbolicConstant {                                    // token storage for a numeric constant token: length 5
+        char tokenType;                                                 // will be set to specific token type
+        CstValue cstValue;
+        char nameIndex;                                                 // index into table with predefined symbolic constants
+    };
+
     struct TokenIsInternCppFunction {                                   // token storage for internal cpp function: length 2
         char tokenType;                                                 // will be set to specific token type
         char tokenIndex;                                                // index into list of tokens
@@ -1112,6 +1120,7 @@ private:
         char* pTokenChars;
         TokenIsResWord* pResW;
         TokenIsConstant* pCstToken;
+        TokenIsSymbolicConstant* pSymbCstToken;
         TokenIsInternCppFunction* pInternCppFunc;
         TokenIsExternCppFunction* pExternCppFunc;
         TokenIsJustinaFunction* pJustinaFunc;
@@ -1298,7 +1307,7 @@ private:
     struct VarOrConstLvl {                                              // stack level for constants and variables
         char tokenType;
         char valueType;
-        char sourceVarScopeAndFlags;                                    // flags indicating 'is array'; 'is array element'; combined with SOURCE variable scope
+        char sourceVarScopeAndFlags;                                    // flags indicating 'is array'; 'is array element', is constant variable; combined with SOURCE variable scope
         char valueAttributes;
         char* tokenAddress;                                             // must be second 4-byte word, only for finding source error position during unparsing (for printing)
         Val value;                                                      // float or pointer (4 byte)
@@ -1991,8 +2000,8 @@ private:
     bool checkAllJustinaFunctionsDefined(int& index) const;
 
     // basic parsing routines for constants, without other syntax checks etc. 
-    bool parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueType, parsingResult_type& result);
-    bool parseString(char*& pNext, char*& pch, char*& string, char& valueType, parsingResult_type& result, bool isIntermediateString);
+    bool parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueType, int& predefinedConstIndex, parsingResult_type& result);
+    bool parseString(char*& pNext, char*& pch, char*& string, char& valueType, int& predefinedConstIndex, parsingResult_type& result, bool isIntermediateString);
 
     // find an identifier (Justina variable or Justina function), init a Justina variable
     int getIdentifier(char** pIdentArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNew, bool isUserVar = false);
@@ -2037,13 +2046,13 @@ private:
     void saveLastValue(bool& overWritePrevious);
 
     // push a token to the evaluation stack
-    void pushTerminalToken(int& tokenType);
-    void pushInternCppFunctionName(int& tokenType);
-    void pushExternCppFunctionName(int& tokenType);
-    void pushJustinaFunctionName(int& tokenType);
-    void pushGenericName(int& tokenType);
-    void pushConstant(int& tokenType);
-    void pushVariable(int& tokenType);
+    void pushTerminalToken(int tokenType);
+    void pushInternCppFunctionName(int tokenType);
+    void pushExternCppFunctionName(int tokenType);
+    void pushJustinaFunctionName(int tokenType);
+    void pushGenericName(int tokenType);
+    void pushConstant(int tokenType);
+    void pushVariable(int tokenType);
 
     // copy function arguments with attributes from the evaluation stack to value and attribute arrays, for use by internal and external (user callback) functions
     execResult_type copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, bool* argIsArray, char* valueType, Val* args, bool passVarRefOrConst = false, Val* dummyArgs = nullptr);
@@ -2072,7 +2081,7 @@ private:
     void SD_closeAllFiles();
 
 #if defined ESP32
-    char* SD_ESP32_convert_accessMode(int mode);
+    char* SD_ESP32_convert_accessMode(int mode);//// weg
 #endif
     execResult_type SD_open(int& fileNumber, char* filePath, int mod = O_READ);
     execResult_type SD_openNext(int dirFileNumber, int& fileNumber, File* pDirectory, int mod = O_READ);

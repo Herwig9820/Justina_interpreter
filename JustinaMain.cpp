@@ -418,7 +418,7 @@ const Justina_interpreter::TerminalDef Justina_interpreter::_terminals[]{
     {term_bitShLeft,        termcod_bitShLeft,          0x00,               0x09 | op_long,             0x00},
     {term_bitShRight,       termcod_bitShRight,         0x00,               0x09 | op_long,             0x00},
 
-    {term_plus,             termcod_plus,               0x0C,               0x0A,                       0x00},      // note: for strings, concatenate
+    {term_plus,             termcod_plus,               0x0C,               0x0A,                       0x00},      // note: for strings, means 'concatenate'
     {term_minus,            termcod_minus,              0x0C,               0x0A,                       0x00},
     {term_mult,             termcod_mult,               0x00,               0x0B,                       0x00},
     {term_div,              termcod_div,                0x00,               0x0B,                       0x00},
@@ -447,6 +447,7 @@ const Justina_interpreter::TerminalDef Justina_interpreter::_terminals[]{
 // -------------------
 
 // these symbolic names can be used in Justina programs instead of the values themselves
+// symbolic names should not contain '\' or '#' characters and should have a valid (identifier name) length
 
 const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
 
@@ -497,18 +498,18 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     {"QUOTE_LAST",          "2",                        value_isLong},      // print last result, quote string results 
 
     // info command: type of confirmation required ("request answer yes/no, ...")
-    {"REQ_ENTER",           "0",                        value_isLong},      // confirmation required by pressing ENTER (any preceding characters are skipped)
-    {"REQ_ENT_CANC",        "1",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
-    {"REQ_YN",              "2",                        value_isLong},      // only yes or no answer allowed, by pressing 'y' or 'n' followed by ENTER   
-    {"REQ_YN_CANC",         "3",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
+    {"ALLOW_ENTER",         "0",                        value_isLong},      // confirmation required by pressing ENTER (any preceding characters are skipped)
+    {"ALLOW_ENT_CANC",      "1",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
+    {"ALLOW_Y_N",           "2",                        value_isLong},      // only yes or no answer allowed, by pressing 'y' or 'n' followed by ENTER   
+    {"ALLOW_Y_N_CANC",      "3",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
 
     // input command: default allowed  
-    {"INP_NO_DEF",          "0",                        value_isLong},      // '\d' sequences ('default') in the input stream are ignored
-    {"INP_ALLOW_DEF",       "1",                        value_isLong},      // if '\d' sequence is encountered in the input stream, default value is returned
+    {"NO_DEFAULT",          "0",                        value_isLong},      // '\d' sequences ('default') in the input stream are ignored
+    {"ALLOW_DEFAULT",       "1",                        value_isLong},      // if '\d' sequence is encountered in the input stream, default value is returned
 
     // input and info command: flag 'user canceled' (input argument 3 / info argument 2 return value - argument must be a variable)
-    {"USR_CANCEL",          "0",                        value_isLong},      // operation was canceled by user (\c sequence encountered)
-    {"USR_SUCCESS",         "1",                        value_isLong},      // operation was NOT canceled by user
+    {"IS_CANCEL",           "0",                        value_isLong},      // operation was canceled by user (\c sequence encountered)
+    {"IS_SUCCESS",          "1",                        value_isLong},      // operation was NOT canceled by user
 
     // quit command
     {"QUIT_KEEP",           "0",                        value_isLong},      // keep Justina in memory on quitting
@@ -732,6 +733,15 @@ bool Justina_interpreter::run() {
     _pDebugOut->print("+++++ (Justina object) at 0x"); col = 10 - _pDebugOut->print((uint32_t)this, HEX); _pDebugOut->print(", size "); _pDebugOut->println(sizeof(*this));
     _pDebugOut->print("+++++ (program memory) at 0x"); col = 10 - _pDebugOut->print((uint32_t)_programStorage, HEX); _pDebugOut->print(", size "); _pDebugOut->println(_progMemorySize + IMM_MEM_SIZE);
 #endif
+
+Serial.print(sizeof(void*));Serial.print(" "); Serial.println(alignof(void*));
+Serial.print(sizeof(char)); Serial.print(" "); Serial.println(alignof(char));
+Serial.print(sizeof(byte)); Serial.print(" "); Serial.println(alignof(byte));
+Serial.print(sizeof(int8_t)); Serial.print(" "); Serial.println(alignof(int8_t));
+Serial.print(sizeof(int16_t)); Serial.print(" "); Serial.println(alignof(int16_t));
+Serial.print(sizeof(int)); Serial.print(" "); Serial.println(alignof(int));
+Serial.print(sizeof(long)); Serial.print(" "); Serial.println(alignof(long));
+Serial.print(sizeof(float)); Serial.print(" "); Serial.println(alignof(float));
 
     // find token index for terminal token 'semicolon with breakpoint allowed' 
     int index{}, semicolonBPallowed_index{}, semicolonBPset_index{}, matches{};
@@ -1857,6 +1867,7 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
     prgmCnt.pTokenChars = pFirstToken;
     uint8_t tokenType = *prgmCnt.pTokenChars & 0x0F;
     while (tokenType != tok_no_token) {                                                                                             // for all tokens in token list
+        // not for predefined symbolic constants
         bool isStringConst = (tokenType == tok_isConstant) ? (((*prgmCnt.pTokenChars >> 4) & value_typeMask) == value_isStringPointer) : false;
 
         if (isStringConst || (tokenType == tok_isGenericName)) {
@@ -1869,8 +1880,8 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
                 delete[] pAnum;
             }
         }
-        uint8_t tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) :
-            (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : (*prgmCnt.pTokenChars >> 4) & 0x0F;
+        uint8_t tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) :
+            (tokenType == tok_isSymbolicConstant) ? sizeof(TokenIsSymbolicConstant) : (*prgmCnt.pTokenChars >> 4) & 0x0F;
         prgmCnt.pTokenChars += tokenLength;
         tokenType = *prgmCnt.pTokenChars & 0x0F;
     }
