@@ -631,11 +631,12 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 // SD source file name specified ?
                 if (valueType[0] == value_isStringPointer) {                                                                // load program from SD file
                     // open file and retrieve file number
-                    execResult = SD_open(_loadProgFromStreamNo, args[0].pStringConst, O_READ);                              // this performs a few card & file checks as well
+                    execResult = SD_open(_loadProgFromStreamNo, args[0].pStringConst, READ_FILE);                              // this performs a few card & file checks as well
                     if (execResult == result_SD_couldNotOpenFile) {
                         if (!SD.exists(args[0].pStringConst)) { execResult = result_SD_fileNotFound; }                      // replace error code for clarity
                     }
                     if (execResult != result_execOK) { return execResult; }
+                    if (openFiles[_loadProgFromStreamNo - 1].file.size() == 0) { return result_SD_fileIsEmpty; }
                 }
 
                 // external source specified ?
@@ -762,18 +763,18 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
         case cmdcod_sendFile:           // arguments: filename   -or-   filename, external I/O stream [, verbose]]
         case cmdcod_receiveFile:        // arguments: filename   -or-   external I/O stream, filename [, verbose] 
-        case cmdcod_copyFile:           // arguments: source filename, destination filename 
+        case cmdcod_copyFile:           // arguments: source filename, destination filename [, verbose] 
         {
             // filename: in 8.3 format
             // external I/O stream: numeric constant, default is CONSOLE
-            // verbose: default is 1. If verbose is not set, also "overwrite ?" question will not appear  
+            // verbose: default is 1. If verbose is not set, "overwrite ?" question and info messages will not appear  
 
             if (cmdArgCount > 3) { return result_arg_tooManyArgs; }
 
-            bool argIsVar[2];
-            bool argIsArray[2];
-            char valueType[2];
-            Val args[2];
+            bool argIsVar[3];
+            bool argIsArray[3];
+            char valueType[3];
+            Val args[3];
             copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
 
             if (!_SDinitOK) { return result_SD_noCardOrCardError; }
@@ -783,19 +784,29 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             bool isCopy = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_copyFile);
 
             int sourceStreamNumber{ 0 }, destinationStreamNumber{ 0 };      // init: console
+            Stream* pSourceStream{};
 
             // send or receive file: send or receive data to / from external IO stream 
-            if ((isSend || isReceive) && (cmdArgCount >= 2)) {                                                            // source (receive) / destination (send) specified ?
-                int IOstreamArgIndex = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_sendFile ? 1 : 0);              // init (default for send and receive only, if not specified)
-                if ((valueType[IOstreamArgIndex] == value_isLong) || (valueType[IOstreamArgIndex] == value_isFloat)) {      // external source/destination specified (console or an alternate I/O stream)
-
-                    // valid external IO number ?
-                    int IOstreamNumber = ((valueType[IOstreamArgIndex] == value_isLong) ? args[IOstreamArgIndex].longConst : (long)args[IOstreamArgIndex].floatConst);      // zero or negative
-                    if (IOstreamNumber > 0) { return result_IO_invalidStreamNumber; }
-                    else if ((-IOstreamNumber) > _externIOstreamCount) { return result_IO_invalidStreamNumber; }
-                    else { (isReceive ? sourceStreamNumber : destinationStreamNumber) = IOstreamNumber; }
+            if (isSend || isReceive) {
+                int IOstreamNumber{ 0 };
+                if (cmdArgCount >= 2) {                                                            // source (receive) / destination (send) specified ?
+                    int IOstreamArgIndex = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_sendFile ? 1 : 0);              // init (default for send and receive only, if not specified)
+                    if ((valueType[IOstreamArgIndex] == value_isLong) || (valueType[IOstreamArgIndex] == value_isFloat)) {      // external source/destination specified (console or an alternate I/O stream)
+                        IOstreamNumber = ((valueType[IOstreamArgIndex] == value_isLong) ? args[IOstreamArgIndex].longConst : (long)args[IOstreamArgIndex].floatConst);  
+                        if (IOstreamNumber > 0) { return result_IO_invalidStreamNumber; }    // external stream: stream number should be zero or negative
+                    }
+                    else { return result_arg_numberExpected; }
                 }
-                else { return result_arg_numberExpected; }
+                Stream* pStream{ nullptr };
+                Serial.println("*** A start");
+                execResult = setStream(IOstreamNumber, pStream, isSend);                     // set EXTERNAL IO stream, check for invalid stream 
+                Serial.println("*** A end");
+                if (execResult != result_execOK) {
+                    Serial.println("*** A ERROR");
+                    return result_IO_invalidStreamNumber;
+                }
+                (isReceive ? sourceStreamNumber : destinationStreamNumber) = IOstreamNumber;
+                if (isReceive) { pSourceStream = pStream; }                                 // only needed for external source stream (see further)
             }
 
             // send or copy file: source is a file
@@ -813,21 +824,38 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 else { return result_arg_numberExpected; }
             }
 
+            int receivingFileArgIndex{};
             bool proceed{ true };        // init (in silent mode, overwrite without asking)
 
             // receive or copy file: destination is a file
             if ((isReceive) || (isCopy)) {
-                int receivingFileArgIndex = (cmdArgCount == 1) ? 0 : 1;
+                receivingFileArgIndex = (cmdArgCount == 1) ? 0 : 1;
                 if (valueType[receivingFileArgIndex] != value_isStringPointer) { return result_arg_stringExpected; }                        // mandatory file name
                 if (!pathValid(args[receivingFileArgIndex].pStringConst)) { return result_SD_pathIsNotValid; }
 
                 if (isCopy) {
-                    if (strcasecmp(args[0].pStringConst, args[1].pStringConst) == 0) { return result_SD_sourceIsDestination; }              // 8.3 file format: NOT case sensitive
+                    long sourceStart = (args[0].pStringConst[0] == '/') ? 1 : 0;
+                    long destinStart = (args[1].pStringConst[0] == '/') ? 1 : 0;
+                    // because this is a simple string compare, and a leading '/' is optional in the file path, make sure identical file paths are always discovered
+                    if (strcasecmp(args[0].pStringConst+sourceStart, args[1].pStringConst+destinStart) == 0) { return result_SD_sourceIsDestination; }              // 8.3 file format: NOT case sensitive
                 }
-                // if file exists, ask if overwriting it is OK
-                if (SD.exists(args[receivingFileArgIndex].pStringConst)) {
+
+                // if receiving file exists, ask if overwriting it is OK
+                // ESP32 requires that the path starts with a slash
+                char* filePathWithSlash = args[receivingFileArgIndex].pStringConst;                                                         // init
+                int len = strlen(filePathWithSlash);
+                if (filePathWithSlash[0] != '/') {                                                                   // starting '/' missing)
+                    filePathWithSlash = new char[1 + len + 1];                                          // include space for starting '/' and ending '\0'
+                    filePathWithSlash[0] = '/';
+                    strcpy(filePathWithSlash + 1, args[receivingFileArgIndex].pStringConst);                                                  // copy original string
+                }
+                bool fileExists = (long)SD.exists(filePathWithSlash);
+                if (filePathWithSlash != args[receivingFileArgIndex].pStringConst) { delete filePathWithSlash; }         // if pointers are not equal, a new char* was created: delete it 
+
+                if (fileExists) {                                                              // receiving file exists ?
                     if (verbose) {
                         printlnTo(0, "\r\n===== File exists already. Overwrite ? (please answer Y or N) =====");
+
                         do {
                             // read answer and store first one or two characters in 'input' variable. Return on '\n' (length is stored in 'length').
                             int length{ 2 };                                // detects input > 1 character
@@ -847,8 +875,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                             // receiving from external IO  AND  answer is either invalid or 'no': flush source stream
                             // - if answer is invalid: if reading file from console stream, you might have started file transfer too early (Justina was waiting for answer)
                             // - if answer is 'No' and reading from other external stream: you might have started file transfer by mistake
-                            Stream* pSourceStream{ nullptr };
-                            execResult = setStream(sourceStreamNumber, pSourceStream); if (execResult != result_execOK) { return execResult; }
                             bool flushInput = isReceive && ((pSourceStream == _pConsoleIn) ? !validAnswer : (validAnswer && !proceed));
                             if (flushInput) {
                                 if (pSourceStream->available() > 0) { kill = flushInputCharacters(doStop, doAbort); }
@@ -863,53 +889,72 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     }
                 }
 
-                // file does not yet exist ? check if directory exists. If not, create without asking
+                // file does not yet exist ? check if directory exists. If not, create without asking (not for ESP32: see comment below)
                 else {
                     char* dirPath = new char[strlen(args[receivingFileArgIndex].pStringConst) + 1];
                     strcpy(dirPath, args[receivingFileArgIndex].pStringConst);
                     int pos{ 0 };
                     bool dirCreated{ true };
+                    execResult = result_execOK;
                     for (pos = strlen(args[receivingFileArgIndex].pStringConst) - 1; pos >= 0; pos--) { if (dirPath[pos] == '/') { dirPath[pos] = '\0'; break; } }      // isolate path
 
                     if (pos > 0) {    // pos > 0: is NOT a root folder file (pos = 0: root '/' character found; pos=-1: no root '/' character found)
                         if (!SD.exists(dirPath)) {   // if (sub-)directory path does not exist, create it now
-                            dirCreated = SD.mkdir(dirPath);
+                            // ESP32: if it doesn't exist yet, multi-level directory path is not created automatically for a receiving file:...
+                            // do not even try it for 1 level, in order not to make it too difficult for the user
+                        #if defined ESP32
+                            dirCreated = false; execResult = result_SD_directoryDoesNotExist;       // USER MUST FIRST MANUALLY CREATE PATH
+                        #else
+                            dirCreated = SD.mkdir(dirPath); if (!dirCreated) { execResult = result_SD_couldNotCreateFileDir; }
+                        #endif
                         }
                     }
                     delete[]dirPath;
-                    if (!dirCreated) { return result_SD_couldNotCreateFileDir; }                                            // no success ? error
-                }
-
-                if (proceed) {
-                    // open receiving file for writing. Create it if it doesn't exist yet, truncate it if it does 
-                    execResult = SD_open(destinationStreamNumber, args[receivingFileArgIndex].pStringConst, O_WRITE + O_CREAT + O_TRUNC);
-                    if (execResult != result_execOK) { return execResult; }         // file not opened
+                    if (execResult != result_execOK) { return execResult; }
                 }
             }
 
-            // send or copy file: source is a file ? open it now
             if (proceed) {
                 if ((isSend || isCopy)) {
-                    execResult = SD_open(sourceStreamNumber, args[0].pStringConst, O_READ);                                 // this performs a few card & file checks as well
-                    if (execResult == result_SD_couldNotOpenFile) {
-                        if (!SD.exists(args[0].pStringConst)) { execResult = result_SD_fileNotFound; }                      // replace error code for clarity
-                    }
+                    // open source file
+                    execResult = SD_open(sourceStreamNumber, args[0].pStringConst, READ_FILE);                                 // this performs a few card & file checks as well
+                    if (execResult != result_execOK) { return execResult; }
+                    
+                    Serial.println("*** B start");
+                    execResult = setStream(sourceStreamNumber);                                                                // set input stream (file), check this isn't a directory
+                    Serial.println("*** B end");
                     if (execResult != result_execOK) {
-                        if (isCopy) { SD_closeFile(destinationStreamNumber); }                                              // error opening source file: close destination file (already open)
+                        Serial.println("*** B ERROR");
+                        close(sourceStreamNumber);
                         return execResult;
                     }
                 }
 
-                // copy data from source stream to destination stream
-                if (verbose) { printlnTo(0, isSend ? "\r\nSending file... please wait" : isReceive ? "\r\nReceiving file... please wait" : "\r\nCopying file..."); }
+                if ((isReceive) || (isCopy)) {
+                    // open receiving file for writing. Create it if it doesn't exist yet, truncate it if it does 
+                    // open this file after ALL other checks are done, because if the file existed already, it will be truncated after opening
+                    // NOTE: for ESP32, CREATE_FILE and TRUNC_FILE will have no effect (ESP32 SD library only knows read, write and append modes)
+                    execResult = SD_open(destinationStreamNumber, args[receivingFileArgIndex].pStringConst, WRITE_FILE | CREATE_FILE | TRUNC_FILE);
+                    if (execResult != result_execOK) {
+                        if (isCopy) { SD_closeFile(sourceStreamNumber); }                   // source file was already open: close
+                        return execResult;
+                    }
 
-                execResult = setStream(sourceStreamNumber);                                                                     // set input stream
-                if (execResult == result_execOK) { execResult = setStream(destinationStreamNumber, true); }                     // set output stream for output
-                if (execResult != result_execOK) {
-                    if (isSend || isCopy) { SD_closeFile(sourceStreamNumber); }
-                    if (isReceive || isCopy) { SD_closeFile(destinationStreamNumber); }
-                    return execResult;
+                    Serial.println("*** C start");
+                    execResult = setStream(destinationStreamNumber, true);                      // set output stream (file), check this isn't a directory
+                    Serial.println("*** C end");
+                    if (execResult != result_execOK) {
+                        Serial.println("*** C ERROR");
+                        if (isCopy) { SD_closeFile(sourceStreamNumber); }                // source file was already open: close
+                        SD_closeFile(destinationStreamNumber);
+                        return execResult;
+                    }
                 }
+
+                // copy data from source stream to destination stream now
+                // ------------------------------------------------------
+
+                if (verbose) { printlnTo(0, isSend ? "\r\nSending file... please wait" : isReceive ? "\r\nReceiving file... please wait" : "\r\nCopying file..."); }
 
                 bool kill{ false }, doStop{ false }, doAbort{ false }, stdConsDummy{ false };
                 char c{};
@@ -1243,24 +1288,38 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         break;
 
 
-        // -------------------------------------------------------------------------------------------------------------------------------------------------------------
-        // print all arguments (longs, floats and strings) in succession. Floats are printed in compact format with maximum 3 digits / decimals and an optional exponent //// check
-        // -------------------------------------------------------------------------------------------------------------------------------------------------------------
+        // --------------------------------------------------------------------------------------------------------------------------------------------------------------
+        // Print a list of arguments (longs, floats and strings) to a specific output stream or to a variable. 
+        // Numeric output is formatted according to the currently set display format for integers resp. floating point numbers (intFmt, floatFmt commands).
+        // To apply other formatting for an argument, use the fmt() function. Other formattng functions you may use: tab(), col(), pos(), space(), repChar(), line(), ... 
+        // --------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-        // note: the print command does not take into account the display format set to print calculation results
-        // to format output produced with the print command, use the formatting function provided (function code: fnccod_format) 
+        case cmdcod_cout:               // print the argument list to the console
+        case cmdcod_coutLine:           // same, end with a CRLF sequence (carriage return line feed)
 
-        case cmdcod_dbout:
-        case cmdcod_dboutLine:
-        case cmdcod_cout:
-        case cmdcod_coutLine:
-        case cmdcod_coutList:
-        case cmdcod_print:
-        case cmdcod_printLine:
-        case cmdcod_printList:
-        case cmdcod_printToVar:
-        case cmdcod_printLineToVar:
-        case cmdcod_printListToVar:
+        case cmdcod_dbout:              // print the argument list to the set debug stream (note that the debug stream can be set to an open SD file)
+        case cmdcod_dboutLine:          // same, end with a CRLF sequence (carriage return line feed)
+
+        case cmdcod_print:              // print the argument list to the the output stream specified by the first argument (external IO or open file)
+        case cmdcod_printLine:          // same, end with a CRLF sequence (carriage return line feed)
+
+        case cmdcod_printToVar:         // print the argument list to the the variable (scalar or array element) entered as first argument
+        case cmdcod_printLineToVar:     // same, end with a CRLF sequence (carriage return line feed)
+
+        {/* (this prohibits indentation of next command lines) */}
+
+        // --------------------------------------------------------------------------------------------------------------------------------------------------------------
+        // Print a list of arguments (longs, floats and strings) to a specific output stream or to a variable. End with a CRLF sequence (carriage return line feed).
+        // These commands print a comma separated list that can later be parsed again into separate variables (with functions cinList(), readList() and vreadList() ). 
+        // Floats are printed with all significant digits, integers in decimal format(base 10).
+        // Strings are printed with surrounding quotes. Backslash(\) and quote (") characters are preceded by a backslash character.
+        // These commands are particularly useful when writing data to an SD file.
+        // --------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+        case cmdcod_coutList:           // print the argument list to the console
+        case cmdcod_printList:          // print the argument list to the the output stream specified by the first argument (external IO or open file)
+        case cmdcod_printListToVar:     // print the argument list to the the variable (scalar or array element) entered as first argument
+
         {
             // print to console, file or string ?
             bool isExplicitStreamPrint = ((_activeFunctionData.activeCmd_ResWordCode == cmdcod_print) || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_printLine)
@@ -1433,8 +1492,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         #endif
                             _intermediateStringObjectCount--;
                             delete[] oldAssembString;
-                        }
                     }
+                }
 
                     else {      // print to file or console ?
                         if (printString != nullptr) {
@@ -1453,11 +1512,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] printString;
-                    }
-                }
+            }
+        }
 
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-            }
+    }
 
             // finalise
             if (isPrintToVar) {                                                                                             // print to string ? save in variable
@@ -1473,9 +1532,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] assembledString;
-                    }
-                    return execResult;
                 }
+                    return execResult;
+            }
 
                 // print line end without supplied arguments for printing: a string object does not exist yet, so create it now
                 if (doPrintLineEnd) {
@@ -1515,7 +1574,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 }
 
                 if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) { delete[] assembledString; }                            // not referenced in eval. stack (clippedString is), so will not be deleted as part of cleanup
-            }
+}
 
             else {      // print to file or external IO
                 if (doPrintLineEnd) {
@@ -1527,13 +1586,15 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // clean up
             clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
-        }
+                }
         break;
 
 
-        // -------------------------------------------------------------
-        // print all variables (global and user), call stack or SD files
-        // -------------------------------------------------------------
+        // ---------------------------------------------------------------------------------------------------------------------------------------
+        // Print a list of all variables (global and user), print the call stack, a list of all breakpoints with attribures or a list of SD files.
+        // The optional argument sets the output stream (external IO or open file).
+        // If no argument is specified, the list is printed to the console.
+        // ---------------------------------------------------------------------------------------------------------------------------------------
 
         case cmdcod_printVars:
         case cmdcod_printCallSt:
@@ -1596,7 +1657,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         // print all SD files, with 'last modified' dates, to Serial
         // ---------------------------------------------------------
 
-    // to print to any output stream, look for command code cmdcod_listFiles
+        // Note: to print to any output stream, see command code cmdcod_listFiles
 
         case cmdcod_listFilesToSer:
         {
@@ -1623,9 +1684,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
         break;
 
-        // ------------------------------------------------------
-        // Set display width for printing last calculation result
-        // ------------------------------------------------------
+        // --------------------------------------------------
+        // Set display width for printing calculation results
+        // --------------------------------------------------
 
         case cmdcod_dispwidth:
         {
@@ -2045,10 +2106,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         }
         break;
 
-    }       // end switch
+        }       // end switch
 
     return result_execOK;
-}
+            }
 
 
 // -------------------------------
@@ -2152,7 +2213,7 @@ Justina_interpreter::execResult_type Justina_interpreter::copyValueArgsFromStack
 
 
 // -----------------------------------------------------------------------
-// *   replace a system string value with a copy of a new string value *** 
+// *   replace a system string value with a copy of a new string value   * 
 // -----------------------------------------------------------------------
 
 void Justina_interpreter::replaceSystemStringValue(char*& systemString, const char* newString) {
@@ -2165,7 +2226,7 @@ void Justina_interpreter::replaceSystemStringValue(char*& systemString, const ch
         _systemVarStringObjectCount--;
         delete[] systemString;
         systemString = nullptr;
-    }
+}
 
     // COPY new string in system variable (no move)
     if (newString != nullptr) {                                                                                        // new trace string

@@ -361,7 +361,7 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     {"removeDirectory",         fnccod_rmdir,                  1,1,    0b0 },
     {"remove",                  fnccod_remove,                 1,1,    0b0 },
     {"fileNum",                 fnccod_fileNumber,             1,1,    0b0 },
-    {"isInUse",                 fnccod_isOpenFile,             1,1,    0b0 },
+    {"isInUse",                 fnccod_hasOpenFile,            1,1,    0b0 },
     {"closeAll",                fnccod_closeAll,               0,0,    0b0 },
 };
 
@@ -455,8 +455,8 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     // ----                 --------                    // ----------
 
     // math: floating point constants (with more precision than what will actually be used)
-    {"e",                   "2.7182818284590452354",    value_isFloat},     // base of natural logarithm
-    {"PI",                  "3.14159265358979323846",   value_isFloat},     // PI
+    {"e",                   "2.7182818284590452354",    value_isFloat},     // base of natural logarithm (more digits then actually needed for float)
+    {"PI",                  "3.14159265358979323846",   value_isFloat},     // PI (more digits then actually needed for float)
     {"HALF_PI",             "1.57079632679489661923",   value_isFloat},     // PI / 2
     {"QUART_PI",            "0.78539816339744830962",   value_isFloat},     // PI / 4
     {"TWO_PI",              "6.2831853071795864769",    value_isFloat},      // 2 * PI 
@@ -473,9 +473,9 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     {"TRUE",                "1",                        value_isLong},      // value for boolean 'true'
 
     // data types
-    {"LONG_TYP",            "1",                        value_isLong},      // value type of a long value
-    {"FLOAT_TYP",           "2",                        value_isLong},      // value type of a float value
-    {"STRING_TYP",          "3",                        value_isLong},      // value type of a string value
+    {"LONG",                "1",                        value_isLong},      // value type of a long value
+    {"FLOAT",               "2",                        value_isLong},      // value type of a float value
+    {"STRING",              "3",                        value_isLong},      // value type of a string value
 
     // digital I/O
     {"LOW",                 "0",                        value_isLong},      // standard ARduino constants for digital I/O
@@ -498,53 +498,49 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     {"QUOTE_LAST",          "2",                        value_isLong},      // print last result, quote string results 
 
     // info command: type of confirmation required ("request answer yes/no, ...")
-    {"ALLOW_ENTER",         "0",                        value_isLong},      // confirmation required by pressing ENTER (any preceding characters are skipped)
-    {"ALLOW_ENT_CANC",      "1",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
-    {"ALLOW_Y_N",           "2",                        value_isLong},      // only yes or no answer allowed, by pressing 'y' or 'n' followed by ENTER   
-    {"ALLOW_Y_N_CANC",      "3",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
+    {"ENTER",               "0",                        value_isLong},      // confirmation required by pressing ENTER (any preceding characters are skipped)
+    {"ENTER_CANCEL",        "1",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
+    {"YES_NO",              "2",                        value_isLong},      // only yes or no answer allowed, by pressing 'y' or 'n' followed by ENTER   
+    {"YN_CANCEL",           "3",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
 
     // input command: default allowed  
     {"NO_DEFAULT",          "0",                        value_isLong},      // '\d' sequences ('default') in the input stream are ignored
     {"ALLOW_DEFAULT",       "1",                        value_isLong},      // if '\d' sequence is encountered in the input stream, default value is returned
 
     // input and info command: flag 'user canceled' (input argument 3 / info argument 2 return value - argument must be a variable)
-    {"IS_CANCEL",           "0",                        value_isLong},      // operation was canceled by user (\c sequence encountered)
-    {"IS_SUCCESS",          "1",                        value_isLong},      // operation was NOT canceled by user
+    {"CANCELED",            "0",                        value_isLong},      // operation was canceled by user (\c sequence encountered)
+    {"SUCCESS",             "1",                        value_isLong},      // operation was NOT canceled by user
 
     // quit command
-    {"QUIT_KEEP",           "0",                        value_isLong},      // keep Justina in memory on quitting
-    {"QUIT_RELEASE",        "1",                        value_isLong},      // release memory on quitting
+    {"KEEP_MEM",            "0",                        value_isLong},      // keep Justina in memory on quitting
+    {"RELEASE_MEM",         "1",                        value_isLong},      // release memory on quitting
 
     // input / output streams
     {"CONSOLE",             "0",                        value_isLong},      // IO: read from / print to console
-    {"IO_1",                "-1",                       value_isLong},      // IO: read from / print to alternative I/O port 1 (if defined)
-    {"IO_2",                "-2",                       value_isLong},      // IO: read from / print to alternative I/O port 2 (if defined)
-    {"IO_3",                "-3",                       value_isLong},      // IO: read from / print to alternative I/O port 3 (if defined)
-    {"IO_4",                "-4",                       value_isLong},      // IO: read from / print to alternative I/O port 4 (if defined)
-    {"IO_5",                "-5",                       value_isLong},      // IO: read from / print to alternative I/O port 5 (if defined)
-    {"FILE_1",              "1",                        value_isLong},      // IO: read from / print to open SD file 1
-    {"FILE_2",              "2",                        value_isLong},      // IO: read from / print to open SD file 2 
-    {"FILE_3",              "3",                        value_isLong},      // IO: read from / print to open SD file 3 
-    {"FILE_4",              "4",                        value_isLong},      // IO: read from / print to open SD file 4 
-    {"FILE_5",              "5",                        value_isLong},      // IO: read from / print to open SD file 5 
+    {"IO1",                 "-1",                       value_isLong},      // IO: read from / print to alternative I/O port 1 (if defined)
+    {"IO2",                 "-2",                       value_isLong},      // IO: read from / print to alternative I/O port 2 (if defined)
+    {"IO3",                 "-3",                       value_isLong},      // IO: read from / print to alternative I/O port 3 (if defined)
+    {"IO4",                 "-4",                       value_isLong},      // IO: read from / print to alternative I/O port 4 (if defined)
+    {"IO5",                 "-5",                       value_isLong},      // IO: read from / print to alternative I/O port 5 (if defined)
+    {"FILE1",               "1",                        value_isLong},      // IO: read from / print to open SD file 1
+    {"FILE2",               "2",                        value_isLong},      // IO: read from / print to open SD file 2 
+    {"FILE3",               "3",                        value_isLong},      // IO: read from / print to open SD file 3 
+    {"FILE4",               "4",                        value_isLong},      // IO: read from / print to open SD file 4 
+    {"FILE5",               "5",                        value_isLong},      // IO: read from / print to open SD file 5 
 
     // file access type on open
- #if defined ESP32
-    {"READ",                "r",                        value_isStringPointer},      // open SD file for read access
-    {"WRITE",               "w",                        value_isStringPointer},      // open SD file for write access
-    {"APPEND",              "a",                        value_isStringPointer},      // writes will occur at end of file
- #else
     {"READ",                "0x1",                      value_isLong},      // open SD file for read access
     {"WRITE",               "0x2",                      value_isLong},      // open SD file for write access
     {"RDWR",                "0x3",                      value_isLong},      // open SD file for r/w access
     {"APPEND",              "0x4",                      value_isLong},      // writes will occur at end of file
-    {"SYNC",                "0x8",                      value_isLong},      //  
+    {"RW_APPEND",           "0x07",                     value_isLong},      // open for read write access; writes at the end                            //// behouden ?
+    {"SYNC",                "0x8",                      value_isLong},      // synchronous writes: send data physically to the card after each write 
     {"NEW_OK",              "0x10",                     value_isLong},      // creating new files if non-existent is allowed, open existing files
     {"NEW_ONLY",            "0x30",                     value_isLong},      // create new file only - do not open an existing file
     {"TRUNC",               "0x40",                     value_isLong},      // truncate file to zero bytes on open (NOT if file is opened for read access only)
 
-    {"RW_APPEND",           "0x07",                     value_isLong},      // open for read write access; writes at the end
- #endif
+    // file EOF 
+    {"EOF",                 "-1",                       value_isLong},      // seek(n, EOF) is same as seek(n, size(n))
 
     // formatting flags
     {"FMT_LEFT",            "0x01",                     value_isLong},      // align output left within the print field 
@@ -787,13 +783,14 @@ Serial.print(sizeof(float)); Serial.print(" "); Serial.println(alignof(float));
         _initiateProgramLoad = _SDinitOK;
         if (_initiateProgramLoad) {
             printlnTo(0, "Looking for 'start.jus' program file...");
-            if (!SD.exists("start.jus")) { _initiateProgramLoad = false; printlnTo(0, "'start.jus' program NOT found"); }
+            if (!SD.exists("/start.jus")) { _initiateProgramLoad = false; printlnTo(0, "'start.jus' program NOT found"); }          // ADD staring slash ! (required by ESP32 SD library)
         }
 
         if (_initiateProgramLoad) {
-            execResult_type execResult = SD_open(_loadProgFromStreamNo, "start.jus", O_READ);                   // this performs a few card & file checks as well
+            execResult_type execResult = SD_open(_loadProgFromStreamNo, "/start.jus", READ_FILE);                   // this performs a few card & file checks as well
             _initiateProgramLoad = (execResult == result_execOK);
             if (!_initiateProgramLoad) { printTo(0, "Could not open 'start.jus' program - error "); printlnTo(0, execResult); }
+            if(openFiles[_loadProgFromStreamNo-1].file.size()==0) { _initiateProgramLoad = false;  printTo(0, "File 'start.jus' is empty - error "); printlnTo(0, result_SD_fileIsEmpty); }
         }
 
         if (_initiateProgramLoad) {                                                                             // !!! second 'if(_initiateProgramLoad)'

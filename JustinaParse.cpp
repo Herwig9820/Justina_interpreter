@@ -614,14 +614,14 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parsingResult_type
     } while (false);
 
     if (result != result_tokenNotFound) {
-        if (result == result_arrayDef_emptyInitStringExpected) {
+        if (predefinedConstIndex == -1) {                       // an ordinary (not a symbolic) parsed string constant ? Delete the string object
         #if PRINT_HEAP_OBJ_CREA_DEL
             _pDebugOut->print("----- (parsed str ) ");   _pDebugOut->println((uint32_t)pStringCst, HEX);
         #endif
             _parsedStringConstObjectCount--;
             delete[] pStringCst;
-            pNext = pch;  return false;
         }
+        pNext = pch;  return false;
     }
 
     // expression syntax check 
@@ -654,7 +654,7 @@ bool Justina_interpreter::parseAsStringConstant(char*& pNext, parsingResult_type
     }
 
     if (result == result_arrayDef_emptyInitStringExpected) {
-        if (predefinedConstIndex == -1) {                       // an ordinary (not a symbolic) parsed string constant ?
+        if (predefinedConstIndex == -1) {                       // an ordinary (not a symbolic) parsed string constant ? Delete the string object
         #if PRINT_HEAP_OBJ_CREA_DEL
             _pDebugOut->print("----- (parsed str ) ");   _pDebugOut->println((uint32_t)pStringCst, HEX);
         #endif

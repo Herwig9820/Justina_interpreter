@@ -26,25 +26,18 @@
 ***************************************************************************************/
 
 #define WITH_TCPIP 1
-#define WITH_OLED_SW_SPI 0              // note: hw SPI interferes with SD card breakout box (SD card gets corrupted) -> use SW SPI
-#define WITH_OLED_HW_I2C 0              
-#define WITH_OLED WITH_OLED_SW_SPI || WITH_OLED_SW_I2C
+#define WITH_OLED_SW_SPI 1              // note: hw SPI interferes with SD card breakout box (SD card gets corrupted) -> use SW SPI
+#define WITH_OLED_HW_I2C 1              
 
 // includes
 // --------
 #include "Justina.h"
 
-/*
-#include <LiquidCrystal_i2c.h>             // Velleman library
-*/
-
 // oled display
 // https://github.com/olikraus/u8g2   
-#if WITH_OLED
+#if WITH_OLED_SW_SPI || WITH_OLED_SW_I2C
 #include <U8g2lib.h>
-#include <Wire.h>
 #endif
-
 
 #if WITH_TCPIP
 #include "secrets.h"
@@ -90,27 +83,37 @@ constexpr char menu[] = "+++ Please select:\r\n  'J' Start Justina interpreter\r
 #endif
 
 // OLED displays
-#if WITH_OLED_SW_SPI || WITH_OLED_HW_I2C
-constexpr int VMA437_OLED_CLK_PIN{ 20 };
-constexpr int VMA437_OLED_MOSI_PIN{ 21 };
-constexpr int VMA437_OLED_CS_PIN{ 16 };
-constexpr int VMA437_OLED_DC_PIN{ 17 };
 
 // Define the dimension of the U8x8log window
+#if WITH_OLED_SW_SPI || WITH_OLED_HW_I2C
 #define U8LOG_WIDTH 16
 #define U8LOG_HEIGHT 8
 #endif
 
-#if WITH_OLED_SW_SPI
+
+#if WITH_OLED_SW_SPI 
+// although same physical pins, nano ESP32 pin numbering is different from other nano boards 
+#if defined ESP32
+constexpr int VMA437_OLED_CS_PIN{ 19 };
+constexpr int VMA437_OLED_DC_PIN{ 20 };
+constexpr int VMA437_OLED_CLK_PIN{ 23 };
+constexpr int VMA437_OLED_MOSI_PIN{ 24 };
+#elif
+constexpr int VMA437_OLED_CS_PIN{ 16 };
+constexpr int VMA437_OLED_DC_PIN{ 17 };
+constexpr int VMA437_OLED_CLK_PIN{ 20 };
+constexpr int VMA437_OLED_MOSI_PIN{ 21 };
+#endif
+
 U8X8_SH1106_128X64_NONAME_4W_SW_SPI u8x8_spi(VMA437_OLED_CLK_PIN, VMA437_OLED_MOSI_PIN, VMA437_OLED_CS_PIN, VMA437_OLED_DC_PIN);  // SW SPI
 U8X8LOG u8x8log_spi;        // Create a U8x8log object
-uint8_t u8log_buffer_spi[U8LOG_WIDTH * U8LOG_HEIGHT];
+uint8_t u8log_buffer_spi[U8LOG_WIDTH * U8LOG_HEIGHT];                                       // display width x height, in characters
 #endif
 
 #if WITH_OLED_HW_I2C
-U8X8_SSD1306_128X64_NONAME_HW_I2C u8x8_i2c;                                         // HW I2C
+U8X8_SSD1306_128X64_NONAME_HW_I2C u8x8_i2c;                                         
 U8X8LOG u8x8log_i2c;        // Create a U8x8log object
-uint8_t u8log_buffer_i2c[U8LOG_WIDTH * U8LOG_HEIGHT];
+uint8_t u8log_buffer_i2c[U8LOG_WIDTH * U8LOG_HEIGHT];                                       // display width x height, in characters
 #endif
 
 // NOTE (cfr. next line): OLED HW SPI is not compatible with SD card HW SPI
@@ -264,24 +267,17 @@ void setup() {
     } while (true);
 
 #if WITH_OLED_SW_SPI
-    // Startup U8x8
     u8x8_spi.begin();
-
-    // Set a suitable font. This font will be used for U8x8log
     u8x8_spi.setFont(u8x8_font_chroma48medium8_r);
-
-    // Start U8x8log, connect to U8x8, set the dimension and assign the static memory
-    u8x8log_spi.begin(u8x8_spi, U8LOG_WIDTH, U8LOG_HEIGHT, u8log_buffer_spi);
-
-    // Set the U8x8log redraw mode
-    u8x8log_spi.setRedrawMode(0);		// 0: Update screen with newline, 1: Update screen for every char  
+    u8x8log_spi.begin(u8x8_spi, U8LOG_WIDTH, U8LOG_HEIGHT, u8log_buffer_spi);           // Start U8x8log, connect to U8x8, set the dimension and assign the static memory
+    u8x8log_spi.setRedrawMode(0);		                                                // Set the U8x8log redraw mode. 0: Update screen with newline, 1: Update screen for every char  
 #endif
 
 #if WITH_OLED_HW_I2C
     u8x8_i2c.begin();
     u8x8_i2c.setFont(u8x8_font_chroma48medium8_r);
     u8x8log_i2c.begin(u8x8_i2c, U8LOG_WIDTH, U8LOG_HEIGHT, u8log_buffer_i2c);
-    u8x8log_i2c.setRedrawMode(0);		// 0: Update screen with newline, 1: Update screen for every char
+    u8x8log_i2c.setRedrawMode(0);		
 #endif
 
 #if WITH_TCPIP
@@ -804,6 +800,11 @@ float userFcn_returnFloat(const void** pdata, const char* valueType, const int a
 char* userFcn_return_pChar(const void** pdata, const char* valueType, const int argCount, int& execError) {
 
     if ((valueType[0] & Justina_interpreter::value_typeMask) != Justina_interpreter::value_isStringPointer) { Serial.println("user function: wrong value type"); return ""; }
+
+    // NOTES: If you create a NEW char* object and return it, make sure you DELETE it later (also in a cpp user routine) in order not to create a memory leak.
+    //        Do NOT return a local char* because it will go out of scope upon return, freeing the memory occupied by the char*.
+    //        It is OK to return a global char* declared in this file. 
+    //        Always respect the initial length of a char* : you may shorten the string stored in it, but you can't make it longer than the initial string.
 
     char* pText = ((char**)(pdata))[0];
     if (strlen(pText) < 3) { Serial.println("user function: string too short"); return ""; }

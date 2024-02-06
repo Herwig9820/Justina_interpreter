@@ -65,9 +65,10 @@ Justina_interpreter::execResult_type Justina_interpreter::startSD() {
 
 #if defined ESP32
 char* Justina_interpreter::SD_ESP32_convert_accessMode(int mode) {
-    if (mode & 0x04){return "a"; }
-    if (mode & 0x02) { return "w"; }
-    return "r";
+    if (mode & 0x01) { return FILE_READ; }
+    else if (mode & 0x02) { return FILE_WRITE; }
+    else if (mode & 0x04) { return FILE_APPEND; }
+    else { return FILE_READ; }                            // default
 }
 #endif
 
@@ -76,7 +77,7 @@ char* Justina_interpreter::SD_ESP32_convert_accessMode(int mode) {
 // *   open an SD file   *
 // -----------------------
 
-Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumber, char* filePath, int mode) {
+Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumber, char* filePath, int mode, bool checkExistence) {
     fileNumber = 0;                                                                                                         // init: no file number yet
 
     if (!_SDinitOK) { return result_SD_noCardOrCardError; }
@@ -85,16 +86,26 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumbe
     // create temp string
     if (!pathValid(filePath)) { return result_SD_pathIsNotValid; }                                                          // is not a complete check, but it remedies a few plaws in SD library
 
+    // create a new string, providing space for starting '/' if missing
+    // always create the new char*, because if the file is closed later, Justina will assume that it must be deleted 
     int len = strlen(filePath);
-    // provide space for starting '/' if missing                 
-    char* filePathInCapitals = new char[((filePath[0] == '/') ? 0 : 1) + len + 1];                                          // not counted for memory leak testing
+    char* filePathInCapitals = new char[((filePath[0] == '/') ? 0 : 1) + len + 1];
     if (filePath[0] != '/') { filePathInCapitals[0] = '/'; }
     strcpy(filePathInCapitals + ((filePath[0] == '/') ? 0 : 1), filePath);                                                  // copy original string
     for (int i = 0; i < strlen(filePathInCapitals); i++) { filePathInCapitals[i] = toupper(filePathInCapitals[i]); }
 
+    // does file exist ? (this check allows for a more specific error code, instead of 'could not open file' error code)
+    // but this check is not always wanted: do not check if opening a file whilst creating it 
+    if (checkExistence) {
+        if (!SD.exists(filePathInCapitals)) {
+            delete[] filePathInCapitals;
+            return result_SD_fileNotFound;
+        }
+    }
+
     // currently open files ? Check that the same file is not open already
     if (fileIsOpen(filePathInCapitals)) {
-        delete[] filePathInCapitals;                                                                                        // not counted for memory leak testing
+        delete[] filePathInCapitals;
         return result_SD_fileAlreadyOpen;
     }
 
@@ -108,7 +119,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumbe
             openFiles[i].file = SD.open(filePathInCapitals, mode);
         #endif
             if (!openFiles[i].file) {
-                delete[] filePathInCapitals;                                                                                // not counted for memory leak testing
+                delete[] filePathInCapitals;
                 return result_SD_couldNotOpenFile;
             }                                                                                                               // could not open file (in case caller ignores this error, file number returned is 0)
 
@@ -116,6 +127,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumbe
 
             openFiles[i].file.setTimeout(DEFAULT_READ_TIMEOUT);
             openFiles[i].fileNumberInUse = true;
+            // note: only ESP32 SD library has a method 'path()': keep track of full name within Justina
             openFiles[i].filePath = filePathInCapitals;                                                                     // delete when file is closed
             openFiles[i].currentPrintColumn = 0;
             fileNumber = i + 1;
@@ -126,7 +138,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumbe
     ++_openFileCount;
 
     return result_execOK;
-}
+    }
 
 
 // ----------------------------------------
@@ -141,6 +153,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_openNext(int dirFil
 
     // it's not possible to check whether the next file is open already, because we don't know which file will be opened as next. We'll check afterwards
 
+    // note: only ESP32 SD library has a method 'path()': keep track of full name within Justina
     char* dirPath = openFiles[dirFileNumber - 1].filePath;                                                                  // path for the directory
     int dirPathLength = strlen(dirPath);
 
@@ -158,9 +171,9 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_openNext(int dirFil
             // room for full name, '/' between path and name, '\0' terminator
             openFiles[i].file.setTimeout(DEFAULT_READ_TIMEOUT);
             openFiles[i].fileNumberInUse = true;
-            openFiles[i].filePath = new char[dirPathLength + 1 + strlen(openFiles[i].file.name()) + 1];                     // not counted for memory leak testing     
+            openFiles[i].filePath = new char[dirPathLength + 1 + strlen(openFiles[i].file.name()) + 1];
             strcpy(openFiles[i].filePath, dirPath);
-            strcat(openFiles[i].filePath, "/");
+            if (dirPathLength > 1) { strcat(openFiles[i].filePath, "/"); }                        // if not root directory: add '/' between path and file name
             strcat(openFiles[i].filePath, openFiles[i].file.name());
             openFiles[i].currentPrintColumn = 0;
             fileNumber = i + 1;
@@ -178,7 +191,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_openNext(int dirFil
                 if (strcasecmp(openFiles[i].filePath, openFiles[fileNumber - 1].filePath) == 0) {                           // 8.3 file format: NOT case sensitive      
                     openFiles[fileNumber - 1].file.close();                                                                 // close newer file ref again
                     openFiles[fileNumber - 1].fileNumberInUse = false;
-                    delete[] openFiles[fileNumber - 1].filePath;                                                            // not counted for memory leak testing
+                    delete[] openFiles[fileNumber - 1].filePath;
                     --_openFileCount;
                     return result_SD_fileAlreadyOpen;                                                                       // return with error
                 }
@@ -202,7 +215,7 @@ void Justina_interpreter::SD_closeFile(int fileNumber) {
     if (static_cast <Stream*>(&openFiles[fileNumber - 1].file) == static_cast <Stream*>(_pDebugOut)) { _pDebugOut = _pConsoleOut; }
     openFiles[fileNumber - 1].file.close();                                                                                 // does not return errors
     openFiles[fileNumber - 1].fileNumberInUse = false;
-    delete[] openFiles[fileNumber - 1].filePath;                                                                            // not counted for memory leak testing
+    delete[] openFiles[fileNumber - 1].filePath;
     --_openFileCount;
 }
 
@@ -348,7 +361,8 @@ Justina_interpreter::execResult_type Justina_interpreter::setStream(int streamNu
 
     Stream* pTemp;
 
-    execResult_type execResult = determineStream(streamNumber, pTemp, forOutput); if (execResult != result_execOK) { return execResult; }
+    execResult_type execResult = determineStream(streamNumber, pTemp, forOutput);
+    if (execResult != result_execOK) { return execResult; }
     (forOutput ? _streamNumberOut : _streamNumberIn) = streamNumber;
     if (forOutput) { _pStreamOut = static_cast<Print*> (pTemp); }
     else { _pStreamIn = pTemp; }
@@ -360,7 +374,8 @@ Justina_interpreter::execResult_type Justina_interpreter::setStream(int streamNu
 
 Justina_interpreter::execResult_type Justina_interpreter::setStream(int streamNumber, Stream*& pStream, bool forOutput) {
 
-    execResult_type execResult = determineStream(streamNumber, pStream, forOutput); if (execResult != result_execOK) { return execResult; }
+    execResult_type execResult = determineStream(streamNumber, pStream, forOutput);
+    if (execResult != result_execOK) { return execResult; }
     (forOutput ? _streamNumberOut : _streamNumberIn) = streamNumber;
     if (forOutput) { _pStreamOut = static_cast<Print*> (pStream); }
     else { _pStreamIn = pStream; }
@@ -374,7 +389,7 @@ Justina_interpreter::execResult_type Justina_interpreter::setStream(int streamNu
 // *   WITHOUT setting _streamNumberIn, _pStreamIn or _streamNumberOut, _pStreamOut                                              *
 // -------------------------------------------------------------------------------------------------------------------------------
 
-Justina_interpreter::execResult_type Justina_interpreter::determineStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, 
+Justina_interpreter::execResult_type Justina_interpreter::determineStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex,
     Stream*& pStream, int& streamNumber, bool forOutput, int allowFileTypes) {
 
     // check file number (also perform related file and SD card object checks)
@@ -397,7 +412,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::determineStream(int s
     }    // external IO: stream number -1 => array index 0, etc.
     else {
         File* pFile{};
-        execResult_type execResult = SD_fileChecks(pFile, streamNumber,allowFileTypes);                                                        // operand: file number
+        execResult_type execResult = SD_fileChecks(pFile, streamNumber, allowFileTypes);                                                        // operand: file number
         if (execResult != result_execOK) { return execResult; }
         pStream = static_cast<Stream*> (pFile);
     }
@@ -436,7 +451,8 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_fileChecks(File*& p
     if (!openFiles[fileNumber - 1].fileNumberInUse) { return result_SD_fileIsNotOpen; }
     pFile = &(openFiles[fileNumber - 1].file);
     if (allowFileTypes > 0) {                                                                                               // 0: allow files and directories, 1: allow files, 2: allow directories
-        if (pFile->isDirectory() != (allowFileTypes == 2)) { return result_SD_directoryNotAllowed; }
+        if (pFile->isDirectory()) { if (allowFileTypes == 1) { return result_SD_directoryNotAllowed; } }
+        else { if (allowFileTypes == 2) { return result_SD_directoryExpected; } }
     }
     return result_execOK;
 }
@@ -804,14 +820,15 @@ char Justina_interpreter::getCharacter(bool& kill, bool& forcedStop, bool& force
         if (_pStreamIn->available() > 0) { c = read(); }
         if (kill) { return c; }                                         // flag 'kill' (request from Justina caller): return immediately
         forcedAbort = forcedAbort || abort;                             // do not exit immediately, except if waiting for a 'first' character (with a long timeout)
-        if (forcedAbort && useLongTimeout) { break; }
+        if (forcedAbort && useLongTimeout && (_streamNumberIn <= 0)) { break; }
         forcedStop = forcedStop || stop;                                // flag 'stop': continue looking for a character (do not exit immediately). Upon exit, signal 'stop' flag has been raised
         setStdConsole = setStdConsole || stdCons;
         if (c != 0xff) { break; }
 
 
         // try to read character only once or keep trying until timeout occurs ?
-        readCharWindowExpired = (!allowWaitTime || (startWaitForReadTime + (useLongTimeout ? LONG_WAIT_FOR_CHAR_TIMEOUT : timeOutValue) < millis()));
+        readCharWindowExpired = true;      // init (for file input) 
+        if (_streamNumberIn <= 0) readCharWindowExpired = (!allowWaitTime || (startWaitForReadTime + (useLongTimeout ? LONG_WAIT_FOR_CHAR_TIMEOUT : timeOutValue) < millis()));
     } while (!readCharWindowExpired);
     return c;
 
@@ -1548,7 +1565,7 @@ void  Justina_interpreter::printToString(int width, int precision, bool inputIsS
             if (opStrLen > MAX_PRINT_WIDTH) { (*value).pStringConst[MAX_PRINT_WIDTH] = '\0'; opStrLen = MAX_PRINT_WIDTH; }  // clip input string without warning (won't need it any more)
         }
         resultStrLen = max(width + 10, opStrLen + 10);                                                                      // allow for a few extra formatting characters, if any
-    }
+}
     else {
         resultStrLen = max(width + 10, 30);                                                                                 // 30: ensure length is sufficient to print a formatted nummber
     }
@@ -1582,6 +1599,6 @@ void  Justina_interpreter::printToString(int width, int precision, bool inputIsS
     }
 
     return;
-}
+    }
 
 

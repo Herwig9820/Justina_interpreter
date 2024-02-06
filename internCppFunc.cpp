@@ -125,14 +125,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             if (!(argIsStringBits & (0x1 << 0))) { return result_arg_stringExpected; }                                      // file full name including path
 
             // access mode
-            long mode = O_READ;      // init: open for reading
+            long mode = READ_FILE;      // default: open for reading
             if (suppliedArgCount == 2) {
                 if (!(argIsLongBits & (0x1 << 1)) && !(argIsFloatBits & (0x1 << 1))) { return result_arg_numberExpected; }
                 mode = (argIsLongBits & (0x1 << 1)) ? args[1].longConst : args[1].floatConst;
             }
 
             // open file and retrieve file number
-            execResult_type execResult = SD_open(newFileNumber, args[0].pStringConst, mode);
+            execResult_type execResult = SD_open(newFileNumber, args[0].pStringConst, mode, !(mode & (WRITE_FILE | APPEND_FILE)));
             if (execResult != result_execOK) { return execResult; }
 
             // save file number as result
@@ -158,13 +158,24 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             char* filePath = args[0].pStringConst;
             if (!pathValid(filePath)) { return result_SD_pathIsNotValid; }                                                  // is not a complete check, but it remedies a few plaws in SD library
 
+            fcnResultValueType = value_isLong;                                                  // init
+
             // first, check whether the file exists
-            fcnResultValueType = value_isLong;
-            bool fileExists = (long)SD.exists(filePath);
+            // ESP32 requires that the path starts with a slash
+            int len = strlen(filePath);
+            char* filePathWithSlash = filePath;                                                         // init
+            if (filePath[0] != '/') {                                                                   // starting '/' missing)
+                filePathWithSlash = new char[1 + len + 1];                                          // include space for starting '/' and ending '\0'
+                filePathWithSlash[0] = '/';
+                strcpy(filePathWithSlash + 1, filePath);                                                  // copy original string
+            }
+
+            bool fileExists = (long)SD.exists(filePathWithSlash);
 
             // file exists check only: return 0 or 1;
             if (functionCode == fnccod_exists) {
                 fcnResult.longConst = fileExists;
+                if (filePathWithSlash != filePath) { delete filePathWithSlash; }            // compare pointers (if not equal, then one char* is new and must be deleted)
                 break;
             }
 
@@ -178,11 +189,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             bool fileIsOpen{ false };
             int i{ 0 };
             if (_openFileCount > 0) {
-                bool givenStartsWithSlash = (filePath[0] == '/');
-                for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
+                for (i = 0; i < MAX_OPEN_SD_FILES; ++i) {
                     if (openFiles[i].fileNumberInUse) {
                         // skip starting slash (always present) in stored file path if file path argument doesn't start with a slash
-                        if (strcasecmp(openFiles[i].filePath + (givenStartsWithSlash ? 0 : 1), filePath) == 0) {            // 8.3 file format: NOT case sensitive  
+                        if (strcasecmp(openFiles[i].filePath, filePathWithSlash) == 0) {            // 8.3 file format: NOT case sensitive  
                             fileIsOpen = true;
                             break;                                                                                          // break inner loop only 
                         }
@@ -191,15 +201,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             }
 
             // check for open file ? return 1 if open, 0 if not
-            if (functionCode == fnccod_fileNumber) {
-                fcnResult.longConst = fileIsOpen ? (i + 1) : 0;
-                break;
-            }
-
+            if (functionCode == fnccod_fileNumber) { fcnResult.longConst = fileIsOpen ? (i + 1) : 0; }
             // remove directory or file ? return 1 if success, 0 if not
             // the SD library function itself will test for correct file type (lib or file)  
-            if (functionCode == fnccod_rmdir) { fcnResult.longConst = fileIsOpen ? 0 : (long)SD.rmdir(filePath); }
-            else if (functionCode == fnccod_remove) { fcnResult.longConst = fileIsOpen ? 0 : (long)SD.remove(filePath); }
+            else if (functionCode == fnccod_rmdir) { fcnResult.longConst = fileIsOpen ? 0 : (long)SD.rmdir(filePathWithSlash); }
+            else if (functionCode == fnccod_remove) { fcnResult.longConst = fileIsOpen ? 0 : (long)SD.remove(filePathWithSlash); }
+
+            if (filePathWithSlash != filePath) { delete filePathWithSlash; }            // compare pointers (if not equal, then one char* is new and must be deleted)
+
         }
         break;
 
@@ -219,7 +228,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             if (execResult != result_execOK) { return execResult; }
 
             // access mode (openNextFile only)
-            long mode = O_READ;                                                                                             // init: open for reading
+            long mode = READ_FILE;                                                                                             // init: open for reading
             if (suppliedArgCount == 2) {
                 if (!(argIsLongBits & (0x1 << 1)) && !(argIsFloatBits & (0x1 << 1))) { return result_arg_numberExpected; }
                 mode = (argIsLongBits & (0x1 << 1)) ? args[1].longConst : args[1].floatConst;
@@ -289,7 +298,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
         // SD: check if a file for a given file number is open
         // ---------------------------------------------------
 
-        case fnccod_isOpenFile:
+        case fnccod_hasOpenFile:
         {
             File* pFile{};
             execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, pFile, 0);                // file number (all file types)
@@ -384,7 +393,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             if ((!(argIsLongBits & (0x1 << 1))) && (!(argIsFloatBits & (0x1 << 1)))) { return result_arg_numberExpected; }  // number of bytes to read
             long arg2 = (argIsLongBits & (0x1 << 1)) ? (args[1].longConst) : (args[1].floatConst);
 
-            if (!pFile->seek(arg2)) { return result_SD_fileSeekError; }
+            // NOTE: with nano ESP32 board, when file is opened for WRITE, size() does not follow actual (growing) file size while writing (although position() returns correct position).
+            
+            long size = pFile->size();
+            if ((arg2 > size) || (arg2 < -1)) { return result_SD_fileSeekError; }
+            if (arg2 == -1) { arg2 = size; }            // EOF
+
+            if (!pFile->seek(arg2)) { return result_SD_fileSeekError; }                     // library seek error
 
             fcnResultValueType = value_isLong;
             fcnResult.longConst = 0;
@@ -411,10 +426,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
             int len = strlen((functionCode == fnccod_name) ? pFile->name() : openFiles[fileNumber - 1].filePath);           // always longer than 0 characters
             _intermediateStringObjectCount++;
-            fcnResult.pStringConst = new char[len + 1];
+            fcnResult.pStringConst = new char[len + 1];                                                                     // will be pushed to evaluation stack
         #if PRINT_HEAP_OBJ_CREA_DEL
             _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
         #endif            
+            // note: only ESP32 SD library has a method 'path()': keep track of full name within Justina
             strcpy(fcnResult.pStringConst, (functionCode == fnccod_name) ? pFile->name() : openFiles[fileNumber - 1].filePath);
         }
         break;
@@ -457,7 +473,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             // cin()                    NOTE: form 2: cin([terminator character, ] length) ==> see next
             // read(stream number)      NOTE: form 2: read(stream number, [terminator character, ] length) => see next 
 
-            // cin(), peek( [stream number] ),  read(stream number) functions return an ASCII code (0xff indicates no character has been received) and do not time out
+            // cin(), peek( [stream number] ),  read(stream number) functions return an ASCII code (0xff indicates no character has been received) and do NOT time out
             // cin() is equivalent to read(CONSOLE)
 
             bool stayHere = (functionCode == fnccod_peek) ? true : (suppliedArgCount < ((functionCode == fnccod_cin) ? 1 : 2));
@@ -499,7 +515,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
             // terminator character: first character of 'terminator' string (if empty string: error)
             // if the 'length' argument is a variable, it returns the count of bytes read (read() function only)
-            // these functions time out 
             // functions return a character string variable or a nullptr (empty string)
 
             // NOTE: external I/O (only): functions will time out (see SetTimeout() function) if no (more) characters are available
@@ -545,7 +560,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
         #endif
 
             // read characters now
-            // NOTE: next line of code is NOT used because while waiting for a time out, call backs would not happen
+            // NOTE: next line of code is NOT used because while waiting for a time out, call backs would not occur
             // --->  int charsInBuffer = (isLineForm || terminatorArgPresent) ? pStream->readBytesUntil(terminator, buffer, maxLineLength) : pStream->readBytes(buffer, maxLineLength);
 
             int charsRead{ 0 };                                                                                             // init
@@ -602,7 +617,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 _intermediateStringObjectCount--;
                 delete[] buffer;
                 fcnResult.pStringConst = nullptr;
-            }
+        }
 
             // less characters read than maximum ? move string to a smaller character array to save space
             else if (charsRead < maxLineLength) {
@@ -620,7 +635,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 fcnResult.pStringConst = smallerBuffer;
             }
             else { fcnResult.pStringConst = buffer; }
-        }
+    }
         break;
 
 
@@ -750,7 +765,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
                 // if a valid token was parsed and it's a non-empty string: if it's a predefined string, then we still need to create a copy (a ref. to the original predefined string was returned)...
                 // ...because we will store it in a variable. If it's NOT a predefined string, then a string object was created on the heap already
-                
+
                 if ((valueType == value_isStringPointer) && (value.pStringConst != nullptr)) {
                     if (predefinedConstIndex >= 0) {                    // predefined string: copy on the heap is not yet made
                         _intermediateStringObjectCount++;
@@ -824,7 +839,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             #endif
                 _intermediateStringObjectCount--;
                 delete[] buffer;
-            }
+        }
 
             // if an error occured while processing an argument, then an intermediate string object might still exist on the heap
             if (stringObjectCreated) {
@@ -834,7 +849,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 _intermediateStringObjectCount--;
                 delete[] value.pStringConst;
 
-            }
+}
 
 
             // execution error ?
@@ -883,7 +898,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 terminatorLen = strlen(terminator);
             }
 
-            // read characters now and check for target [and terminator]
+            // read characters ONE BY ONE now and check for target [and terminator] - check for events continuously
             // NOTE: next line of code is NOT used because while waiting for a time out, call backs do not happen
             // --->  bool targetFound = (functionCode == fnccod_findUntil) ? pStream->findUntil(target, terminator) : pStream->find(target);
 
@@ -904,10 +919,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 }
                 else { targetCharsMatched = 0; }                                                                            // last character does not match: start all over 
 
-                if (c == terminator[terminatorCharsMatched]) {
-                    if (++terminatorCharsMatched == terminatorLen) { targetFound = false; break; }
+                if (functionCode == fnccod_findUntil) {
+                    if (c == terminator[terminatorCharsMatched]) {
+                        if (++terminatorCharsMatched == terminatorLen) { targetFound = false; break; }
+                    }
                 }
-                else { terminatorCharsMatched = 0; }                                                                        // last character does not match: start all over 
             }
 
             fcnResult.longConst = (long)targetFound;
@@ -1409,7 +1425,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             #if PRINT_HEAP_OBJ_CREA_DEL
                 _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
             #endif
-            }
+        }
         }
         break;
 
@@ -1962,7 +1978,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                     else { *_pEvalStackTop->varOrConst.value.pFloatConst = (float)foundStartPos; }
                 }
             }
-        }
+            }
         break;
 
 
@@ -2264,11 +2280,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
         }
         break;
 
-    }                                                                                           // end switch
+        }                                                                                           // end switch
 
 
-        // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
-        // -------------------------------------------------------------------------------------------------------------------
+            // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
+            // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
@@ -2290,6 +2306,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
     }
 
     return result_execOK;
-}
+    }
 
 

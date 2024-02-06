@@ -381,7 +381,7 @@ class Justina_interpreter {
         fnccod_rewindDirectory,
         fnccod_openNextFile,
         fnccod_fileNumber,
-        fnccod_isOpenFile,
+        fnccod_hasOpenFile,
         fnccod_closeAll,
         fnccod_exists,
         fnccod_mkdir,
@@ -664,11 +664,13 @@ class Justina_interpreter {
         result_SD_fileIsNotOpen,
         result_SD_fileAlreadyOpen,
         result_SD_invalidFileNumber,
+        result_SD_fileIsEmpty,
         result_SD_maxOpenFilesReached,
         result_SD_fileSeekError,
         result_SD_directoryExpected,
         result_SD_directoryNotAllowed,
         result_SD_couldNotCreateFileDir,
+        result_SD_directoryDoesNotExist,
         result_SD_pathIsNotValid,
         result_SD_sourceIsDestination,
         result_SD_fileNotAllowedHere,
@@ -1054,6 +1056,26 @@ private:
     static constexpr uint8_t isPrintColumnRequest = 0x08;
 
 
+    // SD card
+    // -------
+
+#if defined ESP32
+    static const char READ_FILE{ 0x01 };                    // align with Arduino (non-ESP32) SD library constants
+    static const char WRITE_FILE{ 0x02 };
+    static const char APPEND_FILE{ 0x04 };
+    static const char CREATE_FILE{ 0x00 };                 // zero: will do nothing (no function with ESP2 SDlibrary)
+    static const char TRUNC_FILE{ 0x00 };                  // zero: will do nothing (no function with ESP2 SDlibrary)
+#else
+    static const char READ_FILE{ O_READ };                    // Arduino SD library constants                
+    static const char WRITE_FILE{ O_WRITE };
+    static const char APPEND_FILE{ O_APPEND };
+    static const char CREATE_FILE{ O_CREAT };
+    static const char TRUNC_FILE{ O_TRUNC };
+
+    Sd2Card _SDcard{};
+#endif
+
+
     // ------------------------------
     // *   unions, structures (1)   *
     // ------------------------------
@@ -1200,11 +1222,7 @@ private:
     static const ResWordDef _resWords[75];                                                                                      // keyword names
     static const InternCppFuncDef _internCppFunctions[139];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
-#if defined ESP32
-    static const SymbNumConsts _symbNumConsts[59];                                                                              // predefined constants
-#else
-    static const SymbNumConsts _symbNumConsts[65];                                                                              // predefined constants
-#endif
+    static const SymbNumConsts _symbNumConsts[66];                                                                              // predefined constants
     static const int _resWordCount{ sizeof(_resWords) / sizeof(_resWords[0]) };                                                 // count of keywords in keyword table 
     static const int _internCppFunctionCount{ (sizeof(_internCppFunctions)) / sizeof(_internCppFunctions[0]) };                 // count of internal cpp functions in functions table
     static const int _termTokenCount{ sizeof(_terminals) / sizeof(_terminals[0]) };                                             // count of operators and other terminals in terminals table
@@ -1779,12 +1797,11 @@ private:
     int _streamNumberIn{ 0 }, _streamNumberOut{ 0 };
 
     int _externIOstreamCount = 0;
-#if defined ESP32
-    static const uint O_READ{ 0x01 };
-    static const uint O_WRITE{ 0x02 };
-#else
+
+#if !defined ESP32
     Sd2Card _SDcard{};
 #endif
+
     OpenFile openFiles[MAX_OPEN_SD_FILES];                          // open files: file paths and attributed file numbers
     int _openFileCount = 0;
     int _SDcardChipSelectPin{ 10 };
@@ -2081,10 +2098,10 @@ private:
     void SD_closeAllFiles();
 
 #if defined ESP32
-    char* SD_ESP32_convert_accessMode(int mode);//// weg
+    char* SD_ESP32_convert_accessMode(int mode);
 #endif
-    execResult_type SD_open(int& fileNumber, char* filePath, int mod = O_READ);
-    execResult_type SD_openNext(int dirFileNumber, int& fileNumber, File* pDirectory, int mod = O_READ);
+    execResult_type SD_open(int& fileNumber, char* filePath, int mod = READ_FILE, bool checkExistence = false);
+    execResult_type SD_openNext(int dirFileNumber, int& fileNumber, File* pDirectory, int mod = READ_FILE);
 
     void SD_closeFile(int fileNumber);
     execResult_type SD_listFiles();
