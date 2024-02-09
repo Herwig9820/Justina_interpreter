@@ -1,0 +1,36 @@
+/*-------------------------------------------------------------------------------------------------------------------------------------
+	Sample JUSTINA program for use with the Justina interpreter	on Arduino SAMD boards, the nano RP2040 board and the nano ESP32 board.
+
+	The program is intended to be called automatically upon starting Justina, if allowed by the Arduino program calling Justina.
+	
+	In order to be called automatically:
+	- the file name must be 'start.jus'
+	- the program must contain a function 'start()', taking no arguments
+	(the program name is not relevant)
+	------------------------------------------
+	Created by Herwig Taveirne, February 2024.
+	
+	This software is available for use, modification or redistribution under the terms of the GNU General Public License.
+	
+	See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter
+-------------------------------------------------------------------------------------------------------------------------------------*/
+
+
+program startJustina;
+
+
+// -----------------------------------------------------------------------------------------------------------------------
+// This function makes a few settings,checks how Justina was started (cold start or not) and prints a line to the console.
+// -----------------------------------------------------------------------------------------------------------------------
+
+// arguments: none
+// returns: nothing 
+
+function start();
+	dispWidth 30;									// set display width for calculation results to 30 characters
+	angleMode 1;									// set degrees
+	coutLine "the sine of 90 degrees is ", sin(90);	// print the sine of 90 degrees to the console								
+	coutLine "cold start ? ", isColdStart();		// print 1 if this was a cold start, otherwise 0
+	coutLine "function 'start()' executed";			
+end;
+

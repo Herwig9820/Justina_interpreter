@@ -1,30 +1,24 @@
 /************************************************************************************************************
-*    Justina interpreter library for Arduino boards with 32 bit SAMD microconrollers                        *
+*    Justina interpreter library                                                                            *
 *                                                                                                           *
-*    Tested with Nano 33 IoT and Arduino RP2040                                                             *
+*    Version:    v1.1.1                                                                                     *
+*    Author:     Herwig Taveirne, 2021-2024                                                                 *
 *                                                                                                           *
-*    Version:    v1.01 - 12/07/2023                                                                         *
-*    Author:     Herwig Taveirne, 2021-2023                                                                 *
-*                                                                                                           *
-*    Justina is an interpreter which does NOT require you to use an IDE to write and compile programs.      *
-*    Programs are written on the PC using any text processor and transferred to the Arduino using any       *
-*    Serial or TCP Terminal program capable of sending files.                                               *
-*    Justina can store and retrieve programs and other data on an SD card as well.                          *
+*    The library is intended to work with 32 bit boards using the SAMD architecture (tested with the        *
+*    Arduino nano 33 IoT), the Arduino nano RP2040 and Arduino nano ESP32 boards.                           *
 *                                                                                                           *
 *    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
 *                                                                                                           *
-*    This program is free software: you can redistribute it and/or modify                                   *
-*    it under the terms of the GNU General Public License as published by                                   *
-*    the Free Software Foundation, either version 3 of the License, or                                      *
-*    (at your option) any later version.                                                                    *
+*    This program is free software: you can redistribute it and/or modify it under the terms of the         *
+*    GNU General Public License as published by the Free Software Foundation, either version 3 of the       *
+*    License, or (at your option) any later version.                                                        *
 *                                                                                                           *
-*    This program is distributed in the hope that it will be useful,                                        *
-*    but WITHOUT ANY WARRANTY; without even the implied warranty of                                         *
-*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                                           *
-*    GNU General Public License for more details.                                                           *
+*    This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;              *
+*    without even the implied warranty of  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.             *
+*    See the GNU General Public License for more details.                                                   *
 *                                                                                                           *
-*    You should have received a copy of the GNU General Public License                                      *
-*    along with this program.  If not, see <http://www.gnu.org/licenses/>.                                  *
+*    If you did not receive a copy of the GNU General Public License along with this program,               *
+*    see <http://www.gnu.org/licenses/>.                                                                    *
 ************************************************************************************************************/
 
 
@@ -165,6 +159,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             int len = strlen(filePath);
             char* filePathWithSlash = filePath;                                                         // init
             if (filePath[0] != '/') {                                                                   // starting '/' missing)
+                _systemStringObjectCount++;//// new
                 filePathWithSlash = new char[1 + len + 1];                                          // include space for starting '/' and ending '\0'
                 filePathWithSlash[0] = '/';
                 strcpy(filePathWithSlash + 1, filePath);                                                  // copy original string
@@ -175,7 +170,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             // file exists check only: return 0 or 1;
             if (functionCode == fnccod_exists) {
                 fcnResult.longConst = fileExists;
-                if (filePathWithSlash != filePath) { delete filePathWithSlash; }            // compare pointers (if not equal, then one char* is new and must be deleted)
+                if (filePathWithSlash != filePath) {
+                    delete[] filePathWithSlash;           // compare pointers (if not equal, then one char* is new and must be deleted)
+                    _systemStringObjectCount--;//// new
+                }
                 break;
             }
 
@@ -207,8 +205,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             else if (functionCode == fnccod_rmdir) { fcnResult.longConst = fileIsOpen ? 0 : (long)SD.rmdir(filePathWithSlash); }
             else if (functionCode == fnccod_remove) { fcnResult.longConst = fileIsOpen ? 0 : (long)SD.remove(filePathWithSlash); }
 
-            if (filePathWithSlash != filePath) { delete filePathWithSlash; }            // compare pointers (if not equal, then one char* is new and must be deleted)
-
+            if (filePathWithSlash != filePath) {
+                delete[] filePathWithSlash;             // compare pointers (if not equal, then one char* is new and must be deleted)
+                _systemStringObjectCount--;//// new
+            }
         }
         break;
 
@@ -394,7 +394,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             long arg2 = (argIsLongBits & (0x1 << 1)) ? (args[1].longConst) : (args[1].floatConst);
 
             // NOTE: with nano ESP32 board, when file is opened for WRITE, size() does not follow actual (growing) file size while writing (although position() returns correct position).
-            
+
             long size = pFile->size();
             if ((arg2 > size) || (arg2 < -1)) { return result_SD_fileSeekError; }
             if (arg2 == -1) { arg2 = size; }            // EOF
@@ -551,9 +551,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 if ((maxLineLength < 1) || (maxLineLength > MAX_ALPHA_CONST_LEN)) { return result_arg_outsideRange; }
             }
 
-            // prepare to read characters
-            _intermediateStringObjectCount++;
+            // prepare to read characters.
             // buffer, long enough to receive maximum line length and (input line only) line terminator ('\n')
+            _intermediateStringObjectCount++;
             char* buffer = new char[isLineForm ? MAX_ALPHA_CONST_LEN + 1 : maxLineLength + 1];                              // including '\0' terminator
         #if PRINT_HEAP_OBJ_CREA_DEL
             _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)buffer, HEX);
@@ -619,7 +619,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 fcnResult.pStringConst = nullptr;
         }
 
-            // less characters read than maximum ? move string to a smaller character array to save space
+        // less characters read than maximum ? move string to a smaller character array to save space
             else if (charsRead < maxLineLength) {
                 _intermediateStringObjectCount++;
                 char* smallerBuffer = new char[charsRead + 1];                                                              // including space for terminating '\0'
@@ -841,7 +841,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 delete[] buffer;
         }
 
-            // if an error occured while processing an argument, then an intermediate string object might still exist on the heap
+        // if an error occured while processing an argument, then an intermediate string object might still exist on the heap
             if (stringObjectCreated) {
             #if PRINT_HEAP_OBJ_CREA_DEL
                 _pDebugOut->print("----- (Intermd str) ");   _pDebugOut->println((uint32_t)value.pStringConst, HEX);
@@ -852,7 +852,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 }
 
 
-            // execution error ?
+// execution error ?
             if (execResult != result_execOK) {
                 _evalParseErrorCode = parsingResult;                                                                        // only relevant in case a parsing error occurred
                 return execResult;
@@ -1298,7 +1298,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             //     =>  'd' signed integer, 'x' or 'X': unsigned hexadecimal integer. 'X': hex number is printed in capitals
             // (2) if expression is a string, if not omitted, the specifier needs to be 's' (string)
 
-            // depending on the specifier, the value to be printed will first be converted to the correct type (integer or float)
+            // depending on the specifier, a numeric value to be printed will first be converted to the correct type (integer or float)
 
             // flags (optional parameter): 
             // value 0x1 = left justify within print field, 0x2 = force sign, 0x4 = insert a space if no sign, 0x8: (1) floating point numbers: ALWAYS add a decimal point, even if no digits follow...
@@ -1713,7 +1713,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             #else
                 fcnResult.longConst = shiftIn(args[0].longConst, args[1].longConst, (BitOrder)args[2].longConst);
             #endif
-            }
+        }
             else if (functionCode == fnccod_shiftOut) {                                                                     // args: data pin, clock pin, bit order, value
             #if defined ESP32
                 shiftOut(args[0].longConst, args[1].longConst, args[2].longConst, args[3].longConst);
@@ -2148,10 +2148,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             fcnResultValueType = value_isLong;                                                  // default for most system values
 
             switch (sysVal) {
-                // display (last results, echo, ...) and formatting function fmt() settings
-                // ------------------------------------------------------------------------
-
-                    // display (last results, echo, print commands)
+                // display settings
+                // ----------------
                 case 0: fcnResult.longConst = _dispWidth; break;                                // display width                                                           
                 case 1: fcnResult.longConst = _dispFloatPrecision; break;                       // floating point precision and formatting flags
                 case 2: fcnResult.longConst = _dispFloatFmtFlags; break;
@@ -2163,17 +2161,21 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 case 8: fcnResult.longConst = _printLastResult; break;
                 case 9: fcnResult.longConst = _angleMode; break;
 
-                    // formatting function fmt()
+                // formatting function fmt()
+                // -------------------------
                 case 10: fcnResult.longConst = _fmt_width; break;                               // print field width
                 case 11: fcnResult.longConst = _fmt_numPrecision; break;                        // numeric values: precision and formatting flags
                 case 12: fcnResult.longConst = _fmt_numFmtFlags; break;
 
                 case 14: fcnResult.longConst = _fmt_strCharsToPrint; break;                     // strings: number of characters to print
 
-                    // display (last results, echo, print commands)
+                // display settings (continued)
+                // ----------------------------
                 case 3:                                                                         // floating point values: specifier
                 case 6:                                                                         // integer values: specifier character
-                    // formatting function fmt()
+
+                // formatting function fmt() (continued)
+                // -------------------------------------
                 case 13:                                                                        // numeric values: specifier character
                 {
                     fcnResultValueType = value_isStringPointer;
@@ -2186,6 +2188,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 }
                 break;
 
+                // other settings
+                // --------------
                 case 15: fcnResult.longConst = _lastValuesCount; break;                                // current depth of last values FiF0
 
 
@@ -2204,8 +2208,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 }
                 break;
 
-
-                case 19:                                                                        // return trace string
+                case 19:                                                                        // trace string
                 {
                     fcnResultValueType = value_isStringPointer;
                     fcnResult.pStringConst = nullptr;                                           // init (empty string)
@@ -2220,7 +2223,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 }
                 break;
 
-
+                // product info
+                // ------------
                 case 31:                                                                        // product name
                 case 32:                                                                        // legal copy right
                 case 33:                                                                        // product version 
@@ -2236,7 +2240,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 }
                 break;
 
-
+                // technical (normally less relevant for the user)
+                // -----------------------------------------------
                 // note:parsing stack element count is always zero during evaluation: no entry provided here
                 case 36:fcnResult.longConst = evalStack.getElementCount(); break;               // evaluation stack element count
                 case 37:fcnResult.longConst = flowCtrlStack.getElementCount(); break;           // flow control stack element count (call stack depth + stack levels used by open blocks)
@@ -2263,15 +2268,29 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                             min(999, _identifierNameStringObjectCount), min(999, _userVarNameStringObjectCount), min(999, _parsedStringConstObjectCount), min(999, _lastValuesStringObjectCount),
                             min(999, _globalStaticVarStringObjectCount), min(999, _globalStaticArrayObjectCount), min(999, _userVarStringObjectCount), min(999, _userArrayObjectCount),
                             min(999, _localVarStringObjectCount), min(999, _localArrayObjectCount), min(999, _localVarValueAreaCount), min(999, _intermediateStringObjectCount),
-                            min(999, _systemVarStringObjectCount));
+                            min(999, _systemStringObjectCount));
                     }
                     else {     // print heap object create/delete errors
                         sprintf(fcnResult.pStringConst, "%0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d",
                             min(999, _identifierNameStringObjectErrors), min(999, _userVarNameStringObjectErrors), min(999, _parsedStringConstObjectErrors), min(999, _lastValuesStringObjectErrors),
                             min(999, _globalStaticVarStringObjectErrors), min(999, _globalStaticArrayObjectErrors), min(999, _userVarStringObjectErrors), min(999, _userArrayObjectErrors),
                             min(999, _localVarStringObjectErrors), min(999, _localArrayObjectErrors), min(999, _localVarValueAreaErrors), min(999, _intermediateStringObjectErrors),
-                            min(999, _systemVarStringObjectErrors));
+                            min(999, _systemStringObjectErrors));
                     }
+                }
+                break;
+
+                case 44:                                            // processor board or architecture
+                {
+                #if  defined(ARDUINO_ARCH_SAMD) 
+                    fcnResult.longConst = 1; break;
+                #elif defined(ARDUINO_ARCH_RP2040) 
+                    fcnResult.longConst = 2; break;
+                #elif defined(ESP32)
+                    fcnResult.longConst = 3; break;
+                #else 
+                    fcnResult.longConst = 0; break;     // none of these
+                #endif
                 }
                 break;
 
@@ -2306,6 +2325,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
     }
 
     return result_execOK;
-    }
+}
 
 

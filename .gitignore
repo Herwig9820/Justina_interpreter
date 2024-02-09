@@ -11,6 +11,7 @@ secrets.h
 *.sln
 .development
 
+/examples/Justina/working
 # User-specific files
 *.rsuser
 *.suo

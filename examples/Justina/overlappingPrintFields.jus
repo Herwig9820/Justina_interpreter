@@ -1,0 +1,53 @@
+/*-------------------------------------------------------------------------------------------------------------------------------------
+	Sample JUSTINA program for use with the Justina interpreter	on Arduino SAMD boards, the nano RP2040 board and the nano ESP32 board.
+	
+	The program demonstates how to format output in the case print fields can overlap, as in the example below.
+		line 1:			this_is_value1   value2
+		line 2:			value1   this_is_value2
+	------------------------------------------
+	Created by Herwig Taveirne, February 2024.
+	
+	This software is available for use, modification or redistribution under the terms of the GNU General Public License.
+	
+	See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter
+-------------------------------------------------------------------------------------------------------------------------------------*/
+
+
+program overlap;
+
+
+// -----------------------------------------------------------------------------------------------
+// this function prints 10 lines with each time 2 numbers of different length, separated by "---".
+// if less than 15 characters are printed, remaining columns are filled with '+' characters.
+// -----------------------------------------------------------------------------------------------
+
+// arguments: none
+//  returns: 0
+
+function overlap1();
+	var i=0, count=0, atColumn=0;								// initialise as integers
+	
+	for i = 1, 10; 
+		cout exp(i), "---", cInt(1.7 ** (10-i));				// 'pos' now contains the next print position 
+		coutLine repChar( "+", max(1, 15 - pos()));    			// fill up first 15 columns with '+' characters  
+	end;
+end;
+
+
+// -------------------------------------------------------------------------------------------------------------
+//	this function does exactly the same as function ovlap1(), but because the second number and separator are...
+//	...printed by a separate print command, pos() needs to be adjusted with the extra characters printed 
+// -------------------------------------------------------------------------------------------------------------
+
+// arguments: none
+//  returns: 0
+
+function overlap2();
+	var i=0, count=0;											// initialise as integers
+	
+	for i = 1, 10; 
+		cout exp(i), "---";										// 'pos' now contains the next print position  
+		coutLine fmt(1.7 ** (10-i), 0, 0, "d", 0, count), " ", 	// second number printed occupies 'count' characters: add these...
+			repChar( "+", max(1, 15 - (pos() + count)));    		// ...to pos() before filling up first 15 columns with '+' characters			
+	end;
+end;

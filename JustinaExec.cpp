@@ -1,30 +1,24 @@
 /************************************************************************************************************
-*    Justina interpreter library for Arduino boards with 32 bit SAMD microconrollers                        *
+*    Justina interpreter library                                                                            *
 *                                                                                                           *
-*    Tested with Nano 33 IoT and Arduino RP2040                                                             *
+*    Version:    v1.1.1                                                                                     *
+*    Author:     Herwig Taveirne, 2021-2024                                                                 *
 *                                                                                                           *
-*    Version:    v1.01 - 12/07/2023                                                                         *
-*    Author:     Herwig Taveirne, 2021-2023                                                                 *
-*                                                                                                           *
-*    Justina is an interpreter which does NOT require you to use an IDE to write and compile programs.      *
-*    Programs are written on the PC using any text processor and transferred to the Arduino using any       *
-*    Serial or TCP Terminal program capable of sending files.                                               *
-*    Justina can store and retrieve programs and other data on an SD card as well.                          *
+*    The library is intended to work with 32 bit boards using the SAMD architecture (tested with the        *
+*    Arduino nano 33 IoT), the Arduino nano RP2040 and Arduino nano ESP32 boards.                           *
 *                                                                                                           *
 *    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
 *                                                                                                           *
-*    This program is free software: you can redistribute it and/or modify                                   *
-*    it under the terms of the GNU General Public License as published by                                   *
-*    the Free Software Foundation, either version 3 of the License, or                                      *
-*    (at your option) any later version.                                                                    *
+*    This program is free software: you can redistribute it and/or modify it under the terms of the         *
+*    GNU General Public License as published by the Free Software Foundation, either version 3 of the       *
+*    License, or (at your option) any later version.                                                        *
 *                                                                                                           *
-*    This program is distributed in the hope that it will be useful,                                        *
-*    but WITHOUT ANY WARRANTY; without even the implied warranty of                                         *
-*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                                           *
-*    GNU General Public License for more details.                                                           *
+*    This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;              *
+*    without even the implied warranty of  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.             *
+*    See the GNU General Public License for more details.                                                   *
 *                                                                                                           *
-*    You should have received a copy of the GNU General Public License                                      *
-*    along with this program.  If not, see <http://www.gnu.org/licenses/>.                                  *
+*    If you did not receive a copy of the GNU General Public License along with this program,               *
+*    see <http://www.gnu.org/licenses/>.                                                                    *
 ************************************************************************************************************/
 
 
@@ -115,7 +109,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
         bool isRightPar = (isTerminal ? (_terminals[tokenIndex].terminalCode == termcod_rightPar) : false);
 
         // fetch next token (for some token types, the size is stored in the upper 4 bits of the token type byte)
-        int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : 
+        int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) :
             (tokenType == tok_isSymbolicConstant) ? sizeof(TokenIsSymbolicConstant) : (*_programCounter >> 4) & 0x0F;
         _activeFunctionData.pNextStep = _programCounter + tokenLength;                                  // look ahead
 
@@ -286,7 +280,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
                 _activeFunctionData.errorProgramCounter = _programCounter;                              // in case an error occurs while processing token
 
                 // name index of predefined symbolic constants is not needed any more, and rest of structure is identical to literal constant structure                                                      
-                tokenType = tok_isConstant;                                                 
+                tokenType = tok_isConstant;
                 pushConstant(tokenType);
 
             #if PRINT_PROCESSED_TOKEN
@@ -438,7 +432,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
                 else if (isRightPar) {
                 #if PRINT_PROCESSED_TOKEN        // after evaluation stack has been updated and before breaking 
-                    _pDebugOut->print("   process right parenthesis : step "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth "); 
+                    _pDebugOut->print("   process right parenthesis : step "); _pDebugOut->print(_programCounter - _programStorage);  _pDebugOut->print(", eval stack depth ");
                     _pDebugOut->print(evalStack.getElementCount()); _pDebugOut->print(" [ "); _pDebugOut->print(_terminals[tokenIndex].terminalName);   _pDebugOut->println(" ]");
                 #endif
 
@@ -491,7 +485,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::exec(char* startHere)
 
                 else if (isSemicolon) {
                 #if PRINT_DEBUG_INFO
-                    _pDebugOut->print("   process semicolon : step "); _pDebugOut->print(_programCounter - _programStorage); _pDebugOut->print(", eval stack depth "); 
+                    _pDebugOut->print("   process semicolon : step "); _pDebugOut->print(_programCounter - _programStorage); _pDebugOut->print(", eval stack depth ");
                     _pDebugOut->print(evalStack.getElementCount());  _pDebugOut->print(" [ "); _pDebugOut->print(_terminals[tokenIndex].terminalName);   _pDebugOut->println(" ]");
                 #endif
 
@@ -1006,7 +1000,7 @@ void Justina_interpreter::checkForStop(bool& isActiveBreakpoint, bool& requestSt
                 // -----------------------------------------------
                 _programCounter = _programStorage + _progMemorySize;                                      // first step in first statement in parsed eval() string
                 int tokenType = *_programCounter & 0x0F;             // adapt next token type (could be changed by a breakpoint trigger string)
-                int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : 
+                int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) :
                     (tokenType == tok_isSymbolicConstant) ? sizeof(TokenIsSymbolicConstant) : (*_programCounter >> 4) & 0x0F;
                 _activeFunctionData.pNextStep = _programCounter + tokenLength;                                  // look ahead
 
@@ -1198,7 +1192,7 @@ int Justina_interpreter::jumpTokens(int n, char*& pStep, int& tokenCode) {
         tokenType = *pStep & 0x0F;
         if (tokenType == tok_no_token) { return tok_no_token; }                                                 // end of program reached
         // terminals and constants: token length is NOT stored in token type
-        int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) : 
+        int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) :
             (tokenType == tok_isSymbolicConstant) ? sizeof(TokenIsSymbolicConstant) : (*pStep >> 4) & 0x0F;
         pStep = pStep + tokenLength;
     }
@@ -1373,7 +1367,6 @@ void Justina_interpreter::saveLastValue(bool& overWritePrevious) {
     else {
         int stringlen = min(int(strlen(lastvalue.value.pStringConst)), MAX_ALPHA_CONST_LEN);                         // excluding terminating \0
         _lastValuesStringObjectCount++;
-
         lastResultValueFiFo[0].pStringConst = new char[stringlen + 1];
     #if PRINT_HEAP_OBJ_CREA_DEL
         _pDebugOut->print("+++++ (FiFo string) ");   _pDebugOut->println((uint32_t)lastResultValueFiFo[0].pStringConst, HEX);
@@ -1496,7 +1489,7 @@ void Justina_interpreter::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, b
                         #if PRINT_HEAP_OBJ_CREA_DEL
                             _pDebugOut->print("----- (LOCAL STORAGE) ");   _pDebugOut->println((uint32_t)(_activeFunctionData.pLocalVarValues), HEX);
                         #endif
-                            _localVarValueAreaCount--;
+                            _localVarValueAreaCount-=3;
                             // release local variable storage for function that has been called
                             delete[] _activeFunctionData.pLocalVarValues;
                             delete[] _activeFunctionData.pVariableAttributes;
@@ -2405,7 +2398,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchJustinaFunction
     int paramCount = justinaFunctionData[_activeFunctionData.functionIndex].paramOnlyCountInFunction;
 
     if (localVarCount > 0) {
-        _localVarValueAreaCount++;
+        _localVarValueAreaCount+=3;
         _activeFunctionData.pLocalVarValues = new Val[localVarCount];                               // local variable value: real, pointer to string or array, or (if reference): pointer to 'source' (referenced) variable
         _activeFunctionData.ppSourceVarTypes = new char* [localVarCount];                           // only if local variable is reference to variable or array element: pointer to 'source' variable value type  
         _activeFunctionData.pVariableAttributes = new char[localVarCount];                          // local variable: value type (float, local string or reference); 'source' (if reference) or local variable scope (user, global, static; local, param) 
@@ -2484,7 +2477,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
     _parsingEvalString = true;
 
     // create a temporary string to hold expressions to parse, with an extra semicolon added at the end (in case it's missing)
-    _systemVarStringObjectCount++;
+    _systemStringObjectCount++;
     char* pEvalParsingInput = new char[strlen(parsingInput) + 2]; // room for additional semicolon (in case string is not ending with it) and terminating '\0'
 #if PRINT_HEAP_OBJ_CREA_DEL
     _pDebugOut->print("+++++ (system var str) "); _pDebugOut->println((uint32_t)pEvalParsingInput, HEX);
@@ -2500,7 +2493,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::launchEval(LE_evalSta
 #if PRINT_HEAP_OBJ_CREA_DEL
     _pDebugOut->print("----- (system var str) "); _pDebugOut->println((uint32_t)pEvalParsingInput, HEX);
 #endif
-    _systemVarStringObjectCount--;
+    _systemStringObjectCount--;
     delete[] pEvalParsingInput;
     _parsingEvalString = false;
 
@@ -2844,7 +2837,7 @@ void Justina_interpreter::terminateJustinaFunction(bool addZeroReturnValue) {
     #if PRINT_HEAP_OBJ_CREA_DEL
         _pDebugOut->print("----- (LOCAL STORAGE) ");   _pDebugOut->println((uint32_t)_activeFunctionData.pLocalVarValues, HEX);
     #endif
-        _localVarValueAreaCount--;
+        _localVarValueAreaCount-=3;
         // release local variable storage for function that has been called
         delete[] _activeFunctionData.pLocalVarValues;
         delete[] _activeFunctionData.pVariableAttributes;
@@ -3011,7 +3004,7 @@ void Justina_interpreter::pushConstant(int tokenType) {                         
 
     _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(VarOrConstLvl));
     // also for predefined symbolic constants: in evaluation stack as ordinary parsed constant
-    _pEvalStackTop->varOrConst.tokenType = tok_isConstant;                                                                                  
+    _pEvalStackTop->varOrConst.tokenType = tok_isConstant;
     _pEvalStackTop->varOrConst.tokenAddress = _programCounter;                                                                              // only for finding source error position during unparsing (for printing)
 
     _pEvalStackTop->varOrConst.valueType = ((*(char*)_programCounter) >> 4) & value_typeMask;                                               // for constants, upper 4 bits contain the value type
@@ -3041,7 +3034,7 @@ void Justina_interpreter::pushGenericName(int tokenType) {                      
 
     // just push the string pointer to the generic name (no indexes, ...)
     _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(GenericNameLvl));
-    _pEvalStackTop->varOrConst.tokenType = tok_isGenericName;                                                               
+    _pEvalStackTop->varOrConst.tokenType = tok_isGenericName;
     _pEvalStackTop->varOrConst.tokenAddress = _programCounter;                                                              // only for finding source error position during unparsing (for printing)
 
     char* pAnum{ nullptr };

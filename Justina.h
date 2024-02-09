@@ -1,30 +1,24 @@
 /************************************************************************************************************
-*    Justina interpreter library for Arduino boards with 32 bit SAMD microconrollers                        *
+*    Justina interpreter library                                                                            *
 *                                                                                                           *
-*    Tested with Nano 33 IoT and Arduino RP2040                                                             *
-*                                                                                                           *
-*    Version:    v1.01 - 12/07/2023                                                                         *
+*    Version:    v1.1.1                                                                                     *
 *    Author:     Herwig Taveirne, 2021-2024                                                                 *
 *                                                                                                           *
-*    Justina is an interpreter which does NOT require you to use an IDE to write and compile programs.      *
-*    Programs are written on the PC using any text processor and transferred to the Arduino using any       *
-*    Serial or TCP Terminal program capable of sending files.                                               *
-*    Justina can store and retrieve programs and other data on an SD card as well.                          *
+*    The library is intended to work with 32 bit boards using the SAMD architecture (tested with the        *
+*    Arduino nano 33 IoT), the Arduino nano RP2040 and Arduino nano ESP32 boards.                           *
 *                                                                                                           *
 *    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
 *                                                                                                           *
-*    This program is free software: you can redistribute it and/or modify                                   *
-*    it under the terms of the GNU General Public License as published by                                   *
-*    the Free Software Foundation, either version 3 of the License, or                                      *
-*    (at your option) any later version.                                                                    *
+*    This program is free software: you can redistribute it and/or modify it under the terms of the         *
+*    GNU General Public License as published by the Free Software Foundation, either version 3 of the       *
+*    License, or (at your option) any later version.                                                        *
 *                                                                                                           *
-*    This program is distributed in the hope that it will be useful,                                        *
-*    but WITHOUT ANY WARRANTY; without even the implied warranty of                                         *
-*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                                           *
-*    GNU General Public License for more details.                                                           *
+*    This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;              *
+*    without even the implied warranty of  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.             *
+*    See the GNU General Public License for more details.                                                   *
 *                                                                                                           *
-*    You should have received a copy of the GNU General Public License                                      *
-*    along with this program.  If not, see <http://www.gnu.org/licenses/>.                                  *
+*    If you did not receive a copy of the GNU General Public License along with this program,               *
+*    see <http://www.gnu.org/licenses/>.                                                                    *
 ************************************************************************************************************/
 
 
@@ -38,7 +32,7 @@
 #define J_productName "Justina: JUST an INterpreter for Arduino"
 #define J_legalCopyright "Copyright (C) Herwig Taveirne 2021 - 2024"
 #define J_productVersion "1.1.1"            // major.minor.build
-#define J_buildDate "July 12, 2023"
+#define J_buildDate "February 9, 2024"
 
 
 // ******************************************************************
@@ -1071,8 +1065,6 @@ private:
     static const char APPEND_FILE{ O_APPEND };
     static const char CREATE_FILE{ O_CREAT };
     static const char TRUNC_FILE{ O_TRUNC };
-
-    Sd2Card _SDcard{};
 #endif
 
 
@@ -1222,7 +1214,7 @@ private:
     static const ResWordDef _resWords[75];                                                                                      // keyword names
     static const InternCppFuncDef _internCppFunctions[139];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
-    static const SymbNumConsts _symbNumConsts[66];                                                                              // predefined constants
+    static const SymbNumConsts _symbNumConsts[64];                                                                              // predefined constants
     static const int _resWordCount{ sizeof(_resWords) / sizeof(_resWords[0]) };                                                 // count of keywords in keyword table 
     static const int _internCppFunctionCount{ (sizeof(_internCppFunctions)) / sizeof(_internCppFunctions[0]) };                 // count of internal cpp functions in functions table
     static const int _termTokenCount{ sizeof(_terminals) / sizeof(_terminals[0]) };                                             // count of operators and other terminals in terminals table
@@ -1734,31 +1726,33 @@ private:
     bool _parsingExecutingTriggerString{ false };
 
 
-    // counting of heap objects (note: linked list element count is maintained within the linked list objects)
-    // -------------------------------------------------------------------------------------------------------
+    // counting of heap objects
+    // notes: heap objects created / destroyed in (de-)constructors are not counted 
+    //        linked list element count is maintained within the linked list objects
+    // -----------------------------------------------------------------------------
 
     // name strings for variables and functions
     int _identifierNameStringObjectCount = 0, _identifierNameStringObjectErrors = 0;
     int _userVarNameStringObjectCount = 0, _userVarNameStringObjectErrors = 0;
 
     // constant strings
-    int _parsedStringConstObjectCount = 0, _parsedStringConstObjectErrors = 0;
-    int _intermediateStringObjectCount = 0, _intermediateStringObjectErrors = 0;
-    int _lastValuesStringObjectCount = 0, _lastValuesStringObjectErrors = 0;
+    int _parsedStringConstObjectCount = 0, _parsedStringConstObjectErrors = 0;          // char arrays referenced in program memory
+    int _intermediateStringObjectCount = 0, _intermediateStringObjectErrors = 0;        // char arrays referenced in the evaluation stack
+    int _lastValuesStringObjectCount = 0, _lastValuesStringObjectErrors = 0;            // char arrays referenced in the last results FIFO
 
     // strings as value of variables
-    int _globalStaticVarStringObjectCount = 0, _globalStaticVarStringObjectErrors = 0;
-    int _userVarStringObjectCount = 0, _userVarStringObjectErrors = 0;
-    int _localVarStringObjectCount = 0, _localVarStringObjectErrors = 0;
-    int _systemVarStringObjectCount = 0, _systemVarStringObjectErrors = 0;
+    int _globalStaticVarStringObjectCount = 0, _globalStaticVarStringObjectErrors = 0;  // char arrays referenced in Justina global or static variables
+    int _userVarStringObjectCount = 0, _userVarStringObjectErrors = 0;                  // char arrays referenced in Justina user variables
+    int _localVarStringObjectCount = 0, _localVarStringObjectErrors = 0;                // char arrays referenced in Justina local variables
+    int _systemStringObjectCount = 0, _systemStringObjectErrors = 0;                    // temporary or system char arrays, NOT referenced in any of the above 
 
     // array storage 
-    int _globalStaticArrayObjectCount = 0, _globalStaticArrayObjectErrors = 0;
-    int _userArrayObjectCount = 0, _userArrayObjectErrors = 0;
-    int _localArrayObjectCount = 0, _localArrayObjectErrors = 0;
+    int _globalStaticArrayObjectCount = 0, _globalStaticArrayObjectErrors = 0;          // Justina global array objects
+    int _userArrayObjectCount = 0, _userArrayObjectErrors = 0;                          // Justina user array objects
+    int _localArrayObjectCount = 0, _localArrayObjectErrors = 0;                        // Justina local array objects
 
-    // local variable storage area
-    int _localVarValueAreaCount = 0, _localVarValueAreaErrors = 0;
+    // local variable storage areas
+    int _localVarValueAreaCount = 0, _localVarValueAreaErrors = 0;                      // storage areas for local variables and attributes                      
 
 
     // system (main) callback

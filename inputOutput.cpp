@@ -1,30 +1,24 @@
 /************************************************************************************************************
-*    Justina interpreter library for Arduino boards with 32 bit SAMD microconrollers                        *
+*    Justina interpreter library                                                                            *
 *                                                                                                           *
-*    Tested with Nano 33 IoT and Arduino RP2040                                                             *
+*    Version:    v1.1.1                                                                                     *
+*    Author:     Herwig Taveirne, 2021-2024                                                                 *
 *                                                                                                           *
-*    Version:    v1.01 - 12/07/2023                                                                         *
-*    Author:     Herwig Taveirne, 2021-2023                                                                 *
-*                                                                                                           *
-*    Justina is an interpreter which does NOT require you to use an IDE to write and compile programs.      *
-*    Programs are written on the PC using any text processor and transferred to the Arduino using any       *
-*    Serial or TCP Terminal program capable of sending files.                                               *
-*    Justina can store and retrieve programs and other data on an SD card as well.                          *
+*    The library is intended to work with 32 bit boards using the SAMD architecture (tested with the        *
+*    Arduino nano 33 IoT), the Arduino nano RP2040 and Arduino nano ESP32 boards.                           *
 *                                                                                                           *
 *    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
 *                                                                                                           *
-*    This program is free software: you can redistribute it and/or modify                                   *
-*    it under the terms of the GNU General Public License as published by                                   *
-*    the Free Software Foundation, either version 3 of the License, or                                      *
-*    (at your option) any later version.                                                                    *
+*    This program is free software: you can redistribute it and/or modify it under the terms of the         *
+*    GNU General Public License as published by the Free Software Foundation, either version 3 of the       *
+*    License, or (at your option) any later version.                                                        *
 *                                                                                                           *
-*    This program is distributed in the hope that it will be useful,                                        *
-*    but WITHOUT ANY WARRANTY; without even the implied warranty of                                         *
-*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                                           *
-*    GNU General Public License for more details.                                                           *
+*    This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;              *
+*    without even the implied warranty of  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.             *
+*    See the GNU General Public License for more details.                                                   *
 *                                                                                                           *
-*    You should have received a copy of the GNU General Public License                                      *
-*    along with this program.  If not, see <http://www.gnu.org/licenses/>.                                  *
+*    If you did not receive a copy of the GNU General Public License along with this program,               *
+*    see <http://www.gnu.org/licenses/>.                                                                    *
 ************************************************************************************************************/
 
 
@@ -63,11 +57,13 @@ Justina_interpreter::execResult_type Justina_interpreter::startSD() {
 // *   ESP32 only: convert file access modes for ESP32   *
 // -------------------------------------------------------
 
+// nano ESP32 boards: READ cannot be combined with WRITE or APPEND (underlying library restriction) -> prioritize READ
+//                    prioritize APPEND over WRITE, because on NON-nano ESP32 boards mode is 0x06 for APPEND
 #if defined ESP32
 char* Justina_interpreter::SD_ESP32_convert_accessMode(int mode) {
     if (mode & 0x01) { return FILE_READ; }
-    else if (mode & 0x02) { return FILE_WRITE; }
     else if (mode & 0x04) { return FILE_APPEND; }
+    else if (mode & 0x02) { return FILE_WRITE; }
     else { return FILE_READ; }                            // default
 }
 #endif
@@ -89,6 +85,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumbe
     // create a new string, providing space for starting '/' if missing
     // always create the new char*, because if the file is closed later, Justina will assume that it must be deleted 
     int len = strlen(filePath);
+    _systemStringObjectCount++;//// new
     char* filePathInCapitals = new char[((filePath[0] == '/') ? 0 : 1) + len + 1];
     if (filePath[0] != '/') { filePathInCapitals[0] = '/'; }
     strcpy(filePathInCapitals + ((filePath[0] == '/') ? 0 : 1), filePath);                                                  // copy original string
@@ -99,6 +96,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumbe
     if (checkExistence) {
         if (!SD.exists(filePathInCapitals)) {
             delete[] filePathInCapitals;
+            _systemStringObjectCount--;//// new
             return result_SD_fileNotFound;
         }
     }
@@ -106,6 +104,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumbe
     // currently open files ? Check that the same file is not open already
     if (fileIsOpen(filePathInCapitals)) {
         delete[] filePathInCapitals;
+        _systemStringObjectCount--;//// new
         return result_SD_fileAlreadyOpen;
     }
 
@@ -120,6 +119,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumbe
         #endif
             if (!openFiles[i].file) {
                 delete[] filePathInCapitals;
+                _systemStringObjectCount--;//// new
                 return result_SD_couldNotOpenFile;
             }                                                                                                               // could not open file (in case caller ignores this error, file number returned is 0)
 
@@ -135,10 +135,10 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumbe
         }
     }
 
-    ++_openFileCount;
+    _openFileCount++;
 
     return result_execOK;
-    }
+}
 
 
 // ----------------------------------------
@@ -171,6 +171,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_openNext(int dirFil
             // room for full name, '/' between path and name, '\0' terminator
             openFiles[i].file.setTimeout(DEFAULT_READ_TIMEOUT);
             openFiles[i].fileNumberInUse = true;
+            _systemStringObjectCount++;//// new
             openFiles[i].filePath = new char[dirPathLength + 1 + strlen(openFiles[i].file.name()) + 1];
             strcpy(openFiles[i].filePath, dirPath);
             if (dirPathLength > 1) { strcat(openFiles[i].filePath, "/"); }                        // if not root directory: add '/' between path and file name
@@ -190,9 +191,10 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_openNext(int dirFil
                 // compare the long filenames (including filepath) for the newly opened file with the previously opened open file (comparing file refs doesn't work)
                 if (strcasecmp(openFiles[i].filePath, openFiles[fileNumber - 1].filePath) == 0) {                           // 8.3 file format: NOT case sensitive      
                     openFiles[fileNumber - 1].file.close();                                                                 // close newer file ref again
+                    _openFileCount--;
                     openFiles[fileNumber - 1].fileNumberInUse = false;
                     delete[] openFiles[fileNumber - 1].filePath;
-                    --_openFileCount;
+                    _systemStringObjectCount--;//// new
                     return result_SD_fileAlreadyOpen;                                                                       // return with error
                 }
             }
@@ -214,9 +216,10 @@ void Justina_interpreter::SD_closeFile(int fileNumber) {
 
     if (static_cast <Stream*>(&openFiles[fileNumber - 1].file) == static_cast <Stream*>(_pDebugOut)) { _pDebugOut = _pConsoleOut; }
     openFiles[fileNumber - 1].file.close();                                                                                 // does not return errors
+    _openFileCount--;
     openFiles[fileNumber - 1].fileNumberInUse = false;
     delete[] openFiles[fileNumber - 1].filePath;
-    --_openFileCount;
+    _systemStringObjectCount--;//// new
 }
 
 
@@ -234,11 +237,12 @@ void  Justina_interpreter::SD_closeAllFiles() {
                 _pDebugOut = _pConsoleOut;
             }
             openFiles[i].fileNumberInUse = false;                                                                           // slot is open again
-            delete openFiles[i].filePath;
+            delete[] openFiles[i].filePath;
+            _systemStringObjectCount--;//// new
             openFiles[i].file.close();                                                                                      // does not return errors
+            _openFileCount--;
         }
     }
-    _openFileCount = 0;
 }
 
 
@@ -252,9 +256,15 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_listFiles() {
 
     // print to console (default), or to any other defined I/O device, or to a file, but without date and time stamp (unfortunately this fixed in SD library)
     // before calling this function, output stream must be set by function 'setStream(...)'
+
+    // while printing directories, 2 lfiles will be open at the same time (a directory and a file or subdirectory): make sure max. open file count will not be exceeded 
+    if (_openFileCount > MAX_OPEN_SD_FILES - 2) { return result_SD_maxOpenFilesReached; }
+
+    // open files will not increase '_openFileCount' because we don't save file info in _openFiles array anyway 
     File SDroot = SD.open("/");
     println("SD card: files (name, size in bytes): ");
     printDirectory(SDroot, 0);
+    SDroot.close();
     return result_execOK;
 }
 
@@ -1263,12 +1273,12 @@ void Justina_interpreter::prettyPrintStatements(int outputStream, int instructio
                 #endif
                     _intermediateStringObjectCount--;
                     delete[]pAnum;
-                }
+            }
                 else {
                     strcpy(prettyToken, pAnum); strcat(prettyToken, " ");                   // generic token: just add a space at the end
                 }
                 hasTrailingSpace = !testNextForPostfix;
-            }
+        }
             break;
 
             default:  // terminal
@@ -1322,13 +1332,13 @@ void Justina_interpreter::prettyPrintStatements(int outputStream, int instructio
                     (_terminals[index].terminalCode == termcod_semicolon_BPallowed);
             }
             break;
-        }
+    }
 
 
-        // print pretty token
-        // ------------------
+    // print pretty token
+    // ------------------
 
-        // if not printing all instructions, then limit output, but always print the first instruction in full
+    // if not printing all instructions, then limit output, but always print the first instruction in full
         if (!allInstructions && !isFirstInstruction && (outputLength > maxOutputLength)) { break; }
 
         int tokenSourceLength = strlen(pPrettyToken);
@@ -1364,9 +1374,9 @@ void Justina_interpreter::prettyPrintStatements(int outputStream, int instructio
         lastWasPostfixOperator = isPostfixOperator;
 
         if (isSemicolon) { isFirstInstruction = false; }
-    }
+}
 
-    // exit
+// exit
     printTo(outputStream, multipleInstructions ? " ...)\r\n" : allInstructions ? "" : "\r\n"); _lastPrintedIsPrompt = false;
 }
 
@@ -1565,7 +1575,7 @@ void  Justina_interpreter::printToString(int width, int precision, bool inputIsS
             if (opStrLen > MAX_PRINT_WIDTH) { (*value).pStringConst[MAX_PRINT_WIDTH] = '\0'; opStrLen = MAX_PRINT_WIDTH; }  // clip input string without warning (won't need it any more)
         }
         resultStrLen = max(width + 10, opStrLen + 10);                                                                      // allow for a few extra formatting characters, if any
-}
+    }
     else {
         resultStrLen = max(width + 10, 30);                                                                                 // 30: ensure length is sufficient to print a formatted nummber
     }
@@ -1586,11 +1596,11 @@ void  Justina_interpreter::printToString(int width, int precision, bool inputIsS
             #endif
                 _intermediateStringObjectCount--;
                 delete[] pString;                                               // delete old string
-            }
         }
-        sprintf(fcnResult.pStringConst, fmtString, width, precision, ((*value).pStringConst == nullptr) ? (expandStrings ? "\"\"" : "") : (*value).pStringConst, &charsPrinted);
     }
-    // note: hex output for floating point numbers is not provided (Arduino)
+        sprintf(fcnResult.pStringConst, fmtString, width, precision, ((*value).pStringConst == nullptr) ? (expandStrings ? "\"\"" : "") : (*value).pStringConst, &charsPrinted);
+}
+// note: hex output for floating point numbers is not provided (Arduino)
     else if (isIntFmt) {
         sprintf(fcnResult.pStringConst, fmtString, width, precision, (*valueType == value_isLong) ? (*value).longConst : (long)(*value).floatConst, &charsPrinted);
     }

@@ -1,30 +1,24 @@
 /************************************************************************************************************
-*    Justina interpreter library for Arduino boards with 32 bit SAMD microconrollers                        *
+*    Justina interpreter library                                                                            *
 *                                                                                                           *
-*    Tested with Nano 33 IoT and Arduino RP2040                                                             *
+*    Version:    v1.1.1                                                                                     *
+*    Author:     Herwig Taveirne, 2021-2024                                                                 *
 *                                                                                                           *
-*    Version:    v1.01 - 12/07/2023                                                                         *
-*    Author:     Herwig Taveirne, 2021-2023                                                                 *
-*                                                                                                           *
-*    Justina is an interpreter which does NOT require you to use an IDE to write and compile programs.      *
-*    Programs are written on the PC using any text processor and transferred to the Arduino using any       *
-*    Serial or TCP Terminal program capable of sending files.                                               *
-*    Justina can store and retrieve programs and other data on an SD card as well.                          *
+*    The library is intended to work with 32 bit boards using the SAMD architecture (tested with the        *
+*    Arduino nano 33 IoT), the Arduino nano RP2040 and Arduino nano ESP32 boards.                           *
 *                                                                                                           *
 *    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
 *                                                                                                           *
-*    This program is free software: you can redistribute it and/or modify                                   *
-*    it under the terms of the GNU General Public License as published by                                   *
-*    the Free Software Foundation, either version 3 of the License, or                                      *
-*    (at your option) any later version.                                                                    *
+*    This program is free software: you can redistribute it and/or modify it under the terms of the         *
+*    GNU General Public License as published by the Free Software Foundation, either version 3 of the       *
+*    License, or (at your option) any later version.                                                        *
 *                                                                                                           *
-*    This program is distributed in the hope that it will be useful,                                        *
-*    but WITHOUT ANY WARRANTY; without even the implied warranty of                                         *
-*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                                           *
-*    GNU General Public License for more details.                                                           *
+*    This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;              *
+*    without even the implied warranty of  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.             *
+*    See the GNU General Public License for more details.                                                   *
 *                                                                                                           *
-*    You should have received a copy of the GNU General Public License                                      *
-*    along with this program.  If not, see <http://www.gnu.org/licenses/>.                                  *
+*    If you did not receive a copy of the GNU General Public License along with this program,               *
+*    see <http://www.gnu.org/licenses/>.                                                                    *
 ************************************************************************************************************/
 
 
@@ -528,12 +522,12 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     {"FILE4",               "4",                        value_isLong},      // IO: read from / print to open SD file 4 
     {"FILE5",               "5",                        value_isLong},      // IO: read from / print to open SD file 5 
 
-    // file access type on open
+    // file access type on open: constants can be bitwise 'or'ed
+    // READ can be combined with WRITE or APPEND; APPEND automatically includes WRITE (but only possible to append)
     {"READ",                "0x1",                      value_isLong},      // open SD file for read access
     {"WRITE",               "0x2",                      value_isLong},      // open SD file for write access
-    {"RDWR",                "0x3",                      value_isLong},      // open SD file for r/w access
-    {"APPEND",              "0x4",                      value_isLong},      // writes will occur at end of file
-    {"RW_APPEND",           "0x07",                     value_isLong},      // open for read write access; writes at the end                            //// behouden ?
+    {"APPEND",              "0x6",                      value_isLong},      // open SD file for write access, writes will occur at end of file
+    // NOTE: next 4 file access constants HAVE NO FUNCTION with nano ESP32 boards - they don't do anything
     {"SYNC",                "0x8",                      value_isLong},      // synchronous writes: send data physically to the card after each write 
     {"NEW_OK",              "0x10",                     value_isLong},      // creating new files if non-existent is allowed, open existing files
     {"NEW_ONLY",            "0x30",                     value_isLong},      // create new file only - do not open an existing file
@@ -564,6 +558,8 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, Print*
 
     // settings to be initialized when cold starting interpreter only
     // --------------------------------------------------------------
+
+    // NOTE: objects cretaed / deleted in (de-)constructors are not counted
 
     _constructorInvoked = true;
 
@@ -616,7 +612,8 @@ Justina_interpreter::~Justina_interpreter() {
 
     resetMachine(true);                                                                             // delete all objects created on the heap: with = with user variables and FiFo stack
 
-    delete _pBreakpoints;
+    // NOTE: objects cretaed / deleted in (de-)constructors are not counted
+    delete _pBreakpoints;                           // not an array: use 'delete'
     delete[] _programStorage;
     delete[] _pPrintColumns;
 };
@@ -730,15 +727,6 @@ bool Justina_interpreter::run() {
     _pDebugOut->print("+++++ (program memory) at 0x"); col = 10 - _pDebugOut->print((uint32_t)_programStorage, HEX); _pDebugOut->print(", size "); _pDebugOut->println(_progMemorySize + IMM_MEM_SIZE);
 #endif
 
-Serial.print(sizeof(void*));Serial.print(" "); Serial.println(alignof(void*));
-Serial.print(sizeof(char)); Serial.print(" "); Serial.println(alignof(char));
-Serial.print(sizeof(byte)); Serial.print(" "); Serial.println(alignof(byte));
-Serial.print(sizeof(int8_t)); Serial.print(" "); Serial.println(alignof(int8_t));
-Serial.print(sizeof(int16_t)); Serial.print(" "); Serial.println(alignof(int16_t));
-Serial.print(sizeof(int)); Serial.print(" "); Serial.println(alignof(int));
-Serial.print(sizeof(long)); Serial.print(" "); Serial.println(alignof(long));
-Serial.print(sizeof(float)); Serial.print(" "); Serial.println(alignof(float));
-
     // find token index for terminal token 'semicolon with breakpoint allowed' 
     int index{}, semicolonBPallowed_index{}, semicolonBPset_index{}, matches{};
 
@@ -835,7 +823,8 @@ Serial.print(sizeof(float)); Serial.print(" "); Serial.println(alignof(float));
 
         if (startJustinaWithoutAutostart) { allCharsReceived = true; startJustinaWithoutAutostart = false; }
         else if (launchingStartFunction) {                                                                      // autostart step 2: launch function
-            strcpy(_statement, "start()");                                                                      // do not read from console; instead insert characters here
+            // do not read from console; instead insert characters here
+            strcpy(_statement, "start();");                                                                     // NOTE: ending ';' is important
             statementCharCount = strlen(_statement);
             allCharsReceived = true;                                                                            // ready for parsing
             launchingStartFunction = false;                                                                     // nothing to prepare any more
@@ -1486,7 +1475,7 @@ void Justina_interpreter::resetMachine(bool withUserVariables) {
         #if PRINT_HEAP_OBJ_CREA_DEL
             _pDebugOut->print("----- (system var str) "); _pDebugOut->println((uint32_t)_pTraceString, HEX);
         #endif
-            _systemVarStringObjectCount--;
+            _systemStringObjectCount--;
             delete[] _pTraceString;
             _pTraceString = nullptr;                                                                            // old trace string
         }
@@ -1598,11 +1587,11 @@ void Justina_interpreter::danglingPointerCheckAndCount(bool withUserVariables) {
             _userArrayObjectErrors += abs(_userArrayObjectCount);
         }
 
-        if (_systemVarStringObjectCount != 0) {
+        if (_systemStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
-            _pDebugOut->print("**** System variable string objects cleanup error. Remaining: "); _pDebugOut->println(_systemVarStringObjectCount);
+            _pDebugOut->print("**** System variable string objects cleanup error. Remaining: "); _pDebugOut->println(_systemStringObjectCount);
         #endif
-            _systemVarStringObjectErrors += abs(_systemVarStringObjectCount);
+            _systemStringObjectErrors += abs(_systemStringObjectCount);
         }
 
         if (_lastValuesStringObjectCount != 0) {
@@ -1681,7 +1670,7 @@ void Justina_interpreter::initInterpreterVariables(bool fullReset) {
         _userVarNameStringObjectCount = 0;
         _userVarStringObjectCount = 0;
         _userArrayObjectCount = 0;
-        _systemVarStringObjectCount = 0;
+        _systemStringObjectCount = 0;
 
         _lastValuesStringObjectCount = 0;
 

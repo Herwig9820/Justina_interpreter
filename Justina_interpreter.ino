@@ -26,8 +26,8 @@
 ***************************************************************************************/
 
 #define WITH_TCPIP 1
-#define WITH_OLED_SW_SPI 1              // note: hw SPI interferes with SD card breakout box (SD card gets corrupted) -> use SW SPI
-#define WITH_OLED_HW_I2C 1              
+#define WITH_OLED_SW_SPI 0              // note: hw SPI interferes with SD card breakout box (SD card gets corrupted) -> use SW SPI
+#define WITH_OLED_HW_I2C 0              
 
 // includes
 // --------
@@ -98,7 +98,7 @@ constexpr int VMA437_OLED_CS_PIN{ 19 };
 constexpr int VMA437_OLED_DC_PIN{ 20 };
 constexpr int VMA437_OLED_CLK_PIN{ 23 };
 constexpr int VMA437_OLED_MOSI_PIN{ 24 };
-#elif
+#else
 constexpr int VMA437_OLED_CS_PIN{ 16 };
 constexpr int VMA437_OLED_DC_PIN{ 17 };
 constexpr int VMA437_OLED_CLK_PIN{ 20 };

@@ -1,30 +1,24 @@
 /************************************************************************************************************
-*    Justina interpreter library for Arduino boards with 32 bit SAMD microconrollers                        *
+*    Justina interpreter library                                                                            *
 *                                                                                                           *
-*    Tested with Nano 33 IoT and Arduino RP2040                                                             *
+*    Version:    v1.1.1                                                                                     *
+*    Author:     Herwig Taveirne, 2021-2024                                                                 *
 *                                                                                                           *
-*    Version:    v1.01 - 12/07/2023                                                                         *
-*    Author:     Herwig Taveirne, 2021-2023                                                                 *
-*                                                                                                           *
-*    Justina is an interpreter which does NOT require you to use an IDE to write and compile programs.      *
-*    Programs are written on the PC using any text processor and transferred to the Arduino using any       *
-*    Serial or TCP Terminal program capable of sending files.                                               *
-*    Justina can store and retrieve programs and other data on an SD card as well.                          *
+*    The library is intended to work with 32 bit boards using the SAMD architecture (tested with the        *
+*    Arduino nano 33 IoT), the Arduino nano RP2040 and Arduino nano ESP32 boards.                           *
 *                                                                                                           *
 *    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
 *                                                                                                           *
-*    This program is free software: you can redistribute it and/or modify                                   *
-*    it under the terms of the GNU General Public License as published by                                   *
-*    the Free Software Foundation, either version 3 of the License, or                                      *
-*    (at your option) any later version.                                                                    *
+*    This program is free software: you can redistribute it and/or modify it under the terms of the         *
+*    GNU General Public License as published by the Free Software Foundation, either version 3 of the       *
+*    License, or (at your option) any later version.                                                        *
 *                                                                                                           *
-*    This program is distributed in the hope that it will be useful,                                        *
-*    but WITHOUT ANY WARRANTY; without even the implied warranty of                                         *
-*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the                                           *
-*    GNU General Public License for more details.                                                           *
+*    This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;              *
+*    without even the implied warranty of  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.             *
+*    See the GNU General Public License for more details.                                                   *
 *                                                                                                           *
-*    You should have received a copy of the GNU General Public License                                      *
-*    along with this program.  If not, see <http://www.gnu.org/licenses/>.                                  *
+*    If you did not receive a copy of the GNU General Public License along with this program,               *
+*    see <http://www.gnu.org/licenses/>.                                                                    *
 ************************************************************************************************************/
 
 
@@ -792,17 +786,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 if (cmdArgCount >= 2) {                                                            // source (receive) / destination (send) specified ?
                     int IOstreamArgIndex = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_sendFile ? 1 : 0);              // init (default for send and receive only, if not specified)
                     if ((valueType[IOstreamArgIndex] == value_isLong) || (valueType[IOstreamArgIndex] == value_isFloat)) {      // external source/destination specified (console or an alternate I/O stream)
-                        IOstreamNumber = ((valueType[IOstreamArgIndex] == value_isLong) ? args[IOstreamArgIndex].longConst : (long)args[IOstreamArgIndex].floatConst);  
+                        IOstreamNumber = ((valueType[IOstreamArgIndex] == value_isLong) ? args[IOstreamArgIndex].longConst : (long)args[IOstreamArgIndex].floatConst);
                         if (IOstreamNumber > 0) { return result_IO_invalidStreamNumber; }    // external stream: stream number should be zero or negative
                     }
                     else { return result_arg_numberExpected; }
                 }
                 Stream* pStream{ nullptr };
-                Serial.println("*** A start");
-                execResult = setStream(IOstreamNumber, pStream, isSend);                     // set EXTERNAL IO stream, check for invalid stream 
-                Serial.println("*** A end");
+                execResult = setStream(IOstreamNumber, pStream, isSend);                     // set EXTERNAL IO stream (for input OR output), check for invalid stream 
                 if (execResult != result_execOK) {
-                    Serial.println("*** A ERROR");
                     return result_IO_invalidStreamNumber;
                 }
                 (isReceive ? sourceStreamNumber : destinationStreamNumber) = IOstreamNumber;
@@ -837,7 +828,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     long sourceStart = (args[0].pStringConst[0] == '/') ? 1 : 0;
                     long destinStart = (args[1].pStringConst[0] == '/') ? 1 : 0;
                     // because this is a simple string compare, and a leading '/' is optional in the file path, make sure identical file paths are always discovered
-                    if (strcasecmp(args[0].pStringConst+sourceStart, args[1].pStringConst+destinStart) == 0) { return result_SD_sourceIsDestination; }              // 8.3 file format: NOT case sensitive
+                    if (strcasecmp(args[0].pStringConst + sourceStart, args[1].pStringConst + destinStart) == 0) { return result_SD_sourceIsDestination; }              // 8.3 file format: NOT case sensitive
                 }
 
                 // if receiving file exists, ask if overwriting it is OK
@@ -845,13 +836,16 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 char* filePathWithSlash = args[receivingFileArgIndex].pStringConst;                                                         // init
                 int len = strlen(filePathWithSlash);
                 if (filePathWithSlash[0] != '/') {                                                                   // starting '/' missing)
+                    _systemStringObjectCount++;//// new
                     filePathWithSlash = new char[1 + len + 1];                                          // include space for starting '/' and ending '\0'
                     filePathWithSlash[0] = '/';
                     strcpy(filePathWithSlash + 1, args[receivingFileArgIndex].pStringConst);                                                  // copy original string
                 }
                 bool fileExists = (long)SD.exists(filePathWithSlash);
-                if (filePathWithSlash != args[receivingFileArgIndex].pStringConst) { delete filePathWithSlash; }         // if pointers are not equal, a new char* was created: delete it 
-
+                if (filePathWithSlash != args[receivingFileArgIndex].pStringConst) {
+                    delete[] filePathWithSlash;          // if pointers are not equal, a new char* was created: delete it
+                    _systemStringObjectCount--;//// new
+                }
                 if (fileExists) {                                                              // receiving file exists ?
                     if (verbose) {
                         printlnTo(0, "\r\n===== File exists already. Overwrite ? (please answer Y or N) =====");
@@ -891,6 +885,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
                 // file does not yet exist ? check if directory exists. If not, create without asking (not for ESP32: see comment below)
                 else {
+                    _systemStringObjectCount++;//// new
                     char* dirPath = new char[strlen(args[receivingFileArgIndex].pStringConst) + 1];
                     strcpy(dirPath, args[receivingFileArgIndex].pStringConst);
                     int pos{ 0 };
@@ -910,6 +905,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         }
                     }
                     delete[]dirPath;
+                    _systemStringObjectCount--;//// new
                     if (execResult != result_execOK) { return execResult; }
                 }
             }
@@ -919,13 +915,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     // open source file
                     execResult = SD_open(sourceStreamNumber, args[0].pStringConst, READ_FILE);                                 // this performs a few card & file checks as well
                     if (execResult != result_execOK) { return execResult; }
-                    
-                    Serial.println("*** B start");
+
                     execResult = setStream(sourceStreamNumber);                                                                // set input stream (file), check this isn't a directory
-                    Serial.println("*** B end");
                     if (execResult != result_execOK) {
-                        Serial.println("*** B ERROR");
-                        close(sourceStreamNumber);
+                        SD_closeFile(sourceStreamNumber);
                         return execResult;
                     }
                 }
@@ -940,11 +933,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         return execResult;
                     }
 
-                    Serial.println("*** C start");
                     execResult = setStream(destinationStreamNumber, true);                      // set output stream (file), check this isn't a directory
-                    Serial.println("*** C end");
                     if (execResult != result_execOK) {
-                        Serial.println("*** C ERROR");
                         if (isCopy) { SD_closeFile(sourceStreamNumber); }                // source file was already open: close
                         SD_closeFile(destinationStreamNumber);
                         return execResult;
@@ -1306,8 +1296,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         case cmdcod_printToVar:         // print the argument list to the the variable (scalar or array element) entered as first argument
         case cmdcod_printLineToVar:     // same, end with a CRLF sequence (carriage return line feed)
 
-        {/* (this prohibits indentation of next command lines) */}
-
         // --------------------------------------------------------------------------------------------------------------------------------------------------------------
         // Print a list of arguments (longs, floats and strings) to a specific output stream or to a variable. End with a CRLF sequence (carriage return line feed).
         // These commands print a comma separated list that can later be parsed again into separate variables (with functions cinList(), readList() and vreadList() ). 
@@ -1492,8 +1480,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         #endif
                             _intermediateStringObjectCount--;
                             delete[] oldAssembString;
+                        }
                     }
-                }
 
                     else {      // print to file or console ?
                         if (printString != nullptr) {
@@ -1512,13 +1500,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] printString;
-            }
-        }
+                    }
+                }
 
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-    }
+            }
 
-            // finalise
+                    // finalise
             if (isPrintToVar) {                                                                                             // print to string ? save in variable
                 // receiving argument is a variable, and if it's an array element, it has string type 
 
@@ -1532,11 +1520,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] assembledString;
-                }
+                    }
                     return execResult;
-            }
+                }
 
-                // print line end without supplied arguments for printing: a string object does not exist yet, so create it now
+                    // print line end without supplied arguments for printing: a string object does not exist yet, so create it now
                 if (doPrintLineEnd) {
                     *pStreamPrintColumn = 0;                                                                                // to be consistent with handling of printing line end for printing to non-variable streams, but initialised to zero already 
                     if (cmdArgCount == 1) {                                                                               // only receiving variable supplied: no string created yet     
@@ -1554,6 +1542,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
                 // string stored in variable: clip to maximum length
                 if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) {
+                    _systemStringObjectCount++;//// new
                     char* clippedString = new char[MAX_ALPHA_CONST_LEN];
                     memcpy(clippedString, assembledString, MAX_ALPHA_CONST_LEN);                                            // copy the string, not the pointer
                     clippedString[MAX_ALPHA_CONST_LEN] = '\0';
@@ -1573,8 +1562,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 #endif              
                 }
 
-                if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) { delete[] assembledString; }                            // not referenced in eval. stack (clippedString is), so will not be deleted as part of cleanup
-}
+                if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) {
+                    delete[] assembledString;                             // not referenced in eval. stack (clippedString is), so will not be deleted as part of cleanup
+                    _systemStringObjectCount--;//// new
+                }
+            }
 
             else {      // print to file or external IO
                 if (doPrintLineEnd) {
@@ -1586,7 +1578,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // clean up
             clearEvalStackLevels(cmdArgCount);                                                                            // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
-                }
+        }
         break;
 
 
@@ -2106,10 +2098,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         }
         break;
 
-        }       // end switch
+    }       // end switch
 
     return result_execOK;
-            }
+}
 
 
 // -------------------------------
@@ -2223,14 +2215,14 @@ void Justina_interpreter::replaceSystemStringValue(char*& systemString, const ch
     #if PRINT_HEAP_OBJ_CREA_DEL
         _pDebugOut->print("----- (system var str) "); _pDebugOut->println((uint32_t)systemString, HEX);
     #endif
-        _systemVarStringObjectCount--;
+        _systemStringObjectCount--;
         delete[] systemString;
         systemString = nullptr;
-}
+    }
 
-    // COPY new string in system variable (no move)
+        // COPY new string in system variable (no move)
     if (newString != nullptr) {                                                                                        // new trace string
-        _systemVarStringObjectCount++;
+        _systemStringObjectCount++;
         systemString = new char[strlen(newString) + 2]; // room for additional semicolon (in case string is not ending with it) and terminating '\0'
     #if PRINT_HEAP_OBJ_CREA_DEL
         _pDebugOut->print("+++++ (system var str) "); _pDebugOut->println((uint32_t)systemString, HEX);
