@@ -126,7 +126,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             }
 
             // open file and retrieve file number
-            execResult_type execResult = SD_open(newFileNumber, args[0].pStringConst, mode, !(mode & (WRITE_FILE | APPEND_FILE)));
+            execResult_type execResult = SD_open(newFileNumber, args[0].pStringConst, mode);
             if (execResult != result_execOK) { return execResult; }
 
             // save file number as result
@@ -1708,14 +1708,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                     pulseIn(args[0].longConst, args[1].bytes[0], (uint32_t)args[2].longConst);
             }
             else if (functionCode == fnccod_shiftIn) {                                                                      // args: data pin, clock pin, bit order
-            #if defined ESP32 
+            #if defined ARDUINO_ARCH_ESP32 
                 fcnResult.longConst = shiftIn(args[0].longConst, args[1].longConst, args[2].longConst);
             #else
                 fcnResult.longConst = shiftIn(args[0].longConst, args[1].longConst, (BitOrder)args[2].longConst);
             #endif
         }
             else if (functionCode == fnccod_shiftOut) {                                                                     // args: data pin, clock pin, bit order, value
-            #if defined ESP32
+            #if defined ARDUINO_ARCH_ESP32
                 shiftOut(args[0].longConst, args[1].longConst, args[2].longConst, args[3].longConst);
             #else
                 shiftOut(args[0].longConst, args[1].longConst, (BitOrder)args[2].longConst, args[3].longConst);
@@ -2286,7 +2286,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                     fcnResult.longConst = 1; break;
                 #elif defined(ARDUINO_ARCH_RP2040) 
                     fcnResult.longConst = 2; break;
-                #elif defined(ESP32)
+                #elif defined(ARDUINO_ARCH_ESP32)
                     fcnResult.longConst = 3; break;
                 #else 
                     fcnResult.longConst = 0; break;     // none of these

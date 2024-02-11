@@ -30,7 +30,7 @@ function writeRecords();
 	// using printList instead of printLine:
 	// - strings will be printed with surrounding quotes (safe for strings containing double quotes themselves)
 	// - numbers will be written with full accuracy
-	testFile = open("people.txt", READ | APPEND | TRUNC | NEW_OK);
+	testFile = open("people.txt", WRITE | TRUNC | NEW_OK);					// note: nano ESP32 ALWAYS truncates on WRITE (discards TRUNC constant)
 	printList testFile, "John", "blue", "gray", 172, 78.3, 23;
 	printList testFile, "Percy", "brown", "brown", 168, 75.7, 58;
 	printList testFile, "Tracy", "green", "gray", 175, 58.4, 42;
@@ -40,8 +40,10 @@ function writeRecords();
 	printList testFile, "no\\na\"me";										// enter backslash and double quote characters by preceding them with a backslash
 	printList testFile, "Charles", "green", "blond", 172, 79.3, 48;
 	
+	close(testFile);
+
 	// read back and print to console: 
-	seek(testFile, 0);
+	testFile = open("people.txt", READ);
 	while (available(testFile) > 0);
 		cout readLine(testFile);
 	end;
@@ -57,7 +59,7 @@ end;
 // ----------------------------------------------------------------------------------------
 
 // argument: 0 = print output to the console, 1 = print output to a file named 'table.txt'. The default is console.
-// returns: the number of incomplete records read
+// returns: a message indicating the number of incomplete records read
 
 function parseAndPrintRecords(toFile = FALSE);									// optional argument (default is CONSOLE)
 		
@@ -65,7 +67,7 @@ function parseAndPrintRecords(toFile = FALSE);									// optional argument (def
 		
 	var fileIn = 0, fileOut = 0;												// init file numbers attributed to open files
 	if (fileIn = fileNum("people.txt")) > 0; close (fileIn); end;				// verify the input file is closed			
-	fileIn = open("people", READ);	
+	fileIn = open("people.txt", READ);	
 	
 	if toFile == TRUE; 															// note: '== TRUE' is optional
 		if (fileOut = fileNum("table.txt")) > 0; close (fileOut); end;			// verify the output file is closed	

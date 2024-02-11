@@ -26,7 +26,7 @@ program evalInput;
 
 function evalInput();
 	var question, answer, flag;
-	var amount = 0, totalAmount = 0;
+	var amount = 0, totalAmount = 0; 
 	
 	coutLine;
 	while 1;

@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------------------------------------------------------------------
 	Sample JUSTINA program for use with the Justina interpreter	on Arduino SAMD boards, the nano RP2040 board and the nano ESP32 board.
-
+	
 	The program is intended to be called automatically upon starting Justina, if allowed by the Arduino program calling Justina.
 	
 	In order to be called automatically:
@@ -19,18 +19,34 @@
 program startJustina;
 
 
-// -----------------------------------------------------------------------------------------------------------------------
-// This function makes a few settings,checks how Justina was started (cold start or not) and prints a line to the console.
-// -----------------------------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------
+// This is a sample startup file.
+// For autostart to function, this program file must reside in the SD card root folder, 
+// and it should contain a function named 'start()' taking no arguments.
+// Furthermore, autostart must be allowed in the Justina startup options.	
+// ------------------------------------------------------------------------------------
 
 // arguments: none
 // returns: nothing 
 
 function start();
-	dispWidth 30;									// set display width for calculation results to 30 characters
-	angleMode 1;									// set degrees
-	coutLine "the sine of 90 degrees is ", sin(90);	// print the sine of 90 degrees to the console								
-	coutLine "cold start ? ", isColdStart();		// print 1 if this was a cold start, otherwise 0
-	coutLine "function 'start()' executed";			
-end;
-
+	coutLine line(), repChar("-", 44), line(), "---- Executing startup file 'start.jus' ----", line(), repChar("-", 44);
+	
+	coutLine line(), "board architecture: ", 
+		choose(sysVal(44), "unknown", "SAMD", "RP2040", "ESP32");					// Arduino board architecture ?
+	coutLine ifte(isColdStart(), "Cold start", "Warm start");						
+	
+	coutLine line(), "setting display mode and width; int and float number format";	
+	dispMode ECHO, RESULTS;															// echo user input and display calculation results
+	dispWidth 50;																	// set display width for calculation results to 30 characters		
+	floatFmt 2, FIXED;																// print floats in fixed point notation, 2 digits 
+	intFmt 1, Dec;																	// print integers in base 10, minimum 1 digit 
+	
+	coutLine "setting angle mode";
+	angleMode DEGREES;																// set degrees as angle mode
+	
+	coutLine line(), "test angle mode: the sine of 90 degrees is ", sin(90);		// print the sine of 90 degrees to the console								
+	
+	coutLine line(), "function 'start()' executed";								
+// end;
+	

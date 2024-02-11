@@ -756,7 +756,7 @@ class Justina_interpreter {
     // shared defaults for display settings AND fmt() function settings    
     static constexpr int DEFAULT_FLOAT_PRECISION{ 2 };                  // default precision for floating point numbers
     static constexpr int DEFAULT_INT_PRECISION{ 1 };                    // default 'minimum digits to print' for integers 
-    static constexpr int DEFAULT_STR_CHARS_TO_PRINT{ DEFAULT_DISP_WIDTH };               // default # alphanumeric characters to print
+    static constexpr int DEFAULT_STR_CHARS_TO_PRINT{ DEFAULT_DISP_WIDTH };  // default # alphanumeric characters to print
 
     const char DEFAULT_FLOAT_SPECIFIER[2]{ "f" };                       // default specifier for floating point numbers. Arduino doesn't recognise uppercase "F"
     const char DEFAULT_INT_SPECIFIER[2]{ "d" };                         // default specifier for integers 
@@ -1053,17 +1053,19 @@ private:
     // SD card
     // -------
 
-#if defined ESP32
+#if defined ARDUINO_ARCH_ESP32
     static const char READ_FILE{ 0x01 };                    // align with Arduino (non-ESP32) SD library constants
     static const char WRITE_FILE{ 0x02 };
     static const char APPEND_FILE{ 0x04 };
-    static const char CREATE_FILE{ 0x00 };                 // zero: will do nothing (no function with ESP2 SDlibrary)
+    static const char CREATE_FILE{ 0x10 };                                   
+    static const char EXCL_FILE{ 0x20 };
     static const char TRUNC_FILE{ 0x00 };                  // zero: will do nothing (no function with ESP2 SDlibrary)
 #else
     static const char READ_FILE{ O_READ };                    // Arduino SD library constants                
     static const char WRITE_FILE{ O_WRITE };
     static const char APPEND_FILE{ O_APPEND };
     static const char CREATE_FILE{ O_CREAT };
+    static const char EXCL_FILE{ O_EXCL };
     static const char TRUNC_FILE{ O_TRUNC };
 #endif
 
@@ -1214,7 +1216,7 @@ private:
     static const ResWordDef _resWords[75];                                                                                      // keyword names
     static const InternCppFuncDef _internCppFunctions[139];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
-    static const SymbNumConsts _symbNumConsts[64];                                                                              // predefined constants
+    static const SymbNumConsts _symbNumConsts[76];                                                                              // predefined constants
     static const int _resWordCount{ sizeof(_resWords) / sizeof(_resWords[0]) };                                                 // count of keywords in keyword table 
     static const int _internCppFunctionCount{ (sizeof(_internCppFunctions)) / sizeof(_internCppFunctions[0]) };                 // count of internal cpp functions in functions table
     static const int _termTokenCount{ sizeof(_terminals) / sizeof(_terminals[0]) };                                             // count of operators and other terminals in terminals table
@@ -1792,7 +1794,7 @@ private:
 
     int _externIOstreamCount = 0;
 
-#if !defined ESP32
+#if !defined ARDUINO_ARCH_ESP32
     Sd2Card _SDcard{};
 #endif
 
@@ -1868,7 +1870,7 @@ public:
     // (de-) constructor
     // -----------------
 
-#if defined ESP32
+#if defined ARDUINO_ARCH_ESP32
     Justina_interpreter(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, long progMemSize, int SDcardConstraints, int SDcardChipSelectPin);
 #else
     Justina_interpreter(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, long progMemSize, int SDcardConstraints = 0, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);
@@ -2091,10 +2093,10 @@ private:
     execResult_type startSD();
     void SD_closeAllFiles();
 
-#if defined ESP32
+#if defined ARDUINO_ARCH_ESP32
     char* SD_ESP32_convert_accessMode(int mode);
 #endif
-    execResult_type SD_open(int& fileNumber, char* filePath, int mod = READ_FILE, bool checkExistence = false);
+    execResult_type SD_open(int& fileNumber, char* filePath, int mod = READ_FILE);
     execResult_type SD_openNext(int dirFileNumber, int& fileNumber, File* pDirectory, int mod = READ_FILE);
 
     void SD_closeFile(int fileNumber);

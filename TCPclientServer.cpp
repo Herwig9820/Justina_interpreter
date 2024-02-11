@@ -123,7 +123,7 @@ void TCPconnection::maintainWiFiConnection() {
                 if (_verbose) { printConnectionStateInfo(conn_0_wifi_notConnected); }
 
                 if (!_isClient) {                                             // if server side (remember: static server IP !)
-                #if defined ESP32
+                #if defined ARDUINO_ARCH_ESP32
                     WiFi.config(_serverAddress, _gatewayAddress, _subnetMask, _DNSaddress);
                 #else
                     WiFi.config(_serverAddress, _DNSaddress, _gatewayAddress, _subnetMask);
@@ -164,7 +164,7 @@ void TCPconnection::maintainWiFiConnection() {
             if (_resetWiFi || (WiFi.status() != WL_CONNECTED)) {
                 changeConnectionState(conn_0_wifi_notConnected);
                 WiFi.disconnect();
-            #if !defined ESP32
+            #if !defined ARDUINO_ARCH_ESP32
                 WiFi.end();
             #endif
                 _lastWifiMaintenanceTime = millis();                             // remember time of last TCP connection attempt
@@ -205,7 +205,7 @@ void TCPconnection::maintainTCPconnection(bool resetKeepAliveTimer) {
 
         default:                                                                // current state: TCP connected
         {
-        #if defined ESP32
+        #if defined ARDUINO_ARCH_ESP32
             bool clientConnectionEnd = (!_client.connected() || (_TCPconnTimeoutEnabled && (_keepAliveUntil < millis())));
         #else
             // current state: TCP connected => check whether this is still the case

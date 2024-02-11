@@ -41,7 +41,7 @@ Justina_interpreter::execResult_type Justina_interpreter::startSD() {
     if (_SDinitOK) { return result_execOK; }                                                                                // card is initialised: nothing to do
 
     if ((_justinaConstraints & 0b0011) == 0) { return result_SD_noCardOrCardError; }
-#if !defined ESP32
+#if !defined ARDUINO_ARCH_ESP32
     _SDcard.init(SPI_FULL_SPEED, _SDcardChipSelectPin);         // needed for listFilesToSerial command (not for nano ESP32)
 #endif
     if (!SD.begin(_SDcardChipSelectPin)) { return result_SD_noCardOrCardError; }
@@ -59,11 +59,11 @@ Justina_interpreter::execResult_type Justina_interpreter::startSD() {
 
 // nano ESP32 boards: READ cannot be combined with WRITE or APPEND (underlying library restriction) -> prioritize READ
 //                    prioritize APPEND over WRITE, because on NON-nano ESP32 boards mode is 0x06 for APPEND
-#if defined ESP32
+#if defined ARDUINO_ARCH_ESP32
 char* Justina_interpreter::SD_ESP32_convert_accessMode(int mode) {
-    if (mode & 0x01) { return FILE_READ; }
-    else if (mode & 0x04) { return FILE_APPEND; }
+    if (mode & 0x04) { return FILE_APPEND; }
     else if (mode & 0x02) { return FILE_WRITE; }
+    else if (mode & 0x01) { return FILE_READ; }
     else { return FILE_READ; }                            // default
 }
 #endif
@@ -73,7 +73,7 @@ char* Justina_interpreter::SD_ESP32_convert_accessMode(int mode) {
 // *   open an SD file   *
 // -----------------------
 
-Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumber, char* filePath, int mode, bool checkExistence) {
+Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumber, char* filePath, int mode) {
     fileNumber = 0;                                                                                                         // init: no file number yet
 
     if (!_SDinitOK) { return result_SD_noCardOrCardError; }
@@ -91,17 +91,32 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumbe
     strcpy(filePathInCapitals + ((filePath[0] == '/') ? 0 : 1), filePath);                                                  // copy original string
     for (int i = 0; i < strlen(filePathInCapitals); i++) { filePathInCapitals[i] = toupper(filePathInCapitals[i]); }
 
-    // does file exist ? (this check allows for a more specific error code, instead of 'could not open file' error code)
-    // but this check is not always wanted: do not check if opening a file whilst creating it 
-    if (checkExistence) {
+#if defined ARDUINO_ARCH_ESP32
+    // if only reading file: does file exist ? (this check allows for a more specific error code, instead of 'could not open file' error code)
+    bool modeIsOnlyRead = (!(mode & (WRITE_FILE | APPEND_FILE)));
+    bool fileExists = SD.exists(filePathInCapitals);
+    
+    // ESP32 only: ESP32 SD library does test for user-imposed constraints about file (non-)existence: perform tests here
+    bool fileMustExist = (mode & (CREATE_FILE | EXCL_FILE)) == 0;
+    bool fileMustNotExist = (mode & (CREATE_FILE | EXCL_FILE)) == (CREATE_FILE | EXCL_FILE);
+
+    if (((modeIsOnlyRead || fileMustExist) && !fileExists) || (fileMustNotExist && fileExists)) {
+        delete[] filePathInCapitals;
+        _systemStringObjectCount--;//// new
+        return result_SD_fileNotFound;
+    }
+#else
+    // if only reading file: does file exist ? (this check allows for a more specific error code, instead of 'could not open file' error code)
+    if (!(mode & (WRITE_FILE | APPEND_FILE))) {
         if (!SD.exists(filePathInCapitals)) {
             delete[] filePathInCapitals;
             _systemStringObjectCount--;//// new
             return result_SD_fileNotFound;
         }
     }
+#endif
 
-    // currently open files ? Check that the same file is not open already
+// currently open files ? Check that the same file is not open already
     if (fileIsOpen(filePathInCapitals)) {
         delete[] filePathInCapitals;
         _systemStringObjectCount--;//// new
@@ -112,8 +127,9 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_open(int& fileNumbe
     for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
         if (!openFiles[i].fileNumberInUse) {
 
-        #if defined ESP32
-            openFiles[i].file = SD.open(filePathInCapitals, SD_ESP32_convert_accessMode(mode));
+        #if defined ARDUINO_ARCH_ESP32
+            // last argument (create) = true: create directory path towards file if it doesn't exist yet
+            openFiles[i].file = SD.open(filePathInCapitals, SD_ESP32_convert_accessMode(mode), true);
         #else
             openFiles[i].file = SD.open(filePathInCapitals, mode);
         #endif
@@ -160,7 +176,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_openNext(int dirFil
     // find a free file number and assign it to this file
     for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
         if (!openFiles[i].fileNumberInUse) {
-        #if defined ESP32
+        #if defined ARDUINO_ARCH_ESP32
             openFiles[i].file = pDirectory->openNextFile(SD_ESP32_convert_accessMode(mode));
         #else
             openFiles[i].file = pDirectory->openNextFile(mode);
@@ -1273,12 +1289,12 @@ void Justina_interpreter::prettyPrintStatements(int outputStream, int instructio
                 #endif
                     _intermediateStringObjectCount--;
                     delete[]pAnum;
-            }
+                }
                 else {
                     strcpy(prettyToken, pAnum); strcat(prettyToken, " ");                   // generic token: just add a space at the end
                 }
                 hasTrailingSpace = !testNextForPostfix;
-        }
+            }
             break;
 
             default:  // terminal
@@ -1332,13 +1348,13 @@ void Justina_interpreter::prettyPrintStatements(int outputStream, int instructio
                     (_terminals[index].terminalCode == termcod_semicolon_BPallowed);
             }
             break;
-    }
+        }
 
 
-    // print pretty token
-    // ------------------
+        // print pretty token
+        // ------------------
 
-    // if not printing all instructions, then limit output, but always print the first instruction in full
+        // if not printing all instructions, then limit output, but always print the first instruction in full
         if (!allInstructions && !isFirstInstruction && (outputLength > maxOutputLength)) { break; }
 
         int tokenSourceLength = strlen(pPrettyToken);
@@ -1374,9 +1390,9 @@ void Justina_interpreter::prettyPrintStatements(int outputStream, int instructio
         lastWasPostfixOperator = isPostfixOperator;
 
         if (isSemicolon) { isFirstInstruction = false; }
-}
+    }
 
-// exit
+    // exit
     printTo(outputStream, multipleInstructions ? " ...)\r\n" : allInstructions ? "" : "\r\n"); _lastPrintedIsPrompt = false;
 }
 
@@ -1390,9 +1406,9 @@ void Justina_interpreter::printParsingResult(parsingResult_type result, int func
     char parsingInfo[100 + MAX_IDENT_NAME_LEN] = "";                                        // provide sufficient room for longest possible message (int: no OK message in immediate mode)
     if (result == result_parsing_OK) {                                                      // prepare message with parsing result
         if (_programMode) {
-            if (_lastProgramStep == _programStorage) { strcpy(parsingInfo, "\r\nNo program loaded"); }
+            if (_lastProgramStep == _programStorage) { strcpy(parsingInfo, "\r\nNo program loaded\r\n"); }
             else {
-                sprintf(parsingInfo, "\r\nProgram parsed without errors. %lu %% of program memory used (%u bytes)",
+                sprintf(parsingInfo, "\r\nProgram parsed without errors. %lu %% of program memory used (%u bytes)\r\n",
                     (uint32_t)(((_lastProgramStep - _programStorage + 1) * 100) / _progMemorySize), (uint16_t)(_lastProgramStep - _programStorage + 1));
             }
         }
@@ -1596,11 +1612,11 @@ void  Justina_interpreter::printToString(int width, int precision, bool inputIsS
             #endif
                 _intermediateStringObjectCount--;
                 delete[] pString;                                               // delete old string
+            }
         }
-    }
         sprintf(fcnResult.pStringConst, fmtString, width, precision, ((*value).pStringConst == nullptr) ? (expandStrings ? "\"\"" : "") : (*value).pStringConst, &charsPrinted);
-}
-// note: hex output for floating point numbers is not provided (Arduino)
+    }
+    // note: hex output for floating point numbers is not provided (Arduino)
     else if (isIntFmt) {
         sprintf(fcnResult.pStringConst, fmtString, width, precision, (*valueType == value_isLong) ? (*value).longConst : (long)(*value).floatConst, &charsPrinted);
     }
@@ -1609,6 +1625,6 @@ void  Justina_interpreter::printToString(int width, int precision, bool inputIsS
     }
 
     return;
-    }
+}
 
 

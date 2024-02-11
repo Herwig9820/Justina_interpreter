@@ -2557,7 +2557,7 @@ bool Justina_interpreter::parseString(char*& pNext, char*& pch, char*& pStringCs
         }
         pNext++;
     };
-
+    
     // if alphanumeric constant is too long, reset pointer to first character to parse, indicate error and return
     if (pNext - (pch + 1) - escChars > MAX_ALPHA_CONST_LEN) { pNext = pch; result = result_alphaConstTooLong; return false; }
 

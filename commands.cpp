@@ -626,9 +626,6 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 if (valueType[0] == value_isStringPointer) {                                                                // load program from SD file
                     // open file and retrieve file number
                     execResult = SD_open(_loadProgFromStreamNo, args[0].pStringConst, READ_FILE);                              // this performs a few card & file checks as well
-                    if (execResult == result_SD_couldNotOpenFile) {
-                        if (!SD.exists(args[0].pStringConst)) { execResult = result_SD_fileNotFound; }                      // replace error code for clarity
-                    }
                     if (execResult != result_execOK) { return execResult; }
                     if (openFiles[_loadProgFromStreamNo - 1].file.size() == 0) { return result_SD_fileIsEmpty; }
                 }
@@ -846,7 +843,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                     delete[] filePathWithSlash;          // if pointers are not equal, a new char* was created: delete it
                     _systemStringObjectCount--;//// new
                 }
-                if (fileExists) {                                                              // receiving file exists ?
+                if (fileExists) {                                                              // file to receive exists already ?
                     if (verbose) {
                         printlnTo(0, "\r\n===== File exists already. Overwrite ? (please answer Y or N) =====");
 
@@ -897,7 +894,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         if (!SD.exists(dirPath)) {   // if (sub-)directory path does not exist, create it now
                             // ESP32: if it doesn't exist yet, multi-level directory path is not created automatically for a receiving file:...
                             // do not even try it for 1 level, in order not to make it too difficult for the user
-                        #if defined ESP32
+                        #if defined ARDUINO_ARCH_ESP32
                             dirCreated = false; execResult = result_SD_directoryDoesNotExist;       // USER MUST FIRST MANUALLY CREATE PATH
                         #else
                             dirCreated = SD.mkdir(dirPath); if (!dirCreated) { execResult = result_SD_couldNotCreateFileDir; }
@@ -926,7 +923,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 if ((isReceive) || (isCopy)) {
                     // open receiving file for writing. Create it if it doesn't exist yet, truncate it if it does 
                     // open this file after ALL other checks are done, because if the file existed already, it will be truncated after opening
-                    // NOTE: for ESP32, CREATE_FILE and TRUNC_FILE will have no effect (ESP32 SD library only knows read, write and append modes)
+                    // NOTE: for ESP32, CREATE_FILE and TRUNC_FILE will have no effect (ESP32 SD library only knows read, write and append modes)////
                     execResult = SD_open(destinationStreamNumber, args[receivingFileArgIndex].pStringConst, WRITE_FILE | CREATE_FILE | TRUNC_FILE);
                     if (execResult != result_execOK) {
                         if (isCopy) { SD_closeFile(sourceStreamNumber); }                   // source file was already open: close
@@ -944,7 +941,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 // copy data from source stream to destination stream now
                 // ------------------------------------------------------
 
-                if (verbose) { printlnTo(0, isSend ? "\r\nSending file... please wait" : isReceive ? "\r\nReceiving file... please wait" : "\r\nCopying file..."); }
+                if (verbose) { printlnTo(0, isSend ? "\r\nSending file... please wait" : isReceive ? "\r\nWaiting for file..." : "\r\nCopying file..."); }
 
                 bool kill{ false }, doStop{ false }, doAbort{ false }, stdConsDummy{ false };
                 char c{};
@@ -969,7 +966,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         // receive: get a character if available and perform a regular housekeeping callback as well
                         c = getCharacter(kill, doStop, doAbort, stdConsDummy, isReceive, waitForFirstChar);
                         newData = (c != 0xff);
-                        if (newData) { buffer[bufferCharCount++] = c; progressDotsByteCount++; totalByteCount++; }
+                        if (newData) { 
+                            if (waitForFirstChar) { Serial.println("Receiving file... please wait"); }
+                            buffer[bufferCharCount++] = c; progressDotsByteCount++; totalByteCount++; }
                         waitForFirstChar = false;                                                                           // for all next characters
                     }
                     if (verbose && (progressDotsByteCount > 2000)) {
@@ -1653,7 +1652,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
         case cmdcod_listFilesToSer:
         {
-        #if defined ESP32
+        #if defined ARDUINO_ARCH_ESP32
             printlnTo(0, "\n'List files to Serial' command not available on ESP32: use other 'List Files' command instead");
         #else
             if (!_SDinitOK) { return result_SD_noCardOrCardError; }

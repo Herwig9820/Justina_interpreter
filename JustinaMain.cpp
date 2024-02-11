@@ -459,8 +459,8 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     {"RAD_TO_DEG",          "57.2957795130823208768",   value_isFloat},     // radians to degrrees
 
     // angle mode
-    {"DEGREES",             "0",                        value_isLong},
-    {"RADIANS",             "1",                        value_isLong},
+    {"RADIANS",             "0",                        value_isLong},
+    {"DEGREES",             "1",                        value_isLong},
 
     // boolean values
     {"FALSE",               "0",                        value_isLong},      // value for boolean 'false'
@@ -487,9 +487,9 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     {"ECHO",                "2",                        value_isLong},      // print prompt and echo user input
 
     // display mode command second argument: last result format
-    {"NO_LAST",             "0",                        value_isLong},      // do not print last result
-    {"PRINT_LAST",          "1",                        value_isLong},      // print last result
-    {"QUOTE_LAST",          "2",                        value_isLong},      // print last result, quote string results 
+    {"NO_RESULTS",          "0",                        value_isLong},      // do not print last result
+    {"RESULTS",             "1",                        value_isLong},      // print last result
+    {"QUOTE_RESULTS",       "2",                        value_isLong},      // print last result, quote string results 
 
     // info command: type of confirmation required ("request answer yes/no, ...")
     {"ENTER",               "0",                        value_isLong},      // confirmation required by pressing ENTER (any preceding characters are skipped)
@@ -536,14 +536,33 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     // file EOF 
     {"EOF",                 "-1",                       value_isLong},      // seek(n, EOF) is same as seek(n, size(n))
 
-    // formatting flags
-    {"FMT_LEFT",            "0x01",                     value_isLong},      // align output left within the print field 
-    {"FMT_SIGN",            "0x02",                     value_isLong},      // always add a sign (- or +) preceding the value
-    {"FMT_SPACE",           "0x04",                     value_isLong},      // precede the value with a space if no sign is written 
-    {"FMT_FPSEP",           "0x08",                     value_isLong},      // if used with 'F', 'E', 'G' specifiers: add decimal point, even if no digits after decimal point  
-    {"FMT_0X",              "0x08",                     value_isLong},      // if used with 'hex output'X' specifier: precede non-zero values with 0x  
-    {"FMT_PAD0",            "0x10",                     value_isLong},      // if used with 'F', 'E', 'G' specifiers: pad with zeros 
-    {"FMT_NONE",            "0x00",                     value_isLong},      // no flags 
+    // formatting: specifiers for floating point numbers
+    {"FIXED",               "f",                       value_isStringPointer},      // fixed point notation
+    {"Scient",              "e",                       value_isStringPointer},      // scientific notation, exponent: 'e' 
+    {"Short",               "g",                       value_isStringPointer},      // shortest notation possible; if exponent: 'e'   
+    {"SCIENT",              "E",                       value_isStringPointer},      // scientific notation, exponent: 'E'
+    {"SHORT",               "G",                       value_isStringPointer},      // shortest notation possible; if exponent: 'E' 
+    
+    // formatting: specifiers for integers
+    {"Dec",                 "d",                       value_isStringPointer},      // base 10 (decimal)
+    {"Hex",                 "x",                       value_isStringPointer},      // base 16 (hex), digits a..f
+    {"HEX",                 "X",                       value_isStringPointer},      // base 16 (hex), digits A..F
+
+   // formatting: flags
+    {"ADD_LEFT",            "0x01",                     value_isLong},      // align output left within the print field 
+    {"ADD_SIGN",            "0x02",                     value_isLong},      // always add a sign (- or +) preceding the value
+    {"ADD_SPACE",           "0x04",                     value_isLong},      // precede the value with a space if no sign is written 
+    {"ADD_POINT",           "0x08",                     value_isLong},      // if used with 'F', 'E', 'G' specifiers: add decimal point, even if no digits after decimal point  
+    {"ADD_0X",              "0x08",                     value_isLong},      // if used with 'hex output'X' specifier: precede non-zero values with 0x  
+    {"ADD_000",             "0x10",                     value_isLong},      // if used with 'F', 'E', 'G' specifiers: pad with zeros 
+    {"ADD_NONE",            "0x00",                     value_isLong},      // no flags 
+
+    // boards
+    { "BOARD_UNKNOWN",      "0",                          value_isLong },      // board architecture is undefined
+    { "BOARD_SAMD",         "1",                          value_isLong },      // board architecture is SAMD
+    { "BOARD_RP2040",       "2",                          value_isLong },      // board architecture is RP2040 
+    { "BOARD_ESP32",        "3",                          value_isLong },      // board architecture is ESP32 
+
 };
 
 
@@ -808,7 +827,7 @@ bool Justina_interpreter::run() {
         // program reading ends when no character is read within this time window.
         // when processing immediate mode statements (single line), reading ends when a New Line terminating character is received
         bool programCharsReceived = _programMode && !_initiateProgramLoad;                                      // _initiateProgramLoad is set during execution of the command to read a program source file from the console
-        bool waitForFirstProgramCharacter = _initiateProgramLoad;
+        bool waitForFirstProgramCharacter = _initiateProgramLoad && (_loadProgFromStreamNo <= 0);
 
         // get a character if available and perform a regular housekeeping callback as well
         // NOTE: forcedStop is a  dummy argument here (no program is running)
@@ -832,6 +851,7 @@ bool Justina_interpreter::run() {
         else {     // note: while waiting for first program character, allow a longer time out              
             c = getCharacter(kill, forcedStop, forcedAbort, stdConsole, true, waitForFirstProgramCharacter);    // forced stop has no effect here
             if (c != 0xff) {
+                if(waitForFirstProgramCharacter){Serial.println("Receiving program... please wait"); }
                 _appFlags &= ~appFlag_errorConditionBit;                                                        // clear error condition flag 
                 _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_parsing;                                // status 'parsing'
             }
@@ -988,7 +1008,8 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
     bool redundantSpaces = false;
 
     bufferOverrun = false;
-    if ((c < ' ') && (c != '\n')) { return false; }                                                             // skip control-chars except new line and EOF character
+    if(c== '\t') { c = ' '; };                                                                        // replace TAB characters by space characters
+    if ((c < ' ') && (c != '\n')) { return false; }                                                   // skip all other control-chars except new line and EOF character
 
     // when a imm. mode line or program is completely read and the last character (part of the last statement) received from input stream is not a semicolon, add it
     if (ImmModeLineOrProgramRead) {
@@ -1215,7 +1236,7 @@ bool Justina_interpreter::prepareForIdleMode(parsingResult_type result, execResu
         _programCounter = _programStorage;
 
         if (_lastPrintedIsPrompt) { printlnTo(0); }                                                             // print new line if last printed was a prompt
-        printTo(0, (_loadProgFromStreamNo > 0) ? "Loading program...\r\n" : "Loading program... please wait\r\n");
+        printTo(0, (_loadProgFromStreamNo > 0) ? "Loading program...\r\n" : "Waiting for program...\r\n");
         _lastPrintedIsPrompt = false;
 
         statementInputStreamNumber = _loadProgFromStreamNo;
