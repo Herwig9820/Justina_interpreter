@@ -1,24 +1,25 @@
 /************************************************************************************************************
 *    Justina interpreter library                                                                            *
 *                                                                                                           *
-*    Version:    v1.1.1                                                                                     *
-*    Author:     Herwig Taveirne, 2021-2024                                                                 *
+*    Copyright 2024, Herwig Taveirne                                                                        *
 *                                                                                                           *
-*    The library is intended to work with 32 bit boards using the SAMD architecture (tested with the        *
-*    Arduino nano 33 IoT), the Arduino nano RP2040 and Arduino nano ESP32 boards.                           *
-*                                                                                                           *
-*    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
-*                                                                                                           *
-*    This program is free software: you can redistribute it and/or modify it under the terms of the         *
-*    GNU General Public License as published by the Free Software Foundation, either version 3 of the       *
-*    License, or (at your option) any later version.                                                        *
+*    This file is part of the Justina Interpreter library.                                                  *
+*    The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
+*    the terms of the GNU General Public License as published by the Free Software Foundation, either       *
+*    version 3 of the License, or (at your option) any later version.                                       *
 *                                                                                                           *
 *    This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;              *
 *    without even the implied warranty of  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.             *
 *    See the GNU General Public License for more details.                                                   *
 *                                                                                                           *
-*    If you did not receive a copy of the GNU General Public License along with this program,               *
-*    see <http://www.gnu.org/licenses/>.                                                                    *
+*    You should have received a copy of the GNU General Public License along with this program. If not,     *
+*    see <https://www.gnu.org/licenses/>.                                                                   *
+*                                                                                                           *
+*    The library is intended to work with 32 bit boards using the SAMD architecture ,                       *
+*    the Arduino nano RP2040 and Arduino nano ESP32 boards.                                                 *
+*                                                                                                           *
+*    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
+*                                                                                                           *
 ************************************************************************************************************/
 
 
@@ -94,7 +95,7 @@ const Justina_interpreter::ResWordDef Justina_interpreter::_resWords[]{
     {"if",              cmdcod_if,              cmd_onlyImmOrInsideFuncBlock,                           1,1,    cmdPar_104,     cmdBlockIf},
     {"elseif",          cmdcod_elseif,          cmd_onlyImmOrInsideFuncBlock,                           1,1,    cmdPar_104,     cmdBlockIf_elseIf},
     {"else",            cmdcod_else,            cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_102,     cmdBlockIf_else},
-    {"end",             cmdcod_end,             cmd_noRestrictions,                                     0,0,    cmdPar_102,     cmdBlockGenEnd},            // closes inner open command block
+    {"end",             cmdcod_end,             cmd_noRestrictions,                                     0,0,    cmdPar_102,     cmdBlockGenEnd},                // closes inner open command block
 
     {"break",           cmdcod_break,           cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_102,     cmdBlockOpenBlock_loop},        // allowed if at least one open loop block (any level) 
     {"continue",        cmdcod_continue,        cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdPar_102,     cmdBlockOpenBlock_loop },       // allowed if at least one open loop block (any level) 
@@ -308,7 +309,7 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     {"ubound",                  fnccod_ubound,                  2,2,    0b00000001},        // first parameter is array (LSB)
     {"dims",                    fnccod_dims,                    1,1,    0b00000001},
     {"type",                    fnccod_valueType,               1,1,    0b0},
-    {"r",                       fnccod_last,                    0,1,    0b0 },               // short label for 'last result'
+    {"r",                       fnccod_last,                    0,1,    0b0 },              // short label for 'last result'
     {"err",                     fnccod_getTrappedErr,           0,0,    0b0 },
     {"isColdStart",             fnccod_isColdStart,             0,0,    0b0 },
     {"sysVal",                  fnccod_sysVal,                  1,1,    0b0},
@@ -334,7 +335,7 @@ const Justina_interpreter::InternCppFuncDef Justina_interpreter::_internCppFunct
     {"getWriteError",           fnccod_getWriteError,          1,1,    0b0 },
     {"clearWriteError",         fnccod_clearWriteError,        1,1,    0b0 },
 
-    {"fmt",                     fnccod_format,                 1,6,    0b0},               // short label for 'system value'
+    {"fmt",                     fnccod_format,                 1,6,    0b0},                // short label for 'system value'
     {"tab",                     fnccod_tab,                    0,1,    0b0},
     {"col",                     fnccod_gotoColumn,             1,1,    0b0},
     {"pos",                     fnccod_getColumnPos,           0,0,    0b0},
@@ -453,7 +454,7 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     {"PI",                  "3.14159265358979323846",   value_isFloat},     // PI (more digits then actually needed for float)
     {"HALF_PI",             "1.57079632679489661923",   value_isFloat},     // PI / 2
     {"QUART_PI",            "0.78539816339744830962",   value_isFloat},     // PI / 4
-    {"TWO_PI",              "6.2831853071795864769",    value_isFloat},      // 2 * PI 
+    {"TWO_PI",              "6.2831853071795864769",    value_isFloat},     // 2 * PI 
 
     {"DEG_TO_RAD",          "0.01745329251994329577",   value_isFloat},     // conversion factor: degrees to radians
     {"RAD_TO_DEG",          "57.2957795130823208768",   value_isFloat},     // radians to degrrees
@@ -537,31 +538,31 @@ const Justina_interpreter::SymbNumConsts Justina_interpreter::_symbNumConsts[]{
     {"EOF",                 "-1",                       value_isLong},      // seek(n, EOF) is same as seek(n, size(n))
 
     // formatting: specifiers for floating point numbers
-    {"FIXED",               "f",                       value_isStringPointer},      // fixed point notation
-    {"Scient",              "e",                       value_isStringPointer},      // scientific notation, exponent: 'e' 
-    {"Short",               "g",                       value_isStringPointer},      // shortest notation possible; if exponent: 'e'   
-    {"SCIENT",              "E",                       value_isStringPointer},      // scientific notation, exponent: 'E'
-    {"SHORT",               "G",                       value_isStringPointer},      // shortest notation possible; if exponent: 'E' 
-    
+    {"FIXED",               "f",                        value_isStringPointer},      // fixed point notation
+    {"Scient",              "e",                        value_isStringPointer},      // scientific notation, exponent: 'e' 
+    {"Short",               "g",                        value_isStringPointer},      // shortest notation possible; if exponent: 'e'   
+    {"SCIENT",              "E",                        value_isStringPointer},      // scientific notation, exponent: 'E'
+    {"SHORT",               "G",                        value_isStringPointer},      // shortest notation possible; if exponent: 'E' 
+
     // formatting: specifiers for integers
-    {"Dec",                 "d",                       value_isStringPointer},      // base 10 (decimal)
-    {"Hex",                 "x",                       value_isStringPointer},      // base 16 (hex), digits a..f
-    {"HEX",                 "X",                       value_isStringPointer},      // base 16 (hex), digits A..F
+    {"Dec",                 "d",                        value_isStringPointer},      // base 10 (decimal)
+    {"Hex",                 "x",                        value_isStringPointer},      // base 16 (hex), digits a..f
+    {"HEX",                 "X",                        value_isStringPointer},      // base 16 (hex), digits A..F
 
    // formatting: flags
-    {"ADD_LEFT",            "0x01",                     value_isLong},      // align output left within the print field 
-    {"ADD_SIGN",            "0x02",                     value_isLong},      // always add a sign (- or +) preceding the value
-    {"ADD_SPACE",           "0x04",                     value_isLong},      // precede the value with a space if no sign is written 
-    {"ADD_POINT",           "0x08",                     value_isLong},      // if used with 'F', 'E', 'G' specifiers: add decimal point, even if no digits after decimal point  
-    {"ADD_0X",              "0x08",                     value_isLong},      // if used with 'hex output'X' specifier: precede non-zero values with 0x  
-    {"ADD_000",             "0x10",                     value_isLong},      // if used with 'F', 'E', 'G' specifiers: pad with zeros 
-    {"ADD_NONE",            "0x00",                     value_isLong},      // no flags 
+    {"ADD_LEFT",            "0x01",                      value_isLong},             // align output left within the print field 
+    {"ADD_SIGN",            "0x02",                      value_isLong},             // always add a sign (- or +) preceding the value
+    {"ADD_SPACE",           "0x04",                      value_isLong},             // precede the value with a space if no sign is written 
+    {"ADD_POINT",           "0x08",                      value_isLong},             // if used with 'F', 'E', 'G' specifiers: add decimal point, even if no digits after decimal point  
+    {"ADD_0X",              "0x08",                      value_isLong},             // if used with 'hex output'X' specifier: precede non-zero values with 0x  
+    {"ADD_000",             "0x10",                      value_isLong},             // if used with 'F', 'E', 'G' specifiers: pad with zeros 
+    {"ADD_NONE",            "0x00",                      value_isLong},             // no flags 
 
     // boards
-    { "BOARD_UNKNOWN",      "0",                          value_isLong },      // board architecture is undefined
-    { "BOARD_SAMD",         "1",                          value_isLong },      // board architecture is SAMD
-    { "BOARD_RP2040",       "2",                          value_isLong },      // board architecture is RP2040 
-    { "BOARD_ESP32",        "3",                          value_isLong },      // board architecture is ESP32 
+    { "BOARD_UNKNOWN",      "0",                         value_isLong },            // board architecture is undefined
+    { "BOARD_SAMD",         "1",                         value_isLong },            // board architecture is SAMD
+    { "BOARD_RP2040",       "2",                         value_isLong },            // board architecture is RP2040 
+    { "BOARD_ESP32",        "3",                         value_isLong },            // board architecture is ESP32 
 
 };
 
@@ -599,7 +600,8 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, Print*
     // current print column is maintened for each stream separately: init
     _pPrintColumns = new int[_externIOstreamCount];
     for (int i = 0; i < _externIOstreamCount; i++) {
-        if (_pExternInputStreams[i] != nullptr) { _pExternInputStreams[i]->setTimeout(DEFAULT_READ_TIMEOUT); }              // NOTE: will only have effect for currently established connections (e.g. TCP)
+        // NOTE: will only have effect for currently established connections (e.g. TCP)
+        if (_pExternInputStreams[i] != nullptr) { _pExternInputStreams[i]->setTimeout(DEFAULT_READ_TIMEOUT); }
         _pPrintColumns[i] = 0;
     }
 
@@ -607,11 +609,11 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, Print*
     _consoleIn_sourceStreamNumber = _consoleOut_sourceStreamNumber = _debug_sourceStreamNumber = -1;
     _pConsoleIn = _pExternInputStreams[0];
     _pConsoleOut = _pDebugOut = _pExternOutputStreams[0];
-    _pConsolePrintColumn = _pDebugPrintColumn = _pPrintColumns;                                       //  point to its current print column
+    _pConsolePrintColumn = _pDebugPrintColumn = _pPrintColumns;                                     //  point to its current print column
     _pLastPrintColumn = _pPrintColumns;
 
     // set linked list debug printing. Pointer to debug out stream pointer: will follow if debug stream is changed
-    parsingStack.setDebugOutStream(&_pDebugOut);                                // for debug printing within linked list object
+    parsingStack.setDebugOutStream(&_pDebugOut);                                                    // for debug printing within linked list object
 
     if (_progMemorySize + IMM_MEM_SIZE > pow(2, 16)) { _progMemorySize = pow(2, 16) - IMM_MEM_SIZE; }
     _programStorage = new char[_progMemorySize + IMM_MEM_SIZE];
@@ -628,11 +630,10 @@ Justina_interpreter::Justina_interpreter(Stream** const pAltInputStreams, Print*
 // ------------------
 
 Justina_interpreter::~Justina_interpreter() {
-
-    resetMachine(true);                                                                             // delete all objects created on the heap: with = with user variables and FiFo stack
+    resetMachine(true);                                 // delete all objects created on the heap: with = with user variables and FiFo stack
 
     // NOTE: objects cretaed / deleted in (de-)constructors are not counted
-    delete _pBreakpoints;                           // not an array: use 'delete'
+    delete _pBreakpoints;                               // not an array: use 'delete'
     delete[] _programStorage;
     delete[] _pPrintColumns;
 };
@@ -662,37 +663,37 @@ void Justina_interpreter::setMainLoopCallback(void (*func)(long& appFlags)) {
     // a null pointer indicates there are no functions of a specific type
     // cpp function return types are: 0 = bool, 1 = char, 2 = int, 3 = long, 4 = float, 5 = char*, 6 = void (but returns zero to Justina)
 
-void Justina_interpreter::setUserBoolCppFunctionsEntryPoint(const CppBoolFunction* const  pCppBoolFunctions, int cppBoolFunctionCount) {
+void Justina_interpreter::registerBoolUserCppFunctions(const CppBoolFunction* const  pCppBoolFunctions, const int cppBoolFunctionCount) {
     _pExtCppFunctions[0] = (CppBoolFunction*)pCppBoolFunctions;
     _ExtCppFunctionCounts[0] = cppBoolFunctionCount;
 };
 
-void Justina_interpreter::setUserCharCppFunctionsEntryPoint(const CppCharFunction* const  pCppCharFunctions, int cppCharFunctionCount) {
+void Justina_interpreter::registerCharUserCppFunctions(const CppCharFunction* const  pCppCharFunctions, const int cppCharFunctionCount) {
     _pExtCppFunctions[1] = (CppCharFunction*)pCppCharFunctions;
     _ExtCppFunctionCounts[1] = cppCharFunctionCount;
 };
 
-void Justina_interpreter::setUserIntCppFunctionsEntryPoint(const CppIntFunction* const  pCppIntFunctions, int cppIntFunctionCount) {
+void Justina_interpreter::registerIntUserCppFunctions(const CppIntFunction* const  pCppIntFunctions, const int cppIntFunctionCount) {
     _pExtCppFunctions[2] = (CppIntFunction*)pCppIntFunctions;
     _ExtCppFunctionCounts[2] = cppIntFunctionCount;
 };
 
-void Justina_interpreter::setUserLongCppFunctionsEntryPoint(const CppLongFunction* const pCppLongFunctions, int cppLongFunctionCount) {
+void Justina_interpreter::registerLongUserCppFunctions(const CppLongFunction* const pCppLongFunctions, const int cppLongFunctionCount) {
     _pExtCppFunctions[3] = (CppLongFunction*)pCppLongFunctions;
     _ExtCppFunctionCounts[3] = cppLongFunctionCount;
 };
 
-void Justina_interpreter::setUserFloatCppFunctionsEntryPoint(const CppFloatFunction* const pCppFloatFunctions, int cppFloatFunctionCount) {
+void Justina_interpreter::registerFloatUserCppFunctions(const CppFloatFunction* const pCppFloatFunctions, const int cppFloatFunctionCount) {
     _pExtCppFunctions[4] = (CppFloatFunction*)pCppFloatFunctions;
     _ExtCppFunctionCounts[4] = cppFloatFunctionCount;
 };
 
-void Justina_interpreter::setUser_pCharCppFunctionsEntryPoint(const Cpp_pCharFunction* const pCpp_pCharFunctions, int cpp_pCharFunctionCount) {
+void Justina_interpreter::register_pCharUserCppFunctions(const Cpp_pCharFunction* const pCpp_pCharFunctions, const int cpp_pCharFunctionCount) {
     _pExtCppFunctions[5] = (Cpp_pCharFunction*)pCpp_pCharFunctions;
     _ExtCppFunctionCounts[5] = cpp_pCharFunctionCount;
 };
 
-void Justina_interpreter::setUserCppCommandsEntryPoint(const CppVoidFunction* const pCppVoidFunctions, int cppVoidFunctionCount) {
+void Justina_interpreter::registerVoidUserCppFunctions(const CppVoidFunction* const pCppVoidFunctions, const int cppVoidFunctionCount) {
     _pExtCppFunctions[6] = (CppVoidFunction*)pCppVoidFunctions;
     _ExtCppFunctionCounts[6] = cppVoidFunctionCount;
 };
@@ -701,7 +702,7 @@ void Justina_interpreter::setUserCppCommandsEntryPoint(const CppVoidFunction* co
 // *   interpreter main loop   *
 // ----------------------------
 
-bool Justina_interpreter::run() {
+bool Justina_interpreter::begin() {
     bool withinStringEscSequence{ false };
     bool lastCharWasSemiColon{ false };
     bool within1LineComment{ false };
@@ -715,7 +716,7 @@ bool Justina_interpreter::run() {
     long parsedStatementCount{ 0 };
     int statementCharCount{ 0 };
     char* pErrorPos{};
-    parsingResult_type result{ result_parsing_OK };                                                          // init
+    parsingResult_type result{ result_parsing_OK };                                         // init
 
     // variables for maintaining lines allowing breakpoints
     bool parsedStatementStartsOnNewLine{ false };
@@ -726,7 +727,7 @@ bool Justina_interpreter::run() {
 
     static long BPpreviousEndLine{ 0 };
 
-    _appFlags = 0x0000L;                                                                                        // init application flags (for communication with Justina caller, using callbacks)
+    _appFlags = 0x0000L;                                                                    // init application flags (for communication with Justina caller, using callbacks)
 
     printlnTo(0);
     for (int i = 0; i < 13; i++) { printTo(0, "*"); } printTo(0, "____");
@@ -736,7 +737,7 @@ bool Justina_interpreter::run() {
 
     printTo(0, "    "); printlnTo(0, J_productName);
     printTo(0, "    "); printlnTo(0, J_legalCopyright);
-    printTo(0, "    Version: "); printTo(0, J_productVersion); printTo(0, " ("); printTo(0, J_buildDate); printlnTo(0, ")");
+    printTo(0, "    Version: "); printTo(0, J_version); printTo(0, " ("); printTo(0, J_buildDate); printlnTo(0, ")");
     for (int i = 0; i < 48; i++) { printTo(0, "*"); } printlnTo(0);
 
 #if PRINT_HEAP_OBJ_CREA_DEL
@@ -750,8 +751,8 @@ bool Justina_interpreter::run() {
     int index{}, semicolonBPallowed_index{}, semicolonBPset_index{}, matches{};
 
     for (index = _termTokenCount - 1, matches = 0; index >= 0; index--) {      // for all defined terminals
-        if (_terminals[index].terminalCode == termcod_semicolon_BPallowed) { semicolonBPallowed_index = index; matches; }                              // token corresponds to terminal code ? Then exit loop    
-        if (_terminals[index].terminalCode == termcod_semicolon_BPset) { semicolonBPset_index = index; matches++; }                              // token corresponds to terminal code ? Then exit loop    
+        if (_terminals[index].terminalCode == termcod_semicolon_BPallowed) { semicolonBPallowed_index = index; matches; }           // token corresponds to terminal code ? Then exit loop    
+        if (_terminals[index].terminalCode == termcod_semicolon_BPset) { semicolonBPset_index = index; matches++; }                 // token corresponds to terminal code ? Then exit loop    
         if (matches == 2) { break; }
     }
     _semicolonBPallowed_token = (semicolonBPallowed_index <= 0x0F) ? tok_isTerminalGroup1 : (semicolonBPallowed_index <= 0x1F) ? tok_isTerminalGroup2 : tok_isTerminalGroup3;
@@ -761,17 +762,17 @@ bool Justina_interpreter::run() {
 
     _programMode = false;
     _programCounter = _programStorage + _progMemorySize;
-    *(_programStorage + _progMemorySize) = tok_no_token;                                                        //  current end of program (FIRST byte of immediate mode command line)
+    *(_programStorage + _progMemorySize) = tok_no_token;                                    //  current end of program (FIRST byte of immediate mode command line)
     _lastPrintedIsPrompt = false;
 
     _coldStart = _constructorInvoked;
-    _constructorInvoked = false;                                                                                         // reset
+    _constructorInvoked = false;                                                            // reset
 
-    Stream* pStatementInputStream = _pConsoleIn;                                          // init: load program from console
+    Stream* pStatementInputStream = _pConsoleIn;                                            // init: load program from console
     int streamNumber{ 0 };
-    setStream(0);                                                                                               // set _pStreamIn to console, for use by Justina methods
+    setStream(0);                                                                           // set _pStreamIn to console, for use by Justina methods
 
-    int clearCmdIndicator{ 0 };                                                                                 // 1 = clear program cmd, 2 = clear all cmd
+    int clearCmdIndicator{ 0 };                                                             // 1 = clear program cmd, 2 = clear all cmd
     char c{};
     bool kill{ false };
     bool loadingStartupProgram{ false }, launchingStartFunction{ false };
@@ -790,14 +791,14 @@ bool Justina_interpreter::run() {
         _initiateProgramLoad = _SDinitOK;
         if (_initiateProgramLoad) {
             printlnTo(0, "Looking for 'start.jus' program file...");
-            if (!SD.exists("/start.jus")) { _initiateProgramLoad = false; printlnTo(0, "'start.jus' program NOT found"); }          // ADD staring slash ! (required by ESP32 SD library)
+            if (!SD.exists("/start.jus")) { _initiateProgramLoad = false; printlnTo(0, "'start.jus' program NOT found"); }      // ADD staring slash ! (required by ESP32 SD library)
         }
 
         if (_initiateProgramLoad) {
-            execResult_type execResult = SD_open(_loadProgFromStreamNo, "/start.jus", READ_FILE);                   // this performs a few card & file checks as well
+            execResult_type execResult = SD_open(_loadProgFromStreamNo, "/start.jus", READ_FILE);                               // this performs a few card & file checks as well
             _initiateProgramLoad = (execResult == result_execOK);
             if (!_initiateProgramLoad) { printTo(0, "Could not open 'start.jus' program - error "); printlnTo(0, execResult); }
-            if(openFiles[_loadProgFromStreamNo-1].file.size()==0) { _initiateProgramLoad = false;  printTo(0, "File 'start.jus' is empty - error "); printlnTo(0, result_SD_fileIsEmpty); }
+            if (openFiles[_loadProgFromStreamNo - 1].file.size() == 0) { _initiateProgramLoad = false;  printTo(0, "File 'start.jus' is empty - error "); printlnTo(0, result_SD_fileIsEmpty); }
         }
 
         if (_initiateProgramLoad) {                                                                             // !!! second 'if(_initiateProgramLoad)'
@@ -851,7 +852,7 @@ bool Justina_interpreter::run() {
         else {     // note: while waiting for first program character, allow a longer time out              
             c = getCharacter(kill, forcedStop, forcedAbort, stdConsole, true, waitForFirstProgramCharacter);    // forced stop has no effect here
             if (c != 0xff) {
-                if(waitForFirstProgramCharacter){Serial.println("Receiving program... please wait"); }
+                if (waitForFirstProgramCharacter) { Serial.println("Receiving program... please wait"); }
                 _appFlags &= ~appFlag_errorConditionBit;                                                        // clear error condition flag 
                 _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_parsing;                                // status 'parsing'
             }
@@ -881,7 +882,7 @@ bool Justina_interpreter::run() {
 
             bool statementReadyForParsing = !bufferOverrun && !forcedAbort && !stdConsole && !kill && (isStatementSeparator || (allCharsReceived && (statementCharCount > 0)));
 
-            if (_programMode && (statementCharCount == 1) && !noCharAdded) { statementStartsAtLine = currentSourceLine; }                                    // first character of new statement
+            if (_programMode && (statementCharCount == 1) && !noCharAdded) { statementStartsAtLine = currentSourceLine; }      // first character of new statement
 
             if (statementReadyForParsing) {                                                                     // if quitting anyway, just skip                                               
 
@@ -889,7 +890,7 @@ bool Justina_interpreter::run() {
 
                 char* pStatement = _statement;                                                                  // because passed by reference 
                 char* pDummy{};
-                _parsingExecutingTraceString = false;                       // init
+                _parsingExecutingTraceString = false;                                                           // init
                 _parsingExecutingTriggerString = false;
                 _parsingEvalString = false;
 
@@ -924,14 +925,14 @@ bool Justina_interpreter::run() {
             if (allCharsReceived || (result != result_parsing_OK)) {                                            // note: if all statements have been read, they also have been parsed
                 if (kill) { quitNow = true; }
                 else {
-                    quitNow = finaliseParsing(result, kill, lineCount, pErrorPos, allCharsReceived); // return value: quit Justina now
+                    quitNow = finaliseParsing(result, kill, lineCount, pErrorPos, allCharsReceived);            // return value: quit Justina now
 
                     // if not in program mode and no parsing error: execute
                     execResult_type execResult{ result_execOK };
                     if (!_programMode && (result == result_parsing_OK)) {
-                        execResult = exec(_programStorage + _progMemorySize);                                                   // execute parsed user statements
+                        execResult = exec(_programStorage + _progMemorySize);                                   // execute parsed user statements
                         if (execResult == result_kill) { kill = true; }
-                        if (kill || (execResult == result_quit)) { printlnTo(0); quitNow = true; }                          // make sure Justina prompt will be printed on a new line
+                        if (kill || (execResult == result_quit)) { printlnTo(0); quitNow = true; }              // make sure Justina prompt will be printed on a new line
                     }
 
                     quitNow = quitNow || prepareForIdleMode(result, execResult, kill, clearCmdIndicator, pStatementInputStream, streamNumber); // return value: quit Justina now
@@ -976,7 +977,7 @@ bool Justina_interpreter::run() {
 
     // returning control to Justina caller
     _appFlags = 0x0000L;                                                                                        // clear all application flags
-    _housekeepingCallback(_appFlags);                                                                           // pass application flags to caller immediately
+    if (_housekeepingCallback != nullptr) { _housekeepingCallback(_appFlags);}                                  // pass application flags to caller immediately
 
     if (kill) { _keepInMemory = false; printlnTo(0, "\r\n\r\n>>>>> Justina: kill request received from calling program <<<<<"); }
 
@@ -1008,15 +1009,15 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
     bool redundantSpaces = false;
 
     bufferOverrun = false;
-    if(c== '\t') { c = ' '; };                                                                        // replace TAB characters by space characters
-    if ((c < ' ') && (c != '\n')) { return false; }                                                   // skip all other control-chars except new line and EOF character
+    if (c == '\t') { c = ' '; };                                                                                  // replace TAB characters by space characters
+    if ((c < ' ') && (c != '\n')) { return false; }                                                             // skip all other control-chars except new line and EOF character
 
     // when a imm. mode line or program is completely read and the last character (part of the last statement) received from input stream is not a semicolon, add it
     if (ImmModeLineOrProgramRead) {
         if (statementCharCount > 0) {
             if (_statement[statementCharCount - 1] != term_semicolon[0]) {
                 if (statementCharCount == MAX_STATEMENT_LEN) { bufferOverrun = true; return false; }
-                _statement[statementCharCount] = term_semicolon[0];                                                          // still room: add character
+                _statement[statementCharCount] = term_semicolon[0];                                             // still room: add character
                 statementCharCount++;
             }
         }
@@ -1065,7 +1066,7 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
                     if (_statement[statementCharCount - 1] == commentOuterDelim) {
                         lastCommentChar = '\0';         // reset
                         --statementCharCount;
-                        _statement[statementCharCount] = '\0';                                                 // add string terminator
+                        _statement[statementCharCount] = '\0';                                                  // add string terminator
 
                         ((c == commentOuterDelim) ? within1LineComment : withinMultiLineComment) = true; return false;
                     }
@@ -1087,7 +1088,7 @@ bool Justina_interpreter::addCharacterToInput(bool& lastCharWasSemiColon, bool& 
         if (statementCharCount == MAX_STATEMENT_LEN) { bufferOverrun = true; return false; }
 
         // add character  
-        _statement[statementCharCount] = c;                                                                    // still room: add character
+        _statement[statementCharCount] = c;                                                                     // still room: add character
         ++statementCharCount;
     }
 
@@ -1118,25 +1119,25 @@ bool Justina_interpreter::finaliseParsing(parsingResult_type& result, bool& kill
             printParsingResult(result, funcNotDefIndex, _statement, lineCount, pErrorPos);
         }
         else {
-            if (_promptAndEcho == 2) { prettyPrintStatements(0, 0); printlnTo(0); }                                // immediate mode and result OK: pretty print input line
+            if (_promptAndEcho == 2) { prettyPrintStatements(0, 0); printlnTo(0); }                             // immediate mode and result OK: pretty print input line
             else if (_promptAndEcho == 1) { printlnTo(0); }
         }
     }
     else {          // parsing error, abort or kill during parsing
         if (_programMode && (_loadProgFromStreamNo <= 0)) {
-            if (result == result_parse_abort) { printTo(0, "\r\nAbort: "); }                                // not for other parsing errors
+            if (result == result_parse_abort) { printTo(0, "\r\nAbort: "); }                                    // not for other parsing errors
             else { printTo(0, "\r\nParsing error: "); }
             printlnTo(0, "processing remainder of input file... please wait");
         }
 
         if (result == result_parse_abort) {
-            printlnTo(0, _programMode ? "\r\n+++ Abort: parsing terminated +++" : "");                       // abort: display error message if aborting program parsing
+            printlnTo(0, _programMode ? "\r\n+++ Abort: parsing terminated +++" : "");                          // abort: display error message if aborting program parsing
         }
         else if (result == result_parse_setStdConsole) {
             printlnTo(0, "\r\n+++ console reset +++");
             _consoleIn_sourceStreamNumber = _consoleOut_sourceStreamNumber = -1;
-            _pConsoleIn = _pExternInputStreams[0];                                                  // set console to stream -1 (NOT debug out)
-            _pConsoleOut = _pExternOutputStreams[0];                                                  // set console to stream -1 (NOT debug out)
+            _pConsoleIn = _pExternInputStreams[0];                                                              // set console to stream -1 (NOT debug out)
+            _pConsoleOut = _pExternOutputStreams[0];                                                            // set console to stream -1 (NOT debug out)
             _pConsolePrintColumn = &_pPrintColumns[0];
             *_pConsolePrintColumn = 0;
 
@@ -1182,8 +1183,8 @@ bool Justina_interpreter::prepareForIdleMode(parsingResult_type result, execResu
     // no program error (could be immmediate mode error however), not initiating program load: only reset a couple of items here 
     else {
         parsingStack.deleteList();
-        _blockLevel = 0;                                     // current number of open block commands (during parsing) - block level + parenthesis level = parsing stack depth
-        _parenthesisLevel = 0;                                      // current number of open parentheses (during parsing)
+        _blockLevel = 0;                                        // current number of open block commands (during parsing) - block level + parenthesis level = parsing stack depth
+        _parenthesisLevel = 0;                                  // current number of open parentheses (during parsing)
 
         _justinaFunctionBlockOpen = false;
     }
@@ -1194,7 +1195,7 @@ bool Justina_interpreter::prepareForIdleMode(parsingResult_type result, execResu
     // first check there were no parsing or execution errors
     if ((result == result_parsing_OK) && (execResult == result_execOK)) {
         if (clearIndicator != 0) {                     // 1 = clear program cmd, 2 = clear all cmd 
-            while (_pConsoleIn->available() > 0) { readFrom(0); }                                              // empty console buffer first (to allow the user to start with an empty line)
+            while (_pConsoleIn->available() > 0) { readFrom(0); }                                               // empty console buffer first (to allow the user to start with an empty line)
             do {
                 char s[50];
                 sprintf(s, "===== Clear %s ? (please answer Y or N) =====", ((clearIndicator == 2) ? "memory" : "program"));
@@ -1255,7 +1256,7 @@ bool Justina_interpreter::prepareForIdleMode(parsingResult_type result, execResu
             bool stop{ false }, abort{ false };     // dummy, as we are entering idle mode anyway
             setStream(statementInputStreamNumber); flushInputCharacters(stop, abort);
         }
-        statementInputStreamNumber = 0;               // set stream for statement input back to console (if it wasn't)
+        statementInputStreamNumber = 0;                                         // set stream for statement input back to console (if it wasn't)
         setStream(statementInputStreamNumber, pStatementInputStream);
         if (_loadProgFromStreamNo > 0) { SD_closeFile(_loadProgFromStreamNo); }
         _loadProgFromStreamNo = 0;
@@ -1321,12 +1322,12 @@ void Justina_interpreter::traceAndPrintDebugInfo(execResult_type execResult) {
     // for all stops: parse and evaluate expression (if any) stored in overall trace string
     Breakpoints::BreakpointData* pBreakpointDataRow{ nullptr };
     int BPdataRow{};
-    bool lineHasBPtableEntry = (*(nextStatementPointer - 1) == _semicolonBPset_token);                             // (note that BP can be disabled, hitcount not yet reached or trigger result = false)
-    if (lineHasBPtableEntry) {                                                                             // check attributes in breakpoints table
-        pBreakpointDataRow = _pBreakpoints->findBPtableRow(nextStatementPointer, BPdataRow);     // find table entry
+    bool lineHasBPtableEntry = (*(nextStatementPointer - 1) == _semicolonBPset_token);                          // (note that BP can be disabled, hitcount not yet reached or trigger result = false)
+    if (lineHasBPtableEntry) {                                                                                  // check attributes in breakpoints table
+        pBreakpointDataRow = _pBreakpoints->findBPtableRow(nextStatementPointer, BPdataRow);                    // find table entry
     }
-    if (isBreakpointStop) { parseAndExecTraceOrBPviewString(BPdataRow); }                        // BP view string: may not contain keywords, Justina functions, generic names
-    parseAndExecTraceOrBPviewString();                                                          // trace string: may not contain keywords, Justina functions, generic names
+    if (isBreakpointStop) { parseAndExecTraceOrBPviewString(BPdataRow); }                                       // BP view string: may not contain keywords, Justina functions, generic names
+    parseAndExecTraceOrBPviewString();                                                                          // trace string: may not contain keywords, Justina functions, generic names
 
 
     // print the source line, function and statement 
@@ -1337,7 +1338,7 @@ void Justina_interpreter::traceAndPrintDebugInfo(execResult_type execResult) {
     long sourceLine = (lineHasBPtableEntry) ? pBreakpointDataRow->sourceLine : _pBreakpoints->findLineNumberForBPstatement(nextStatementPointer);
     sprintf(msg, "line %ld: [%s] ", sourceLine, JustinaFunctionNames[pDeepestOpenFunction->functionIndex]);
     printTo(_debug_sourceStreamNumber, msg);
-    prettyPrintStatements(_debug_sourceStreamNumber, 1, nextStatementPointer);                                                     // print statement
+    prettyPrintStatements(_debug_sourceStreamNumber, 1, nextStatementPointer);                                  // print statement
     printTo(_debug_sourceStreamNumber, "\r\n");    // print an extra line to isolute Justina prompt
 }
 
@@ -1351,8 +1352,8 @@ void Justina_interpreter::traceAndPrintDebugInfo(execResult_type execResult) {
 void Justina_interpreter::parseAndExecTraceOrBPviewString(int BPindex) {
     char* pNextParseStatement{};
 
-    char* pTraceParsingInput = ((BPindex == -1) ? _pTraceString : _pBreakpoints->_pBreakpointData[BPindex].pView);                                                                   // copy pointer to start of trace string
-    if (pTraceParsingInput == nullptr) { return; }                                                                   // no trace string: nothing to trace
+    char* pTraceParsingInput = ((BPindex == -1) ? _pTraceString : _pBreakpoints->_pBreakpointData[BPindex].pView);      // copy pointer to start of trace string
+    if (pTraceParsingInput == nullptr) { return; }                                                                      // no trace string: nothing to trace
 
     // trace string expressions will be parsed and executed from immediate mode program storage: 
     // before overwriting user statements that were just parsed and executed, delete parsed strings
@@ -1375,7 +1376,7 @@ void Justina_interpreter::parseAndExecTraceOrBPviewString(int BPindex) {
         if (*pTraceParsingInput == '\0') { break; }                                                             // could occur if semicolons skipped
 
         // parse multiple trace string expressions ? print a comma in btween
-        if (valuePrinted) { printTo(_debug_sourceStreamNumber, ", "); }                                                                 // separate values (if more than one)
+        if (valuePrinted) { printTo(_debug_sourceStreamNumber, ", "); }                                         // separate values (if more than one)
 
         // note: application flags are not adapted (would not be passed to caller immediately)
         int dummy{};
@@ -1383,7 +1384,7 @@ void Justina_interpreter::parseAndExecTraceOrBPviewString(int BPindex) {
         if (result == result_parsing_OK) {
             // do NOT pretty print if parsing error, to avoid bad-looking partially printed statements (even if there will be an execution error later)
             prettyPrintStatements(_debug_sourceStreamNumber, 0);
-            printTo(_debug_sourceStreamNumber, ": ");                                                                                   // resulting value will follow
+            printTo(_debug_sourceStreamNumber, ": ");                                                           // resulting value will follow
             pTraceParsingInput = pNextParseStatement;
         }
         else {
@@ -1406,7 +1407,7 @@ void Justina_interpreter::parseAndExecTraceOrBPviewString(int BPindex) {
 
         // execution finished: delete parsed strings in imm mode command (they are on the heap and not needed any more)
         deleteConstStringObjects(_programStorage + _progMemorySize);                                            // always
-        *(_programStorage + _progMemorySize) = tok_no_token;                                                    //  current end of program (immediate mode)
+        *(_programStorage + _progMemorySize) = tok_no_token;                                                    // current end of program (immediate mode)
 
     } while (*pTraceParsingInput != '\0');                                                                      // exit loop if all expressions handled
 
@@ -1455,7 +1456,7 @@ void Justina_interpreter::execPeriodicHousekeeping(bool* pKillNow, bool* pForced
             if ((_appFlags & appFlag_stopRequestBit) && (pForcedStop != nullptr)) { *pForcedStop = true; }
             if ((_appFlags & appFlag_abortRequestBit) && (pForcedAbort != nullptr)) { *pForcedAbort = true; }
 
-            _appFlags &= ~(appFlag_dataInOut | appFlag_dataRecdFromStreamMask);                                           // reset 'external IO' flags 
+            _appFlags &= ~(appFlag_dataInOut | appFlag_dataRecdFromStreamMask);                                 // reset 'external IO' flags 
         }
     }
 }
@@ -1671,9 +1672,9 @@ void Justina_interpreter::initInterpreterVariables(bool fullReset) {
     _localVarStringObjectCount = 0;
     _localArrayObjectCount = 0;
 
-    _activeFunctionData.callerEvalStackLevels = 0;                                                  // this is the highest program level
-    _callStackDepth = 0;                                                                            // equals flow control stack depth minus open loop (if, for, ...) blocks (= blocks being executed)
-    _openDebugLevels = 0;                                                                           // equals imm mode cmd stack depth minus open eval() strings (= eval() strings being executed)
+    _activeFunctionData.callerEvalStackLevels = 0;                              // this is the highest program level
+    _callStackDepth = 0;                                                        // equals flow control stack depth minus open loop (if, for, ...) blocks (= blocks being executed)
+    _openDebugLevels = 0;                                                       // equals imm mode cmd stack depth minus open eval() strings (= eval() strings being executed)
 
 
     // reset counters for heap objects
@@ -1686,7 +1687,7 @@ void Justina_interpreter::initInterpreterVariables(bool fullReset) {
     _globalStaticArrayObjectCount = 0;
 
     if (fullReset) {
-        _lastValuesCount = 0;                                                                       // current last result FiFo depth (values currently stored)
+        _lastValuesCount = 0;                                                   // current last result FiFo depth (values currently stored)
 
         _userVarNameStringObjectCount = 0;
         _userVarStringObjectCount = 0;
@@ -1708,29 +1709,29 @@ void Justina_interpreter::initInterpreterVariables(bool fullReset) {
     _dispIntegerPrecision = DEFAULT_INT_PRECISION;
 
     strcpy(_dispFloatSpecifier, DEFAULT_FLOAT_SPECIFIER);
-    strcpy(_dispIntegerSpecifier, DEFAULT_INT_SPECIFIER);                                                                 // here without 'd' (long integer) : will be added  
-    strcpy(_dispStringSpecifier, DEFAULT_STR_SPECIFIER);                                                                 // here without 'd' (long integer) : will be added  
+    strcpy(_dispIntegerSpecifier, DEFAULT_INT_SPECIFIER);                       // here without 'd' (long integer) : will be added  
+    strcpy(_dispStringSpecifier, DEFAULT_STR_SPECIFIER);                        // here without 'd' (long integer) : will be added  
 
     _dispFloatFmtFlags = DEFAULT_FLOAT_FLAGS;
     _dispIntegerFmtFlags = DEFAULT_INT_FLAGS;
     _dispStringFmtFlags = DEFAULT_STR_FLAGS;
 
-    makeFormatString(_dispIntegerFmtFlags, true, _dispIntegerSpecifier, _dispIntegerFmtString);           // for integers
-    makeFormatString(_dispFloatFmtFlags, false, _dispFloatSpecifier, _dispFloatFmtString);               // for floats
+    makeFormatString(_dispIntegerFmtFlags, true, _dispIntegerSpecifier, _dispIntegerFmtString);             // for integers
+    makeFormatString(_dispFloatFmtFlags, false, _dispFloatSpecifier, _dispFloatFmtString);                  // for floats
     makeFormatString(_dispStringFmtFlags, false, _dispStringSpecifier, _dispStringFmtString);               // for strings
 
     // fmt() function settings 
     // -----------------------
-    _fmt_width = DEFAULT_FMT_WIDTH;                             // width
+    _fmt_width = DEFAULT_FMT_WIDTH;                                             // width
 
-    _fmt_numPrecision = DEFAULT_FLOAT_PRECISION;                  // precision
+    _fmt_numPrecision = DEFAULT_FLOAT_PRECISION;                                // precision
     _fmt_strCharsToPrint = DEFAULT_STR_CHARS_TO_PRINT;
 
-    strcpy(_fmt_numSpecifier, DEFAULT_FLOAT_SPECIFIER);         // specifier   
+    strcpy(_fmt_numSpecifier, DEFAULT_FLOAT_SPECIFIER);                         // specifier   
     strcpy(_fmt_stringSpecifier, DEFAULT_STR_SPECIFIER);
 
-    _fmt_numFmtFlags = DEFAULT_FLOAT_FLAGS;             // flags
-    _fmt_stringFmtFlags = DEFAULT_STR_FLAGS;             // flags
+    _fmt_numFmtFlags = DEFAULT_FLOAT_FLAGS;                                     // flags
+    _fmt_stringFmtFlags = DEFAULT_STR_FLAGS;                                    // flags
 
 
     // display output settings
@@ -1873,12 +1874,12 @@ void Justina_interpreter::deleteConstStringObjects(char* pFirstToken) {
 
     prgmCnt.pTokenChars = pFirstToken;
     uint8_t tokenType = *prgmCnt.pTokenChars & 0x0F;
-    while (tokenType != tok_no_token) {                                                                                             // for all tokens in token list
+    while (tokenType != tok_no_token) {                                                                 // for all tokens in token list
         // not for predefined symbolic constants
         bool isStringConst = (tokenType == tok_isConstant) ? (((*prgmCnt.pTokenChars >> 4) & value_typeMask) == value_isStringPointer) : false;
 
         if (isStringConst || (tokenType == tok_isGenericName)) {
-            memcpy(&pAnum, prgmCnt.pCstToken->cstValue.pStringConst, sizeof(pAnum));                                                // pointer not necessarily aligned with word size: copy memory instead
+            memcpy(&pAnum, prgmCnt.pCstToken->cstValue.pStringConst, sizeof(pAnum));                    // pointer not necessarily aligned with word size: copy memory instead
             if (pAnum != nullptr) {
             #if PRINT_HEAP_OBJ_CREA_DEL
                 _pDebugOut->print("----- (parsed str ) ");   _pDebugOut->println((uint32_t)pAnum, HEX);

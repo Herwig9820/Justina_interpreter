@@ -173,17 +173,17 @@ void execAction(char c);
 //   - the number of arguments provided
 // the last 2 parametes can be used in case the arguments value types and/or the argument count are not known by the external cpp procedure
 
-bool userFcn_returnBool(const void** pdata, const char* valueType, const int argCount, int& execError);
-char userFcn_returnChar(const void** pdata, const char* valueType, const int argCount, int& execError);
-int  userFcn_returnInt(const void** pdata, const char* valueType, const int argCount, int& execError);
-long userFcn_returnLong(const void** pdata, const char* valueType, const int argCount, int& execError);
-long userFcn_returnLong_2(const void** pdata, const char* valueType, const int argCount, int& execError);
-float userFcn_returnFloat(const void** pdata, const char* valueType, const int argCount, int& execError);
-char* userFcn_return_pChar(const void** pdata, const char* valueType, const int argCount, int& execError);
+bool userFcn_returnBool(void** const pdata, const char* valueType, const int argCount, int& execError);
+char userFcn_returnChar(void** const pdata, const char* const valueType, const int argCount, int& execError);
+int  userFcn_returnInt(void** const pdata, const char* const valueType, const int argCount, int& execError);
+long userFcn_returnLong(void** const pdata, const char* const valueType, const int argCount, int& execError);
+long userFcn_returnLong_2(void** const pdata, const char* const valueType, const int argCount, int& execError);
+float userFcn_returnFloat(void** const pdata, const char* const valueType, const int argCount, int& execError);
+char* userFcn_return_pChar(void** const pdata, const char* const valueType, const int argCount, int& execError);
 
-void userFcn_readPort(const void** pdata, const char* valueType, const int argCount, int& execError);
-void userFcn_writePort(const void** pdata, const char* valueType, const int argCount, int& execError);
-void userFcn_togglePort(const void** pdata, const char* valueType, const int argCount, int& execError);
+void userFcn_readPort(void** const pdata, const char* const valueType, const int argCount, int& execError);
+void userFcn_writePort(void** const pdata, const char* const valueType, const int argCount, int& execError);
+void userFcn_togglePort(void** const pdata, const char* const valueType, const int argCount, int& execError);
 
 
 // for each user-defined (external cpp) function or command, a record must be created in one of the array variables below (depending on the function return value type)
@@ -427,7 +427,7 @@ void execAction(char c) {
                 // SD card constraints argument:
                 // bits 1..0 = 0b00:no card reader, 0b01 = card reader present, do not yet initialise, 0b10 = initialise (start) card now, 0b11 = initialise (start) card and run start.jus functon start() now (if available)
                 // bit 2     = 0b0: do not allow retaining data when quitting Justina, 0b1 = allow  
-                pJustina = new  Justina_interpreter(pAltInput, pAltOutput, terminalCount, progMemSize, 0b0100 | 0b0011, SD_CHIP_SELECT_PIN);
+                pJustina = new  Justina_interpreter(pAltInput, pAltOutput, terminalCount, progMemSize, 0);////, 0b0100 | 0b0011, SD_CHIP_SELECT_PIN);
 
                 // set callback function to avoid that maintaining the TCP connection AND the heartbeat function are paused as long as control stays in the interpreter
                 // this callback function will be called regularly, e.g. every time the interpreter reads a character
@@ -441,16 +441,16 @@ void execAction(char c) {
 
                 // if no entries of a specific category, comment out the specific entry (below), OR provide an empty record for that category, like this: {"", nullptr, 0, 0}
 
-                pJustina->setUserBoolCppFunctionsEntryPoint(cppBoolFunctions, sizeof(cppBoolFunctions) / sizeof(cppBoolFunctions[0]));
-                pJustina->setUserCharCppFunctionsEntryPoint(cppCharFunctions, sizeof(cppCharFunctions) / sizeof(cppCharFunctions[0]));
-                pJustina->setUserIntCppFunctionsEntryPoint(cppIntFunctions, sizeof(cppIntFunctions) / sizeof(cppIntFunctions[0]));
-                pJustina->setUserLongCppFunctionsEntryPoint(cppLongFunctions, sizeof(cppLongFunctions) / sizeof(cppLongFunctions[0]));
-                pJustina->setUserFloatCppFunctionsEntryPoint(cppFloatFunctions, sizeof(cppFloatFunctions) / sizeof(cppFloatFunctions[0]));
-                pJustina->setUser_pCharCppFunctionsEntryPoint(cpp_pCharFunctions, sizeof(cpp_pCharFunctions) / sizeof(cpp_pCharFunctions[0]));
-                pJustina->setUserCppCommandsEntryPoint(cppVoidFunctions, sizeof(cppVoidFunctions) / sizeof(cppVoidFunctions[0]));
+                pJustina->registerBoolUserCppFunctions(cppBoolFunctions, sizeof(cppBoolFunctions) / sizeof(cppBoolFunctions[0]));
+                pJustina->registerCharUserCppFunctions(cppCharFunctions, sizeof(cppCharFunctions) / sizeof(cppCharFunctions[0]));
+                pJustina->registerIntUserCppFunctions(cppIntFunctions, sizeof(cppIntFunctions) / sizeof(cppIntFunctions[0]));
+                pJustina->registerLongUserCppFunctions(cppLongFunctions, sizeof(cppLongFunctions) / sizeof(cppLongFunctions[0]));
+                pJustina->registerFloatUserCppFunctions(cppFloatFunctions, sizeof(cppFloatFunctions) / sizeof(cppFloatFunctions[0]));
+                pJustina->register_pCharUserCppFunctions(cpp_pCharFunctions, sizeof(cpp_pCharFunctions) / sizeof(cpp_pCharFunctions[0]));
+                pJustina->registerVoidUserCppFunctions(cppVoidFunctions, sizeof(cppVoidFunctions) / sizeof(cppVoidFunctions[0]));
                 // >>> ---------------------------------------------------------------------------------------------
             }
-            interpreterInMemory = pJustina->run();                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
+            interpreterInMemory = pJustina->begin();                                   // run interpreter; on return, inform whether interpreter is still in memory (data not lost)
 
             if (!interpreterInMemory) {                                               // return from interpreter: remove from memory as well ?
                 delete pJustina;                                                     // cleanup and delete calculator object itself
@@ -715,7 +715,7 @@ void Justina_housekeeping(long& appFlags) {
 // example: show how to read and modify data supplied
 // --------------------------------------------------
 
-void userFcn_readPort(const void** pdata, const char* valueType, const int argCount, int& execError) {     // data: can be anything, as long as user function knows what to expect
+void userFcn_readPort(void** const pdata, const char* const valueType, const int argCount, int& execError) {     // data: can be anything, as long as user function knows what to expect
 
     pAltOutput[0]->print("=== control is now in user c++ callback function: arg count = "); pAltOutput[0]->println(argCount);
 
@@ -762,14 +762,14 @@ void userFcn_readPort(const void** pdata, const char* valueType, const int argCo
 // example: a few other callback routines
 // --------------------------------------
 
-void userFcn_writePort(const void** pdata, const char* valueType, const int argCount, int& execError) {
+void userFcn_writePort(void** const pdata, const char* const valueType, const int argCount, int& execError) {
     pAltOutput[0]->println("*** Justina was here ***");
     // do your thing here
 
 };
 
 
-void userFcn_togglePort(const void** pdata, const char* valueType, const int argCount, int& execError) {
+void userFcn_togglePort(void** const pdata, const char* const valueType, const int argCount, int& execError) {
     pAltOutput[0]->println("*** Justina just passed by ***");
     // do your thing here
 };
@@ -778,17 +778,17 @@ void userFcn_togglePort(const void** pdata, const char* valueType, const int arg
 // -----------------------------------------------
 // >>> user cpp functions
 // -----------------------------------------------
-bool userFcn_returnBool(const void** pdata, const char* valueType, const int argCount, int& execError) { return 123; }
+bool userFcn_returnBool(void** const pdata, const char* const valueType, const int argCount, int& execError) { return 123; }
 
-char userFcn_returnChar(const void** pdata, const char* valueType, const int argCount, int& execError) { execError = 1234; return 'X'; }
+char userFcn_returnChar(void** const pdata, const char* const  valueType, const int argCount, int& execError) { execError = 1234; return 'X'; }
 
-int userFcn_returnInt(const void** pdata, const char* valueType, const int argCount, int& execError) { return (int)-987; }
+int userFcn_returnInt(void** const pdata, const char* const valueType, const int argCount, int& execError) { return (int)-987; }
 
-long userFcn_returnLong(const void** pdata, const char* valueType, const int argCount, int& execError) { return (*(long*)pdata[0]) * 10; }
+long userFcn_returnLong(void** const pdata, const char* const valueType, const int argCount, int& execError) { return (*(long*)pdata[0]) * 10; }
 
-long userFcn_returnLong_2(const void** pdata, const char* valueType, const int argCount, int& execError) { return 456; }
+long userFcn_returnLong_2(void** const pdata, const char* const valueType, const int argCount, int& execError) { return 456; }
 
-float userFcn_returnFloat(const void** pdata, const char* valueType, const int argCount, int& execError) {
+float userFcn_returnFloat(void** const pdata, const char* const valueType, const int argCount, int& execError) {
     Serial.println("*** within 'userFcn_return float'");
 
     bool isLong = ((valueType[1] & 0x03) == 0x01);                                  // bits 2-0: value indicates value type (1=long, 2=float, 3=char*) 
@@ -797,7 +797,7 @@ float userFcn_returnFloat(const void** pdata, const char* valueType, const int a
     return   value;
 }
 
-char* userFcn_return_pChar(const void** pdata, const char* valueType, const int argCount, int& execError) {
+char* userFcn_return_pChar(void** const pdata, const char* const  valueType, const int argCount, int& execError) {
 
     if ((valueType[0] & Justina_interpreter::value_typeMask) != Justina_interpreter::value_isStringPointer) { Serial.println("user function: wrong value type"); return ""; }
 

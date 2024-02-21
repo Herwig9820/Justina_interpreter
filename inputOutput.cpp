@@ -1,24 +1,25 @@
 /************************************************************************************************************
 *    Justina interpreter library                                                                            *
 *                                                                                                           *
-*    Version:    v1.1.1                                                                                     *
-*    Author:     Herwig Taveirne, 2021-2024                                                                 *
+*    Copyright 2024, Herwig Taveirne                                                                        *
 *                                                                                                           *
-*    The library is intended to work with 32 bit boards using the SAMD architecture (tested with the        *
-*    Arduino nano 33 IoT), the Arduino nano RP2040 and Arduino nano ESP32 boards.                           *
-*                                                                                                           *
-*    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
-*                                                                                                           *
-*    This program is free software: you can redistribute it and/or modify it under the terms of the         *
-*    GNU General Public License as published by the Free Software Foundation, either version 3 of the       *
-*    License, or (at your option) any later version.                                                        *
+*    This file is part of the Justina Interpreter library.                                                  *
+*    The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
+*    the terms of the GNU General Public License as published by the Free Software Foundation, either       *
+*    version 3 of the License, or (at your option) any later version.                                       *
 *                                                                                                           *
 *    This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;              *
 *    without even the implied warranty of  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.             *
 *    See the GNU General Public License for more details.                                                   *
 *                                                                                                           *
-*    If you did not receive a copy of the GNU General Public License along with this program,               *
-*    see <http://www.gnu.org/licenses/>.                                                                    *
+*    You should have received a copy of the GNU General Public License along with this program. If not,     *
+*    see <https://www.gnu.org/licenses/>.                                                                   *
+*                                                                                                           *
+*    The library is intended to work with 32 bit boards using the SAMD architecture ,                       *
+*    the Arduino nano RP2040 and Arduino nano ESP32 boards.                                                 *
+*                                                                                                           *
+*    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
+*                                                                                                           *
 ************************************************************************************************************/
 
 
@@ -38,7 +39,7 @@
 
 Justina_interpreter::execResult_type Justina_interpreter::startSD() {
 
-    if (_SDinitOK) { return result_execOK; }                                                                                // card is initialised: nothing to do
+    if (_SDinitOK) { return result_execOK; }                                                            // card is initialised: nothing to do
 
     if ((_justinaConstraints & 0b0011) == 0) { return result_SD_noCardOrCardError; }
 #if !defined ARDUINO_ARCH_ESP32
@@ -190,7 +191,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_openNext(int dirFil
             _systemStringObjectCount++;//// new
             openFiles[i].filePath = new char[dirPathLength + 1 + strlen(openFiles[i].file.name()) + 1];
             strcpy(openFiles[i].filePath, dirPath);
-            if (dirPathLength > 1) { strcat(openFiles[i].filePath, "/"); }                        // if not root directory: add '/' between path and file name
+            if (dirPathLength > 1) { strcat(openFiles[i].filePath, "/"); }              // if not root directory: add '/' between path and file name
             strcat(openFiles[i].filePath, openFiles[i].file.name());
             openFiles[i].currentPrintColumn = 0;
             fileNumber = i + 1;
@@ -438,7 +439,7 @@ Justina_interpreter::execResult_type  Justina_interpreter::determineStream(int s
     }    // external IO: stream number -1 => array index 0, etc.
     else {
         File* pFile{};
-        execResult_type execResult = SD_fileChecks(pFile, streamNumber, allowFileTypes);                                                        // operand: file number
+        execResult_type execResult = SD_fileChecks(pFile, streamNumber, allowFileTypes);                                    // operand: file number
         if (execResult != result_execOK) { return execResult; }
         pStream = static_cast<Stream*> (pFile);
     }
@@ -476,7 +477,7 @@ Justina_interpreter::execResult_type Justina_interpreter::SD_fileChecks(File*& p
     if ((fileNumber < 1) || (fileNumber > MAX_OPEN_SD_FILES)) { return result_SD_invalidFileNumber; }
     if (!openFiles[fileNumber - 1].fileNumberInUse) { return result_SD_fileIsNotOpen; }
     pFile = &(openFiles[fileNumber - 1].file);
-    if (allowFileTypes > 0) {                                                                                               // 0: allow files and directories, 1: allow files, 2: allow directories
+    if (allowFileTypes > 0) {                   // 0: allow files and directories, 1: allow files, 2: allow directories
         if (pFile->isDirectory()) { if (allowFileTypes == 1) { return result_SD_directoryNotAllowed; } }
         else { if (allowFileTypes == 2) { return result_SD_directoryExpected; } }
     }
@@ -501,10 +502,10 @@ int Justina_interpreter::readFrom(int streamNumber) {
 
     if (c != 0xFF) {
         int readingFromExtStreamNumber{ streamNumber };
-        if (streamNumber == 0) { readingFromExtStreamNumber = _consoleIn_sourceStreamNumber; }      // replace by real external IO stream number
+        if (streamNumber == 0) { readingFromExtStreamNumber = _consoleIn_sourceStreamNumber; }          // replace by real external IO stream number
         if (readingFromExtStreamNumber < 0) {
             _appFlags |= appFlag_dataInOut;
-            _appFlags |= (appFlag_dataRecdFromStream1 << (-1 - readingFromExtStreamNumber));              // 'readingFromExtStreamNumber' < 0
+            _appFlags |= (appFlag_dataRecdFromStream1 << (-1 - readingFromExtStreamNumber));            // 'readingFromExtStreamNumber' < 0
         }
     }
     return c;
@@ -513,7 +514,8 @@ int Justina_interpreter::readFrom(int streamNumber) {
 int Justina_interpreter::readFrom(int streamNumber, char* buffer, int length) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, pStream) != result_execOK) { return 0; }          // if error, zero characters written but error is not returned to caller
-    return static_cast<File*>(pStream)->read((uint8_t*)buffer, length);                 // NOTE: stream MUST be a file (check before call) -> appFlag_dataInOut  and appFlag_dataRecdFromStream1 must not be set
+    // NOTE: stream MUST be a file (check before call) -> appFlag_dataInOut  and appFlag_dataRecdFromStream1 must not be set
+    return static_cast<File*>(pStream)->read((uint8_t*)buffer, length);                 
 }
 
 
@@ -691,10 +693,10 @@ int Justina_interpreter::read() {
     char c = _pStreamIn->read();
     if (c != 0xFF) {
         int readingFromExtStreamNumber{ _streamNumberIn };
-        if (_streamNumberIn == 0) { readingFromExtStreamNumber = _consoleIn_sourceStreamNumber; }      // replace by real external IO stream number
+        if (_streamNumberIn == 0) { readingFromExtStreamNumber = _consoleIn_sourceStreamNumber; }           // replace by real external IO stream number
         if (readingFromExtStreamNumber < 0) {
             _appFlags |= appFlag_dataInOut;
-            _appFlags |= (appFlag_dataRecdFromStream1 << (-1 - readingFromExtStreamNumber));              // 'readingFromExtStreamNumber' < 0
+            _appFlags |= (appFlag_dataRecdFromStream1 << (-1 - readingFromExtStreamNumber));                // 'readingFromExtStreamNumber' < 0
         }
     }
 
@@ -702,7 +704,8 @@ int Justina_interpreter::read() {
 }
 
 int Justina_interpreter::read(char* buffer, int length) {
-    return (static_cast <File*>(_pStreamIn))->read((uint8_t*)buffer, length);                     // NOTE: stream MUST be a file (check before call) -> appFlag_dataInOut  and appFlag_dataRecdFromStream1 must not be set
+    // NOTE: stream MUST be a file (check before call) -> appFlag_dataInOut  and appFlag_dataRecdFromStream1 must not be set
+    return (static_cast <File*>(_pStreamIn))->read((uint8_t*)buffer, length);    
 }
 
 
@@ -871,20 +874,20 @@ bool Justina_interpreter::flushInputCharacters(bool& forcedStop, bool& forcedAbo
     bool messageGiven{ false };
     long charCounter{ 0 };
     bool kill{ false };
-    do {                                                                                                // process remainder of input file (flush)
+    do {                                                                        // process remainder of input file (flush)
         // NOTE: forcedStop and forcedAbort are dummy arguments here and will be ignored because already flushing input file after error, abort or kill
-        bool stop{ false }, abort{ false }, stdConsDummy{ false };                          // dummy arguments (not needed here)
+        bool stop{ false }, abort{ false }, stdConsDummy{ false };              // dummy arguments (not needed here)
         c = getCharacter(kill, stop, abort, stdConsDummy, true);
-        if (kill) { break; }                                                          // return value true: kill Justina interpreter (buffer is now flushed until next line character)
-        if (abort) { forcedAbort = true; }                                    // do NOT exit immediately, keep on flushing
+        if (kill) { break; }                                                    // return value true: kill Justina interpreter (buffer is now flushed until next line character)
+        if (abort) { forcedAbort = true; }                                      // do NOT exit immediately, keep on flushing
         if (stop) { forcedStop = true; }
         if (((millis() - start) > 1000) && !messageGiven) { messageGiven = true; printlnTo(0, "Flushing incoming characters... Please wait"); }
 
         // after a set time, start showing progress by printing dots 
         if (messageGiven) {
-            if ((++charCounter & 0x1fff) == 0) {                             // print a dot each 512 characters
+            if ((++charCounter & 0x1fff) == 0) {                                // print a dot each 512 characters
                 printTo(0, '.');
-                if ((charCounter & 0xfffff) == 0) { printlnTo(0); }          // print a crlf each 64 dots
+                if ((charCounter & 0xfffff) == 0) { printlnTo(0); }             // print a crlf each 64 dots
             }
         }
     } while (c != 0xFF);     // kill: exit immediately
@@ -1167,25 +1170,25 @@ void Justina_interpreter::prettyPrintStatements(int outputStream, int instructio
     bool lastWasPostfixOperator = false, lastWasInfixOperator = false;
 
     bool allInstructions = (instructionCount == 0);
-    bool multipleInstructions = (instructionCount > 1);                                                                     // multiple, but not all, instructions
+    bool multipleInstructions = (instructionCount > 1);                                                                 // multiple, but not all, instructions
     bool isFirstInstruction = true;
 
     // output: printable token (text) - must be long enough to hold one token in text (e.g. a variable name)
-    const int maxCharsPrettyToken{ MAX_ALPHA_CONST_LEN };                                                                   // IT IS SUPPOSED THAT A STRING CAN BE LONGER THAN ANY OTHER TOKEN
+    const int maxCharsPrettyToken{ MAX_ALPHA_CONST_LEN };                                                               // IT IS SUPPOSED THAT A STRING CAN BE LONGER THAN ANY OTHER TOKEN
     const int maxOutputLength{ 200 };
-    int outputLength = 0;                                                                                                   // init: first position
+    int outputLength = 0;                                                                                               // init: first position
 
-    char intFormatStr[10] = "%#l";                                                                                           // '#' flag: always precede hex values with 0x
+    char intFormatStr[10] = "%#l";                                                                                       // '#' flag: always precede hex values with 0x
     strcat(intFormatStr, _dispIntegerSpecifier);
-    char floatFmtStr[10] = "%#.*";                                                                                          // '#' flag: always a decimal point
+    char floatFmtStr[10] = "%#.*";                                                                                      // '#' flag: always a decimal point
     strcat(floatFmtStr, _dispFloatSpecifier);
 
-    while (tokenType != tok_no_token) {                                                                                     // for all tokens in token list
+    while (tokenType != tok_no_token) {                                                                                 // for all tokens in token list
         int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) :
             (tokenType == tok_isSymbolicConstant) ? sizeof(TokenIsSymbolicConstant) : (*progCnt.pTokenChars >> 4) & 0x0F;
         TokenPointer nextProgCnt;
         nextProgCnt.pTokenChars = progCnt.pTokenChars + tokenLength;
-        int nextTokenType = *nextProgCnt.pTokenChars & 0x0F;                                                                // next token type (look ahead)
+        int nextTokenType = *nextProgCnt.pTokenChars & 0x0F;                                                            // next token type (look ahead)
         bool tokenHasLeadingSpace = false, testNextForPostfix = false, isPostfixOperator = false, isInfixOperator = false;
         bool hasTrailingSpace = false;
         bool isSemicolon = false;
@@ -1257,7 +1260,7 @@ void Justina_interpreter::prettyPrintStatements(int outputStream, int instructio
                 if (isLongConst) {
                     long  l;
                     memcpy(&l, progCnt.pCstToken->cstValue.longConst, sizeof(l));           // pointer not necessarily aligned with word size: copy memory instead
-                    sprintf(prettyToken, intFormatStr, l);                                         // integers always displayed without exponent
+                    sprintf(prettyToken, intFormatStr, l);                                  // integers always displayed without exponent
                     testNextForPostfix = true;
                     break;   // and quit switch
                 }
@@ -1265,7 +1268,7 @@ void Justina_interpreter::prettyPrintStatements(int outputStream, int instructio
                 else if (isFloatConst) {
                     float f;
                     memcpy(&f, progCnt.pCstToken->cstValue.floatConst, sizeof(f));          // pointer not necessarily aligned with word size: copy memory instead
-                    sprintf(prettyToken, floatFmtStr, _dispFloatPrecision, f);               // displayed with current floating point precision
+                    sprintf(prettyToken, floatFmtStr, _dispFloatPrecision, f);              // displayed with current floating point precision
                     testNextForPostfix = true;
                     break;   // and quit switch
                 }
@@ -1301,9 +1304,9 @@ void Justina_interpreter::prettyPrintStatements(int outputStream, int instructio
             {
                 int index = (progCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F;
                 index += ((tokenType == tok_isTerminalGroup2) ? 0x10 : (tokenType == tok_isTerminalGroup3) ? 0x20 : 0);
-                char trailing[2] = "\0";      // init: empty string
+                char trailing[2] = "\0";                                                    // init: empty string
 
-                if (_terminals[index].terminalCode <= termcod_opRangeEnd) {      // operator 
+                if (_terminals[index].terminalCode <= termcod_opRangeEnd) {                 // operator 
                     isPostfixOperator = testForPostfix ? (_terminals[index].postfix_priority != 0) : false;
 
                     isInfixOperator = lastWasInfixOperator ? false : testForPostfix ? !isPostfixOperator : false;
@@ -1364,7 +1367,7 @@ void Justina_interpreter::prettyPrintStatements(int outputStream, int instructio
             if (isFirstInstruction && multipleInstructions) { printTo(outputStream, "   ( ==>> "); }
         }
 
-        else { printTo(outputStream, pPrettyToken); }                                                  // not a semicolon
+        else { printTo(outputStream, pPrettyToken); }                                       // not a semicolon
 
         // if printing a fixed number of instructions, return output error position based on token where execution error was produced
         if (!allInstructions) {
@@ -1568,10 +1571,10 @@ void  Justina_interpreter::makeFormatString(int flags, bool longPrefix, char* sp
     for (int i = 1; i <= 5; i++, flags >>= 1) {
         if (flags & 0b1) { fmtString[strPos] = ((i == 1) ? '-' : (i == 2) ? '+' : (i == 3) ? ' ' : (i == 4) ? '#' : '0'); ++strPos; }
     }
-    fmtString[strPos] = '*'; ++strPos; fmtString[strPos] = '.'; ++strPos; fmtString[strPos] = '*'; ++strPos;                // width and precision specified with additional arguments (*.*)
-    if (longPrefix) { fmtString[strPos] = 'l'; ++strPos; fmtString[strPos] = specifier[0]; ++strPos; }                           // "ld", "lx": long integer in decimal or hex format
+    fmtString[strPos] = '*'; ++strPos; fmtString[strPos] = '.'; ++strPos; fmtString[strPos] = '*'; ++strPos;               // width and precision specified with additional arguments (*.*)
+    if (longPrefix) { fmtString[strPos] = 'l'; ++strPos; fmtString[strPos] = specifier[0]; ++strPos; }                     // "ld", "lx": long integer in decimal or hex format
     else { fmtString[strPos] = specifier[0]; ++strPos; }
-    fmtString[strPos] = '%'; ++strPos; fmtString[strPos] = 'n'; ++strPos; fmtString[strPos] = '\0'; ++strPos;                   // %n specifier (return characters printed - for fmt() function only)
+    fmtString[strPos] = '%'; ++strPos; fmtString[strPos] = 'n'; ++strPos; fmtString[strPos] = '\0'; ++strPos;              // %n specifier (return characters printed - for fmt() function only)
 
     return;
 }

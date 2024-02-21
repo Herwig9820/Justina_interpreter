@@ -1,37 +1,42 @@
 /************************************************************************************************************
 *    Justina interpreter library                                                                            *
 *                                                                                                           *
-*    Version:    v1.1.1                                                                                     *
-*    Author:     Herwig Taveirne, 2021-2024                                                                 *
+*    Copyright 2024, Herwig Taveirne                                                                        *
 *                                                                                                           *
-*    The library is intended to work with 32 bit boards using the SAMD architecture (tested with the        *
-*    Arduino nano 33 IoT), the Arduino nano RP2040 and Arduino nano ESP32 boards.                           *
-*                                                                                                           *
-*    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
-*                                                                                                           *
-*    This program is free software: you can redistribute it and/or modify it under the terms of the         *
-*    GNU General Public License as published by the Free Software Foundation, either version 3 of the       *
-*    License, or (at your option) any later version.                                                        *
+*    This file is part of the Justina Interpreter library.                                                  *
+*    The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
+*    the terms of the GNU General Public License as published by the Free Software Foundation, either       *
+*    version 3 of the License, or (at your option) any later version.                                       *
 *                                                                                                           *
 *    This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;              *
 *    without even the implied warranty of  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.             *
 *    See the GNU General Public License for more details.                                                   *
 *                                                                                                           *
-*    If you did not receive a copy of the GNU General Public License along with this program,               *
-*    see <http://www.gnu.org/licenses/>.                                                                    *
+*    You should have received a copy of the GNU General Public License along with this program. If not,     *
+*    see <https://www.gnu.org/licenses/>.                                                                   *
+*                                                                                                           *
+*    The library is intended to work with 32 bit boards using the SAMD architecture ,                       *
+*    the Arduino nano RP2040 and Arduino nano ESP32 boards.                                                 *
+*                                                                                                           *
+*    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
+*                                                                                                           *
 ************************************************************************************************************/
 
 
 #ifndef _JUSTINA_h
 #define _JUSTINA_h
 
+#if !defined(ARDUINO_ARCH_SAMD) && !defined(ARDUINO_ARCH_RP2040) && !defined(ARDUINO_ARCH_ESP32)
+#error “The Justina interpreter library only supports boards with a SAMD, RP2040 or ESP32 architecture.”
+#endif
+
 #include "Arduino.h"
 #include <SD.h>
 #include <SPI.h>
 
 #define J_productName "Justina: JUST an INterpreter for Arduino"
-#define J_legalCopyright "Copyright (C) Herwig Taveirne 2021 - 2024"
-#define J_productVersion "1.1.1"            // major.minor.build
+#define J_legalCopyright "Copyright 2024, Herwig Taveirne"
+#define J_version "1.1.1"            
 #define J_buildDate "February 9, 2024"
 
 
@@ -66,7 +71,7 @@ class LinkedList {
     // -----------------
 
 
-    static Print** _ppDebugOutStream;                                  // pointer to pointer to debug stream
+    static Print** _ppDebugOutStream;                                   // pointer to pointer to debug stream
     static int _listIDcounter;                                          // number of lists created
     static long _createdListObjectCounter;                              // count of created objects accross lists
 
@@ -451,11 +456,11 @@ class Justina_interpreter {
         tok_isTerminalGroup2,                                           // if index between 16 and 31
         tok_isTerminalGroup3,                                           // if index between 32 and 47
 
-        tok_isEvalEnd,                                                    // execution only, signals end of parsed eval() statements and of trigger strings
+        tok_isEvalEnd,                                                  // execution only, signals end of parsed eval() statements and of trigger strings
     };
 
     // error codes for all PARSING errors
-    enum parsingResult_type {                                        // token parsing result
+    enum parsingResult_type {                                           // token parsing result
         result_parsing_OK = 0,                                          // no error
 
         // incomplete expression errors
@@ -602,6 +607,9 @@ class Justina_interpreter {
     enum execResult_type {
         result_execOK = 0,
 
+        // start of valid exec error range (tested upon return of user cpp functions containing an error code)
+        result_startOfExecErrorRange = 3000,
+
         // arrays
         result_array_subscriptOutsideBounds = 3000,
         result_array_subscriptNonInteger,
@@ -674,12 +682,16 @@ class Justina_interpreter {
         result_IO_noDeviceOrNotForInput,
         result_IO_noDeviceOrNotForOutput,
 
+        // end of valid exec error range (tested upon return of user cpp functions containing an error code)
+        result_endOfExecErrorRange = 4999,
+
+
         // *** MANDATORY =>LAST<= range of errors: events ***
         // *** ------------------------------------------ ***
         result_startOfEvents = 9000,
 
         // abort, kill, quit, stop EVENTS (first handled as errors - which they are not - initially following the same flow)
-        result_stopForDebug = result_startOfEvents,                     // 'Stop' command executed (from inside a program only): this enters debug mode
+        result_stopForDebug = 9000,                                     // 'Stop' command executed (from inside a program only): this enters debug mode
         result_stopForBreakpoint,                                       // breakpoint encountered
         result_abort,                                                   // abort running program (return to Justina prompt)
         result_kill,                                                    // caller requested to exit Justina interpreter
@@ -860,8 +872,8 @@ class Justina_interpreter {
     // --------------------------------------------------
     static constexpr uint8_t JustinaFunctionBit{ B00000001 };
     static constexpr uint8_t internCppFunctionBit{ B00000010 };
-    static constexpr uint8_t externCppFunctionBit{ B00000100 };   // is user-provided cpp function
-    static constexpr uint8_t openParenthesisBit{ B00001000 };   // but not a function
+    static constexpr uint8_t externCppFunctionBit{ B00000100 };         // is user-provided cpp function
+    static constexpr uint8_t openParenthesisBit{ B00001000 };           // but not a function
 
     static constexpr uint8_t JustinaFunctionPrevDefinedBit{ B00010000 };
     static constexpr uint8_t arrayBit{ B00100000 };
@@ -1054,10 +1066,10 @@ private:
     // -------
 
 #if defined ARDUINO_ARCH_ESP32
-    static const char READ_FILE{ 0x01 };                    // align with Arduino (non-ESP32) SD library constants
+    static const char READ_FILE{ 0x01 };                    // aligned with Arduino (non-ESP32) SD library constants
     static const char WRITE_FILE{ 0x02 };
     static const char APPEND_FILE{ 0x04 };
-    static const char CREATE_FILE{ 0x10 };                                   
+    static const char CREATE_FILE{ 0x10 };
     static const char EXCL_FILE{ 0x20 };
     static const char TRUNC_FILE{ 0x00 };                  // zero: will do nothing (no function with ESP2 SDlibrary)
 #else
@@ -1364,12 +1376,12 @@ private:
     //    if a function is ended, the corresponding flow control data will be COPIED to structure '_activeFunctionData' again before it is popped from the stack
 
     struct openBlockGeneric {
-        char blockType : 6;                                                 // command block: will identify stack level as an if...end, for...end, ... block
+        char blockType : 6;                                             // command block: will identify stack level as an if...end, for...end, ... block
         char spareFlags : 2;
     };
 
     struct OpenBlockTestData {
-        char blockType : 6;                                                 // command block: will identify stack level as an if...end, for...end, ... block
+        char blockType : 6;                                             // command block: will identify stack level as an if...end, for...end, ... block
         char spareFlags : 2;
         char loopControl;                                               // flags: within iteration, request break from loop, test failed
         char testValueType;                                             // 'for' loop tests: value type used for loop tests
@@ -1433,50 +1445,50 @@ private:
 public:
     struct CppBoolFunction {
         const char* cppFunctionName;                                                                    // function name
-        bool (*func)(const void** pdata, const char* valueType, const int argCount, int& execError);    // function pointer
+        bool (*func)(void** const pdata, const char* const valueType, const int argCount, int& execError);    // function pointer
         char minArgCount;
         char maxArgCount;
     };
 
     struct CppCharFunction {
         const char* cppFunctionName;
-        char (*func)(const void** pdata, const char* valueType, const int argCount, int& execError);
+        char (*func)(void** const pdata, const char* const valueType, const int argCount, int& execError);
         char minArgCount;
         char maxArgCount;
     };
 
     struct CppIntFunction {
         const char* cppFunctionName;
-        int (*func)(const void** pdata, const char* valueType, const int argCount, int& execError);
+        int (*func)(void** const pdata, const char* const valueType, const int argCount, int& execError);
         char minArgCount;
         char maxArgCount;
     };
 
     struct CppLongFunction {
         const char* cppFunctionName;
-        long (*func)(const void** pdata, const char* valueType, const int argCount, int& execError);
+        long (*func)(void** const pdata, const char* const valueType, const int argCount, int& execError);
         char minArgCount;
         char maxArgCount;
     };
 
     struct CppFloatFunction {
         const char* cppFunctionName;
-        float (*func)(const void** pdata, const char* valueType, const int argCount, int& execError);
+        float (*func)(void** const pdata, const char* const valueType, const int argCount, int& execError);
         char minArgCount;
         char maxArgCount;
     };
 
     struct Cpp_pCharFunction {
         const char* cppFunctionName;
-        char* (*func)(const void** pdata, const char* valueType, const int argCount, int& execError);
+        char* (*func)(void** const pdata, const char* const valueType, const int argCount, int& execError);
         char minArgCount;
         char maxArgCount;
     };
 
     struct CppVoidFunction {
         const char* cppFunctionName;
-        void (*func)(const void** pdata, const char* valueType, const int argCount, int& execError);
-        char minArgCount;                                                                           // not used for external cpp (user) commands
+        void (*func)(void** const pdata, const char* const valueType, const int argCount, int& execError);
+        char minArgCount;                                                                               // not used for external cpp (user) commands
         char maxArgCount;
     };
 private:
@@ -1492,11 +1504,11 @@ private:
     bool _constructorInvoked{};
     bool _coldStart{};                                              // is this a cold start (initialising Justina) or a warm start (if Justina was stopped ('quit' command) with its memory retained)
     int _justinaConstraints{ 0 };                                   // 0 = no card reader, 1 = card reader present, do not yet initialise, 2 = initialise card now, 3 = init card & run start.jus function start() now
-    char* _programStorage{ nullptr };                                          // pointer to start of program storage
+    char* _programStorage{ nullptr };                               // pointer to start of program storage
     long _progMemorySize{};                                         // depends on processor
     char _programName[MAX_IDENT_NAME_LEN + 1];
     char* _lastProgramStep{ nullptr };
-    char* _lastUserCmdStep{ nullptr };                     // location in Justine imm. mode program memory where final 'tok_no_token' token is placed
+    char* _lastUserCmdStep{ nullptr };                              // location in Justine imm. mode program memory where final 'tok_no_token' token is placed
 
 
     // parsing 
@@ -1605,7 +1617,7 @@ private:
     // execution
     // ---------
 
-    char* _programCounter{ nullptr };                                // pointer to token memory address (NOT token step number)
+    char* _programCounter{ nullptr };                               // pointer to token memory address (NOT token step number)
 
     bool _initiateProgramLoad = false;                              // waiting for first program instruction streamed from SD or external IO stream
     int _loadProgFromStreamNo = 0;                                  // 0: receive from console
@@ -1684,10 +1696,10 @@ private:
 
     int _fmt_width = DEFAULT_FMT_WIDTH;
 
-    int _fmt_numPrecision = DEFAULT_FLOAT_PRECISION;                                 // all numeric types
-    int _fmt_strCharsToPrint = DEFAULT_STR_CHARS_TO_PRINT;                              // string type
+    int _fmt_numPrecision = DEFAULT_FLOAT_PRECISION;                                // all numeric types
+    int _fmt_strCharsToPrint = DEFAULT_STR_CHARS_TO_PRINT;                          // string type
 
-    char _fmt_numSpecifier[2]{ "" };                                               // will be initialised in Justina constructor                                              
+    char _fmt_numSpecifier[2]{ "" };                                                // will be initialised in Justina constructor                                              
     char _fmt_stringSpecifier[2]{ "" };
 
     int _fmt_numFmtFlags = DEFAULT_FLOAT_FLAGS;
@@ -1704,7 +1716,7 @@ private:
     int _stepFlowCtrlStackLevels{ 0 };                              // total flow control stack levels at the moment of a step, ... debugging command
     int _stepCmdExecuted{ db_continue };                            // type of debugging command executed (step, ...)
     bool _debugCmdExecuted{ false };                                // a debug command was executed
-    bool _pendingStopForDebug{ false };                               // remember to stop anyway if trigger string result (not yet calculated) is zero
+    bool _pendingStopForDebug{ false };                             // remember to stop anyway if trigger string result (not yet calculated) is zero
 
     Breakpoints* _pBreakpoints{ nullptr };
 
@@ -1776,7 +1788,7 @@ private:
     // external IO, SD card and files
     // ------------------------------
 
-    Stream** _pExternInputStreams{ nullptr };                          // available external IO streams (set by Justina caller)
+    Stream** _pExternInputStreams{ nullptr };                       // available external IO streams (set by Justina caller)
     Print** _pExternOutputStreams{ nullptr };
 
     // for use by cout..., dbout, ... commands (without explicit stream indicated)
@@ -1784,7 +1796,7 @@ private:
     Print* _pConsoleOut{ nullptr }, * _pDebugOut{ nullptr };
     int _consoleIn_sourceStreamNumber{}, _consoleOut_sourceStreamNumber{}, _debug_sourceStreamNumber{};     // != 0: always originating stream (external or SD)
 
-    int* _pPrintColumns{};                                        // maintains current print column per output stream ( points to array on the heap)
+    int* _pPrintColumns{};                                          // maintains current print column per output stream ( points to array on the heap)
     int* _pConsolePrintColumn{ nullptr }, * _pDebugPrintColumn{ nullptr };
     int* _pLastPrintColumn{ nullptr };
 
@@ -1871,7 +1883,7 @@ public:
     // -----------------
 
 #if defined ARDUINO_ARCH_ESP32
-    Justina_interpreter(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, long progMemSize, int SDcardConstraints, int SDcardChipSelectPin);
+    Justina_interpreter(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, long progMemSize, int SDcardConstraints = 0, int SDcardChipSelectPin = 10);
 #else
     Justina_interpreter(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, long progMemSize, int SDcardConstraints = 0, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);
 #endif
@@ -1887,19 +1899,19 @@ public:
     // sets pointers to the locations where the Arduino program stored information about user-defined (external) cpp functions (user callback functions)
     // -------------------------------------------------------------------------------------------------------------------------------------------------
 
-    void setUserBoolCppFunctionsEntryPoint(const CppBoolFunction* const  pCppBoolFunctions, int cppBoolFunctionCount);
-    void setUserCharCppFunctionsEntryPoint(const CppCharFunction* const  pCppCharFunctions, int cppCharFunctionCount);
-    void setUserIntCppFunctionsEntryPoint(const CppIntFunction* const  pCppIntFunctions, int cppIntFunctionCount);
-    void setUserLongCppFunctionsEntryPoint(const CppLongFunction* const pCppLongFunctions, int cppLongFunctionCount);
-    void setUserFloatCppFunctionsEntryPoint(const CppFloatFunction* const pCppFloatFunctions, int cppfloatFunctionCount);
-    void setUser_pCharCppFunctionsEntryPoint(const Cpp_pCharFunction* const pCpp_pCharFunctions, int cpp_pCharFunctionCount);
-    void setUserCppCommandsEntryPoint(const CppVoidFunction* const pCppVoidCommands, int cppVoidCommandCount);
+    void registerBoolUserCppFunctions(const CppBoolFunction* const  pCppBoolFunctions, const int cppBoolFunctionCount);
+    void registerCharUserCppFunctions(const CppCharFunction* const  pCppCharFunctions, const int cppCharFunctionCount);
+    void registerIntUserCppFunctions(const CppIntFunction* const  pCppIntFunctions, const int cppIntFunctionCount);
+    void registerLongUserCppFunctions(const CppLongFunction* const pCppLongFunctions, const int cppLongFunctionCount);
+    void registerFloatUserCppFunctions(const CppFloatFunction* const pCppFloatFunctions, const int cppfloatFunctionCount);
+    void register_pCharUserCppFunctions(const Cpp_pCharFunction* const pCpp_pCharFunctions, const int cpp_pCharFunctionCount);
+    void registerVoidUserCppFunctions(const CppVoidFunction* const pCppVoidCommands, const int cppVoidCommandCount);
 
 
     // pass control to Justina interpreter
     // -----------------------------------
 
-    bool run();                                                     // call from Arduino main program
+    bool begin();                                                   // call from Arduino main program
 
 
     // Justina print functions
@@ -2179,24 +2191,24 @@ class Breakpoints {
     Justina_interpreter* _pJustina;
 
     struct BreakpointData {
-        char BPenabled : 1;                       // breakpoint is enabled (program will halt)
+        char BPenabled : 1;                             // breakpoint is enabled (program will halt)
         char BPwithViewExpr : 1;
         char BPwithHitCount : 1;
         char BPwithTriggerExpr : 1;
 
-        long sourceLine{ 0 };                         // if breakpoint encountered, inform user on what source line
-        char* pProgramStep{ nullptr };                // compare with current program counter to find breakpoint entry 
+        long sourceLine{ 0 };                           // if breakpoint encountered, inform user on what source line
+        char* pProgramStep{ nullptr };                  // compare with current program counter to find breakpoint entry 
         char* pView{ nullptr };                         // pointer to view expression (string)
-        char* pTrigger{ nullptr };                  // pointer to trigger expression (string)
-        long hitCount{ 0 };                              // pointer to number of hits triggering breakpoint
-        long hitCounter{ 0 };                                // hit counter
+        char* pTrigger{ nullptr };                      // pointer to trigger expression (string)
+        long hitCount{ 0 };                             // pointer to number of hits triggering breakpoint
+        long hitCounter{ 0 };                           // hit counter
     };
 
     bool _breakPontsAreOn{ true };
     int _breakpointsUsed{ 0 };
     long _BPLineRangeMemorySize{};
     long _maxBreakpointCount{};
-    char* _BPlineRangeStorage{ nullptr };                                      // pointer to start of array keeping track of source line ranges for debugging with breakpoints
+    char* _BPlineRangeStorage{ nullptr };               // pointer to start of array keeping track of source line ranges for debugging with breakpoints
     long _BPlineRangeStorageUsed{ 0 };
     BreakpointData* _pBreakpointData{ nullptr };
 

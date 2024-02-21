@@ -1,24 +1,25 @@
 /************************************************************************************************************
 *    Justina interpreter library                                                                            *
 *                                                                                                           *
-*    Version:    v1.1.1                                                                                     *
-*    Author:     Herwig Taveirne, 2021-2024                                                                 *
+*    Copyright 2024, Herwig Taveirne                                                                        *
 *                                                                                                           *
-*    The library is intended to work with 32 bit boards using the SAMD architecture (tested with the        *
-*    Arduino nano 33 IoT), the Arduino nano RP2040 and Arduino nano ESP32 boards.                           *
-*                                                                                                           *
-*    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
-*                                                                                                           *
-*    This program is free software: you can redistribute it and/or modify it under the terms of the         *
-*    GNU General Public License as published by the Free Software Foundation, either version 3 of the       *
-*    License, or (at your option) any later version.                                                        *
+*    This file is part of the Justina Interpreter library.                                                  *
+*    The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
+*    the terms of the GNU General Public License as published by the Free Software Foundation, either       *
+*    version 3 of the License, or (at your option) any later version.                                       *
 *                                                                                                           *
 *    This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;              *
 *    without even the implied warranty of  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.             *
 *    See the GNU General Public License for more details.                                                   *
 *                                                                                                           *
-*    If you did not receive a copy of the GNU General Public License along with this program,               *
-*    see <http://www.gnu.org/licenses/>.                                                                    *
+*    You should have received a copy of the GNU General Public License along with this program. If not,     *
+*    see <https://www.gnu.org/licenses/>.                                                                   *
+*                                                                                                           *
+*    The library is intended to work with 32 bit boards using the SAMD architecture ,                       *
+*    the Arduino nano RP2040 and Arduino nano ESP32 boards.                                                 *
+*                                                                                                           *
+*    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
+*                                                                                                           *
 ************************************************************************************************************/
 
 
@@ -152,17 +153,17 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             char* filePath = args[0].pStringConst;
             if (!pathValid(filePath)) { return result_SD_pathIsNotValid; }                                                  // is not a complete check, but it remedies a few plaws in SD library
 
-            fcnResultValueType = value_isLong;                                                  // init
+            fcnResultValueType = value_isLong;                                                                              // init
 
             // first, check whether the file exists
             // ESP32 requires that the path starts with a slash
             int len = strlen(filePath);
-            char* filePathWithSlash = filePath;                                                         // init
-            if (filePath[0] != '/') {                                                                   // starting '/' missing)
+            char* filePathWithSlash = filePath;                                                                             // init
+            if (filePath[0] != '/') {                                                                                       // starting '/' missing)
                 _systemStringObjectCount++;//// new
-                filePathWithSlash = new char[1 + len + 1];                                          // include space for starting '/' and ending '\0'
+                filePathWithSlash = new char[1 + len + 1];                                                                  // include space for starting '/' and ending '\0'
                 filePathWithSlash[0] = '/';
-                strcpy(filePathWithSlash + 1, filePath);                                                  // copy original string
+                strcpy(filePathWithSlash + 1, filePath);                                                                    // copy original string
             }
 
             bool fileExists = (long)SD.exists(filePathWithSlash);
@@ -190,7 +191,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 for (i = 0; i < MAX_OPEN_SD_FILES; ++i) {
                     if (openFiles[i].fileNumberInUse) {
                         // skip starting slash (always present) in stored file path if file path argument doesn't start with a slash
-                        if (strcasecmp(openFiles[i].filePath, filePathWithSlash) == 0) {            // 8.3 file format: NOT case sensitive  
+                        if (strcasecmp(openFiles[i].filePath, filePathWithSlash) == 0) {                                    // 8.3 file format: NOT case sensitive  
                             fileIsOpen = true;
                             break;                                                                                          // break inner loop only 
                         }
@@ -228,7 +229,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             if (execResult != result_execOK) { return execResult; }
 
             // access mode (openNextFile only)
-            long mode = READ_FILE;                                                                                             // init: open for reading
+            long mode = READ_FILE;                                                                                          // init: open for reading
             if (suppliedArgCount == 2) {
                 if (!(argIsLongBits & (0x1 << 1)) && !(argIsFloatBits & (0x1 << 1))) { return result_arg_numberExpected; }
                 mode = (argIsLongBits & (0x1 << 1)) ? args[1].longConst : args[1].floatConst;
@@ -399,7 +400,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             if ((arg2 > size) || (arg2 < -1)) { return result_SD_fileSeekError; }
             if (arg2 == -1) { arg2 = size; }            // EOF
 
-            if (!pFile->seek(arg2)) { return result_SD_fileSeekError; }                     // library seek error
+            if (!pFile->seek(arg2)) { return result_SD_fileSeekError; }                                                     // library seek error
 
             fcnResultValueType = value_isLong;
             fcnResult.longConst = 0;
@@ -488,7 +489,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 // read character from stream now 
                 char c{ 0xff };                                                                                             // init: no character read
                 if (functionCode == fnccod_peek) { c = pStream->peek(); }
-                else if (pStream->available()) { _streamNumberIn = streamNumber; _pStreamIn = pStream; c = read(); }       // set global variables 
+                else if (pStream->available()) { _streamNumberIn = streamNumber; _pStreamIn = pStream; c = read(); }        // set global variables 
 
                 // save result
                 fcnResultValueType = value_isLong;
@@ -617,9 +618,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 _intermediateStringObjectCount--;
                 delete[] buffer;
                 fcnResult.pStringConst = nullptr;
-        }
+            }
 
-        // less characters read than maximum ? move string to a smaller character array to save space
+            // less characters read than maximum ? move string to a smaller character array to save space
             else if (charsRead < maxLineLength) {
                 _intermediateStringObjectCount++;
                 char* smallerBuffer = new char[charsRead + 1];                                                              // including space for terminating '\0'
@@ -635,7 +636,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 fcnResult.pStringConst = smallerBuffer;
             }
             else { fcnResult.pStringConst = buffer; }
-    }
+        }
         break;
 
 
@@ -657,7 +658,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             char* buffer{};
             execResult_type execResult{ result_execOK };
             int valuesSaved{ 0 };
-            bool sourceArgPresent = ((functionCode == fnccod_parseList) || (functionCode == fnccod_parseListFromVar));                          // stream or variable
+            bool sourceArgPresent = ((functionCode == fnccod_parseList) || (functionCode == fnccod_parseListFromVar));      // stream or variable
             bool parseListFromStream = ((functionCode == fnccod_cinParseList) || (functionCode == fnccod_parseList));
             int firstArgIndex = sourceArgPresent ? 1 : 0;
 
@@ -727,7 +728,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             // -------------------------------------------------------------------------
 
             // second argument, ... last argument
-            for (int argIndex = firstArgIndex; argIndex < suppliedArgCount; ++argIndex, stringObjectCreated = false) {    //initialise 'stringObjectCreated' to false after each loop
+            for (int argIndex = firstArgIndex; argIndex < suppliedArgCount; ++argIndex, stringObjectCreated = false) {      //initialise 'stringObjectCreated' to false after each loop
 
                 // move to the first non-space character of next token 
                 while (pNext[0] == ' ') { pNext++; }                                                                        // skip leading spaces
@@ -753,7 +754,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
                     // float or integer ?
                     _initVarOrParWithUnaryOp = 0;       // needs to be zero before calling parseIntFloat()
-                    if (!parseIntFloat(pNext, pch, value, valueType, predefinedConstIndex, parsingResult)) { break; }                             // break with error
+                    if (!parseIntFloat(pNext, pch, value, valueType, predefinedConstIndex, parsingResult)) { break; }       // break with error
                     if (parsingResult == result_parsing_OK) { break; }                                                      // is this token type: look no further
                     // string ? if string and not empty, a string object is created by routine parseString() - except if predefined symbolic string constant
                     if (!parseString(pNext, pch, value.pStringConst, valueType, predefinedConstIndex, parsingResult, true)) { break; }            // break with error
@@ -811,7 +812,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
                 // if the new value is a (non-empty) temporary string, simply reference it in the Justina variable 
                 if (stringObjectCreated) {
-                    stringObjectCreated = false;                                                                      // it's becoming a Justina variable value now
+                    stringObjectCreated = false;                                                                            // it's becoming a Justina variable value now
                 #if PRINT_HEAP_OBJ_CREA_DEL
                     _pDebugOut->print("----- (Intermd str) ");   _pDebugOut->println((uint32_t)value.pStringConst, HEX);
                 #endif
@@ -839,9 +840,9 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             #endif
                 _intermediateStringObjectCount--;
                 delete[] buffer;
-        }
+            }
 
-        // if an error occured while processing an argument, then an intermediate string object might still exist on the heap
+            // if an error occured while processing an argument, then an intermediate string object might still exist on the heap
             if (stringObjectCreated) {
             #if PRINT_HEAP_OBJ_CREA_DEL
                 _pDebugOut->print("----- (Intermd str) ");   _pDebugOut->println((uint32_t)value.pStringConst, HEX);
@@ -849,10 +850,10 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 _intermediateStringObjectCount--;
                 delete[] value.pStringConst;
 
-}
+            }
 
 
-// execution error ?
+            // execution error ?
             if (execResult != result_execOK) {
                 _evalParseErrorCode = parsingResult;                                                                        // only relevant in case a parsing error occurred
                 return execResult;
@@ -1320,8 +1321,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             // -----------------------------------------------------------------
             // test and limit width argument
             if (suppliedArgCount > 1) {                                                                                                                 // check width
-                if ((argValueType[1] != value_isLong) && (argValueType[1] != value_isFloat)) { return result_arg_numberExpected; }                              // numeric ?
-                if ((argValueType[1] == value_isLong) ? args[1].longConst < 0 : args[1].floatConst < 0.) { return result_arg_outsideRange; }                       // positive ?
+                if ((argValueType[1] != value_isLong) && (argValueType[1] != value_isFloat)) { return result_arg_numberExpected; }                      // numeric ?
+                if ((argValueType[1] == value_isLong) ? args[1].longConst < 0 : args[1].floatConst < 0.) { return result_arg_outsideRange; }            // positive ?
                 width = (argValueType[1] == value_isLong) ? args[1].longConst : (long)args[1].floatConst;
                 width = min(width, MAX_PRINT_WIDTH);                                                                                                    // limit width to MAX_PRINT_WIDTH
             }
@@ -1333,14 +1334,14 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             }
 
             // is specifier acceptable for data type ?
-            if (valueToFormatIsString != (specifier == 's')) { return result_arg_wrongSpecifierForDataType; }                   // if more string specifiers defined, add them here with 'or' operator
+            if (valueToFormatIsString != (specifier == 's')) { return result_arg_wrongSpecifierForDataType; }                       // if more string specifiers defined, add them here with 'or' operator
 
             // prepare format string and format
             // --------------------------------
 
             int charsPrinted{ 0 };
-            char fmtString[20]{};                                                                                                    // long enough to contain all format specifier parts
-            bool isIntFmt = (specifier == 'X') || (specifier == 'x') || (specifier == 'd');                                                  // for ALL numeric types
+            char fmtString[20]{};                                                                                                   // long enough to contain all format specifier parts
+            bool isIntFmt = (specifier == 'X') || (specifier == 'x') || (specifier == 'd');                                         // for ALL numeric types
 
             // if formatting STRING with explicit change of width and without precision argument: init 'precision' (max. no of characters to print) to width.
             if (valueToFormatIsString) { if (suppliedArgCount == 2) { precision = width; } }
@@ -1425,7 +1426,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             #if PRINT_HEAP_OBJ_CREA_DEL
                 _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
             #endif
-        }
+            }
         }
         break;
 
@@ -1713,7 +1714,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             #else
                 fcnResult.longConst = shiftIn(args[0].longConst, args[1].longConst, (BitOrder)args[2].longConst);
             #endif
-        }
+            }
             else if (functionCode == fnccod_shiftOut) {                                                                     // args: data pin, clock pin, bit order, value
             #if defined ARDUINO_ARCH_ESP32
                 shiftOut(args[0].longConst, args[1].longConst, args[2].longConst, args[3].longConst);
@@ -1978,7 +1979,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                     else { *_pEvalStackTop->varOrConst.value.pFloatConst = (float)foundStartPos; }
                 }
             }
-            }
+        }
         break;
 
 
@@ -2190,7 +2191,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
                 // other settings
                 // --------------
-                case 15: fcnResult.longConst = _lastValuesCount; break;                                // current depth of last values FiF0
+                case 15: fcnResult.longConst = _lastValuesCount; break;                         // current depth of last values FiF0
 
 
                 case 16: fcnResult.longConst = _openFileCount; break;                           // open file count
@@ -2232,11 +2233,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 {
                     fcnResultValueType = value_isStringPointer;
                     _intermediateStringObjectCount++;
-                    fcnResult.pStringConst = new char[((sysVal == 31) ? strlen(J_productName) : (sysVal == 32) ? strlen(J_legalCopyright) : (sysVal == 33) ? strlen(J_productVersion) : strlen(J_buildDate)) + 1];
+                    fcnResult.pStringConst = new char[((sysVal == 31) ? strlen(J_productName) : (sysVal == 32) ? strlen(J_legalCopyright) : (sysVal == 33) ? strlen(J_version) : strlen(J_buildDate)) + 1];
                 #if PRINT_HEAP_OBJ_CREA_DEL
                     _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
                 #endif
-                    strcpy(fcnResult.pStringConst, (sysVal == 31) ? J_productName : (sysVal == 32) ? J_legalCopyright : (sysVal == 33) ? J_productVersion : J_buildDate);
+                    strcpy(fcnResult.pStringConst, (sysVal == 31) ? J_productName : (sysVal == 32) ? J_legalCopyright : (sysVal == 33) ? J_version : J_buildDate);
                 }
                 break;
 
@@ -2280,16 +2281,16 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 }
                 break;
 
-                case 44:                                            // processor board or architecture
+                case 44:                                                                        // processor board or architecture
                 {
                 #if  defined(ARDUINO_ARCH_SAMD) 
-                    fcnResult.longConst = 1; break;
-                #elif defined(ARDUINO_ARCH_RP2040) 
                     fcnResult.longConst = 2; break;
-                #elif defined(ARDUINO_ARCH_ESP32)
+                #elif defined(ARDUINO_ARCH_RP2040) 
                     fcnResult.longConst = 3; break;
+                #elif defined(ARDUINO_ARCH_ESP32)
+                    fcnResult.longConst = 4; break;
                 #else 
-                    fcnResult.longConst = 0; break;     // none of these
+                    fcnResult.longConst = 1; break;     // none of these
                 #endif
                 }
                 break;
@@ -2299,11 +2300,11 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
         }
         break;
 
-        }                                                                                           // end switch
+    }                                                                                           // end switch
 
 
-            // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
-            // -------------------------------------------------------------------------------------------------------------------
+        // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
+        // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
