@@ -1,0 +1,90 @@
+/*-------------------------------------------------------------------------------------------------------------------------------------
+	Sample JUSTINA program for use with the Justina interpreter	on Arduino SAMD boards, the nano RP2040 board and the nano ESP32 board.
+	
+	The program demonstates how to use an SD card and how to read and write data from / to SD card files.
+	------------------------------------------
+	Created by Herwig Taveirne, February 2024.
+	
+	This software is available for use, modification or redistribution under the terms of the GNU General Public License.
+	
+	See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter
+-------------------------------------------------------------------------------------------------------------------------------------*/
+
+
+program SD_card_tests;
+
+
+// -------------------------------------------------------------------------------------------------
+	// This function writes a few lines of information to an SD file, opening the file in various modes.
+	// The file contents are read back and printed on the console.	
+// -------------------------------------------------------------------------------------------------
+
+// argument: a file name
+// returns: 0
+
+function fileTests(fname);
+	
+	var testFile = 0;																	// init as integer
+	if (testFile = fileNum(fname)) > 0; close (testFile); end;							// verify the file is closed			
+	
+	coutLine line(), "******* START test *******", line();
+	
+	
+	// open a testFile for reading and writing; if the file doesn't exist yet, create it. If it existed already, empty it on opening
+	// ------------------------------------------------------------------------------------------------------------------------------
+	coutLine "*** opening file ", fname, " to write a few lines...";
+	testFile = open(fname, READ | WRITE | TRUNC | NEW_OK);								// use bitwise or '|' , not '+' 								
+	coutLine "testFile size: ", size(testFile), ", position: ", position(testFile); 
+	
+	// write some data to the file
+	var lineIndex = 0;
+	printLine testFile, "this is line ", ++lineIndex;
+	printLine testFile, "this is line ", ++lineIndex;
+	printLine testFile, "this is line ", ++lineIndex;
+	coutLine "testFile size: ", size(testFile), ", position: ", position(testFile); 
+	close(testFile);
+	
+	// read the file, line per line, and print contents to the console. Close the file
+	// -------------------------------------------------------------------------------
+	open(fname, READ);
+	coutLine line(), "*** this is what we have written to the file:";										
+	while (available(testFile)>0);														// still characters available ?
+		cout readLine(testFile);														// the line read from the file contains a CRLF sequence: use cout and not coutLine
+	end;
+	coutLine "done: closing file ", fname;										
+	close(testFile);
+	
+	
+	// open the file again; we will append a few lines and close the file again
+	// ------------------------------------------------------------------------
+	coutLine line(), "*** now opening the file again: we will append few lines and close the file again...";
+	testFile = open(fname, APPEND);												// use bitwise or '|' , not '+' 								
+	printLine testFile, "this is a new line ", ++lineIndex;
+	printLine testFile, "and this as well ", ++lineIndex;
+	coutLine "done: closing file ", fname;										
+	close (testFile);
+	
+	
+	// open the file again; we will change a word in the second line and close the file again
+	// --------------------------------------------------------------------------------------
+	if sysVal(44) != BOARD_ESP32; 														// ESP32 writes are purely sequential: the following will not work for ESP32
+		coutLine line(), "*** now opening the file again: let's change a word in line 2 and close the file again...";
+		testFile = open(fname, WRITE);													// use bitwise or '|' , not '+' 
+		
+		find(testFile, line());															// find the end of lne 1
+		print testFile, "THAT";															// change the word "this" in '"HAT"
+		
+		seek(testFile, 4);																// go to position 4 in the file;
+		print testFile, "*";															// print an asterisk (*) character
+		
+		coutLine "done: closing file ", fname;											
+		close(testFile);					
+	end;
+	
+	// send the textfile to the console
+	// --------------------------------
+	coutLine line(), "*** now sending the complete file to the console...";
+	sendFile fname, CONSOLE;
+	
+	coutLine "******* STOP test *******";
+end;

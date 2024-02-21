@@ -10,8 +10,8 @@ secrets.h
 *.filters
 *.sln
 .development
+/extras/Justina_examples/working
 
-/examples/Justina/working
 # User-specific files
 *.rsuser
 *.suo

@@ -1,0 +1,49 @@
+/*-------------------------------------------------------------------------------------------------------------------------------------
+	Sample JUSTINA program for use with the Justina interpreter	on Arduino SAMD boards, the nano RP2040 board and the nano ESP32 board.
+	
+	The program is intended to be called automatically upon starting Justina, if allowed by the the Justina startup options.
+	
+	In order to be called automatically:
+	- the file name must be 'start.jus'
+	- the program must contain a function 'start()', taking no arguments
+	(the program name is not relevant)
+	------------------------------------------
+	Created by Herwig Taveirne, February 2024.
+	
+	This software is available for use, modification or redistribution under the terms of the GNU General Public License.
+	
+	See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter
+-------------------------------------------------------------------------------------------------------------------------------------*/
+
+
+program startJustina;
+
+
+// ------------------------------------------------------------------------------------
+// This is a sample startup function.
+// ------------------------------------------------------------------------------------
+
+// arguments: none
+// returns: nothing 
+
+function start();
+	coutLine line(), repChar("-", 44), line(), "---- Executing startup file 'start.jus' ----", line(), repChar("-", 44);
+	
+	coutLine line(), "board architecture: ", 
+		choose(sysVal(44), "unknown", "SAMD", "RP2040", "ESP32");					// Arduino board architecture ?
+	coutLine ifte(isColdStart(), "Cold start", "Warm start");						
+	
+	coutLine line(), "setting display mode and width; int and float number format";	
+	dispMode ECHO, RESULTS;															// echo user input and display calculation results
+	dispWidth 50;																	// set display width for calculation results to 30 characters		
+	floatFmt 2, FIXED;																// print floats in fixed point notation, 2 digits 
+	intFmt 1, Dec;																	// print integers in base 10, minimum 1 digit 
+	
+	coutLine "setting angle mode";
+	angleMode DEGREES;																// set degrees as angle mode
+	
+	coutLine line(), "test angle mode: the sine of 90 degrees is ", sin(90);		// print the sine of 90 degrees to the console								
+	
+	coutLine line(), "function 'start()' executed";								
+end;
+	
