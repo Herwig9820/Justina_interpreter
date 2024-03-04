@@ -3,14 +3,14 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
-# added by Herwig Taveirne
+# Herwig Taveirne
 secrets.h
 /__vm
 *.vcxproj
 *.filters
 *.sln
 .development
-/extras/Justina_examples/working
+
 
 # User-specific files
 *.rsuser
