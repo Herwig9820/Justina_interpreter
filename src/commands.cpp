@@ -29,9 +29,8 @@
 #define PRINT_PARSED_CMD_STACK 0
 #define PRINT_DEBUG_INFO 0
 
-
 // *****************************************************************
-// ***        class Justina_interpreter - implementation         ***
+// ***        class Justina - implementation         ***
 // *****************************************************************
 
 
@@ -41,10 +40,10 @@
 
 // structure of a command: keyword expression, expression, ... ;
 // during parsing, preliminary checks have been done already: minimum, maximum number of expressions allowed, type of expressions allowed etc.
-// further checks are performed at runtime: do expressions yield a result of the currect type, etc.
+// further checks are performed at runtime: do expressions yield a result of the correct type, etc.
 // the expression list as a whole is not put between parentheses (in contrast to function arguments)
 
-Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(bool& isFunctionReturn, bool& forcedStopRequest, bool& forcedAbortRequest) {
+Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, bool& forcedStopRequest, bool& forcedAbortRequest) {
 
     // this c++ function is called when the END of a command statement (semicolon) is encountered during execution, and all arguments (expressions)...
     // ...have been evaluated and their results put on the evaluation stack
@@ -105,60 +104,8 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
         case cmdcod_quit:
         {
-
-            // optional argument 1 clear all
-            // - value is 1: keep interpreter in memory on quitting (retain data), value is 0: clear all and exit Justina 
-            // 'quit' behaves as if an error occurred, in order to follow the same processing logic  
-
-            if (cmdArgCount != 0) {                                                             // 'quit' command only                                                                                      
-                bool argIsVar[1];
-                bool argIsArray[1];
-                char valueType[1];
-                Val args[1];
-
-                copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);                      // copy arguments from evaluationi stack
-                if (((uint8_t)(valueType[0]) != value_isLong) && ((uint8_t)(valueType[0]) != value_isFloat)) { return result_arg_numberExpected; }
-                if ((uint8_t)(valueType[0]) == value_isFloat) { args[0].longConst = (int)args[0].floatConst; }
-                // specifying 'retain data' or 'release memory' argument: silent mode. Note: 'retain data' will only set if allowed by _justinaConstraints 
-                _keepInMemory = ((args[0].longConst != 0) && ((_justinaConstraints & 0b0100) == 0b0100));                   // silent mode (even not possible to cancel)
-                return result_quit;
-            }
-
-            else {      // keep in memory when quitting, cancel: ask user
-                if ((_justinaConstraints & 0b0100) == 0b0100) {                                 // retaining data is allowed: ask question and note answer
-                    while (_pConsoleIn->available() > 0) { readFrom(0); }                       // empty console buffer first (to allow the user to start with an empty line)
-
-                    do {
-                        bool doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };
-                        printlnTo(0, "===== Quit Justina: keep in memory ? (please answer Y, N or \\c to cancel) =====");
-
-                        // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
-                        // return flags doStop, doAbort, doCancel, doDefault if user included corresponding escape sequences in input string.
-                        int length{ 2 };
-                        char input[2 + 1] = "";                                                                             // init: empty string
-                        // NOTE: quitting has higher priority than aborting or stopping, and quitting anyway, so not needed to check abort and stop flags
-                        // NOTE: doDefault is a dummy argument here
-                        if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return result_kill; }  // kill request from caller ? 
-                        if (doAbort) { forcedAbortRequest = true; break; }                                                  // abort running code (program or immediate mode statements)
-                        else if (doStop) { forcedStopRequest = true; }                                                      // stop a running program (do not produce stop event yet, wait until program statement executed)
-                        if (doCancel) { break; }                                                                            // '\c': cancel operation (lowest priority)
-
-                        bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
-                        if (validAnswer) {
-                            _keepInMemory = (tolower(input[0]) == 'y');
-                            return result_quit;                                                                             // Justina quit command executed 
-                        }
-                    } while (true);
-                }
-                else {
-                    _keepInMemory = false;                                                                                  // do not retain data on quitting (it's not allwed by caller)
-                    return result_quit;
-                }
-            }
-
-            // clean up
-            clearEvalStackLevels(cmdArgCount);                                                                              // clear evaluation stack and intermediate strings
-            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
+            _keepObjectsInMemory=true;
+            return result_quit;
         }
         break;
 
@@ -222,13 +169,13 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             // before removing, delete any parsed string constants for that command line
 
             _lastUserCmdStep = *(char**)_pParsedCommandLineStackTop;                                                        // pop program step of last user cmd token ('tok_no_token')
-            long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + _progMemorySize) + 1;
-            deleteConstStringObjects(_programStorage + _progMemorySize);
-            memcpy((_programStorage + _progMemorySize), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);     // size berekenen
+            long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + _PROGRAM_MEMORY_SIZE) + 1;
+            deleteConstStringObjects(_programStorage + _PROGRAM_MEMORY_SIZE);
+            memcpy((_programStorage + _PROGRAM_MEMORY_SIZE), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);     // size berekenen
             parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
             _pParsedCommandLineStackTop = parsedCommandLineStack.getLastListElement();
         #if PRINT_PARSED_CMD_STACK
-            _pDebugOut->print("   >> POP parsed statements (Go): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _progMemorySize));
+            _pDebugOut->print("   >> POP parsed statements (Go): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _PROGRAM_MEMORY_SIZE));
         #endif
             --_openDebugLevels;
 
@@ -769,6 +716,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             Val args[3];
             copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
 
+            if ((_justinaStartupOptions & SD_mask) == SD_notPresent) { return result_SD_noCardOrNotAllowed; }
             if (!_SDinitOK) { return result_SD_noCardOrCardError; }
 
             bool isSend = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_sendFile);
@@ -834,7 +782,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 char* filePathWithSlash = args[receivingFileArgIndex].pStringConst;         // init
                 int len = strlen(filePathWithSlash);
                 if (filePathWithSlash[0] != '/') {                                          // starting '/' missing)
-                    _systemStringObjectCount++;//// new
+                    _systemStringObjectCount++;
                     filePathWithSlash = new char[1 + len + 1];                              // include space for starting '/' and ending '\0'
                     filePathWithSlash[0] = '/';
                     strcpy(filePathWithSlash + 1, args[receivingFileArgIndex].pStringConst);    // copy original string
@@ -842,7 +790,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                 bool fileExists = (long)SD.exists(filePathWithSlash);
                 if (filePathWithSlash != args[receivingFileArgIndex].pStringConst) {
                     delete[] filePathWithSlash;          // if pointers are not equal, a new char* was created: delete it
-                    _systemStringObjectCount--;//// new
+                    _systemStringObjectCount--;
                 }
                 if (fileExists) {       // file to receive exists already ?
                     if (verbose) {
@@ -883,7 +831,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
                 // file does not yet exist ? check if directory exists. If not, create without asking (not for ESP32: see comment below)
                 else {
-                    _systemStringObjectCount++;//// new
+                    _systemStringObjectCount++;
                     char* dirPath = new char[strlen(args[receivingFileArgIndex].pStringConst) + 1];
                     strcpy(dirPath, args[receivingFileArgIndex].pStringConst);
                     int pos{ 0 };
@@ -903,7 +851,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         }
                     }
                     delete[]dirPath;
-                    _systemStringObjectCount--;//// new
+                    _systemStringObjectCount--;
                     if (execResult != result_execOK) { return execResult; }
                 }
             }
@@ -968,7 +916,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
                         c = getCharacter(kill, doStop, doAbort, stdConsDummy, isReceive, waitForFirstChar);
                         newData = (c != 0xff);
                         if (newData) {
-                            if (waitForFirstChar) { Serial.println("Receiving file... please wait"); }
+                            if (waitForFirstChar) { printlnTo(0, "Receiving file... please wait"); }
                             buffer[bufferCharCount++] = c; progressDotsByteCount++; totalByteCount++;
                         }
                         waitForFirstChar = false;                                                                           // for all next characters
@@ -1245,7 +1193,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
             }
             if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_halt) {
                 char s[100 + MAX_IDENT_NAME_LEN];
-                bool isProgramFunction = (_activeFunctionData.pNextStep < (_programStorage + _progMemorySize));     // is this a program function ?
+                bool isProgramFunction = (_activeFunctionData.pNextStep < (_programStorage + _PROGRAM_MEMORY_SIZE));     // is this a program function ?
                 if (isProgramFunction) { sprintf(s, "===== Program stopped in user function %s: press ENTER to continue =====", JustinaFunctionNames[_activeFunctionData.functionIndex]); }
                 else { strcpy(s, "Press ENTER to continue"); }
                 printlnTo(0, s);
@@ -1527,7 +1475,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
                     // print line end without supplied arguments for printing: a string object does not exist yet, so create it now
                 if (doPrintLineEnd) {
-                    *pStreamPrintColumn = 0;                                                                                // to be consistent with handling of printing line end for printing to non-variable streams, but initialised to zero already 
+                    *pStreamPrintColumn = 0;                                                                                // to be consistent with handling of printing line end for printing to non-variable streams, but initialized to zero already 
                     if (cmdArgCount == 1) {                                                                                 // only receiving variable supplied: no string created yet     
                         _intermediateStringObjectCount++;
                         assembledString = new char[3]; assembledString[0] = '\r'; assembledString[1] = '\n'; assembledString[2] = '\0';
@@ -1543,7 +1491,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
                 // string stored in variable: clip to maximum length
                 if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) {
-                    _systemStringObjectCount++;//// new
+                    _systemStringObjectCount++;
                     char* clippedString = new char[MAX_ALPHA_CONST_LEN];
                     memcpy(clippedString, assembledString, MAX_ALPHA_CONST_LEN);                                            // copy the string, not the pointer
                     clippedString[MAX_ALPHA_CONST_LEN] = '\0';
@@ -1565,7 +1513,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 
                 if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) {
                     delete[] assembledString;                             // not referenced in eval. stack (clippedString is), so will not be deleted as part of cleanup
-                    _systemStringObjectCount--;//// new
+                    _systemStringObjectCount--;
                 }
             }
 
@@ -1657,6 +1605,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
         #if defined ARDUINO_ARCH_ESP32
             printlnTo(0, "\n'List files to Serial' command not available on ESP32: use other 'List Files' command instead");
         #else
+            if ((_justinaStartupOptions & SD_mask) == SD_notPresent) { return result_SD_noCardOrNotAllowed; }
             if (!_SDinitOK) { return result_SD_noCardOrCardError; }
 
             printlnTo(0, "SD card: file list is printed to Serial port");
@@ -2109,7 +2058,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execProcessedCommand(b
 // *   test for loop condition   *
 // -------------------------------
 
-Justina_interpreter::execResult_type Justina_interpreter::testForLoopCondition(bool& testFails) {
+Justina::execResult_type Justina::testForLoopCondition(bool& testFails) {
 
     char testTypeIsLong = (((OpenBlockTestData*)_pFlowCtrlStackTop)->testValueType == value_isLong);                                // loop final value and step have the initial control variable value type
     bool ctrlVarIsLong = ((*(uint8_t*)((OpenBlockTestData*)_pFlowCtrlStackTop)->pControlValueType & value_typeMask) == value_isLong);
@@ -2156,7 +2105,7 @@ Justina_interpreter::execResult_type Justina_interpreter::testForLoopCondition(b
 // *   copy command arguments or internal cpp function arguments from evaluation stack   *
 // ---------------------------------------------------------------------------------------
 
-Justina_interpreter::execResult_type Justina_interpreter::copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsNonConstantVar, bool* argIsArray, char* valueType, Val* args, bool prepareForCallback, Val* dummyArgs) {
+Justina::execResult_type Justina::copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsNonConstantVar, bool* argIsArray, char* valueType, Val* args, bool prepareForCallback, Val* dummyArgs) {
     execResult_type execResult;
 
 
@@ -2209,7 +2158,7 @@ Justina_interpreter::execResult_type Justina_interpreter::copyValueArgsFromStack
 // *   replace a system string value with a copy of a new string value   * 
 // -----------------------------------------------------------------------
 
-void Justina_interpreter::replaceSystemStringValue(char*& systemString, const char* newString) {
+void Justina::replaceSystemStringValue(char*& systemString, const char* newString) {
 
     // delete current system string (if not nullptr)
     if (systemString != nullptr) {

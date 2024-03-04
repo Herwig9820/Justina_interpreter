@@ -34,6 +34,57 @@
 #include <SD.h>
 #include <SPI.h>
 
+// if Justina constants file is found, include it
+#if defined(__has_include)
+#if __has_include ("../../Justina_constants/Justina_constants.h")
+#include "../../Justina_constants/Justina_constants.h"
+#endif
+#endif
+
+// default values in case "Justina_constants.h" is not found OR it doesn't contain a #define statement for a particular constant
+#if defined(ARDUINO_ARCH_RP2040) || defined(ARDUINO_ARCH_ESP32)
+
+#if !defined(PROGMEM_SIZE)
+#define PROGMEM_SIZE 65536      // program memory, in bytes (INCLUDING immediate mode parsed statements size). Maximum: 2^16 = 65536. Don't go lower than 2000 
+#endif
+#if !defined(MAXVAR_USER)
+#define MAXVAR_USER 255         // max. distinct user variables allowed. Absolute limit: 255
+#endif
+#if !defined(MAXVAR_PROG)
+#define MAXVAR_PROG 255         // max. program variable NAMES allowed (distinct global, static, local/parameter variables may share the same name). Absolute limit: 255
+#endif
+#if !defined(MAXVAR_STAT)
+#define MAXVAR_STAT 255         // max. distinct static variables allowed. Absolute limit: 255
+#endif
+#if !defined(MAXFUNC)
+#define MAXFUNC 255             // max. Justina functions allowed. Absolute limit: 255
+#endif
+
+#else
+
+#if !defined(PROGMEM_SIZE)
+#define PROGMEM_SIZE 4000
+#endif
+#if !defined(MAXVAR_USER)
+#define MAXVAR_USER 64
+#endif
+#if !defined(MAXVAR_PROG)
+#define MAXVAR_PROG 64
+#endif
+#if !defined(MAXVAR_STAT)
+#define MAXVAR_STAT 32
+#endif
+#if !defined(MAXFUNC)
+#define MAXFUNC 32
+#endif
+
+#endif
+
+// max. user variables allowed. Absolute limit: 255
+// max. program variable NAMES allowed (independent global, static, local/parameter variables may share the same name). Absolute limit: 255
+// max. static variable NAMES allowed (independent static variables in multiple functions may share the same name). Absolute limit: 255
+// max. Justina functions allowed. Absolute limit: 255
+
 #define J_productName "Justina: JUST an INterpreter for Arduino"
 #define J_legalCopyright "Copyright 2024, Herwig Taveirne"
 #define J_version "1.1.1"            
@@ -52,7 +103,7 @@ class LinkedList {
     // *   enumerations   *
     // --------------------
 
-    static const int listNameSize = 9;                                  // including terminating '\0'
+    static constexpr int listNameSize = 9;                              // including terminating '\0'
 
 
     // ------------------
@@ -109,12 +160,12 @@ public:
 
 
 // *****************************************************************
-// ***                class Justina_interpreter                  ***
+// ***                      class Justina                        ***
 // *****************************************************************
 
-class Breakpoints;                          // forward declaration
+class Breakpoints;                                                      // forward declaration
 
-class Justina_interpreter {
+class Justina {
     friend class Breakpoints;
 
     // --------------------
@@ -660,7 +711,8 @@ class Justina_interpreter {
         result_list_parsingError,
 
         // SD card
-        result_SD_noCardOrCardError = 3600,
+        result_SD_noCardOrNotAllowed = 3600,
+        result_SD_noCardOrCardError,
         result_SD_fileNotFound,
         result_SD_couldNotOpenFile,                                     // or file does not exist 
         result_SD_fileIsNotOpen,
@@ -719,29 +771,31 @@ class Justina_interpreter {
     // constants that may be changed freely within specific boundaries
     // ---------------------------------------------------------------
 
-    static constexpr uint16_t IMM_MEM_SIZE{ 400 };                      // size, in bytes, of user command memory (stores parsed user statements entered from the keyboard)
-    static constexpr uint16_t BP_LINE_RANGE_PROGMEM_STOR_RATIO{ 5 };    // breakpoints: source line range storage as a % of program storage 
-    static constexpr uint16_t MAX_BP_COUNT{ 10 };                       // breakpoints: maximum number of set breakpoints 
+    static constexpr uint16_t IMM_MEM_SIZE{ 300 };                              // size, in bytes, of user command memory (stores parsed user statements entered from the keyboard)
+    static constexpr uint16_t BP_LINE_RANGE_PROGMEM_STOR_RATIO{ 5 };            // breakpoints: source line range storage as a % of program storage 
+    static constexpr uint16_t MAX_BP_COUNT{ 10 };                               // breakpoints: maximum number of set breakpoints 
 
-    static constexpr int MAX_USERVARNAMES{ 255 };                       // max. user variables allowed. Absolute parser limit: 255
-    static constexpr int MAX_PROGVARNAMES{ 255 };                       // max. program variable NAMES allowed (same name may be reused for global, static, local & parameter variables). Absolute limit: 255
-    static constexpr int MAX_STAT_VARS{ 255 };                          // max. static variables allowed across all parsed functions (only). Absolute limit: 255
-    static constexpr int MAX_LOCAL_VARS{ 255 };                         // max. local variables allowed across all parsed functons, including function parameters. Absolute limit: 255
-    static constexpr int MAX_LOC_VARS_IN_FUNC{ 32 };                    // max. local and parameter variables allowed (only) in an INDIVIDUAL parsed function. Absolute limit: 255 
-    static constexpr int MAX_JUSTINA_FUNCS{ 255 };                      // max. Justina functions allowed. Absolute limit: 255
-    static constexpr int MAX_ARRAY_DIMS{ 3 };                           // max. array dimensions allowed. Absolute limit: 3 
-    static constexpr int MAX_ARRAY_ELEM{ 1000 };                        // max. elements allowed in an array. Absolute limit: 2^15-1 = 32767. Individual dimensions are limited to a size of 255
-    static constexpr int MAX_LAST_RESULT_DEPTH{ 10 };                   // max. depth of 'last results' FiFo
+    // user, program 
+    static constexpr long _PROGRAM_MEMORY_SIZE{ PROGMEM_SIZE - IMM_MEM_SIZE };  // program memory, in bytes (excluding immediate mode parsed statements size). Maximum: 65536 (2^16). Don't go lower than 2000 
+    static constexpr int MAX_USERVARNAMES{ MAXVAR_USER };                       // max. user variables allowed. Absolute parser limit: 255
+    static constexpr int MAX_PROGVARNAMES{ MAXVAR_PROG };                       // max. program variable NAMES allowed (same name may be reused for global, static, local & parameter variables). Absolute limit: 255
+    static constexpr int MAX_STATIC_VARIABLES{ MAXVAR_STAT };                   // max. static variables allowed across all parsed functions (only). Absolute limit: 255
+    static constexpr int MAX_LOCAL_VARIABLES{ 255 };                            // max. local variables allowed across all parsed functons, including function parameters. Absolute limit: 255
+    static constexpr int MAX_JUSTINA_FUNCTIONS{ MAXFUNC };                      // max. Justina functions allowed. Absolute limit: 255
+    static constexpr int MAX_LOC_VARS_IN_FUNC{ 32 };                            // max. local and parameter variables allowed (only) in an INDIVIDUAL parsed function. Absolute limit: 255 
+    static constexpr int MAX_ARRAY_DIMS{ 3 };                                   // max. array dimensions allowed. Absolute limit: 3 
+    static constexpr int MAX_ARRAY_ELEM{ 1000 };                                // max. elements allowed in an array. Absolute limit: 2^15-1 = 32767. Individual dimensions are limited to a size of 255
+    static constexpr int MAX_LAST_RESULT_DEPTH{ 10 };                           // max. depth of 'last results' FiFo
 
-    static constexpr int MAX_IDENT_NAME_LEN{ 20 };                      // max length of identifier names, excluding terminating '\0'
-    static constexpr int MAX_ALPHA_CONST_LEN{ 255 };                    // max length of character strings stored in variables, excluding terminating '\0',. Absolute limit: 255
-    static constexpr int MAX_USER_INPUT_LEN{ 100 };                     // max. length of text a user can enter with an INPUT statement. Absolute limit: 255
-    static constexpr int MAX_STATEMENT_LEN{ 300 };                      // max. length of a single user statement 
+    static constexpr int MAX_IDENT_NAME_LEN{ 20 };                              // max length of identifier names, excluding terminating '\0'
+    static constexpr int MAX_ALPHA_CONST_LEN{ 255 };                            // max length of character strings stored in variables, excluding terminating '\0',. Absolute limit: 255
+    static constexpr int MAX_USER_INPUT_LEN{ 100 };                             // max. length of text a user can enter with an INPUT statement. Absolute limit: 255
+    static constexpr int MAX_STATEMENT_LEN{ 300 };                              // max. length of a single user statement 
 
-    static constexpr int MAX_OPEN_SD_FILES{ 5 };                        // SD card: max. concurrent open files
+    static constexpr int MAX_OPEN_SD_FILES{ 5 };                                // SD card: max. concurrent open files
 
-    static constexpr long LONG_WAIT_FOR_CHAR_TIMEOUT{ 10000 };          // milli seconds
-    static constexpr long DEFAULT_READ_TIMEOUT{ 500 };                  // milliseconds
+    static constexpr long LONG_WAIT_FOR_CHAR_TIMEOUT{ 10000 };                  // milliseconds
+    static constexpr long DEFAULT_READ_TIMEOUT{ 500 };                          // milliseconds
 
     // ------------------------------------------------------------------------------------------------------
     // constants that should NOT be changed without carefully examining the impact on the Justina application
@@ -753,13 +807,17 @@ class Justina_interpreter {
 
 
     // maximum values
-    const int MIN_CONSOLE_PRINT_WIDTH = 20;                             // min. width of console line. Width as in c++ printf 'format.width' sub-specifier
-    const int MAX_CONSOLE_PRINT_WIDTH = 255;                            // min. width of console line. Width as in c++ printf 'format.width' sub-specifier
+    static inline const int MIN_CONSOLE_PRINT_WIDTH = 20;               // min. width of console line. Width as in c++ printf 'format.width' sub-specifier
+    static inline const int MAX_CONSOLE_PRINT_WIDTH = 255;              // min. width of console line. Width as in c++ printf 'format.width' sub-specifier
 
-    const int MAX_PRINT_WIDTH = 255;                                    // max. width of print field. Absolute limit: 255. Width as in c++ printf 'format.width' sub-specifier
-    const int MAX_INT_PRECISION = 10;                                   // max. integer precision (2**31: 10 digits). Precision as defined as in c++ printf 'format.precision' sub-specifier for integers
-    const int MAX_FLOAT_PRECISION = 8;                                  // max. floating-point precision. Precision as defined as in c++ printf 'format.precision' sub-specifier for floating-point numbers
-    const int MAX_STRCHAR_TO_PRINT = 255;                               // max. # of alphanumeric characters to print. Absolute limit: 255. Defined as in c++ printf 'format.precision' sub-specifier
+    static inline const int MAX_PRINT_WIDTH = 255;                      // max. width of print field. Absolute limit: 255. Width as in c++ printf 'format.width' sub-specifier
+    static inline const int MAX_INT_PRECISION = 10;                     // max. integer precision (2**31: 10 digits). Precision as defined as in c++ printf 'format.precision' sub-specifier for integers
+    static inline const int MAX_FLOAT_PRECISION = 8;                    // max. floating-point precision. Precision as defined as in c++ printf 'format.precision' sub-specifier for floating-point numbers
+    static inline const int MAX_STRCHAR_TO_PRINT = 255;                 // max. # of alphanumeric characters to print. Absolute limit: 255. Defined as in c++ printf 'format.precision' sub-specifier
+
+    static inline const char DEFAULT_FLOAT_SPECIFIER[2]{ "f" };         // default specifier for floating point numbers. Arduino doesn't recognise uppercase "F"
+    static inline const char DEFAULT_INT_SPECIFIER[2]{ "d" };           // default specifier for integers 
+    static inline const char DEFAULT_STR_SPECIFIER[2]{ "s" };           // default specifier for integers 
 
     // separate defaults for display settings and fmt() function
     static constexpr int DEFAULT_DISP_WIDTH{ 50 };                      // display setting      : default width of the print field 
@@ -769,10 +827,6 @@ class Justina_interpreter {
     static constexpr int DEFAULT_FLOAT_PRECISION{ 2 };                  // default precision for floating point numbers
     static constexpr int DEFAULT_INT_PRECISION{ 1 };                    // default 'minimum digits to print' for integers 
     static constexpr int DEFAULT_STR_CHARS_TO_PRINT{ DEFAULT_DISP_WIDTH };  // default # alphanumeric characters to print
-
-    const char DEFAULT_FLOAT_SPECIFIER[2]{ "f" };                       // default specifier for floating point numbers. Arduino doesn't recognise uppercase "F"
-    const char DEFAULT_INT_SPECIFIER[2]{ "d" };                         // default specifier for integers 
-    const char DEFAULT_STR_SPECIFIER[2]{ "s" };                         // default specifier for integers 
 
     static constexpr int DEFAULT_FLOAT_FLAGS{ 0X08 };                   // default for floating point numbers: always print decimal point
     static constexpr int DEFAULT_INT_FLAGS{ 0X00 };                     // default for integers: no flags
@@ -886,26 +940,6 @@ class Justina_interpreter {
     // commands (FUNCTION, FOR, ...): allowed command parameters for commands with a specific key (parsing)
     // ----------------------------------------------------------------------------------------------------
 
-    // these keys group together commands with the same number / type of parameters
-    static const char cmdPar_100[4];
-    static const char cmdPar_101[4];
-    static const char cmdPar_102[4];
-    static const char cmdPar_103[4];
-    static const char cmdPar_104[4];
-    static const char cmdPar_105[4];
-    static const char cmdPar_106[4];
-    static const char cmdPar_107[4];
-    static const char cmdPar_108[4];
-    static const char cmdPar_109[4];
-    static const char cmdPar_110[4];
-    static const char cmdPar_111[4];
-    static const char cmdPar_112[4];
-    static const char cmdPar_113[4];
-    static const char cmdPar_114[4];
-    static const char cmdPar_115[4];
-    static const char cmdPar_116[4];
-    static const char cmdPar_117[4];
-
     // commands parameters: number / type of parameters allowed for a group of commands
     static constexpr uint8_t cmdPar_none = 0;
     static constexpr uint8_t cmdPar_resWord = 1;                        // note: currently, reserved words are not used as command parameters, instead they start a command
@@ -921,6 +955,29 @@ class Justina_interpreter {
     static constexpr uint8_t cmdPar_multipleFlag = 0x08;                // allowed 0 to n times. Only for last command parameter
     static constexpr uint8_t cmdPar_optionalFlag = 0x10;                // allowed 0 to 1 times. If parameter is present, next parameters do not have to be optional 
 
+    // keys for grouping together commands with the same number / type of parameters
+
+    // command parameter spec name          param type and flags                           param type and flags                            param type and flags                             param type and flags
+    // ---------------------------          --------------------                           --------------------                            --------------------                             --------------------
+    static inline const char cmdPar_100[4]{ cmdPar_ident | cmdPar_multipleFlag,            cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
+    static inline const char cmdPar_101[4]{ cmdPar_ident,                                  cmdPar_expression | cmdPar_multipleFlag,         cmdPar_none,                                    cmdPar_none };
+    static inline const char cmdPar_102[4]{ cmdPar_none,                                   cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
+    static inline const char cmdPar_103[4]{ cmdPar_ident,                                  cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
+    static inline const char cmdPar_104[4]{ cmdPar_expression,                             cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
+    static inline const char cmdPar_105[4]{ cmdPar_expression,                             cmdPar_expression,                               cmdPar_none,                                    cmdPar_none };
+    static inline const char cmdPar_106[4]{ cmdPar_expression | cmdPar_optionalFlag,       cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
+    static inline const char cmdPar_107[4]{ cmdPar_expression | cmdPar_multipleFlag,       cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
+    static inline const char cmdPar_108[4]{ cmdPar_JustinaFunction,                        cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
+    static inline const char cmdPar_109[4]{ cmdPar_varOptAssignment,                       cmdPar_expression,                               cmdPar_expression | cmdPar_optionalFlag,        cmdPar_none };
+    static inline const char cmdPar_110[4]{ cmdPar_ident,                                  cmdPar_ident | cmdPar_multipleFlag,              cmdPar_none,                                    cmdPar_none };
+    static inline const char cmdPar_111[4]{ cmdPar_varOptAssignment,                       cmdPar_varOptAssignment | cmdPar_multipleFlag,   cmdPar_none,                                    cmdPar_none };
+    static inline const char cmdPar_112[4]{ cmdPar_expression,                             cmdPar_expression | cmdPar_multipleFlag,         cmdPar_none,                                    cmdPar_none };
+    static inline const char cmdPar_113[4]{ cmdPar_expression,                             cmdPar_varOptAssignment,                         cmdPar_varOptAssignment,                        cmdPar_none };
+    static inline const char cmdPar_114[4]{ cmdPar_expression,                             cmdPar_varOptAssignment | cmdPar_optionalFlag,   cmdPar_none,                                    cmdPar_none };
+    static inline const char cmdPar_115[4]{ cmdPar_expression,                             cmdPar_expression | cmdPar_optionalFlag,         cmdPar_none,                                    cmdPar_none };
+    static inline const char cmdPar_116[4]{ cmdPar_expression,                             cmdPar_expression,                               cmdPar_expression | cmdPar_multipleFlag,        cmdPar_none };
+    static inline const char cmdPar_117[4]{ cmdPar_expression,                             cmdPar_expression,                               cmdPar_expression | cmdPar_optionalFlag,        cmdPar_none };
+
 
     // commands (FUNCTION, FOR, ...): usage restrictions for specific commands (parsing)
     // ---------------------------------------------------------------------------------
@@ -929,8 +986,8 @@ class Justina_interpreter {
     static constexpr char cmd_usageRestrictionMask = 0x0F;              // mask
 
     static constexpr char cmd_noRestrictions = 0x00;                    // command has no usage restrictions 
-    static constexpr char cmd_onlyInProgram = 0x01;                     // command is only allowed insde a program
-    static constexpr char cmd_onlyInProgOutsideFunc = 0x02;             // command is only allowed insde a program
+    static constexpr char cmd_onlyInProgram = 0x01;                     // command is only allowed inside a program
+    static constexpr char cmd_onlyInProgOutsideFunc = 0x02;             // command is only allowed inside a program
     static constexpr char cmd_onlyInFunctionBlock = 0x03;               // command is only allowed inside a function block
     static constexpr char cmd_onlyImmediate = 0x04;                     // command is only allowed in immediate mode
     static constexpr char cmd_onlyOutsideFunctionBlock = 0x05;          // command is only allowed outside a function block (so also in immediate mode)
@@ -970,7 +1027,7 @@ class Justina_interpreter {
     // bit 0 (maintain in token only): 'forced function variable in debug mode' (for pretty printing only)
     static constexpr uint8_t var_isForcedFunctionVar = 1;
 
-    // bits b210: value type 
+    // bits b10: value type 
     // - PARSED constants: value type bits are maintained in the 'constant' token (but not in same bit positions)
     // - INTERMEDIATE constants (execution only) and variables: value type is maintained together with variable / intermediate constant data (per variable, array or constant) 
     // Note: because the value type is not fixed for scalar variables (type can dynamically change at runtime), this info is not maintained in the parsed 'variable' token 
@@ -1004,7 +1061,7 @@ public:
     // bits 7-4: spare
 
     // bits 11-8: 4 flags signaling specific caller status conditions to Justina
-    static constexpr long appFlag_requestMask = 0x0f00;                 // mask for rezquest bits
+    static constexpr long appFlag_requestMask = 0x0f00;                 // mask for request bits
     static constexpr long appFlag_consoleRequestBit = 0x0100L;          // request to reset console to default
     static constexpr long appFlag_killRequestBit = 0x0200L;             // request to kill Justina
     static constexpr long appFlag_stopRequestBit = 0x0400L;             // request to stop a running Justina program
@@ -1012,7 +1069,7 @@ public:
 
     // bits 15-12: spare
 
-    // bits 19-16: bitmask for flags signaling that Justina READ data from external IO stream -1 to -4
+    // bits 19-16: bit mask for flags signaling that Justina READ data from external IO stream -1 to -4
     static constexpr long appFlag_dataRecdFromStreamMask = 0x000f0000;
 
     static constexpr long appFlag_dataRecdFromStream1 = 0x00010000;     // Justina READ data from external IO stream - 1
@@ -1023,6 +1080,16 @@ public:
     // bits 31-20: spare
 private:
 
+
+    // Justina startup options
+    // -----------------------
+    static constexpr long SD_mask = 0x3;                                // bits 1-0
+public:
+    static constexpr long SD_notPresent = 0x0;                          // card reader not present or card operations not allowed (this is the default)
+    static constexpr long SD_present = 0x1;                             // card reader present but do not initialize card (maybe no card inserted)
+    static constexpr long SD_init = 0x2;                                // init SD card upon Justina begin() 
+    static constexpr long SD_runStart = 0x3;                            // init SD card upon Justina begin(); load program "start.jus(); execute start() 
+private:
 
     // system callbacks: time interval
     // -------------------------------
@@ -1066,19 +1133,19 @@ private:
     // -------
 
 #if defined ARDUINO_ARCH_ESP32
-    static const char READ_FILE{ 0x01 };                    // aligned with Arduino (non-ESP32) SD library constants
-    static const char WRITE_FILE{ 0x02 };
-    static const char APPEND_FILE{ 0x04 };
-    static const char CREATE_FILE{ 0x10 };
-    static const char EXCL_FILE{ 0x20 };
-    static const char TRUNC_FILE{ 0x00 };                  // zero: will do nothing (no function with ESP2 SDlibrary)
+    static constexpr char READ_FILE{ 0x01 };                            // aligned with Arduino (non-ESP32) SD library constants
+    static constexpr char WRITE_FILE{ 0x02 };
+    static constexpr char APPEND_FILE{ 0x04 };
+    static constexpr char CREATE_FILE{ 0x10 };
+    static constexpr char EXCL_FILE{ 0x20 };
+    static constexpr char TRUNC_FILE{ 0x00 };                           // zero: will do nothing (no function with ESP2 SDlibrary)
 #else
-    static const char READ_FILE{ O_READ };                    // Arduino SD library constants                
-    static const char WRITE_FILE{ O_WRITE };
-    static const char APPEND_FILE{ O_APPEND };
-    static const char CREATE_FILE{ O_CREAT };
-    static const char EXCL_FILE{ O_EXCL };
-    static const char TRUNC_FILE{ O_TRUNC };
+    static constexpr char READ_FILE{ O_READ };                          // Arduino SD library constants                
+    static constexpr char WRITE_FILE{ O_WRITE };
+    static constexpr char APPEND_FILE{ O_APPEND };
+    static constexpr char CREATE_FILE{ O_CREAT };
+    static constexpr char EXCL_FILE{ O_EXCL };
+    static constexpr char TRUNC_FILE{ O_TRUNC };
 #endif
 
 
@@ -1104,13 +1171,13 @@ private:
         char toTokenStep[2];                                            // tokens for block commands (IF, FOR, BREAK, END, ...): step number of 'block start' token or next block token (uint16_t)
     };
 
-    struct TokenIsConstant {                                            // token storage for a numeric constant token: length 5
+    struct TokenIsConstant {                                            // token storage for a constant token: length 5
         char tokenType;                                                 // will be set to specific token type
         CstValue cstValue;
     };
 
     // NOTE: tokenType and cstValue members in same order as in TokenIsConstant struct 
-    struct TokenIsSymbolicConstant {                                    // token storage for a numeric constant token: length 5
+    struct TokenIsSymbolicConstant {                                    // token storage for a SYMBOLIC (PREDEFINED) constant token: length 5
         char tokenType;                                                 // will be set to specific token type
         CstValue cstValue;
         char nameIndex;                                                 // index into table with predefined symbolic constants
@@ -1168,7 +1235,7 @@ private:
     };
 
     struct ResWordDef {                                                 // keywords with pattern for parameters (if keyword is used as command, starting an instruction)
-        const char* _resWordName;
+        const char* const _resWordName;
         const char resWordCode;
         const char restrictions;                                        // specifies where he use of a keyword is allowed (in a program, in a function, ...)
         const char minArgs;                                             // minimum & maximum number of arguments AND padding (boundary alignment)                                     
@@ -1229,10 +1296,11 @@ private:
     static const InternCppFuncDef _internCppFunctions[139];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
     static const SymbNumConsts _symbNumConsts[76];                                                                              // predefined constants
-    static const int _resWordCount{ sizeof(_resWords) / sizeof(_resWords[0]) };                                                 // count of keywords in keyword table 
-    static const int _internCppFunctionCount{ (sizeof(_internCppFunctions)) / sizeof(_internCppFunctions[0]) };                 // count of internal cpp functions in functions table
-    static const int _termTokenCount{ sizeof(_terminals) / sizeof(_terminals[0]) };                                             // count of operators and other terminals in terminals table
-    static const int _symbvalueCount{ sizeof(_symbNumConsts) / sizeof(_symbNumConsts[0]) };
+
+    static constexpr int _resWordCount{ sizeof(_resWords) / sizeof(_resWords[0]) };                                             // count of keywords in keyword table 
+    static constexpr int _internCppFunctionCount{ (sizeof(_internCppFunctions)) / sizeof(_internCppFunctions[0]) };             // count of internal cpp functions in functions table
+    static constexpr int _termTokenCount{ sizeof(_terminals) / sizeof(_terminals[0]) };                                         // count of operators and other terminals in terminals table
+    static constexpr int _symbvalueCount{ sizeof(_symbNumConsts) / sizeof(_symbNumConsts[0]) };
 
 
     // ------------------------------
@@ -1502,10 +1570,8 @@ private:
     // --------------
 
     bool _constructorInvoked{};
-    bool _coldStart{};                                              // is this a cold start (initialising Justina) or a warm start (if Justina was stopped ('quit' command) with its memory retained)
-    int _justinaConstraints{ 0 };                                   // 0 = no card reader, 1 = card reader present, do not yet initialise, 2 = initialise card now, 3 = init card & run start.jus function start() now
-    char* _programStorage{ nullptr };                               // pointer to start of program storage
-    long _progMemorySize{};                                         // depends on processor
+    bool _coldStart{};                                              // is this a cold start (first call to Justina begin() method after Justina object creation) ? (this is unrelated to memory clear on quitting)
+    int _justinaStartupOptions{ 0 };                                // see constants SD_notPresent, SD_present, SD_init, SD_runStart
     char _programName[MAX_IDENT_NAME_LEN + 1];
     char* _lastProgramStep{ nullptr };
     char* _lastUserCmdStep{ nullptr };                              // location in Justine imm. mode program memory where final 'tok_no_token' token is placed
@@ -1561,9 +1627,11 @@ private:
     bool _lvl0_isPureVariable;                                      // the variable token just parsed is the first token of a (sub-) expression (or the second token but only if preceded by a prefix incr/decr token)
     bool _lvl0_isVarWithAssignment;                                 // operator just parsed is a (compound or pure) assignment operator, preceded by a 'pure' variable (see preceding line)
 
-    int _initVarOrParWithUnaryOp;                                   // commands declaring variables or functin parameters: initialiser unary operators only: -1 = minus, 1 = plus, 0 = no unary op 
+    int _initVarOrParWithUnaryOp;                                   // commands declaring variables or function parameters: initializer unary operators only: -1 = minus, 1 = plus, 0 = no unary op 
 
-    const char* _pCmdAllowedParTypes;                               // allowed parameter types for a command (variables with optional assignment, any expression, generic identifier only,...)  
+    // allowed parameter types for a command (variables with optional assignment, any expression, generic identifier only,...)  
+    const char* _pCmdAllowedParTypes;                               // (the pointer itself is not constant)
+
     int _cmdParSpecColumn{ 0 };
     int _cmdArgNo{ 0 };                                             // argument number within a command
 
@@ -1624,7 +1692,7 @@ private:
 
     int _lastValuesCount{ 0 };                                      // number of values in 'last values' (last results) buffer
     bool _lastValueIsStored = false;
-    bool _keepInMemory{ true };                                     // when quitting, keep Justina in memory
+    bool _keepObjectsInMemory{ true };                              // when quitting, keep Justina in memory
     bool _lastPrintedIsPrompt{ false };                             // was the last thing printed a prompt ?
 
     LinkedList evalStack;                                           // evaluation stack keeps intermediate results of an expression being evaluated (execution phase)
@@ -1657,7 +1725,7 @@ private:
     char* _pParsedCommandLineStackTop{ nullptr };
     int _openDebugLevels{ 0 };                                      // number of stopped programs: equals parsed command line stack depth minus open eval() strings (= eval() strings being executed)
 
-    char _semicolonBPallowed_token{}, _semicolonBPset_token{};      // will be initialised when Justina starts up
+    char _semicolonBPallowed_token{}, _semicolonBPset_token{};      // will be initialized when Justina starts up
 
 
     // console settings and output and print commands
@@ -1676,7 +1744,7 @@ private:
     int _dispFloatPrecision = DEFAULT_FLOAT_PRECISION;
     int _dispIntegerPrecision = DEFAULT_INT_PRECISION;
 
-    char _dispFloatSpecifier[2]{ "" };                                              // will be initialised in Justina constructor 
+    char _dispFloatSpecifier[2]{ "" };                                              // will be initialized in Justina constructor 
     char _dispIntegerSpecifier[2]{ "" };
     char _dispStringSpecifier[2]{ "" };
 
@@ -1699,7 +1767,7 @@ private:
     int _fmt_numPrecision = DEFAULT_FLOAT_PRECISION;                                // all numeric types
     int _fmt_strCharsToPrint = DEFAULT_STR_CHARS_TO_PRINT;                          // string type
 
-    char _fmt_numSpecifier[2]{ "" };                                                // will be initialised in Justina constructor                                              
+    char _fmt_numSpecifier[2]{ "" };                                                // will be initialized in Justina constructor                                              
     char _fmt_stringSpecifier[2]{ "" };
 
     int _fmt_numFmtFlags = DEFAULT_FLOAT_FLAGS;
@@ -1741,7 +1809,7 @@ private:
 
 
     // counting of heap objects
-    // notes: heap objects created / destroyed in (de-)constructors are not counted 
+    // notes: heap objects created / destroyed in destructors are not counted 
     //        linked list element count is maintained within the linked list objects
     // -----------------------------------------------------------------------------
 
@@ -1816,8 +1884,11 @@ private:
     bool _SDinitOK = false;
 
 
-    // Justina variable storage
-    // ------------------------
+    // Justina program and variable storage
+    // ------------------------------------
+
+    // program storage
+    char _programStorage [_PROGRAM_MEMORY_SIZE + IMM_MEM_SIZE];
 
     // variable scope: global (program variables and user variables), local within function (including function parameters), static within function     
 
@@ -1855,20 +1926,20 @@ private:
     char globalVarType[MAX_PROGVARNAMES]{ 0 };                      // stores value type (float, pointer to string) and 'is array' flag
 
     // static variable value storage
-    Val staticVarValues[MAX_STAT_VARS];                             // store static variable values (float, pointer to string, pointer to array of floats) 
-    char staticVarType[MAX_STAT_VARS]{ 0 };                         // stores value type (float, pointer to string) and 'is array' flag
-    char staticVarNameRef[MAX_STAT_VARS]{ 0 };                      // used while in DEBUGGING mode only: index of static variable NAME
-
-    // local variable value storage
-    char localVarNameRef[MAX_LOCAL_VARS]{ 0 };                       // used while in DEBUGGING mode only: index of local variable NAME
-
-    // temporary local variable stoarage during function parsing (without values)
-    char localVarType[MAX_LOC_VARS_IN_FUNC]{ 0 };                   // parameter, local variables: temporarily maintains array flag during function parsing (storage reused by functions during parsing)
-    char localVarDims[MAX_LOC_VARS_IN_FUNC][4]{ 0 };                // LOCAL variables: temporarily maintains dimensions during function parsing (storage reused by functions during parsing)
+    Val staticVarValues[MAX_STATIC_VARIABLES];                      // store static variable values (float, pointer to string, pointer to array of floats) 
+    char staticVarType[MAX_STATIC_VARIABLES]{ 0 };                  // stores value type (float, pointer to string) and 'is array' flag
+    char staticVarNameRef[MAX_STATIC_VARIABLES]{ 0 };               // used while in DEBUGGING mode only: index of static variable NAME
 
     // function key data storage
-    char* JustinaFunctionNames[MAX_JUSTINA_FUNCS];
-    JustinaFunctionData justinaFunctionData[MAX_JUSTINA_FUNCS];
+    char* JustinaFunctionNames[MAX_JUSTINA_FUNCTIONS];
+    JustinaFunctionData justinaFunctionData[MAX_JUSTINA_FUNCTIONS];
+
+    // local variable value storage
+    char localVarNameRef[MAX_LOCAL_VARIABLES]{ 0 };                 // used while in DEBUGGING mode only: index of local variable NAME
+
+    // temporary local variable storage during function parsing (without values)
+    char localVarType[MAX_LOC_VARS_IN_FUNC]{ 0 };                   // parameter, local variables: temporarily maintains array flag during function parsing (storage reused by functions during parsing)
+    char localVarDims[MAX_LOC_VARS_IN_FUNC][4]{ 0 };                // LOCAL variables: temporarily maintains dimensions during function parsing (storage reused by functions during parsing)
 
     // storage for last evaluation results
     Val lastResultValueFiFo[MAX_LAST_RESULT_DEPTH];
@@ -1879,15 +1950,15 @@ private:
     // ------------------------------------
 
 public:
-    // (de-) constructor
-    // -----------------
+    // constructor/ destructor
+    // -----------------------
 
 #if defined ARDUINO_ARCH_ESP32
-    Justina_interpreter(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, long progMemSize, int SDcardConstraints = 0, int SDcardChipSelectPin = 10);
+    Justina(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, int JustinaStartupOptions = 0, int SDcardChipSelectPin = 10);
 #else
-    Justina_interpreter(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, long progMemSize, int SDcardConstraints = 0, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);
+    Justina(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, int JustinaStartupOptions = 0, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);
 #endif
-    ~Justina_interpreter();
+    ~Justina();
 
 
     // set pointer to system (main) call back function
@@ -2054,11 +2125,11 @@ private:
     void  terminateJustinaFunction(bool addZeroReturnValue = false);
     void  terminateEval();
 
-    // Justina functions: initialise parameter variables with provided arguments (pass by reference)
+    // Justina functions: initialize parameter variables with provided arguments (pass by reference)
     void initFunctionParamVarWithSuppliedArg(int suppliedArgCount, LE_evalStack*& pFirstArgStackLvl);
-    // Justina functions: initialise parameter variables with default values
+    // Justina functions: initialize parameter variables with default values
     void initFunctionDefaultParamVariables(char*& calledFunctionTokenStep, int suppliedArgCount, int paramCount);
-    // Justina functions: initialise other local variables 
+    // Justina functions: initialize other local variables 
     void initFunctionLocalNonParamVariables(char* calledFunctionTokenStep, int paramCount, int localVarCount);
 
     // when the 'end' keyword of a for..end loop is encountered, test the control variable value against the final loop value 
@@ -2086,7 +2157,7 @@ private:
     void* fetchVarBaseAddress(TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& sourceVarScopeAndFlags);
 
     // replace array variable base address and subscripts with the array element address on the evaluation stack
-    Justina_interpreter::execResult_type arrayAndSubscriptsToarrayElement(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount);
+    Justina::execResult_type arrayAndSubscriptsToarrayElement(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount);
     void* arrayElemAddress(void* varBaseAddress, int* dims);        // fetch the address of an array element
 
     // clear execution stacks
@@ -2186,9 +2257,9 @@ private:
 // ******************************************************************
 
 class Breakpoints {
-    friend class Justina_interpreter;
+    friend class Justina;
 
-    Justina_interpreter* _pJustina;
+    Justina* _pJustina;
 
     struct BreakpointData {
         char BPenabled : 1;                             // breakpoint is enabled (program will halt)
@@ -2213,29 +2284,28 @@ class Breakpoints {
     BreakpointData* _pBreakpointData{ nullptr };
 
     // methods
-    Breakpoints(Justina_interpreter* pJustina, long lineRanges_memorySize, long maxBreakpointCount);
+    Breakpoints(Justina* pJustina, long lineRanges_memorySize, long maxBreakpointCount);
     ~Breakpoints();
 
     void resetBreakpointsState();
 
     // after program parsing
-    Justina_interpreter::parsingResult_type collectSourceLineRangePairs(const char semiColonBPallowed_token, bool& parsedStatementStartsOnNewLine, bool& parsedStatementStartLinesAdjacent,
+    Justina::parsingResult_type collectSourceLineRangePairs(const char semiColonBPallowed_token, bool& parsedStatementStartsOnNewLine, bool& parsedStatementStartLinesAdjacent,
         long statementStartsAtLine, long& parsedStatementStartsAtLine, long& BPstartLine, long& BPendLine, long& BPpreviousEndLine);
-    Justina_interpreter::parsingResult_type addOneSourceLineRangePair(long gapLineRange, long adjacentLineRange);
+    Justina::parsingResult_type addOneSourceLineRangePair(long gapLineRange, long adjacentLineRange);
 
     // maintaining breakpoints
-    Justina_interpreter::execResult_type maintainBP(long breakpointLine, char actionCmdCode, int extraAttribCount = 0, const char* viewString = nullptr, long hitCount = 0, const char* triggerString = nullptr);
-    Justina_interpreter::execResult_type findParsedStatementForSourceLine(long sourceLine, char*& pProgramStep);
+    Justina::execResult_type maintainBP(long breakpointLine, char actionCmdCode, int extraAttribCount = 0, const char* viewString = nullptr, long hitCount = 0, const char* triggerString = nullptr);
+    Justina::execResult_type findParsedStatementForSourceLine(long sourceLine, char*& pProgramStep);
 
     long BPsourceLineFromToBPlineSequence(long BPsourceLineOrIndex, bool toIndex = true);
-    Justina_interpreter::execResult_type progMem_getSetClearBP(long lineSequenceNum, char*& pProgramStep, bool& BPwasSet, bool doSet = false, bool doClear = false);
-    Justina_interpreter::execResult_type maintainBreakpointTable(long sourceLine, char* pProgramStep, bool BPwasSet, bool doSet, bool doClear, bool doEnable, bool doDisable,
+    Justina::execResult_type progMem_getSetClearBP(long lineSequenceNum, char*& pProgramStep, bool& BPwasSet, bool doSet = false, bool doClear = false);
+    Justina::execResult_type maintainBreakpointTable(long sourceLine, char* pProgramStep, bool BPwasSet, bool doSet, bool doClear, bool doEnable, bool doDisable,
         int extraAttribCount, const char* viewString, long hitCount, const char* triggerString);
     BreakpointData* findBPtableRow(char* pParsedStatement, int& row);
     long findLineNumberForBPstatement(char* pProgramStepToFind);
     void  printBreakpoints();
     void printLineRangesToDebugOut(Stream* output);
 };
-
 
 #endif

@@ -29,7 +29,7 @@
 
 
 // *****************************************************************
-// ***        class Justina_interpreter - implementation         ***
+// ***        class Justina - implementation         ***
 // *****************************************************************
 
 
@@ -41,7 +41,7 @@
 // during parsing, preliminary checks have been done already: minimum, maximum number of arguments allowed for the function and, for each argument supplied, whether a single value or an array is expected as argument
 // the expression list as a whole is put between parentheses (in contrast to command arguments)
 
-Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount, bool& forcedStopRequest, bool& forcedAbortRequest) {
+Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount, bool& forcedStopRequest, bool& forcedAbortRequest) {
 
     // this procedure is called when the closing parenthesis of an internal Justina function is encountered.
     // all internal Justina functions use the same standard mechanism (with exception of the eval() function):
@@ -148,6 +148,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
         case fnccod_fileNumber:                                                                                             // return filenumber for given filename; return 0 if not open
         {
             // checks
+            if ((_justinaStartupOptions & SD_mask) == SD_notPresent) { return result_SD_noCardOrNotAllowed; }
             if (!_SDinitOK) { return result_SD_noCardOrCardError; }
             if (!(argIsStringBits & (0x1 << 0))) { return result_arg_stringExpected; }                                      // file path
             char* filePath = args[0].pStringConst;
@@ -160,7 +161,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             int len = strlen(filePath);
             char* filePathWithSlash = filePath;                                                                             // init
             if (filePath[0] != '/') {                                                                                       // starting '/' missing)
-                _systemStringObjectCount++;//// new
+                _systemStringObjectCount++;
                 filePathWithSlash = new char[1 + len + 1];                                                                  // include space for starting '/' and ending '\0'
                 filePathWithSlash[0] = '/';
                 strcpy(filePathWithSlash + 1, filePath);                                                                    // copy original string
@@ -173,7 +174,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
                 fcnResult.longConst = fileExists;
                 if (filePathWithSlash != filePath) {
                     delete[] filePathWithSlash;           // compare pointers (if not equal, then one char* is new and must be deleted)
-                    _systemStringObjectCount--;//// new
+                    _systemStringObjectCount--;
                 }
                 break;
             }
@@ -208,7 +209,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
 
             if (filePathWithSlash != filePath) {
                 delete[] filePathWithSlash;             // compare pointers (if not equal, then one char* is new and must be deleted)
-                _systemStringObjectCount--;//// new
+                _systemStringObjectCount--;
             }
         }
         break;
@@ -728,7 +729,7 @@ Justina_interpreter::execResult_type Justina_interpreter::execInternalCppFunctio
             // -------------------------------------------------------------------------
 
             // second argument, ... last argument
-            for (int argIndex = firstArgIndex; argIndex < suppliedArgCount; ++argIndex, stringObjectCreated = false) {      //initialise 'stringObjectCreated' to false after each loop
+            for (int argIndex = firstArgIndex; argIndex < suppliedArgCount; ++argIndex, stringObjectCreated = false) {      //initialize 'stringObjectCreated' to false after each loop
 
                 // move to the first non-space character of next token 
                 while (pNext[0] == ' ') { pNext++; }                                                                        // skip leading spaces
