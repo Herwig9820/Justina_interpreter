@@ -1,5 +1,5 @@
 /************************************************************************************************************
-*    Sample program, demonstrating how to launch the Justina interpreter.                                   *
+*    Justina interpreter library                                                                            *
 *                                                                                                           *
 *    Copyright 2024, Herwig Taveirne                                                                        *
 *                                                                                                           *
@@ -22,43 +22,34 @@
 *                                                                                                           *
 ************************************************************************************************************/
 
-#include "Justina.h"
+#ifndef _JUSTINA_CONSTANTS_h
+#define _JUSTINA_CONSTANTS_h
 
-// define between 1 and 4 alternative input streams and alternative output streams. 
-// the first stream will function as the default Justina console.
-constexpr int terminalCount{ 1 };       // number of streams defined
-Stream* pAltInput[1]{ &Serial };        // Justina input streams                                                  
-Print* pAltOutput[1]{ &Serial };        // Justina output streams                                                     
+/*
+By default, Justina sets the size of specific memory areas taking into account the available RAM of the Arduino board used.
+- On ESP32 and RP2040 boards, program memory size is set to 65536 bytes (which is the absolute maximum). 
+  The maximum number of user variables, program variable NAMES (distinct global, local and static variables may share the same name), static variables...
+  ...and functions defined in a Justina program is set to 255 (which is the absolute maximum).
+- On SAMD boards, which have less RAM memory, program memory size is set to 4000. Maximum number of user variables is set to 64, ...
+  ...program variable NAMES: 64, static variables: 32, user functions: 32.
+
+Depending on your specific requirements, these sizes can be increased or decreased. For instance, if you use quite big arrays, consuming a lot of memory,...
+...it could be useful to decrease the program memory size.
+ 
+
+To change allocated memory sizes WITHOUT CHANGING ANY OF THE FILES IN THE JUSTINA LIBRARY:
+- in the Arduino IDE, look  up the sketchbook location (File -> Preferences -> Settings)
+- within the sketchbook folder, locate the folder 'libraries' (this is the folder containing the Justina library and probably many others)
+- within folder 'libraries', create a folder named "Justina_constants" 
+- store this "Justina_constants.h" file in folder "Justina_constants"
+- adapt the values in the #define directives
+*/
 
 
-// define the size of program memory in bytes, which depends on the available RAM 
-#if defined(ARDUINO_ARCH_RP2040) || defined(ARDUINO_ARCH_ESP32)
-long progMemSize = 1 << 16;             // for ESP32 and RP2040, the maximum size is 64 kByte
-#else
-long progMemSize = 2000;
+#define PROGMEM_SIZE 2000		// program memory size, in bytes. Maximum: 2^16 = 65536. Don't go lower than 2000
+#define MAXVAR_USER 7           // max. distinct user variables allowed. Absolute limit: 255
+#define MAXVAR_PROG 10          // max. program variable NAMES allowed (distinct global, static, local/parameter variables may share the same name). Absolute limit: 255
+#define MAXVAR_STAT 10          // max. distinct static variables allowed. Absolute limit: 255
+#define MAXFUNC 10              // max. Justina functions allowed. Absolute limit: 255
+
 #endif
-
-// create Justina_interpreter object
-// the last argument (0) indicates (among others) that an SD card is not present 
-Justina_interpreter justina(pAltInput, pAltOutput, terminalCount, progMemSize, 0);
-
-
-// -------------------------------
-// *   Arduino setup() routine   *
-// -------------------------------
-
-void setup() {
-    Serial.begin(115200);
-    delay(5000);
-
-    justina.begin();                          // run interpreter (control will stay there until you quit Justina)
-}
-
-
-// ------------------------------
-// *   Arduino loop() routine   *
-// ------------------------------
-
-void loop() {
-    // empty loop()
-}

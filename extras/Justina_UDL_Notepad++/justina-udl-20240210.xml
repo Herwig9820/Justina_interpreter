@@ -1,0 +1,64 @@
+<NotepadPlus>
+    <UserLang name="Justina" ext="jus" udlVersion="2.1">
+        <Settings>
+            <Global caseIgnored="no" allowFoldOfComments="yes" foldCompact="no" forcePureLC="0" decimalSeparator="0" />
+            <Prefix Keywords1="no" Keywords2="no" Keywords3="no" Keywords4="no" Keywords5="yes" Keywords6="no" Keywords7="no" Keywords8="no" />
+        </Settings>
+        <KeywordLists>
+            <Keywords name="Comments">00// 01 02 03/* 04*/</Keywords>
+            <Keywords name="Numbers, prefix1">0b</Keywords>
+            <Keywords name="Numbers, prefix2">0x</Keywords>
+            <Keywords name="Numbers, extras1">a b c d e f A B C D E F</Keywords>
+            <Keywords name="Numbers, extras2"></Keywords>
+            <Keywords name="Numbers, suffix1">.e .E .</Keywords>
+            <Keywords name="Numbers, suffix2"></Keywords>
+            <Keywords name="Numbers, range"></Keywords>
+            <Keywords name="Operators1">= += -= *= /= %= &lt;&lt;= &gt;&gt;= &amp;= |= ^= ++ -- &lt; &gt; &lt;= &gt;= != == + - * / % ** &amp;&amp; || ! &lt;&lt; &gt;&gt; &amp; | ^ ~ ; , ( )</Keywords>
+            <Keywords name="Operators2"></Keywords>
+            <Keywords name="Folders in code1, open"></Keywords>
+            <Keywords name="Folders in code1, middle"></Keywords>
+            <Keywords name="Folders in code1, close"></Keywords>
+            <Keywords name="Folders in code2, open">function if for while</Keywords>
+            <Keywords name="Folders in code2, middle">elseif else</Keywords>
+            <Keywords name="Folders in code2, close">end</Keywords>
+            <Keywords name="Folders in comment, open"></Keywords>
+            <Keywords name="Folders in comment, middle"></Keywords>
+            <Keywords name="Folders in comment, close"></Keywords>
+            <Keywords name="Keywords1">break continue return</Keywords>
+            <Keywords name="Keywords2">sqrt sin cos tan asin acos atan ln lnp1 log10 exp expm1 round ceil floor trunc min max abs signBit fmod ifte switch index choose cInt cFloat cStr millis micros wait digitalRead digitalWrite pinMode analogRead analogReference analogWrite analogReadResolution analogWriteResolution noTone pulseIn shiftIn shiftOut tone random randomSeed bit bitRead bitClear bitSet bitWrite maskedWordBitRead maskedWordClear maskedWordSet maskedWordWrite byteRead byteWrite mem32Read mem32Write mem8Read mem8Write char len line asc rtrim ltrim trim left mid right toUpper toLower space tab col pos repChar findInStr substInStr strCmp strCaseCmp strToHexStr quote isAlpha isAlphaNumeric isDigit isHexDigit isControl isGraph isPrintable isPunct isWhitespace isAscii isLowerCase isUpperCase eval ubound dims type r fmt sysVal cin cinLine cinList read readLine readList vreadList find findUntil peek available flush setTimeout getTimeout availableForWrite getWriteError clearWriteError open close position size seek name fullName isDirectory rewindDirectory openNext exists createDirectory removeDirectory remove fileNum isInUse closeAll err isColdStart&#x000D;&#x000A;</Keywords>
+            <Keywords name="Keywords3">program var const static delete clearMem clearProg loadProg pause halt stop nop go step stepOut stepOver bStepOut loop setNextLine trace abort debug BPon BPoff setBP clearBP enableBP disableBP raiseError trapErrors clearError quit settings dispWidth floatFmt intFmt dispMode tabSize angleMode setConsole setConsoleIn setConsoleOut setDebugOut info input startSD stopSD receiveFile sendFile copyFile dbout dboutLine cout coutLine coutList print printLine printList vprint vprintLine vprintList listCallStack listBP listVars listFiles listFilesToSerial&#x000D;&#x000A;</Keywords>
+            <Keywords name="Keywords4">e PI HALF_PI QUART_PI TWO_PI DEG_TO_RAD RAD_TO_DEG DEGREES RADIANS FALSE TRUE LONG_TYP FLOAT_TYP STRING_TYP LOW HIGH INPUT OUTPUT INPUT_PULLUP INPUT_PULLDOWN LSBFIRST MSBFIRST NO_PROMPT PROMPT ECHO NO_RESULT RESULTS QUOTE_RESULTS REQ_ENTER REQ_ENT_CANC REQ_YN REQ_YN_CANC INP_NO_DEF INP_ALLOW_DEF USR_CANCEL USR_SUCCESS QUIT_KEEP QUIT_RELEASE CONSOLE IO_1 IO_2 IO_3 IO_4 IO_5 FILE_1 FILE_2 FILE_3 FILE_4 FILE_5 READ WRITE RDWR APPEND RW_APPEND SYNC NEW_OK EXCL NEW_ONLY TRUNC FMT_LEFT FMT_SIGN FMT_SPACE FMT_POINT FMT_0X FMT_PAD0 FMT_NONE&#x000D;&#x000A;</Keywords>
+            <Keywords name="Keywords5">cpp_ user_ usr_</Keywords>
+            <Keywords name="Keywords6"></Keywords>
+            <Keywords name="Keywords7"></Keywords>
+            <Keywords name="Keywords8"></Keywords>
+            <Keywords name="Delimiters">00&quot; 01\ 02&quot; 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23</Keywords>
+        </KeywordLists>
+        <Styles>
+            <WordsStyle name="DEFAULT" fgColor="000000" bgColor="FFFFFF" fontName="Courier New" fontStyle="0" fontSize="10" nesting="0" />
+            <WordsStyle name="COMMENTS" fgColor="00A452" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="LINE COMMENTS" fgColor="00A452" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="NUMBERS" fgColor="C83232" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="KEYWORDS1" fgColor="5050FF" bgColor="FFFFFF" fontStyle="1" nesting="0" />
+            <WordsStyle name="KEYWORDS2" fgColor="AA5500" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="KEYWORDS3" fgColor="4A78FF" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="KEYWORDS4" fgColor="800000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="KEYWORDS5" fgColor="BB00BB" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="KEYWORDS6" fgColor="000000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="KEYWORDS7" fgColor="000000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="KEYWORDS8" fgColor="000000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="OPERATORS" fgColor="000000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="FOLDER IN CODE1" fgColor="0080FF" bgColor="FFFFFF" fontName="Courier New" fontStyle="0" fontSize="10" nesting="0" />
+            <WordsStyle name="FOLDER IN CODE2" fgColor="5050FF" bgColor="FFFFFF" fontStyle="1" nesting="0" />
+            <WordsStyle name="FOLDER IN COMMENT" fgColor="80FF00" bgColor="FFFFFF" fontName="Courier New" fontStyle="0" fontSize="10" nesting="0" />
+            <WordsStyle name="DELIMITERS1" fgColor="C83232" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="DELIMITERS2" fgColor="000000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="DELIMITERS3" fgColor="000000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="DELIMITERS4" fgColor="000000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="DELIMITERS5" fgColor="000000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="DELIMITERS6" fgColor="000000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="DELIMITERS7" fgColor="000000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+            <WordsStyle name="DELIMITERS8" fgColor="000000" bgColor="FFFFFF" fontStyle="0" nesting="0" />
+        </Styles>
+    </UserLang>
+</NotepadPlus>
