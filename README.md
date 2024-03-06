@@ -12,8 +12,14 @@ The Justina syntax has been kept as simple as possible. A program consists of st
 Because Justina is an interpreted language, a Justina  program is not compiled into machine language but it is parsed into so called tokens before execution. Parsing is a fast process, which makes Justina the ideal tool for quick prototyping. Once it is installed as an Arduino library, call Justina from within an Arduino c++ program and you will have the Justina interpreter ready to receive commands, evaluate expressions and execute Justina programs. 
 You can enter statements directly in the command line of the Arduino IDE (the Serial monitor by default, a TCP IP client, ...) and they will immediately get executed, without any programming.
 
-# Example
-Typing  pinMode( 17, OUTPUT); digitalWrite(17, HIGH) (+ ENTER) in the command line, will write a HIGH value to pin 17.
+#### A basic example, without programming: set the value of an Arduino pin
+Typing  pinMode( 17, OUTPUT); digitalWrite(17, HIGH) (+ ENTER) in the command line, will write a HIGH value to pin 17. Typing digitalRead(17) will then read back the value from pin 17, which will be '1' of course.
+
+![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/f0fc5e1c-19d4-4f8d-bca6-58d4d4b60c6d)
+
+Statements you type are echoed after the Justina prompt (“Justina>“), so you have a nice history. Multiple statements can be entered at the same time, separated by semicolons.
+The result of  the last expression entered in the command line is printed on the next line. In this example: both digitalWrite and digitalRead are functions, digitalWrite returning the value written to the pin (1 is the value of predefined constant HIGH) and digitalRead reading back that same value from the pin .
+
 
 # A few highlights
 *	More than 250 built-in functions, commands and operators, 70+ predefined symbolic constants.
@@ -37,6 +43,8 @@ Typing  pinMode( 17, OUTPUT); digitalWrite(17, HIGH) (+ ENTER) in the command li
 
 # Program editing
 You can use any text editor to write and edit your programs. But you might consider using Notepad++ as text editor, because a specific 'User Defined Language' (UDL) file for Justina is available to provide Justina syntax highlighting.
+
+![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/596e5d5f-1bde-444d-abf6-77e34863ce40)
 
 # Debugging
 When a program is stopped (either by execution of the ‘stop’ command, by user intervention or by an active breakpoint) debug mode is entered. You can then single step the program, execute statements until the end of a loop, a next breakpoint…
