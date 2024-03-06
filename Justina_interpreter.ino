@@ -25,13 +25,13 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ***************************************************************************************/
 
-#define WITH_TCPIP 1
+#define WITH_TCPIP 0
 #define WITH_OLED_SW_SPI 0              // note: hw SPI interferes with SD card breakout box (SD card gets corrupted) -> use SW SPI
 #define WITH_OLED_HW_I2C 0              
 
 // includes
 // --------
-#include "src/Justina.h"
+#include "Justina.h"
 
 // oled display
 // https://github.com/olikraus/u8g2   
@@ -145,13 +145,8 @@ Justina* pJustina{ nullptr };                                                   
 bool withinApplication{ false };                                                       // init: currently not within an application
 bool interpreterInMemory{ false };                                                     // init: interpreter is not in memory
 
-#if defined ARDUINO_ARCH_RP2040 
-long progMemSize = 1 << 16;             // 64 kByte (is max)
-#elif defined ESP32
-long progMemSize = 1 << 16;             // 64 kByte (is max)
+#if defined ESP32
 int SD_CHIP_SELECT_PIN{ 10 };           // predefined in library for other boards
-#else
-long progMemSize = 2000;
 #endif 
 
 unsigned long heartbeatPeriod{ 1000 };                                               // do not go lower than 500 ms

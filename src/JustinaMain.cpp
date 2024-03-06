@@ -210,9 +210,9 @@ const Justina::InternCppFuncDef Justina::_internCppFunctions[]{
     {"millis",                  fnccod_millis,                  0,0,    0b0},
     {"micros",                  fnccod_micros,                  0,0,    0b0},
     {"wait",                    fnccod_delay,                   1,1,    0b0},               // delay microseconds: doesn't make sense, because execution is not fast enough (interpreter)
+    {"pinMode",                 fnccod_pinMode,                 2,2,    0b0},
     {"digitalRead",             fnccod_digitalRead,             1,1,    0b0},
     {"digitalWrite",            fnccod_digitalWrite,            2,2,    0b0},
-    {"pinMode",                 fnccod_pinMode,                 2,2,    0b0},
     {"analogRead",              fnccod_analogRead,              1,1,    0b0},
     {"analogReference",         fnccod_analogReference,         1,1,    0b0},
     {"analogWrite",             fnccod_analogWrite,             2,2,    0b0},
@@ -425,119 +425,119 @@ const Justina::SymbNumConsts Justina::_symbNumConsts[]{
     // ----                 --------                    // ----------
 
     // math: floating point constants (with more precision than what will actually be used)
-    {"e",                   "2.7182818284590452354",    value_isFloat},     // base of natural logarithm (more digits then actually needed for float)
-    {"PI",                  "3.14159265358979323846",   value_isFloat},     // PI (more digits then actually needed for float)
-    {"HALF_PI",             "1.57079632679489661923",   value_isFloat},     // PI / 2
-    {"QUART_PI",            "0.78539816339744830962",   value_isFloat},     // PI / 4
-    {"TWO_PI",              "6.2831853071795864769",    value_isFloat},     // 2 * PI 
+    {"e",                   "2.7182818284590452354",    value_isFloat},         // base of natural logarithm (more digits then actually needed for float)
+    {"PI",                  "3.14159265358979323846",   value_isFloat},         // PI (more digits then actually needed for float)
+    {"HALF_PI",             "1.57079632679489661923",   value_isFloat},         // PI / 2
+    {"QUART_PI",            "0.78539816339744830962",   value_isFloat},         // PI / 4
+    {"TWO_PI",              "6.2831853071795864769",    value_isFloat},         // 2 * PI 
 
-    {"DEG_TO_RAD",          "0.01745329251994329577",   value_isFloat},     // conversion factor: degrees to radians
-    {"RAD_TO_DEG",          "57.2957795130823208768",   value_isFloat},     // radians to degrrees
+    {"DEG_TO_RAD",          "0.01745329251994329577",   value_isFloat},         // conversion factor: degrees to radians
+    {"RAD_TO_DEG",          "57.2957795130823208768",   value_isFloat},         // radians to degrrees
 
     // angle mode
     {"RADIANS",             "0",                        value_isLong},
     {"DEGREES",             "1",                        value_isLong},
 
     // boolean values
-    {"FALSE",               "0",                        value_isLong},      // value for boolean 'false'
-    {"TRUE",                "1",                        value_isLong},      // value for boolean 'true'
+    {"FALSE",               "0",                        value_isLong},          // value for boolean 'false'
+    {"TRUE",                "1",                        value_isLong},          // value for boolean 'true'
 
     // data types
-    {"LONG",                "1",                        value_isLong},      // value type of a long value
-    {"FLOAT",               "2",                        value_isLong},      // value type of a float value
-    {"STRING",              "3",                        value_isLong},      // value type of a string value
+    {"LONG",                "1",                        value_isLong},          // value type of a long value
+    {"FLOAT",               "2",                        value_isLong},          // value type of a float value
+    {"STRING",              "3",                        value_isLong},          // value type of a string value
 
     // digital I/O
-    {"LOW",                 "0",                        value_isLong},      // standard ARduino constants for digital I/O
+    {"LOW",                 "0",                        value_isLong},          // standard ARduino constants for digital I/O
     {"HIGH",                "1",                        value_isLong},
-    {"INPUT",               "0x0",                      value_isLong},      // standard ARduino constants for digital I/O
-    {"OUTPUT",              "0x1",                      value_isLong},
-    {"INPUT_PULLUP",        "0x2",                      value_isLong},
-    {"INPUT_PULLDOWN",      "0x3",                      value_isLong},
-    {"LSBFIRST",            "0x0",                      value_isLong},      // standard ARduino constants for digital I/O
+    {"INPUT",               "0x1",                      value_isLong},          // standard ARduino constants for digital I/O
+    {"OUTPUT",              "0x3",                      value_isLong},
+    {"INPUT_PULLUP",        "0x5",                      value_isLong},
+    {"INPUT_PULLDOWN",      "0x9",                      value_isLong},
+    {"LSBFIRST",            "0x0",                      value_isLong},          // standard ARduino constants for digital I/O
     {"MSBFIRST",            "0x1",                      value_isLong},
 
     // display mode command first argument: prompt and echo display
-    {"NO_PROMPT",           "0",                        value_isLong},      // do not print prompt and do not echo user input
-    {"PROMPT",              "1",                        value_isLong},      // print prompt but no not echo user input
-    {"ECHO",                "2",                        value_isLong},      // print prompt and echo user input
+    {"NO_PROMPT",           "0",                        value_isLong},          // do not print prompt and do not echo user input
+    {"PROMPT",              "1",                        value_isLong},          // print prompt but no not echo user input
+    {"ECHO",                "2",                        value_isLong},          // print prompt and echo user input
 
     // display mode command second argument: last result format
-    {"NO_RESULTS",          "0",                        value_isLong},      // do not print last result
-    {"RESULTS",             "1",                        value_isLong},      // print last result
-    {"QUOTE_RESULTS",       "2",                        value_isLong},      // print last result, quote string results 
+    {"NO_RESULTS",          "0",                        value_isLong},          // do not print last result
+    {"RESULTS",             "1",                        value_isLong},          // print last result
+    {"QUOTE_RESULTS",       "2",                        value_isLong},          // print last result, quote string results 
 
     // info command: type of confirmation required ("request answer yes/no, ...")
-    {"ENTER",               "0",                        value_isLong},      // confirmation required by pressing ENTER (any preceding characters are skipped)
-    {"ENTER_CANCEL",        "1",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
-    {"YES_NO",              "2",                        value_isLong},      // only yes or no answer allowed, by pressing 'y' or 'n' followed by ENTER   
-    {"YN_CANCEL",           "3",                        value_isLong},      // idem, but if '\c' encountered in input stream the operation is canceled by user 
+    {"ENTER",               "0",                        value_isLong},          // confirmation required by pressing ENTER (any preceding characters are skipped)
+    {"ENTER_CANCEL",        "1",                        value_isLong},          // idem, but if '\c' encountered in input stream the operation is canceled by user 
+    {"YES_NO",              "2",                        value_isLong},          // only yes or no answer allowed, by pressing 'y' or 'n' followed by ENTER   
+    {"YN_CANCEL",           "3",                        value_isLong},          // idem, but if '\c' encountered in input stream the operation is canceled by user 
 
     // input command: default allowed  
-    {"NO_DEFAULT",          "0",                        value_isLong},      // '\d' sequences ('default') in the input stream are ignored
-    {"ALLOW_DEFAULT",       "1",                        value_isLong},      // if '\d' sequence is encountered in the input stream, default value is returned
+    {"NO_DEFAULT",          "0",                        value_isLong},          // '\d' sequences ('default') in the input stream are ignored
+    {"ALLOW_DEFAULT",       "1",                        value_isLong},          // if '\d' sequence is encountered in the input stream, default value is returned
 
     // input and info command: flag 'user canceled' (input argument 3 / info argument 2 return value - argument must be a variable)
-    {"CANCELED",            "0",                        value_isLong},      // operation was canceled by user (\c sequence encountered)
-    {"SUCCESS",             "1",                        value_isLong},      // operation was NOT canceled by user
+    {"CANCELED",            "0",                        value_isLong},          // operation was canceled by user (\c sequence encountered)
+    {"SUCCESS",             "1",                        value_isLong},          // operation was NOT canceled by user
 
     // quit command
-    {"KEEP_MEM",            "0",                        value_isLong},      // keep Justina in memory on quitting
-    {"RELEASE_MEM",         "1",                        value_isLong},      // release memory on quitting
+    {"KEEP_MEM",            "0",                        value_isLong},          // keep Justina in memory on quitting
+    {"RELEASE_MEM",         "1",                        value_isLong},          // release memory on quitting
 
     // input / output streams
-    {"CONSOLE",             "0",                        value_isLong},      // IO: read from / print to console
-    {"IO1",                 "-1",                       value_isLong},      // IO: read from / print to alternative I/O port 1 (if defined)
-    {"IO2",                 "-2",                       value_isLong},      // IO: read from / print to alternative I/O port 2 (if defined)
-    {"IO3",                 "-3",                       value_isLong},      // IO: read from / print to alternative I/O port 3 (if defined)
-    {"IO4",                 "-4",                       value_isLong},      // IO: read from / print to alternative I/O port 4 (if defined)
-    {"IO5",                 "-5",                       value_isLong},      // IO: read from / print to alternative I/O port 5 (if defined)
-    {"FILE1",               "1",                        value_isLong},      // IO: read from / print to open SD file 1
-    {"FILE2",               "2",                        value_isLong},      // IO: read from / print to open SD file 2 
-    {"FILE3",               "3",                        value_isLong},      // IO: read from / print to open SD file 3 
-    {"FILE4",               "4",                        value_isLong},      // IO: read from / print to open SD file 4 
-    {"FILE5",               "5",                        value_isLong},      // IO: read from / print to open SD file 5 
+    {"CONSOLE",             "0",                        value_isLong},          // IO: read from / print to console
+    {"IO1",                 "-1",                       value_isLong},          // IO: read from / print to alternative I/O port 1 (if defined)
+    {"IO2",                 "-2",                       value_isLong},          // IO: read from / print to alternative I/O port 2 (if defined)
+    {"IO3",                 "-3",                       value_isLong},          // IO: read from / print to alternative I/O port 3 (if defined)
+    {"IO4",                 "-4",                       value_isLong},          // IO: read from / print to alternative I/O port 4 (if defined)
+    {"IO5",                 "-5",                       value_isLong},          // IO: read from / print to alternative I/O port 5 (if defined)
+    {"FILE1",               "1",                        value_isLong},          // IO: read from / print to open SD file 1
+    {"FILE2",               "2",                        value_isLong},          // IO: read from / print to open SD file 2 
+    {"FILE3",               "3",                        value_isLong},          // IO: read from / print to open SD file 3 
+    {"FILE4",               "4",                        value_isLong},          // IO: read from / print to open SD file 4 
+    {"FILE5",               "5",                        value_isLong},          // IO: read from / print to open SD file 5 
 
     // file access type on open: constants can be bitwise 'or'ed
     // READ can be combined with WRITE or APPEND; APPEND automatically includes WRITE (but only possible to append)
-    {"READ",                "0x1",                      value_isLong},      // open SD file for read access
-    {"WRITE",               "0x2",                      value_isLong},      // open SD file for write access
-    {"APPEND",              "0x6",                      value_isLong},      // open SD file for write access, writes will occur at end of file
+    {"READ",                "0x1",                      value_isLong},          // open SD file for read access
+    {"WRITE",               "0x2",                      value_isLong},          // open SD file for write access
+    {"APPEND",              "0x6",                      value_isLong},          // open SD file for write access, writes will occur at end of file
     // NOTE: next 4 file access constants HAVE NO FUNCTION with nano ESP32 boards - they don't do anything
-    {"SYNC",                "0x8",                      value_isLong},      // synchronous writes: send data physically to the card after each write 
-    {"NEW_OK",              "0x10",                     value_isLong},      // creating new files if non-existent is allowed, open existing files
-    {"NEW_ONLY",            "0x30",                     value_isLong},      // create new file only - do not open an existing file
-    {"TRUNC",               "0x40",                     value_isLong},      // truncate file to zero bytes on open (NOT if file is opened for read access only)
+    {"SYNC",                "0x8",                      value_isLong},          // synchronous writes: send data physically to the card after each write 
+    {"NEW_OK",              "0x10",                     value_isLong},          // creating new files if non-existent is allowed, open existing files
+    {"NEW_ONLY",            "0x30",                     value_isLong},          // create new file only - do not open an existing file
+    {"TRUNC",               "0x40",                     value_isLong},          // truncate file to zero bytes on open (NOT if file is opened for read access only)
 
     // file EOF 
-    {"EOF",                 "-1",                       value_isLong},      // seek(n, EOF) is same as seek(n, size(n))
+    {"EOF",                 "-1",                       value_isLong},          // seek(n, EOF) is same as seek(n, size(n))
 
     // formatting: specifiers for floating point numbers
-    {"FIXED",               "f",                        value_isStringPointer},      // fixed point notation
-    {"Scient",              "e",                        value_isStringPointer},      // scientific notation, exponent: 'e' 
-    {"Short",               "g",                        value_isStringPointer},      // shortest notation possible; if exponent: 'e'   
-    {"SCIENT",              "E",                        value_isStringPointer},      // scientific notation, exponent: 'E'
-    {"SHORT",               "G",                        value_isStringPointer},      // shortest notation possible; if exponent: 'E' 
+    {"FIXED",               "f",                        value_isStringPointer},     // fixed point notation
+    {"SCIENT",              "E",                        value_isStringPointer},     // scientific notation, exponent: 'E'
+    {"SCIENT_L",            "e",                        value_isStringPointer},     // scientific notation, exponent: 'e' 
+    {"SHORT",               "G",                        value_isStringPointer},     // shortest notation possible; if exponent: 'E' 
+    {"SHORT_L",             "g",                        value_isStringPointer},     // shortest notation possible; if exponent: 'e'   
 
     // formatting: specifiers for integers
-    {"Dec",                 "d",                        value_isStringPointer},      // base 10 (decimal)
-    {"Hex",                 "x",                        value_isStringPointer},      // base 16 (hex), digits a..f
-    {"HEX",                 "X",                        value_isStringPointer},      // base 16 (hex), digits A..F
+    {"DEC",                 "d",                        value_isStringPointer},     // base 10 (decimal)
+    {"HEX_L",               "x",                        value_isStringPointer},     // base 16 (hex), digits a..f
+    {"HEX",                 "X",                        value_isStringPointer},     // base 16 (hex), digits A..F
 
    // formatting: flags
-    {"ADD_LEFT",            "0x01",                      value_isLong},             // align output left within the print field 
-    {"ADD_SIGN",            "0x02",                      value_isLong},             // always add a sign (- or +) preceding the value
-    {"ADD_SPACE",           "0x04",                      value_isLong},             // precede the value with a space if no sign is written 
-    {"ADD_POINT",           "0x08",                      value_isLong},             // if used with 'F', 'E', 'G' specifiers: add decimal point, even if no digits after decimal point  
-    {"ADD_0X",              "0x08",                      value_isLong},             // if used with 'hex output'X' specifier: precede non-zero values with 0x  
-    {"ADD_000",             "0x10",                      value_isLong},             // if used with 'F', 'E', 'G' specifiers: pad with zeros 
-    {"ADD_NONE",            "0x00",                      value_isLong},             // no flags 
+    {"ADD_LEFT",            "0x01",                      value_isLong},         // align output left within the print field 
+    {"ADD_SIGN",            "0x02",                      value_isLong},         // always add a sign (- or +) preceding the value
+    {"ADD_SPACE",           "0x04",                      value_isLong},         // precede the value with a space if no sign is written 
+    {"ADD_POINT",           "0x08",                      value_isLong},         // if used with 'F', 'E', 'G' specifiers: add decimal point, even if no digits after decimal point  
+    {"ADD_0X",              "0x08",                      value_isLong},         // if used with 'hex output'X' specifier: precede non-zero values with 0x  
+    {"ADD_000",             "0x10",                      value_isLong},         // if used with 'F', 'E', 'G' specifiers: pad with zeros 
+    {"ADD_NONE",            "0x00",                      value_isLong},         // no flags 
 
     // boards
-    { "BOARD_UNKNOWN",      "0",                         value_isLong },            // board architecture is undefined
-    { "BOARD_SAMD",         "1",                         value_isLong },            // board architecture is SAMD
-    { "BOARD_RP2040",       "2",                         value_isLong },            // board architecture is RP2040 
-    { "BOARD_ESP32",        "3",                         value_isLong },            // board architecture is ESP32 
+    { "BOARD_UNKNOWN",      "0",                         value_isLong },        // board architecture is undefined
+    { "BOARD_SAMD",         "1",                         value_isLong },        // board architecture is SAMD
+    { "BOARD_RP2040",       "2",                         value_isLong },        // board architecture is RP2040 
+    { "BOARD_ESP32",        "3",                         value_isLong },        // board architecture is ESP32 
 
 };
 
@@ -1480,11 +1480,11 @@ void Justina::resetMachine(bool withUserVariables) {
             delete[] _pTraceString;
             _pTraceString = nullptr;                                                                            // old trace string
         }
-}
+    }
 
-// delete all elements of the immediate mode parsed statements stack
-// (parsed immediate mode statements can be temporarily pushed on the immediate mode stack to be replaced either by parsed debug command lines or parsed eval() strings) 
-// also delete all parsed alphanumeric constants: (1) in the currently parsed program program, (2) in parsed immediate mode statements (including those on the imm.mode parsed statements stack)) 
+    // delete all elements of the immediate mode parsed statements stack
+    // (parsed immediate mode statements can be temporarily pushed on the immediate mode stack to be replaced either by parsed debug command lines or parsed eval() strings) 
+    // also delete all parsed alphanumeric constants: (1) in the currently parsed program program, (2) in parsed immediate mode statements (including those on the imm.mode parsed statements stack)) 
 
     clearParsedCommandLineStack(parsedCommandLineStack.getElementCount());                                      // including parsed string constants
     deleteConstStringObjects(_programStorage);
@@ -1609,13 +1609,13 @@ void Justina::danglingPointerCheckAndCount(bool withUserVariables) {
 
         _pDebugOut->print(", last value strings "); _pDebugOut->print(_lastValuesStringObjectCount);
     #endif
-        }
     }
+}
 
 
-    // --------------------------------------------
-    // *   initialize interpreter object fields   *
-    // --------------------------------------------
+// --------------------------------------------
+// *   initialize interpreter object fields   *
+// --------------------------------------------
 
 void Justina::initInterpreterVariables(bool fullReset) {
 
@@ -1781,15 +1781,15 @@ void Justina::deleteOneArrayVarStringObjects(Justina::Val* varValues, int index,
             isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
             delete[]  pString;                                                                                                      // applicable to string and array (same pointer)
         }
-}
     }
+}
 
 
-    // ----------------------------------------------------------------------------------------------
-    // *   delete variable heap objects: scalar variable strings and array variable array storage   *
-    // ----------------------------------------------------------------------------------------------
+// ----------------------------------------------------------------------------------------------
+// *   delete variable heap objects: scalar variable strings and array variable array storage   *
+// ----------------------------------------------------------------------------------------------
 
-    // note: make sure array variable element string objects have been deleted prior to calling this routine
+// note: make sure array variable element string objects have been deleted prior to calling this routine
 
 void Justina::deleteVariableValueObjects(Justina::Val* varValues, char* varType, int varNameCount, int paramOnlyCount, bool checkIfGlobalValue, bool isUserVar, bool isLocalVar) {
 
@@ -1816,7 +1816,7 @@ void Justina::deleteVariableValueObjects(Justina::Val* varValues, char* varType,
             }
         }
         index++;
-}
+    }
 }
 
 

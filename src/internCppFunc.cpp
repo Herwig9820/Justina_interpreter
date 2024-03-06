@@ -1692,9 +1692,15 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                     if (forcedStopRequest) { break; }                                                                       // atypical flow: as this is a pure delay not doing anything else, break on stop as well
                 }
             }
+            else if (functionCode == fnccod_pinMode) {
+                pinMode(args[0].longConst, args[1].longConst);                                                              // args: pin, pin mode
+                fcnResult.longConst = args[1].longConst;                                                                    // return pin mode (could be the result of an expression)
+            }
             else if (functionCode == fnccod_digitalRead) { fcnResult.longConst = digitalRead(args[0].longConst); }          // arg: pin
-            else if (functionCode == fnccod_digitalWrite) { digitalWrite(args[0].longConst, args[1].longConst); }           // args: pin, value
-            else if (functionCode == fnccod_pinMode) { pinMode(args[0].longConst, args[1].longConst); }                     // args: pin, pin mode
+            else if (functionCode == fnccod_digitalWrite) {
+                digitalWrite(args[0].longConst, args[1].longConst);                                                         // args: pin, value
+                fcnResult.longConst = args[1].longConst;                                                                    // return value written to pin (could be the result of an expression)
+            }
             else if (functionCode == fnccod_analogRead) { fcnResult.longConst = analogRead(args[0].longConst); }            // arg: pin
         #if defined(ARDUINO_ARCH_SAMD)                                                                                      // analog reference only for 
             else if (functionCode == fnccod_analogReference) { analogReference(args[0].longConst); }                        // arg: reference type (0 to 5: see Arduino doc - 2 is external reference)
@@ -1980,7 +1986,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                     else { *_pEvalStackTop->varOrConst.value.pFloatConst = (float)foundStartPos; }
                 }
             }
-        }
+            }
         break;
 
 
@@ -2293,11 +2299,11 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 #else 
                     fcnResult.longConst = 1; break;     // none of these
                 #endif
-                }
+            }
                 break;
 
                 default: return result_arg_invalid; break;
-            }                                                                                   // switch (sysVal)
+        }                                                                                   // switch (sysVal)
         }
         break;
 

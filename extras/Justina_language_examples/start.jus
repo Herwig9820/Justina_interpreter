@@ -27,23 +27,22 @@ program startJustina;
 // returns: nothing 
 
 function start();
-	coutLine line(), repChar("-", 44), line(), "---- Executing startup file 'start.jus' ----", line(), repChar("-", 44);
+	coutLine repChar("-", 44), line(), "---- Executing startup file 'start.jus' ----", line(), 
+		repChar("-", 44);
 	
-	coutLine line(), "board architecture: ", 
+	coutLine "board architecture: ", 
 		choose(sysVal(44), "unknown", "SAMD", "RP2040", "ESP32");					// Arduino board architecture ?
 	coutLine ifte(isColdStart(), "Cold start", "Warm start");						
 	
-	coutLine line(), "setting display mode and width; int and float number format";	
+	coutLine "setting display mode and width; int and float number format";	
 	dispMode ECHO, RESULTS;															// echo user input and display calculation results
 	dispWidth 50;																	// set display width for calculation results to 30 characters		
 	floatFmt 2, FIXED;																// print floats in fixed point notation, 2 digits 
-	intFmt 1, Dec;																	// print integers in base 10, minimum 1 digit 
-	
-	coutLine "setting angle mode";
+	intFmt 1, DEC;																	// print integers in base 10, minimum 1 digit 
+	coutLine "setting angle mode to degrees";
 	angleMode DEGREES;																// set degrees as angle mode
 	
-	coutLine line(), "test angle mode: the sine of 90 degrees is ", sin(90);		// print the sine of 90 degrees to the console								
-	
-	coutLine line(), "function 'start()' executed";								
+	coutLine "test angle mode: the sine of 90 degrees is ", sin(90);				// print the sine of 90 degrees to the console								
+	coutLine repChar("-", 44);
 end;
 	

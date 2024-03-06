@@ -43,6 +43,7 @@ To change allocated memory sizes WITHOUT CHANGING ANY OF THE FILES IN THE JUSTIN
 - within folder 'libraries', create a folder named "Justina_constants" 
 - store this "Justina_constants.h" file in folder "Justina_constants"
 - adapt the values in the #define directives
+- comment out lines if you want to keep specific defaults
 */
 
 
