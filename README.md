@@ -47,15 +47,23 @@ While a procedure is stopped in debug mode, you can manually review the procedur
 1.	If enabled, system callbacks allow the Arduino program to perform periodic housekeeping tasks beyond the control of Justina (e.g., maintaining a TCP connection, producing a beep when an error is encountered, aborting, or stopping a Justina program...). For that purpose, a set of system flags passes information back and forth between the main Arduino program and Justina at regular intervals (without the need for interrupts).
 2.	Time-critical user routines, functions targeting specific hardware and functions extending Justina functionality in general can be written in c++, given an alias and 'registered' (using a standard mechanism), informing Justina about the minimum and maximum number of arguments and the return type. From then onward, these C++ functions can be called just like any other Justina function, with the same syntax, using the alias as function name and passing scalar or array variables as arguments.
 
-# Examples
+# Arduino c++ examples
 A number of c++ example files, demonstrating how to call Justina, are provided in the repository folder 'examples':
-* Justina_easy: simply calling Justina, that's it
+* Justina_easy: simply call Justina, and that's it
 * Justina_userCPP: demonstrating how to write user c++ functions for use in a Justina program (for time critical or specific hardware oriented stuff or to extend built-in Justina functionality...)
-* Justina_systemCallback: using system callback functions to ensure that procedures that need to be executed at regular intervals (e.g. maintaining a TCP connection, etc.) continue to be executed while control is within Justina; to detect stop, abort, 'console reset' and kill requests (for example when a user presses a 'program abort' pushbutton),... and this without the need for Justina to have any knowledge about the hardware (pins, ...) used
+* Justina_systemCallback: use system callback functions to ensure that procedures that need to be executed at regular intervals (e.g. maintaining a TCP connection, etc.) continue to be executed while control is within Justina; to detect stop, abort, 'console reset' and kill requests (for example when a user presses a 'program abort' pushbutton),... and this without the need for Justina to have any knowledge about the hardware (pins, ...) used
 * Justina_multiTerminal: demonstrating the setup for using two monochrome 128 x 64 dot OLED displays AND / OR a TCP terminal program on your computer as alternative output devices for Justina, next to Serial
 
-A few Justina language example files are provided in the repository folder 'extras/Justina_language_examples':
-
-
+# Justina language examples
+A few Justina language example files are provided in the repository folder 'extras/Justina_language_examples'. These text files obey the 8.3 file format, to make them compatible with the Arduino SD card file system. Also, they all have the '.jus' extension: opening these files in Notepad++ will automatically invoke Justina language highlighting (if the the Justina language extension is installed).
+The example files are:
+* start.jus      can be used as startup program (if your Arduino is equipped with an SD card board). It sets things like the angle mode, number formatting etc.
+* myFirst.jus    a really simple Justina program
+* fact.jus       a recursive method to calculate factorials
+* input.jus      ask for user input; parse and execute that input within a running program
+* overlap.jus    two method to print lines with overlapping print fields
+* SD_test.jus    perform some basic SD card tests
+* SD_parse.jus   write formatted data to an SD card, read it back and immediately parse this data into variables
+ 
 # Documentation
-Further documentation is provided in repository ' extras' folder. 
+Further documentation is provided in the repository ' extras' folder. 
