@@ -514,15 +514,15 @@ const Justina::SymbNumConsts Justina::_symbNumConsts[]{
 
     // formatting: specifiers for floating point numbers
     {"FIXED",               "f",                        value_isStringPointer},     // fixed point notation
-    {"SCIENT",              "E",                        value_isStringPointer},     // scientific notation, exponent: 'E'
-    {"SCIENT_L",            "e",                        value_isStringPointer},     // scientific notation, exponent: 'e' 
-    {"SHORT",               "G",                        value_isStringPointer},     // shortest notation possible; if exponent: 'E' 
-    {"SHORT_L",             "g",                        value_isStringPointer},     // shortest notation possible; if exponent: 'e'   
+    {"SCIENT_U",            "E",                        value_isStringPointer},     // scientific notation, exponent: 'E'
+    {"SCIENT",              "e",                        value_isStringPointer},     // scientific notation, exponent: 'e' 
+    {"SHORT_U",             "G",                        value_isStringPointer},     // shortest notation possible; if exponent: 'E' 
+    {"SHORT",               "g",                        value_isStringPointer},     // shortest notation possible; if exponent: 'e'   
 
     // formatting: specifiers for integers
     {"DEC",                 "d",                        value_isStringPointer},     // base 10 (decimal)
-    {"HEX_L",               "x",                        value_isStringPointer},     // base 16 (hex), digits a..f
-    {"HEX",                 "X",                        value_isStringPointer},     // base 16 (hex), digits A..F
+    {"HEX_U",               "X",                        value_isStringPointer},     // base 16 (hex), digits A..F
+    {"HEX",                 "x",                        value_isStringPointer},     // base 16 (hex), digits a..f
 
    // formatting: flags
     {"ADD_LEFT",            "0x01",                      value_isLong},         // align output left within the print field 
