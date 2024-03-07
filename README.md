@@ -30,8 +30,13 @@ The result of  the last expression entered in the command line is printed on the
 *	Floating-point, integer and string data types.
 *	Perform integer arithmetic and bitwise operations in decimal or hexadecimal number format.
 *	Display settings define how to display calculation results: output width, number of digits / decimals to display, alignment, base (decimal, hex), …
-*	Input and output: Justina reads data from / writes data to multiple input and output devices (for instance connected via Serial, TCP client, SD card files – if an SD card reader is connected). You can even switch the console from the default (typically Serial) to a TCP IP client, etc. 
-*	In Justina, input and output commands work with argument lists: for instance, with only one statement, you can read a properly formatted textline from a terminal or an SD card file and parse its contents into a series of variables.
+* Input and output: Justina reads data from / writes data to multiple input and output devices (connected via Serial, TCP IP, SPI, I2C...). You can even switch the console from the default (typically Serial) to another input or output device (for instance, switch console output to an OLED screen).
+* With an SD card breakout board connected via SPI, Justina creates, reads and writes SD card files...
+
+ ![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/ef5ce67e-6a07-4944-8282-93b94ed63ae3)
+
+* In Justina, input and output commands work with argument lists: for instance, with only one statement, you can read a properly formatted textline from a terminal or an SD card file and parse its contents into a series of variables.
+
 
 # Programming
 *	Write program functions with mandatory and optional parameters, accepting scalar and array arguments. When calling a function, variables (including arrays) are passed by reference. Constants and results of expressions are passed by value. 
