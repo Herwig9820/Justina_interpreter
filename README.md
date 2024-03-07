@@ -46,17 +46,18 @@ The result of  the last expression entered in the command line is printed on the
 *	Parsing and execution errors are clearly indicated, with error numbers identifying the nature of the error. 
 *	Error trapping: if enabled, an error will not terminate a program, instead the error can be handled in code (either in the procedure where the error occurred or in a 'caller' procedure). It’s even possible to trap an error in the command line
 
-# Program editing
+# Justina program editing
 You can use any text editor to write and edit your programs. But you might consider using Notepad++ as text editor, because a specific 'User Defined Language' (UDL) file for Justina is available to provide Justina syntax highlighting.
 
-![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/596e5d5f-1bde-444d-abf6-77e34863ce40)
+![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/75c00179-27c6-429a-b155-97d2e8d06414)
+
 
 # Debugging
 When a program is stopped (either by execution of the ‘stop’ command, by user intervention or by an active breakpoint) debug mode is entered. You can then single step the program, execute statements until the end of a loop, a next breakpoint…
 
 Breakpoints can be activated based on a trigger expression or a hit count. You can also include a list of ‘view expressions’ for each breakpoint, and Justina will automatically trace specific variables or even expressions, letting you watch their values change as you single step through the program or a breakpoint is hit.
 
-![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/f1bc505b-ff1e-4a21-8968-d57387e9ce09)
+![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/39b60741-2eb0-4418-947d-ea6a9da27035)
 
 While a procedure is stopped in debug mode, you can also manually review the procedure’s local and static variable contents or view the call stack.
 
