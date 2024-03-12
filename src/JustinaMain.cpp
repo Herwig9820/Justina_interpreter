@@ -234,7 +234,7 @@ const Justina::InternCppFuncDef Justina::_internCppFunctions[]{
     {"bitWrite",                fnccod_bitWrite,                3,3,    0b0},
     {"byteRead",                fnccod_byteRead,                2,2,    0b0},
     {"byteWrite",               fnccod_byteWrite,               3,3,    0b0},
-    {"maskedWordBitRead",       fnccod_wordMaskedRead,          2,2,    0b0},
+    {"maskedWordRead",          fnccod_wordMaskedRead,          2,2,    0b0},
     {"maskedWordClear",         fnccod_wordMaskedClear,         2,2,    0b0},
     {"maskedWordSet",           fnccod_wordMaskedSet,           2,2,    0b0},
     {"maskedWordWrite",         fnccod_wordMaskedWrite,         3,3,    0b0},
@@ -413,8 +413,8 @@ const Justina::TerminalDef Justina::_terminals[]{
 };
 
 
-// symbolic constants
-// -------------------
+// predefined constants
+// --------------------
 
 // these symbolic names can be used in Justina programs instead of the values themselves
 // symbolic names should not contain '\' or '#' characters and should have a valid (identifier name) length
@@ -465,7 +465,7 @@ const Justina::SymbNumConsts Justina::_symbNumConsts[]{
     // display mode command second argument: last result format
     {"NO_RESULTS",          "0",                        value_isLong},          // do not print last result
     {"RESULTS",             "1",                        value_isLong},          // print last result
-    {"QUOTE_RESULTS",       "2",                        value_isLong},          // print last result, quote string results 
+    {"QUOTE_RES",           "2",                        value_isLong},          // print last result, quote string results 
 
     // info command: type of confirmation required ("request answer yes/no, ...")
     {"ENTER",               "0",                        value_isLong},          // confirmation required by pressing ENTER (any preceding characters are skipped)
@@ -480,10 +480,6 @@ const Justina::SymbNumConsts Justina::_symbNumConsts[]{
     // input and info command: flag 'user canceled' (input argument 3 / info argument 2 return value - argument must be a variable)
     {"CANCELED",            "0",                        value_isLong},          // operation was canceled by user (\c sequence encountered)
     {"SUCCESS",             "1",                        value_isLong},          // operation was NOT canceled by user
-
-    // quit command
-    {"KEEP_MEM",            "0",                        value_isLong},          // keep Justina in memory on quitting
-    {"RELEASE_MEM",         "1",                        value_isLong},          // release memory on quitting
 
     // input / output streams
     {"CONSOLE",             "0",                        value_isLong},          // IO: read from / print to console
@@ -514,8 +510,8 @@ const Justina::SymbNumConsts Justina::_symbNumConsts[]{
 
     // formatting: specifiers for floating point numbers
     {"FIXED",               "f",                        value_isStringPointer},     // fixed point notation
-    {"SCIENT_U",            "E",                        value_isStringPointer},     // scientific notation, exponent: 'E'
-    {"SCIENT",              "e",                        value_isStringPointer},     // scientific notation, exponent: 'e' 
+    {"EXP_U",               "E",                        value_isStringPointer},     // scientific notation, exponent: 'E'
+    {"EXP",                 "e",                        value_isStringPointer},     // scientific notation, exponent: 'e' 
     {"SHORT_U",             "G",                        value_isStringPointer},     // shortest notation possible; if exponent: 'E' 
     {"SHORT",               "g",                        value_isStringPointer},     // shortest notation possible; if exponent: 'e'   
 
@@ -525,16 +521,16 @@ const Justina::SymbNumConsts Justina::_symbNumConsts[]{
     {"HEX",                 "x",                        value_isStringPointer},     // base 16 (hex), digits a..f
 
    // formatting: flags
-    {"ADD_LEFT",            "0x01",                      value_isLong},         // align output left within the print field 
-    {"ADD_SIGN",            "0x02",                      value_isLong},         // always add a sign (- or +) preceding the value
-    {"ADD_SPACE",           "0x04",                      value_isLong},         // precede the value with a space if no sign is written 
-    {"ADD_POINT",           "0x08",                      value_isLong},         // if used with 'F', 'E', 'G' specifiers: add decimal point, even if no digits after decimal point  
-    {"ADD_0X",              "0x08",                      value_isLong},         // if used with 'hex output'X' specifier: precede non-zero values with 0x  
-    {"ADD_000",             "0x10",                      value_isLong},         // if used with 'F', 'E', 'G' specifiers: pad with zeros 
-    {"ADD_NONE",            "0x00",                      value_isLong},         // no flags 
+    {"FLAG_LEFT",           "0x01",                      value_isLong},         // align output left within the print field 
+    {"FLAG_SIGN",           "0x02",                      value_isLong},         // always add a sign (- or +) preceding the value
+    {"FLAG_SPACE",          "0x04",                      value_isLong},         // precede the value with a space if no sign is written 
+    {"FLAG_POINT",          "0x08",                      value_isLong},         // if used with 'F', 'E', 'G' specifiers: add decimal point, even if no digits after decimal point  
+    {"FLAG_0X",             "0x08",                      value_isLong},         // if used with 'hex output'X' specifier: precede non-zero values with 0x  
+    {"FLAG_000",            "0x10",                      value_isLong},         // if used with 'F', 'E', 'G' specifiers: pad with zeros 
+    {"FLAG_NONE",           "0x00",                      value_isLong},         // no flags 
 
     // boards
-    { "BOARD_UNKNOWN",      "0",                         value_isLong },        // board architecture is undefined
+    { "BOARD_OTHER",        "0",                         value_isLong },        // board architecture is undefined
     { "BOARD_SAMD",         "1",                         value_isLong },        // board architecture is SAMD
     { "BOARD_RP2040",       "2",                         value_isLong },        // board architecture is RP2040 
     { "BOARD_ESP32",        "3",                         value_isLong },        // board architecture is ESP32 
@@ -575,7 +571,7 @@ Justina::Justina(Stream** const pAltInputStreams, Print** const pAltOutputStream
     // create objects
     // --------------
     // current print column is maintained for each stream separately: init
-    _pPrintColumns = new int[_externIOstreamCount];
+    _pPrintColumns = new int[_externIOstreamCount];                                                 // maximum 4 external streams
     for (int i = 0; i < _externIOstreamCount; i++) {
         // NOTE: will only have effect for currently established connections (e.g. TCP)
         if (_pExternInputStreams[i] != nullptr) { _pExternInputStreams[i]->setTimeout(DEFAULT_READ_TIMEOUT); }
@@ -676,7 +672,7 @@ void Justina::registerVoidUserCppFunctions(const CppVoidFunction* const pCppVoid
 // *   interpreter main loop   *
 // ----------------------------
 
-bool Justina::begin() {
+void Justina::begin() {
     bool withinStringEscSequence{ false };
     bool lastCharWasSemiColon{ false };
     bool within1LineComment{ false };
@@ -951,13 +947,14 @@ bool Justina::begin() {
     _appFlags = 0x0000L;                                                                                        // clear all application flags
     if (_housekeepingCallback != nullptr) { _housekeepingCallback(_appFlags); }                                 // pass application flags to caller immediately
 
-    if (kill) { _keepObjectsInMemory = false; printlnTo(0, "\r\n\r\nProcessing kill request from calling program. Data retained"); }
+    if (kill) { printlnTo(0, "\r\n\r\nProcessing kill request from calling program"); }
 
     SD_closeAllFiles();                                                                                         // safety (in case an SD card is present: close all files 
     _SDinitOK = false;
     SD.end();                                                                                                   // stop SD card
 
-    if (!_keepObjectsInMemory) { resetMachine(true); }
+    // !!! if code is ever changed to clear memory when quitting: replace 'false' by 'true' or by condition
+    // if (false) { resetMachine(true); }                      
 
     while (_pConsoleIn->available() > 0) { readFrom(0); }                                                       //  empty console buffer before quitting
     printlnTo(0, "\r\nJustina: bye\r\n");
@@ -967,7 +964,7 @@ bool Justina::begin() {
     // ...array objects, stack entries, last values FiFo, open function data, breakpoint trigger and view strings, ...
     // Objects that are not deleted now, will be deleted when the Justina object is deleted (destructor).  
     // (program and variable memory itself is only freed when the Justina object itself is deleted).
-    return _keepObjectsInMemory;                                                                                // return to calling program
+    return;                                                                                                     // return to calling program
 }
 
 

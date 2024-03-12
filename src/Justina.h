@@ -605,6 +605,7 @@ class Justina {
         result_cmd_programCmdMissing = 1800,
         result_cmd_onlyProgramStart,
         result_cmd_onlyImmediateMode,
+        result_cmd_onlyImmModeFirstStatement,
         result_cmd_onlyInsideProgram,
         result_cmd_onlyInsideFunction,
         result_cmd_onlyOutsideFunction,
@@ -1295,7 +1296,7 @@ private:
     static const ResWordDef _resWords[75];                                                                                      // keyword names
     static const InternCppFuncDef _internCppFunctions[139];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
-    static const SymbNumConsts _symbNumConsts[76];                                                                              // predefined constants
+    static const SymbNumConsts _symbNumConsts[74];                                                                              // predefined constants
 
     static constexpr int _resWordCount{ sizeof(_resWords) / sizeof(_resWords[0]) };                                             // count of keywords in keyword table 
     static constexpr int _internCppFunctionCount{ (sizeof(_internCppFunctions)) / sizeof(_internCppFunctions[0]) };             // count of internal cpp functions in functions table
@@ -1692,7 +1693,6 @@ private:
 
     int _lastValuesCount{ 0 };                                      // number of values in 'last values' (last results) buffer
     bool _lastValueIsStored = false;
-    bool _keepObjectsInMemory{ true };                              // when quitting, keep Justina in memory
     bool _lastPrintedIsPrompt{ false };                             // was the last thing printed a prompt ?
 
     LinkedList evalStack;                                           // evaluation stack keeps intermediate results of an expression being evaluated (execution phase)
@@ -1872,7 +1872,7 @@ private:
     Print* _pStreamOut{ nullptr };
     int _streamNumberIn{ 0 }, _streamNumberOut{ 0 };
 
-    int _externIOstreamCount = 0;
+    int _externIOstreamCount = 0;                                   // maximum is 4
 
 #if !defined ARDUINO_ARCH_ESP32
     Sd2Card _SDcard{};
@@ -1982,7 +1982,7 @@ public:
     // pass control to Justina interpreter
     // -----------------------------------
 
-    bool begin();                                                   // call from Arduino main program
+    void begin();                                                   // call from Arduino main program
 
 
     // Justina print functions
@@ -2217,7 +2217,7 @@ private:
     void printToString(int width, int precision, bool inputIsString, bool isIntFmt, char* valueType, Val* operands, char* fmtString,
         Val& fcnResult, int& charsPrinted, bool expandStrings = false);
 
-    //  unparse statement and pretty print, print parsing result (OK or error number), print variables, print call stack, SD card directory
+    // unparse statement and pretty print, print parsing result (OK or error number), print variables, print call stack, SD card directory
     void prettyPrintStatements(int outputStream, int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
     void printParsingResult(parsingResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* pErrorPos);
     void printExecError(execResult_type execResult, bool showStopmessage);

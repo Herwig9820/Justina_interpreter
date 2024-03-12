@@ -209,7 +209,7 @@ bool Justina::checkCommandKeyword(parsingResult_type& result, int& resWordIndex)
     char cmdRestriction = _resWords[_tokenIndex].restrictions & cmd_usageRestrictionMask;
     if ((cmdRestriction == cmd_onlyProgramTop) && (_lastTokenStep != 0)) { result = result_cmd_onlyProgramStart; return false; }        // not a 'program' command
     if ((cmdRestriction != cmd_onlyProgramTop) && (_lastTokenStep == 0)) { result = result_cmd_programCmdMissing; return false; }
-    if ((cmdRestriction == cmd_onlyImmModeTop) && (_programCounter != _programStorage + _PROGRAM_MEMORY_SIZE + sizeof(TokenIsResWord) - (hasTokenStep ? 0 : 2))) { result = result_cmd_onlyImmediateMode; return false; }
+    if ((cmdRestriction == cmd_onlyImmModeTop) && (_programCounter != _programStorage + _PROGRAM_MEMORY_SIZE + sizeof(TokenIsResWord) - (hasTokenStep ? 0 : 2))) { result = result_cmd_onlyImmModeFirstStatement; return false; }
     if (_programMode && (cmdRestriction == cmd_onlyImmediate)) { result = result_cmd_onlyImmediateMode; return false; }
     if (!_programMode && (cmdRestriction == cmd_onlyInProgram)) { result = result_cmd_onlyInsideProgram; return false; }
     if (!_justinaFunctionBlockOpen && (cmdRestriction == cmd_onlyInFunctionBlock)) { result = result_cmd_onlyInsideFunction; return false; }

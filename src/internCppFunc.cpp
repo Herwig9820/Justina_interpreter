@@ -2291,13 +2291,13 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 case 44:                                                                        // processor board or architecture
                 {
                 #if  defined(ARDUINO_ARCH_SAMD) 
-                    fcnResult.longConst = 2; break;
+                    fcnResult.longConst = 1; break;
                 #elif defined(ARDUINO_ARCH_RP2040) 
-                    fcnResult.longConst = 3; break;
+                    fcnResult.longConst = 2; break;
                 #elif defined(ARDUINO_ARCH_ESP32)
-                    fcnResult.longConst = 4; break;
+                    fcnResult.longConst = 3; break;
                 #else 
-                    fcnResult.longConst = 1; break;     // none of these
+                    fcnResult.longConst = 0; break;     // none of these
                 #endif
             }
                 break;

@@ -757,7 +757,7 @@ Justina::execResult_type  Justina::exec(char* startHere) {
 // adapt imm. mode parsed statement stack, flow control stack and evaluation stack
   // -------------------------------------------------------------------------------
 
-    if ((execResult == result_stopForDebug) || (execResult == result_stopForBreakpoint)) {              // stopping for debug now ('STOP' command or single step)
+    if ((execResult == result_stopForDebug) || (execResult == result_stopForBreakpoint)) {                              // stopping for debug now ('STOP' command or single step)
         // push caller function data (or main = user entry level in immediate mode) on FLOW CONTROL stack 
 
         _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));

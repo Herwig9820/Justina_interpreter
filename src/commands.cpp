@@ -104,7 +104,6 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
 
         case cmdcod_quit:
         {
-            _keepObjectsInMemory=true;
             return result_quit;
         }
         break;
@@ -168,10 +167,10 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             // overwrite the parsed command line (containing the 'step', 'go' or 'abort' command) with the command line stack top and pop the command line stack top
             // before removing, delete any parsed string constants for that command line
 
-            _lastUserCmdStep = *(char**)_pParsedCommandLineStackTop;                                                        // pop program step of last user cmd token ('tok_no_token')
+            _lastUserCmdStep = *(char**)_pParsedCommandLineStackTop;                                                            // pop program step of last user cmd token ('tok_no_token')
             long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + _PROGRAM_MEMORY_SIZE) + 1;
             deleteConstStringObjects(_programStorage + _PROGRAM_MEMORY_SIZE);
-            memcpy((_programStorage + _PROGRAM_MEMORY_SIZE), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);     // size berekenen
+            memcpy((_programStorage + _PROGRAM_MEMORY_SIZE), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);    // size berekenen
             parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
             _pParsedCommandLineStackTop = parsedCommandLineStack.getLastListElement();
         #if PRINT_PARSED_CMD_STACK

@@ -97,7 +97,7 @@ Justina::execResult_type Justina::SD_open(int& fileNumber, char* filePath, int m
     // if only reading file: does file exist ? (this check allows for a more specific error code, instead of 'could not open file' error code)
     bool modeIsOnlyRead = (!(mode & (WRITE_FILE | APPEND_FILE)));
     bool fileExists = SD.exists(filePathInCapitals);
-    
+
     // ESP32 only: ESP32 SD library does not test for user-imposed constraints about file (non-)existence: perform tests here
     bool fileMustExist = (mode & (CREATE_FILE | EXCL_FILE)) == 0;
     bool fileMustNotExist = (mode & (CREATE_FILE | EXCL_FILE)) == (CREATE_FILE | EXCL_FILE);
@@ -519,7 +519,7 @@ int Justina::readFrom(int streamNumber, char* buffer, int length) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, pStream) != result_execOK) { return 0; }          // if error, zero characters written but error is not returned to caller
     // NOTE: stream MUST be a file (check before call) -> appFlag_dataInOut  and appFlag_dataRecdFromStream1 must not be set
-    return static_cast<File*>(pStream)->read((uint8_t*)buffer, length);                 
+    return static_cast<File*>(pStream)->read((uint8_t*)buffer, length);
 }
 
 
@@ -709,7 +709,7 @@ int Justina::read() {
 
 int Justina::read(char* buffer, int length) {
     // NOTE: stream MUST be a file (check before call) -> appFlag_dataInOut  and appFlag_dataRecdFromStream1 must not be set
-    return (static_cast <File*>(_pStreamIn))->read((uint8_t*)buffer, length);    
+    return (static_cast <File*>(_pStreamIn))->read((uint8_t*)buffer, length);
 }
 
 
@@ -1147,13 +1147,7 @@ void Justina::printExecError(execResult_type execResult, bool  showStopmessage) 
         printTo(0, execInfo);
     }
 
-    else if (execResult == result_quit) {
-        char execInfo[50] = "";
-        strcpy(execInfo, "\r\nExecuting 'quit' command. ");
-        // If data is NOT kept in memory, objects that will be deleted are: variable and function names; parsed, intermediate and variable string objects,...
-        // ...array objects, stack entries, last values FiFo, open function data, trigger and view strings, ...
-        printTo(0, strcat(execInfo, _keepObjectsInMemory ? "Data retained\r\n" : "Memory cleared\r\n"));                
-    }
+    else if (execResult == result_quit) {printTo(0, "\r\nExecuting 'quit' command\r\n"); }
     else if (execResult == result_kill) {}      // do nothing
     else if (execResult == result_abort) { printTo(0, "\r\n+++ Abort: code execution terminated +++\r\n"); }
     else if (execResult == result_stopForDebug) { if (showStopmessage) { printTo(0, "\r\n+++ Program stopped +++\r\n"); } }

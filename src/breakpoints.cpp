@@ -328,7 +328,7 @@ Justina::execResult_type Breakpoints::maintainBreakpointTable(long sourceLine, c
         }
 
         if (doSet) {}                                                                   // do nothing
-        // clear ,enable, disable bp: if BP was not set, then control returned to caller already
+        // clear ,enable, disable BP if BP was not set, then control returned to caller already
         else if (doClear) { _breakpointsUsed--; }                                       // (entry will be moved to end of defined breakpoints when corresponding objects have been deleted)   
         else if (doEnable) { _pBreakpointData[entry].BPenabled = 0b1; }
         else if (doDisable) { _pBreakpointData[entry].BPenabled = 0b0; }
