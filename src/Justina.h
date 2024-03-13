@@ -1954,9 +1954,9 @@ public:
     // -----------------------
 
 #if defined ARDUINO_ARCH_ESP32
-    Justina(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, int JustinaStartupOptions = 0, int SDcardChipSelectPin = 10);
+    Justina(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, int SDcardMode = 0, int SDcardChipSelectPin = 10);
 #else
-    Justina(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, int JustinaStartupOptions = 0, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);
+    Justina(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, int SDcardMode = 0, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);
 #endif
     ~Justina();
 
