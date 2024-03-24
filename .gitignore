@@ -12,7 +12,7 @@ secrets.h
 .development
 
 # library only
-*.ino
+Justina_interpreter.ino
 
 # User-specific files
 *.rsuser
