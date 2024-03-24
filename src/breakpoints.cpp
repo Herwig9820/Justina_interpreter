@@ -347,11 +347,11 @@ Justina::execResult_type Breakpoints::maintainBreakpointTable(long sourceLine, c
     }
 
     if (doSet or doClear) {     // adapt attributes
-        // keep view, hitcount or trigger if setting a breakpoint that was already set, AND those attributes are not supplied
+        // keep view, hit count or trigger if setting a breakpoint that was already set, AND those attributes are not supplied
         bool keepView = (BPwasSet && doSet && (extraArribCount == 0));          // 'set' for an existing breakpoint: only change view string if supplied 
-        bool keepCondition = (BPwasSet && doSet && (extraArribCount <= 1));     // 'set' for an existing breakpoint: only change hitcount or trigger string if supplied
+        bool keepCondition = (BPwasSet && doSet && (extraArribCount <= 1));     // 'set' for an existing breakpoint: only change hit count or trigger string if supplied
 
-        // save view string and hitcount value / trigger string
+        // save view string and hit count value / trigger string
         if (!keepView) {
             _pBreakpointData[entry].BPwithViewExpr = (viewString == nullptr) ? 0b0 : 0b1;
             _pJustina->replaceSystemStringValue(_pBreakpointData[entry].pView, viewString);
@@ -409,7 +409,7 @@ void Breakpoints::printBreakpoints() {
         _pJustina->println(_pBreakpointData[i].BPwithViewExpr == 0b1 ? _pBreakpointData[i].pView : "-");
 
         // print breakpoint settings line 2
-        sprintf(line, "%19s%0s", "", _pBreakpointData[i].BPwithHitCount == 0b1 ? "hitcount: " : _pBreakpointData[i].BPwithTriggerExpr == 0b1 ? "trigger: " : "always trigger\r\n");
+        sprintf(line, "%19s%0s", "", _pBreakpointData[i].BPwithHitCount == 0b1 ? "hit count: " : _pBreakpointData[i].BPwithTriggerExpr == 0b1 ? "trigger: " : "always trigger\r\n");
         _pJustina->print(line);
 
         if (_pBreakpointData[i].BPwithTriggerExpr == 0b1) { _pJustina->println(_pBreakpointData[i].pTrigger); }
@@ -468,7 +468,7 @@ long Breakpoints::findLineNumberForBPstatement(char* pProgramStepToFind) {
         if ((matchedCriteriumNumber >= 2)) { lineSequenceNumber++; }
     };
 
-    // 2. find the soureline number (base 1) corresponding to a line sequence number (base 0)  
+    // 2. find the source line number (base 1) corresponding to a line sequence number (base 0)  
     long sourceLineNumber = BPsourceLineFromToBPlineSequence(lineSequenceNumber, false);
     return sourceLineNumber;
 }

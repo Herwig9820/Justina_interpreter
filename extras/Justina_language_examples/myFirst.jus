@@ -1,25 +1,14 @@
-/*-------------------------------------------------------------------------------------------------------------------------------------
-	Sample JUSTINA program for use with the Justina interpreter	on Arduino SAMD boards, the nano RP2040 board and the nano ESP32 board.
-	
-	The program writes 5 lines to the console and exits.
-	------------------------------------------
-	Created by Herwig Taveirne, February 2024.
-	
-	This software is available for use, modification or redistribution under the terms of the GNU General Public License.
-	
-	See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter
--------------------------------------------------------------------------------------------------------------------------------------*/
+/*----------------------------------------------------------------------------
+	Sample JUSTINA program for use with the Justina interpreter.
 
+	The program simply writes 5 lines to the console and exits.
+	
+	Created March 2024 by Herwig Taveirne
+	
+	This example Justina code (this file) is in the public domain.
+----------------------------------------------------------------------------*/
 
 program myFirstProgram;    	// this is a JUSTINA program
-
-
-// -----------------------
-// Sample Justina function
-// -----------------------
-
-// arguments: none
-// returns: the square of the final loop variable value
 
 function print5lines();    	// this is a function
 

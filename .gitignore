@@ -11,6 +11,8 @@ secrets.h
 *.sln
 .development
 
+# library only
+*.ino
 
 # User-specific files
 *.rsuser

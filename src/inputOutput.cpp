@@ -41,7 +41,7 @@ Justina::execResult_type Justina::startSD() {
 
     if (_SDinitOK) { return result_execOK; }                                                            // card is initialized: nothing to do
 
-    if ((_justinaStartupOptions & SD_mask) == SD_notPresent) { return result_SD_noCardOrNotAllowed; }
+    if ((_justinaStartupOptions & SD_mask) == SD_notAllowed) { return result_SD_noCardOrNotAllowed; }
 #if !defined ARDUINO_ARCH_ESP32
     _SDcard.init(SPI_FULL_SPEED, _SDcardChipSelectPin);         // needed for listFilesToSerial command (not for nano ESP32)
 #endif
@@ -77,12 +77,12 @@ char* Justina::SD_ESP32_convert_accessMode(int mode) {
 Justina::execResult_type Justina::SD_open(int& fileNumber, char* filePath, int mode) {
     fileNumber = 0;                                                                                                         // init: no file number yet
 
-    if ((_justinaStartupOptions & SD_mask) == SD_notPresent) { return result_SD_noCardOrNotAllowed; }
+    if ((_justinaStartupOptions & SD_mask) == SD_notAllowed) { return result_SD_noCardOrNotAllowed; }
     if (!_SDinitOK) { return result_SD_noCardOrCardError; }
     if (_openFileCount == MAX_OPEN_SD_FILES) { return result_SD_maxOpenFilesReached; }                                      // max. open files reached
 
     // create temp string
-    if (!pathValid(filePath)) { return result_SD_pathIsNotValid; }                                                          // is not a complete check, but it remedies a few plaws in SD library
+    if (!pathValid(filePath)) { return result_SD_pathIsNotValid; }                                                          // is not a complete check, but it remedies a few flaws in SD library
 
     // create a new string, providing space for starting '/' if missing
     // always create the new char*, because if the file is closed later, Justina will assume that it must be deleted 
@@ -166,7 +166,7 @@ Justina::execResult_type Justina::SD_open(int& fileNumber, char* filePath, int m
 Justina::execResult_type Justina::SD_openNext(int dirFileNumber, int& fileNumber, File* pDirectory, int mode) {
     fileNumber = 0;                                                                                                         // init: no next file opened
 
-    if ((_justinaStartupOptions & SD_mask) == SD_notPresent) { return result_SD_noCardOrNotAllowed; }
+    if ((_justinaStartupOptions & SD_mask) == SD_notAllowed) { return result_SD_noCardOrNotAllowed; }
     if (!_SDinitOK) { return result_SD_noCardOrCardError; }
     if (_openFileCount == MAX_OPEN_SD_FILES) { return result_SD_maxOpenFilesReached; }                                      // max. open files reached
 
@@ -207,7 +207,7 @@ Justina::execResult_type Justina::SD_openNext(int dirFileNumber, int& fileNumber
     for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
         if (openFiles[i].fileNumberInUse) {
             if (i + 1 != fileNumber) {
-                // compare the long filenames (including filepath) for the newly opened file with the previously opened open file (comparing file refs doesn't work)
+                // compare the long filenames (including file path) for the newly opened file with the previously opened open file (comparing file refs doesn't work)
                 if (strcasecmp(openFiles[i].filePath, openFiles[fileNumber - 1].filePath) == 0) {                           // 8.3 file format: NOT case sensitive      
                     openFiles[fileNumber - 1].file.close();                                                                 // close newer file ref again
                     _openFileCount--;
@@ -271,13 +271,13 @@ void  Justina::SD_closeAllFiles() {
 
 Justina::execResult_type Justina::SD_listFiles() {
 
-    if ((_justinaStartupOptions & SD_mask) == SD_notPresent) { return result_SD_noCardOrNotAllowed; }
+    if ((_justinaStartupOptions & SD_mask) == SD_notAllowed) { return result_SD_noCardOrNotAllowed; }
     if (!_SDinitOK) { return result_SD_noCardOrCardError; }
 
     // print to console (default), or to any other defined I/O device, or to a file, but without date and time stamp (unfortunately this fixed in SD library)
     // before calling this function, output stream must be set by function 'setStream(...)'
 
-    // while printing directories, 2 lfiles will be open at the same time (a directory and a file or subdirectory): make sure max. open file count will not be exceeded 
+    // while printing directories, 2 files will be open at the same time (a directory and a file or subdirectory): make sure max. open file count will not be exceeded 
     if (_openFileCount > MAX_OPEN_SD_FILES - 2) { return result_SD_maxOpenFilesReached; }
 
     // open files will not increase '_openFileCount' because we don't save file info in _openFiles array anyway 
@@ -336,7 +336,7 @@ void Justina::printDirectory(File dir, int indentLevel) {
 
 bool Justina::pathValid(char* path) {
 
-    // SD library allows to run into issues if path is not valid (hanging, nivalid creation of directories / files)
+    // SD library allows to run into issues if path is not valid (hanging, invalid creation of directories / files)
     // this routine performs a few basic checks: 
     // - path should NOT start with a space
     // - path should NOT end with a '/' or a space
@@ -476,7 +476,7 @@ Justina::execResult_type Justina::SD_fileChecks(bool argIsLong, bool argIsFloat,
 Justina::execResult_type Justina::SD_fileChecks(File*& pFile, int fileNumber, int allowFileTypes)
 {
     // check that SD card is initialized, file is open and file type (directory, file) is OK
-    if ((_justinaStartupOptions & SD_mask) == SD_notPresent) { return result_SD_noCardOrNotAllowed; }
+    if ((_justinaStartupOptions & SD_mask) == SD_notAllowed) { return result_SD_noCardOrNotAllowed; }
     if (!_SDinitOK) { return result_SD_noCardOrCardError; }
     if ((fileNumber < 1) || (fileNumber > MAX_OPEN_SD_FILES)) { return result_SD_invalidFileNumber; }
     if (!openFiles[fileNumber - 1].fileNumberInUse) { return result_SD_fileIsNotOpen; }
@@ -608,8 +608,8 @@ size_t Justina::printTo(int streamNumber, const char* s) {
 }
 
 
-// print line functons
-// -------------------
+// print line functions
+// --------------------
 
 size_t Justina::printlnTo(int streamNumber, char c) {
     Stream* pStream{ nullptr };
@@ -1016,7 +1016,8 @@ void Justina::printVariables(bool userVars) {
                         quoteAndExpandEscSeq(pString);        // creates new string
                         println(pString);
                     #if PRINT_HEAP_OBJ_CREA_DEL
-                        _pDebugOut->print("----- (Intermd str) ");   _pDebugOut->println((uint32_t)pString, HEX);
+                        _pDebugOut->print("\r\n----- (Intermd str) ");   _pDebugOut->println((uint32_t)pString, HEX);
+                        _pDebugOut->print("    print variables ");   _pDebugOut->println(pString);
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] pString;
@@ -1288,7 +1289,8 @@ void Justina::prettyPrintStatements(int outputStream, int instructionCount, char
                     quoteAndExpandEscSeq(pAnum);                                            // returns pointer to new (temporary) string created on the heap 
                     strcpy(prettyToken, pAnum);
                 #if PRINT_HEAP_OBJ_CREA_DEL
-                    _pDebugOut->print("----- (Intermd str) ");   _pDebugOut->println((uint32_t)pAnum, HEX);
+                    _pDebugOut->print("\r\n----- (Intermd str) ");   _pDebugOut->println((uint32_t)pAnum, HEX);
+                    _pDebugOut->print("  pretty print name ");   _pDebugOut->println(pAnum);
                 #endif
                     _intermediateStringObjectCount--;
                     delete[]pAnum;
@@ -1419,7 +1421,7 @@ void Justina::printParsingResult(parsingResult_type result, int funcNotDefIndex,
 
     else  if ((result == result_function_undefinedFunctionOrArray) && _programMode) {       // in program mode only 
         // during Justina function call parsing, it is not always known whether the function exists (because function can be defined after a call) 
-        // -> a linenumber can not be given, but the undefined function can
+        // -> a line number can not be given, but the undefined function can
         sprintf(parsingInfo, "\r\n  Parsing error %d: function or array '%s' is not defined", result, JustinaFunctionNames[funcNotDefIndex]);
     }
 
@@ -1470,9 +1472,6 @@ void Justina::quoteAndExpandEscSeq(char*& stringValue) {
 
     _intermediateStringObjectCount++;
     char* output = new char[oldLen + occurences + 2 + 1];                               // provide room for expanded \ and " characters, 2 string terminating " and terminator
-#if PRINT_HEAP_OBJ_CREA_DEL
-    _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)output, HEX);
-#endif
     output[0] = '"';                                                                    // add starting string terminator
 
     if (oldLen != 0) {
@@ -1492,7 +1491,13 @@ void Justina::quoteAndExpandEscSeq(char*& stringValue) {
     }
     output[oldLen + occurences + 2 - 1] = '"';
     output[oldLen + occurences + 2] = '\0';
+#if PRINT_HEAP_OBJ_CREA_DEL
+    _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)output, HEX);
+    _pDebugOut->print("     quote & expand ");   _pDebugOut->println(output);
+#endif
+
     stringValue = output;
+    
     return;
 }
 
@@ -1596,14 +1601,11 @@ void  Justina::printToString(int width, int precision, bool inputIsString, bool 
         resultStrLen = max(width + 10, opStrLen + 10);                                                                      // allow for a few extra formatting characters, if any
     }
     else {
-        resultStrLen = max(width + 10, 30);                                                                                 // 30: ensure length is sufficient to print a formatted nummber
+        resultStrLen = max(width + 10, 30);                                                                                 // 30: ensure length is sufficient to print a formatted number
     }
 
     _intermediateStringObjectCount++;
     fcnResult.pStringConst = new char[resultStrLen + 1];
-#if PRINT_HEAP_OBJ_CREA_DEL
-    _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-#endif
 
     if (inputIsString) {
         if (expandStrings) {
@@ -1611,7 +1613,8 @@ void  Justina::printToString(int width, int precision, bool inputIsString, bool 
                 char* pString = (*value).pStringConst;                                                                      // remember pointer to original string
                 quoteAndExpandEscSeq((*value).pStringConst);                                                                // creates new string
             #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print("----- (Intermd str) ");   _pDebugOut->println((uint32_t)pString, HEX);
+                _pDebugOut->print("\r\n----- (Intermd str) ");   _pDebugOut->println((uint32_t)pString, HEX);
+                _pDebugOut->print("  printToString (2) ");   _pDebugOut->println(pString);
             #endif
                 _intermediateStringObjectCount--;
                 delete[] pString;                                               // delete old string
@@ -1626,6 +1629,11 @@ void  Justina::printToString(int width, int precision, bool inputIsString, bool 
     else {      // floating point
         sprintf(fcnResult.pStringConst, fmtString, width, precision, (*valueType == value_isLong) ? (float)(*value).longConst : (*value).floatConst, &charsPrinted);
     }
+
+#if PRINT_HEAP_OBJ_CREA_DEL
+    _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+    _pDebugOut->print("  printToString (1) ");   _pDebugOut->println(fcnResult.pStringConst);
+#endif
 
     return;
 }

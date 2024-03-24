@@ -33,7 +33,7 @@
 // *****************************************************************
 
 // ---------------------------------------------
-// *   initialisation of static class member   *
+// *   initialization of static class member   *
 // ---------------------------------------------
 
 int LinkedList::_listIDcounter = 0;
@@ -97,7 +97,7 @@ char* LinkedList::appendListElement(int size) {
     (*_ppDebugOutStream)->print("(LIST) Create elem # "); (*_ppDebugOutStream)->print(_listElementCount);
     (*_ppDebugOutStream)->print(", list ID "); (*_ppDebugOutStream)->print(_listID);
     (*_ppDebugOutStream)->print(", stack: "); (*_ppDebugOutStream)->print(_listName);
-    if (p == nullptr) { (*_ppDebugOutStream)->println(", list elem adres: nullptr"); }
+    if (p == nullptr) { (*_ppDebugOutStream)->println(", list elem address: nullptr"); }
     else {
         (*_ppDebugOutStream)->print(", list elem address: "); (*_ppDebugOutStream)->println((uint32_t)p, HEX);
     }

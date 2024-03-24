@@ -1,28 +1,23 @@
-/*-------------------------------------------------------------------------------------------------------------------------------------
-	Sample JUSTINA program for use with the Justina interpreter	on Arduino SAMD boards, the nano RP2040 board and the nano ESP32 board.
-	
-	The program demonstrates the use of the input statement together with the eval() function to parse and evaluate user input.
-	It also shows how to use error trapping to catch an error before it would prematurely terminate the program. 
-	------------------------------------------
-	Created by Herwig Taveirne, February 2024.
-	
-	This software is available for use, modification or redistribution under the terms of the GNU General Public License.
-	
-	See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter
--------------------------------------------------------------------------------------------------------------------------------------*/
+/*----------------------------------------------------------------------------
+	Sample JUSTINA program for use with the Justina interpreter.
 
+	The program demonstrates the use of the input statement together with the 
+	eval() function to parse and evaluate user input.
+	It also shows how to use error trapping to catch an error before it would 
+	prematurely terminate the program. 
+	
+	Created March 2024 by Herwig Taveirne
+	
+	This example Justina code (this file) is in the public domain.
+----------------------------------------------------------------------------*/
 
 program evalInput;
 
-
-// --------------------------------------------------------------------------------------
-// This function asks to enter a series of amounts of an unnamed material, in metric ton.
-// All amounts are added up and finally, when the user cancels further input, the...
-// ... total amount is printed to the console, in kilograms.
-// --------------------------------------------------------------------------------------
-
-// arguments: none
-// returns: 0
+/*----------------------------------------------------------------------------------------
+	This function asks to enter a series of amounts of an unnamed material, in metric ton.
+	All amounts are added up and finally, when the user cancels further input, the...
+	... total amount is printed to the console, in kilograms.
+----------------------------------------------------------------------------------------*/
 
 function evalInput();
 	var question, answer, flag;
@@ -31,12 +26,12 @@ function evalInput();
 	coutLine;
 	while 1;
 		// initialize 'answer' and 'flag'
-		input question = "Please specify amount in metric ton (an expression is allowed)", answer = "", flag = NO_DEFAULT; 
-		
+		input question = "Enter an amount in metric ton (an expression is allowed)", 
+			answer = "", flag = NO_DEFAULT; 
 		if flag == CANCELED; break; end;												// the user entered '\c' (cancel): exit while...end structure now
 		
 		trapErrors TRUE;																// allow trapping errors (this resets err() to zero)
-		totalAmount += amount = eval(answer) * 1000; 									// in case the user made an invalid entry, the error will be trapped 
+		totalAmount += amount = eval(answer) * 1000;  									// in case the user made an invalid entry, the error will be trapped 
 		trapErrors FALSE;																// disable error trapping again (this does not reset err() )
 		if err() ; coutLine line(), "!!! Please enter a valid amount !!!", line(); 		// if an error occured, print an error message
 		else; coutLine "amount entered = ", amount, " kg", line();end;					// if NO error occured, add up the new amount

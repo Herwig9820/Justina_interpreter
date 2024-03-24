@@ -1,34 +1,24 @@
-/*-------------------------------------------------------------------------------------------------------------------------------------
-	Sample JUSTINA program for use with the Justina interpreter	on Arduino SAMD boards, the nano RP2040 board and the nano ESP32 board.
-	
-	The program is intended to be called automatically upon starting Justina, if allowed by the the Justina startup options.
+/*----------------------------------------------------------------------------
+	Sample JUSTINA program for use with the Justina interpreter.
+
+	The program is intended to be called automatically upon starting Justina, 
+	if allowed by the the Justina startup options.
 	
 	In order to be called automatically:
 	- the file name must be 'start.jus'
 	- the program must contain a function 'start()', taking no arguments
 	(the program name is not relevant)
-	------------------------------------------
-	Created by Herwig Taveirne, February 2024.
 	
-	This software is available for use, modification or redistribution under the terms of the GNU General Public License.
+	Created March 2024 by Herwig Taveirne
 	
-	See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter
--------------------------------------------------------------------------------------------------------------------------------------*/
-
+	This example Justina code (this file) is in the public domain.
+----------------------------------------------------------------------------*/
 
 program startJustina;
 
-
-// ------------------------------------------------------------------------------------
-// This is a sample startup function.
-// ------------------------------------------------------------------------------------
-
-// arguments: none
-// returns: nothing 
-
 function start();
-	coutLine repChar("-", 44), line(), "---- Executing startup file 'start.jus' ----", line(), 
-		repChar("-", 44);
+	coutLine repChar("-", 44), line(), 
+		"---- Executing startup file 'start.jus' ----", line(), repChar("-", 44);
 	
 	coutLine "board architecture: ", 
 		choose(sysVal(44), "unknown", "SAMD", "RP2040", "ESP32");					// Arduino board architecture ?

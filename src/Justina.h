@@ -124,7 +124,7 @@ class LinkedList {
 
     static Print** _ppDebugOutStream;                                   // pointer to pointer to debug stream
     static int _listIDcounter;                                          // number of lists created
-    static long _createdListObjectCounter;                              // count of created objects accross lists
+    static long _createdListObjectCounter;                              // count of created objects across lists
 
     long _listElementCount = 0;                                         // linked list length (number of objects in list)
 
@@ -181,7 +181,7 @@ class Justina {
         block_while,
         block_if,
         block_alterFlow,                                                // alter flow in specific open block types
-        block_genericEnd,                                               // ends anytype of open block
+        block_genericEnd,                                               // ends any type of open block
 
         block_eval,                                                     // execution only, signals execution of parsed eval() string 
         block_trigger,                                                  // execution only, signals execution of parsed trigger string
@@ -239,6 +239,8 @@ class Justina {
         cmdcod_stepToBlockEnd,
         cmdcod_setNextLine,
         cmdcod_trace,
+        cmdcod_traceExprOn,
+        cmdcod_traceExprOff,
         cmdcod_debug,
         cmdcod_BPon,
         cmdcod_BPoff,
@@ -672,8 +674,9 @@ class Justina {
         // cpp function arguments
         result_arg_outsideRange = 3100,
         result_arg_integerTypeExpected,
-        result_arg_numberExpected,
+        result_arg_floatTypeExpected,
         result_arg_stringExpected,
+        result_arg_numberExpected,
         result_arg_nonEmptyStringExpected,
         result_arg_varExpected,
         result_arg_invalid,
@@ -684,6 +687,7 @@ class Justina {
 
         // numbers and strings
         result_integerTypeExpected = 3200,
+        result_floatTypeExpected,
         result_numberExpected,
         result_operandsNumOrStringExpected,
         result_undefined,
@@ -695,7 +699,7 @@ class Justina {
         // abort, kill, quit
         result_noProgramStopped = 3300,                                 // 'go' command not allowed because not in debug mode
 
-        // breakpont errors
+        // breakpoint errors
         result_BP_sourcelineNumberExpected = 3400,
         result_BP_notAllowedForSourceLine,
         result_BP_statementIsNonExecutable,
@@ -781,7 +785,7 @@ class Justina {
     static constexpr int MAX_USERVARNAMES{ MAXVAR_USER };                       // max. user variables allowed. Absolute parser limit: 255
     static constexpr int MAX_PROGVARNAMES{ MAXVAR_PROG };                       // max. program variable NAMES allowed (same name may be reused for global, static, local & parameter variables). Absolute limit: 255
     static constexpr int MAX_STATIC_VARIABLES{ MAXVAR_STAT };                   // max. static variables allowed across all parsed functions (only). Absolute limit: 255
-    static constexpr int MAX_LOCAL_VARIABLES{ 255 };                            // max. local variables allowed across all parsed functons, including function parameters. Absolute limit: 255
+    static constexpr int MAX_LOCAL_VARIABLES{ 255 };                            // max. local variables allowed across all parsed functions, including function parameters. Absolute limit: 255
     static constexpr int MAX_JUSTINA_FUNCTIONS{ MAXFUNC };                      // max. Justina functions allowed. Absolute limit: 255
     static constexpr int MAX_LOC_VARS_IN_FUNC{ 32 };                            // max. local and parameter variables allowed (only) in an INDIVIDUAL parsed function. Absolute limit: 255 
     static constexpr int MAX_ARRAY_DIMS{ 3 };                                   // max. array dimensions allowed. Absolute limit: 3 
@@ -808,7 +812,7 @@ class Justina {
 
 
     // maximum values
-    static inline const int MIN_CONSOLE_PRINT_WIDTH = 20;               // min. width of console line. Width as in c++ printf 'format.width' sub-specifier
+    static inline const int MIN_CONSOLE_PRINT_WIDTH = 16;               // min. width of console line. Width as in c++ printf 'format.width' sub-specifier (useful for small OLED displays)
     static inline const int MAX_CONSOLE_PRINT_WIDTH = 255;              // min. width of console line. Width as in c++ printf 'format.width' sub-specifier
 
     static inline const int MAX_PRINT_WIDTH = 255;                      // max. width of print field. Absolute limit: 255. Width as in c++ printf 'format.width' sub-specifier
@@ -816,12 +820,13 @@ class Justina {
     static inline const int MAX_FLOAT_PRECISION = 8;                    // max. floating-point precision. Precision as defined as in c++ printf 'format.precision' sub-specifier for floating-point numbers
     static inline const int MAX_STRCHAR_TO_PRINT = 255;                 // max. # of alphanumeric characters to print. Absolute limit: 255. Defined as in c++ printf 'format.precision' sub-specifier
 
-    static inline const char DEFAULT_FLOAT_SPECIFIER[2]{ "f" };         // default specifier for floating point numbers. Arduino doesn't recognise uppercase "F"
+    static inline const char DEFAULT_FLOAT_SPECIFIER[2]{ "f" };         // default specifier for floating point numbers. Arduino doesn't recognize uppercase "F"
     static inline const char DEFAULT_INT_SPECIFIER[2]{ "d" };           // default specifier for integers 
     static inline const char DEFAULT_STR_SPECIFIER[2]{ "s" };           // default specifier for integers 
 
     // separate defaults for display settings and fmt() function
-    static constexpr int DEFAULT_DISP_WIDTH{ 50 };                      // display setting      : default width of the print field 
+    static constexpr int DEFAULT_DISP_WIDTH{ 64 };                      // display setting      : default width of the print field 
+    static constexpr int DEFAULT_TAB_SIZE{ 8 };                         // display setting      : default width of the print field 
     static constexpr int DEFAULT_FMT_WIDTH{ 0 };                        // fmt() function output: default width of the print field 
 
     // shared defaults for display settings AND fmt() function settings    
@@ -894,7 +899,7 @@ class Justina {
     static constexpr char* term_leftPar = "(";                          // must be single character
     static constexpr char* term_rightPar = ")";                         // must be single character
 
-    // infix operator accociativity: bit b7 indiciates right-to-left associativity
+    // infix operator associativity: bit b7 indicates right-to-left associativity
     // note: prefix operators always have right-to-left associativity; postfix operators: always left_to_right 
     static constexpr uint8_t op_RtoL = 0x80;                            // infix operator: right-to-left associativity 
     static constexpr uint8_t op_long = 0x40;                            // operators: operand(s) must be long (no casting), result is long 
@@ -992,7 +997,7 @@ class Justina {
     static constexpr char cmd_onlyInFunctionBlock = 0x03;               // command is only allowed inside a function block
     static constexpr char cmd_onlyImmediate = 0x04;                     // command is only allowed in immediate mode
     static constexpr char cmd_onlyOutsideFunctionBlock = 0x05;          // command is only allowed outside a function block (so also in immediate mode)
-    static constexpr char cmd_onlyImmOrInsideFuncBlock = 0x06;          // command is only allowed inside a function block or in immediare mode
+    static constexpr char cmd_onlyImmOrInsideFuncBlock = 0x06;          // command is only allowed inside a function block or in immediate mode
     static constexpr char cmd_onlyProgramTop = 0x07;                    // only as first program statement
     static constexpr char cmd_onlyImmModeTop = 0x08;                    // only as first user command statement
     static constexpr char cmd_onlyImmediateNotWithinBlock = 0x09;       // command is only allowed in immediate mode, and only outside blocks
@@ -1086,8 +1091,8 @@ private:
     // -----------------------
     static constexpr long SD_mask = 0x3;                                // bits 1-0
 public:
-    static constexpr long SD_notPresent = 0x0;                          // card reader not present or card operations not allowed (this is the default)
-    static constexpr long SD_present = 0x1;                             // card reader present but do not initialize card (maybe no card inserted)
+    static constexpr long SD_notAllowed = 0x0;                          // card reader not present or card operations not allowed (maybe exclusively in use by Arduino program)
+    static constexpr long SD_allowed = 0x1;                             // card reader is allowed but do not initialize card (maybe no SD card inserted, no SD card board present). This is the default
     static constexpr long SD_init = 0x2;                                // init SD card upon Justina begin() 
     static constexpr long SD_runStart = 0x3;                            // init SD card upon Justina begin(); load program "start.jus(); execute start() 
 private:
@@ -1293,10 +1298,10 @@ private:
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na, block_na, block_na };                                      // not a 'block' command
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[75];                                                                                      // keyword names
+    static const ResWordDef _resWords[77];                                                                                      // keyword names
     static const InternCppFuncDef _internCppFunctions[139];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
-    static const SymbNumConsts _symbNumConsts[74];                                                                              // predefined constants
+    static const SymbNumConsts _symbNumConsts[73];                                                                              // predefined constants
 
     static constexpr int _resWordCount{ sizeof(_resWords) / sizeof(_resWords[0]) };                                             // count of keywords in keyword table 
     static constexpr int _internCppFunctionCount{ (sizeof(_internCppFunctions)) / sizeof(_internCppFunctions[0]) };             // count of internal cpp functions in functions table
@@ -1410,7 +1415,7 @@ private:
     struct FunctionLvl {                                                // stack level for functions
         char tokenType;
         char index;
-        char returnValueType;                                           // external cpp funcyionvonly; 0 = bool, 1 = char, 2 = int, 3 = long, 4 = float, 5 = char*, 6 = void (but returns zero to Justina)
+        char returnValueType;                                           // external cpp function only; 0 = bool, 1 = char, 2 = int, 3 = long, 4 = float, 5 = char*, 6 = void (but returns zero to Justina)
         char funcIndexInType;                                           // external cpp function only
         char* tokenAddress;                                             // must be second 4-byte word, only for finding source error position during unparsing (for printing)
     };
@@ -1572,7 +1577,7 @@ private:
 
     bool _constructorInvoked{};
     bool _coldStart{};                                              // is this a cold start (first call to Justina begin() method after Justina object creation) ? (this is unrelated to memory clear on quitting)
-    int _justinaStartupOptions{ 0 };                                // see constants SD_notPresent, SD_present, SD_init, SD_runStart
+    int _justinaStartupOptions{ 0 };                                // see constants SD_notAllowed, SD_allowed, SD_init, SD_runStart
     char _programName[MAX_IDENT_NAME_LEN + 1];
     char* _lastProgramStep{ nullptr };
     char* _lastUserCmdStep{ nullptr };                              // location in Justine imm. mode program memory where final 'tok_no_token' token is placed
@@ -1710,7 +1715,7 @@ private:
     //    - first, an entry for the caller (could be another Justina function, an eval() function or the main program level) 
     //    - then, entries for any open block in the caller
     //
-    // - if a program is currently stopped (debug mode), data about the stopped function is also pushed to the flowcontrol stack (it has 'called' the debug level, so to speak) ...
+    // - if a program is currently stopped (debug mode), data about the stopped function is also pushed to the flow control stack (it has 'called' the debug level, so to speak) ...
     //   ... and _activeFunctionData now contains data about a 'new' main program level (any command line statements executed for debugging purposes) 
     //
     // if execution of a NEW program is started while in debug mode, the whole process as described above is repeated. So, you can have more than one program being suspended
@@ -1774,7 +1779,7 @@ private:
     int _fmt_stringFmtFlags = DEFAULT_STR_FLAGS;
 
 
-    int _tabSize{ 8 };                                                              // tab size, default value if not changed by tabSize command 
+    int _tabSize{ DEFAULT_TAB_SIZE };                                                              // tab size, default value if not changed by tabSize command 
 
 
     // debugging
@@ -1801,6 +1806,7 @@ private:
     long _evalParseErrorCode{ 0L };
 
     bool _parsingExecutingTraceString{ false };
+    bool _printTraceValueOnly{ false };                             // do not print trace expression, only print trace evaluation result (value)
     char* _pTraceString{ nullptr };
     Val _traceResultValue{};
     char _traceResultValueType{};
@@ -1888,7 +1894,7 @@ private:
     // ------------------------------------
 
     // program storage
-    char _programStorage [_PROGRAM_MEMORY_SIZE + IMM_MEM_SIZE];
+    char _programStorage[_PROGRAM_MEMORY_SIZE + IMM_MEM_SIZE];
 
     // variable scope: global (program variables and user variables), local within function (including function parameters), static within function     
 
@@ -1954,9 +1960,9 @@ public:
     // -----------------------
 
 #if defined ARDUINO_ARCH_ESP32
-    Justina(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, int SDcardMode = 0, int SDcardChipSelectPin = 10);
+    Justina(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, int SDcardMode = SD_allowed, int SDcardChipSelectPin = 10);
 #else
-    Justina(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, int SDcardMode = 0, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);
+    Justina(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, int SDcardMode = SD_allowed, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);
 #endif
     ~Justina();
 
@@ -2247,7 +2253,7 @@ private:
     // delete one user variable
     parsingResult_type deleteUserVariable(char* userVarName = nullptr);
 
-    // replace a string stored in a sstem variable by another value
+    // replace a string stored in a system variable by another value
     void replaceSystemStringValue(char*& systemString, const char* pNewString);
 
 };

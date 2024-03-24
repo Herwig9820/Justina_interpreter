@@ -84,8 +84,8 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                 if (tokenType != tok_isReservedWord) { break; }
                 int tokenIndex = ((TokenIsResWord*)_activeFunctionData.pNextStep)->tokenIndex;
                 if ((_resWords[tokenIndex].restrictions & cmd_skipDuringExec) == 0) { break; }
-                findTokenStep(_activeFunctionData.pNextStep, true, tok_isTerminalGroup1, termcod_semicolon, termcod_semicolon_BPset, termcod_semicolon_BPallowed);             // find semicolon (always match)
-                jumpTokens(1, _activeFunctionData.pNextStep);             // first token after semicolon
+                findTokenStep(_activeFunctionData.pNextStep, true, tok_isTerminalGroup1, termcod_semicolon, termcod_semicolon_BPset, termcod_semicolon_BPallowed);   // find semicolon (always match)
+                jumpTokens(1, _activeFunctionData.pNextStep);                                   // first token after semicolon
             } while (true);
 
             _activeFunctionData.errorStatementStartStep = _activeFunctionData.pNextStep;
@@ -144,7 +144,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                 (_activeFunctionData.activeCmd_ResWordCode == cmdcod_stepToBlockEnd))) {
 
                 // determine whether an open block exists within the active function:
-                // to do that, locate flow control control stack level below the stopped function data 
+                // to do that, locate flow control stack level below the stopped function data 
                 // note: because program is currently stopped, _activeFunctionData represents the debug level command line. FlowCtrlStack top levels contain...
                 // ...any open blocks for the debug level, then the level representing the stopped function and only then any open blocks for that stopped function, ...
                 // followed by levels for other open functions in the call stack with their open blocks... and finally a level representing the command line...
@@ -157,7 +157,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                     pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                 } while ((blockType != block_JustinaFunction) && (blockType != block_eval));
 
-                // access the flow control stack level below the stack level for the active function, and check the blocktype: is it an open block within the function ?
+                // access the flow control stack level below the stack level for the active function, and check the block type: is it an open block within the function ?
                 // (if not, then it's the stack level for the caller already)
                 blockType = ((openBlockGeneric*)pFlowCtrlStackLvl)->blockType;
                 if ((blockType != block_for) && (blockType != block_while) && (blockType != block_if)) { OpenBlock = false; }   // is it an open block ?
@@ -170,7 +170,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             _lastUserCmdStep = *(char**)_pParsedCommandLineStackTop;                                                            // pop program step of last user cmd token ('tok_no_token')
             long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + _PROGRAM_MEMORY_SIZE) + 1;
             deleteConstStringObjects(_programStorage + _PROGRAM_MEMORY_SIZE);
-            memcpy((_programStorage + _PROGRAM_MEMORY_SIZE), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);    // size berekenen
+            memcpy((_programStorage + _PROGRAM_MEMORY_SIZE), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);    
             parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
             _pParsedCommandLineStackTop = parsedCommandLineStack.getLastListElement();
         #if PRINT_PARSED_CMD_STACK
@@ -236,6 +236,22 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
         break;
 
 
+        // ------------------------
+        // while tracing: view values only, or preceded by trace expressions
+        // ------------------------
+
+        case cmdcod_traceExprOn:
+        case cmdcod_traceExprOff:
+        {
+            _printTraceValueOnly = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_traceExprOff);
+
+            // clean up
+            clearEvalStackLevels(cmdArgCount);                              // clear evaluation stack and intermediate strings 
+            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
+        }
+        break;
+
+
         // ---------------------------------------------------------------------------------------------------------
         // Switch on single step mode (use to debug a program without Stop command programmed, right from the start)
         // ---------------------------------------------------------------------------------------------------------
@@ -289,7 +305,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             // B. locate the parsed program step for the source line to go to
             // --------------------------------------------------------------
 
-            // note: the FIRST statement STARTING on that source line must be an executable statement. Otherwise this sourceline cannot be set as the 'next line'
+            // note: the FIRST statement STARTING on that source line must be an executable statement. Otherwise this source line cannot be set as the 'next line'
             char* nextStep_tobe{};
             execResult_type execResult = _pBreakpoints->findParsedStatementForSourceLine(sourceLine, nextStep_tobe);
             if (execResult != result_execOK) { return execResult; }
@@ -350,12 +366,12 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                 do {
                     int matchedCritNum = 0;
                     int tokenType = *step & 0x0F;
-                    if (incRelativeLevel) { relativeNestingLevel++; }       // ok, if the corresponding block end statement will be encountered as well
+                    if (incRelativeLevel) { relativeNestingLevel++; }       // OK, if the corresponding block end statement will be encountered as well
                     else if (decRelativeLvel) {
                         relativeNestingLevel--;
                         if (relativeNestingLevel < minimumRelativeNestingLevel) {
                             minimumRelativeNestingLevel--;
-                            // if jumping backward, the check for an invalid sourceline to jump to, can be made during each loop, because...
+                            // if jumping backward, the check for an invalid source line to jump to, can be made during each loop, because...
                             // ...if minimumRelativeNestingLevel is negative at any one time, this indicates that...
                             // ...control would pass to a block that doesn't contain the deepest block where control was until now
                             if (!AsIsBeforeToBe && (minimumRelativeNestingLevel < 0)) { { return result_BP_cannotMoveIntoBlocks; }
@@ -383,14 +399,14 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                     jumpTokens(1, step);                    // first token after semicolon
                 } while (true);
 
-                // if jumping forward (relative nesting level of 'to be step' only known at the end), the check for an invalid sourceline to jump to, can be made only here...
+                // if jumping forward (relative nesting level of 'to be step' only known at the end), the check for an invalid source line to jump to, can be made only here...
                 // ...because the relative nesting level of that statement is only known at the end (only then it's known whether that statement would jump into a block)
                 if ((AsIsBeforeToBe) && (relativeNestingLevel > minimumRelativeNestingLevel)) { return result_BP_cannotMoveIntoBlocks; }
             }
 
 
-            // E. set next step to statement corresponding to sourceline
-            // ---------------------------------------------------------
+            // E. set next step to statement corresponding to source line
+            // ----------------------------------------------------------
             pFlowCtrlStackLvl->pNextStep = nextStep_tobe;                   // points again to stopped function data level
             pFlowCtrlStackLvl->errorStatementStartStep = nextStep_tobe;
             pFlowCtrlStackLvl->errorProgramCounter = nextStep_tobe;
@@ -422,7 +438,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
         {
             // all commands:   source line number [, source line number, ...]
             // set breakpoint: source line number, view string [, trigger string] - or -
-            //                 source line number, view string , hitcount
+            //                 source line number, view string , hit count
 
             bool argIsVar;
             execResult_type execResult{ result_execOK };
@@ -440,7 +456,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             LE_evalStack* pArg1StackLvl = pStackLvl;
 
             if ((_activeFunctionData.activeCmd_ResWordCode == cmdcod_setBP) && ((cmdArgCount == 2) || (cmdArgCount == 3))) {
-                // possibly a single breakpoint with view expression (can be empty string) and hitcount,
+                // possibly a single breakpoint with view expression (can be empty string) and hit count,
                 //      or,                                                                and optional view expression (both can be empty strings)
                 for (int i = 1; i <= cmdArgCount; i++) {
                     copyValueArgsFromStack(pStackLvl, 1, &argIsVar, &argIsArray, &valueType, &arg);
@@ -451,7 +467,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                     else if (i == 2) {       // if string, this is a view string
                         isWithViewExpression = (valueType == value_isStringPointer);
                         if (isWithViewExpression) { viewExprBP1 = arg.pStringConst; }
-                        if (!isWithViewExpression) { break; }       // not a single breakpoint with view expression and optional hitcount or trigger expression
+                        if (!isWithViewExpression) { break; }       // not a single breakpoint with view expression and optional hit count or trigger expression
                     }
                     else if (i == 3) {
                         isWithHitCount = ((valueType == value_isLong) || (valueType == value_isFloat));     // third arg must be string (view expression, if provided)
@@ -715,7 +731,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             Val args[3];
             copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
 
-            if ((_justinaStartupOptions & SD_mask) == SD_notPresent) { return result_SD_noCardOrNotAllowed; }
+            if ((_justinaStartupOptions & SD_mask) == SD_notAllowed) { return result_SD_noCardOrNotAllowed; }
             if (!_SDinitOK) { return result_SD_noCardOrCardError; }
 
             bool isSend = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_sendFile);
@@ -747,7 +763,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
 
             // send or copy file: source is a file
             if (isSend || isCopy) {
-                if (valueType[0] != value_isStringPointer) { return result_arg_stringExpected; }                            // mandatory file name
+                if (valueType[0] != value_isStringPointer) { return result_arg_stringExpected; }    // mandatory file name
                 if (!pathValid(args[0].pStringConst)) { return result_SD_pathIsNotValid; }
 
                 // don't open source file yet: wait until all other checks are done
@@ -766,14 +782,14 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             // receive or copy file: destination is a file
             if ((isReceive) || (isCopy)) {
                 receivingFileArgIndex = (cmdArgCount == 1) ? 0 : 1;
-                if (valueType[receivingFileArgIndex] != value_isStringPointer) { return result_arg_stringExpected; }                        // mandatory file name
+                if (valueType[receivingFileArgIndex] != value_isStringPointer) { return result_arg_stringExpected; }    // mandatory file name
                 if (!pathValid(args[receivingFileArgIndex].pStringConst)) { return result_SD_pathIsNotValid; }
 
                 if (isCopy) {
                     long sourceStart = (args[0].pStringConst[0] == '/') ? 1 : 0;
                     long destinStart = (args[1].pStringConst[0] == '/') ? 1 : 0;
                     // because this is a simple string compare, and a leading '/' is optional in the file path, make sure identical file paths are always discovered
-                    if (strcasecmp(args[0].pStringConst + sourceStart, args[1].pStringConst + destinStart) == 0) { return result_SD_sourceIsDestination; }              // 8.3 file format: NOT case sensitive
+                    if (strcasecmp(args[0].pStringConst + sourceStart, args[1].pStringConst + destinStart) == 0) { return result_SD_sourceIsDestination; }   // 8.3 file format: NOT case sensitive
                 }
 
                 // if receiving file exists, ask if overwriting it is OK
@@ -904,8 +920,8 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                 do {
                     // read data from source stream
                     if (isSend || isCopy) {
-                        execPeriodicHousekeeping(&kill, &doStop, &doAbort);                                                 // get housekeeping flags
-                        bufferCharCount = read(buffer, 128);                                                                // if fewer bytes available, end reading WITHOUT time out
+                        execPeriodicHousekeeping(&kill, &doStop, &doAbort);                         // get housekeeping flags
+                        bufferCharCount = read(buffer, 128);                                        // if fewer bytes available, end reading WITHOUT time out
                         newData = (bufferCharCount > 0);
                         progressDotsByteCount += bufferCharCount;
                         totalByteCount += bufferCharCount;
@@ -918,7 +934,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                             if (waitForFirstChar) { printlnTo(0, "Receiving file... please wait"); }
                             buffer[bufferCharCount++] = c; progressDotsByteCount++; totalByteCount++;
                         }
-                        waitForFirstChar = false;                                                                           // for all next characters
+                        waitForFirstChar = false;                                                   // for all next characters
                     }
                     if (verbose && (progressDotsByteCount > 2000)) {
                         progressDotsByteCount = 0;  printTo(0, '.');
@@ -1133,13 +1149,13 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
 
                             (varScope == var_isUser) ? _userVarStringObjectCount++ : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount++ : _localVarStringObjectCount++;
                             args[1].pStringConst = new char[stringlen + 1];
-                        #if PRINT_HEAP_OBJ_CREA_DEL
-                            _pDebugOut->print((varScope == var_isUser) ? "+++++ (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "+++++ (var string ) " : "+++++ (loc var str) ");
-                            _pDebugOut->println((uint32_t)args[1].pStringConst, HEX);
-                        #endif
-
                             memcpy(args[1].pStringConst, input, stringlen);                                                     // copy the actual string (not the pointer); do not use strcpy
                             args[1].pStringConst[stringlen] = '\0';
+                        #if PRINT_HEAP_OBJ_CREA_DEL
+                            _pDebugOut->print((varScope == var_isUser) ? "\r\n+++++ (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "\r\n+++++ (var string ) " : "\r\n+++++ (loc var str) ");
+                            _pDebugOut->println((uint32_t)args[1].pStringConst, HEX);
+                            _pDebugOut->print("         cmd: input "); _pDebugOut->println(args[1].pStringConst);
+                        #endif
 
                         }
                         *pStackLvl->varOrConst.value.ppStringConst = args[1].pStringConst;
@@ -1209,13 +1225,13 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                 char c{};
                 c = getCharacter(kill, doStop, doAbort, stdConsDummy);                                  // get a key (character from console) if available and perform a regular housekeeping callback as well
                 if (kill) { execResult = result_kill; return execResult; }                              // kill Justina interpreter ? (buffer is now flushed until next line character)
-                if (doAbort) { forcedAbortRequest = true; break; }                                      // stop a running Justina program (buffer is now flushed until nex line character) 
+                if (doAbort) { forcedAbortRequest = true; break; }                                      // stop a running Justina program (buffer is now flushed until next line character) 
                 if (doStop) { forcedStopRequest = true; }                                               // stop a running program (do not produce stop event yet, wait until program statement executed)
 
                 if (c == '\n') { break; }                                                               // after other input characters flushed
 
                 if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_pause) {
-                    if (startPauseAt + pauseTime < millis()) { break; }                                 // if still characters in buffer, buffer will be flushed when processng of statement finalised
+                    if (startPauseAt + pauseTime < millis()) { break; }                                 // if still characters in buffer, buffer will be flushed when processing of statement finalized
                 }
             } while (true);
 
@@ -1229,7 +1245,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
         // --------------------------------------------------------------------------------------------------------------------------------------------------------------
         // Print a list of arguments (longs, floats and strings) to a specific output stream or to a variable. 
         // Numeric output is formatted according to the currently set display format for integers resp. floating point numbers (intFmt, floatFmt commands).
-        // To apply other formatting for an argument, use the fmt() function. Other formattng functions you may use: tab(), col(), pos(), space(), repChar(), line(), ... 
+        // To apply other formatting for an argument, use the fmt() function. Other formatting functions you may use: tab(), col(), pos(), space(), repChar(), line(), ... 
         // --------------------------------------------------------------------------------------------------------------------------------------------------------------
 
         case cmdcod_cout:               // print the argument list to the console
@@ -1238,10 +1254,10 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
         case cmdcod_dbout:              // print the argument list to the set debug stream (note that the debug stream can be set to an open SD file)
         case cmdcod_dboutLine:          // same, end with a CRLF sequence (carriage return line feed)
 
-        case cmdcod_print:              // print the argument list to the the output stream specified by the first argument (external IO or open file)
+        case cmdcod_print:              // print the argument list to the output stream specified by the first argument (external IO or open file)
         case cmdcod_printLine:          // same, end with a CRLF sequence (carriage return line feed)
 
-        case cmdcod_printToVar:         // print the argument list to the the variable (scalar or array element) entered as first argument
+        case cmdcod_printToVar:         // print the argument list to the variable (scalar or array element) entered as first argument
         case cmdcod_printLineToVar:     // same, end with a CRLF sequence (carriage return line feed)
 
         // --------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1253,8 +1269,8 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
         // --------------------------------------------------------------------------------------------------------------------------------------------------------------
 
         case cmdcod_coutList:           // print the argument list to the console
-        case cmdcod_printList:          // print the argument list to the the output stream specified by the first argument (external IO or open file)
-        case cmdcod_printListToVar:     // print the argument list to the the variable (scalar or array element) entered as first argument
+        case cmdcod_printList:          // print the argument list to the output stream specified by the first argument (external IO or open file)
+        case cmdcod_printListToVar:     // print the argument list to the variable (scalar or array element) entered as first argument
 
         {
             // print to console, file or string ?
@@ -1340,9 +1356,9 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                 else {
                     // if argument is the result of a tab() or col() function, do NOT print the value these functions return, but advance the print position by the number of tabs specified by the ...
                     // ...  function result OR to the column specified by the function result (if greater then the current column)
-                    // this only works if the tab() or col() functon itself is not part of a larger expression (otherwise values attributes 'isPrintTabRequest' and 'isPrintColumnRequest' are lost)
+                    // this only works if the tab() or col() function itself is not part of a larger expression (otherwise values attributes 'isPrintTabRequest' and 'isPrintColumnRequest' are lost)
                     bool isTabFunction{ false }, isColFunction{ false }, isCurrentColFunction{ false };
-                    if (!operandIsVar) {         // we are looking for an intermediate constant (result of a tab() function occuring as direct argument of the print command)
+                    if (!operandIsVar) {         // we are looking for an intermediate constant (result of a tab() function occurring as direct argument of the print command)
                         isTabFunction = (pStackLvl->varOrConst.valueAttributes & isPrintTabRequest);
                         isColFunction = (pStackLvl->varOrConst.valueAttributes & isPrintColumnRequest);
 
@@ -1364,7 +1380,8 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                                 memset(printString, ' ', spaceLength);
                                 printString[spaceLength] = '\0';
                             #if PRINT_HEAP_OBJ_CREA_DEL
-                                _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)assembledString, HEX);
+                                _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)assembledString, HEX);
+                                _pDebugOut->print("  cmd: coutList (1) ");   _pDebugOut->println(assembledString);
                             #endif
                             }
                         }
@@ -1411,7 +1428,8 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                             _intermediateStringObjectCount++;
                             assembledString = new char[varPrintColumn + 1]; assembledString[0] = '\0';
                         #if PRINT_HEAP_OBJ_CREA_DEL
-                            _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)assembledString, HEX);
+                            _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)assembledString, HEX);
+                            _pDebugOut->print("  cmd: coutList (2) ");   _pDebugOut->println("[init empty]");
                         #endif
                         }
 
@@ -1424,7 +1442,8 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                         // delete previous assembled string
                         if (oldAssembString != nullptr) {
                         #if PRINT_HEAP_OBJ_CREA_DEL
-                            _pDebugOut->print("----- (Intermd str) "); _pDebugOut->println((uint32_t)oldAssembString, HEX);
+                            _pDebugOut->print("\r\n----- (Intermd str) "); _pDebugOut->println((uint32_t)oldAssembString, HEX);
+                            _pDebugOut->print("  cmd: coutList (3) "); _pDebugOut->println(oldAssembString);
                         #endif
                             _intermediateStringObjectCount--;
                             delete[] oldAssembString;
@@ -1444,7 +1463,8 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                     // if printString is an object on the heap, delete it (note: if printString is created above in quoteAndExpandEscSeq(): it's never a nullptr)
                     if (((isTabFunction || isColFunction) && !(printString == nullptr)) || (opIsString && doPrintList)) {
                     #if PRINT_HEAP_OBJ_CREA_DEL
-                        _pDebugOut->print("----- (Intermd str) "); _pDebugOut->println((uint32_t)printString, HEX);
+                        _pDebugOut->print("\r\n----- (Intermd str) "); _pDebugOut->println((uint32_t)printString, HEX);
+                        _pDebugOut->print("  cmd: coutList (4) "); _pDebugOut->println(printString);
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] printString;
@@ -1454,7 +1474,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
             }
 
-                    // finalise
+            // finalize
             if (isPrintToVar) {                                                                                             // print to string ? save in variable
                 // receiving argument is a variable, and if it's an array element, it has string type 
 
@@ -1464,7 +1484,8 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                 if (execResult != result_execOK) {
                     if (assembledString != nullptr) {
                     #if PRINT_HEAP_OBJ_CREA_DEL
-                        _pDebugOut->print("----- (Intermd str) "); _pDebugOut->println((uint32_t)assembledString, HEX);
+                        _pDebugOut->print("\r\n----- (Intermd str) "); _pDebugOut->println((uint32_t)assembledString, HEX);
+                        _pDebugOut->print("  cmd: coutList (5) "); _pDebugOut->println(assembledString);
                     #endif
                         _intermediateStringObjectCount--;
                         delete[] assembledString;
@@ -1479,7 +1500,8 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                         _intermediateStringObjectCount++;
                         assembledString = new char[3]; assembledString[0] = '\r'; assembledString[1] = '\n'; assembledString[2] = '\0';
                     #if PRINT_HEAP_OBJ_CREA_DEL
-                        _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)assembledString, HEX);
+                        _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)assembledString, HEX);
+                        _pDebugOut->print("  cmd: coutList (6) ");   _pDebugOut->println(assembledString);
                     #endif
                     }
                 }
@@ -1504,9 +1526,12 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                     (varScope == var_isUser) ? _userVarStringObjectCount++ : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount++ : _localVarStringObjectCount++;
 
                 #if PRINT_HEAP_OBJ_CREA_DEL
-                    _pDebugOut->print("----- (Intermd str) ");   _pDebugOut->println((uint32_t)assembledString, HEX);
-                    _pDebugOut->print((varScope == var_isUser) ? "+++++ (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "+++++ (var string ) " : "+++++ (loc var str) ");
+                    _pDebugOut->print("\r\n----- (Intermd str) ");   _pDebugOut->println((uint32_t)assembledString, HEX);
+                    _pDebugOut->print("  cmd: coutList (7) ");   _pDebugOut->println(assembledString);
+
+                    _pDebugOut->print((varScope == var_isUser) ? "\r\n+++++ (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "\r\n+++++ (var string ) " : "\r\n+++++ (loc var str) ");
                     _pDebugOut->println((uint32_t)*pFirstArgStackLvl->varOrConst.value.ppStringConst, HEX);
+                    _pDebugOut->print("  cmd: coutList (8) "); _pDebugOut->println(*pFirstArgStackLvl->varOrConst.value.ppStringConst);
                 #endif              
                 }
 
@@ -1531,7 +1556,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
 
 
         // ---------------------------------------------------------------------------------------------------------------------------------------
-        // Print a list of all variables (global and user), print the call stack, a list of all breakpoints with attribures or a list of SD files.
+        // Print a list of all variables (global and user), print the call stack, a list of all breakpoints with attributes or a list of SD files.
         // The optional argument sets the output stream (external IO or open file).
         // If no argument is specified, the list is printed to the console.
         // ---------------------------------------------------------------------------------------------------------------------------------------
@@ -1604,7 +1629,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
         #if defined ARDUINO_ARCH_ESP32
             printlnTo(0, "\n'List files to Serial' command not available on ESP32: use other 'List Files' command instead");
         #else
-            if ((_justinaStartupOptions & SD_mask) == SD_notPresent) { return result_SD_noCardOrNotAllowed; }
+            if ((_justinaStartupOptions & SD_mask) == SD_notAllowed) { return result_SD_noCardOrNotAllowed; }
             if (!_SDinitOK) { return result_SD_noCardOrCardError; }
 
             printlnTo(0, "SD card: file list is printed to Serial port");
@@ -1669,7 +1694,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
 
             // specifier (optional parameter):
             // floatFmt command: 'f', 'e', 'E', 'g' or 'G' specifiers allowed
-            // =>  'f': fixed point, 'e' or 'E': scientific, 'g' ot 'G': shortest notation (fixed or scientific). 'E' or 'G': exponent character printed in capitals    
+            // =>  'f': fixed point, 'e' or 'E': scientific, 'g' or 'G': shortest notation (fixed or scientific). 'E' or 'G': exponent character printed in capitals    
             // intFmt command: 'd', 'x' and 'X' specifiers allowed
             // =>  'd' signed integer, 'x' or 'X': unsigned hexadecimal integer. 'X': hex number is printed in capitals
 
@@ -1697,7 +1722,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             int fmtFlags{ isIntFmtCmd ? _dispIntegerFmtFlags : _dispFloatFmtFlags };
             char* fmtString{ isIntFmtCmd ? _dispIntegerFmtString : _dispFloatFmtString };
 
-            // !!! the last 3 arguments return the values of 1st to max. 3rd argument of the command (widh, precision, specifier, flags). Optional last argument is characters printed -> not relevant here
+            // !!! the last 3 arguments return the values of 1st to max. 3rd argument of the command (width, precision, specifier, flags). Optional last argument is characters printed -> not relevant here
             execResult = checkFmtSpecifiers(true, cmdArgCount, valueType, args, specifier, precision, fmtFlags);
             if (execResult != result_execOK) { return execResult; }
 
@@ -1815,7 +1840,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
         case cmdcod_while:                                                                                                  // 'while' command
         {
             // start a new loop, or execute an existing loop ? 
-            bool initNew{ true };        // IF...END: only one iteration (always new), FOR...END loop: always first itaration of a new loop, because only pass (command skipped for next iterations)
+            bool initNew{ true };        // IF...END: only one iteration (always new), FOR...END loop: always first iteration of a new loop, because only pass (command skipped for next iterations)
             if (_activeFunctionData.activeCmd_ResWordCode == cmdcod_while) {                                                // while block: start of an iteration
                 if (flowCtrlStack.getElementCount() != 0) {                                                                 // at least one open (outer) block exists in current function (or main) ?
                     char blockType = ((openBlockGeneric*)_pFlowCtrlStackTop)->blockType;
@@ -1927,7 +1952,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             }
 
             bool setNextToken = fail || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_for);
-            if (setNextToken) {                                                                                                     // skip this clause ? (either a preceding test passed, or it failed but the currrent test failed as well)
+            if (setNextToken) {                                                                                                     // skip this clause ? (either a preceding test passed, or it failed but the current test failed as well)
                 TokenIsResWord* pToToken;
                 uint16_t toTokenStep{ 0 };
                 pToToken = (TokenIsResWord*)_activeFunctionData.activeCmd_tokenAddress;
@@ -2136,12 +2161,12 @@ Justina::execResult_type Justina::copyValueArgsFromStack(LE_evalStack*& pStackLv
 
                     _intermediateStringObjectCount++;                                           // temporary string object will be deleted right after return from call to user callback routine
                     args[i].pStringConst = new char[strLength + 1];                             // change pointer to copy of string
-                #if PRINT_HEAP_OBJ_CREA_DEL
-                    _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)args[i].pStringConst, HEX);
-                #endif
-
                     if (strLength == 0) { args[i].pStringConst[0] = '\0'; }                     // empty string (sole character is null-character as terminator)
                     else { strcpy(args[i].pStringConst, pOriginalArg); }                        // non-empty constant string
+                #if PRINT_HEAP_OBJ_CREA_DEL
+                    _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)args[i].pStringConst, HEX);
+                    _pDebugOut->print("cpy args from stack ");   _pDebugOut->println(args[i].pStringConst);
+                #endif
                 }
             }
         }
@@ -2162,7 +2187,8 @@ void Justina::replaceSystemStringValue(char*& systemString, const char* newStrin
     // delete current system string (if not nullptr)
     if (systemString != nullptr) {
     #if PRINT_HEAP_OBJ_CREA_DEL
-        _pDebugOut->print("----- (system var str) "); _pDebugOut->println((uint32_t)systemString, HEX);
+        _pDebugOut->print("\r\n----- (system var str) "); _pDebugOut->println((uint32_t)systemString, HEX);
+        _pDebugOut->print("   repl sys var str "); _pDebugOut->println(systemString);
     #endif
         _systemStringObjectCount--;
         delete[] systemString;
@@ -2173,13 +2199,13 @@ void Justina::replaceSystemStringValue(char*& systemString, const char* newStrin
     if (newString != nullptr) {                                             // new trace string
         _systemStringObjectCount++;
         systemString = new char[strlen(newString) + 2]; // room for additional semicolon (in case string is not ending with it) and terminating '\0'
-    #if PRINT_HEAP_OBJ_CREA_DEL
-        _pDebugOut->print("+++++ (system var str) "); _pDebugOut->println((uint32_t)systemString, HEX);
-    #endif
-
         strcpy(systemString, newString);                                    // copy the actual string
         systemString[strlen(newString)] = term_semicolon[0];
         systemString[strlen(newString) + 1] = '\0';
+    #if PRINT_HEAP_OBJ_CREA_DEL
+        _pDebugOut->print("\r\n+++++ (sys var str) "); _pDebugOut->println((uint32_t)systemString, HEX);
+        _pDebugOut->print("   repl sys var str "); _pDebugOut->println(systemString);
+    #endif
     }
 }
 

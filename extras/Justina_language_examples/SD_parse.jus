@@ -1,41 +1,24 @@
-/*
-	Sample JUSTINA program for use with the Justina interpreter	on Arduino SAMD boards, the nano RP2040 board and the nano ESP32 board.
+/*----------------------------------------------------------------------------
+	Sample JUSTINA program for use with the Justina interpreter.
+
+	The program demonstates how to write data to an SD card and how to 
+	immediately parse this data into variables when it's read back.
 	
-	The program demonstates how to write data to an SD card and how to immediately parse this data into variables when it's read back.
-	------------------------------------------
-    Copyright 2024, Herwig Taveirne                                                                       
-                                                                                                          
-    This file is part of the Justina Interpreter library.                                                 
-    The Justina interpreter library is free software: you can redistribute it and/or modify it under      
-    the terms of the GNU General Public License as published by the Free Software Foundation, either      
-    version 3 of the License, or (at your option) any later version.                                      
-                                                                                                          
-    This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;             
-    without even the implied warranty of  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.            
-    See the GNU General Public License for more details.                                                  
-                                                                                                          
-    You should have received a copy of the GNU General Public License along with this program. If not,    
-    see <https://www.gnu.org/licenses/>.                                                                  
-                                                                                                          
-    The library is intended to work with 32 bit boards using the SAMD architecture ,                      
-    the Arduino nano RP2040 and Arduino nano ESP32 boards.                                                
-                                                                                                          
-    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter  
-*/
+	Created March 2024 by Herwig Taveirne
 	
+	This example Justina code (this file) is in the public domain.
+----------------------------------------------------------------------------*/
 	
 program SD_parseRecords;
 
-
-// -----------------------------------------------------------------------------------------
-// this function creates a few records in an SD file named "people", each record is supposed
-// to contain the name, eye and hair color, length, weight and age of a person.
-// -----------------------------------------------------------------------------------------
-
-// arguments: none
-// returns: 0
+/*-------------------------------------------------------------------------------------------
+	this function creates a few records in an SD file named "people", each record is supposed
+	to contain the name, eye and hair color, length, weight and age of a person.
+-------------------------------------------------------------------------------------------*/
 
 function writeRecords();
+	
+	startSD;																// in case the SD card was not yet initialized
 	
 	var testFile = 0;														// init as integer
 	if (testFile = fileNum("people.txt")) > 0; close (testFile); end;		// verify the file is closed			
@@ -64,19 +47,18 @@ function writeRecords();
 end;
 
 
-// ----------------------------------------------------------------------------------------
-// this function parses information, stored in a specific format, into a list of variables.
-// then the list is printed in a tabular format.
-// you can choose to print the output to the console or to a file.
-// if you choose 'to file', output will be sent to a file "table.txt".
-// ----------------------------------------------------------------------------------------
-
-// argument: 0 = print output to the console, 1 = print output to a file named 'table.txt'. The default is console.
-// returns: a message indicating the number of incomplete records read
+/*------------------------------------------------------------------------------------------
+	this function parses information, stored in a specific format, into a list of variables.
+	then the list is printed in a tabular format.
+	you can choose to print the output to the console or to a file.
+	if you choose 'to file', output will be sent to a file "table.txt".
+------------------------------------------------------------------------------------------*/
 
 function parseAndPrintRecords(toFile = FALSE);									// optional argument (default is CONSOLE)
 		
-	var streamOut = CONSOLE; 													// init output stream to console
+	startSD;																	// in case the SD card was not yet initialized
+
+	var streamOut = CONSOLE; 														// init output stream to console
 		
 	var fileIn = 0, fileOut = 0;												// init file numbers attributed to open files
 	if (fileIn = fileNum("people.txt")) > 0; close (fileIn); end;				// verify the input file is closed			
@@ -96,12 +78,15 @@ function parseAndPrintRecords(toFile = FALSE);									// optional argument (def
 	// now parse each record read from the input file to a number of variables
 	var variablesRead=0, incompleteRecords =0;
 	while (available(fileIn) > 0);
+		
 		// reset variables in each loop, in case records read are incomplete
 		variablesRead = readList(fileIn, givenName, eyeColor="", hairColor="", length=0, weight=0, age=0);
 		if variablesRead < 5; incompleteRecords++; end;							// count number of incomplete records
+		
 		// print the record read to the output stream (console or file) in tabular format
 		// use the fmt() function to format and right align table columns length, weight and age
-		printLine streamOut, givenName, col(12), eyeColor, col(20), hairColor, col(26), fmt(length, 7, 0, "d"), fmt(weight, 7, 1, "f"), fmt(age, 6, 0, "d");
+		printLine streamOut, givenName, col(12), eyeColor, col(20), hairColor, 
+			col(26), fmt(length, 7, 0, "d"), fmt(weight, 7, 1, "f"), fmt(age, 6, 0, "d");
 	end;
 	
 	// close all files; if output was sent to a file, send it to console now 

@@ -1,29 +1,25 @@
-/*-------------------------------------------------------------------------------------------------------------------------------------
-	Sample JUSTINA program for use with the Justina interpreter	on Arduino SAMD boards, the nano RP2040 board and the nano ESP32 board.
-	
-	The program demonstates how to use an SD card and how to read and write data from / to SD card files.
-	------------------------------------------
-	Created by Herwig Taveirne, February 2024.
-	
-	This software is available for use, modification or redistribution under the terms of the GNU General Public License.
-	
-	See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter
--------------------------------------------------------------------------------------------------------------------------------------*/
+/*----------------------------------------------------------------------------
+	Sample JUSTINA program for use with the Justina interpreter.
 
+	The program demonstates how to use an SD card and how to read and write 
+	data from / to SD card files.
+	
+	Created March 2024 by Herwig Taveirne
+	
+	This example Justina code (this file) is in the public domain.
+----------------------------------------------------------------------------*/
 
 program SD_card_tests;
 
-
-// -------------------------------------------------------------------------------------------------
-	// This function writes a few lines of information to an SD file, opening the file in various modes.
-	// The file contents are read back and printed on the console.	
-// -------------------------------------------------------------------------------------------------
-
-// argument: a file name
-// returns: 0
+/*---------------------------------------------------------------------------------------------------
+	This function writes a few lines of information to an SD file, opening the file in various modes.
+	The file contents are read back and printed on the console.	
+---------------------------------------------------------------------------------------------------*/
 
 function fileTests(fname);
 	
+	startSD;																			// in case the SD card was not yet initialized
+
 	var testFile = 0;																	// init as integer
 	if (testFile = fileNum(fname)) > 0; close (testFile); end;							// verify the file is closed			
 	
@@ -41,7 +37,7 @@ function fileTests(fname);
 	printLine testFile, "this is line ", ++lineIndex;
 	printLine testFile, "this is line ", ++lineIndex;
 	printLine testFile, "this is line ", ++lineIndex;
-	coutLine "testFile size: ", size(testFile), ", position: ", position(testFile); 
+	coutLine "testFile size: ", size(testFile), ", position: ", position(testFile);  USER_d;NEW_PL
 	close(testFile);
 	
 	// read the file, line per line, and print contents to the console. Close the file

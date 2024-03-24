@@ -1,28 +1,22 @@
-/*-------------------------------------------------------------------------------------------------------------------------------------
-	Sample JUSTINA program for use with the Justina interpreter	on Arduino SAMD boards, the nano RP2040 board and the nano ESP32 board.
-	
-	The program demonstates how to format output in the case print fields can overlap, as in the example below.
-		line 1:			this_is_value1   value2
-		line 2:			value1   this_is_value2
-	------------------------------------------
-	Created by Herwig Taveirne, February 2024.
-	
-	This software is available for use, modification or redistribution under the terms of the GNU General Public License.
-	
-	See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter
--------------------------------------------------------------------------------------------------------------------------------------*/
+/*----------------------------------------------------------------------------
+	Sample JUSTINA program for use with the Justina interpreter.
 
+	The program demonstates how to format output in the case print fields can 
+	overlap, as in the example below.
+	line 1:			this_is_value1   value2
+	line 2:			value1   this_is_value2
+	
+	Created March 2024 by Herwig Taveirne
+	
+	This example Justina code (this file) is in the public domain.
+----------------------------------------------------------------------------*/
 
 program overlap;
 
-
-// -----------------------------------------------------------------------------------------------
-// this function prints 10 lines with each time 2 numbers of different length, separated by "---".
-// if less than 15 characters are printed, remaining columns are filled with '+' characters.
-// -----------------------------------------------------------------------------------------------
-
-// arguments: none
-//  returns: 0
+/*-------------------------------------------------------------------------------------------------
+	this function prints 10 lines with each time 2 numbers of different length, separated by "---".
+	if less than 15 characters are printed, remaining columns are filled with '+' characters.
+-------------------------------------------------------------------------------------------------*/
 
 function overlap1();
 	var i=0, count=0, atColumn=0;								// initialise as integers
@@ -34,13 +28,10 @@ function overlap1();
 end;
 
 
-// -------------------------------------------------------------------------------------------------------------
-//	this function does exactly the same as function ovlap1(), but because the second number and separator are...
-//	...printed by a separate print command, pos() needs to be adjusted with the extra characters printed 
-// -------------------------------------------------------------------------------------------------------------
-
-// arguments: none
-//  returns: 0
+/*-------------------------------------------------------------------------------------------------
+	same as function ovlap1(), but because the second number and separator are printed by...
+//	...a separate print command, pos() needs to be adjusted with the extra characters printed 
+-------------------------------------------------------------------------------------------------*/
 
 function overlap2();
 	var i=0, count=0;											// initialise as integers

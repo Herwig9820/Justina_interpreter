@@ -145,14 +145,14 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         case fnccod_mkdir:                                                                                                  // create directory
         case fnccod_rmdir:                                                                                                  // remove directory
         case fnccod_remove:                                                                                                 // remove file
-        case fnccod_fileNumber:                                                                                             // return filenumber for given filename; return 0 if not open
+        case fnccod_fileNumber:                                                                                             // return file number for given filename; return 0 if not open
         {
             // checks
-            if ((_justinaStartupOptions & SD_mask) == SD_notPresent) { return result_SD_noCardOrNotAllowed; }
+            if ((_justinaStartupOptions & SD_mask) == SD_notAllowed) { return result_SD_noCardOrNotAllowed; }
             if (!_SDinitOK) { return result_SD_noCardOrCardError; }
             if (!(argIsStringBits & (0x1 << 0))) { return result_arg_stringExpected; }                                      // file path
             char* filePath = args[0].pStringConst;
-            if (!pathValid(filePath)) { return result_SD_pathIsNotValid; }                                                  // is not a complete check, but it remedies a few plaws in SD library
+            if (!pathValid(filePath)) { return result_SD_pathIsNotValid; }                                                  // is not a complete check, but it remedies a few flaws in SD library
 
             fcnResultValueType = value_isLong;                                                                              // init
 
@@ -352,7 +352,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         case fnccod_setTimeout:
         case fnccod_getTimeout:
         {
-            // setting a timeout value only works for established connections, and only as long as the connection is maintained (cfr. TCP)
+            // setting a timeout value only works for established connections, and only as long as the connection is maintained (cf. TCP)
             // if stream does not point to an established connection, an error is only produced for SD streams. For other I/O streams, no warning is given (nothing happens)
 
 
@@ -429,11 +429,12 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             int len = strlen((functionCode == fnccod_name) ? pFile->name() : openFiles[fileNumber - 1].filePath);           // always longer than 0 characters
             _intermediateStringObjectCount++;
             fcnResult.pStringConst = new char[len + 1];                                                                     // will be pushed to evaluation stack
+            strcpy(fcnResult.pStringConst, (functionCode == fnccod_name) ? pFile->name() : openFiles[fileNumber - 1].filePath);
         #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+            _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+            _pDebugOut->print("          file name ");   _pDebugOut->println(fcnResult.pStringConst);
         #endif            
             // note: only ESP32 SD library has a method 'path()': keep track of full name within Justina
-            strcpy(fcnResult.pStringConst, (functionCode == fnccod_name) ? pFile->name() : openFiles[fileNumber - 1].filePath);
         }
         break;
 
@@ -558,7 +559,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             _intermediateStringObjectCount++;
             char* buffer = new char[isLineForm ? MAX_ALPHA_CONST_LEN + 1 : maxLineLength + 1];                              // including '\0' terminator
         #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)buffer, HEX);
+            _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)buffer, HEX);
+            _pDebugOut->println("      read line (1-buffer still empty) ");
         #endif
 
             // read characters now
@@ -578,7 +580,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                     if (kill) {                                                                                             // kill request from caller ? 
                         _intermediateStringObjectCount--;
                     #if PRINT_HEAP_OBJ_CREA_DEL
-                        _pDebugOut->print("----- (Intermd str) ");   _pDebugOut->println((uint32_t)buffer, HEX);
+                        _pDebugOut->print("\r\n----- (Intermd str) ");   _pDebugOut->println((uint32_t)buffer, HEX);
+                        _pDebugOut->print("      read line (2) ");   _pDebugOut->println(buffer);
                     #endif
                         delete[] buffer;
                         return result_kill;
@@ -614,7 +617,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // no characters read ? simply delete buffer
             if (charsRead == 0) {
             #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print("----- (Intermd str) ");   _pDebugOut->println((uint32_t)buffer, HEX);
+                _pDebugOut->print("\r\n----- (Intermd str) ");   _pDebugOut->println((uint32_t)buffer, HEX);
+                _pDebugOut->print("      read line (3) ");   _pDebugOut->println(buffer);
             #endif
                 _intermediateStringObjectCount--;
                 delete[] buffer;
@@ -625,12 +629,13 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             else if (charsRead < maxLineLength) {
                 _intermediateStringObjectCount++;
                 char* smallerBuffer = new char[charsRead + 1];                                                              // including space for terminating '\0'
-            #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)smallerBuffer, HEX);
-            #endif
                 strcpy(smallerBuffer, buffer);
             #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print("----- (Intermd str) ");   _pDebugOut->println((uint32_t)buffer, HEX);
+                _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)smallerBuffer, HEX);
+                _pDebugOut->print("      read line (4) ");   _pDebugOut->println(smallerBuffer);
+
+                _pDebugOut->print("\r\n----- (Intermd str) ");   _pDebugOut->println((uint32_t)buffer, HEX);
+                _pDebugOut->print("      read line (5) ");   _pDebugOut->println(buffer);
             #endif
                 _intermediateStringObjectCount--;
                 delete[] buffer;
@@ -678,7 +683,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 // limit buffer length, because it's created on the heap (long enough to receive maximum line length + null; create AFTER last error check)
                 buffer = new char[MAX_ALPHA_CONST_LEN + 1];
             #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)buffer, HEX);
+                _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)buffer, HEX);
+                _pDebugOut->println("     parse list (1-buffer still empty) ");
             #endif
 
                 // read line from stream
@@ -692,7 +698,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                         if (kill) {                                                                                         // kill request from caller ? 
                             _intermediateStringObjectCount--;
                         #if PRINT_HEAP_OBJ_CREA_DEL
-                            _pDebugOut->print("----- (Intermd str) ");   _pDebugOut->println((uint32_t)buffer, HEX);
+                            _pDebugOut->print("\r\n----- (Intermd str) ");   _pDebugOut->println((uint32_t)buffer, HEX);
+                            _pDebugOut->print("     parse list (2) ");   _pDebugOut->println(buffer);
                         #endif
                             delete[] buffer;
                             return result_kill;
@@ -771,10 +778,11 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 if ((valueType == value_isStringPointer) && (value.pStringConst != nullptr)) {
                     if (predefinedConstIndex >= 0) {                    // predefined string: copy on the heap is not yet made
                         _intermediateStringObjectCount++;
-                        char* strCopy = new char[strlen(value.pStringConst) + 1];
                     #if PRINT_HEAP_OBJ_CREA_DEL
-                        _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+                        _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)value.pStringConst, HEX);
+                        _pDebugOut->print("     parse list (3) ");   _pDebugOut->println(value.pStringConst);
                     #endif            
+                        char* strCopy = new char[strlen(value.pStringConst) + 1];
                         strcpy(strCopy, value.pStringConst);
                         value.pStringConst = strCopy;                   // copy pointer
                     }
@@ -815,15 +823,17 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 if (stringObjectCreated) {
                     stringObjectCreated = false;                                                                            // it's becoming a Justina variable value now
                 #if PRINT_HEAP_OBJ_CREA_DEL
-                    _pDebugOut->print("----- (Intermd str) ");   _pDebugOut->println((uint32_t)value.pStringConst, HEX);
+                    _pDebugOut->print("\r\n----- (Intermd str) ");   _pDebugOut->println((uint32_t)value.pStringConst, HEX);
+                    _pDebugOut->print("     parse list (4) ");   _pDebugOut->println(value.pStringConst);
                 #endif
                     _intermediateStringObjectCount--;
                     // do NOT delete the object: it became a variable string
 
                     char varScope = (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_scopeMask);
                 #if PRINT_HEAP_OBJ_CREA_DEL
-                    _pDebugOut->print((varScope == var_isUser) ? "+++++ (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "+++++ (var string ) " : "+++++ (loc var str) ");
+                    _pDebugOut->print((varScope == var_isUser) ? "\r\n+++++ (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "\r\n+++++ (var string ) " : "\r\n+++++ (loc var str) ");
                     _pDebugOut->println((uint32_t)*pStackLvl->varOrConst.value.ppStringConst, HEX);
+                    _pDebugOut->print("     parse list (5) ");   _pDebugOut->println(*pStackLvl->varOrConst.value.pStringConst);
                 #endif
                     (varScope == var_isUser) ? _userVarStringObjectCount++ : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount++ : _localVarStringObjectCount++;
                 }
@@ -837,7 +847,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // delete input temporary buffer
             if (parseListFromStream) {
             #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print("----- (Intermd str) ");   _pDebugOut->println((uint32_t)buffer, HEX);
+                _pDebugOut->print("\r\n----- (Intermd str) ");   _pDebugOut->println((uint32_t)buffer, HEX);
+                _pDebugOut->print("     parse list (6) ");   _pDebugOut->println(buffer);
             #endif
                 _intermediateStringObjectCount--;
                 delete[] buffer;
@@ -846,7 +857,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // if an error occured while processing an argument, then an intermediate string object might still exist on the heap
             if (stringObjectCreated) {
             #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print("----- (Intermd str) ");   _pDebugOut->println((uint32_t)value.pStringConst, HEX);
+                _pDebugOut->print("\r\n----- (Intermd str) ");   _pDebugOut->println((uint32_t)value.pStringConst, HEX);
+                _pDebugOut->print("     parse list (7) ");   _pDebugOut->println(value.pStringConst);
             #endif
                 _intermediateStringObjectCount--;
                 delete[] value.pStringConst;
@@ -1054,10 +1066,11 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             if ((argIsLongBits & (0x1 << 0)) || (argIsFloatBits & (0x1 << 0))) {
                 _intermediateStringObjectCount++;
                 fcnResult.pStringConst = new char[30];                                                                      // provide sufficient length to store a number
-            #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-            #endif            
                 (argIsLongBits & (0x1 << 0)) ? sprintf(fcnResult.pStringConst, "%ld", args[0].longConst) : sprintf(fcnResult.pStringConst, "%G", args[0].floatConst);
+            #if PRINT_HEAP_OBJ_CREA_DEL
+                _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+                _pDebugOut->print("              quote ");   _pDebugOut->println(fcnResult.pStringConst);
+            #endif            
             }
 
             else if (argIsStringBits & (0x1 << 0)) {
@@ -1122,10 +1135,11 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 int resultIndex = match ? matchIndex + 1 : suppliedArgCount - 1;
                 _intermediateStringObjectCount++;
                 fcnResult.pStringConst = new char[strlen(args[resultIndex].pStringConst) + 1];
-            #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-            #endif            
                 strcpy(fcnResult.pStringConst, args[resultIndex].pStringConst);
+            #if PRINT_HEAP_OBJ_CREA_DEL
+                _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+                _pDebugOut->print("       switch, ifte ");   _pDebugOut->println(fcnResult.pStringConst);
+            #endif            
             }
         }
         break;
@@ -1151,10 +1165,11 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             if ((fcnResultValueType == value_isStringPointer) && (fcnResult.pStringConst != nullptr)) {
                 _intermediateStringObjectCount++;
                 fcnResult.pStringConst = new char[strlen(args[index].pStringConst) + 1];
-            #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-            #endif            
                 strcpy(fcnResult.pStringConst, args[index].pStringConst);
+            #if PRINT_HEAP_OBJ_CREA_DEL
+                _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+                _pDebugOut->print("             choose ");   _pDebugOut->println(fcnResult.pStringConst);
+            #endif            
             }
         }
         break;
@@ -1265,10 +1280,11 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             else {                              // string
                 _intermediateStringObjectCount++;
                 fcnResult.pStringConst = new char[strlen(lastResultValueFiFo[FiFoElement].pStringConst + 1)];
-            #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-            #endif            
                 strcpy(fcnResult.pStringConst, lastResultValueFiFo[FiFoElement].pStringConst);
+            #if PRINT_HEAP_OBJ_CREA_DEL
+                _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+                _pDebugOut->print("               last ");   _pDebugOut->println(fcnResult.pStringConst);
+            #endif            
             }
         }
         break;
@@ -1425,7 +1441,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             }
             if (fcnResult.pStringConst != nullptr) {
             #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+                _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+                _pDebugOut->print("               cstr ");   _pDebugOut->println(fcnResult.pStringConst);
             #endif
             }
         }
@@ -1811,11 +1828,12 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             fcnResultValueType = value_isStringPointer;
             _intermediateStringObjectCount++;
             fcnResult.pStringConst = new char[2];
-        #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-        #endif
             fcnResult.pStringConst[0] = asciiCode;
             fcnResult.pStringConst[1] = '\0';                                                                               // terminating \0
+        #if PRINT_HEAP_OBJ_CREA_DEL
+            _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+            _pDebugOut->print("               char ");   _pDebugOut->println(fcnResult.pStringConst);
+        #endif
         }
         break;
 
@@ -1842,12 +1860,13 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             fcnResultValueType = value_isStringPointer;
             _intermediateStringObjectCount++;
             fcnResult.pStringConst = new char[3];
-        #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-        #endif
             fcnResult.pStringConst[0] = '\r';
             fcnResult.pStringConst[1] = '\n';
             fcnResult.pStringConst[2] = '\0';                                                                               // terminating \0
+        #if PRINT_HEAP_OBJ_CREA_DEL
+            _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+            _pDebugOut->print("           new line ");   _pDebugOut->println(fcnResult.pStringConst);
+        #endif
         }
         break;
 
@@ -1877,18 +1896,18 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // create new string
             _intermediateStringObjectCount++;
             fcnResult.pStringConst = new char[len + 1];                                                                     // space for terminating '0'
-        #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-        #endif            
-
             for (int i = 0; i <= len - 1; ++i) { fcnResult.pStringConst[i] = c; }
             fcnResult.pStringConst[len] = '\0';
+        #if PRINT_HEAP_OBJ_CREA_DEL
+            _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+            _pDebugOut->print("     space, repChar ");   _pDebugOut->println(fcnResult.pStringConst);
+        #endif            
         }
         break;
 
 
-        // case sensitiveor non-case sensitive comparison
-        // ----------------------------------------------
+        // case sensitive or non-case sensitive comparison
+        // -----------------------------------------------
 
         case fnccod_strcmp:                                                                                                 // case sensitive
         case fnccod_strcasecmp:                                                                                             // NOT case sensitive
@@ -1910,7 +1929,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         break;
 
 
-        // find   : arguments: string, substring to search for [, start]. Returns position (base 1) of first occurence
+        // find   : arguments: string, substring to search for [, start]. Returns position (base 1) of first occurrence
         // replace: arguments: string, substring to search for, replacement string [, start]. Returns modified string
         //          if start is a variable, sets it to first character after changed part of string (or 0, if substring not found)
         // -----------------------------------------------------------------------------------------------------------------------
@@ -1972,7 +1991,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 foundStartPos = len1 + len2 + 1;                                                                            // position after changed part of string (could be past end of new string)
             }
         #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+            _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+            _pDebugOut->print(" find, repl. string ");   _pDebugOut->println(fcnResult.pStringConst);
         #endif            
 
             // start position specified in a variable ? store first character position after changed part of string (possibly past end of new string)
@@ -1986,7 +2006,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                     else { *_pEvalStackTop->varOrConst.value.pFloatConst = (float)foundStartPos; }
                 }
             }
-            }
+        }
         break;
 
 
@@ -2019,11 +2039,12 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // create new string
             _intermediateStringObjectCount++;
             fcnResult.pStringConst = new char[len + 1];                                                                                 // same length as original, space for terminating 
-        #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-        #endif            
             strcpy(fcnResult.pStringConst, args[0].pStringConst);   // copy original string
             for (int i = first; i <= last; i++) { fcnResult.pStringConst[i] = ((functionCode == fnccod_toupper) ? toupper(fcnResult.pStringConst[i]) : tolower(fcnResult.pStringConst[i])); }
+        #if PRINT_HEAP_OBJ_CREA_DEL
+            _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+            _pDebugOut->print("    to upper, lower ");   _pDebugOut->println(fcnResult.pStringConst);
+        #endif            
         }
         break;
 
@@ -2055,12 +2076,14 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
 
             // create new string
             _intermediateStringObjectCount++;
-            fcnResult.pStringConst = new char[last - first + 1];                                                            // space for terminating '0'
-        #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-        #endif            
+            fcnResult.pStringConst = new char[last - first + 2];                                                            // space for terminating '0'
             memcpy(fcnResult.pStringConst, args[0].pStringConst + first, last - first + 1);
             fcnResult.pStringConst[last - first + 1] = '\0';
+        #if PRINT_HEAP_OBJ_CREA_DEL
+            _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+            _pDebugOut->print("   left, mid, right ");   _pDebugOut->println(fcnResult.pStringConst);
+
+        #endif            
         }
         break;
 
@@ -2099,11 +2122,12 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // create new string
             _intermediateStringObjectCount++;
             fcnResult.pStringConst = new char[len - spaceCnt + 1];                                                          // space for terminating '0'
-        #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-        #endif            
             memcpy(fcnResult.pStringConst, p, len - spaceCnt);
             fcnResult.pStringConst[len - spaceCnt] = '\0';
+        #if PRINT_HEAP_OBJ_CREA_DEL
+            _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+            _pDebugOut->print("              trim ");   _pDebugOut->println(fcnResult.pStringConst);
+        #endif            
         }
         break;
 
@@ -2136,11 +2160,12 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // create new string
             _intermediateStringObjectCount++;
             fcnResult.pStringConst = new char[2 * len + 1];                                                                 // 2 hex digits per character, space for terminating '0'
-        #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-        #endif    
             for (int i = 0, j = 0; i < len; i++, j += 2) { sprintf(fcnResult.pStringConst + j, "%x", args[0].pStringConst[i]); }
             fcnResult.pStringConst[2 * len] = '\0';
+        #if PRINT_HEAP_OBJ_CREA_DEL
+            _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+            _pDebugOut->print("             strhex ");   _pDebugOut->println(fcnResult.pStringConst);
+        #endif    
         }
         break;
 
@@ -2176,6 +2201,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 case 12: fcnResult.longConst = _fmt_numFmtFlags; break;
 
                 case 14: fcnResult.longConst = _fmt_strCharsToPrint; break;                     // strings: number of characters to print
+                case 15: fcnResult.longConst = _tabSize; break;                                 // tab size
 
                 // display settings (continued)
                 // ----------------------------
@@ -2189,47 +2215,52 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                     fcnResultValueType = value_isStringPointer;
                     _intermediateStringObjectCount++;
                     fcnResult.pStringConst = new char[2];
-                #if PRINT_HEAP_OBJ_CREA_DEL
-                    _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-                #endif
                     strcpy(fcnResult.pStringConst, (sysVal == 3) ? _dispFloatSpecifier : (sysVal == 6) ? _dispIntegerSpecifier : _fmt_numSpecifier);
+                #if PRINT_HEAP_OBJ_CREA_DEL
+                    _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+                    _pDebugOut->print("         sysval(13) ");   _pDebugOut->println(fcnResult.pStringConst);
+                #endif
                 }
                 break;
 
                 // other settings
                 // --------------
-                case 15: fcnResult.longConst = _lastValuesCount; break;                         // current depth of last values FiF0
+                case 16: fcnResult.longConst = _lastValuesCount; break;                         // current depth of last values FiF0
 
 
-                case 16: fcnResult.longConst = _openFileCount; break;                           // open file count
-                case 17: fcnResult.longConst = _externIOstreamCount; break;                     // number of external streams defined
+                case 17: fcnResult.longConst = _openFileCount; break;                           // open file count
+                case 18: fcnResult.longConst = _externIOstreamCount; break;                     // number of external streams defined
 
-                case 18:                                                                        // program name (if program loaded)
+                case 19:                                                                        // program name (if program loaded)
                 {
                     fcnResultValueType = value_isStringPointer;
                     _intermediateStringObjectCount++;
                     fcnResult.pStringConst = new char[MAX_IDENT_NAME_LEN + 1];
-                #if PRINT_HEAP_OBJ_CREA_DEL
-                    _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-                #endif
                     strcpy(fcnResult.pStringConst, _programName);
+                #if PRINT_HEAP_OBJ_CREA_DEL
+                    _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+                    _pDebugOut->print("         sysval(19) ");   _pDebugOut->println(fcnResult.pStringConst);
+                #endif
                 }
                 break;
 
-                case 19:                                                                        // trace string
+                case 20:                                                                        // trace string
                 {
                     fcnResultValueType = value_isStringPointer;
                     fcnResult.pStringConst = nullptr;                                           // init (empty string)
                     if (_pTraceString != nullptr) {
                         _intermediateStringObjectCount++;
                         fcnResult.pStringConst = new char[strlen(_pTraceString) + 1];
-                    #if PRINT_HEAP_OBJ_CREA_DEL
-                        _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-                    #endif
                         strcpy(fcnResult.pStringConst, _pTraceString);
+                    #if PRINT_HEAP_OBJ_CREA_DEL
+                        _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+                        _pDebugOut->print("         sysval(20) ");   _pDebugOut->println(fcnResult.pStringConst);
+                    #endif
                     }
                 }
                 break;
+
+                case 21: fcnResult.longConst = _printTraceValueOnly; break;                     // view traced values without expression texts ?
 
                 // product info
                 // ------------
@@ -2241,10 +2272,11 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                     fcnResultValueType = value_isStringPointer;
                     _intermediateStringObjectCount++;
                     fcnResult.pStringConst = new char[((sysVal == 31) ? strlen(J_productName) : (sysVal == 32) ? strlen(J_legalCopyright) : (sysVal == 33) ? strlen(J_version) : strlen(J_buildDate)) + 1];
-                #if PRINT_HEAP_OBJ_CREA_DEL
-                    _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-                #endif
                     strcpy(fcnResult.pStringConst, (sysVal == 31) ? J_productName : (sysVal == 32) ? J_legalCopyright : (sysVal == 33) ? J_version : J_buildDate);
+                #if PRINT_HEAP_OBJ_CREA_DEL
+                    _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+                    _pDebugOut->print("      sysval(31-34) ");   _pDebugOut->println(fcnResult.pStringConst);
+                #endif
                 }
                 break;
 
@@ -2264,10 +2296,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 {
                     fcnResultValueType = value_isStringPointer;
                     _intermediateStringObjectCount++;
-                    fcnResult.pStringConst = new char[13 * 5];                                  // includes place for 13 times 5 characters (3 digits max. for each number, max. 2 extra in between) and terminating \0
-                #if PRINT_HEAP_OBJ_CREA_DEL
-                    _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-                #endif
+                    fcnResult.pStringConst = new char[13 * 5 + 1];                              // includes place for 13 times 5 characters (3 digits max. for each number, max. 2 extra in between) and terminating \0
                     if (sysVal == 42) {     // print heap object counts
                         // (1)program variable and function NAMES-(2)user variable NAMES-(3)parsed string constants-(4)last value strings-
                         // (5)global and static variable strings-(6)global and static array storage areas-(7)user variable strings-(8)user array storage areas-
@@ -2285,6 +2314,10 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                             min(999, _localVarStringObjectErrors), min(999, _localArrayObjectErrors), min(999, _localVarValueAreaErrors), min(999, _intermediateStringObjectErrors),
                             min(999, _systemStringObjectErrors));
                     }
+                #if PRINT_HEAP_OBJ_CREA_DEL
+                    _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+                    _pDebugOut->print("         sysval(43) ");   _pDebugOut->println(fcnResult.pStringConst);
+                #endif
                 }
                 break;
 
@@ -2299,11 +2332,11 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 #else 
                     fcnResult.longConst = 0; break;     // none of these
                 #endif
-            }
+                }
                 break;
 
                 default: return result_arg_invalid; break;
-        }                                                                                   // switch (sysVal)
+            }                                                                                       // switch (sysVal)
         }
         break;
 

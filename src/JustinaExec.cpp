@@ -65,7 +65,7 @@ Justina::execResult_type  Justina::exec(char* startHere) {
 
     // switch single step mode OFF before starting to execute command line (even in debug mode). Step and Debug commands will switch it on again (to execute one step).
     _stepCmdExecuted = db_continue;
-    _debugCmdExecuted = false;                                                          // Justina function to debug must be on same comand line as Debug command
+    _debugCmdExecuted = false;                                                          // Justina function to debug must be on same command line as Debug command
 
     _programCounter = startHere;
     holdProgramCnt_StatementStart = _programCounter; programCnt_previousStatementStart = _programCounter;
@@ -257,8 +257,8 @@ Justina::execResult_type  Justina::exec(char* startHere) {
             break;
 
 
-            // Case: generic identifier token token
-            // -------------------------------------------------
+            // Case: generic identifier token
+            // ------------------------------
 
             case tok_isGenericName:
             {
@@ -511,7 +511,7 @@ Justina::execResult_type  Justina::exec(char* startHere) {
                         // did the expression produce a result ?  
                         else if (evalStack.getElementCount() == _activeFunctionData.callerEvalStackLevels + 1) {
 
-                            // result is eval() string expression result ? check if it is the last expression occuring in the eval() string (only that value is considered the eval() result))
+                            // result is eval() string expression result ? check if it is the last expression occurring in the eval() string (only that value is considered the eval() result))
                             if (_activeFunctionData.blockType == block_eval) {  // executing parsed eval() string
                                 // never store a last value; delete all expression results except the last one
                                 int tokenType, tokenCode;
@@ -529,7 +529,7 @@ Justina::execResult_type  Justina::exec(char* startHere) {
 
                             // trace or a BP trace expression result ? Store result and delete evaluation stack level
                             else if (_parsingExecutingTraceString) {
-                                _traceResultValue.floatConst = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? *_pEvalStackTop->varOrConst.value.pFloatConst : _pEvalStackTop->varOrConst.value.floatConst;  // ok for all value types
+                                _traceResultValue.floatConst = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? *_pEvalStackTop->varOrConst.value.pFloatConst : _pEvalStackTop->varOrConst.value.floatConst;  // OK for all value types
                                 _traceResultValueType = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pEvalStackTop->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackTop->varOrConst.valueType;
                                 clearEvalStackLevels(1);
                             }
@@ -606,7 +606,7 @@ Justina::execResult_type  Justina::exec(char* startHere) {
         // ---------------------------------------------------------------------------------------------------------------------------------------------------------------
 
         if (_parsingExecutingTriggerString) {
-            // stop evaluation if done evaluating OR if an execution error occured during evaluation
+            // stop evaluation if done evaluating OR if an execution error occurred during evaluation
             bool isTriggerEvalEnd = (isEndOfStatementSeparator || (execResult != result_execOK) && (execResult < result_startOfEvents));
             if (isTriggerEvalEnd) { checkTriggerResult(execResult); isEndOfStatementSeparator = false; }     // avoid end of statement processing (below)
 
@@ -662,7 +662,7 @@ Justina::execResult_type  Justina::exec(char* startHere) {
             // process debugging commands (entered from the command line, or forced abort / stop requests received while a program is running  
             // ------------------------------------------------------------------------------------------------------------------------------
 
-            // note: skip while executing trace expressions, parsed eval() expresions or quitting Justina
+            // note: skip while executing trace expressions, parsed eval() expressions or quitting Justina
 
             bool executingEvalString = (_activeFunctionData.blockType == block_eval);
 
@@ -716,7 +716,8 @@ Justina::execResult_type  Justina::exec(char* startHere) {
         else {
             printTo(_debug_sourceStreamNumber, toPrint.pStringConst);
         #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print("----- (Intermd str) "); _pDebugOut->println((uint32_t)toPrint.pStringConst, HEX);
+            _pDebugOut->print("\r\n----- (Intermd str) "); _pDebugOut->println((uint32_t)toPrint.pStringConst, HEX);
+            _pDebugOut->print("  par/exe trace str "); _pDebugOut->println(toPrint.pStringConst);
         #endif
             _intermediateStringObjectCount--;
             delete[] toPrint.pStringConst;
@@ -743,19 +744,20 @@ Justina::execResult_type  Justina::exec(char* startHere) {
 
                 if (toPrint.pStringConst != nullptr) {
                 #if PRINT_HEAP_OBJ_CREA_DEL
-                    _pDebugOut->print("----- (Intermd str) "); _pDebugOut->println((uint32_t)toPrint.pStringConst, HEX);
+                    _pDebugOut->print("\r\n----- (Intermd str) "); _pDebugOut->println((uint32_t)toPrint.pStringConst, HEX);
+                    _pDebugOut->print("fin.exec, prnt res. "); _pDebugOut->println(toPrint.pStringConst);
                 #endif
                     _intermediateStringObjectCount--;
                     delete[] toPrint.pStringConst;
+                }
             }
         }
-    }
         else { printExecError(execResult, showStopmessage); }
-}
+    }
 
 
-// adapt imm. mode parsed statement stack, flow control stack and evaluation stack
-  // -------------------------------------------------------------------------------
+    // adapt imm. mode parsed statement stack, flow control stack and evaluation stack
+      // -------------------------------------------------------------------------------
 
     if ((execResult == result_stopForDebug) || (execResult == result_stopForBreakpoint)) {                              // stopping for debug now ('STOP' command or single step)
         // push caller function data (or main = user entry level in immediate mode) on FLOW CONTROL stack 
@@ -823,7 +825,7 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
 
     // did the error occur in a Justina function (or the (debug) command line) where error trapping is enabled ?  
     bool trapErrorHere = ((_activeFunctionData.blockType == block_JustinaFunction) && (bool)_activeFunctionData.trapEnable);
-    // error trapping is NOT enbled where the error occurred (a Justina function or possibly an eval() string): check if error trapping is enabled for caller levels
+    // error trapping is NOT enabled where the error occurred (a Justina function or possibly an eval() string): check if error trapping is enabled for caller levels
     if (!trapErrorHere) {
         bool levelsBeneath = (_activeFunctionData.blockType == block_eval) ||
             ((_activeFunctionData.blockType == block_JustinaFunction) && (_activeFunctionData.pNextStep < (_programStorage + _PROGRAM_MEMORY_SIZE)));
@@ -865,8 +867,8 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
 
     // C. If the error occurred while a BLOCK START command or BLOCK MIDDLE command is executed:
     //    - if a flow control stack entry to control execution of the block has been created already, delete it. 
-    //      -> if a BLOCK START command is executed but the current token is not yet the statement separator, then the flow control stack entry is NOT yet cretaed
-    //    - set the next program step to the block's 'end' statement (which will not be executed: see below)
+    //      -> if a BLOCK START command is executed but the current token is not yet the statement separator, then the flow control stack entry is NOT yet created
+    //    - set the next program step to the block's 'end' statement (which will not be executed: see below)-
     // -----------------------------------------------------------------------------------------------------------------------------------------------------------
 
     bool isBlockStartMiddleCommand = ((_activeFunctionData.activeCmd_ResWordCode == cmdcod_for) || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_while) || (_activeFunctionData.activeCmd_ResWordCode == cmdcod_if)
@@ -887,7 +889,7 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
         pToToken = (TokenIsResWord*)_activeFunctionData.activeCmd_tokenAddress;
         memcpy(&blockEndTokenStep, pToToken->toTokenStep, sizeof(char[2]));
 
-        // in a statement with multiple elseif's, iterate throuth them to find the address of the 'end' statement
+        // in a statement with multiple elseif's, iterate through them to find the address of the 'end' statement
         do {
             _activeFunctionData.pNextStep = _programStorage + blockEndTokenStep;
             int tokenIndex = ((TokenIsResWord*)_activeFunctionData.pNextStep)->tokenIndex;
@@ -908,7 +910,7 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
     }
 
 
-    // E. Finalise: clear the error condition but remember error number
+    // E. Finalize: clear the error condition but remember error number
     // ----------------------------------------------------------------
 
     _trappedErrorNumber = (int)execResult; execResult = result_execOK;
@@ -992,7 +994,7 @@ void Justina::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNo
                 _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
                 *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                                         // push caller function data to stack
 
-                _activeFunctionData.blockType = block_trigger;                                                            // now executing parsed 'trigger eval' string
+                _activeFunctionData.blockType = block_trigger;                                                          // now executing parsed 'trigger eval' string
                 _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                // command execution ended 
 
                 _activeFunctionData.callerEvalStackLevels = evalStack.getElementCount();                                // store evaluation stack levels in use by callers (call stack)
@@ -1032,7 +1034,7 @@ void Justina::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNo
     // STOP if (1) breakpoint stop, (2) application flags requested stop, (3) a debug command was executed, one of the 'step...' commands was executed (imm. mode), 
     // ...(4) one of the step commands was executed. NOTE: (5) the program encountered a stop command: not handled here. See 'stop' command
     requestStopForDebugNow = (isActiveBreakpoint || appFlagsRequestStop || _debugCmdExecuted || isStepCommand)
-        && !isFunctionReturn;                                       // skip remainder of line where call to function occured
+        && !isFunctionReturn;                                       // skip remainder of line where call to function occurred
     isFunctionReturn = false;
 
     if (requestStopForDebugNow) {
@@ -1318,7 +1320,7 @@ int Justina::findTokenStep(char*& pStep, bool excludeCurrent, char tokenType_spe
 void Justina::saveLastValue(bool& overWritePrevious) {
     if (!(evalStack.getElementCount() > _activeFunctionData.callerEvalStackLevels)) { return; }                 // safety: data available ?
 
-    // if overwrite 'previous' last result, then remove first item (newest item - if there is one) and stop (all done)
+  // if overwrite 'previous' last result, then remove first item (newest item - if there is one) and stop (all done)
     // if not overwriting 'previous' last result and FiFo is full, then remove last (oldest) item before proceeding
     int itemToRemove = overWritePrevious ? ((_lastValuesCount >= 1) ? 0 : -1) :
         ((_lastValuesCount == MAX_LAST_RESULT_DEPTH) ? MAX_LAST_RESULT_DEPTH - 1 : -1);
@@ -1330,13 +1332,14 @@ void Justina::saveLastValue(bool& overWritePrevious) {
 
             if (lastResultValueFiFo[itemToRemove].pStringConst != nullptr) {
             #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print("----- (FiFo string) ");   _pDebugOut->println((uint32_t)lastResultValueFiFo[itemToRemove].pStringConst, HEX);
+                _pDebugOut->print("\r\n----- (FiFo string) ");   _pDebugOut->println((uint32_t)lastResultValueFiFo[itemToRemove].pStringConst, HEX);
+                _pDebugOut->print("save last value (1) ");   _pDebugOut->println(lastResultValueFiFo[itemToRemove].pStringConst);
             #endif 
                 _lastValuesStringObjectCount--;
                 delete[] lastResultValueFiFo[itemToRemove].pStringConst;                                        // note: this is always an intermediate string
+            }
         }
     }
-}
     else {
         _lastValuesCount++;                                                                                     // only adding an item, without removing previous one
     }
@@ -1348,7 +1351,6 @@ void Justina::saveLastValue(bool& overWritePrevious) {
             lastResultTypeFiFo[i] = lastResultTypeFiFo[i - 1];
         }
     }
-
 
     // store new last value
     VarOrConstLvl lastvalue;
@@ -1369,20 +1371,21 @@ void Justina::saveLastValue(bool& overWritePrevious) {
         int stringlen = min(int(strlen(lastvalue.value.pStringConst)), MAX_ALPHA_CONST_LEN);                    // excluding terminating \0
         _lastValuesStringObjectCount++;
         lastResultValueFiFo[0].pStringConst = new char[stringlen + 1];
-    #if PRINT_HEAP_OBJ_CREA_DEL
-        _pDebugOut->print("+++++ (FiFo string) ");   _pDebugOut->println((uint32_t)lastResultValueFiFo[0].pStringConst, HEX);
-    #endif            
-
         memcpy(lastResultValueFiFo[0].pStringConst, lastvalue.value.pStringConst, stringlen);                   // copy the actual string (not the pointer); do not use strcpy
         lastResultValueFiFo[0].pStringConst[stringlen] = '\0';
+    #if PRINT_HEAP_OBJ_CREA_DEL
+        _pDebugOut->print("\r\n+++++ (FiFo string) ");   _pDebugOut->println((uint32_t)lastResultValueFiFo[0].pStringConst, HEX);
+        _pDebugOut->print("save last value (2) ");   _pDebugOut->println(lastResultValueFiFo[0].pStringConst);
+    #endif            
 
         if (lastValueIntermediate) {
         #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print("----- (intermd str) ");   _pDebugOut->println((uint32_t)lastvalue.value.pStringConst, HEX);
+            _pDebugOut->print("\r\n----- (Intermd str) ");   _pDebugOut->println((uint32_t)lastvalue.value.pStringConst, HEX);
+            _pDebugOut->print("save last value (3) ");   _pDebugOut->println(lastvalue.value.pStringConst);
         #endif
             _intermediateStringObjectCount--;
             delete[] lastvalue.value.pStringConst;
-    }
+        }
     }
 
     // store new last value type
@@ -1397,11 +1400,11 @@ void Justina::saveLastValue(bool& overWritePrevious) {
     overWritePrevious = true;
 
     return;
-    }
+}
 
-    // ------------------------------------------------------------------------
-    // *   Clear evaluation stack and associated intermediate string object   * 
-    // ------------------------------------------------------------------------
+// ------------------------------------------------------------------------
+// *   Clear evaluation stack and associated intermediate string object   * 
+// ------------------------------------------------------------------------
 
 void Justina::clearEvalStack() {
 
@@ -1415,7 +1418,7 @@ void Justina::clearEvalStack() {
     #endif
         _intermediateStringObjectErrors += abs(_intermediateStringObjectCount);
         _intermediateStringObjectCount = 0;
-}
+    }
     return;
 }
 
@@ -1488,7 +1491,7 @@ void Justina::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, bool terminat
                             deleteVariableValueObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, paramOnlyCount, false, false, true);
 
                         #if PRINT_HEAP_OBJ_CREA_DEL
-                            _pDebugOut->print("----- (LOCAL STORAGE) ");   _pDebugOut->println((uint32_t)(_activeFunctionData.pLocalVarValues), HEX);
+                            _pDebugOut->print("\r\n----- (LOCAL STORAGE) ");   _pDebugOut->println((uint32_t)(_activeFunctionData.pLocalVarValues), HEX);
                         #endif
                             _localVarValueAreaCount -= 3;
                             // release local variable storage for function that has been called
@@ -1594,7 +1597,7 @@ Justina::execResult_type Justina::execParenthesesPair(LE_evalStack*& pPrecedingS
         }
     }
 
-    // none of the te above: simple parenthesis pair ? If variable inside, make it an intermediate constant on the stack 
+    // none of the above: simple parenthesis pair ? If variable inside, make it an intermediate constant on the stack 
     makeIntermediateConstant(_pEvalStackTop);                                                                   // left parenthesis already removed from evaluation stack
     return result_execOK;
 }
@@ -1605,7 +1608,7 @@ Justina::execResult_type Justina::execParenthesesPair(LE_evalStack*& pPrecedingS
 
 Justina::execResult_type Justina::arrayAndSubscriptsToarrayElement(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pStackLvl, int argCount) {
     void* pArray = *pPrecedingStackLvl->varOrConst.value.ppArray;
-    _activeFunctionData.errorProgramCounter = pPrecedingStackLvl->varOrConst.tokenAddress;                      // token adress of array name (in the event of an error)
+    _activeFunctionData.errorProgramCounter = pPrecedingStackLvl->varOrConst.tokenAddress;                      // token address of array name (in the event of an error)
 
     int elemSpec[3] = { 0,0,0 };
     int dimNo = 0;
@@ -1786,11 +1789,12 @@ void Justina::makeIntermediateConstant(LE_evalStack* pEvalStackLvl) {
             int stringlen = strlen(operand.pStringConst);
             _intermediateStringObjectCount++;
             result.pStringConst = new char[stringlen + 1];
+            strcpy(result.pStringConst, operand.pStringConst);                                                  // copy the actual strings 
         #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)result.pStringConst, HEX);
+            _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)result.pStringConst, HEX);
+            _pDebugOut->print(" make intermed. cst ");   _pDebugOut->println(result.pStringConst);
         #endif
 
-            strcpy(result.pStringConst, operand.pStringConst);                                                  // copy the actual strings 
         }
         pEvalStackLvl->varOrConst.value = result;                                                               // float or pointer to string (type: no change)
         pEvalStackLvl->varOrConst.valueType = valueType;
@@ -2006,12 +2010,13 @@ Justina::execResult_type  Justina::execInfixOperation() {
                 else {                                                                                      // string to be assigned is not empty
                     _intermediateStringObjectCount++;
                     opResult.pStringConst = new char[stringlen + 1];
-                #if PRINT_HEAP_OBJ_CREA_DEL
-                    _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)opResult.pStringConst, HEX);
-                #endif
                     opResult.pStringConst[0] = '\0';                                                        // init: in case first operand is nullptr
                     if (!op1emptyString) { strcpy(opResult.pStringConst, operand1.pStringConst); }
                     if (!op2emptyString) { strcat(opResult.pStringConst, operand2.pStringConst); }
+                #if PRINT_HEAP_OBJ_CREA_DEL
+                    _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)opResult.pStringConst, HEX);
+                    _pDebugOut->print(" exec infix op. (1) ");   _pDebugOut->println(opResult.pStringConst);
+                #endif
                 }
             }
 
@@ -2161,26 +2166,28 @@ Justina::execResult_type  Justina::execInfixOperation() {
             int stringlen = min(int(strlen(pUnclippedResultString)), MAX_ALPHA_CONST_LEN);
             (varScope == var_isUser) ? _userVarStringObjectCount++ : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount++ : _localVarStringObjectCount++;
             opResult.pStringConst = new char[stringlen + 1];
-        #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print((varScope == var_isUser) ? "+++++ (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "+++++ (var string ) " : "+++++ (loc var str) ");
-            _pDebugOut->println((uint32_t)opResult.pStringConst, HEX);
-        #endif
-
             memcpy(opResult.pStringConst, pUnclippedResultString, stringlen);                                   // copy the actual string (not the pointer); do not use strcpy
             opResult.pStringConst[stringlen] = '\0';                                                            // add terminating \0
+        #if PRINT_HEAP_OBJ_CREA_DEL
+            _pDebugOut->print("\r\n");
+            _pDebugOut->print((varScope == var_isUser) ? "+++++ (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "+++++ (var string ) " : "+++++ (loc var str) ");
+            _pDebugOut->println((uint32_t)opResult.pStringConst, HEX);
+            _pDebugOut->print(" exec infix op. (2) "); _pDebugOut->println(opResult.pStringConst);
+        #endif
 
             // compound statement ? then an intermediate string has been created (not pushed to the stack) and needs to be deleted now
             if (operatorCode != termcod_assign) {
             #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print("----- (Intermd str) "); _pDebugOut->println((uint32_t)pUnclippedResultString, HEX);
+                _pDebugOut->print("\r\n----- (Intermd str) "); _pDebugOut->println((uint32_t)pUnclippedResultString, HEX);
+                _pDebugOut->print(" exec infix op. (3) "); _pDebugOut->println(pUnclippedResultString);
             #endif
                 _intermediateStringObjectCount--;
                 // compound assignment: pointing to the unclipped result WHICH IS NON-EMPTY: so it's a heap object and must be deleted now
                 delete[] pUnclippedResultString;
+            }
         }
-    }
 
-    // store value in variable and adapt variable value type - next line is valid for long integers as well
+        // store value in variable and adapt variable value type - next line is valid for long integers as well
         if (opResultLong || opResultFloat) { *_pEvalStackMinus2->varOrConst.value.pFloatConst = opResult.floatConst; }
         else { *_pEvalStackMinus2->varOrConst.value.ppStringConst = opResult.pStringConst; }
         *_pEvalStackMinus2->varOrConst.varTypeAddress = (*_pEvalStackMinus2->varOrConst.varTypeAddress & ~value_typeMask) |
@@ -2192,15 +2199,15 @@ Justina::execResult_type  Justina::execInfixOperation() {
             _pEvalStackMinus2->varOrConst.valueType = (_pEvalStackMinus2->varOrConst.valueType & ~value_typeMask) |
                 (opResultLong ? value_isLong : opResultFloat ? value_isFloat : value_isStringPointer);
         }
-}
+    }
 
 
-// (7) post process
-// ----------------
+    // (7) post process
+    // ----------------
 
-// Delete any intermediate result string objects used as operands 
+    // Delete any intermediate result string objects used as operands 
 
-// if operands are intermediate constant strings, then delete char string object
+    // if operands are intermediate constant strings, then delete char string object
     deleteIntermStringObject(_pEvalStackTop);
     deleteIntermStringObject(_pEvalStackMinus2);
 
@@ -2261,7 +2268,7 @@ Justina::execResult_type Justina::execExternalCppFunction(LE_evalStack*& pFuncti
     Val args[8]{}, dummyArgs[8]{};                                                                      // values to be passed to user routine
     char valueType[8]{ };                                                                               // value types (long, float, char string)
     char varScope[8]{};                                                                                 // if variable: variable scope (user, program global, static, local)
-    bool argIsNonConstantVar[8]{};                                                                      // flag: is variable (scalar or aray)
+    bool argIsNonConstantVar[8]{};                                                                      // flag: is variable (scalar or array)
     bool argIsArray[8]{};                                                                               // flag: is array element
 
     void* pValues_copy[8]{};                                                                      // copies for safety
@@ -2288,12 +2295,12 @@ Justina::execResult_type Justina::execExternalCppFunction(LE_evalStack*& pFuncti
     int integerExecResult{ (int)result_execOK };
 
     switch (returnValueType) {
-        case 0: { fcnResult.longConst = (long)((CppBoolFunction*)_pExtCppFunctions[0])[funcIndexInType].func(pValues_copy, valueTypes_copy, suppliedArgCount_copy, integerExecResult); break; }        // bool-> long
-        case 1: { fcnResult.longConst = (long)((CppCharFunction*)_pExtCppFunctions[1])[funcIndexInType].func(pValues_copy, valueTypes_copy, suppliedArgCount_copy, integerExecResult); break; }        // char to long   
-        case 2: { fcnResult.longConst = (long)((CppIntFunction*)_pExtCppFunctions[2])[funcIndexInType].func(pValues_copy, valueTypes_copy, suppliedArgCount_copy, integerExecResult); break; }         // int to long   
-        case 3: { fcnResult.longConst = ((CppLongFunction*)_pExtCppFunctions[3])[funcIndexInType].func(pValues_copy, valueTypes_copy, suppliedArgCount_copy, integerExecResult); break; }            // long   
-        case 4: { fcnResult.floatConst = ((CppFloatFunction*)_pExtCppFunctions[4])[funcIndexInType].func(pValues_copy, valueTypes_copy, suppliedArgCount_copy, integerExecResult); break; }            // float
-        case 5: { fcnResult.pStringConst = ((Cpp_pCharFunction*)_pExtCppFunctions[5])[funcIndexInType].func(pValues_copy, valueTypes_copy, suppliedArgCount_copy, integerExecResult); break; }         // char*   
+        case 0: { fcnResult.longConst = (long)((CppBoolFunction*)_pExtCppFunctions[0])[funcIndexInType].func(pValues_copy, valueTypes_copy, suppliedArgCount_copy, integerExecResult); break; }         // bool-> long
+        case 1: { fcnResult.longConst = (long)((CppCharFunction*)_pExtCppFunctions[1])[funcIndexInType].func(pValues_copy, valueTypes_copy, suppliedArgCount_copy, integerExecResult); break; }         // char to long   
+        case 2: { fcnResult.longConst = (long)((CppIntFunction*)_pExtCppFunctions[2])[funcIndexInType].func(pValues_copy, valueTypes_copy, suppliedArgCount_copy, integerExecResult); break; }          // int to long   
+        case 3: { fcnResult.longConst = ((CppLongFunction*)_pExtCppFunctions[3])[funcIndexInType].func(pValues_copy, valueTypes_copy, suppliedArgCount_copy, integerExecResult); break; }               // long   
+        case 4: { fcnResult.floatConst = ((CppFloatFunction*)_pExtCppFunctions[4])[funcIndexInType].func(pValues_copy, valueTypes_copy, suppliedArgCount_copy, integerExecResult); break; }             // float
+        case 5: { fcnResult.pStringConst = ((Cpp_pCharFunction*)_pExtCppFunctions[5])[funcIndexInType].func(pValues_copy, valueTypes_copy, suppliedArgCount_copy, integerExecResult); break; }          // char*   
         case 6: { ((CppVoidFunction*)_pExtCppFunctions[6])[funcIndexInType].func(pValues_copy, valueTypes_copy, suppliedArgCount_copy, integerExecResult); fcnResult.longConst = 0; break; }            // void -> returns zero
     }
     if (((execResult_type)integerExecResult >= result_startOfExecErrorRange) && ((execResult_type)integerExecResult <= result_endOfExecErrorRange)) { return (execResult_type)integerExecResult; }
@@ -2301,12 +2308,12 @@ Justina::execResult_type Justina::execExternalCppFunction(LE_evalStack*& pFuncti
     fcnResultValueType = (returnValueType == 4) ? value_isFloat : (returnValueType == 5) ? value_isStringPointer : value_isLong;    // long: for bool, char, int, long return types
 
 
-    // postprocess: check any strings RETURNED by callback procedure
-    // -------------------------------------------------------------
+    // post process: check any strings RETURNED by callback procedure
+    // --------------------------------------------------------------
 
     if (returnValueType == 5) {
-        // NO NEW OBJECTS may be CREATED in the user cpp routine
-        // so the pointer returned points to one of the arguments passed to the user routine 
+        // pointer returned may point to a static char array in the user routine, a string literal, a string argument passed to the user routine, ... 
+        // create an independent string (copy of the string returned) which is under control of Justina
 
         // empty string returned by user cpp function ? replace by a null pointer  
         int len = strlen(fcnResult.pStringConst);
@@ -2316,10 +2323,11 @@ Justina::execResult_type Justina::execExternalCppFunction(LE_evalStack*& pFuncti
             char* temp = fcnResult.pStringConst;
             _intermediateStringObjectCount++;
             fcnResult.pStringConst = new char[len + 1];
-        #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print("+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-        #endif
             strcpy(fcnResult.pStringConst, temp);
+        #if PRINT_HEAP_OBJ_CREA_DEL
+            _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+            _pDebugOut->print(" exec usrcpp fn (1) ");   _pDebugOut->println(fcnResult.pStringConst);
+        #endif
         }
     }
 
@@ -2330,28 +2338,31 @@ Justina::execResult_type Justina::execExternalCppFunction(LE_evalStack*& pFuncti
             // => a string copy or a new string solely consisting of a '\0' terminator (intermediate string) was passed to user routine and needs to be deleted 
             if (valueType[i] & passCopyToCallback) {
             #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print("----- (Intermd str) "); _pDebugOut->println((uint32_t)args[i].pStringConst, HEX);
+                _pDebugOut->print("\r\n----- (Intermd str) "); _pDebugOut->println((uint32_t)args[i].pStringConst, HEX);
+                _pDebugOut->print(" exec usrcpp fn (2) "); _pDebugOut->println(args[i].pStringConst);
             #endif
                 _intermediateStringObjectCount--;
                 delete[] args[i].pStringConst;                                                          // delete temporary string
-        }
+            }
 
-        // string argument was a (NON-CONSTANT) variable string: no copy was made, the string itself was passed to the user routine
-        // did the user routine change it to an empty, '\0' terminated string ?
-        // then this variable string object needs to be deleted and the pointer to it needs to be replaced by a null pointer (Justnia convention)
+            // string argument was a (NON-CONSTANT) variable string: no copy was made, the string itself was passed to the user routine
+            // did the user routine change it to an empty, '\0' terminated string ?
+            // then this variable string object needs to be deleted and the pointer to it needs to be replaced by a null pointer (Justina convention)
             else if (strlen(args[i].pStringConst) == 0) {
 
             #if PRINT_HEAP_OBJ_CREA_DEL 
+                _pDebugOut->print("\r\n");
                 _pDebugOut->print((varScope[i] == var_isUser) ? "----- (usr var str) " : ((varScope[i] == var_isGlobal) || (varScope[i] == var_isStaticInFunc)) ? "----- (var string ) " : "----- (loc var str) ");
                 _pDebugOut->println((uint32_t)args[i].pStringConst, HEX);
+                _pDebugOut->print(" exec usrcpp fn (3) "); _pDebugOut->println(args[i].pStringConst);
             #endif
                 (varScope[i] == var_isUser) ? _userVarStringObjectCount-- : ((varScope[i] == var_isGlobal) || (varScope[i] == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount-- : _localVarStringObjectCount--;
                 delete[]args[i].pStringConst;                                                       // delete original variable string
                 *pStackLvl->varOrConst.value.ppStringConst = nullptr;                               // change pointer to string (in variable) to null pointer
             }
-    }
+        }
         pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-}
+    }
 
     clearEvalStackLevels(suppliedArgCount + 1);                                                     // clean up: delete evaluation stack elements for supplied arguments
 
@@ -2369,12 +2380,12 @@ Justina::execResult_type Justina::execExternalCppFunction(LE_evalStack*& pFuncti
     _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
 
     return result_execOK;
-            }
+}
 
 
-            // -------------------------------
-            // *   launch Justina function   *
-            // -------------------------------
+// -------------------------------
+// *   launch Justina function   *
+// -------------------------------
 
 Justina::execResult_type  Justina::launchJustinaFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount) {
 
@@ -2406,7 +2417,7 @@ Justina::execResult_type  Justina::launchJustinaFunction(LE_evalStack*& pFunctio
         _activeFunctionData.pVariableAttributes = new char[localVarCount];                          // local variable: value type (float, local string or reference); 'source' (if reference) or local variable scope (user, global, static; local, param) 
 
     #if PRINT_HEAP_OBJ_CREA_DEL
-        _pDebugOut->print("+++++ (LOCAL STORAGE) ");   _pDebugOut->println((uint32_t)_activeFunctionData.pLocalVarValues, HEX);
+        _pDebugOut->print("\r\n+++++ (LOCAL STORAGE) ");   _pDebugOut->println((uint32_t)_activeFunctionData.pLocalVarValues, HEX);
     #endif
     }
 
@@ -2475,25 +2486,27 @@ Justina::execResult_type  Justina::launchEval(LE_evalStack*& pFunctionStackLvl, 
     // -------------------
     char* pDummy{};
     char* holdProgramCounter = _programCounter;
-    _programCounter = _programStorage + _PROGRAM_MEMORY_SIZE;                                            // parsed statements go to immediate mode program memory
+    _programCounter = _programStorage + _PROGRAM_MEMORY_SIZE;                                       // parsed statements go to immediate mode program memory
     _parsingEvalString = true;
 
     // create a temporary string to hold expressions to parse, with an extra semicolon added at the end (in case it's missing)
     _systemStringObjectCount++;
     char* pEvalParsingInput = new char[strlen(parsingInput) + 2]; // room for additional semicolon (in case string is not ending with it) and terminating '\0'
-#if PRINT_HEAP_OBJ_CREA_DEL
-    _pDebugOut->print("+++++ (system var str) "); _pDebugOut->println((uint32_t)pEvalParsingInput, HEX);
-#endif
-
     strcpy(pEvalParsingInput, parsingInput);                                                        // copy the actual string
     pEvalParsingInput[strlen(parsingInput)] = term_semicolon[0];
     pEvalParsingInput[strlen(parsingInput) + 1] = '\0';
+#if PRINT_HEAP_OBJ_CREA_DEL
+    _pDebugOut->print("\r\n+++++ (system var str) "); _pDebugOut->println((uint32_t)pEvalParsingInput, HEX);
+    _pDebugOut->print("       launch eval (1) "); _pDebugOut->println(pEvalParsingInput);
+#endif
+
     char* pParsingInput_temp = pEvalParsingInput;                                                   // temp, because value will be changed upon return (preserve original pointer value)
     // note: application flags are not adapted (would not be passed to caller immediately)
     int dummy{};
     parsingResult_type result = parseStatement(pParsingInput_temp, pDummy, dummy);                  // parse all eval() expressions in ONE go (which is not the case for standard parsing and trace string parsing)
 #if PRINT_HEAP_OBJ_CREA_DEL
-    _pDebugOut->print("----- (system var str) "); _pDebugOut->println((uint32_t)pEvalParsingInput, HEX);
+    _pDebugOut->print("\r\n----- (system var str) "); _pDebugOut->println((uint32_t)pEvalParsingInput, HEX);
+    _pDebugOut->print("       launch eval (2) "); _pDebugOut->println(pEvalParsingInput);
 #endif
     _systemStringObjectCount--;
     delete[] pEvalParsingInput;
@@ -2607,10 +2620,11 @@ void Justina::initFunctionParamVarWithSuppliedArg(int suppliedArgCount, LE_evalS
                         int stringlen = strlen(tempString);
                         _localVarStringObjectCount++;
                         _activeFunctionData.pLocalVarValues[i].pStringConst = new char[stringlen + 1];
-                    #if PRINT_HEAP_OBJ_CREA_DEL
-                        _pDebugOut->print("+++++ (loc var str) ");   _pDebugOut->println((uint32_t)_activeFunctionData.pLocalVarValues[i].pStringConst, HEX);
-                    #endif
                         strcpy(_activeFunctionData.pLocalVarValues[i].pStringConst, tempString);
+                    #if PRINT_HEAP_OBJ_CREA_DEL
+                        _pDebugOut->print("\r\n+++++ (loc var str) ");   _pDebugOut->println((uint32_t)_activeFunctionData.pLocalVarValues[i].pStringConst, HEX);
+                        _pDebugOut->print("init Just fnc param ");   _pDebugOut->println(_activeFunctionData.pLocalVarValues[i].pStringConst);
+                    #endif
                     }
                 };
             }
@@ -2664,10 +2678,11 @@ void Justina::initFunctionDefaultParamVariables(char*& pStep, int suppliedArgCou
                     int stringlen = strlen(s);
                     _localVarStringObjectCount++;
                     _activeFunctionData.pLocalVarValues[count].pStringConst = new char[stringlen + 1];
-                #if PRINT_HEAP_OBJ_CREA_DEL
-                    _pDebugOut->print("+++++ (loc var str) ");   _pDebugOut->println((uint32_t)_activeFunctionData.pLocalVarValues[count].pStringConst, HEX);
-                #endif
                     strcpy(_activeFunctionData.pLocalVarValues[count].pStringConst, s);
+                #if PRINT_HEAP_OBJ_CREA_DEL
+                    _pDebugOut->print("\r\n+++++ (loc var str) ");   _pDebugOut->println((uint32_t)_activeFunctionData.pLocalVarValues[count].pStringConst, HEX);
+                    _pDebugOut->print("init J.def.fnc.par. ");   _pDebugOut->println(_activeFunctionData.pLocalVarValues[count].pStringConst);
+                #endif
                 }
             }
             count++;
@@ -2727,7 +2742,7 @@ void Justina::initFunctionLocalNonParamVariables(char* pStep, int paramCount, in
                 _localArrayObjectCount++;
                 float* pArray = new float[arrayElements + 1];
             #if PRINT_HEAP_OBJ_CREA_DEL
-                _pDebugOut->print("+++++ (loc ar stor) "); _pDebugOut->println((uint32_t)pArray, HEX);
+                _pDebugOut->print("\r\n+++++ (loc ar stor) "); _pDebugOut->println((uint32_t)pArray, HEX);
             #endif
                 _activeFunctionData.pLocalVarValues[count].pArray = pArray;
                 _activeFunctionData.pVariableAttributes[count] |= var_isArray;                                              // set array bit
@@ -2742,7 +2757,7 @@ void Justina::initFunctionLocalNonParamVariables(char* pStep, int paramCount, in
             }
 
 
-            // handle initialisation (if initializer provided)
+            // handle initialization (if initializer provided)
             // -----------------------------------------------
 
             if (terminalCode == termcod_assign) {
@@ -2783,13 +2798,13 @@ void Justina::initFunctionLocalNonParamVariables(char* pStep, int paramCount, in
                         else { // create string object and store string
                             _localVarStringObjectCount++;
                             char* pVarString = new char[length + 1];                                                        // create char array on the heap to store alphanumeric constant, including terminating '\0'
-                        #if PRINT_HEAP_OBJ_CREA_DEL
-                            _pDebugOut->print("+++++ (loc var str) "); _pDebugOut->println((uint32_t)pVarString, HEX);
-                        #endif
-
                             // store alphanumeric constant in newly created character array
                             strcpy(pVarString, pString);                                                                    // including terminating \0
                             _activeFunctionData.pLocalVarValues[count].pStringConst = pVarString;                           // store pointer to string
+                        #if PRINT_HEAP_OBJ_CREA_DEL
+                            _pDebugOut->print("\r\n+++++ (loc var str) "); _pDebugOut->println((uint32_t)pVarString, HEX);
+                            _pDebugOut->print(" init J.fnc loc var "); _pDebugOut->println(pVarString);
+                        #endif
                         }
                     }
                 }
@@ -2837,7 +2852,7 @@ void Justina::terminateJustinaFunction(bool addZeroReturnValue) {
         deleteVariableValueObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, paramOnlyCount, false, false, true);
 
     #if PRINT_HEAP_OBJ_CREA_DEL
-        _pDebugOut->print("----- (LOCAL STORAGE) ");   _pDebugOut->println((uint32_t)_activeFunctionData.pLocalVarValues, HEX);
+        _pDebugOut->print("\r\n----- (LOCAL STORAGE) ");   _pDebugOut->println((uint32_t)_activeFunctionData.pLocalVarValues, HEX);
     #endif
         _localVarValueAreaCount -= 3;
         // release local variable storage for function that has been called
@@ -2861,14 +2876,14 @@ void Justina::terminateJustinaFunction(bool addZeroReturnValue) {
     --_callStackDepth;                                                                                                      // caller reached: call stack depth decreased by 1
 
 
-    if ((_activeFunctionData.pNextStep >= (_programStorage + _PROGRAM_MEMORY_SIZE)) && (_callStackDepth == 0)) {                 // not within a function, not within eval() execution, and not in debug mode       
+    if ((_activeFunctionData.pNextStep >= (_programStorage + _PROGRAM_MEMORY_SIZE)) && (_callStackDepth == 0)) {            // not within a function, not within eval() execution, and not in debug mode       
         if (_localVarValueAreaCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
             _pDebugOut->print("**** Local variable storage area objects cleanup error. Remaining: "); _pDebugOut->println(_localVarValueAreaCount);
         #endif
             _localVarValueAreaErrors += abs(_localVarValueAreaCount);
             _localVarValueAreaCount = 0;
-    }
+        }
 
         if (_localVarStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
@@ -2876,7 +2891,7 @@ void Justina::terminateJustinaFunction(bool addZeroReturnValue) {
         #endif
             _localVarStringObjectErrors += abs(_localVarStringObjectCount);
             _localVarStringObjectCount = 0;
-}
+        }
 
         if (_localArrayObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
@@ -2910,7 +2925,7 @@ void Justina::terminateEval() {
     --_callStackDepth;                                                                                                      // caller reached: call stack depth decreased by 1
 
     // overwrite the parsed 'EVAL' string expressions
-    // before removing, delete any parsed strng constants for that command line
+    // before removing, delete any parsed string constants for that command line
 
     _lastUserCmdStep = *(char**)_pParsedCommandLineStackTop;                                                                // pop parsed user cmd length
     long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + _PROGRAM_MEMORY_SIZE) + 1;
@@ -2936,9 +2951,9 @@ void Justina::pushTerminalToken(int tokenType) {                                
 
     _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(TerminalTokenLvl));
     _pEvalStackTop->terminal.tokenType = tokenType;
-    _pEvalStackTop->terminal.tokenAddress = _programCounter;                                                                // only for finding source error position during unparsing (for printing)
+    _pEvalStackTop->terminal.tokenAddress = _programCounter;                                                    // only for finding source error position during 'unparsing' (for printing)
 
-    _pEvalStackTop->terminal.index = (*_programCounter >> 4) & 0x0F;                                                        // terminal token only: calculate from partial index stored in high 4 bits of token type 
+    _pEvalStackTop->terminal.index = (*_programCounter >> 4) & 0x0F;                                            // terminal token only: calculate from partial index stored in high 4 bits of token type 
     _pEvalStackTop->terminal.index += ((tokenType == tok_isTerminalGroup2) ? 0x10 : (tokenType == tok_isTerminalGroup3) ? 0x20 : 0);
 };
 
@@ -2954,9 +2969,9 @@ void Justina::pushInternCppFunctionName(int tokenType) {                        
 
     _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(FunctionLvl));
     _pEvalStackTop->function.tokenType = tokenType;
-    _pEvalStackTop->function.tokenAddress = _programCounter;                                                                // only for finding source error position during unparsing (for printing)
+    _pEvalStackTop->function.tokenAddress = _programCounter;                                                    // only for finding source error position during unparsing (for printing)
 
-    _pEvalStackTop->function.index = ((TokenIsInternCppFunction*)_programCounter)->tokenIndex;                              // internal cpp functions only
+    _pEvalStackTop->function.index = ((TokenIsInternCppFunction*)_programCounter)->tokenIndex;                  // internal cpp functions only
 };
 
 
@@ -2971,9 +2986,9 @@ void Justina::pushExternCppFunctionName(int tokenType) {                        
 
     _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(FunctionLvl));
     _pEvalStackTop->function.tokenType = tokenType;
-    _pEvalStackTop->function.tokenAddress = _programCounter;                                                                // only for finding source error position during unparsing (for printing)
+    _pEvalStackTop->function.tokenAddress = _programCounter;                                                    // only for finding source error position during unparsing (for printing)
 
-    _pEvalStackTop->function.returnValueType = ((TokenIsExternCppFunction*)_programCounter)->returnValueType;               // 0 = bool, 1 = char, 2 = int, 3 = long, 4 = float, 5 = char*, 6 = void (but returns zero to Justina)               
+    _pEvalStackTop->function.returnValueType = ((TokenIsExternCppFunction*)_programCounter)->returnValueType;   // 0 = bool, 1 = char, 2 = int, 3 = long, 4 = float, 5 = char*, 6 = void (but returns zero to Justina)               
     _pEvalStackTop->function.funcIndexInType = ((TokenIsExternCppFunction*)_programCounter)->funcIndexInType;
 };
 
@@ -2989,7 +3004,7 @@ void Justina::pushJustinaFunctionName(int tokenType) {                          
 
     _pEvalStackTop = (LE_evalStack*)evalStack.appendListElement(sizeof(FunctionLvl));
     _pEvalStackTop->function.tokenType = tokenType;
-    _pEvalStackTop->function.tokenAddress = _programCounter;                                                                // only for finding source error position during unparsing (for printing)
+    _pEvalStackTop->function.tokenAddress = _programCounter;                                                    // only for finding source error position during unparsing (for printing)
 
     _pEvalStackTop->function.index = ((TokenIsJustinaFunction*)_programCounter)->identNameIndex;
 };
@@ -2999,7 +3014,7 @@ void Justina::pushJustinaFunctionName(int tokenType) {                          
 // *   push real or string constant token to evaluation stack   *
 // -------------------------------------------------------------
 
-void Justina::pushConstant(int tokenType) {                                                                                    // float or string constant token is assumed
+void Justina::pushConstant(int tokenType) {                                                                     // float or string constant token is assumed
 
     // push real or string parsed constant, value type and array flag (false) to stack
     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
@@ -3029,7 +3044,7 @@ void Justina::pushConstant(int tokenType) {                                     
 // *   push generic name token to evaluation stack   *
 // ---------------------------------------------------
 
-void Justina::pushGenericName(int tokenType) {                                          // float or string constant token is assumed
+void Justina::pushGenericName(int tokenType) {                                                      // float or string constant token is assumed
 
     // push real or string parsed constant, value type and array flag (false) to stack
     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
@@ -3049,7 +3064,7 @@ void Justina::pushGenericName(int tokenType) {                                  
 // *   push variable token to evaluation stack   *
 // ----------------------------------------------
 
-void Justina::pushVariable(int tokenType) {                                             // with variable token type
+void Justina::pushVariable(int tokenType) {                                                         // with variable token type
 
     // push variable base address, variable value type (real, string) and array flag to stack
     _pEvalStackMinus2 = _pEvalStackMinus1; _pEvalStackMinus1 = _pEvalStackTop;
@@ -3082,8 +3097,8 @@ void* Justina::fetchVarBaseAddress(TokenIsVariable* pVarToken, char*& sourceVarT
 
     // Justina function parameters receiving a variable (not an expression result) as a caller's argument:
     // ->  the function's local 'parameter type' variable will not contain a copy of the 'source' variable, but a reference to it (value type 'value_isVarRef')
-    //     the prefix 'self' then refers to the Justina function 'parameter' variable(indicated by the token), the prefix 'source' refers to the Jusina caller's argument variable   
-    // All other cases: Justina global, static and user variables, local variables, 'parameter' variables receiving an expression result or not receiving a caller's argument (default initialisation):
+    //     the prefix 'self' then refers to the Justina function 'parameter' variable(indicated by the token), the prefix 'source' refers to the Justina caller's argument variable   
+    // All other cases: Justina global, static and user variables, local variables, 'parameter' variables receiving an expression result or not receiving a caller's argument (default initialization):
     // ->  the prefix 'self' and 'source' both refer to the Justina variable itself (indicated by the token)
 
     // upon entry, pVarToken argument must point to a variable token in Justina PROGRAM memory 
@@ -3092,7 +3107,7 @@ void* Justina::fetchVarBaseAddress(TokenIsVariable* pVarToken, char*& sourceVarT
     // - sourceVarScopeAndFlags contains the SOURCE variable's scope, 'is array' and 'is constant variable' (declared with 'const') flags, respectively
     // - sourceVarTypeAddress points to (contains the address of) source variable's attributes (value type, ...) 
     // - return pointer will point to (contain the address of) the 'self' variable base address (Justina variable indicated by the token): the address where the variable's value is stored
-    //   note that this 'value' can be an address itself: for referenced variables, but alse for arrays and strings (char*)
+    //   note that this 'value' can be an address itself: for referenced variables, but also for arrays and strings (char*)
 
     int varNameIndex = pVarToken->identNameIndex;
     uint8_t varScope = pVarToken->identInfo & var_scopeMask;                                                                // global, user, local, static or parameter
