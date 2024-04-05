@@ -1,26 +1,26 @@
-/************************************************************************************************************
-*    Justina interpreter library                                                                            *
-*                                                                                                           *
-*    Copyright 2024, Herwig Taveirne                                                                        *
-*                                                                                                           *
-*    This file is part of the Justina Interpreter library.                                                  *
-*    The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
-*    the terms of the GNU General Public License as published by the Free Software Foundation, either       *
-*    version 3 of the License, or (at your option) any later version.                                       *
-*                                                                                                           *
-*    This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;              *
-*    without even the implied warranty of  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.             *
-*    See the GNU General Public License for more details.                                                   *
-*                                                                                                           *
-*    You should have received a copy of the GNU General Public License along with this program. If not,     *
-*    see <https://www.gnu.org/licenses/>.                                                                   *
-*                                                                                                           *
-*    The library is intended to work with 32 bit boards using the SAMD architecture ,                       *
-*    the Arduino nano RP2040 and Arduino nano ESP32 boards.                                                 *
-*                                                                                                           *
-*    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
-*                                                                                                           *
-************************************************************************************************************/
+/***********************************************************************************************************
+*   Justina interpreter library                                                                            *
+*                                                                                                          *
+*   Copyright 2024, Herwig Taveirne                                                                        *
+*                                                                                                          *
+*   This file is part of the Justina Interpreter library.                                                  *
+*   The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
+*   the terms of the GNU General Public License as published by the Free Software Foundation, either       *
+*   version 3 of the License, or (at your option) any later version.                                       *
+*                                                                                                          *
+*   This library is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;              *
+*   without even the implied warranty of  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.             *
+*   See the GNU General Public License for more details.                                                   *
+*                                                                                                          *
+*   You should have received a copy of the GNU General Public License along with this program. If not,     *
+*   see https://www.gnu.org/licenses.                                                                      *
+*                                                                                                          *
+*   The library is intended to work with 32 bit boards using the SAMD architecture ,                       *
+*   the Arduino nano RP2040 and Arduino nano ESP32 boards.                                                 *
+*                                                                                                          *
+*   See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
+*                                                                                                          *
+***********************************************************************************************************/
 
 
 #include "Justina.h"
@@ -598,7 +598,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                     _loadProgFromStreamNo = ((valueType[0] == value_isLong) ? args[0].longConst : args[0].floatConst);
                     if (_loadProgFromStreamNo > 0) { return result_IO_invalidStreamNumber; }
                     else if ((-_loadProgFromStreamNo) > _externIOstreamCount) { return result_IO_invalidStreamNumber; }
-                    else if (_pExternInputStreams[(-_loadProgFromStreamNo) - 1] == nullptr) { return result_IO_noDeviceOrNotForInput; }
+                    else if (_ppExternInputStreams[(-_loadProgFromStreamNo) - 1] == nullptr) { return result_IO_noDeviceOrNotForInput; }
                 }
             }
 
@@ -634,9 +634,9 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             bool setDebugOut = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_setDebugOut);
             if (setDebugOut) {
                 if (streamNumber < 0) {
-                    if (_pExternOutputStreams[(-streamNumber) - 1] == nullptr) { return result_IO_noDeviceOrNotForOutput; }
+                    if (_ppExternOutputStreams[(-streamNumber) - 1] == nullptr) { return result_IO_noDeviceOrNotForOutput; }
                     _debug_sourceStreamNumber = streamNumber;
-                    _pDebugOut = _pExternOutputStreams[(-streamNumber) - 1];                        // external IO (stream number -1 => array index 0, etc.)
+                    _pDebugOut = _ppExternOutputStreams[(-streamNumber) - 1];                        // external IO (stream number -1 => array index 0, etc.)
                     _pDebugPrintColumn = &_pPrintColumns[(-streamNumber) - 1];
                 }
                 else {
@@ -682,18 +682,18 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                         printlnTo(0, msg);
                         if (tolower(input[0]) == 'y') {
                             if (setConsIn || setConsole) {
-                                if (_pExternInputStreams[(-streamNumber) - 1] == nullptr) { return result_IO_noDeviceOrNotForInput; }
+                                if (_ppExternInputStreams[(-streamNumber) - 1] == nullptr) { return result_IO_noDeviceOrNotForInput; }
                             }
                             if (setConsOut || setConsole) {
-                                if (_pExternOutputStreams[(-streamNumber) - 1] == nullptr) { return result_IO_noDeviceOrNotForOutput; }
+                                if (_ppExternOutputStreams[(-streamNumber) - 1] == nullptr) { return result_IO_noDeviceOrNotForOutput; }
                                 _consoleOut_sourceStreamNumber = streamNumber;
-                                _pConsoleOut = _pExternOutputStreams[(-streamNumber) - 1];      // external IO (stream number -1 => array index 0, etc.)
+                                _pConsoleOut = _ppExternOutputStreams[(-streamNumber) - 1];      // external IO (stream number -1 => array index 0, etc.)
                                 _pConsolePrintColumn = &_pPrintColumns[(-streamNumber) - 1];
                             }
                             // only after all tests are done !
                             if (setConsIn || setConsole) {
                                 _consoleIn_sourceStreamNumber = streamNumber;
-                                _pConsoleIn = _pExternInputStreams[(-streamNumber) - 1];
+                                _pConsoleIn = _ppExternInputStreams[(-streamNumber) - 1];
                             }
                         }
                         break;

@@ -1,25 +1,25 @@
-/************************************************************************************************************
-*    Justina interpreter library                                                                            *
-*                                                                                                           *
-*    Copyright 2024, Herwig Taveirne                                                                        *
-*                                                                                                           *
-*    This file is part of the Justina Interpreter library.                                                  *
-*    The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
-*    the terms of the GNU General Public License as published by the Free Software Foundation, either       *
-*    version 3 of the License, or (at your option) any later version.                                       *
-*                                                                                                           *
-*    This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;              *
-*    without even the implied warranty of  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.             *
-*    See the GNU General Public License for more details.                                                   *
-*                                                                                                           *
-*    You should have received a copy of the GNU General Public License along with this program. If not,     *
-*    see <https://www.gnu.org/licenses/>.                                                                   *
-*                                                                                                           *
-*    The library is intended to work with 32 bit boards using the SAMD architecture ,                       *
-*    the Arduino nano RP2040 and Arduino nano ESP32 boards.                                                 *
-*                                                                                                           *
-*    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
-*                                                                                                           *
+/***********************************************************************************************************
+*   Justina interpreter library                                                                            *
+*                                                                                                          *
+*   Copyright 2024, Herwig Taveirne                                                                        *
+*                                                                                                          *
+*   This file is part of the Justina Interpreter library.                                                  *
+*   The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
+*   the terms of the GNU General Public License as published by the Free Software Foundation, either       *
+*   version 3 of the License, or (at your option) any later version.                                       *
+*                                                                                                          *
+*   This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;              *
+*   without even the implied warranty of  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.             *
+*   See the GNU General Public License for more details.                                                   *
+*                                                                                                          *
+*   You should have received a copy of the GNU General Public License along with this program. If not,     *
+*   see https://www.gnu.org/licenses.                                                                      *
+*                                                                                                          *
+*   The library is intended to work with 32 bit boards using the SAMD architecture ,                       *
+*   the Arduino nano RP2040 and Arduino nano ESP32 boards.                                                 *
+*                                                                                                          *
+*   See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
+*                                                                                                          *
 ************************************************************************************************************/
 
 
@@ -678,10 +678,11 @@ class Justina {
         result_arg_stringExpected,
         result_arg_numberExpected,
         result_arg_nonEmptyStringExpected,
-        result_arg_varExpected,
+        result_arg_stringTooShort,
         result_arg_invalid,
         result_arg_integerDimExpected,
         result_arg_dimNumberInvalid,
+        result_arg_varExpected,
         result_arg_tooManyArgs,
         result_arg_wrongSpecifierForDataType,
 
@@ -1043,8 +1044,9 @@ public:
     static constexpr uint8_t value_typeMask = 0x03;                     // mask for value type 
     static constexpr uint8_t value_isLong = 0x01;
     static constexpr uint8_t value_isFloat = 0x02;
-    static constexpr uint8_t value_isStringPointer = 0x03;
+    static constexpr uint8_t value_isString = 0x03;
 private:
+    static constexpr uint8_t value_isStringPointer = 0x03;              // same as value_isString (for use by calling Arduino program)
 
 
     // application flag bits
@@ -1862,8 +1864,8 @@ private:
     // external IO, SD card and files
     // ------------------------------
 
-    Stream** _pExternInputStreams{ nullptr };                       // available external IO streams (set by Justina caller)
-    Print** _pExternOutputStreams{ nullptr };
+    Stream** _ppExternInputStreams{ nullptr };                      // available external IO streams (set by Justina caller)
+    Print** _ppExternOutputStreams{ nullptr };
 
     // for use by cout..., dbout, ... commands (without explicit stream indicated)
     Stream* _pConsoleIn{ nullptr };
@@ -1960,17 +1962,20 @@ public:
     // -----------------------
 
 #if defined ARDUINO_ARCH_ESP32
+    Justina(int SDcardMode = SD_allowed, int SDcardChipSelectPin = 10);
     Justina(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, int SDcardMode = SD_allowed, int SDcardChipSelectPin = 10);
 #else
+    Justina(int SDcardMode = SD_allowed, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);
     Justina(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, int SDcardMode = SD_allowed, int SDcardChipSelectPin = SD_CHIP_SELECT_PIN);
 #endif
     ~Justina();
 
+    void constructorCommonPart();
 
     // set pointer to system (main) call back function
     // -----------------------------------------------
 
-    void setMainLoopCallback(void (*func)(long& appFlags));
+    void setSystemCallbackFunction(void (*func)(long& appFlags));
 
 
     // sets pointers to the locations where the Arduino program stored information about user-defined (external) cpp functions (user callback functions)

@@ -1,26 +1,26 @@
-/************************************************************************************************************
-*    Justina interpreter library                                                                            *
-*                                                                                                           *
-*    Copyright 2024, Herwig Taveirne                                                                        *
-*                                                                                                           *
-*    This file is part of the Justina Interpreter library.                                                  *
-*    The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
-*    the terms of the GNU General Public License as published by the Free Software Foundation, either       *
-*    version 3 of the License, or (at your option) any later version.                                       *
-*                                                                                                           *
-*    This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;              *
-*    without even the implied warranty of  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.             *
-*    See the GNU General Public License for more details.                                                   *
-*                                                                                                           *
-*    You should have received a copy of the GNU General Public License along with this program. If not,     *
-*    see <https://www.gnu.org/licenses/>.                                                                   *
-*                                                                                                           *
-*    The library is intended to work with 32 bit boards using the SAMD architecture ,                       *
-*    the Arduino nano RP2040 and Arduino nano ESP32 boards.                                                 *
-*                                                                                                           *
-*    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
-*                                                                                                           *
-************************************************************************************************************/
+/***********************************************************************************************************
+*   Justina interpreter library                                                                            *
+*                                                                                                          *
+*   Copyright 2024, Herwig Taveirne                                                                        *
+*                                                                                                          *
+*   This file is part of the Justina Interpreter library.                                                  *
+*   The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
+*   the terms of the GNU General Public License as published by the Free Software Foundation, either       *
+*   version 3 of the License, or (at your option) any later version.                                       *
+*                                                                                                          *
+*   This library is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;              *
+*   without even the implied warranty of  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.             *
+*   See the GNU General Public License for more details.                                                   *
+*                                                                                                          *
+*   You should have received a copy of the GNU General Public License along with this program. If not,     *
+*   see https://www.gnu.org/licenses.                                                                      *
+*                                                                                                          *
+*   The library is intended to work with 32 bit boards using the SAMD architecture ,                       *
+*   the Arduino nano RP2040 and Arduino nano ESP32 boards.                                                 *
+*                                                                                                          *
+*   See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
+*                                                                                                          *
+***********************************************************************************************************/
 
 
 #include "Justina.h"
@@ -435,10 +435,10 @@ Justina::execResult_type  Justina::determineStream(int streamNumber, Stream*& pS
     if (streamNumber == 0) { pStream = forOutput ? static_cast<Stream*> (_pConsoleOut) : _pConsoleIn; }  // init: assume console
     else if ((-streamNumber) > _externIOstreamCount) { return result_IO_invalidStreamNumber; }
     else if (streamNumber < 0) {
-        if ((forOutput ? _pExternOutputStreams[(-streamNumber) - 1] : _pExternInputStreams[(-streamNumber) - 1]) == nullptr) {
+        if ((forOutput ? _ppExternOutputStreams[(-streamNumber) - 1] : _ppExternInputStreams[(-streamNumber) - 1]) == nullptr) {
             return forOutput ? result_IO_noDeviceOrNotForOutput : result_IO_noDeviceOrNotForInput;
         }
-        pStream = forOutput ? static_cast<Stream*>(_pExternOutputStreams[(-streamNumber) - 1]) : _pExternInputStreams[(-streamNumber) - 1];
+        pStream = forOutput ? static_cast<Stream*>(_ppExternOutputStreams[(-streamNumber) - 1]) : _ppExternInputStreams[(-streamNumber) - 1];
     }    // external IO: stream number -1 => array index 0, etc.
     else {
         File* pFile{};

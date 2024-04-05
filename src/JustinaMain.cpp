@@ -1,26 +1,26 @@
-/************************************************************************************************************
-*    Justina interpreter library                                                                            *
-*                                                                                                           *
-*    Copyright 2024, Herwig Taveirne                                                                        *
-*                                                                                                           *
-*    This file is part of the Justina Interpreter library.                                                  *
-*    The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
-*    the terms of the GNU General Public License as published by the Free Software Foundation, either       *
-*    version 3 of the License, or (at your option) any later version.                                       *
-*                                                                                                           *
-*    This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;              *
-*    without even the implied warranty of  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.             *
-*    See the GNU General Public License for more details.                                                   *
-*                                                                                                           *
-*    You should have received a copy of the GNU General Public License along with this program. If not,     *
-*    see <https://www.gnu.org/licenses/>.                                                                   *
-*                                                                                                           *
-*    The library is intended to work with 32 bit boards using the SAMD architecture ,                       *
-*    the Arduino nano RP2040 and Arduino nano ESP32 boards.                                                 *
-*                                                                                                           *
-*    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
-*                                                                                                           *
-************************************************************************************************************/
+/***********************************************************************************************************
+*   Justina interpreter library                                                                            *
+*                                                                                                          *
+*   Copyright 2024, Herwig Taveirne                                                                        *
+*                                                                                                          *
+*   This file is part of the Justina Interpreter library.                                                  *
+*   The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
+*   the terms of the GNU General Public License as published by the Free Software Foundation, either       *
+*   version 3 of the License, or (at your option) any later version.                                       *
+*                                                                                                          *
+*   This library is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;              *
+*   without even the implied warranty of  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.             *
+*   See the GNU General Public License for more details.                                                   *
+*                                                                                                          *
+*   You should have received a copy of the GNU General Public License along with this program. If not,     *
+*   see https://www.gnu.org/licenses.                                                                      *
+*                                                                                                          *
+*   The library is intended to work with 32 bit boards using the SAMD architecture ,                       *
+*   the Arduino nano RP2040 and Arduino nano ESP32 boards.                                                 *
+*                                                                                                          *
+*   See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
+*                                                                                                          *
+***********************************************************************************************************/
 
 
 #include "Justina.h"
@@ -543,10 +543,25 @@ const Justina::SymbNumConsts Justina::_symbNumConsts[]{
 // *   constructor   *
 // -------------------
 
-Justina::Justina(Stream** const pAltInputStreams, Print** const pAltOutputStreams, int altIOstreamCount, int JustinaStartupOptions, int SDcardChipSelectPin) :
-    _pExternInputStreams(pAltInputStreams), _pExternOutputStreams(pAltOutputStreams), _externIOstreamCount(altIOstreamCount),
-    _justinaStartupOptions(JustinaStartupOptions), _SDcardChipSelectPin(SDcardChipSelectPin)
-{
+Justina::Justina(int JustinaStartupOptions, int SDcardChipSelectPin) : _justinaStartupOptions(JustinaStartupOptions), _SDcardChipSelectPin(SDcardChipSelectPin), _externIOstreamCount(1) {
+    
+    Stream* pStream {&Serial};
+    _ppExternInputStreams = & pStream;       
+    _ppExternOutputStreams = (Print**)_ppExternInputStreams;
+    
+    constructorCommonPart();
+}
+
+
+Justina::Justina(Stream** const ppAltInputStreams, Print** const ppAltOutputStreams, int altIOstreamCount, int JustinaStartupOptions, int SDcardChipSelectPin) :
+    _ppExternInputStreams(ppAltInputStreams), _ppExternOutputStreams(ppAltOutputStreams), _externIOstreamCount(altIOstreamCount),
+    _justinaStartupOptions(JustinaStartupOptions), _SDcardChipSelectPin(SDcardChipSelectPin) {
+
+    constructorCommonPart();
+}
+
+
+void Justina::constructorCommonPart() {
 
     // settings to be initialized when cold starting interpreter only
     // --------------------------------------------------------------
@@ -575,7 +590,7 @@ Justina::Justina(Stream** const pAltInputStreams, Print** const pAltOutputStream
     _pPrintColumns = new int[_externIOstreamCount];                                                 // maximum 4 external streams
     for (int i = 0; i < _externIOstreamCount; i++) {
         // NOTE: will only have effect for currently established connections (e.g. TCP)
-        if (_pExternInputStreams[i] != nullptr) { _pExternInputStreams[i]->setTimeout(DEFAULT_READ_TIMEOUT); }
+        if (_ppExternInputStreams[i] != nullptr) { _ppExternInputStreams[i]->setTimeout(DEFAULT_READ_TIMEOUT); }
         _pPrintColumns[i] = 0;
     }
 
@@ -583,10 +598,10 @@ Justina::Justina(Stream** const pAltInputStreams, Print** const pAltOutputStream
     _pBreakpoints = new Breakpoints(this, (_PROGRAM_MEMORY_SIZE * BP_LINE_RANGE_PROGMEM_STOR_RATIO) / 100, MAX_BP_COUNT);
 
 
-    // by default, console in/out and debug out are first element in _pExternInputStreams[], _pExternOutputStreams[]
+    // by default, console in/out and debug out are first element in _ppExternInputStreams[], _ppExternOutputStreams[]
     _consoleIn_sourceStreamNumber = _consoleOut_sourceStreamNumber = _debug_sourceStreamNumber = -1;
-    _pConsoleIn = _pExternInputStreams[0];
-    _pConsoleOut = _pDebugOut = _pExternOutputStreams[0];
+    _pConsoleIn = _ppExternInputStreams[0];
+    _pConsoleOut = _pDebugOut = _ppExternOutputStreams[0];
     _pConsolePrintColumn = _pDebugPrintColumn = _pPrintColumns;                                     //  point to its current print column
     _pLastPrintColumn = _pPrintColumns;
 
@@ -609,65 +624,6 @@ Justina::~Justina() {
     delete[] _pPrintColumns;
 };
 
-
-// ---------------------------------------------
-// *   set system (main) call back functions   *
-// ---------------------------------------------
-
-void Justina::setMainLoopCallback(void (*func)(long& appFlags)) {
-
-    // this function is directly called from the Arduino program starting Justina
-    // it stores the address of an optional 'user callback' function
-    // Justina will call this user routine at specific time intervals, allowing  the user...
-    // ...to execute a specific routine regularly (e.g. to maintain a TCP connection, to implement a heartbeat, ...)
-
-    _housekeepingCallback = func;
-}
-
-// ---------------------------------------------------------------------------------------------------------------------------------------------------------
-// *   sets pointers to the locations where the Arduino program stored information about user-defined (external) cpp functions (user callback functions)   *
-// ---------------------------------------------------------------------------------------------------------------------------------------------------------
-
-    // these functions are directly called from the Arduino program starting Justina
-    // each function stores the starting address of an array with information about external (user callback) functions with a specific CPP return type 
-    // for instance, _pExtCppFunctions[0] stores the address of the array containing information about cpp functions returning a boolean value
-    // a null pointer indicates there are no functions of a specific type
-    // cpp function return types are: 0 = bool, 1 = char, 2 = int, 3 = long, 4 = float, 5 = char*, 6 = void (but returns zero to Justina)
-
-void Justina::registerBoolUserCppFunctions(const CppBoolFunction* const  pCppBoolFunctions, const int cppBoolFunctionCount) {
-    _pExtCppFunctions[0] = (CppBoolFunction*)pCppBoolFunctions;
-    _ExtCppFunctionCounts[0] = cppBoolFunctionCount;
-};
-
-void Justina::registerCharUserCppFunctions(const CppCharFunction* const  pCppCharFunctions, const int cppCharFunctionCount) {
-    _pExtCppFunctions[1] = (CppCharFunction*)pCppCharFunctions;
-    _ExtCppFunctionCounts[1] = cppCharFunctionCount;
-};
-
-void Justina::registerIntUserCppFunctions(const CppIntFunction* const  pCppIntFunctions, const int cppIntFunctionCount) {
-    _pExtCppFunctions[2] = (CppIntFunction*)pCppIntFunctions;
-    _ExtCppFunctionCounts[2] = cppIntFunctionCount;
-};
-
-void Justina::registerLongUserCppFunctions(const CppLongFunction* const pCppLongFunctions, const int cppLongFunctionCount) {
-    _pExtCppFunctions[3] = (CppLongFunction*)pCppLongFunctions;
-    _ExtCppFunctionCounts[3] = cppLongFunctionCount;
-};
-
-void Justina::registerFloatUserCppFunctions(const CppFloatFunction* const pCppFloatFunctions, const int cppFloatFunctionCount) {
-    _pExtCppFunctions[4] = (CppFloatFunction*)pCppFloatFunctions;
-    _ExtCppFunctionCounts[4] = cppFloatFunctionCount;
-};
-
-void Justina::register_pCharUserCppFunctions(const Cpp_pCharFunction* const pCpp_pCharFunctions, const int cpp_pCharFunctionCount) {
-    _pExtCppFunctions[5] = (Cpp_pCharFunction*)pCpp_pCharFunctions;
-    _ExtCppFunctionCounts[5] = cpp_pCharFunctionCount;
-};
-
-void Justina::registerVoidUserCppFunctions(const CppVoidFunction* const pCppVoidFunctions, const int cppVoidFunctionCount) {
-    _pExtCppFunctions[6] = (CppVoidFunction*)pCppVoidFunctions;
-    _ExtCppFunctionCounts[6] = cppVoidFunctionCount;
-};
 
 // ----------------------------
 // *   interpreter main loop   *
@@ -708,7 +664,7 @@ void Justina::begin() {
 
     printTo(0, "    "); printlnTo(0, J_productName);
     printTo(0, "    "); printlnTo(0, J_legalCopyright);
-    printTo(0, "    Version: "); printTo(0, J_version); printTo(0, " ("); printTo(0, J_buildDate); printlnTo(0, ")");
+    printTo(0, "    Version: "); printlnTo(0, J_version);
     for (int i = 0; i < 48; i++) { printTo(0, "*"); } printlnTo(0);
 
 #if PRINT_HEAP_OBJ_CREA_DEL
@@ -1112,8 +1068,8 @@ bool Justina::finaliseParsing(parsingResult_type& result, bool& kill, int lineCo
         else if (result == result_parse_setStdConsole) {
             printlnTo(0, "\r\n+++ console reset +++");
             _consoleIn_sourceStreamNumber = _consoleOut_sourceStreamNumber = -1;
-            _pConsoleIn = _pExternInputStreams[0];                                                              // set console to stream -1 (NOT debug out)
-            _pConsoleOut = _pExternOutputStreams[0];                                                            // set console to stream -1 (NOT debug out)
+            _pConsoleIn = _ppExternInputStreams[0];                                                             // set console to stream -1 (NOT debug out)
+            _pConsoleOut = _ppExternOutputStreams[0];                                                           // set console to stream -1 (NOT debug out)
             _pConsolePrintColumn = &_pPrintColumns[0];
             *_pConsolePrintColumn = 0;
 
@@ -1151,7 +1107,7 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
     if (_programMode) {
         _pDebugOut->println();
         _pBreakpoints->printLineRangesToDebugOut(static_cast<Stream*>(_pDebugOut));
-    }
+}
 #endif
 
     // before loading a program, clear memory except user variables
@@ -1316,7 +1272,7 @@ void Justina::traceAndPrintDebugInfo(execResult_type execResult) {
     sprintf(msg, "line %ld: [%s] ", sourceLine, JustinaFunctionNames[pDeepestOpenFunction->functionIndex]);
     printTo(_debug_sourceStreamNumber, msg);
     prettyPrintStatements(_debug_sourceStreamNumber, 1, nextStatementPointer);                                  // print statement
-    printTo(_debug_sourceStreamNumber, "\r\n");    
+    printTo(_debug_sourceStreamNumber, "\r\n");
 }
 
 
@@ -1411,6 +1367,21 @@ bool Justina::checkAllJustinaFunctionsDefined(int& index) const {
 }
 
 
+// ----------------------------------------------------
+// *   set system (housekeeping) call back function   *
+// ----------------------------------------------------
+
+void Justina::setSystemCallbackFunction(void (*func)(long& appFlags)) {
+
+    // this function is directly called from the main Arduino program, before the Justina begin() method is called
+    // it stores the address of an optional 'user callback' function
+    // Justina will call this user routine at specific time intervals, allowing  the user...
+    // ...to execute a specific routine regularly (e.g. to maintain a TCP connection, to implement a heartbeat, ...)
+
+    _housekeepingCallback = func;
+}
+
+
 //----------------------------------------------
 // *   execute regular housekeeping callback   *
 // ---------------------------------------------
@@ -1439,6 +1410,52 @@ void Justina::execPeriodicHousekeeping(bool* pKillNow, bool* pForcedStop, bool* 
         }
     }
 }
+
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// *   sets pointers to the locations where the Arduino program stored information about user-defined (external) cpp functions (user callback functions)   *
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+
+    // the 'register...' functions are called from the main Arduino program, before the Justina begin() method is called
+    // each function stores the starting address of an array with information about external (user callback) functions with a specific CPP return type 
+    // for instance, _pExtCppFunctions[0] stores the address of the array containing information about cpp functions returning a boolean value
+    // a null pointer indicates there are no functions of a specific type
+    // cpp function return types are: 0 = bool, 1 = char, 2 = int, 3 = long, 4 = float, 5 = char*, 6 = void (but returns zero to Justina)
+
+void Justina::registerBoolUserCppFunctions(const CppBoolFunction* const  pCppBoolFunctions, const int cppBoolFunctionCount) {
+    _pExtCppFunctions[0] = (CppBoolFunction*)pCppBoolFunctions;
+    _ExtCppFunctionCounts[0] = cppBoolFunctionCount;
+};
+
+void Justina::registerCharUserCppFunctions(const CppCharFunction* const  pCppCharFunctions, const int cppCharFunctionCount) {
+    _pExtCppFunctions[1] = (CppCharFunction*)pCppCharFunctions;
+    _ExtCppFunctionCounts[1] = cppCharFunctionCount;
+};
+
+void Justina::registerIntUserCppFunctions(const CppIntFunction* const  pCppIntFunctions, const int cppIntFunctionCount) {
+    _pExtCppFunctions[2] = (CppIntFunction*)pCppIntFunctions;
+    _ExtCppFunctionCounts[2] = cppIntFunctionCount;
+};
+
+void Justina::registerLongUserCppFunctions(const CppLongFunction* const pCppLongFunctions, const int cppLongFunctionCount) {
+    _pExtCppFunctions[3] = (CppLongFunction*)pCppLongFunctions;
+    _ExtCppFunctionCounts[3] = cppLongFunctionCount;
+};
+
+void Justina::registerFloatUserCppFunctions(const CppFloatFunction* const pCppFloatFunctions, const int cppFloatFunctionCount) {
+    _pExtCppFunctions[4] = (CppFloatFunction*)pCppFloatFunctions;
+    _ExtCppFunctionCounts[4] = cppFloatFunctionCount;
+};
+
+void Justina::register_pCharUserCppFunctions(const Cpp_pCharFunction* const pCpp_pCharFunctions, const int cpp_pCharFunctionCount) {
+    _pExtCppFunctions[5] = (Cpp_pCharFunction*)pCpp_pCharFunctions;
+    _ExtCppFunctionCounts[5] = cpp_pCharFunctionCount;
+};
+
+void Justina::registerVoidUserCppFunctions(const CppVoidFunction* const pCppVoidFunctions, const int cppVoidFunctionCount) {
+    _pExtCppFunctions[6] = (CppVoidFunction*)pCppVoidFunctions;
+    _ExtCppFunctionCounts[6] = cppVoidFunctionCount;
+};
 
 
 // -------------------------
@@ -1480,12 +1497,12 @@ void Justina::resetMachine(bool withUserVariables) {
             _systemStringObjectCount--;
             delete[] _pTraceString;
             _pTraceString = nullptr;                                                                            // old trace string
-        }
     }
+}
 
-    // delete all elements of the immediate mode parsed statements stack
-    // (parsed immediate mode statements can be temporarily pushed on the immediate mode stack to be replaced either by parsed debug command lines or parsed eval() strings) 
-    // also delete all parsed alphanumeric constants: (1) in the currently parsed program, (2) in parsed immediate mode statements (including those on the imm.mode parsed statements stack)) 
+// delete all elements of the immediate mode parsed statements stack
+// (parsed immediate mode statements can be temporarily pushed on the immediate mode stack to be replaced either by parsed debug command lines or parsed eval() strings) 
+// also delete all parsed alphanumeric constants: (1) in the currently parsed program, (2) in parsed immediate mode statements (including those on the imm.mode parsed statements stack)) 
 
     clearParsedCommandLineStack(parsedCommandLineStack.getElementCount());                                      // including parsed string constants
     deleteConstStringObjects(_programStorage);
@@ -1610,7 +1627,7 @@ void Justina::danglingPointerCheckAndCount(bool withUserVariables) {
 
         _pDebugOut->print(", last value strings "); _pDebugOut->print(_lastValuesStringObjectCount);
     #endif
-    }
+}
 }
 
 
@@ -1785,8 +1802,8 @@ void Justina::deleteOneArrayVarStringObjects(Justina::Val* varValues, int index,
         #endif
             isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
             delete[]  pString;                                                                                                      // applicable to string and array (same pointer)
-        }
     }
+}
 }
 
 
@@ -1818,8 +1835,8 @@ void Justina::deleteVariableValueObjects(Justina::Val* varValues, char* varType,
                 #endif
                     isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
                     delete[]  varValues[index].pStringConst;
-                }
-            }
+    }
+}
         }
         index++;
     }
@@ -1842,7 +1859,7 @@ void Justina::deleteLastValueFiFoStringObjects() {
         #endif
             _lastValuesStringObjectCount--;
             delete[] lastResultValueFiFo[i].pStringConst;
-        }
+}
     }
 }
 
@@ -1873,8 +1890,8 @@ void Justina::deleteConstStringObjects(char* pFirstToken) {
             #endif
                 _parsedStringConstObjectCount--;
                 delete[] pAnum;
-            }
-        }
+    }
+}
         uint8_t tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) :
             (tokenType == tok_isSymbolicConstant) ? sizeof(TokenIsSymbolicConstant) : (*prgmCnt.pTokenChars >> 4) & 0x0F;
         prgmCnt.pTokenChars += tokenLength;
