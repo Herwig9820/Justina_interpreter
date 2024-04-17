@@ -1,6 +1,6 @@
 # Justina_interpreter
 
-Justina is both an easy-to-use but capable programming language for Arduino and an interpreter, developed and built around a few objectives. 
+Justina is both an interpreter and an easy-to-use but capable programming language for Arduino. It was developed and built around a few objectives. 
 * On top of the list: simplicity for the user. Justina is a structured language, but it’s non-object oriented (as opposed to the powerful but more complex c++ language). It has some similarities with Basic, a language that has been around for quite some time.
 * Equally important: it was built with Arduino in mind - more specifically, 32-bit Arduino’s: boards with a SAMD processor (like the nano 33 IoT), the nano ESP32 and the nano RP2040.
   
@@ -68,9 +68,20 @@ While a procedure is stopped in debug mode, you can also manually review the pro
 # Arduino c++ examples
 A number of c++ example files, demonstrating how to call Justina, are provided in the repository folder 'examples':
 * Justina_easy: simply call Justina, and that's it
-* Justina_userCPP: demonstrating how to write user c++ functions for use in a Justina program (for time critical or specific hardware oriented stuff or to extend built-in Justina functionality...)
-* Justina_systemCallback: use system callback functions to ensure that procedures that need to be executed at regular intervals (e.g. maintaining a TCP connection, etc.) continue to be executed while control is within Justina; to detect stop, abort, 'console reset' and kill requests (for example when a user presses a 'program abort' pushbutton),... and this without the need for Justina to have any knowledge about the hardware (pins, ...) used
-* Justina_multiTerminal: demonstrating the setup for using two monochrome 128 x 64 dot OLED displays AND / OR a TCP terminal program on your computer as alternative output devices for Justina, next to Serial
+* Justina_systemCallback: use system callback functions to
+  * ensure that procedures that need to be executed at regular intervals continue to be executed while control is within Justina. In this ecample: blinking a heartbeat led
+  * to detect stop, abort, 'console reset' and kill requests (for example when a user presses a 'program abort' pushbutton),...
+  * to set status leds reporting the interpreter state (idle, stopped in debug mode, parsing, executing) and indicating whether a user or program error occured (e.g. to blink a led)
+and this without the need for Justina to have any knowledge about the hardware (pins, ...) used
+* Justina_userCPP: demonstrates how to write user c++ functions for use in a Justina program (for time critical or specific hardware oriented stuff or to extend built-in Justina functionality...). These c++ functions can then be called from Justina (from the Justina command line or from a Justina program), just like any other Justina function, with the same syntax, using an alias as function name and passing scalar or array variables as arguments
+* Justina_userCPP_lib: demonstrates how to create a Justina user c++ 'library' file. 
+* Justina_OLED: demonstrates how to add additional IO devices for use by Justina (in this example: output only)
+  * using an OLED display with SH1106 controller communicating over software (SW) SPI as additional output device
+  * using an OLED display with SSD1306 controller communicating over I2C as additional input device 
+* Justina_TCPIP: demonstrates various Justina features, namely
+  * setting up a TCP/IP server for use as an additional Justina IO channel
+  * using Justina system callbacks to maintain the TCP/IP connection, blink a heartbeat led and set status leds to indicate the TCP/IP connection state
+  * using Justina user c++ functions to control the TCP/IP connection from within Justina
 
 # Justina language examples
 A few Justina language example files are provided in the repository folder 'extras/Justina_language_examples'. These text files obey the 8.3 file format, to make them compatible with the Arduino SD card file system. Also, they all have the '.jus' extension: opening these files in Notepad++ will automatically invoke Justina language highlighting (if the the Justina language extension is installed).
@@ -82,6 +93,7 @@ The example files are:
 * overlap.jus: two method to print lines with overlapping print fields
 * SD_test.jus: perform some basic SD card tests
 * SD_parse.jus: write formatted data to an SD card, read it back and immediately parse this data into variables
+* webserv.jus: a simple webserver
  
 # Documentation
 Full documentation is provided in the repository ' extras' folder. 
