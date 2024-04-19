@@ -1,40 +1,52 @@
-/*----------------------------------------------------------------------------
-	Sample JUSTINA program for use with the Justina interpreter.
+/*------------------------------------------------------------------------------------------------------------------------
+    Example JUSTINA language program for use with the Justina interpreter
+	
+ 	The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      
+    by the Free Software Foundation (https://www.gnu.org/licenses).                                                      
+    Refer to GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter            
+                                                                                                                         
+    This example Justina code is in the public domain                                                                            
+                                                                                                                         
+    2024, Herwig Taveirne                                                                                                
+------------------------------------------------------------------------------------------------------------------------*/
 
-	The program demonstates how to write data to an SD card and how to 
-	immediately parse this data into variables when it's read back.
-	
-	Created March 2024 by Herwig Taveirne
-	
-	This example Justina code (this file) is in the public domain.
-----------------------------------------------------------------------------*/
-	
-program SD_parseRecords;
 
-/*-------------------------------------------------------------------------------------------
-	this function creates a few records in an SD file named "people", each record is supposed
-	to contain the name, eye and hair color, length, weight and age of a person.
--------------------------------------------------------------------------------------------*/
+program SD_parseRecords; // this is a JUSTINA program
+
+/*
+	This example demonstates how to write records with formatted data to an SD card file and how to 
+	read back these records and parse the values they contain into variables of the correct data types.
+	
+	Function call: writeRecords();
+				   parseAndPrintRecords(toFile);  // toFile: numeric expression; if zero, will be  
+				                                  // interpreted as FALSE (send output to console))
+	
+*/
+
+
+// this function creates a few records in an SD file named "people"; each record  
+// contains the name, eye and hair color, length, weight and age of a person.
+// -----------------------------------------------------------------------------
 
 function writeRecords();
 	
-	startSD;																// in case the SD card was not yet initialized
-	
-	var testFile = 0;														// init as integer
-	if (testFile = fileNum("people.txt")) > 0; close (testFile); end;		// verify the file is closed			
+	startSD;																	// in case the SD card was not yet initialized
+		
+	var testFile = 0;															// init as integer
+	if (testFile = fileNum("people.txt")) > 0; close (testFile); end;			// verify the file is closed			
 
 	// using printList instead of printLine:
 	// - strings will be printed with surrounding quotes (safe for strings containing double quotes themselves)
 	// - numbers will be written with full accuracy
-	testFile = open("people.txt", WRITE | TRUNC | NEW_OK);					// note: nano ESP32 ALWAYS truncates on WRITE (discards TRUNC constant)
-	printList testFile, "John", "blue", "gray", 172, 78.3, 23;
-	printList testFile, "Percy", "brown", "brown", 168, 75.7, 58;
-	printList testFile, "Tracy", "green", "gray", 175, 58.4, 42;
-	printList testFile, "Basil", "blue", "red", 177, 81.2, 51;
-	printList testFile, "Caroline", "green"; 								// incomplete record
-	printList testFile, "Irene", "brown", "gray", 169, 61.8, 75;
-	printList testFile, "no\\na\"me";										// enter backslash and double quote characters by preceding them with a backslash
-	printList testFile, "Charles", "green", "blond", 172, 79.3, 48;
+	testFile = open("people.txt", WRITE | TRUNC | NEW_OK);						// note: nano ESP32 ALWAYS truncates on WRITE (discards TRUNC constant)
+	printList testFile, "John", "blue", "gray", 172, 78.3, 23;	
+	printList testFile, "Percy", "brown", "brown", 168, 75.7, 58;	
+	printList testFile, "Tracy", "green", "gray", 175, 58.4, 42;	
+	printList testFile, "Basil", "blue", "red", 177, 81.2, 51;	
+	printList testFile, "Caroline", "green"; 									// incomplete record
+	printList testFile, "Irene", "brown", "gray", 169, 61.8, 75;	
+	printList testFile, "no\\na\"me";											// enter backslash and double quote characters by preceding them with a backslash
+	printList testFile, "Charles", "green", "blond", 172, 79.3, 48;	
 	
 	close(testFile);
 
@@ -47,18 +59,16 @@ function writeRecords();
 end;
 
 
-/*------------------------------------------------------------------------------------------
-	this function parses information, stored in a specific format, into a list of variables.
-	then the list is printed in a tabular format.
-	you can choose to print the output to the console or to a file.
-	if you choose 'to file', output will be sent to a file "table.txt".
-------------------------------------------------------------------------------------------*/
+//  this function reads records, containing formatted data, from an SD card file and
+//  parses the values into variables. Then the list is output in a tabular format.
+//  you can choose to send the output to the console or to a file named "table.txt".
+// ---------------------------------------------------------------------------------
 
 function parseAndPrintRecords(toFile = FALSE);									// optional argument (default is CONSOLE)
 		
 	startSD;																	// in case the SD card was not yet initialized
 
-	var streamOut = CONSOLE; 														// init output stream to console
+	var streamOut = CONSOLE; 													// init output stream to console
 		
 	var fileIn = 0, fileOut = 0;												// init file numbers attributed to open files
 	if (fileIn = fileNum("people.txt")) > 0; close (fileIn); end;				// verify the input file is closed			
@@ -72,7 +82,8 @@ function parseAndPrintRecords(toFile = FALSE);									// optional argument (def
 	var givenName ="", eyeColor="", hairColor="", length=0, weight=0., age = 0;	// initialise variables
 	
 	// print table header to output stream
-	printLine streamOut, line(), "name", col(12), "eyes", col(20), "hair", col(26), " length", " weight", "   age";
+	printLine streamOut, line(), "name", col(12), "eyes", col(20), "hair", 
+		col(26), " length", " weight", "   age";
 	printLine streamOut, repChar("-", 26+7+7+6-1);
 	
 	// now parse each record read from the input file to a number of variables
@@ -80,7 +91,8 @@ function parseAndPrintRecords(toFile = FALSE);									// optional argument (def
 	while (available(fileIn) > 0);
 		
 		// reset variables in each loop, in case records read are incomplete
-		variablesRead = readList(fileIn, givenName, eyeColor="", hairColor="", length=0, weight=0, age=0);
+		variablesRead = readList(fileIn, givenName, eyeColor="", hairColor="", 
+			length=0, weight=0, age=0);
 		if variablesRead < 5; incompleteRecords++; end;							// count number of incomplete records
 		
 		// print the record read to the output stream (console or file) in tabular format

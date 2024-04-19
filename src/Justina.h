@@ -88,7 +88,7 @@
 #define J_productName "Justina: JUST an INterpreter for Arduino"
 #define J_legalCopyright "Copyright 2024, Herwig Taveirne"
 #define J_version "1.1.1"            
-#define J_buildDate "February 9, 2024"
+#define J_buildDate "March 18, 2024"
 
 
 // ******************************************************************
@@ -98,6 +98,7 @@
 // store and retrieve data in linked lists
 
 class LinkedList {
+    friend class Justina;
 
     // --------------------
     // *   enumerations   *
@@ -139,7 +140,6 @@ class LinkedList {
     // *   methods (doc: see .cpp file)   *
     // ------------------------------------
 
-public:
     LinkedList();                                                       // constructor
     ~LinkedList();                                                      // destructor
 
@@ -1075,17 +1075,8 @@ public:
     static constexpr long appFlag_stopRequestBit = 0x0400L;             // request to stop a running Justina program
     static constexpr long appFlag_abortRequestBit = 0x0800L;            // request to abort running Justina code (either a Justina program or immediate mode Justina statements)
 
-    // bits 15-12: spare
+    // bits 31-12: spare
 
-    // bits 19-16: bit mask for flags signaling that Justina READ data from external IO stream -1 to -4
-    static constexpr long appFlag_dataRecdFromStreamMask = 0x000f0000;
-
-    static constexpr long appFlag_dataRecdFromStream1 = 0x00010000;     // Justina READ data from external IO stream - 1
-    static constexpr long appFlag_dataRecdFromStream2 = 0x00020000;     // Justina READ data from external IO stream - 2
-    static constexpr long appFlag_dataRecdFromStream3 = 0x00040000;     // Justina READ data from external IO stream - 3
-    static constexpr long appFlag_dataRecdFromStream4 = 0x00080000;     // Justina READ data from external IO stream - 4
-
-    // bits 31-20: spare
 private:
 
 
@@ -1303,8 +1294,11 @@ private:
     static const ResWordDef _resWords[77];                                                                                      // keyword names
     static const InternCppFuncDef _internCppFunctions[139];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
-    static const SymbNumConsts _symbNumConsts[73];                                                                              // predefined constants
-
+#if (defined ARDUINO_ARCH_ESP32) 
+    static const SymbNumConsts _symbNumConsts[77];                                                                              // predefined constants
+#else
+    static const SymbNumConsts _symbNumConsts[74];                                                                              // predefined constants
+#endif
     static constexpr int _resWordCount{ sizeof(_resWords) / sizeof(_resWords[0]) };                                             // count of keywords in keyword table 
     static constexpr int _internCppFunctionCount{ (sizeof(_internCppFunctions)) / sizeof(_internCppFunctions[0]) };             // count of internal cpp functions in functions table
     static constexpr int _termTokenCount{ sizeof(_terminals) / sizeof(_terminals[0]) };                                         // count of operators and other terminals in terminals table

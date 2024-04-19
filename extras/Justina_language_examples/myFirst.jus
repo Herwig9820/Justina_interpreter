@@ -1,14 +1,25 @@
-/*----------------------------------------------------------------------------
-	Sample JUSTINA program for use with the Justina interpreter.
-
-	The program simply writes 5 lines to the console and exits.
+/*------------------------------------------------------------------------------------------------------------------------
+    Example JUSTINA language program for use with the Justina interpreter
 	
-	Created March 2024 by Herwig Taveirne
-	
-	This example Justina code (this file) is in the public domain.
-----------------------------------------------------------------------------*/
+ 	The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      
+    by the Free Software Foundation (https://www.gnu.org/licenses).                                                      
+    Refer to GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter            
+                                                                                                                         
+    This example Justina code is in the public domain                                                                            
+                                                                                                                         
+    2024, Herwig Taveirne                                                                                                
+------------------------------------------------------------------------------------------------------------------------*/
 
-program myFirstProgram;    	// this is a JUSTINA program
+
+program myFirstProgram; // this is a JUSTINA program
+
+/*
+	Very basic example of a Justina program. It demonstrates the use of local variables and
+	executes a simple loop, printing a line to the console at each iteration
+
+	Function call: print5lines();
+*/
+
 
 function print5lines();    	// this is a function
 

@@ -456,6 +456,14 @@ const Justina::SymbNumConsts Justina::_symbNumConsts[]{
     {"OUTPUT",              "0x3",                      value_isLong},
     {"INPUT_PULLUP",        "0x5",                      value_isLong},
     {"INPUT_PULLDOWN",      "0x9",                      value_isLong},
+#if (defined ARDUINO_ARCH_ESP32) 
+    {"LED_BUILTIN",         "13",                       value_isLong},
+    {"LED_RED",             "14",                       value_isLong},
+    {"LED_GREEN",           "15",                       value_isLong},
+    {"LED_BLUE",            "16",                       value_isLong},
+#else
+    {"LED_BUILTIN",         "13",                       value_isLong},
+#endif
     {"LSBFIRST",            "0x0",                      value_isLong},          // standard ARduino constants for digital I/O
     {"MSBFIRST",            "0x1",                      value_isLong},
 
@@ -526,15 +534,15 @@ const Justina::SymbNumConsts Justina::_symbNumConsts[]{
     {"FLAG_SIGN",           "0x02",                      value_isLong},         // always add a sign (- or +) preceding the value
     {"FLAG_SPACE",          "0x04",                      value_isLong},         // precede the value with a space if no sign is written 
     {"FLAG_POINT",          "0x08",                      value_isLong},         // if used with 'F', 'E', 'G' specifiers: add decimal point, even if no digits after decimal point  
-    {"FLAG_0X",             "0x08",                      value_isLong},         // if used with 'hex output'X' specifier: precede non-zero values with 0x  
+    {"FLAG_0X",             "0x08",                      value_isLong},         // if used with hex output 'X' specifier: precede non-zero values with 0x  
     {"FLAG_000",            "0x10",                      value_isLong},         // if used with 'F', 'E', 'G' specifiers: pad with zeros 
     {"FLAG_NONE",           "0x00",                      value_isLong},         // no flags 
 
     // boards
-    { "BOARD_OTHER",        "0",                         value_isLong },        // board architecture is undefined
-    { "BOARD_SAMD",         "1",                         value_isLong },        // board architecture is SAMD
-    { "BOARD_RP2040",       "2",                         value_isLong },        // board architecture is RP2040 
-    { "BOARD_ESP32",        "3",                         value_isLong },        // board architecture is ESP32 
+    {"BOARD_OTHER",         "0",                         value_isLong },        // board architecture is undefined
+    {"BOARD_SAMD",          "1",                         value_isLong },        // board architecture is SAMD
+    {"BOARD_RP2040",        "2",                         value_isLong },        // board architecture is RP2040 
+    {"BOARD_ESP32",         "3",                         value_isLong },        // board architecture is ESP32 
 
 };
 
@@ -1405,8 +1413,6 @@ void Justina::execPeriodicHousekeeping(bool* pKillNow, bool* pForcedStop, bool* 
             if ((_appFlags & appFlag_killRequestBit) && (pKillNow != nullptr)) { *pKillNow = true; }
             if ((_appFlags & appFlag_stopRequestBit) && (pForcedStop != nullptr)) { *pForcedStop = true; }
             if ((_appFlags & appFlag_abortRequestBit) && (pForcedAbort != nullptr)) { *pForcedAbort = true; }
-
-            _appFlags &= ~(appFlag_dataInOut | appFlag_dataRecdFromStreamMask);                                 // reset 'external IO' flags 
         }
     }
 }

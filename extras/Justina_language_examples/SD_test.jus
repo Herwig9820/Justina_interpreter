@@ -1,20 +1,22 @@
-/*----------------------------------------------------------------------------
-	Sample JUSTINA program for use with the Justina interpreter.
-
-	The program demonstates how to use an SD card and how to read and write 
-	data from / to SD card files.
+/*------------------------------------------------------------------------------------------------------------------------
+    Example JUSTINA language program for use with the Justina interpreter
 	
-	Created March 2024 by Herwig Taveirne
-	
-	This example Justina code (this file) is in the public domain.
-----------------------------------------------------------------------------*/
+ 	The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      
+    by the Free Software Foundation (https://www.gnu.org/licenses).                                                      
+    Refer to GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter            
+                                                                                                                         
+    This example Justina code is in the public domain                                                                            
+                                                                                                                         
+    2024, Herwig Taveirne                                                                                                
+------------------------------------------------------------------------------------------------------------------------*/
 
-program SD_card_tests;
 
-/*---------------------------------------------------------------------------------------------------
+program SD_card_tests; // this is a JUSTINA program
+
+/*
 	This function writes a few lines of information to an SD file, opening the file in various modes.
 	The file contents are read back and printed on the console.	
----------------------------------------------------------------------------------------------------*/
+*/
 
 function fileTests(fname);
 	
@@ -54,7 +56,7 @@ function fileTests(fname);
 	// open the file again; we will append a few lines and close the file again
 	// ------------------------------------------------------------------------
 	coutLine line(), "*** now opening the file again: we will append few lines and close the file again...";
-	testFile = open(fname, APPEND);												// use bitwise or '|' , not '+' 								
+	testFile = open(fname, APPEND);														// use bitwise or '|' , not '+' 								
 	printLine testFile, "this is a new line ", ++lineIndex;
 	printLine testFile, "and this as well ", ++lineIndex;
 	coutLine "done: closing file ", fname;										

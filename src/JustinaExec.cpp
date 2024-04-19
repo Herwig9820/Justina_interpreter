@@ -780,7 +780,7 @@ Justina::execResult_type  Justina::exec(char* startHere) {
     }
 
     // no programs in debug: always; otherwise: only if error is in fact quit or kill event 
-    else if ((_openDebugLevels == 0) || (execResult == result_quit) || (execResult == result_kill)) {                   // do not clear flow control stack while in debug mode
+    else if ((_openDebugLevels == 0) || (execResult == result_quit) || (execResult == result_kill)) {                   // do not clear stacks while in debug mode, except when quitting
         int dummy{};
         _openDebugLevels = 0;       // (if not yet zero)
         clearParsedCommandLineStack(parsedCommandLineStack.getElementCount());

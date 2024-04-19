@@ -1,21 +1,34 @@
-/*----------------------------------------------------------------------------
-	Sample JUSTINA program for use with the Justina interpreter.
-
-	The program calculates the factorial of a number n, using recursive calls.
+/*------------------------------------------------------------------------------------------------------------------------
+    Example JUSTINA language program for use with the Justina interpreter
 	
-	Created March 2024 by Herwig Taveirne
+ 	The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      
+    by the Free Software Foundation (https://www.gnu.org/licenses).                                                      
+    Refer to GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter            
+                                                                                                                         
+    This example Justina code is in the public domain                                                                            
+                                                                                                                         
+    2024, Herwig Taveirne                                                                                                
+------------------------------------------------------------------------------------------------------------------------*/
 
-This example Justina code (this file) is in the public domain.
-----------------------------------------------------------------------------*/
 
-program factorial;
+program factorial; // this is a JUSTINA program
 
-// Please note this is NOT an efficient way of calculating factorials, and
-// its sole purpose is demonstrating recursion.
-// This function expects a positive integer 'n' (no error checking is done).
-// Keep n small (< 10): each recursive call consumes a small amount of memory.
+/*
+	Example of a function that calls itself recursively.
+	
+	The function calculates the factorial of a number.
+	Please note this is NOT an efficient way of calculating factorials, and
+	its sole purpose is demonstrating recursion.
+	This function expects a positive integer 'n' (no error checking is done).
+	Keep n small (< 10): each recursive call consumes a small amount of memory.
+	
+	Function call: fact(numeric expression); 
+	Returns: factorial of number
+*/
 
-function fact(n); 
+
+function fact(number); 
+	n = cInt(number);									
 	var fact_n = 0;										// local variable 
 
 	if (n > 2); 

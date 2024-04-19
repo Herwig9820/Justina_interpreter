@@ -1,0 +1,185 @@
+/*------------------------------------------------------------------------------------------------------------------------
+    Example JUSTINA language program for use with the Justina interpreter
+	
+ 	The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      
+    by the Free Software Foundation (https://www.gnu.org/licenses).                                                      
+    Refer to GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter            
+                                                                                                                         
+    This example Justina code is in the public domain                                                                            
+                                                                                                                         
+    2024, Herwig Taveirne                                                                                                
+------------------------------------------------------------------------------------------------------------------------*/
+
+
+program simpleWebServer; // this is a JUSTINA program
+
+/*
+	Example of a simple web server.
+	Adapted from an example found here: https://forum.arduino.cc/index.php?topic=683079.0
+	
+	This example draws a webpage with 20 'on' and 20 'off' buttons, maintaining the state of 20 switches.
+	Buttons representing a switch that is currently 'on' are drawn in a red color. 
+	Switch states maintained can then be used to interact with specific hardware (leds, switching transistors,...) 
+	
+	HTTP requests received and processed by the webserver:
+	GET / HTTP/1.1				: (re-)draw page
+	GET /t HTTP/1.1   			: set swith on or off and redraw page
+								(t: tag identifying the button clicked)
+	GET /favicon.ico HTTP/1.1	: request to send favorite icon (which isn't available)	
+	
+	This example is intended to be used with Justina library example Justina_TCPIP. It configures your Arduino as
+	a TCP server and is responsible for maintaining the WiFi and the TCP connection.
+	
+	This Justina language program implements the HTTP server on top of that, without having to worry about WiFi and TCP
+	connection maintenance. From the perspective of the HTTP server, this is a pure background process and continues
+	even when the webserver is waiting for characters to come in (readLine() functon).
+	
+	Function call: webServer();
+*/
+
+
+// global constants and variables
+// ------------------------------
+
+const SWITCH_COUNT = 20;	     															// number of switches
+const buttonTags = "abcdefghijklmnopqrstABCDEFGHIJKLMNOPQRST";								// tags identifying 'on' buttons (first group) and 'off' buttons (second group)
+
+var switchStates(20) =  0 ; 																// default: all switches off
+
+
+//	webserver main	
+// ---------------
+
+function webServer();
+	
+	var clientRequest=""; 
+	var tag = " ";
+	var buttonIndex = -1;
+	var isMainPageRequest = FALSE, isFaviconRequest = FALSE;
+	
+	
+	setTimeout(IO2, 500);																	// time out for readLine() function, in ms		
+	cpp_setVerbose(TRUE);																	// allow tcp/ip library to print WiFi and TCP/IP state changes 
+	
+	while 1;
+		while cpp_connState() != 4;
+			if cin() == asc("&"); return; end;												// while waiting for connection, check serial for ampersand button (exit Justina)
+		end; 	
+			
+		while cpp_connState()==4;															// while client is connected 
+			while available(IO2);
+				cout clientRequest=readLine(IO2);											// read request from HTTP client and echo on the Justina console (note: the request itself contains CRLF sequence)
+				
+				if findInStr(clientRequest, "GET / ") == 1;									// GET request to (re-)draw page ? 
+						buttonIndex = -1;  													// button states do not change
+						isMainPageRequest = TRUE; 											// set flag to (re-) draw main page when request will be completemy received
+				
+				elseif (findInStr(clientRequest, "GET /") == 1) && (len(clientRequest) >=7);
+					if (asc(clientRequest, 7)== 0x20); 										// GET request with button tag ?
+						tag = mid(clientRequest, 6, 1); 									// get button index and adapt switch state
+						buttonIndex = findInStr(buttonTags, tag);							// 1 to 2 x number of switches 	
+						switchStates((buttonIndex - 1) % SWITCH_COUNT + 1) =  	
+							ifte (buttonIndex > SWITCH_COUNT, 0, 1); 	
+						isMainPageRequest = TRUE;											// set flag to redraw main page when request will be completemy received 									  
+					else;																	// GET request to send favorite icon 
+						isFaviconRequest = TRUE; 											// set flag to send 'no favorite icon' message when request will be completemy received
+					end;		
+				
+ 
+				elseif  strCmp(clientRequest, line()) == 0;  								// request header completely received (indicated by empty line) ?		    									
+					if isMainPageRequest; 													// was a request to (re-)draw the 'main page' ? 
+						sendMainPageResponse();												// send response message to draw main page
+						isMainPageRequest = FALSE;											// reset flag
+
+					elseif isFaviconRequest;												// request to send 'favorite icon' ? 
+						sendFaviconResponse();												// send response message indicating 'no favorite icon'
+						isFaviconRequest=FALSE;												// reset flag
+					end; 
+				end;
+			end;
+
+			cpp_stopClient(); 																// no more request characters: disconnect client
+		end;
+	end;	
+	
+	 
+end;
+	
+
+// send response message to (re-)draw main page
+// --------------------------------------------
+
+function sendMainPageResponse();
+	
+	// send response header
+	printLine IO2, ("HTTP/1.1 200 OK");
+    printLine IO2, ("Content-type:text/html");
+	printLine IO2, "Connection: keep-alive";
+    printLine IO2;
+    printLine IO2, ("<style>");
+    printLine IO2, (".button {");
+    printLine IO2, (" background-color: #4CAF50;");
+
+    printLine IO2, (" color: white;");
+    printLine IO2, (" padding: 15px 32px;");
+    printLine IO2, (" text-align: center;");
+    printLine IO2, (" text-decoration: none;");
+    printLine IO2, (" display: inline-block;");
+    printLine IO2, (" font-size: 16px;");
+    printLine IO2, ("  margin: 4px 2px;");
+
+    printLine IO2, ("}");
+    printLine IO2, (".button2 {background-color: #008CBA;} /* Blue */");
+    printLine IO2, (".button3 {background-color: #f44336;} /* Red */ ");
+    printLine IO2, (".button4 {background-color: #e7e7e7; color: black;} /* Gray */ ");
+    printLine IO2, (".button5 {background-color: #555555;} /* Black */");
+    printLine IO2, ("</style>");
+
+	// send response body
+    print IO2, ("<html>");
+    print IO2, ("<body>");
+
+    print IO2, ("<h1>Arduino as a simple web server</h1>");
+    
+	var i;
+	
+	// draw first  group of 20 buttons ('on' buttons)
+	for i = 1, SWITCH_COUNT;
+		// active button ? color RED
+        if (switchStates(i) == 1); 				
+            print IO2, ("<button href=\"#\" class=\"button button3\" type=\"button\" onclick= \"window.location.href='");
+        else;
+            print IO2, ("<button href=\"#\" class=\"button button4\" type=\"button\" onclick= \"window.location.href='");
+		end;
+
+        //calculate button index
+        print IO2, mid(buttonTags, i, 1);
+        print IO2, ("'\" >");
+        print IO2, "Switch ", i, " on";
+        print IO2, ("</button>");
+    end;
+    print IO2, ("<br>");
+    
+	// draw second group of 20 buttons ('off' buttons)
+	for i = 1, SWITCH_COUNT; 
+        print IO2, ("<button href=\"#\" class=\"button button4\" type=\"button\" onclick= \"window.location.href='");
+        //calculate button index
+        print IO2, mid(buttonTags, i + SWITCH_COUNT, 1);
+        print IO2, ("'\" >");
+        print IO2, "Switch ", i, " off";
+        print IO2, ("</button>");
+    end;
+
+	print IO2, ("</body>");
+    print IO2, ("</html>");
+end;
+
+
+// send response message indicating 'no favorite icon'
+// ---------------------------------------------------
+
+function sendFaviconResponse();
+	printLine IO2, "HTTP/1.1 404 Not Found";
+    printLine IO2, ("Content-type:text/html");
+	printLine IO2, "Connection: keep-alive";
+end;	

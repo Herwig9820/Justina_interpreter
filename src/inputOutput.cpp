@@ -509,7 +509,6 @@ int Justina::readFrom(int streamNumber) {
         if (streamNumber == 0) { readingFromExtStreamNumber = _consoleIn_sourceStreamNumber; }          // replace by real external IO stream number
         if (readingFromExtStreamNumber < 0) {
             _appFlags |= appFlag_dataInOut;
-            _appFlags |= (appFlag_dataRecdFromStream1 << (-1 - readingFromExtStreamNumber));            // 'readingFromExtStreamNumber' < 0
         }
     }
     return c;
@@ -518,7 +517,7 @@ int Justina::readFrom(int streamNumber) {
 int Justina::readFrom(int streamNumber, char* buffer, int length) {
     Stream* pStream{ nullptr };
     if (determineStream(streamNumber, pStream) != result_execOK) { return 0; }          // if error, zero characters written but error is not returned to caller
-    // NOTE: stream MUST be a file (check before call) -> appFlag_dataInOut  and appFlag_dataRecdFromStream1 must not be set
+    // NOTE: stream MUST be a file (check before call) -> appFlag_dataInOut must not be set
     return static_cast<File*>(pStream)->read((uint8_t*)buffer, length);
 }
 
@@ -700,7 +699,6 @@ int Justina::read() {
         if (_streamNumberIn == 0) { readingFromExtStreamNumber = _consoleIn_sourceStreamNumber; }           // replace by real external IO stream number
         if (readingFromExtStreamNumber < 0) {
             _appFlags |= appFlag_dataInOut;
-            _appFlags |= (appFlag_dataRecdFromStream1 << (-1 - readingFromExtStreamNumber));                // 'readingFromExtStreamNumber' < 0
         }
     }
 
@@ -708,7 +706,7 @@ int Justina::read() {
 }
 
 int Justina::read(char* buffer, int length) {
-    // NOTE: stream MUST be a file (check before call) -> appFlag_dataInOut  and appFlag_dataRecdFromStream1 must not be set
+    // NOTE: stream MUST be a file (check before call) -> appFlag_dataInOut must not be set
     return (static_cast <File*>(_pStreamIn))->read((uint8_t*)buffer, length);
 }
 

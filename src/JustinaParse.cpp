@@ -2132,7 +2132,7 @@ bool Justina::parseAsVariable(char*& pNext, parsingResult_type& result) {
         // -----------------------------------------------------------------------------------------
 
         if (_isForCommand) {            // within a FOR statement
-            if (varIsConstantVar) { pNext = pch; result = result_var_controlVarIsConstant; return false; }
+            if (varIsConstantVar && (_cmdArgNo == 0)) { pNext = pch; result = result_var_controlVarIsConstant; return false; }  // this check applies only to control variable (cmdArg increases right after)
             if (_blockLevel > 1) {     // minimum 1 other (outer) open block
 
                 // check whether this is the control variable (following the 'for' keyword) => this means there are no parenthesis levels to skip, below
@@ -2737,7 +2737,7 @@ Justina::parsingResult_type Justina::deleteUserVariable(char* userVarName) {
         // ------------------------------
     #if PRINT_HEAP_OBJ_CREA_DEL
         _pDebugOut->print("\r\n----- (usrvar name) "); _pDebugOut->println((uint32_t) * (userVarNames + index), HEX);
-        _pDebugOut->print("    delete user var "); _pDebugOut->println( * (userVarNames + index));
+        _pDebugOut->print("    delete user var "); _pDebugOut->println(*(userVarNames + index));
     #endif
         _userVarNameStringObjectCount--;
         delete[] * (userVarNames + index);

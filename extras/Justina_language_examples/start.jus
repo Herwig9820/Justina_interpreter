@@ -1,21 +1,30 @@
-/*----------------------------------------------------------------------------
-	Sample JUSTINA program for use with the Justina interpreter.
-
-	The program is intended to be called automatically upon starting Justina, 
-	if allowed by the the Justina startup options.
+/*------------------------------------------------------------------------------------------------------------------------
+    Example JUSTINA language program for use with the Justina interpreter
 	
-	In order to be called automatically:
-	- the file name must be 'start.jus'
-	- the program must contain a function 'start()', taking no arguments
-	(the program name is not relevant)
-	
-	Created March 2024 by Herwig Taveirne
-	
-	This example Justina code (this file) is in the public domain.
-----------------------------------------------------------------------------*/
+ 	The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      
+    by the Free Software Foundation (https://www.gnu.org/licenses).                                                      
+    Refer to GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter            
+                                                                                                                         
+    This example Justina code is in the public domain                                                                            
+                                                                                                                         
+    2024, Herwig Taveirne                                                                                                
+------------------------------------------------------------------------------------------------------------------------*/
 
-program startJustina;
 
+program startJustina; // this is a JUSTINA program
+
+/*
+	This program is an example of a 'startup' program, that will run automatically upon starting Justina.
+	This can be useful to adapt specific settings, for instance to set formatting for floating point numbers etc.
+	
+	Requirements:
+	- Justina startup options must allow it (see user manual)
+	- An SD card board must be connected 
+	- the program file must be named 'start.jus' and must reside in the root folder of the SD card
+	- the main program function must be defined as 'start()', without parameters  
+*/
+	
+	
 function start();
 	coutLine repChar("-", 44), line(), 
 		"---- Executing startup file 'start.jus' ----", line(), repChar("-", 44);
