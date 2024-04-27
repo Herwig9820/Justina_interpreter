@@ -97,7 +97,8 @@ The example files are:
 * SD_test.jus: perform some basic SD card tests
 * SD_parse.jus: write formatted data to an SD card, read it back and immediately parse this data into variables
 * web_calc.jus: a web server creating a scientific calculator on a web page
+* 
+![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/64b22e24-ebe8-42a4-ac5b-5a43533a3bf6)
 
- 
 # Documentation
 Full documentation is provided in the repository ' extras' folder. 
