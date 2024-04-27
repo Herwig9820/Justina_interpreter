@@ -96,7 +96,8 @@ The example files are:
 * overlap.jus: two method to print lines with overlapping print fields
 * SD_test.jus: perform some basic SD card tests
 * SD_parse.jus: write formatted data to an SD card, read it back and immediately parse this data into variables
-* webserv.jus: a simple webserver
+* web_calc.jus: a web server creating a scientific calculator on a web page
+
  
 # Documentation
 Full documentation is provided in the repository ' extras' folder. 
