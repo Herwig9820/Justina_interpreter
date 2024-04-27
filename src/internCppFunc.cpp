@@ -71,7 +71,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
     Val fcnResult;
     fcnResult.longConst = 0;
 
-    char argValueType[16];
+    char argValueType[16];                                                                                                  // room for 16 arguments
     Val args[16];
 
     bool requestPrintTab{ false }, requestGotoPrintColumn{ false };
@@ -1003,9 +1003,9 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         break;
 
 
-        // -------
-        // 
-        // -------
+        // ---------------------------------------
+        // return zero if this is not a cold start
+        // ---------------------------------------
 
         case fnccod_isColdStart:
         {
@@ -1297,6 +1297,9 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         case fnccod_format:
         {
             // fmt (expression [, width [, precision [, specifier]  [, flags  [, character count] ] ] ]
+            
+            // fmt (expression                        , specifier   [, flags  [, character count] ] 
+            // fmt (expression             precision  , specifier   [, flags  [, character count] ] 
 
             // mandatory argument 1: value to be formatted (any type)
             // optional arguments 2-5: width, precision, specifier, flags, characters printed (return value)
@@ -1325,7 +1328,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // width, precision, specifier and flags are used as defaults for next calls to this function, if they are not provided again
 
 
-            bool valueToFormatIsString = (argValueType[0] == value_isStringPointer);        // formatting a string value ?
+            bool valueToFormatIsString = (argValueType[0] == value_isStringPointer);
 
             // make a local copy of current settings until all tests done
             // ----------------------------------------------------------
@@ -1333,35 +1336,54 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             int precision = valueToFormatIsString ? _fmt_strCharsToPrint : _fmt_numPrecision;
             char specifier{ valueToFormatIsString ? _fmt_stringSpecifier[0] : _fmt_numSpecifier[0] };
             int flags = valueToFormatIsString ? _fmt_stringFmtFlags : _fmt_numFmtFlags;
+            int argCount = suppliedArgCount;                                                                                // init
 
             // test arguments and ADAPT print width, precision, specifier, flags
             // -----------------------------------------------------------------
-            // test and limit width argument
-            if (suppliedArgCount > 1) {                                                                                                                 // check width
-                if ((argValueType[1] != value_isLong) && (argValueType[1] != value_isFloat)) { return result_arg_numberExpected; }                      // numeric ?
-                if ((argValueType[1] == value_isLong) ? args[1].longConst < 0 : args[1].floatConst < 0.) { return result_arg_outsideRange; }            // positive ?
+            if (argCount > 1) {
+                if (argValueType[1] == value_isString) {                                                                    // second argument is a string ?
+                    // assume expression to format is directly followed by specifier: shift array elements 2 places (value and value type) and insert current width & precision
+                    for (int i = 3; i >= 1; i--) { args[i + 2] = args[i]; argValueType[i + 2] = argValueType[i]; }
+                    args[1].longConst = width;
+                    args[2].longConst = precision;
+                    argValueType[1] = argValueType[2] = value_isLong;
+                    argCount += 2;
+                }
+                else if (argValueType[2] == value_isString) {                                                               // third argument is a string ?
+                    // assume expression to format is directly followed by precision and specifier: shift array elements 1 place (value and value type) and insert current width
+                    for (int i = 4; i >= 1; i--) { args[i + 1] = args[i]; argValueType[i + 1] = argValueType[i]; }
+                    args[1].longConst = width;
+                    argValueType[1] = value_isLong;
+                    argCount++;
+                }
+
+                // args[] and argValueType[] arrays are now 'normalized': second element is always width, third is always precision (default if omitted in call)
+
+                // test and limit width argument
+                if ((argValueType[1] != value_isLong) && (argValueType[1] != value_isFloat)) { return result_arg_numberExpected; }              // numeric ?
+                if ((argValueType[1] == value_isLong) ? args[1].longConst < 0 : args[1].floatConst < 0.) { return result_arg_outsideRange; }    // positive ?
                 width = (argValueType[1] == value_isLong) ? args[1].longConst : (long)args[1].floatConst;
-                width = min(width, MAX_PRINT_WIDTH);                                                                                                    // limit width to MAX_PRINT_WIDTH
+                width = min(width, MAX_PRINT_WIDTH);                                                                                            // limit width to MAX_PRINT_WIDTH
             }
 
             // check other arguments
-            if (suppliedArgCount > 2) {                             // skip value to format and width                                                                  
-                execResult_type execResult = checkFmtSpecifiers(false, suppliedArgCount - 2, argValueType + 2, args + 2, specifier, precision, flags);
+            if (argCount > 2) {
+                execResult_type execResult = checkFmtSpecifiers(false, argCount - 2, argValueType + 2, args + 2, specifier, precision, flags);
                 if (execResult != result_execOK) { return execResult; }
             }
 
             // is specifier acceptable for data type ?
-            if (valueToFormatIsString != (specifier == 's')) { return result_arg_wrongSpecifierForDataType; }                       // if more string specifiers defined, add them here with 'or' operator
+            if (valueToFormatIsString != (specifier == 's')) { return result_arg_wrongSpecifierForDataType; }               // if more string specifiers defined, add them here with 'or' operator
 
             // prepare format string and format
             // --------------------------------
 
             int charsPrinted{ 0 };
-            char fmtString[20]{};                                                                                                   // long enough to contain all format specifier parts
-            bool isIntFmt = (specifier == 'X') || (specifier == 'x') || (specifier == 'd');                                         // for ALL numeric types
+            char fmtString[20]{};                                                                                           // long enough to contain all format specifier parts
+            bool isIntFmt = (specifier == 'X') || (specifier == 'x') || (specifier == 'd');                                 // for ALL numeric types
 
             // if formatting STRING with explicit change of width and without precision argument: init 'precision' (max. no of characters to print) to width.
-            if (valueToFormatIsString) { if (suppliedArgCount == 2) { precision = width; } }
+            if (valueToFormatIsString) { if (argCount == 2) { precision = width; } }
 
             // limit precision (is stored separately for numbers and strings)
             precision = min(precision, valueToFormatIsString ? MAX_STRCHAR_TO_PRINT : isIntFmt ? MAX_INT_PRECISION : MAX_FLOAT_PRECISION);
@@ -1379,16 +1401,16 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // -------------------------------------------------------------------------------
 
             bool hasSpecifierArg = false; // init
-            if (suppliedArgCount > 3) { hasSpecifierArg = (!(argIsLongBits & (0x1 << 3)) && !(argIsFloatBits & (0x1 << 3))); }     // third argument is either a specifier (string) or set of flags (number)
+            if (argCount > 3) { hasSpecifierArg = (!(argIsLongBits & (0x1 << 3)) && !(argIsFloatBits & (0x1 << 3))); }      // third argument is either a specifier (string) or set of flags (number)
 
-            if (suppliedArgCount == (hasSpecifierArg ? 6 : 5)) {      // optional argument returning #chars that were printed is present
-                bool isConstant = (!(argIsVarBits & (0x1 << (suppliedArgCount - 1))) || (_pEvalStackTop->varOrConst.sourceVarScopeAndFlags & var_isConstantVar));
+            if (argCount == (hasSpecifierArg ? 6 : 5)) {      // optional argument returning #chars that were printed is present
+                bool isConstant = (!(argIsVarBits & (0x1 << (argCount - 1))) || (_pEvalStackTop->varOrConst.sourceVarScopeAndFlags & var_isConstantVar));
                 if (!isConstant) { // if last argument is constant: skip saving value in last argument WITHOUT error  
                     // don't return anything if variable's current type is not numeric (if array, type can not be changed anyway)
-                    if ((argIsLongBits & (0x1 << (suppliedArgCount - 1))) || (argIsFloatBits & (0x1 << (suppliedArgCount - 1)))) {
+                    if ((argIsLongBits & (0x1 << (argCount - 1))) || (argIsFloatBits & (0x1 << (argCount - 1)))) {
 
                         // last arguments is a NUMERIC variable (tested above): replace current value with number of characters printed. Keep the variable's value type.
-                        bool varIsLong = (argIsLongBits & (0x1 << (suppliedArgCount - 1)));
+                        bool varIsLong = (argIsLongBits & (0x1 << (argCount - 1)));
                         if (varIsLong) { *_pEvalStackTop->varOrConst.value.pLongConst = (long)charsPrinted; }
                         else { *_pEvalStackTop->varOrConst.value.pFloatConst = (float)charsPrinted; }
                     }
@@ -1757,9 +1779,9 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         break;
 
 
-        // ---------------------
-        // 'character' functions
-        // ---------------------
+        // --------------------------------
+        // 'character' and string functions
+        // --------------------------------
 
         // first argument must be a non-empty string; optional argument must point to a character in the string (1 to string length)
         // if a value is returned, it's always a long integer (if boolean: 0 (false) or not 0 (true)) 
@@ -1788,10 +1810,10 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             if (suppliedArgCount == 2) {
                 if (!(argIsLongBits & (0x1 << 1)) && !(argIsFloatBits & (0x1 << 1))) { return result_arg_numberExpected; }
                 charPos = (argIsLongBits & (0x1 << 1)) ? args[1].longConst : int(args[1].floatConst);
-                if ((args[1].longConst < 1) || (args[1].longConst > length)) { return result_arg_outsideRange; }
+                if ((charPos < 1) || (charPos > length)) { return result_arg_outsideRange; }
             }
             fcnResultValueType = value_isLong;                                                                              // init: return a long
-            fcnResult.longConst = 0;                                                                                        // init: return 0 if the Arduino function doesn't return anything
+            fcnResult.longConst = 0;                                                                                        // init
 
             if (functionCode == fnccod_isAlpha) { fcnResult.longConst = isalpha(args[0].pStringConst[--charPos]); }
             else if (functionCode == fnccod_isAlphaNumeric) { fcnResult.longConst = isAlphaNumeric(args[0].pStringConst[--charPos]); }
@@ -1810,12 +1832,48 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         break;
 
 
-        // ----------------
-        // String functions
-        // ----------------
+         //  convert two characters of a string, both containing the ASCII code of a hex. digit, to the ASCII code composed of these two hex. digits
+        // examples: "61" -> 61 (ASCII code for 'a') ,  "35" -> 35 (ASCII code for '5')
+        // ----------------------------------------------------------------------------------------------------------------------------------------
+
+        case fnccod_hexStringToAsc:
+        {
+            fcnResultValueType = value_isLong;                                                          // init
+            fcnResult.longConst = 0;
+
+            if (!(argIsStringBits & (0x1 << 0))) { return result_arg_stringExpected; }
+
+            int length = strlen(args[0].pStringConst);
+            int charPos = 1;                                                                            // first character in string
+            if (suppliedArgCount == 2) {
+                if (!(argIsLongBits & (0x1 << 1)) && !(argIsFloatBits & (0x1 << 1))) { return result_arg_numberExpected; }
+                charPos = (argIsLongBits & (0x1 << 1)) ? args[1].longConst : int(args[1].floatConst);
+                if (args[1].longConst < 1) { return result_arg_outsideRange; }
+            }
+
+            if (strlen(args[0].pStringConst) < charPos + 1) { return result_arg_stringTooShort; }       // two characters needed, starting at given position
+
+            const char asc_zero = 0x30, asc_a = 0x61, asc_A = 0x41;
+            char*& hexDigitString = args[0].pStringConst;
+
+            for (int i = charPos - 1; i <= charPos; i++) {                                              // base 0
+                fcnResult.longConst <<= 4;
+                if ((hexDigitString[i] >= asc_zero) && (hexDigitString[i] <= asc_zero + 9)) {			// ASCII code of a hex number
+                    fcnResult.longConst |= (hexDigitString[i] - asc_zero);
+                }
+                else if ((hexDigitString[i] >= asc_a) && (hexDigitString[i] <= asc_a + 5)) {
+                    fcnResult.longConst |= (hexDigitString[i] - asc_a + 10);
+                }
+                else if ((hexDigitString[i] >= asc_A) && (hexDigitString[i] <= asc_A + 5)) {
+                    fcnResult.longConst |= (hexDigitString[i] - asc_A + 10);
+                }
+                else { fcnResult.longConst = -1; break; }                                               // break for block: not the ASCII code of a hex number
+            }
+        }
+        break;
 
 
-        // convert ASCII code (argument) to 1-character string
+       // convert ASCII code (argument) to 1-character string
         // ---------------------------------------------------
 
         case fnccod_char:
@@ -1834,6 +1892,29 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
             _pDebugOut->print("               char ");   _pDebugOut->println(fcnResult.pStringConst);
         #endif
+        }
+        break;
+
+
+        // print an ASCII code to a 2-character string, representing the two hex. digits of the ASCII code
+        // examples: 0x61 (ASCII code for 'a') -> "61" ,  0x35 (ASCII code for '5') -> "35"
+        // -----------------------------------------------------------------------------------------------
+
+        case fnccod_ascToHexString:
+        {
+            if (!(argIsLongBits & (0x1 << 0)) && !(argIsFloatBits & (0x1 << 0))) { return result_arg_numberExpected; }
+            int asciiCode = (argIsLongBits & (0x1 << 0)) ? args[0].longConst : int(args[0].floatConst);
+            if ((asciiCode < 0) || (asciiCode > 0xFF)) { return result_arg_outsideRange; }                                  // do not accept 0xFF
+
+            // result is string
+            fcnResultValueType = value_isStringPointer;
+            _intermediateStringObjectCount++;
+            fcnResult.pStringConst = new char[3];
+            sprintf(fcnResult.pStringConst, "%.2x", args[0].longConst);
+        #if PRINT_HEAP_OBJ_CREA_DEL
+            _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+            _pDebugOut->print("             strhex ");   _pDebugOut->println(fcnResult.pStringConst);
+        #endif    
         }
         break;
 
@@ -1871,24 +1952,46 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         break;
 
 
+        // replace one character in a string
+        // ---------------------------------
+
+        case fnccod_replaceChar:
+        {
+            if (!(argIsStringBits & (0x1 << 0))) { return result_arg_stringExpected; }
+            if (!(argIsLongBits & (0x1 << 1))) { return result_arg_integerTypeExpected; }
+            int charPos = 1;                                                                                                // first character in string
+            if (suppliedArgCount == 3) {
+                if (!(argIsLongBits & (0x1 << 2)) && !(argIsFloatBits & (0x1 << 2))) { return result_arg_numberExpected; }
+                charPos = (argIsLongBits & (0x1 << 2)) ? args[2].longConst : int(args[2].floatConst);
+                if ((args[2].longConst < 1) || (args[2].longConst > strlen(args[0].pStringConst))) { return result_arg_outsideRange; }
+            }
+
+            args[0].pStringConst[--charPos] = args[1].longConst;                                                            // ASCII code
+
+            fcnResultValueType = value_isLong;                                                                              // init: return a long
+            fcnResult.longConst = 0;                                                                                        // init: return 0 if the Arduino function doesn't return anything
+        }
+        break;
+
+
         // create a string with n spaces
         // create a string with n times the first character in the argument string
         // -----------------------------------------------------------------------
 
         case fnccod_space:
-        case fnccod_repchar:
+        case fnccod_repeatchar:
         {
             fcnResultValueType = value_isStringPointer;                                                                     // init
             fcnResult.pStringConst = nullptr;
 
             char c{ ' ' };                                                                                                  // init
-            if (functionCode == fnccod_repchar) {
+            if (functionCode == fnccod_repeatchar) {
                 if (!(argIsStringBits & (0x1 << 0))) { return result_arg_stringExpected; }
                 if (args[0].pStringConst == nullptr) { return result_arg_nonEmptyStringExpected; }
                 c = args[0].pStringConst[0];                                                                                // only first character in string will be repeated
             }
 
-            int lengthArg = (functionCode == fnccod_repchar) ? 1 : 0;                                                       // index for argument containing desired length of result string
+            int lengthArg = (functionCode == fnccod_repeatchar) ? 1 : 0;                                                       // index for argument containing desired length of result string
             if (!(argIsLongBits & (0x1 << lengthArg)) && !(argIsFloatBits & (0x1 << lengthArg))) { return result_arg_numberExpected; }
             int len = ((argIsLongBits & (0x1 << lengthArg))) ? args[lengthArg].longConst : (long)args[lengthArg].floatConst;    // convert to long if needed
             if ((len <= 0) || (len > MAX_ALPHA_CONST_LEN)) { return result_arg_outsideRange; }
@@ -1959,12 +2062,12 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             int findStrLen = strlen(findString);                                                                            // not an empty string
             int replaceStrLen = isReplace ? ((replaceString == nullptr) ? 0 : strlen(replaceString)) : 0;
 
-            if (suppliedArgCount == (isReplace ? 4 : 3)) {                                                                  // start position specified ?
-                int startArgIndex = (isReplace ? 3 : 2);
+            if (suppliedArgCount == (isReplace ? 4 : 3)) {                                                                  // start position specified ? (base 1)
+                int startArgIndex = (isReplace ? 3 : 2);                                                                    // c++: base 0
                 if (!(argIsLongBits & (0x1 << startArgIndex)) && !(argIsFloatBits & (0x1 << startArgIndex))) { return result_arg_numberExpected; }
                 int startSearchPos = ((argIsLongBits & (0x1 << startArgIndex)) ? args[startArgIndex].longConst : (long)args[startArgIndex].floatConst) - 1;
                 if ((startSearchPos < 0) || (startSearchPos >= originalStrLen)) { return result_arg_outsideRange; }
-                startSearchAt += startSearchPos;                                                                            // first character in string (base 0) to start search
+                startSearchAt += startSearchPos;                                                                            // first character in string to start search (base 0)
             }
 
             // look for the substring
@@ -1972,28 +2075,46 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             if (findString != nullptr) { foundSubstringStart = strstr(startSearchAt, findString); }
 
             // if foundSubstringStart is a null pointer, the string to look for is not found => the resulting string is the original string
-            int foundStartPos = (foundSubstringStart == nullptr) ? 0 : foundSubstringStart - originalString + 1;
-            if (isFind) { fcnResult.longConst = foundStartPos; break; }     // 0 if not found
+            int foundStartPos = (foundSubstringStart == nullptr) ? -1 : foundSubstringStart - originalString;               // base 0
+            if (isFind) { fcnResult.longConst = foundStartPos + 1; break; }                                                 // 0 if not found
 
-            // replace only 
 
+            // replace only (all positions base 0 except for values returned to Justina)
+            // -------------------------------------------------------------------------
+
+            // always create a new string (even if new string equals old string)
             _intermediateStringObjectCount++;
-            fcnResult.pStringConst = new char[originalStrLen + (foundStartPos > 0 ? replaceStrLen - findStrLen : 0) + 1];
-            if (foundStartPos == 0) { strcpy(fcnResult.pStringConst, originalString); }                                     // replace: return copy of original string
-            else {
-                int len1 = foundSubstringStart - originalString;
-                if (len1 > 0) { memcpy(fcnResult.pStringConst, originalString, len1); }
-                int& len2 = replaceStrLen;
-                if (len2 > 0) { memcpy(fcnResult.pStringConst + len1, replaceString, len2); }
-                int len3 = originalStrLen - len1 - findStrLen;
-                if (len3 > 0) { memcpy(fcnResult.pStringConst + len1 + replaceStrLen, originalString + findStrLen, len3); }
-                fcnResult.pStringConst[originalStrLen + replaceStrLen - findStrLen] = '\0';
-                foundStartPos = len1 + len2 + 1;                                                                            // position after changed part of string (could be past end of new string)
+
+            int newStringLen = originalStrLen;                                                                              // init
+            if (foundStartPos != -1) { newStringLen += replaceStrLen - findStrLen; }
+            fcnResult.pStringConst = new char[newStringLen + 1];
+
+            if (foundStartPos == -1) {
+                strcpy(fcnResult.pStringConst, originalString);                                                             // replace: return copy of original string
             }
+            else {
+
+                // start with terminator at the end   
+                fcnResult.pStringConst[newStringLen] = '\0';
+
+                // copy front porch
+                int frontLength = foundSubstringStart - originalString;
+                if (frontLength > 0) { memcpy(fcnResult.pStringConst, originalString, frontLength); }
+
+                // copy new middle part: replaced characters
+                if (replaceStrLen > 0) { memcpy(fcnResult.pStringConst + frontLength, replaceString, replaceStrLen); }
+
+                // copy back porch
+                int backPorchLength = originalStrLen - frontLength - findStrLen;
+                if (backPorchLength > 0) { memcpy(fcnResult.pStringConst + frontLength + replaceStrLen, originalString + frontLength + findStrLen, backPorchLength); }
+                foundStartPos = frontLength + replaceStrLen;                                                                // position after changed part of string (could be past end of new string)
+            }
+
         #if PRINT_HEAP_OBJ_CREA_DEL
             _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
             _pDebugOut->print(" find, repl. string ");   _pDebugOut->println(fcnResult.pStringConst);
         #endif            
+
 
             // start position specified in a variable ? store first character position after changed part of string (possibly past end of new string)
             if (suppliedArgCount == 4) {                                                                                    // start position was specified
@@ -2002,8 +2123,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
 
                     // last arguments is a NUMERIC variable (start position): replace current value with number of characters printed. Keep the variable's value type.
                     bool varIsLong = (argIsLongBits & (0x1 << (suppliedArgCount - 1)));
-                    if (varIsLong) { *_pEvalStackTop->varOrConst.value.pLongConst = (long)foundStartPos; }
-                    else { *_pEvalStackTop->varOrConst.value.pFloatConst = (float)foundStartPos; }
+                    if (varIsLong) { *_pEvalStackTop->varOrConst.value.pLongConst = (long)(foundStartPos + 1); }            // base 1 now (return value to Justina)
+                    else { *_pEvalStackTop->varOrConst.value.pFloatConst = (float)(foundStartPos + 1); }
                 }
             }
         }
@@ -2139,33 +2260,6 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         {
             fcnResult.longConst = _trappedErrorNumber;
             fcnResultValueType = value_isLong;
-        }
-        break;
-
-
-        // convert a string to a new string containing all characters into 2 alphanumeric digits
-        // -------------------------------------------------------------------------------------
-
-        case fnccod_strhex:
-        {
-            fcnResultValueType = value_isStringPointer;                                                                     // init
-            fcnResult.pStringConst = nullptr;
-
-            int spaceCnt{ 0 };                                                                                              // init
-            if (!(argIsStringBits & (0x1 << 0))) { return result_arg_stringExpected; }
-            if (args[0].pStringConst == nullptr) { break; }                                                                 // original string is empty: return with empty result string
-
-            int len = strlen(args[0].pStringConst);
-
-            // create new string
-            _intermediateStringObjectCount++;
-            fcnResult.pStringConst = new char[2 * len + 1];                                                                 // 2 hex digits per character, space for terminating '0'
-            for (int i = 0, j = 0; i < len; i++, j += 2) { sprintf(fcnResult.pStringConst + j, "%x", args[0].pStringConst[i]); }
-            fcnResult.pStringConst[2 * len] = '\0';
-        #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
-            _pDebugOut->print("             strhex ");   _pDebugOut->println(fcnResult.pStringConst);
-        #endif    
         }
         break;
 
@@ -2343,7 +2437,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
     }                                                                                           // end switch
 
 
-        // postprocess: delete function name token and arguments from evaluation stack, create stack entry for function result 
+        // post-process: delete function name token and arguments from evaluation stack, create stack entry for function result 
         // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);

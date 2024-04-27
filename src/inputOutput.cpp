@@ -1146,7 +1146,7 @@ void Justina::printExecError(execResult_type execResult, bool  showStopmessage) 
         printTo(0, execInfo);
     }
 
-    else if (execResult == result_quit) {printTo(0, "\r\nExecuting 'quit' command\r\n"); }
+    else if (execResult == result_quit) { printTo(0, "\r\nExecuting 'quit' command\r\n"); }
     else if (execResult == result_kill) {}      // do nothing
     else if (execResult == result_abort) { printTo(0, "\r\n+++ Abort: code execution terminated +++\r\n"); }
     else if (execResult == result_stopForDebug) { if (showStopmessage) { printTo(0, "\r\n+++ Program stopped +++\r\n"); } }
@@ -1495,7 +1495,7 @@ void Justina::quoteAndExpandEscSeq(char*& stringValue) {
 #endif
 
     stringValue = output;
-    
+
     return;
 }
 
@@ -1504,29 +1504,20 @@ void Justina::quoteAndExpandEscSeq(char*& stringValue) {
 // *   check format specifiers   *
 // -------------------------------
 
-// possible callers: 
-// -----------------
-// 1. display and integer format command:
-//    dispFmt precision [, specifier]  [, flags] ]
-//    intFmt precision [, specifier]  [, flags] ]
-//    
-// 2. fmt() function:
-//    fmt (expression [, width [, precision [, specifier]  [, flags  [, character count] ] ] ]
-//        =>> !!! expression and width are NOT passed to this function !!! <<=
+//  the first element (index 0) in the two arrays pointed to by 'valueType' resp. 'operands', is 'precision' (if available)
+//  - intFmt, floatFmt command:    precision [, specifier]  [, flags] ]
+//  - fmt() function          : [, precision [, specifier]  [, flags  [, character count] ] ] 
 
 Justina::execResult_type Justina::checkFmtSpecifiers(bool isDispFmtCmd, int argCount, char* valueType, Val* operands, char& specifier, int& precision, int& flags) {
 
-    // format a value: one-character specifier string included ?
+    // test specifier
+    // --------------
     bool hasSpecifierArg{ false }; // init
-    if (argCount > 1) { hasSpecifierArg = (valueType[1] == value_isStringPointer); }
-
-    bool hasReturnParameter = isDispFmtCmd ? false : argCount == 3;                // no error if no variable, but nothing will be returned
-
-    char spec = ' ';
+    if (argCount > 1) { hasSpecifierArg = (valueType[1] == value_isStringPointer); }        // if a second argument (index 1) is present and it's a string, it's considered a specifier
     if (hasSpecifierArg) {
         if (operands[1].pStringConst == nullptr) { return result_arg_invalid; }
         if (strlen(operands[1].pStringConst) != 1) { return result_arg_invalid; }
-        spec = operands[1].pStringConst[0];
+        char spec = operands[1].pStringConst[0];
         char* pChar(strchr("fGgEeXxds", spec));
         if (pChar == nullptr) { return result_arg_invalid; }
         specifier = spec;                   // valid specifier: return it
@@ -1539,21 +1530,22 @@ Justina::execResult_type Justina::checkFmtSpecifiers(bool isDispFmtCmd, int argC
         argCount--;
     }
 
-    // first and last index only refer to formatting fields with specifier field removed, not to value to format (if dispFmt command) and not 'chars printed' return value (if dispFmt command)
-    int firstFmtArgIndex = 0;
-    int lastFmtArgIndex = (isDispFmtCmd ? 2 : 3) - (hasSpecifierArg ? 0 : 1) - (hasReturnParameter ? 1 : 0);       // exclude return value
-    if (argCount <= lastFmtArgIndex) { lastFmtArgIndex = argCount - 1; }
+    if (!hasSpecifierArg && (argCount > (isDispFmtCmd ? 2 : 3))) { return result_arg_tooManyArgs; }
 
-    int prec{}, fl{};
-    for (int argIndex = firstFmtArgIndex; argIndex <= lastFmtArgIndex; argIndex++) {
+//  the first element (index 0) in the arrays pointed to by 'valueType' and 'operands', is 'precision' (if available)
+//  - intFmt, floatFmt command:    precision  [, flags] ]
+//  - fmt() function          : [, precision  [, flags  [, character count] ] ] 
+
+    if (argCount == 3) { argCount--; }   // do not take into account return argument 'character count'
+    for (int argIndex = 0; argIndex < argCount; argIndex++) {
 
         // Width, precision, flags ? Numeric arguments expected
         if ((valueType[argIndex] != value_isLong) && (valueType[argIndex] != value_isFloat)) { return result_arg_numberExpected; }    // numeric ?
-        if ((valueType[argIndex] == value_isLong) ? operands[argIndex].longConst < 0 : operands[argIndex].floatConst < 0.) { return result_arg_outsideRange; }                                           // positive ?
+        if ((valueType[argIndex] == value_isLong) ? operands[argIndex].longConst < 0 : operands[argIndex].floatConst < 0.) { return result_arg_outsideRange; }   // positive ?
         int argValue = (valueType[argIndex] == value_isLong) ? operands[argIndex].longConst : (long)operands[argIndex].floatConst;
 
-        if (argIndex == firstFmtArgIndex) { precision = argValue; }            // precision
-        else if (argIndex == firstFmtArgIndex + 1) { flags = argValue; }       // flags
+        if (argIndex == 0) { precision = argValue; }            // precision
+        else if (argIndex == 1) { flags = argValue; }       // flags
     }
 
     flags &= 0b11111;       // apply mask
@@ -1599,7 +1591,9 @@ void  Justina::printToString(int width, int precision, bool inputIsString, bool 
         resultStrLen = max(width + 10, opStrLen + 10);                                                                      // allow for a few extra formatting characters, if any
     }
     else {
-        resultStrLen = max(width + 10, 30);                                                                                 // 30: ensure length is sufficient to print a formatted number
+        // printed length of largest float in fixed point notation with max. decimal digits 
+        const int maxNumberColumns = log10(__FLT_MAX__) + MAX_FLOAT_PRECISION + 1;                                           
+        resultStrLen = max(width + 10, maxNumberColumns);                                                                   // ensure length is sufficient to print a formatted number
     }
 
     _intermediateStringObjectCount++;

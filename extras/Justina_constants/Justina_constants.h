@@ -1,26 +1,26 @@
-/***********************************************************************************************************
-*   Justina interpreter library                                                                            *
-*                                                                                                          *
-*   Copyright 2024, Herwig Taveirne                                                                        *
-*                                                                                                          *
-*   This file is part of the Justina Interpreter library.                                                  *
-*   The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
-*   the terms of the GNU General Public License as published by the Free Software Foundation, either       *
-*   version 3 of the License, or (at your option) any later version.                                       *
-*                                                                                                          *
-*   This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;              *
-*   without even the implied warranty of  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.             *
-*   See the GNU General Public License for more details.                                                   *
-*                                                                                                          *
-*   You should have received a copy of the GNU General Public License along with this program. If not,     *
-*   see <https://www.gnu.org/licenses/>.                                                                   *
-*                                                                                                          *
-*   The library is intended to work with 32 bit boards using the SAMD architecture ,                       *
-*   the Arduino nano RP2040 and Arduino nano ESP32 boards.                                                 *
-*                                                                                                          *
-*   See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
-*                                                                                                          *
-***********************************************************************************************************/
+/************************************************************************************************************
+*    Justina interpreter library                                                                            *
+*                                                                                                           *
+*    Copyright 2024, Herwig Taveirne                                                                        *
+*                                                                                                           *
+*    This file is part of the Justina Interpreter library.                                                  *
+*    The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
+*    the terms of the GNU General Public License as published by the Free Software Foundation, either       *
+*    version 3 of the License, or (at your option) any later version.                                       *
+*                                                                                                           *
+*    This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;              *
+*    without even the implied warranty of  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.             *
+*    See the GNU General Public License for more details.                                                   *
+*                                                                                                           *
+*    You should have received a copy of the GNU General Public License along with this program. If not,     *
+*    see <https://www.gnu.org/licenses/>.                                                                   *
+*                                                                                                           *
+*    The library is intended to work with 32 bit boards using the SAMD architecture ,                       *
+*    the Arduino nano RP2040 and Arduino nano ESP32 boards.                                                 *
+*                                                                                                           *
+*    See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
+*                                                                                                           *
+************************************************************************************************************/
 
 #ifndef _JUSTINA_CONSTANTS_h
 #define _JUSTINA_CONSTANTS_h
@@ -43,14 +43,17 @@ To change allocated memory sizes WITHOUT CHANGING ANY OF THE FILES IN THE JUSTIN
 - within folder 'libraries', create a folder named "Justina_constants" 
 - store this "Justina_constants.h" file in folder "Justina_constants"
 - adapt the values in the #define directives
-- comment out lines if you want to keep specific defaults
 */
 
+#if defined(ARDUINO_ARCH_RP2040) || defined(ARDUINO_ARCH_ESP32)
+#define PROGMEM_SIZE 30000	 	// program memory size, in bytes. Maximum: 2^16 = 65536. Don't go lower than 2000
+#else
+#define PROGMEM_SIZE 3000		// SAMD processors have limited memory. Test carefully if you increase this limit. But don't go lower than 2000 	 	
+#endif
 
-#define PROGMEM_SIZE 2000		// program memory size, in bytes. Maximum: 2^16 = 65536. Don't go lower than 2000
-#define MAXVAR_USER 7           // max. distinct user variables allowed. Absolute limit: 255
-#define MAXVAR_PROG 10          // max. program variable NAMES allowed (distinct global, static, local/parameter variables may share the same name). Absolute limit: 255
-#define MAXVAR_STAT 10          // max. distinct static variables allowed. Absolute limit: 255
-#define MAXFUNC 10              // max. Justina functions allowed. Absolute limit: 255
+#define MAXVAR_USER 100         // max. distinct user variables allowed. Absolute limit: 255
+#define MAXVAR_PROG 100         // max. program variable NAMES allowed (distinct global, static, local/parameter variables may share the same name). Absolute limit: 255
+#define MAXVAR_STAT 100         // max. distinct static variables allowed. Absolute limit: 255
+#define MAXFUNC 50              // max. Justina functions allowed. Absolute limit: 255
 
 #endif

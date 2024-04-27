@@ -30,7 +30,7 @@ function start();
 		"---- Executing startup file 'start.jus' ----", line(), repChar("-", 44);
 	
 	coutLine "board architecture: ", 
-		choose(sysVal(44), "unknown", "SAMD", "RP2040", "ESP32");					// Arduino board architecture ?
+		choose(sysVal(44) + 1, "unknown", "SAMD", "RP2040", "ESP32");					// Arduino board architecture ?
 	coutLine ifte(isColdStart(), "Cold start", "Warm start");						
 	
 	coutLine "setting display mode and width; int and float number format";	

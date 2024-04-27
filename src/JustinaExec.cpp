@@ -2572,9 +2572,9 @@ Justina::execResult_type  Justina::launchEval(LE_evalStack*& pFunctionStackLvl, 
 }
 
 
-// ------------------------------------------------------------------------------------------------
-// *   init parameter variables with supplied arguments (scalar parameters with default values)   *
-// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------
+// *   init parameter variables with arguments supplied by caller   *
+// ------------------------------------------------------------------
 
 void Justina::initFunctionParamVarWithSuppliedArg(int suppliedArgCount, LE_evalStack*& pFirstArgStackLvl) {
     // save function caller's arguments to function's local storage and remove them from evaluation stack
@@ -2637,9 +2637,9 @@ void Justina::initFunctionParamVarWithSuppliedArg(int suppliedArgCount, LE_evalS
 }
 
 
-// ------------------------------------------------------------------------------------------------------------
-// *   init function parameter variables for non_supplied arguments (scalar parameters with default values)   *
-// ------------------------------------------------------------------------------------------------------------
+// ----------------------------------------------------------------------------------------------------------
+// *   init function parameter variables for non_supplied arguments (use scalar parameter default values)   *
+// ----------------------------------------------------------------------------------------------------------
 
 void Justina::initFunctionDefaultParamVariables(char*& pStep, int suppliedArgCount, int paramCount) {
     int tokenType = *pStep & 0x0F;                                                                                          // function name token of called function

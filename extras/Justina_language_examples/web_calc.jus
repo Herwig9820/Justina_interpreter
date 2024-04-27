@@ -1,0 +1,332 @@
+/*------------------------------------------------------------------------------------------------------------------------
+    Example JUSTINA language program for use with the Justina interpreter
+	
+ 	The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      
+    by the Free Software Foundation (https://www.gnu.org/licenses).                                                      
+    Refer to GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter            
+	
+    This example Justina code is in the public domain
+
+    2024, Herwig Taveirne                                                                                                
+------------------------------------------------------------------------------------------------------------------------*/
+
+
+program calculatorWebServer; // this is a JUSTINA program
+
+/*
+	Example of a simple web server, creating a web page functioning as a calculator.
+	An input box allows you to type in any expression (no commands) as long as it adheres to the Justina syntax:
+	internal Justina functions, Justina user functions and Justina user cpp functions are all allowed.
+	When submitted, the expression is evaluated by Justina ( eval() function) and the result (or the error, 
+	if an error is produced) is returned. The last 10 results are shown in an answer box below the input box. 
+	
+	This example is intended to be used with Justina library example Justina_TCPIP, which 
+	- configures your Arduino as a TCP server
+	- is responsible for maintaining the WiFi and the TCP connection
+	- sets the TCP/IP client as Justina IO device 2 (IO2)
+	
+	This Justina language program implements the HTTP server on top, without having to worry about WiFi and TCP
+	connection maintenance. From the perspective of the HTTP server, this is a pure background process, executed regularly
+	by means of Justina system callbacks (see Justina_TCPIP library example).
+	
+	This example uses the SD card: it expects to find a Justina logo file and icon file (jus_logo.jpg and jus_icon.jpg)
+	in SD card directory "/justina/images".
+	NOTE: if an SD card is not connected or the image files are not found, the web page will still be displayed, but without
+	logo and icon. 
+	
+	NOTE: the image files are available in the Justina library in folder 'Justina_interpreter\extras\Justina_language_examples\images'
+
+	Function call: webServer();
+	While web client is not connected, press ampersand ( & ) to exit
+*/
+
+
+// global constants and variables
+// ------------------------------
+
+	// program variables available to the web browser 'calculator' user (user variables are also available)
+	var last, r0, r1, r2, r3, r4, r5, r6, r7, r8, r9;											// 'last answer' register and user registers
+
+
+// webserver main loop: processes incoming HTTP client requests and, when the empty line 
+// following the HTTP request header is encountered, sends a HTML response.
+// Calls 2 Justina user c++ functions defined within Justina_TCPIP.ino: 
+// - cpp_connState() : checks WiFi and TCP/IP client connection state
+// - cpp_stopClient(): stops TCP/IP client at the end of a request/response cycle 
+// -------------------------------------------------------------------------------------
+
+function webServer();
+	
+	const TCP_CONNECTED = 4;
+	
+	const iconFile = "/justina/images/jus_icon.jpg";											// Justina icon file
+	const logoFile = "/justina/images/jus_logo.jpg";											// Justina logo file
+	
+	static lastExpressions(10) = "";															// stores last 10 expressions entered
+	static lastResultsText(10) = "";															// stores last 10 results, as text (using current display formatting)
+	
+	var clientRequest=""; 																		// client request, as it is received
+	var expressionText = "", result = "";														// expression (as a string) and result (as a string, using current display formatting) 
+	var isMainPageRequest = FALSE, isLogoRequest = FALSE, isFaviconRequest = FALSE;
+	
+	var inputLength =0, endPos=0;
+	var i = 0;
+	
+	startSD; 																					// make sure SD card is started
+																								
+	setTimeout(IO2, 500);																		// time out for readLine() function, in ms (NOT blocking for WiFi and TCP maintanance, handled in the background)		
+	cpp_setVerbose(TRUE);																		// allow TCP/IP library to print WiFi and TCP/IP state changes 
+																								
+	while 1;                                                                                	
+		while cpp_connState() != TCP_CONNECTED;													// as long as HTTP client not connected
+			if cin() == asc("&"); return; end;													// check console for ampersand button entry; exit web server if found
+		end; 	                                                                            	
+																								
+		while cpp_connState() == TCP_CONNECTED;													// while client is connected 
+			while available(IO2);																// as long as characters are available (from HTTP client)
+				cout clientRequest=readLine(IO2);												// read request from HTTP client and echo on the Justina console (note: the request itself contains CRLF sequence)
+																								
+				if findStr(clientRequest, "GET / ") == 1;										// GET request to (re-)draw page ? 
+					result = "";                                                            	
+					isMainPageRequest = TRUE; 													// set flag to (re-) draw main page when request will be completemy received
+																								
+				elseif findStr(clientRequest, "GET /?inputBox=") == 1;							// GET request contains an expression to evaluate ? (as text)
+					result = ""; 																// init
+					endPos = findStr (clientRequest, " HTTP/1.1");								// isolate expression
+					inputLength = endPos - 16;                                              	
+					if inputLength > 0;                                                     	
+																								
+						// isolate expression from GET request                              	
+						urlDecode(expressionText = mid(clientRequest, 16, endPos - 16));		// replace '%hh' 3-character sequences by Ascii character with hex Ascii code 'hh'; replace '+' characters with spaces
+						expressionText = trim(expressionText);
+						
+						// calculate result and handle error
+						if strCmp(expressionText, "") != 0;										// not an empty expression 
+							trapErrors TRUE;													// if error, than do not terminate but print error number
+							result = eval(expressionText);										// result (if no error: integer, float or string result)
+							if err() == 3502; result = "! Error in formula (parsing error)";
+							elseif err() != 0; result = "! Evaluation error (code " + cStr(err()) + ")"; 			
+							else; last = result;
+							end;
+							trapErrors FALSE; 													// disable error trapping and clear err()
+							
+							// format result according to current display setting
+							if type(result) == LONG; result =  fmt(result, 0, sysVal(4), sysVal(6), sysVal(5));
+							elseif type(result) == FLOAT;  result = fmt(result, 0, sysVal(1), sysVal(3), sysVal(2));
+							end;	
+							
+							// update array with last 10 results (stored as text)
+							for i=9, 1, -1; 
+								lastExpressions(i+1)=lastExpressions(i);
+								lastResultsText(i+1)= lastResultsText(i); 
+							end; 
+							lastExpressions(1) = expressionText;
+							lastResultsText(1) = result;
+						end;	
+					end;
+					isMainPageRequest = TRUE;
+				
+				elseif findStr(clientRequest, "GET " + logoFile) == 1;							// GET request to send logo ?					
+					isLogoRequest = TRUE;	
+					
+				elseif findStr(clientRequest, "GET /favicon") == 1;								// GET request to send favorite icon ?
+					isFaviconRequest = TRUE;	
+					
+				elseif  strCmp(clientRequest, line()) == 0;  									// all request header lines completely received (indicated by empty line) ?		    									
+					if isMainPageRequest; 														// was a request to (re-)draw the 'main page' ? 
+						sendResponse_mainPage(lastExpressions, lastResultsText, logoFile);		// send response message to draw main page
+						isMainPageRequest = FALSE;												// reset flag
+						
+					elseif isLogoRequest;														// request to send logo ? 
+						sendResponse_image(logoFile);											// send response message 
+						isLogoRequest=FALSE;													// reset flag
+						
+					elseif isFaviconRequest;													// request to send 'favorite icon' ? 
+						sendResponse_image(iconFile);											// send response message indicating 'no favorite icon'
+					isFaviconRequest=FALSE;														// reset flag
+					end; 	
+				end;	
+			end;	
+				
+			cpp_stopClient(); 																	// no more incoming characters available: disconnect client
+		end;	
+	end;	
+end;
+
+
+// send HTML response message to (re-)draw main page
+// -------------------------------------------------
+
+function sendResponse_mainPage(lastExpressions(), lastResultsText(), logoFile);
+	
+	var i=0, charPos=0;
+	
+	// send response header
+	printLine IO2, "HTTP/1.1 200 OK";
+	printLine IO2, "Content-Type: text/html";
+	printLine IO2, "Connection: close";
+	printLine IO2;
+	print IO2, "<!DOCTYPE HTML>";
+	print IO2, "<html>";
+	
+	print IO2, "<head>";
+	print IO2, "<title>Justina calculator for Arduino</title>";
+	print IO2, "<link rel=\"icon\" href=\"" + logoFile + "\" type=\"image/jpeg\">";					
+	print IO2, "</head>";
+	
+	print IO2, "<style>";
+	print IO2, "h3 { font-family: Arial, sans-serif; font-size: 24px; color: #00979D; font-weight: 300; margin-top: 10px; }";
+	print IO2, "body { margin-left: 20px; }"; 
+	print IO2, "body { background-color: white; }";
+	print IO2, "#frame { border: 2px solid #00979D; padding: 15px 10px; background-color: #CFEFF1; max-width: 620px;margin-left: 10px; position: relative }"; 
+	print IO2, "#logo {position: absolute; top: 5px; /* Adjust this value to change the top margin */ right: 25px; /* Adjust this value to change the right margin */}";
+	
+	print IO2, "input[type='submit'] { margin-top: 20px; height: 2em;}"; 
+	
+	print IO2, "input[type='text'] {";
+	print IO2, " width: 84%;"; 
+	print IO2, " max-width: 600px;";
+	print IO2, " height: 2em;"; 
+	print IO2, " border: 1px solid lightgray;"; 
+	print IO2, "}";
+	
+	print IO2, ".additionalText {";
+	print IO2, "    font-family: Arial, sans-serif;";
+	print IO2, "    font-size: 12px; margin-top: 5px;"; 
+	print IO2, "    color: #008080;";
+	print IO2, "}";
+
+	print IO2, "#answerBox {";
+	print IO2, " width: 100%;";
+	print IO2, " max-width: 600px;";
+	print IO2, " border: 1px solid lightgray;";
+	print IO2, " height: 10em;";
+	print IO2, " overflow: auto;";
+	print IO2, " margin: 0;";
+	print IO2, " background-color: white;";
+	print IO2, " color: #008080;";
+	print IO2, "}";
+	
+	print IO2, ".title { font-family: Arial, sans-serif; margin-top: 20px; color: #008080; 	}";
+	print IO2, "form { margin-bottom: 20px; }";
+	print IO2, "#answerBox { border: 1px solid lightgray; height: 10em; overflow: auto; margin: 0; background-color: white; color: #008080; }"; 
+	
+	print IO2, ".info {";
+	print IO2, " font-family: Arial, sans-serif;";
+	print IO2, " font-size: 13px;"; 
+	print IO2, " color: #008080;font-weight: 300; margin-top: 20px;";
+	print IO2, " margin-bottom: 10px;";
+	print IO2, "}";
+	print IO2, "</style>";
+	
+	
+	print IO2, "<body onload='document.getElementById(\"inputBox\").focus();'>";
+	
+	print IO2, "<div id='frame'>"; 
+	
+	print IO2, "<img id=\"logo\" src=\"" +  logoFile  + "\" alt=\"Logo\" width=\"105\" height=\"105\">"; 			
+	print IO2, "<h3>Calculator for Arduino, powered by Justina</h3>";
+	print IO2, "<div>";
+	print IO2, "<form method='get'>";
+	print IO2, "<div><span class='title'>Enter an expression and tap the calculate button</span></div>"; 
+	print IO2, "<input list='history' id='inputBox' type='text' name='inputBox' autocomplete='off'>"; 
+	print IO2, "<datalist id='history'>"; 
+	
+	
+	for i=1, 10;
+		print IO2, "    <option value='" + lastExpressions(i) + "'>"; 
+	end;
+	
+	
+	print IO2, "</datalist>"; 
+	print IO2, "<input type='submit' value='Calculate'>";
+	print IO2, "<div class='additionalText'>Assign results to registers r0 to r9. Last result is stored in 'last'. Last expressions under dropdown.<br>";
+	print IO2, "Numbers without decimal point or exponent are treated as integers. Enter strings between \"quotes\".<br>";
+	print IO2, "Expressions only (no commands). Consult the Justina interpreter user manual for detailed information.</div>";
+	print IO2, "</form>";
+	print IO2, "</div>";
+	print IO2, "<div>";
+	
+	print IO2, "<span class='title'>Last answers</span>"; 
+	
+	print IO2, "<p id='answerBox'></p>"; 
+	print IO2, "</div>";
+	
+	print IO2, "<div class=\"info\">Justina: <u>JUST</u> an <u>IN</u>tepreter for <u>A</u>rduino. Full documentation on ";
+	print IO2, "<a href=\"https://github.com/Herwig9820/Justina_interpreter\">GitHub</a>"; 
+	print IO2, "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 2024, Herwig Taveirne</div>";
+	
+	print IO2, "</div>";	// frame
+	
+	print IO2, "</body>";	// body end
+	
+	print IO2, "</html>";	// HTML end
+	
+	print IO2, "<script>" ;
+	print IO2, "var answerBox = document.getElementById('answerBox');" ;
+	for i=1, 10; 
+		charPos=1; while (charPos >0) && (charPos <= len( lastResultsText(i))); lastResultsText(i) = replaceStr( lastResultsText(i) , " ", "&nbsp;", charPos); end;
+		print IO2, "answerBox.innerHTML += '" + cStr(i) + ": " + lastResultsText(i) + "<br>';"; 
+	end;
+	printLine IO2, "</script>";
+end;
+
+
+// send response message with icon
+// -------------------------------
+
+function sendResponse_image(imageFile);
+	
+	var fileFound = FALSE;
+	
+	trapErrors TRUE; 
+	fileFound = exists(imageFile);
+	if err() != 0; fileFound = FALSE; end;
+	trapErrors FALSE;
+	
+	if fileFound;
+		printLine IO2, "HTTP/1.1 200 OK";
+		printLine IO2, "Content-Type: image/jpeg";						
+		printLine IO2, "Connection: close";
+		printLine IO2 ;
+		sendFile imageFile, IO2, FALSE;
+		printLine IO2 ;
+		
+	else;
+		printLine IO2, "Content-type:text/html";
+		printLine IO2, "Connection: close";
+	end;
+end;	
+
+
+// ---------------
+// helper routines
+// ---------------
+
+// replace '%hh' 3-character sequences by Ascii character with hex Ascii code 'hh'; replace '+' characters with spaces 
+// -------------------------------------------------------------------------------------------------------------------
+
+function urlDecode(url);
+	const asc_plus = 0x2b, asc_percent = 0x25;
+	var sourceLength = 0;
+	var i=1, j=1;												// source and destination character in the same string
+	var ascii = 0;
+	
+	sourceLength = len(url);
+	j=i;														// init
+	for i = 1, sourceLength;
+		if asc(url, i) == asc_plus; 
+			replaceChar(url, 0x20, j); 
+		elseif asc(url, i) == asc_percent; 
+			ascii = hexStrToAsc(url, ++i);						// convert two ASCII characters, containing ASCII code for hex digits, to ASCII code with these two hex digits
+			++i;												// in total, two extra characters to skip 
+			replaceChar(url, ascii, j); 
+		else;
+			replaceChar(url, asc(url, i), j); 					// move character left, from position i to position j
+		end;
+		j++;
+	end;
+	if (j<i); 
+		replaceChar(url, 0x00, j);								// terminator
+	end;
+end;	

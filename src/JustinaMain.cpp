@@ -260,12 +260,14 @@ const Justina::InternCppFuncDef Justina::_internCppFunctions[]{
     {"toUpper",                 fnccod_toupper,                 1,3,    0b0},
     {"toLower",                 fnccod_tolower,                 1,3,    0b0},
     {"space",                   fnccod_space,                   1,1,    0b0},
-    {"repChar",                 fnccod_repchar,                 2,2,    0b0},
-    {"findInStr",               fnccod_findsubstr,              2,3,    0b0},
-    {"substInStr",              fnccod_replacesubstr,           3,4,    0b0},
+    {"repeatChar",              fnccod_repeatchar,              2,2,    0b0},
+    {"replaceChar",             fnccod_replaceChar,             2,3,    0b0},
+    {"findStr",                 fnccod_findsubstr,              2,3,    0b0},
+    {"replaceStr",              fnccod_replacesubstr,           3,4,    0b0},
     {"strCmp",                  fnccod_strcmp,                  2,2,    0b0},
     {"strCaseCmp",              fnccod_strcasecmp,              2,2,    0b0},
-    {"strToHexStr",             fnccod_strhex,                  1,1,    0b0},
+    {"ascToHexStr",             fnccod_ascToHexString,          1,1,    0b0},
+    {"hexStrToAsc",             fnccod_hexStringToAsc,          1,2,    0b0},
     {"quote",                   fnccod_quote,                   1,1,    0b0},
 
     {"isAlpha",                 fnccod_isAlpha,                 1,2,    0b0},
@@ -357,7 +359,7 @@ const Justina::TerminalDef Justina::_terminals[]{
 
     {term_semicolon,        termcod_semicolon_BPset,    0x00,               0x00,                       0x00},
     {term_semicolon,        termcod_semicolon_BPallowed,0x00,               0x00,                       0x00},
-    {term_semicolon,        termcod_semicolon,          0x00,               0x00,                       0x00},      // MUST follow previous entries
+    {term_semicolon,        termcod_semicolon,          0x00,               0x00,                       0x00},      // MUST directly follow two previous 'semicolon operator' entries
     {term_comma,            termcod_comma,              0x00,               0x00,                       0x00},
     {term_leftPar,          termcod_leftPar,            0x00,               0x10,                       0x00},
     {term_rightPar,         termcod_rightPar,           0x00,               0x00,                       0x00},
@@ -443,6 +445,9 @@ const Justina::SymbNumConsts Justina::_symbNumConsts[]{
     // boolean values
     {"FALSE",               "0",                        value_isLong},          // value for boolean 'false'
     {"TRUE",                "1",                        value_isLong},          // value for boolean 'true'
+    
+    {"OFF",                 "0",                        value_isLong},          // value for boolean 'false'
+    {"ON",                  "1",                        value_isLong},          // value for boolean 'true'
 
     // data types
     {"LONG",                "1",                        value_isLong},          // value type of a long value

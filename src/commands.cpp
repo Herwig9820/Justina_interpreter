@@ -887,7 +887,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                 if ((isReceive) || (isCopy)) {
                     // open receiving file for writing. Create it if it doesn't exist yet, truncate it if it does 
                     // open this file after ALL other checks are done, because if the file existed already, it will be truncated after opening
-                    // NOTE: for ESP32, CREATE_FILE and TRUNC_FILE will have no effect (ESP32 SD library only knows read, write and append modes)////
+                    // NOTE: for ESP32, CREATE_FILE and TRUNC_FILE will have no effect (ESP32 SD library only knows read, write and append modes)
                     execResult = SD_open(destinationStreamNumber, args[receivingFileArgIndex].pStringConst, WRITE_FILE | CREATE_FILE | TRUNC_FILE);
                     if (execResult != result_execOK) {
                         if (isCopy) { SD_closeFile(sourceStreamNumber); }                   // source file was already open: close
@@ -936,6 +936,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                         }
                         waitForFirstChar = false;                                                   // for all next characters
                     }
+                    
                     if (verbose && (progressDotsByteCount > 2000)) {
                         progressDotsByteCount = 0;  printTo(0, '.');
                         if ((++dotCount & 0x3f) == 0) { printlnTo(0); }                             // print a crlf each 64 dots

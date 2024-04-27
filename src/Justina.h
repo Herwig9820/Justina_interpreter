@@ -324,6 +324,7 @@ class Justina {
         fnccod_getTrappedErr,
         fnccod_isColdStart,
         fnccod_asc,
+        fnccod_replaceChar,
         fnccod_char,
         fnccod_len,
         fnccod_nl,
@@ -342,12 +343,13 @@ class Justina {
         fnccod_tab,
         fnccod_gotoColumn,
         fnccod_getColumnPos,
-        fnccod_repchar,
+        fnccod_repeatchar,
         fnccod_findsubstr,
         fnccod_replacesubstr,
         fnccod_strcmp,
         fnccod_strcasecmp,
-        fnccod_strhex,
+        fnccod_ascToHexString,
+        fnccod_hexStringToAsc,
         fnccod_quote,
 
         fnccod_cint,
@@ -793,7 +795,7 @@ class Justina {
     static constexpr int MAX_ARRAY_ELEM{ 1000 };                                // max. elements allowed in an array. Absolute limit: 2^15-1 = 32767. Individual dimensions are limited to a size of 255
     static constexpr int MAX_LAST_RESULT_DEPTH{ 10 };                           // max. depth of 'last results' FiFo
 
-    static constexpr int MAX_IDENT_NAME_LEN{ 20 };                              // max length of identifier names, excluding terminating '\0'
+    static constexpr int MAX_IDENT_NAME_LEN{ 30 };                              // max length of identifier names, excluding terminating '\0'
     static constexpr int MAX_ALPHA_CONST_LEN{ 255 };                            // max length of character strings stored in variables, excluding terminating '\0',. Absolute limit: 255
     static constexpr int MAX_USER_INPUT_LEN{ 100 };                             // max. length of text a user can enter with an INPUT statement. Absolute limit: 255
     static constexpr int MAX_STATEMENT_LEN{ 300 };                              // max. length of a single user statement 
@@ -1292,10 +1294,10 @@ private:
 
     // sizes MUST be specified AND must be exact
     static const ResWordDef _resWords[77];                                                                                      // keyword names
-    static const InternCppFuncDef _internCppFunctions[139];                                                                     // internal cpp function names and codes with min & max arguments allowed
+    static const InternCppFuncDef _internCppFunctions[141];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
 #if (defined ARDUINO_ARCH_ESP32) 
-    static const SymbNumConsts _symbNumConsts[77];                                                                              // predefined constants
+    static const SymbNumConsts _symbNumConsts[79];                                                                              // predefined constants
 #else
     static const SymbNumConsts _symbNumConsts[74];                                                                              // predefined constants
 #endif

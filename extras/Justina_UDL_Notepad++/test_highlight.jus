@@ -1,0 +1,49 @@
+list with all defined symbols in Justina, with proper highlighting
+------------------------------------------------------------------
+
+commands (control block stat.: bold)	functions																		predefined constants						operators			comments
+------------------------------------    ----------------------------------------------------------------------------    ----------------------------------------    ----------------    -----------------------------------
+
+var             	raiseError          sqrt				tone				ascToHexStr			fmt					e					CANCELED				=					// this is a single-line comment 
+const           	trapErrors          sin					pulseIn             hexStrToAsc			tab					PI                  SUCCESS 				+=					/* this is a multi- line comment */ 
+static          	clearError          cos					shiftIn             quote				col                 HALF_PI             IO4 					-=					
+delete          	quit                tan					shiftOut            isAlpha				pos                 QUART_PI            FILE1           		*=				
+clearMem			dispWidth           asin				random              isAlphaNumeric		open                TWO_PI              FILE2 					/=					literal constants (examples)
+clearProg       	floatFmt            acos				randomSeed          isDigit				close               DEG_TO_RAD          CONSOLE 				%=					-----------------------------------
+loadProg        	intFmt              atan				bit                 isHexDigit			position            RAD_TO_DEG          IO1 					<<=					
+program         	dispMode            ln					bitRead             isControl			size                RADIANS             IO2             		>>=					123.456789
+function        	tabSize             lnp1				bitClear            isGraph				seek                DEGREES             IO3             		&=					35e-4    
+for             	angleMode           log10				bitSet              isPrintable			name                FALSE               FILE3           		|=					0xab12
+while           	setConsole          exp					bitWrite            isPunct				fullName            TRUE                FILE4           		^=					"this is a string"
+if              	setConsoleIn        expm1				byteRead            isWhitespace		isDirectory         LONG                FILE5           		++	
+elseif          	setConsoleOut       round				byteWrite           isAscii				rewindDirectory     FLOAT               READ            		--		
+else            	setDebugOut         ceil				maskedWordRead      isLowerCase			openNext            STRING              WRITE           		<					user cpp routines (prefix to highlight) 
+end             	info                floor				maskedWordClear     isUpperCase			exists              OFF                 APPEND          		>					---------------------------------------
+break           	input               trunc				maskedWordSet       eval				createDirectory     ON                  SYNC            		<=	
+continue        	startSD             min					maskedWordWrite     ubound				removeDirectory     LOW                 NEW_OK          		>=	 				user_
+return          	stopSD              max					mem32Read           dims				remove              HIGH                NEW_ONLY        		!=					usr_
+pause           	receiveFile         abs					mem32Write          type				fileNum             INPUT               TRUNC           		==					cpp_
+halt            	sendFile            signBit				mem8Read            r					isInUse             OUTPUT              EOF             		+	
+stop            	copyFile            fmod				mem8Write           err					closeAll            INPUT_PULLUP        FIXED           		-	
+nop             	dbout               ifte				char                isColdStart	                            INPUT_PULLDOWN      EXP             		*	
+go              	dboutLine           switch				len                 sysVal	                                LED_BUILTIN         EXP_U           		/	
+step            	cout                index				line                cin	                                    LED_RED             SHORT           		%	
+stepOut         	coutLine            choose				asc                 cinLine	                                LED_GREEN           SHORT_U         		**	
+stepOver        	coutList            cInt				rtrim               cinList	                                LED_BLUE            DEC             		&&	
+bStepOut        	print               cFloat				ltrim               read	                                LSBFIRST            HEX             		||	
+loop				printLine           cStr				trim                readLine	                            MSBFIRST            HEX_U           		!	
+trace           	printList           millis				left                readList	                            NO_PROMPT           FLAG_LEFT       		<<	
+viewExprOn			vprint              micros				mid                 vreadList	                            PROMPT              FLAG_SIGN       		>>	
+viewExprOff			vprintLine          wait				right               find	                                ECHO                FLAG_SPACE      		&	
+setNextLine			vprintList          digitalRead			toUpper             findUntil	                            NO_RESULTS          FLAG_POINT      		|	
+abort           	listCallStack       digitalWrite		toLower             peek	                                RESULTS             FLAG_0X         		^	
+debug           	listBP              pinMode				space               available	                            QUOTE_RES           FLAG_000        		~	
+BPon				listVars            analogRead			repeatChar          flush	                                ENTER               FLAG_NONE       		;	
+BPoff				listFiles           analogReference		replaceChar         setTimeout	                            ENTER_CANCEL        BOARD_OTHER     		,	
+setBP				listFilesToSerial   analogWrite			findStr             getTimeout	                            YES_NO              BOARD_SAMD      		(	
+clearBP	                                analogReadResolution	replaceStr      availableForWrite	                    YN_CANCEL           BOARD_RP2040    		)	
+enableBP	                            analogWriteResolution	strCmp          getWriteError	                        NO_DEFAULT          BOARD_ESP32		
+disableBP	                            noTone				strCaseCmp          clearWriteError	                        ALLOW_DEFAULT 		
+	                
+
+

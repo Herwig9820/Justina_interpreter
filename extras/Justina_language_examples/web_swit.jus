@@ -17,7 +17,7 @@ program simpleWebServer; // this is a JUSTINA program
 	Example of a simple web server.
 	Adapted from an example found here: https://forum.arduino.cc/index.php?topic=683079.0
 	
-	This example draws a webpage with 20 'on' and 20 'off' buttons, maintaining the state of 20 switches.
+	This example draws a webpage with 5 'on' and 5 'off' buttons, maintaining the state of 5 'switches'.
 	Buttons representing a switch that is currently 'on' are drawn in a red color. 
 	Switch states maintained can then be used to interact with specific hardware (leds, switching transistors,...) 
 	
@@ -27,7 +27,7 @@ program simpleWebServer; // this is a JUSTINA program
 								(t: tag identifying the button clicked)
 	GET /favicon.ico HTTP/1.1	: request to send favorite icon (which isn't available)	
 	
-	This example is intended to be used with Justina library example Justina_TCPIP. It configures your Arduino as
+	This example is intended to be used with Justina library example Justina_TCPIP, which configures your Arduino as
 	a TCP server and is responsible for maintaining the WiFi and the TCP connection.
 	
 	This Justina language program implements the HTTP server on top of that, without having to worry about WiFi and TCP
@@ -35,16 +35,17 @@ program simpleWebServer; // this is a JUSTINA program
 	even when the webserver is waiting for characters to come in (readLine() functon).
 	
 	Function call: webServer();
+	While web client is not connected, press ampersand ( & ) to exit
 */
 
 
 // global constants and variables
 // ------------------------------
 
-const SWITCH_COUNT = 20;	     															// number of switches
-const buttonTags = "abcdefghijklmnopqrstABCDEFGHIJKLMNOPQRST";								// tags identifying 'on' buttons (first group) and 'off' buttons (second group)
+const SWITCH_COUNT = 5;	     																// number of switches
+const buttonTags = "abcde";																	// tags identifying 'on' buttons (first group) and 'off' buttons (second group)
 
-var switchStates(20) =  0 ; 																// default: all switches off
+var switchStates(5) =  0 ; 																	// default: all switches off
 
 
 //	webserver main	
@@ -52,34 +53,34 @@ var switchStates(20) =  0 ; 																// default: all switches off
 
 function webServer();
 	
+	const TCP_CONNECTED = 4;
+
 	var clientRequest=""; 
 	var tag = " ";
 	var buttonIndex = -1;
 	var isMainPageRequest = FALSE, isFaviconRequest = FALSE;
 	
-	
-	setTimeout(IO2, 500);																	// time out for readLine() function, in ms		
-	cpp_setVerbose(TRUE);																	// allow tcp/ip library to print WiFi and TCP/IP state changes 
+	setTimeout(IO2, 500);																	// time out for readLine() function, in ms (NOT blocking for WiFi and TCP maintanance, handled in the background)
+	cpp_setVerbose(TRUE);																	// allow TCP/IP library to print WiFi and TCP/IP state changes 
 	
 	while 1;
-		while cpp_connState() != 4;
-			if cin() == asc("&"); return; end;												// while waiting for connection, check serial for ampersand button (exit Justina)
+		while cpp_connState() != TCP_CONNECTED;												// as long as HTTP client not connected															
+			if cin() == asc("&"); return; end;												// check console for ampersand button entry; exit web server if found															
 		end; 	
 			
 		while cpp_connState()==4;															// while client is connected 
 			while available(IO2);
 				cout clientRequest=readLine(IO2);											// read request from HTTP client and echo on the Justina console (note: the request itself contains CRLF sequence)
 				
-				if findInStr(clientRequest, "GET / ") == 1;									// GET request to (re-)draw page ? 
+				if findStr(clientRequest, "GET / ") == 1;									// GET request to (re-)draw page ? 
 						buttonIndex = -1;  													// button states do not change
 						isMainPageRequest = TRUE; 											// set flag to (re-) draw main page when request will be completemy received
 				
-				elseif (findInStr(clientRequest, "GET /") == 1) && (len(clientRequest) >=7);
+				elseif (findStr(clientRequest, "GET /") == 1) && (len(clientRequest) >=7);
 					if (asc(clientRequest, 7)== 0x20); 										// GET request with button tag ?
 						tag = mid(clientRequest, 6, 1); 									// get button index and adapt switch state
-						buttonIndex = findInStr(buttonTags, tag);							// 1 to 2 x number of switches 	
-						switchStates((buttonIndex - 1) % SWITCH_COUNT + 1) =  	
-							ifte (buttonIndex > SWITCH_COUNT, 0, 1); 	
+						buttonIndex = findStr(buttonTags, tag);							    // 1 to number of switches 					
+						switchStates(buttonIndex) = ! switchStates(buttonIndex); 	
 						isMainPageRequest = TRUE;											// set flag to redraw main page when request will be completemy received 									  
 					else;																	// GET request to send favorite icon 
 						isFaviconRequest = TRUE; 											// set flag to send 'no favorite icon' message when request will be completemy received
@@ -141,35 +142,25 @@ function sendMainPageResponse();
 
     print IO2, ("<h1>Arduino as a simple web server</h1>");
     
-	var i;
+	var buttonIndex;
 	
-	// draw first  group of 20 buttons ('on' buttons)
-	for i = 1, SWITCH_COUNT;
+	// draw buttons 
+	for buttonIndex = 1, SWITCH_COUNT;
 		// active button ? color RED
-        if (switchStates(i) == 1); 				
+        if (switchStates(buttonIndex) == 1); 				
             print IO2, ("<button href=\"#\" class=\"button button3\" type=\"button\" onclick= \"window.location.href='");
         else;
             print IO2, ("<button href=\"#\" class=\"button button4\" type=\"button\" onclick= \"window.location.href='");
 		end;
 
         //calculate button index
-        print IO2, mid(buttonTags, i, 1);
+        print IO2, mid(buttonTags, buttonIndex, 1);
         print IO2, ("'\" >");
-        print IO2, "Switch ", i, " on";
+        print IO2, "Switch ", buttonIndex,  ifte(switchStates(buttonIndex), " on", " off");
         print IO2, ("</button>");
     end;
     print IO2, ("<br>");
     
-	// draw second group of 20 buttons ('off' buttons)
-	for i = 1, SWITCH_COUNT; 
-        print IO2, ("<button href=\"#\" class=\"button button4\" type=\"button\" onclick= \"window.location.href='");
-        //calculate button index
-        print IO2, mid(buttonTags, i + SWITCH_COUNT, 1);
-        print IO2, ("'\" >");
-        print IO2, "Switch ", i, " off";
-        print IO2, ("</button>");
-    end;
-
 	print IO2, ("</body>");
     print IO2, ("</html>");
 end;
