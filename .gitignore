@@ -10,7 +10,7 @@ secrets.h
 *.sln
 .development
 
-
+/__vm/
 examples/*/__vm/
 
 # library only
