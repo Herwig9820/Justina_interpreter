@@ -10,7 +10,6 @@
 *   2024, Herwig Taveirne                                                                                                *
 *************************************************************************************************************************/
 
-#include <.Justina_interpreter.vsarduino.h>
 #include "Justina.h"
 #include "secrets.h"               
 #include "src/Justina_TCP.h"
