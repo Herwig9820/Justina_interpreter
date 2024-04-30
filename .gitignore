@@ -5,11 +5,13 @@
 
 # Herwig Taveirne
 secrets.h
-*/__vm/
 *.vcxproj
 *.filters
 *.sln
 .development
+
+
+examples/*/__vm/
 
 # library only
 Justina_interpreter.ino
