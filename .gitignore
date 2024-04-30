@@ -5,7 +5,7 @@
 
 # Herwig Taveirne
 secrets.h
-/__vm
+**/__vm/
 *.vcxproj
 *.filters
 *.sln
