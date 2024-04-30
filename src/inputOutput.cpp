@@ -835,31 +835,35 @@ size_t Justina::println() {
 
 // NOTE: the stream must be set beforehand by function setStream()
 
-char Justina::getCharacter(bool& kill, bool& forcedStop, bool& forcedAbort, bool& setStdConsole, bool allowWaitTime, bool useLongTimeout) {     // default: no time out, input from console
+char Justina::getCharacter(bool& charFetched, bool& kill, bool& forcedStop, bool& forcedAbort, bool& setStdConsole, bool allowWaitTime, bool useLongTimeout) {     // default: no time out, input from console
 
-    // enable time out = false: only check once for a character
-    //                   true: allow a certain time for the character to arrive   
+    // allowWaitTime = false: only check once for a character
+    //                 true: allow a certain time for the character to arrive   
 
-    char c = 0xFF;                                                      // init: no character read
+    charFetched = false;                                                // init: no character read
+    char c = 0xFF;                                                      // returned if no character read (but can also be a character read)
     long startWaitForReadTime = millis();                               // note the time
     bool readCharWindowExpired{};
     long timeOutValue = _pStreamIn->getTimeout();                       // get timeout value for the stream
     bool stop{ false }, abort{ false }, stdCons{ false };
     do {
         execPeriodicHousekeeping(&kill, &stop, &abort, &stdCons);       // get housekeeping flags
-        // get character (if available)
-        if (_pStreamIn->available() > 0) { c = read(); }
         if (kill) { return c; }                                         // flag 'kill' (request from Justina caller): return immediately
         forcedAbort = forcedAbort || abort;                             // do not exit immediately, except if waiting for a 'first' character (with a long timeout)
         if (forcedAbort && useLongTimeout && (_streamNumberIn <= 0)) { break; }
         forcedStop = forcedStop || stop;                                // flag 'stop': continue looking for a character (do not exit immediately). Upon exit, signal 'stop' flag has been raised
         setStdConsole = setStdConsole || stdCons;
-        if (c != 0xff) { break; }
 
+        // get character (if available)
+        if (_pStreamIn->available() > 0) {
+            c = read();
+            charFetched = true;
+            break;
+        }
 
         // try to read character only once or keep trying until timeout occurs ?
-        readCharWindowExpired = true;      // init (for file input) 
-        if (_streamNumberIn <= 0) readCharWindowExpired = (!allowWaitTime || (startWaitForReadTime + (useLongTimeout ? LONG_WAIT_FOR_CHAR_TIMEOUT : timeOutValue) < millis()));
+        readCharWindowExpired = true;                                   // init (for file input) 
+        if (_streamNumberIn <= 0) { readCharWindowExpired = (!allowWaitTime || (startWaitForReadTime + (useLongTimeout ? LONG_WAIT_FOR_CHAR_TIMEOUT : timeOutValue) < millis())); }
     } while (!readCharWindowExpired);
     return c;
 
@@ -876,11 +880,12 @@ bool Justina::flushInputCharacters(bool& forcedStop, bool& forcedAbort) {
     bool messageGiven{ false };
     long charCounter{ 0 };
     bool kill{ false };
+    bool charFetched{ false };
     do {                                                                        // process remainder of input file (flush)
         // NOTE: forcedStop and forcedAbort are dummy arguments here and will be ignored because already flushing input file after error, abort or kill
         bool stop{ false }, abort{ false }, stdConsDummy{ false };              // dummy arguments (not needed here)
-        c = getCharacter(kill, stop, abort, stdConsDummy, true);
-        if (kill) { break; }                                                    // return value true: kill Justina interpreter (buffer is now flushed until next line character)
+        c = getCharacter(charFetched = false, kill, stop, abort, stdConsDummy, true);
+        if (kill) { break; }                                                    // kill Justina interpreter (buffer is now flushed until next line character)
         if (abort) { forcedAbort = true; }                                      // do NOT exit immediately, keep on flushing
         if (stop) { forcedStop = true; }
         if (((millis() - start) > 1000) && !messageGiven) { messageGiven = true; printlnTo(0, "Flushing incoming characters... Please wait"); }
@@ -892,7 +897,7 @@ bool Justina::flushInputCharacters(bool& forcedStop, bool& forcedAbort) {
                 if ((charCounter & 0xfffff) == 0) { printlnTo(0); }             // print a crlf each 64 dots
             }
         }
-    } while (c != 0xFF);     // kill: exit immediately
+    } while (charFetched);
     printlnTo(0);
     return kill;
 }
@@ -917,12 +922,13 @@ bool Justina::getConsoleCharacters(bool& forcedStop, bool& forcedAbort, bool& do
         // read a character, if available in buffer
         char c{ };                                                                          // init: no character available
         bool kill{ false }, stop{ false }, abort{ false }, stdConsDummy{ false };
-        c = getCharacter(kill, stop, abort, stdConsDummy);                                  // get a key (character from console) if available and perform a regular housekeeping callback as well
+        bool charFetched{ false };
+        c = getCharacter(charFetched, kill, stop, abort, stdConsDummy);                     // get a key (character from console) if available and perform a regular housekeeping callback as well
         if (kill) { return true; }                                                          // return value true: kill Justina interpreter (buffer is now flushed until next line character)
         if (abort) { forcedAbort = true; return false; }                                    // exit immediately
         if (stop) { forcedStop = true; }
 
-        if (c != 0xFF) {                                                                    // terminal character available for reading ?
+        if (charFetched) {                                                                  // terminal character available for reading ?
             if (c == terminator) { break; }                                                 // read until terminator found (if terminator is 0xff (default): no search for a terminator 
             else if (c < ' ') { continue; }                                                 // skip control-chars except new line (ESC is skipped here as well - flag already set)
 
@@ -1545,7 +1551,7 @@ Justina::execResult_type Justina::checkFmtSpecifiers(bool isDispFmtCmd, int argC
         int argValue = (valueType[argIndex] == value_isLong) ? operands[argIndex].longConst : (long)operands[argIndex].floatConst;
 
         if (argIndex == 0) { precision = argValue; }            // precision
-        else if (argIndex == 1) { flags = argValue; }       // flags
+        else if (argIndex == 1) { flags = argValue; }           // flags
     }
 
     flags &= 0b11111;       // apply mask
@@ -1592,7 +1598,7 @@ void  Justina::printToString(int width, int precision, bool inputIsString, bool 
     }
     else {
         // printed length of largest float in fixed point notation with max. decimal digits 
-        const int maxNumberColumns = log10(__FLT_MAX__) + MAX_FLOAT_PRECISION + 1;                                           
+        const int maxNumberColumns = log10(__FLT_MAX__) + MAX_FLOAT_PRECISION + 1;
         resultStrLen = max(width + 10, maxNumberColumns);                                                                   // ensure length is sufficient to print a formatted number
     }
 
@@ -1628,6 +1634,6 @@ void  Justina::printToString(int width, int precision, bool inputIsString, bool 
 #endif
 
     return;
-}
+    }
 
 

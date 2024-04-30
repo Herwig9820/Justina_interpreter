@@ -928,8 +928,9 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                     }
                     else {
                         // receive: get a character if available and perform a regular housekeeping callback as well
-                        c = getCharacter(kill, doStop, doAbort, stdConsDummy, isReceive, waitForFirstChar);
-                        newData = (c != 0xff);
+                        bool charFetched{false};
+                        c = getCharacter(charFetched, kill, doStop, doAbort, stdConsDummy, isReceive, waitForFirstChar);
+                        newData = charFetched;
                         if (newData) {
                             if (waitForFirstChar) { printlnTo(0, "Receiving file... please wait"); }
                             buffer[bufferCharCount++] = c; progressDotsByteCount++; totalByteCount++;
@@ -1224,7 +1225,8 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             while (_pConsoleIn->available() > 0) { read(); }                                            // empty console buffer first (to allow the user to type in a 'single' character)
             do {                                                                                        // until new line character encountered
                 char c{};
-                c = getCharacter(kill, doStop, doAbort, stdConsDummy);                                  // get a key (character from console) if available and perform a regular housekeeping callback as well
+                bool charFetched{false};
+                c = getCharacter(charFetched, kill, doStop, doAbort, stdConsDummy);                     // get a key (character from console) if available and perform a regular housekeeping callback as well
                 if (kill) { execResult = result_kill; return execResult; }                              // kill Justina interpreter ? (buffer is now flushed until next line character)
                 if (doAbort) { forcedAbortRequest = true; break; }                                      // stop a running Justina program (buffer is now flushed until next line character) 
                 if (doStop) { forcedStopRequest = true; }                                               // stop a running program (do not produce stop event yet, wait until program statement executed)

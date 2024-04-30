@@ -779,7 +779,7 @@ class Justina {
     // constants that may be changed freely within specific boundaries
     // ---------------------------------------------------------------
 
-    static constexpr uint16_t IMM_MEM_SIZE{ 300 };                              // size, in bytes, of user command memory (stores parsed user statements entered from the keyboard)
+    static constexpr uint16_t IMM_MEM_SIZE{ 500 };                              // size, in bytes, of user command memory (stores parsed user statements entered from the keyboard)
     static constexpr uint16_t BP_LINE_RANGE_PROGMEM_STOR_RATIO{ 5 };            // breakpoints: source line range storage as a % of program storage 
     static constexpr uint16_t MAX_BP_COUNT{ 10 };                               // breakpoints: maximum number of set breakpoints 
 
@@ -798,7 +798,7 @@ class Justina {
     static constexpr int MAX_IDENT_NAME_LEN{ 30 };                              // max length of identifier names, excluding terminating '\0'
     static constexpr int MAX_ALPHA_CONST_LEN{ 255 };                            // max length of character strings stored in variables, excluding terminating '\0',. Absolute limit: 255
     static constexpr int MAX_USER_INPUT_LEN{ 100 };                             // max. length of text a user can enter with an INPUT statement. Absolute limit: 255
-    static constexpr int MAX_STATEMENT_LEN{ 300 };                              // max. length of a single user statement 
+    static constexpr int MAX_STATEMENT_LEN{ 500 };                              // max. length of a single user statement 
 
     static constexpr int MAX_OPEN_SD_FILES{ 5 };                                // SD card: max. concurrent open files
 
@@ -2070,7 +2070,7 @@ private:
     // -------
 
     // read one character from a stream (stream must be set prior to call)
-    char getCharacter(bool& killNow, bool& forcedStop, bool& forcedAbort, bool& setStdConsole, bool enableTimeOut = false, bool useLongTimeout = false);
+    char getCharacter(bool& charFetched, bool& killNow, bool& forcedStop, bool& forcedAbort, bool& setStdConsole, bool enableTimeOut = false, bool useLongTimeout = false);
 
     bool flushInputCharacters(bool& stop, bool& forcedAbort);
 

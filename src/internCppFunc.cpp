@@ -576,7 +576,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
 
                 for (int i = 0; i < maxLineLength; i++) {
                     // get a character if available and perform a regular housekeeping callback as well
-                    char c = getCharacter(kill, doStop, doAbort, stdConsDummy, (streamNumber <= 0));                        // time out only required if external IO
+                    bool charFetched{false};
+                    char c = getCharacter(charFetched, kill, doStop, doAbort, stdConsDummy, (streamNumber <= 0));           // time out only required if external IO
                     if (kill) {                                                                                             // kill request from caller ? 
                         _intermediateStringObjectCount--;
                     #if PRINT_HEAP_OBJ_CREA_DEL
@@ -589,7 +590,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                     if (doAbort) { forcedAbortRequest = true; break; }                                                      // stop a running Justina program (buffer is now flushed until nex line character) 
                     if (doStop) { forcedStopRequest = true; }                                                               // stop a running program (do not produce stop event yet, wait until program statement executed)
 
-                    if ((c == 0xff) || ((c == terminator) && !isLineForm)) { break; }                                       // no more characters or [not for readLine()] terminator found ? break (terminator is not stored in buffer)
+                    if ((!charFetched) || ((c == terminator) && !isLineForm)) { break; }                                    // no more characters or [not for readLine()] terminator found ? break (terminator is not stored in buffer)
                     buffer[charsRead++] = c;
                     if ((c == terminator) && isLineForm) { break; }                                                         // readLine(): if terminator found (and added to string), break
                 }
@@ -693,7 +694,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
 
                 for (int i = 0; i < MAX_ALPHA_CONST_LEN; i++) {
                     // get a character if available and perform a regular housekeeping callback as well
-                    char c = getCharacter(kill, doStop, doAbort, stdConsDummy, (streamNumber <= 0));                        // time out only required if external IO
+                    bool charFetched{ false };
+                    char c = getCharacter(charFetched, kill, doStop, doAbort, stdConsDummy, (streamNumber <= 0));           // time out only required if external IO
                     if (kill) {                            // kill request from caller ? 
                         if (kill) {                                                                                         // kill request from caller ? 
                             _intermediateStringObjectCount--;
@@ -708,7 +710,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                     if (doAbort) { forcedAbortRequest = true; break; }                                                      // stop a running Justina program  
                     if (doStop) { forcedStopRequest = true; }                                                               // stop a running program (do not produce stop event yet, wait until program statement executed)
 
-                    if (c == 0xff) { break; }                                                                               // no more characters ? break
+                    if (!charFetched) { break; }                                                                            // no more characters ? break
                     if (c == '\n') { break; }                                                                               // line end found ? break ('terminator'\n' is not stored in buffer)
                     buffer[charsRead++] = c;
                 }
@@ -852,9 +854,9 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             #endif
                 _intermediateStringObjectCount--;
                 delete[] buffer;
-            }
+        }
 
-            // if an error occured while processing an argument, then an intermediate string object might still exist on the heap
+        // if an error occured while processing an argument, then an intermediate string object might still exist on the heap
             if (stringObjectCreated) {
             #if PRINT_HEAP_OBJ_CREA_DEL
                 _pDebugOut->print("\r\n----- (Intermd str) ");   _pDebugOut->println((uint32_t)value.pStringConst, HEX);
@@ -863,10 +865,10 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 _intermediateStringObjectCount--;
                 delete[] value.pStringConst;
 
-            }
+    }
 
 
-            // execution error ?
+    // execution error ?
             if (execResult != result_execOK) {
                 _evalParseErrorCode = parsingResult;                                                                        // only relevant in case a parsing error occurred
                 return execResult;
@@ -875,7 +877,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // save result: number of values that were actually saved 
             fcnResultValueType = value_isLong;
             fcnResult.longConst = valuesSaved;
-        }
+}
         break;
 
 
@@ -922,11 +924,12 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
 
             while (true) {
                 // get a character if available and perform a regular housekeeping callback as well
-                char c = getCharacter(kill, doStop, doAbort, stdConsDummy, (streamNumber <= 0));                            // time out only required if external IO
+                bool charFetched{ false };
+                char c = getCharacter(charFetched, kill, doStop, doAbort, stdConsDummy, (streamNumber <= 0));               // time out only required if external IO
                 if (kill) { return result_kill; }                                                                           // kill request from caller ? 
                 if (doAbort) { forcedAbortRequest = true; break; }                                                          // stop a running Justina program 
                 if (doStop) { forcedStopRequest = true; }                                                                   // stop a running program (do not produce stop event yet, wait until program statement executed)
-                if (c == 0xff) { targetFound = false; break; }                                                              // target was not found
+                if (!charFetched) { targetFound = false; break; }                                                           // target was not found
 
                 if (c == target[targetCharsMatched]) {
                     if (++targetCharsMatched == targetLen) { targetFound = true; break; }
@@ -1107,7 +1110,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 match = false;      // init
 
                 if (isSwitch) {
-                    if ((argIsStringBits & (0x1 << 0)) && (argIsStringBits & (0x1 << matchIndex))) {                                    // test value and mmtch value are both strings
+                    if ((argIsStringBits & (0x1 << 0)) && (argIsStringBits & (0x1 << matchIndex))) {                                    // test value and match value are both strings
                         if ((args[0].pStringConst == nullptr) || (args[matchIndex].pStringConst == nullptr)) {
                             match = ((args[0].pStringConst == nullptr) && (args[matchIndex].pStringConst == nullptr));                  // equal
                         }
@@ -1120,7 +1123,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 }
                 else {
                     if (!(argIsLongBits & (0x1 << matchIndex)) && !(argIsFloatBits & (0x1 << matchIndex))) { return result_testexpr_numberExpected; }   // test value and match value are both strings
-                    match = ((argIsFloatBits & (0x1 << matchIndex)) ? (args[matchIndex].floatConst != 0.) : (args[matchIndex].longConst == !0));
+                    match = ((argIsFloatBits & (0x1 << matchIndex)) ? (args[matchIndex].floatConst != 0.) : (args[matchIndex].longConst != 0));
                 }
 
                 if (match) {
@@ -1297,7 +1300,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         case fnccod_format:
         {
             // fmt (expression [, width [, precision [, specifier]  [, flags  [, character count] ] ] ]
-            
+
             // fmt (expression                        , specifier   [, flags  [, character count] ] 
             // fmt (expression             precision  , specifier   [, flags  [, character count] ] 
 
@@ -1775,7 +1778,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 fcnResult.longConst = (suppliedArgCount == 1) ? random(args[0].longConst) : random(args[0].longConst, args[1].longConst);
             }
             else if (functionCode == fnccod_randomSeed) { randomSeed(args[0].longConst); }                                  // arg: seed
-        }
+            }
         break;
 
 
@@ -1880,7 +1883,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         {
             if (!(argIsLongBits & (0x1 << 0)) && !(argIsFloatBits & (0x1 << 0))) { return result_arg_numberExpected; }
             int asciiCode = (argIsLongBits & (0x1 << 0)) ? args[0].longConst : int(args[0].floatConst);
-            if ((asciiCode < 0) || (asciiCode > 0xFF)) { return result_arg_outsideRange; }                                  // do not accept 0xFF
+            if ((asciiCode < 0) || (asciiCode > 0xFF)) { return result_arg_outsideRange; }                                  
 
             // result is string
             fcnResultValueType = value_isStringPointer;
@@ -1904,7 +1907,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         {
             if (!(argIsLongBits & (0x1 << 0)) && !(argIsFloatBits & (0x1 << 0))) { return result_arg_numberExpected; }
             int asciiCode = (argIsLongBits & (0x1 << 0)) ? args[0].longConst : int(args[0].floatConst);
-            if ((asciiCode < 0) || (asciiCode > 0xFF)) { return result_arg_outsideRange; }                                  // do not accept 0xFF
+            if ((asciiCode < 0) || (asciiCode > 0xFF)) { return result_arg_outsideRange; }                                  
 
             // result is string
             fcnResultValueType = value_isStringPointer;
@@ -2127,7 +2130,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                     else { *_pEvalStackTop->varOrConst.value.pFloatConst = (float)(foundStartPos + 1); }
                 }
             }
-        }
+            }
         break;
 
 
@@ -2412,7 +2415,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                     _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
                     _pDebugOut->print("         sysval(43) ");   _pDebugOut->println(fcnResult.pStringConst);
                 #endif
-                }
+                    }
                 break;
 
                 case 44:                                                                        // processor board or architecture
@@ -2434,11 +2437,11 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         }
         break;
 
-    }                                                                                           // end switch
+        }                                                                                           // end switch
 
 
-        // post-process: delete function name token and arguments from evaluation stack, create stack entry for function result 
-        // -------------------------------------------------------------------------------------------------------------------
+            // post-process: delete function name token and arguments from evaluation stack, create stack entry for function result 
+            // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
@@ -2460,6 +2463,6 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
     }
 
     return result_execOK;
-}
+        }
 
 

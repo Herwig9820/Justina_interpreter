@@ -1,0 +1,95 @@
+/*************************************************************************************************************************
+*   Example code demonstrating how to write a user c++ function library for use by the Justina interpreter               *
+*                                                                                                                        *
+*   The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      *
+*   by the Free Software Foundation (https://www.gnu.org/licenses).                                                      *
+*   Refer to GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter            *
+*                                                                                                                        *
+*   This example code is in the public domain                                                                            *
+*                                                                                                                        *
+*   2024, Herwig Taveirne                                                                                                *
+*************************************************************************************************************************/
+
+#ifndef _JUSTINA_TCP_h
+#define _JUSTINA_TCP_h
+#
+#if defined(ARDUINO_ARCH_RP2040)
+#include <WiFiNINA_Generic.h>
+#elif defined (ARDUINO_ARCH_ESP32)
+#include <WiFi.h>
+#else
+#include <WiFiNINA.h>
+#endif
+
+#include "Arduino.h"
+
+
+// ******************************************************************
+// ***                     class TCPconnection                    ***
+// ******************************************************************
+
+// class to control connection to WiFi and a client, if available
+
+class TCPconnection {
+
+public:
+    enum connectionState_type {
+        conn_0_WiFi_notConnected,                                       // WiFi not yet connected
+
+        conn_1_WiFi_waitForConnecton,                                   // waiting for WiFi to connect
+        conn_2_WiFi_connected,                                          // WiFi connected - and TCP not yet connected (TCP disabled or no client)
+
+        conn_3_TCPwaitForNewClient,                                     // waiting for TCP client
+        conn_4_TCP_clientConnected,                                     // TCP server connected to a client 
+    };
+
+private:
+    const char* _SSID, * _PASS;
+    IPAddress _serverAddress, _gatewayAddress, _subnetMask, _DNSaddress; //// const
+
+    static constexpr unsigned long WIFI_UP_CHECK_INTERVAL{ 500 };       // minimum delay between two attempts to connect to WiFi (milliseconds) 
+
+    bool _verbose{};
+    bool _resetWiFi{};
+    bool _isClient{};
+    int _serverPort{};
+
+    bool _WiFiEnabled{};
+    bool _TCPenabled{};
+
+    // state machine: WiFi and client connection state
+    connectionState_type _connectionState{ TCPconnection::conn_0_WiFi_notConnected };                            
+    unsigned long _WiFiWaitingForConnectonAt{};
+    unsigned long _lastWiFiMaintenanceTime{};                           // timestamps in milliseconds
+    unsigned long _lastTCPmaintenanceTime{};
+
+    WiFiServer _server;                                                 // WiFi server object
+    WiFiClient _client;                                                 // WiFi client object
+
+    // private methods
+    void maintainWiFiConnection();                                      // attempt to (re-)connect to WiFi
+    void maintainTCPconnection();                                       // attempt to (re-)connect to a client, if available
+
+public:
+    // constructor: connect as server (with static server IP address)
+    TCPconnection(const char SSID[], const char PASS[], const IPAddress serverAddress, const IPAddress  gatewayAddress, const IPAddress subnetMask,
+        const IPAddress  DNSaddress, const int serverPort, connectionState_type initialConnState);
+
+    // constructor: connect as client (pass server IP address and port to connect to)
+    TCPconnection(const char SSID[], const char PASS[], const IPAddress serverAddress, const int serverPort, connectionState_type initialConnState);
+
+
+    WiFiServer* getServer();                                            // (only if configured as server)
+    WiFiClient* getClient();
+    void maintainConnection();
+    connectionState_type getConnectionState();
+    void setVerbose(bool verbose);
+    void WiFiOff();
+    void WiFiRestart();
+    void TCPdisable();
+    void TCPenable();
+    void stopClient();
+};
+
+
+#endif

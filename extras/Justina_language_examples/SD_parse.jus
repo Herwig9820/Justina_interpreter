@@ -84,7 +84,7 @@ function parseAndPrintRecords(toFile = FALSE);									// optional argument (def
 	// print table header to output stream
 	printLine streamOut, line(), "name", col(12), "eyes", col(20), "hair", 
 		col(26), " length", " weight", "   age";
-	printLine streamOut, repChar("-", 26+7+7+6-1);
+	printLine streamOut, repeatChar("-", 26+7+7+6-1);
 	
 	// now parse each record read from the input file to a number of variables
 	var variablesRead=0, incompleteRecords =0;

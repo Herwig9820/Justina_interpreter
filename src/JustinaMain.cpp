@@ -790,8 +790,9 @@ void Justina::begin() {
             launchingStartFunction = false;                                                                     // nothing to prepare any more
         }
         else {     // note: while waiting for first program character, allow a longer time out              
-            c = getCharacter(kill, forcedStop, forcedAbort, stdConsole, true, waitForFirstProgramCharacter);    // forced stop has no effect here
-            if (c != 0xff) {
+            bool charFetched{false};
+            c = getCharacter(charFetched, kill, forcedStop, forcedAbort, stdConsole, true, waitForFirstProgramCharacter);    // forced stop has no effect here
+            if (charFetched) {
                 if (waitForFirstProgramCharacter) { printlnTo(0, "Receiving and parsing program... please wait"); }
                 _appFlags &= ~appFlag_errorConditionBit;                                                        // clear error condition flag 
                 _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_parsing;                                // status 'parsing'
@@ -799,8 +800,8 @@ void Justina::begin() {
 
             if (kill) { break; }
             // start processing input buffer when (1) in program mode: time out occurs and at least one character received, or (2) in immediate mode: when a new line character is detected
-            allCharsReceived = _programMode ? ((c == 0xFF) && programCharsReceived) : (c == '\n');              // programCharsReceived: at least one program character received
-            if ((c == 0xFF) && !allCharsReceived && !forcedAbort && !stdConsole) { continue; }                  // no character: keep waiting for input (except when program or imm. mode line is read)
+            allCharsReceived = _programMode ? (!charFetched && programCharsReceived) : (c == '\n');              // programCharsReceived: at least one program character received
+            if (!charFetched && !allCharsReceived && !forcedAbort && !stdConsole) { continue; }                  // no character: keep waiting for input (except when program or imm. mode line is read)
 
             // if no character added: nothing to do, wait for next
             noCharAdded = !addCharacterToInput(lastCharWasSemiColon, withinString, withinStringEscSequence, within1LineComment, withinMultiLineComment, redundantSemiColon, allCharsReceived,
