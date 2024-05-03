@@ -1335,7 +1335,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                 if (i < firstValueIndex) {                                                                                  // cout, .... have an implicit stream: skip
 
                     if (isPrintToVar) {      // print to variable
-                        if (!operandIsVar) { return result_arg_varExpected; }
+                        if (!operandIsVar) { return result_arg_variableExpected; }
                         bool isArray = (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_isArray);
                         if (isArray && !opIsString) { return result_array_valueTypeIsFixed; }
                         pStreamPrintColumn = &varPrintColumn;       // NOTE: '_pLastPrintColumn' (pointer to last print position of last printed stream) is not altered by variable print 

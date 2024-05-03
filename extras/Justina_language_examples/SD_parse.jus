@@ -17,9 +17,9 @@ program SD_parseRecords; // this is a JUSTINA program
 	This example demonstates how to write records with formatted data to an SD card file and how to 
 	read back these records and parse the values they contain into variables of the correct data types.
 	
-	Function call: writeRecords();
-				   parseAndPrintRecords(toFile);  // toFile: numeric expression; if zero, will be  
-				                                  // interpreted as FALSE (send output to console))
+	Function call: 
+	- writeRecords();
+	- parseAndPrintRecords(toFile);  // toFile: numeric expression; if zero, will be interpreted as FALSE (send output to console))
 	
 */
 

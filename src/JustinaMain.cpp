@@ -719,7 +719,7 @@ void Justina::begin() {
     bool startJustinaWithoutAutostart{ true };
 
     // initialize SD card now ?
-    // 0 = no card reader, 1 = card reader present, do not yet initialize, 2 = initialize card now, 3 = init card & run start.jus function start() now
+    // 0 = no card reader, 1 = card reader present, do not yet initialize, 2 = initialize card now, 3 = init card & run /Justina/start.jus function start() now
     if ((_justinaStartupOptions & SD_mask) >= SD_init) {
         printTo(0, "\r\nLooking for an SD card...\r\n");
         execResult_type execResult = startSD();
@@ -730,15 +730,15 @@ void Justina::begin() {
         // open startup file and retrieve file number (which would be one, normally)
         _initiateProgramLoad = _SDinitOK;
         if (_initiateProgramLoad) {
-            printlnTo(0, "Looking for 'start.jus' program file...");
-            if (!SD.exists("/start.jus")) { _initiateProgramLoad = false; printlnTo(0, "'start.jus' program NOT found"); }      // ADD staring slash ! (required by ESP32 SD library)
+            printlnTo(0, "Looking for 'start.jus' program file in /Justina folder...");
+            if (!SD.exists("/Justina/start.jus")) { _initiateProgramLoad = false; printlnTo(0, "'start.jus' program NOT found in folder /Justina"); }      // ADD staring slash ! (required by ESP32 SD library)
         }
 
         if (_initiateProgramLoad) {
-            execResult_type execResult = SD_open(_loadProgFromStreamNo, "/start.jus", READ_FILE);                               // this performs a few card & file checks as well
+            execResult_type execResult = SD_open(_loadProgFromStreamNo, "/Justina/start.jus", READ_FILE);       // this performs a few card & file checks as well
             _initiateProgramLoad = (execResult == result_execOK);
             if (!_initiateProgramLoad) { printTo(0, "Could not open 'start.jus' program - error "); printlnTo(0, execResult); }
-            if (openFiles[_loadProgFromStreamNo - 1].file.size() == 0) { _initiateProgramLoad = false;  printTo(0, "File 'start.jus' is empty - error "); printlnTo(0, result_SD_fileIsEmpty); }
+            if (openFiles[_loadProgFromStreamNo - 1].file.size() == 0) { _initiateProgramLoad = false;  printTo(0, "File '/Justina/start.jus' is empty - error "); printlnTo(0, result_SD_fileIsEmpty); }
         }
 
         if (_initiateProgramLoad) {                                                                             // !!! second 'if(_initiateProgramLoad)'
@@ -758,7 +758,7 @@ void Justina::begin() {
 
             streamNumber = _loadProgFromStreamNo;                                                               // autostart step 1: temporarily switch from console input to startup file (opening the file here) 
             setStream(streamNumber, pStatementInputStream);                                                     // error checking done while opening file
-            printTo(0, "Loading program 'start.jus'...\r\n");
+            printTo(0, "Loading program '/Justina/start.jus'...\r\n");
         }
     }
 
@@ -1388,11 +1388,25 @@ bool Justina::checkAllJustinaFunctionsDefined(int& index) const {
 void Justina::setSystemCallbackFunction(void (*func)(long& appFlags)) {
 
     // this function is directly called from the main Arduino program, before the Justina begin() method is called
-    // it stores the address of an optional 'user callback' function
+    // it stores the address of an optional 'system callback' function
     // Justina will call this user routine at specific time intervals, allowing  the user...
     // ...to execute a specific routine regularly (e.g. to maintain a TCP connection, to implement a heartbeat, ...)
 
     _housekeepingCallback = func;
+}
+
+
+// ----------------------------------
+// *   set RTC call back function   *
+// ----------------------------------
+
+void Justina::setRTCCallbackFunction(void (*func)(uint16_t* date, uint16_t* time)) {
+
+    // this function is directly called from the main Arduino program, before the Justina begin() method is called
+    // it stores the address of an optional 'RTC callback' function
+    // Justina can than call this function when it needs the date or time )
+
+    _dateTime = func;
 }
 
 

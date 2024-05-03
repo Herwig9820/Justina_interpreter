@@ -39,7 +39,7 @@ function fileTests(fname);
 	printLine testFile, "this is line ", ++lineIndex;
 	printLine testFile, "this is line ", ++lineIndex;
 	printLine testFile, "this is line ", ++lineIndex;
-	coutLine "testFile size: ", size(testFile), ", position: ", position(testFile);  USER_d;NEW_PL
+	coutLine "testFile size: ", size(testFile), ", position: ", position(testFile);  
 	close(testFile);
 	
 	// read the file, line per line, and print contents to the console. Close the file

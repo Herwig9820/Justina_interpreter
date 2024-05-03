@@ -670,7 +670,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             int firstArgIndex = sourceArgPresent ? 1 : 0;
 
             // check receiving arguments: must be variables
-            for (int argIndex = firstArgIndex; argIndex < suppliedArgCount; ++argIndex) { if (!(argIsVarBits & (1 << argIndex))) { return result_arg_varExpected; } }
+            for (int argIndex = firstArgIndex; argIndex < suppliedArgCount; ++argIndex) { if (!(argIsVarBits & (1 << argIndex))) { return result_arg_variableExpected; } }
 
             if (parseListFromStream) {
                 int streamNumber{ 0 };
@@ -1913,7 +1913,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             fcnResultValueType = value_isStringPointer;
             _intermediateStringObjectCount++;
             fcnResult.pStringConst = new char[3];
-            sprintf(fcnResult.pStringConst, "%.2x", args[0].longConst);
+            sprintf(fcnResult.pStringConst, "%.2lx", args[0].longConst);
         #if PRINT_HEAP_OBJ_CREA_DEL
             _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
             _pDebugOut->print("             strhex ");   _pDebugOut->println(fcnResult.pStringConst);
@@ -1955,11 +1955,17 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         break;
 
 
-        // replace one character in a string
+        // replace one character in a string: replaceChar(string, ASCII code [character position] )
         // ---------------------------------
 
+		// this function replaces character position n in a string with a given ASCII code. No new string is created, 
+		// so the changed string will be lost if it's a Justina constant (not a variable) and the value is not immediately used
+		
         case fnccod_replaceChar:
         {
+            LE_evalStack * pStackLvl {(suppliedArgCount == 3) ? _pEvalStackMinus2 : _pEvalStackMinus1};                     // stack level for first argument (string variable)
+            bool isConstant = (!(argIsVarBits & (0x1 << 0)) || (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_isConstantVar));     
+            if (isConstant){return result_arg_variableExpected;}                                                            // first argument must be a variable string
             if (!(argIsStringBits & (0x1 << 0))) { return result_arg_stringExpected; }
             if (!(argIsLongBits & (0x1 << 1))) { return result_arg_integerTypeExpected; }
             int charPos = 1;                                                                                                // first character in string

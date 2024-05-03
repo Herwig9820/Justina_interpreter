@@ -45,7 +45,7 @@
 #if defined(ARDUINO_ARCH_RP2040) || defined(ARDUINO_ARCH_ESP32)
 
 #if !defined(PROGMEM_SIZE)
-#define PROGMEM_SIZE 65536      // program memory, in bytes (INCLUDING immediate mode parsed statements size). Maximum: 2^16 = 65536. Don't go lower than 2000 
+#define PROGMEM_SIZE 65536      // program memory, in bytes (INCLUDING immediate mode parsed statements size). Maximum: 2^16 = 65536. Minimum: 2000 
 #endif
 #if !defined(MAXVAR_USER)
 #define MAXVAR_USER 255         // max. distinct user variables allowed. Absolute limit: 255
@@ -684,7 +684,7 @@ class Justina {
         result_arg_invalid,
         result_arg_integerDimExpected,
         result_arg_dimNumberInvalid,
-        result_arg_varExpected,
+        result_arg_variableExpected,
         result_arg_tooManyArgs,
         result_arg_wrongSpecifierForDataType,
 
@@ -783,8 +783,9 @@ class Justina {
     static constexpr uint16_t BP_LINE_RANGE_PROGMEM_STOR_RATIO{ 5 };            // breakpoints: source line range storage as a % of program storage 
     static constexpr uint16_t MAX_BP_COUNT{ 10 };                               // breakpoints: maximum number of set breakpoints 
 
-    // user, program 
-    static constexpr long _PROGRAM_MEMORY_SIZE{ PROGMEM_SIZE - IMM_MEM_SIZE };  // program memory, in bytes (excluding immediate mode parsed statements size). Maximum: 65536 (2^16). Don't go lower than 2000 
+
+    static constexpr long _PROGRAM_MEMORY_SIZE{                                 // program memory, in bytes (excluding immediate mode parsed statements size). Maximum: 65536 (2^16). Minimum: 2000 (sufficient for a tiny program)
+        ((PROGMEM_SIZE > 2000) ? PROGMEM : 2000) - IMM_MEM_SIZE };
     static constexpr int MAX_USERVARNAMES{ MAXVAR_USER };                       // max. user variables allowed. Absolute parser limit: 255
     static constexpr int MAX_PROGVARNAMES{ MAXVAR_PROG };                       // max. program variable NAMES allowed (same name may be reused for global, static, local & parameter variables). Absolute limit: 255
     static constexpr int MAX_STATIC_VARIABLES{ MAXVAR_STAT };                   // max. static variables allowed across all parsed functions (only). Absolute limit: 255
@@ -1845,8 +1846,15 @@ private:
     // ----------------------
 
     void (*_housekeepingCallback)(long& appFlags);                  // pointer to callback function for heartbeat
+    
     long _appFlags = 0x00L;                                         // bidirectional flags to transfer info / requests between main program and Justina library
     unsigned long _lastCallBackTime{ 0 }, _currenttime{ 0 }, _previousTime{ 0 };
+
+
+    // RTC callback: storage for function address
+    // ------------------------------------------
+
+    void (*_dateTime)(uint16_t* date, uint16_t* time);
 
 
     // user callbacks (external cpp functions)
@@ -1949,6 +1957,7 @@ private:
     Val lastResultValueFiFo[MAX_LAST_RESULT_DEPTH];
     char lastResultTypeFiFo[MAX_LAST_RESULT_DEPTH]{  };
 
+
     // ------------------------------------
     // *   methods (doc: see .cpp file)   *
     // ------------------------------------
@@ -1968,10 +1977,12 @@ public:
 
     void constructorCommonPart();
 
-    // set pointer to system (main) call back function
-    // -----------------------------------------------
+
+    // set pointer to optional system (main) and RTC call back functions
+    // -----------------------------------------------------------------
 
     void setSystemCallbackFunction(void (*func)(long& appFlags));
+    void setRTCCallbackFunction(void (*func)(uint16_t* date, uint16_t* time));
 
 
     // sets pointers to the locations where the Arduino program stored information about user-defined (external) cpp functions (user callback functions)
@@ -2049,6 +2060,7 @@ public:
     size_t println(const char* s);
     size_t println();
 private:
+
 
     // reset Interpreter to clean state
     // --------------------------------

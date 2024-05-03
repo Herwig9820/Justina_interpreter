@@ -18,7 +18,7 @@ program startJustina; // this is a JUSTINA program
 	This can be useful to adapt specific settings, for instance to set formatting for floating point numbers etc.
 	
 	Requirements:
-	- Justina startup options must allow it (see user manual)
+	- Justina startup options must allow autostart: add 'Justina::SD_runStart' as startup option when the Justina object is created (see user manual appendix A)
 	- An SD card board must be connected 
 	- the program file must be named 'start.jus' and must reside in the root folder of the SD card
 	- the main program function must be defined as 'start()', without parameters  
@@ -26,8 +26,8 @@ program startJustina; // this is a JUSTINA program
 	
 	
 function start();
-	coutLine repChar("-", 44), line(), 
-		"---- Executing startup file 'start.jus' ----", line(), repChar("-", 44);
+	coutLine repeatChar("-", 59), line(), 
+		"---- Executing startup file 'start.jus' ----", line(), repeatChar("-", 59);
 	
 	coutLine "board architecture: ", 
 		choose(sysVal(44) + 1, "unknown", "SAMD", "RP2040", "ESP32");					// Arduino board architecture ?
@@ -42,6 +42,6 @@ function start();
 	angleMode DEGREES;																// set degrees as angle mode
 	
 	coutLine "test angle mode: the sine of 90 degrees is ", sin(90);				// print the sine of 90 degrees to the console								
-	coutLine repChar("-", 44);
+	coutLine repeatChar("-", 59);
 end;
 	

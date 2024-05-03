@@ -15,7 +15,8 @@ program myFirstProgram; // this is a JUSTINA program
 
 /*
 	Very basic example of a Justina program. It demonstrates the use of local variables and
-	executes a simple loop, printing a line to the console at each iteration
+	executes a simple loop, printing a line to the console at each iteration.
+	The function returns 6**2 (6 is the final value of the loop control variable)
 
 	Function call: print5lines();
 */

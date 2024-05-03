@@ -27,15 +27,16 @@ program factorial; // this is a JUSTINA program
 */
 
 
-function fact(number); 
-	n = cInt(number);									
-	var fact_n = 0;										// local variable 
+function fact(n); 
+	var fact_n = 0;								// local variable
+	
+	n = cInt(n);							// do nothing if integer; if floating point value, change the data type to integer									
 
 	if (n > 2); 
-		fact_n =  n * fact(n-1);						// recursive call: calculate n! as n * (n-1)!
+		fact_n =  n * fact(n-1);			// recursive call: calculate n! as n * (n-1)!
 	else;
 		fact_n = n;						
 	end;
 	
-	return fact_n; 										// return n!
+	return fact_n; 							// return n!
 end;

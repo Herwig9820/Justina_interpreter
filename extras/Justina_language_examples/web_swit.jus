@@ -17,7 +17,7 @@ program simpleWebServer; // this is a JUSTINA program
 	Example of a simple web server.
 	Adapted from an example found here: https://forum.arduino.cc/index.php?topic=683079.0
 	
-	This example draws a webpage with 5 'on' and 5 'off' buttons, maintaining the state of 5 'switches'.
+	This example draws a webpage with 5 'on/off' buttons, and maintains the state of 5 'switches'.
 	Buttons representing a switch that is currently 'on' are drawn in a red color. 
 	Switch states maintained can then be used to interact with specific hardware (leds, switching transistors,...) 
 	
@@ -25,7 +25,7 @@ program simpleWebServer; // this is a JUSTINA program
 	GET / HTTP/1.1				: (re-)draw page
 	GET /t HTTP/1.1   			: set swith on or off and redraw page
 								(t: tag identifying the button clicked)
-	GET /favicon.ico HTTP/1.1	: request to send favorite icon (which isn't available)	
+	GET /favicon.ico HTTP/1.1	: request to send favorite icon (which isn't available, so it will not be sent)	
 	
 	This example is intended to be used with Justina library example Justina_TCPIP, which configures your Arduino as
 	a TCP server and is responsible for maintaining the WiFi and the TCP connection.
