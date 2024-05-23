@@ -1,5 +1,5 @@
 /*************************************************************************************************************************
-*   Example code demonstrating how to write a user c++ function library for use by the Justina interpreter               *
+*   Example Arduino sketch demonstrating Justina interpreter functionality												 *
 *                                                                                                                        *
 *   The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      *
 *   by the Free Software Foundation (https://www.gnu.org/licenses).                                                      *
@@ -15,31 +15,27 @@
 #include "src/Justina_TCP.h"
 
 /*
-    Justina can receive data from / send data to maximum four IO / input only / output only devices.
-
+    Example code demonstrating how to setup an Arduino as a TCP/IP server
+    ---------------------------------------------------------------------
     This sketch demonstrates various Justina features, namely
-    - setting up Arduino as a TCP/IP server in order to use a TCP/IP terminal as an additional output device
+    - setting up Arduino as a TCP/IP server in order to use a TCP/IP terminal as an additional IO device
     - using Justina system callbacks to maintain the TCP/IP connection, blink a heartbeat led and set status leds to indicate the TCP/IP connection state
     - using Justina user c++ functions to control the TCP/IP connection from within Justina
+
+    BEFORE running this sketch, please enter WiFi SSID and password in file 'secrets.h'.
+    Also, change static server address and port, gateway address, subnet mask and DNS address (see 'Create TCP/IP connection object', below)
 
     MORE INFORMATION: see Justina USER MANUAL, available on GitHub
 */
 
 
+// The 4 Arduino pins defined below will be set as output pins in setup(). 
+// Connect each of these pins to the anode of a LED and connect each LED cathode to a terminal of a resistor. Wire the other terminal to ground.
+
+constexpr int HEARTBEAT_PIN{ 9 };                                                   // signals that the program is running
 constexpr int DATA_IO_PIN{ 5 };                                                     // signals Justina is sending or receiving data (from/to any external IO device) 
-constexpr int HEARTBEAT_PIN{ 9 };                                                   // connect a led to this pin (wired to ground; at least 220 Ohm in series)  
-
-unsigned long heartbeatPeriod{ 1000 };                                              // 'long' heartbeat ON and OFF time: heartbeat led will blink at a low rate when control is not within Justina
-
-constexpr char menu[] = "Please type 'J' to start Justina interpreter\r\n";
-
-
-// -------------------------------
-// Create TCP/IP connection object
-// -------------------------------
 
 #if defined ARDUINO_ARCH_ESP32
-// connect a led to the 2 output pins (each led wired to ground; at least 220 Ohm in series) 
 constexpr int WiFi_CONNECTED_PIN{ 17 };                                             // ON indicates WiFi is connected 
 constexpr int TCP_CONNECTED_PIN{ 18 };                                              // blink: TCP enabled but no terminal connected; ON: terminal connected
 #else
@@ -47,8 +43,25 @@ constexpr int WiFi_CONNECTED_PIN{ 14 };                                         
 constexpr int TCP_CONNECTED_PIN{ 15 };                                              // blink: TCP enabled but no terminal connected; ON: terminal connected
 #endif
 
-// create TCP connection object to connect Arduino as TCP server 
+unsigned long heartbeatPeriod{ 1000 };                                              // 'long' heartbeat ON and OFF time: heartbeat led will blink at this (low) rate when control is not within Justina
+constexpr char menu[] = "Please type 'J' to start Justina interpreter\r\n";
+
+
+// -------------------------------
+// Create TCP/IP connection object
+// -------------------------------
+
+// enter WiFi SSID and password in file secrets.h
 constexpr char SSID[] = SERVER_SSID, PASS[] = SERVER_PASS;                          // WiFi SSID and password defined in secrets.h                          
+
+// enter the correct server static IP address, gateway address, subnet mask and DNS address here
+const IPAddress serverAddress(192, 168, 0, 95);     // STATIC server IP (LAN)
+const IPAddress gatewayAddress(192, 168, 0, 1);
+const IPAddress subnetMask(255, 255, 255, 0);
+const IPAddress DNSaddress(195, 130, 130, 5);
+const int serverPort = 8085;
+
+// create TCP connection object to connect Arduino as TCP server 
 TCPconnection myTCPconnection(SSID, PASS, serverAddress, gatewayAddress, subnetMask, DNSaddress, serverPort, TCPconnection::conn_4_TCP_clientConnected);
 TCPconnection::connectionState_type _connectionState{ TCPconnection::conn_0_WiFi_notConnected };    // init connection state 
 
@@ -84,6 +97,7 @@ void stopClient(void** const pdata, const char* const valueType, const int argCo
 
 void setVerboseConnection(void** const pdata, const char* const valueType, const int argCount, int& execError);
 long getConnectionState(void** const pdata, const char* const valueType, const int argCount, int& execError);
+void getLocalIP(void** const pdata, const char* const valueType, const int argCount, int& execError);
 void getRemoteIP(void** const pdata, const char* const valueType, const int argCount, int& execError);
 
 
@@ -100,7 +114,8 @@ Justina::CppVoidFunction  const cppVoidFunctions[]{                             
     {"cpp_TCPon", TCPon, 0, 0},
     {"cpp_stopClient", stopClient, 0, 0},
     {"cpp_setVerbose", setVerboseConnection, 1, 1},
-    {"cpp_remoteIP", getRemoteIP, 1, 1}
+    {"cpp_localIP", getLocalIP, 1, 1},
+    { "cpp_remoteIP", getRemoteIP, 1, 1 }
 };
 
 Justina::CppLongFunction const cppLongFunctions[]{                                  // user c++ functions returning a long integer value
@@ -127,7 +142,7 @@ void setup() {
     // TCP connection
     // --------------
     _connectionState = TCPconnection::conn_0_WiFi_notConnected;
-    myTCPconnection.setVerbose(false);                                              // disable debug messages from within myTCPconnection
+    myTCPconnection.setVerbose(true);                                               // disable debug messages from within myTCPconnection
 
 
     // Justina library
@@ -137,7 +152,7 @@ void setup() {
 
     justina.setSystemCallbackFunction(&housekeeping);                               // set system callback function; it will be called regularly while control is within Justina 
 
-    justina.registerVoidUserCppFunctions(cppVoidFunctions, 7);                      // register user c++ functions returning nothing (void), function count
+    justina.registerVoidUserCppFunctions(cppVoidFunctions, 8);                      // register user c++ functions returning nothing (void), function count
     justina.registerLongUserCppFunctions(cppLongFunctions, 1);                      // register user c++ functions returning a long, function count
 
     Serial.println(menu);
@@ -182,7 +197,6 @@ void housekeeping(long& appFlags) {                                             
     if (appFlags & Justina::appFlag_dataInOut) { newDataLedState = !dataLedState; }
     else { newDataLedState = false; }                                               // if data, toggle state, otherwise reset state
     if (newDataLedState != dataLedState) { dataLedState = newDataLedState;  digitalWrite(DATA_IO_PIN, dataLedState); }  // only write if change detected
-    appFlags &= ~Justina::appFlag_dataInOut;                                        // clear flag
 }
 
 
@@ -336,16 +350,47 @@ long getConnectionState(void** const pdata, const char* const valueType, const i
     Justina call:
     -------------
     cpp_connState();
-	
-	connection state returned: 
-	0: WiFi not connected
-	1: trying to connect WiFi 
-	2: WiFi connected - TCP/IP disabled
-	3: WiFi connected - waiting for TCP/IP client
-	4: WiFi connected - TCP/IP client connected 
+
+    connection state returned:
+    0: WiFi not connected
+    1: trying to connect WiFi
+    2: WiFi connected - TCP/IP disabled
+    3: WiFi connected - waiting for TCP/IP client
+    4: WiFi connected - TCP/IP client connected
  */
 
     return (long)myTCPconnection.getConnectionState();                                          // state = 0 to 4 (see connectionState_type enumeration)
+};
+
+
+// -------------------------------
+// *   return local IP address   *
+// -------------------------------
+
+void getLocalIP(void** const pdata, const char* const valueType, const int argCount, int& execError) {
+
+    // NOTE: the first Justina argument supplied must be a variable, containing string of at least 15 characters (+ terminating '\0')
+    //       the local IP address (as a string) is returned to the first Justina argument.
+    // NOTE: if you trust the Justina caller, you can skip the tests
+
+  /*
+    Justina call:
+    -------------
+    var a = "";
+    cpp_localIP(a=space(15));
+*/
+
+    if (!(valueType[0] & 0x80)) { execError = 3110; return; }
+    bool isString = ((valueType[0] & Justina::value_typeMask) == Justina::value_isString);
+    if (!isString) { execError = 3103; return; }                                                // string expected      
+    if (strlen(((char*)pdata[0])) < 15) { execError = 3106; return; }                           // string too short (to contain IP as string)
+
+
+    *(char*)pdata[0] = '\0';                                                                    // init
+    if (_connectionState >= TCPconnection::conn_2_WiFi_connected) {
+        IPAddress IP = WiFi.localIP();
+        sprintf((char*)pdata[0], "%d.%d.%d.%d", IP[0], IP[1], IP[2], IP[3]);
+    }
 };
 
 

@@ -18,7 +18,7 @@ program simpleWebServer; // this is a JUSTINA program
 	Adapted from an example found here: https://forum.arduino.cc/index.php?topic=683079.0
 	
 	This example draws a webpage with 5 'on/off' buttons, and maintains the state of 5 'switches'.
-	Buttons representing a switch that is currently 'on' are drawn in a red color. 
+	Buttons representing a switch that is currently 'on' are drawn in a red color. Clicking a switch acts like a toggle.
 	Switch states maintained can then be used to interact with specific hardware (leds, switching transistors,...) 
 	
 	HTTP requests received and processed by the webserver:
@@ -36,6 +36,8 @@ program simpleWebServer; // this is a JUSTINA program
 	
 	Function call: webServer();
 	While web client is not connected, press ampersand ( & ) to exit
+	
+	To test it out, open a web browser and type the complete url: http://nnn.nnn.nnn.nnn:port (fill in server IP address and port)
 */
 
 
@@ -63,9 +65,14 @@ function webServer();
 	setTimeout(IO2, 500);																	// time out for readLine() function, in ms (NOT blocking for WiFi and TCP maintanance, handled in the background)
 	cpp_setVerbose(TRUE);																	// allow TCP/IP library to print WiFi and TCP/IP state changes 
 	
+	coutLine line(), "** Webserver started ** (Type '&' (ampersand) + ENTER to stop)";
+
 	while 1;
 		while cpp_connState() != TCP_CONNECTED;												// as long as HTTP client not connected															
-			if cin() == asc("&"); return; end;												// check console for ampersand button entry; exit web server if found															
+			if cin() == asc("&"); 																// check console for ampersand button entry; exit web server if found
+				coutLine line(), "** Webserver stopped **";
+				return; 
+			end;				
 		end; 	
 			
 		while cpp_connState()==4;															// while client is connected 

@@ -98,7 +98,7 @@ function parseAndPrintRecords(toFile = FALSE);									// optional argument (def
 		// print the record read to the output stream (console or file) in tabular format
 		// use the fmt() function to format and right align table columns length, weight and age
 		printLine streamOut, givenName, col(12), eyeColor, col(20), hairColor, 
-			col(26), fmt(length, 7, 0, "d"), fmt(weight, 7, 1, "f"), fmt(age, 6, 0, "d");
+			col(26), fmt(length, 7, 0, DEC), fmt(weight, 7, 1, FIXED), fmt(age, 6, 0, DEC);
 	end;
 	
 	// close all files; if output was sent to a file, send it to console now 

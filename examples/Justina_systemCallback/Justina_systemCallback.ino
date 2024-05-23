@@ -1,5 +1,5 @@
 /*************************************************************************************************************************
-*   Example code demonstrating the use of Justina system callbacks                                                       *
+*   Example Arduino sketch demonstrating Justina interpreter functionality												 *
 *                                                                                                                        *
 *   The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      *
 *   by the Free Software Foundation (https://www.gnu.org/licenses).                                                      *
@@ -13,7 +13,9 @@
 #include "Justina.h"
 
 /*
-    The purpose of system callbacks (executed in the background, multiple times per second), is to
+    Example code demonstrating the use of Justina system callbacks
+	--------------------------------------------------------------
+	The purpose of system callbacks (executed in the background, multiple times per second), is to
     - ensure that procedures that need to be executed at regular intervals (e.g. maintaining a TCP         
       connection, etc.) continue to be executed while control is within Justina                            
     - detect stop, abort, console reset and kill requests, e.g., to request aborting a running             
@@ -33,7 +35,7 @@
 constexpr int CONS_KILL_PIN{ 3 };                                           // read 'reset console' and 'kill Justina' requests
 constexpr int STOP_ABORT_PIN{ 4 };                                          // read 'stop running program' and 'abort running code' requests
 
-// output pins
+// output pins: connect each output pin to the anode of a LED and connect each cathode to one terminal of a resistor. Wire the other terminal to ground. 
 constexpr int DATA_IO_PIN{ 5 };                                             // signals Justina is sending or receiving data (from any external IO device) 
 constexpr int STATUS_A_PIN{ 6 };                                            // status A and B: Justina status
 constexpr int STATUS_B_PIN{ 7 };
@@ -62,7 +64,6 @@ void setup() {
     pinMode(STOP_ABORT_PIN, INPUT_PULLUP);
     pinMode(CONS_KILL_PIN, INPUT_PULLUP);
 
-    // connect a led, in series with at least a 220 Ohm resistor, to each of these five pins; connect the other end to ground
     pinMode(HEARTBEAT_PIN, OUTPUT); digitalWrite(HEARTBEAT_PIN, LOW);       // blinks faster while Justina is running, slower while not in Justina
     pinMode(STATUS_A_PIN, OUTPUT); digitalWrite(STATUS_A_PIN, LOW);         // status A & status B leds OFF: Justina is idle, status A led ON, B led OFF: parsing, ... 
     pinMode(STATUS_B_PIN, OUTPUT); digitalWrite(STATUS_B_PIN, LOW);         // ...status A led OFF, led B ON: executing, both leds ON: stopped (idle) in debug mode

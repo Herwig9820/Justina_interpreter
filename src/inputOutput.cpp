@@ -996,7 +996,7 @@ void Justina::printVariables(bool userVars) {
                     bool isArray = (varType[i] & var_isArray);
 
                     char type[10];
-                    strcpy(type, isLong ? "long" : isFloat ? "float" : isString ? "string" : "????");
+                    strcpy(type, isLong ? "integer" : isFloat ? "float" : isString ? "string" : "????");
 
                     sprintf(line, "%-*s %-2c%-8s%-7s", MAX_IDENT_NAME_LEN, *(varName + i), (userVarUsedInProgram ? 'x' : ' '), type, (isConst ? "const  " : "       "));
                     print(line);

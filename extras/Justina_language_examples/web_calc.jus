@@ -14,7 +14,7 @@
 program calculatorWebServer; // this is a JUSTINA program
 
 /*
-	Example of a simple web server, creating a web page functioning as a calculator.
+	Example of a web server, creating a web page functioning as a calculator.
 	An input box allows you to type in any expression (no commands) as long as it adheres to the Justina syntax:
 	internal Justina functions, Justina user functions and Justina user cpp functions are all allowed.
 	When submitted, the expression is evaluated by Justina ( eval() function) and the result (or the error, 
@@ -23,7 +23,7 @@ program calculatorWebServer; // this is a JUSTINA program
 	This example is intended to be used with Justina library example Justina_TCPIP, which 
 	- configures your Arduino as a TCP server
 	- is responsible for maintaining the WiFi and the TCP connection
-	- sets the TCP/IP client as Justina IO device 2 (IO2)
+	- sets the underlying TCP/IP client as Justina IO device 2 (IO2)
 	
 	This Justina language program implements the HTTP server on top, without having to worry about WiFi and TCP
 	connection maintenance. From the perspective of the HTTP server, this is a pure background process, executed regularly
@@ -38,13 +38,15 @@ program calculatorWebServer; // this is a JUSTINA program
 
 	Function call: webServer();
 	While web client is not connected, press ampersand ( & ) to exit
+	
+	To test (or use !) the scientific calculator, open a web browser and type the complete url: http://nnn.nnn.nnn.nnn:port (fill in server IP address and port)
 */
 
 
 // global constants and variables
 // ------------------------------
 
-	// program variables available to the web browser 'calculator' user (user variables are also available)
+	// program variables available to the web browser 'calculator' user (Justina user variables are also available)
 	var last, r0, r1, r2, r3, r4, r5, r6, r7, r8, r9;											// 'last answer' register and user registers
 
 
@@ -57,10 +59,14 @@ program calculatorWebServer; // this is a JUSTINA program
 
 function webServer();
 	
+	// variables hidden from the web browser 'calculator' user
+	
 	const TCP_CONNECTED = 4;
 	
 	const iconFile = "/justina/images/jus_icon.jpg";											// Justina icon file
 	const logoFile = "/justina/images/jus_logo.jpg";											// Justina logo file
+	
+	const asc_space = 0x20;
 	
 	static lastExpressions(10) = "";															// stores last 10 expressions entered
 	static lastResultsText(10) = "";															// stores last 10 results, as text (using current display formatting)
@@ -71,15 +77,21 @@ function webServer();
 	
 	var inputLength =0, endPos=0;
 	var i = 0;
+	var charPos = 1;
 	
 	startSD; 																					// make sure SD card is started
 																								
 	setTimeout(IO2, 500);																		// time out for readLine() function, in ms (NOT blocking for WiFi and TCP maintanance, handled in the background)		
 	cpp_setVerbose(TRUE);																		// allow TCP/IP library to print WiFi and TCP/IP state changes 
 																								
+	coutLine line(), "** Webserver started ** (Type '&' (ampersand) + ENTER to stop)";
+	
 	while 1;                                                                                	
 		while cpp_connState() != TCP_CONNECTED;													// as long as HTTP client not connected
-			if cin() == asc("&"); return; end;													// check console for ampersand button entry; exit web server if found
+			if cin() == asc("&"); 																// check console for ampersand button entry; exit web server if found
+				coutLine line(), "** Webserver stopped **";
+				return; 
+			end;				
 		end; 	                                                                            	
 																								
 		while cpp_connState() == TCP_CONNECTED;													// while client is connected 
@@ -110,8 +122,8 @@ function webServer();
 							end;
 							trapErrors FALSE; 													// disable error trapping and clear err()
 							
-							// format result according to current display setting
-							if type(result) == LONG; result =  fmt(result, 0, sysVal(4), sysVal(6), sysVal(5));
+							// format result according to current display settin	g
+							if type(result) == INTEGER; result =  fmt(result, 0, sysVal(4), sysVal(6), sysVal(5));
 							elseif type(result) == FLOAT;  result = fmt(result, 0, sysVal(1), sysVal(3), sysVal(2));
 							end;	
 							
@@ -122,6 +134,15 @@ function webServer();
 							end; 
 							lastExpressions(1) = expressionText;
 							lastResultsText(1) = result;
+							
+							// ONLY for last results DISPLAY: replace spaces with 'non-breaking space' sequences
+							charPos=1; while (charPos > 0) && (charPos <= len( lastResultsText(1))); 
+								lastResultsText(1) = replaceStr( lastResultsText(1) , " ", "&nbsp;", charPos); 
+							end;
+							// ONLY for last results DISPLAY: replace control characters with ASCII code 129 (empty square)
+							charPos=0; while (++charPos <= len( lastResultsText(1))); 
+								if asc(lastResultsText(1), charPos) < asc_space; replaceChar(lastResultsText(1), 129, charPos); end; 
+							end;
 						end;	
 					end;
 					isMainPageRequest = TRUE;
@@ -135,7 +156,7 @@ function webServer();
 				// empty line ? all request header lines have been received 
 				elseif  strCmp(clientRequest, line()) == 0;  									// all request header lines completely received (indicated by empty line) ?		    									
 					if isMainPageRequest; 														// was a request to (re-)draw the 'main page' ? 
-						sendResponse_mainPage(lastExpressions, lastResultsText, logoFile);		// send response message to draw main page
+						sendResponse_mainPage(lastExpressions, lastResultsText, logoFile);		// send response message to draw main page; inform web browser what image to ask for in next GET
 						isMainPageRequest = FALSE;												// reset flag
 						
 					elseif isLogoRequest;														// request to send logo ? 
@@ -160,7 +181,7 @@ end;
 
 function sendResponse_mainPage(lastExpressions(), lastResultsText(), logoFile);
 	
-	var i=0, charPos=0;
+	var i=0;
 	
 	// send response header
 	printLine IO2, "HTTP/1.1 200 OK";
@@ -233,16 +254,15 @@ function sendResponse_mainPage(lastExpressions(), lastResultsText(), logoFile);
 	print IO2, "<input list='history' id='inputBox' type='text' name='inputBox' autocomplete='off'>"; 
 	print IO2, "<datalist id='history'>"; 
 	
-	
+	// input box dropdown: display 10 last expressions entered 
 	for i=1, 10;
 		print IO2, "    <option value='" + lastExpressions(i) + "'>"; 
 	end;
 	
-	
 	print IO2, "</datalist>"; 
 	print IO2, "<input type='submit' value='Calculate'>";
 	print IO2, "<div class='additionalText'>Assign results to registers r0 to r9. Last result is stored in 'last'. Last expressions under dropdown.<br>";
-	print IO2, "Numbers without decimal point or exponent are treated as integers. Enter strings between \"quotes\".<br>";
+	print IO2, "Numbers without decimal point or exponent are treated as integer types. Enter strings between \"quotes\".<br>";
 	print IO2, "Expressions only (no commands). Consult the Justina interpreter user manual for detailed information.</div>";
 	print IO2, "</form>";
 	print IO2, "</div>";
@@ -253,7 +273,7 @@ function sendResponse_mainPage(lastExpressions(), lastResultsText(), logoFile);
 	print IO2, "<p id='answerBox'></p>"; 
 	print IO2, "</div>";
 	
-	print IO2, "<div class=\"info\">Justina: <u>JUST</u> an <u>IN</u>tepreter for <u>A</u>rduino. Full documentation on ";
+	print IO2, "<div class=\"info\">Justina: <u>J</u>ust an <u>In</u>terpreter for <u>A</u>rduino. Full documentation on ";
 	print IO2, "<a href=\"https://github.com/Herwig9820/Justina_interpreter\">GitHub</a>"; 
 	print IO2, "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 2024, Herwig Taveirne</div>";
 	
@@ -265,18 +285,17 @@ function sendResponse_mainPage(lastExpressions(), lastResultsText(), logoFile);
 	
 	print IO2, "<script>" ;
 	print IO2, "var answerBox = document.getElementById('answerBox');" ;
+	
+	// answer box: display 10 last answers
 	for i=1, 10; 
-		charPos=1; while (charPos >0) && (charPos <= len( lastResultsText(i))); 
-			lastResultsText(i) = replaceStr( lastResultsText(i) , " ", "&nbsp;", charPos); 
-		end;
 		print IO2, "answerBox.innerHTML += '" + cStr(i) + ": " + lastResultsText(i) + "<br>';"; 
 	end;
 	printLine IO2, "</script>";
 end;
 
 
-// send response message with icon
-// -------------------------------
+// send response message with image (logo as well as icon)
+// -------------------------------------------------------
 
 function sendResponse_image(imageFile);
 	
@@ -306,31 +325,34 @@ end;
 // helper routines
 // ---------------
 
+// remove control characters ('%hh' 3-character sequences with hh < 0x20); 
 // replace '%hh' 3-character sequences by Ascii character with hex Ascii code 'hh'; replace '+' characters with spaces 
 // -------------------------------------------------------------------------------------------------------------------
 
 function urlDecode(url);
-	const asc_plus = 0x2b, asc_percent = 0x25;
+	const asc_space = 0x20, asc_plus = 0x2b, asc_percent = 0x25;
 	var sourceLength = 0;
-	var i=1, j=1;												// source and destination character in the same string
+	var src=1, dest=1;												// source and destination character indexes (in the same string)
 	var ascii = 0;
 	
 	sourceLength = len(url);
-	j=i;														// init
-	for i = 1, sourceLength;
-		if asc(url, i) == asc_plus; 
-			replaceChar(url, 0x20, j); 
-		elseif asc(url, i) == asc_percent; 
-			ascii = hexStrToAsc(url, ++i);						// convert two ASCII characters, containing ASCII code for hex digits, to ASCII code with these two hex digits
-			++i;												// in total, two extra characters to skip 
-			replaceChar(url, ascii, j); 
+	dest=src=1;														// init
+	for src, sourceLength;
+		if asc(url, src) == asc_plus; 
+			replaceChar(url, 0x20, dest); 
+			dest++;
+		elseif asc(url, src) == asc_percent; 
+			ascii = hexStrToAsc(url, ++src);						// convert two ASCII characters, containing ASCII code for hex digits, to ASCII code with these two hex digits
+			++src;													// in total, two extra characters to skip 
+			replaceChar(url, ascii, dest); 
+			dest++;
 		else;
-			replaceChar(url, asc(url, i), j); 					// move character left, from position i to position j
+			replaceChar(url, asc(url, src), dest); 					// move character left, from position i to position j
+			dest++;
 		end;
-		j++;
 	end;
-	if (j<i); 
-		replaceChar(url, 0x00, j);								// terminator
+	if (dest<src); 
+		replaceChar(url, 0x00, dest);								// terminator
 	end;
 end;	
 
@@ -358,7 +380,7 @@ end;
 // set integer number format
 // arguments are entered as in intFmt command (flags:  optional arguments)
 //
-// this example is a liitle more complicated: instead of "OK" (as in previous
+// this example is a little more complicated: instead of "OK" (as in previous
 // example), the current integer number formatting is returned as functon result
 // -----------------------------------------------------------------------------
 
@@ -379,7 +401,7 @@ function intFormat(precision, separator, flags=-1);
 	holdFmtPrecision = sysVal(11); holdFmtSeparator = sysVal(13); holdFmtFlags = sysVal(12);
 	
 	// print formatted output to a variable
-	vprintLine out, "integer format: ", fmt(precision, 1, "d", FLAG_NONE), ",  ", 
+	vprintLine out, "integer format: ", fmt(precision, 1, DEC, FLAG_NONE), ",  ", 
 		quote(separator), 
 		ifte(flags & (FLAG_LEFT | FLAG_SIGN | FLAG_SPACE | FLAG_0X) , ", flags set: ", ""),  
 		ifte(flags & FLAG_LEFT, "left ", ""),

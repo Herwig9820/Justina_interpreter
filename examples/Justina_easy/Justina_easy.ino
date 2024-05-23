@@ -1,5 +1,5 @@
 /*************************************************************************************************************************
-*   Example code demonstrating how to create a Justina object with default values and run Justina.                       *
+*   Example Arduino sketch demonstrating Justina interpreter functionality												 *
 *                                                                                                                        *
 *   The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      *
 *   by the Free Software Foundation (https://www.gnu.org/licenses).                                                      *
@@ -13,10 +13,11 @@
 #include "Justina.h"
 
 /*
+	Example code demonstrating how to create a Justina object with default values and run Justina 
+	---------------------------------------------------------------------------------------------
     When a Justina object is created, a (list of) argument(s) can be supplied, defining the available 'channels' (streams)  
     available for external input and output (specified separately), an SD card mode and SD card chip select pin.
-    
-    This sketch demonstrates how to create a Justina object WITHOUT supplying a list of arguments, using default values instead. 
+    This sketch creates a Justina object WITHOUT supplying a list of arguments, using default values instead. 
 
     MORE INFORMATION: see Justina USER MANUAL, available on GitHub
 */

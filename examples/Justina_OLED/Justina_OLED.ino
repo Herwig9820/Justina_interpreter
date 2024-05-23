@@ -1,5 +1,5 @@
 /*************************************************************************************************************************
-*   Example code demonstrating connecting multiple input and/or output devices to Justina                                *
+*   Example Arduino sketch demonstrating Justina interpreter functionality												 *
 *                                                                                                                        *
 *   The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      *
 *   by the Free Software Foundation (https://www.gnu.org/licenses).                                                      *
@@ -14,8 +14,9 @@
 #include <U8g2lib.h>                            // (install the U8g2lib library using the Arduino library manager)
 
 /*
-    Justina can receive data from / send data to maximum four IO / input only / output only devices. 
-
+    Example code demonstrating how to connect multiple input and/or output devices to Justina
+	-----------------------------------------------------------------------------------------
+	Justina can receive data from / send data to maximum four IO / input only / output only devices. 
     This sketch demonstrates how to set up 
     - an OLED display with SH1106 controller communicating over software (SW) SPI as additional output device
     - an OLED display with SSD1306 controller communicating over I2C as additional input device 
@@ -59,7 +60,7 @@ constexpr int VMA437_OLED_MOSI_PIN{ 21 };       // OLED MOSI pin
 
 
 // NOTE (cf. next line): OLED hardware (HW) SPI is not compatible with SD card HW SPI => do NOT do this:
-//U8X8_SH1106_128X64_NONAME_4W_HW_SPI u8x8(VMA437_OLED_CS_PIN, VMA437_OLED_DC_PIN);
+// U8X8_SH1106_128X64_NONAME_4W_HW_SPI u8x8(VMA437_OLED_CS_PIN, VMA437_OLED_DC_PIN);
 
 // create object for 128x64 dot OLED with on-board SH1106 controller 
 // for other OLEDs, check out the OLED library documentation to select the correct object type
@@ -112,7 +113,7 @@ void setup() {
 // ---------------------------------------------------------
 #if WITH_OLED_SW_SPI
     u8x8_spi.begin();                                                               // initialize OLED object                                                                   
-    u8x8_spi.setFont(u8x8_font_chroma48medium8_r);                                  // set font
+    u8x8_spi.setFont(u8x8_font_8x13_1x2_f);                                         // set font
     u8x8log_spi.begin(u8x8_spi, U8LOG_WIDTH, U8LOG_HEIGHT, u8log_buffer_spi);       // initialize OLED text window object, connect to U8x8, set character size and assign memory
     u8x8log_spi.setRedrawMode(0);		                                            // set the U8x8log redraw mode. 0: Update screen with newline, 1: Update screen for every char  
 
@@ -122,7 +123,7 @@ void setup() {
 
 #if WITH_OLED_HW_I2C                                    
     u8x8_i2c.begin();                                                               // initialize OLED object                                                                   
-    u8x8_i2c.setFont(u8x8_font_chroma48medium8_r);                                  // set font
+    u8x8_i2c.setFont(u8x8_font_8x13_1x2_f);                                         // set font
     u8x8log_i2c.begin(u8x8_i2c, U8LOG_WIDTH, U8LOG_HEIGHT, u8log_buffer_i2c);       // initialize OLED text window object, connect to U8x8, set character size and assign memory
     u8x8log_i2c.setRedrawMode(0);                                                   // set the U8x8log redraw mode. 0: Update screen with newline, 1: Update screen for every char
 

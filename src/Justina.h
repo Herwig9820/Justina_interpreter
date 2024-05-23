@@ -88,7 +88,7 @@
 #define J_productName "Justina: JUST an INterpreter for Arduino"
 #define J_legalCopyright "Copyright 2024, Herwig Taveirne"
 #define J_version "1.1.1"            
-#define J_buildDate "March 18, 2024"
+#define J_buildDate "May 23, 2024"
 
 
 // ******************************************************************
@@ -785,7 +785,7 @@ class Justina {
 
 
     static constexpr long _PROGRAM_MEMORY_SIZE{                                 // program memory, in bytes (excluding immediate mode parsed statements size). Maximum: 65536 (2^16). Minimum: 2000 (sufficient for a tiny program)
-        ((PROGMEM_SIZE > 2000) ? PROGMEM : 2000) - IMM_MEM_SIZE };
+        ((PROGMEM_SIZE > 2000) ? PROGMEM_SIZE : 2000) - IMM_MEM_SIZE };
     static constexpr int MAX_USERVARNAMES{ MAXVAR_USER };                       // max. user variables allowed. Absolute parser limit: 255
     static constexpr int MAX_PROGVARNAMES{ MAXVAR_PROG };                       // max. program variable NAMES allowed (same name may be reused for global, static, local & parameter variables). Absolute limit: 255
     static constexpr int MAX_STATIC_VARIABLES{ MAXVAR_STAT };                   // max. static variables allowed across all parsed functions (only). Absolute limit: 255
@@ -1298,9 +1298,9 @@ private:
     static const InternCppFuncDef _internCppFunctions[141];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
 #if (defined ARDUINO_ARCH_ESP32) 
-    static const SymbNumConsts _symbNumConsts[79];                                                                              // predefined constants
+    static const SymbNumConsts _symbNumConsts[81];                                                                              // predefined constants
 #else
-    static const SymbNumConsts _symbNumConsts[74];                                                                              // predefined constants
+    static const SymbNumConsts _symbNumConsts[78];                                                                              // predefined constants
 #endif
     static constexpr int _resWordCount{ sizeof(_resWords) / sizeof(_resWords[0]) };                                             // count of keywords in keyword table 
     static constexpr int _internCppFunctionCount{ (sizeof(_internCppFunctions)) / sizeof(_internCppFunctions[0]) };             // count of internal cpp functions in functions table

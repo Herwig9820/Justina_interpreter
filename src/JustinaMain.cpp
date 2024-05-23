@@ -445,12 +445,12 @@ const Justina::SymbNumConsts Justina::_symbNumConsts[]{
     // boolean values
     {"FALSE",               "0",                        value_isLong},          // value for boolean 'false'
     {"TRUE",                "1",                        value_isLong},          // value for boolean 'true'
-    
+
     {"OFF",                 "0",                        value_isLong},          // value for boolean 'false'
     {"ON",                  "1",                        value_isLong},          // value for boolean 'true'
 
     // data types
-    {"LONG",                "1",                        value_isLong},          // value type of a long value
+    {"INTEGER",             "1",                        value_isLong},          // value type of an integer value
     {"FLOAT",               "2",                        value_isLong},          // value type of a float value
     {"STRING",              "3",                        value_isLong},          // value type of a string value
 
@@ -494,7 +494,8 @@ const Justina::SymbNumConsts Justina::_symbNumConsts[]{
 
     // input and info command: flag 'user canceled' (input argument 3 / info argument 2 return value - argument must be a variable)
     {"CANCELED",            "0",                        value_isLong},          // operation was canceled by user (\c sequence encountered)
-    {"SUCCESS",             "1",                        value_isLong},          // operation was NOT canceled by user
+    {"OK",                  "1",                        value_isLong},          // OK 
+    {"NOK",                 "-1",                       value_isLong},          // NOT OK 
 
     // input / output streams
     {"CONSOLE",             "0",                        value_isLong},          // IO: read from / print to console
@@ -527,14 +528,17 @@ const Justina::SymbNumConsts Justina::_symbNumConsts[]{
     {"EXP_U",               "E",                        value_isStringPointer},     // scientific notation, exponent: 'E'
     {"EXP",                 "e",                        value_isStringPointer},     // scientific notation, exponent: 'e' 
     {"SHORT_U",             "G",                        value_isStringPointer},     // shortest notation possible; if exponent: 'E' 
-    {"SHORT",               "g",                        value_isStringPointer},     // shortest notation possible; if exponent: 'e'   
+    {"SHORT",               "g",                        value_isStringPointer },    // shortest notation possible; if exponent: 'e'   
 
     // formatting: specifiers for integers
     {"DEC",                 "d",                        value_isStringPointer},     // base 10 (decimal)
     {"HEX_U",               "X",                        value_isStringPointer},     // base 16 (hex), digits A..F
     {"HEX",                 "x",                        value_isStringPointer},     // base 16 (hex), digits a..f
 
-   // formatting: flags
+    // formatting: specifier for character strings 
+    {"CHARS",               "s",                        value_isStringPointer },    // character string   
+
+    // formatting: flags
     {"FLAG_LEFT",           "0x01",                      value_isLong},         // align output left within the print field 
     {"FLAG_SIGN",           "0x02",                      value_isLong},         // always add a sign (- or +) preceding the value
     {"FLAG_SPACE",          "0x04",                      value_isLong},         // precede the value with a space if no sign is written 
@@ -557,11 +561,11 @@ const Justina::SymbNumConsts Justina::_symbNumConsts[]{
 // -------------------
 
 Justina::Justina(int JustinaStartupOptions, int SDcardChipSelectPin) : _justinaStartupOptions(JustinaStartupOptions), _SDcardChipSelectPin(SDcardChipSelectPin), _externIOstreamCount(1) {
-    
-    Stream* pStream {&Serial};
-    _ppExternInputStreams = & pStream;       
+
+    Stream* pStream{ &Serial };
+    _ppExternInputStreams = &pStream;
     _ppExternOutputStreams = (Print**)_ppExternInputStreams;
-    
+
     constructorCommonPart();
 }
 
@@ -790,7 +794,7 @@ void Justina::begin() {
             launchingStartFunction = false;                                                                     // nothing to prepare any more
         }
         else {     // note: while waiting for first program character, allow a longer time out              
-            bool charFetched{false};
+            bool charFetched{ false };
             c = getCharacter(charFetched, kill, forcedStop, forcedAbort, stdConsole, true, waitForFirstProgramCharacter);    // forced stop has no effect here
             if (charFetched) {
                 if (waitForFirstProgramCharacter) { printlnTo(0, "Receiving and parsing program... please wait"); }
@@ -1121,7 +1125,7 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
     if (_programMode) {
         _pDebugOut->println();
         _pBreakpoints->printLineRangesToDebugOut(static_cast<Stream*>(_pDebugOut));
-}
+    }
 #endif
 
     // before loading a program, clear memory except user variables
@@ -1433,6 +1437,8 @@ void Justina::execPeriodicHousekeeping(bool* pKillNow, bool* pForcedStop, bool* 
             if ((_appFlags & appFlag_killRequestBit) && (pKillNow != nullptr)) { *pKillNow = true; }
             if ((_appFlags & appFlag_stopRequestBit) && (pForcedStop != nullptr)) { *pForcedStop = true; }
             if ((_appFlags & appFlag_abortRequestBit) && (pForcedAbort != nullptr)) { *pForcedAbort = true; }
+
+            _appFlags &= ~appFlag_dataInOut;                                                                    // reset flag
         }
     }
 }
@@ -1580,7 +1586,7 @@ void Justina::danglingPointerCheckAndCount(bool withUserVariables) {
         _pDebugOut->print("**** Variable / function name objects cleanup error. Remaining: "); _pDebugOut->println(_identifierNameStringObjectCount);
     #endif
         _identifierNameStringObjectErrors += abs(_identifierNameStringObjectCount);
-    }
+}
 
     if (_parsedStringConstObjectCount != 0) {
     #if PRINT_OBJECT_COUNT_ERRORS
@@ -1783,7 +1789,7 @@ void Justina::deleteIdentifierNameObjects(char** pIdentNameArray, int identifier
         isUserVar ? _userVarNameStringObjectCount-- : _identifierNameStringObjectCount--;
         delete[] * (pIdentNameArray + index);
         index++;
-    }
+}
 }
 
 
@@ -1852,7 +1858,7 @@ void Justina::deleteVariableValueObjects(Justina::Val* varValues, char* varType,
             #endif
                 isUserVar ? _userArrayObjectCount-- : isLocalVar ? _localArrayObjectCount-- : _globalStaticArrayObjectCount--;
                 delete[]  varValues[index].pArray;
-            }
+        }
             else if ((varType[index] & value_typeMask) == value_isStringPointer) {                                                  // variable is a scalar containing a string
                 if (varValues[index].pStringConst != nullptr) {
                 #if PRINT_HEAP_OBJ_CREA_DEL
@@ -1885,8 +1891,8 @@ void Justina::deleteLastValueFiFoStringObjects() {
         #endif
             _lastValuesStringObjectCount--;
             delete[] lastResultValueFiFo[i].pStringConst;
-}
     }
+}
 }
 
 
@@ -1916,13 +1922,13 @@ void Justina::deleteConstStringObjects(char* pFirstToken) {
             #endif
                 _parsedStringConstObjectCount--;
                 delete[] pAnum;
+        }
     }
-}
         uint8_t tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) :
             (tokenType == tok_isSymbolicConstant) ? sizeof(TokenIsSymbolicConstant) : (*prgmCnt.pTokenChars >> 4) & 0x0F;
         prgmCnt.pTokenChars += tokenLength;
         tokenType = *prgmCnt.pTokenChars & 0x0F;
-    }
+}
 }
 
 

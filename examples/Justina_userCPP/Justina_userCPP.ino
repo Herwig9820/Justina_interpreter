@@ -1,5 +1,5 @@
 /*************************************************************************************************************************
-*   Example code demonstrating how to write user c++ functions that can be called directly from the Justina interpreter. *
+*   Example Arduino sketch demonstrating Justina interpreter functionality												 *
 *                                                                                                                        *
 *   The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      *
 *   by the Free Software Foundation (https://www.gnu.org/licenses).                                                      *
@@ -13,9 +13,11 @@
 #include "Justina.h"
 
 /*
-    Built-in Justina functionality can be extended by writing specific functions in c++.Such functions may include
-    time-critical user routines, functions targeting specific hardware, functions extending functionality in a specific
-    domain, etc. These functions must then be 'registered' with Justina and given a 'Justina function name' (an alias).
+    Example code demonstrating how to write user c++ functions for Justina
+	----------------------------------------------------------------------
+	Built-in Justina functionality can be extended by writing specific functions in c++ ('user cpp functions). Such functions 
+    may include time-critical user routines, functions targeting specific hardware, functions extending functionality in a 
+    specific domain, etc. These functions must then be 'registered' with Justina and given a 'Justina function name' (an alias).
     From then onward, these C++ functions can be called just like any other Justina function, with the same syntax,
     using the alias as function name and passing scalar or array variables as arguments.
 

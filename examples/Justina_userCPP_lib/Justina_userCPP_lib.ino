@@ -1,5 +1,5 @@
 /*************************************************************************************************************************
-*   Example code demonstrating how to write a user c++ function library for use by the Justina interpreter               *
+*   Example Arduino sketch demonstrating Justina interpreter functionality												 *
 *                                                                                                                        *
 *   The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      *
 *   by the Free Software Foundation (https://www.gnu.org/licenses).                                                      *
@@ -14,7 +14,9 @@
 #include "Justina_userCPPlibrary.h"
 
 /*
-    Built-in Justina functionality can be extended by writing specific functions in c++. Such functions may include 
+    Example code demonstrating how to write a user c++ function library for use by the Justina interpreter
+	------------------------------------------------------------------------------------------------------
+	Built-in Justina functionality can be extended by writing specific functions in c++. Such functions may include 
     time-critical user routines, functions targeting specific hardware, functions extending functionality in a specific 
     domain, etc. These functions must then be 'registered' with Justina and given a 'Justina function name' (an alias).
     From then onward, these C++ functions can be called just like any other Justina function, with the same syntax, 
@@ -25,7 +27,7 @@
 	It also shows how to pass arrays (by reference) to a user c++ function.
 
     MORE INFORMATION: see Justina USER MANUAL, available on GitHub
-*/
+	*/
 
 
 // create Justina_interpreter object with default values: IO via Serial only, SD card allowed, default SD card CS pin

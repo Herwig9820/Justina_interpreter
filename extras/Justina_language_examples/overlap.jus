@@ -48,7 +48,7 @@ function overlap2();
 	
 	for i = 1, 12; 
 		cout exp(i), "---";										// 'pos' now contains the next print position  
-		coutLine fmt(1.7 ** (10-i), 0, 1, "d", 0, count), " ", 	// second number printed occupies 'count' characters: add these...
-			repeatChar( "+", max(1, 15 - (pos() + count)));        // ...to pos() before filling up first 15 columns with '+' characters			
+		coutLine fmt(1.7 ** (10-i), 0, 1, DEC, 0, count), " ", 	// second number printed occupies 'count' characters: add these...
+			repeatChar( "+", max(1, 15 - (pos() + count)));    	// ...to pos() before filling up first 15 columns with '+' characters			
 	end;
 end;

@@ -1,5 +1,5 @@
 /*************************************************************************************************************************
-*   Example code demonstrating how to write a user c++ function library for use by the Justina interpreter               *
+*   Example Arduino sketch demonstrating Justina interpreter functionality												 *
 *                                                                                                                        *
 *   The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      *
 *   by the Free Software Foundation (https://www.gnu.org/licenses).                                                      *
@@ -12,6 +12,11 @@
 
 #include "Justina_TCP.h"
 
+/*
+	Example code demonstrating how to setup an Arduino as a TCP/IP server
+	---------------------------------------------------------------------
+*/
+		
 
 // ******************************************************************
 // ***                     class TCPconnection                    ***
