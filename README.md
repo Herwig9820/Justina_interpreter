@@ -1,6 +1,6 @@
 # Justina_interpreter
 
-Justina is both an interpreter and an easy-to-use but capable programming language for Arduino. It was developed and built around a few objectives. 
+Justina is both an easy-to-use programming language for Arduino and a capable interpreter. It was developed and built around a few objectives. 
 * On top of the list: simplicity for the user. Justina is a structured language, but it’s non-object oriented (as opposed to the powerful but more complex c++ language). It has some similarities with Basic, a language that has been around for quite some time.
 * Equally important: it was built with Arduino in mind - more specifically, 32-bit Arduino’s: boards with a SAMD processor (like the nano 33 IoT), the nano ESP32 and the nano RP2040.
   
@@ -14,6 +14,9 @@ You can enter statements directly in the command line of the Arduino IDE (the Se
 
 #### A basic example, without programming: set the value of an Arduino pin
 Typing  *pinMode( 17, OUTPUT); digitalWrite(17, HIGH)* (+ ENTER) in the command line, will write a HIGH value to pin 17. Typing *digitalRead(17)* will then read back the value from pin 17, which will be '1' of course.
+
+![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/68c85502-383f-492e-8f76-44bd50de79ee)
+
 
 ![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/d7381581-394a-4305-a506-3b3500b850c6)
 
@@ -99,8 +102,8 @@ The example files are:
 * SD_test.jus: perform some basic SD card tests
 * SD_parse.jus: write formatted data to an SD card, read it back and immediately parse this data into variables
 * web_calc.jus: a web server creating a web page giving access to a scientific calculator
-
-
+* 
+![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/7c0fa15c-bede-4925-8398-661a0ea572b0)
 
 # Documentation
 Full documentation is provided in the repository ' extras' folder. 
