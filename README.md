@@ -40,7 +40,7 @@ The result of  the last expression entered in the command line is printed on the
 
 ![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/c1eb6138-eb02-48ce-821d-73c8f42acaa5)
 
-* In Justina, input and output commands work with argument lists: for instance, with only one statement, you can read a properly formatted textline from a terminal or an SD card file and parse its contents into a series of variables.
+* In Justina, input and output commands work with argument lists: for instance, with only one statement, you can read a properly formatted text line from a terminal or an SD card file and parse its contents into a series of variables.
 
 
 
@@ -76,9 +76,9 @@ While a procedure is stopped in debug mode, you can also manually review the pro
 A number of c++ example files, demonstrating how to call Justina, are provided in the repository folder 'examples':
 * Justina_easy: simply call Justina, and that's it
 * Justina_systemCallback: use system callback functions to
-  * ensure that procedures that need to be executed at regular intervals continue to be executed while control is within Justina. In this ecample: blinking a heartbeat led
+  * ensure that procedures that need to be executed at regular intervals continue to be executed while control is within Justina. In this example: blinking a heartbeat LED
   * to detect stop, abort, 'console reset' and kill requests (for example when a user presses a 'program abort' pushbutton),...
-  * to set status leds reporting the interpreter state (idle, stopped in debug mode, parsing, executing) and indicating whether a user or program error occured (e.g. to blink a led)
+  * to set status LEDs reporting the interpreter state (idle, stopped in debug mode, parsing, executing) and indicating whether a user or program error occurred (e.g. to blink a LED)
 and this without the need for Justina to have any knowledge about the hardware (pins, ...) used
 * Justina_userCPP: demonstrates how to write user c++ functions for use in a Justina program (for time critical or specific hardware oriented stuff or to extend built-in Justina functionality...). These c++ functions can then be called from Justina (from the Justina command line or from a Justina program), just like any other Justina function, with the same syntax, using an alias as function name and passing scalar or array variables as arguments
 * Justina_userCPP_lib: demonstrates how to create a Justina user c++ 'library' file. 
@@ -87,11 +87,11 @@ and this without the need for Justina to have any knowledge about the hardware (
   * using an OLED display with SSD1306 controller communicating over I2C as additional input device 
 * Justina_TCPIP: demonstrates various Justina features, namely
   * setting up a TCP/IP server for use as an additional Justina IO channel
-  * using Justina system callbacks to maintain the TCP/IP connection, blink a heartbeat led and set status leds to indicate the TCP/IP connection state
+  * using Justina system callbacks to maintain the TCP/IP connection, blink a heartbeat LED and set status LEDs to indicate the TCP/IP connection state
   * using Justina user c++ functions to control the TCP/IP connection from within Justina
 
 # Justina language examples
-A few Justina language example files are provided in the repository folder 'extras/Justina_language_examples'. These text files obey the 8.3 file format, to make them compatible with the Arduino SD card file system. Also, they all have the '.jus' extension: opening these files in Notepad++ will automatically invoke Justina language highlighting (if the the Justina language extension is installed).
+A few Justina language example files are provided in the repository folder 'extras/Justina_language_examples'. These text files obey the 8.3 file format, to make them compatible with the Arduino SD card file system. Also, they all have the '.jus' extension: opening these files in Notepad++ will automatically invoke Justina language highlighting (if the Justina language extension is installed).
 
 ![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/f8e80375-9b27-4d3e-8fe0-ad082e6a198b)
 
