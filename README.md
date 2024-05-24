@@ -12,11 +12,13 @@ The Justina syntax has been kept as simple as possible. A program consists of st
 Because Justina is an interpreted language, a Justina  program is not compiled into machine language but it is parsed into so called tokens before execution. Parsing is a fast process, which makes Justina the ideal tool for quick prototyping. Once it is installed as an Arduino library, call Justina from within an Arduino c++ program and you will have the Justina interpreter ready to receive commands, evaluate expressions and execute Justina programs. 
 You can enter statements directly in the command line of the Arduino IDE (the Serial monitor by default, a TCP IP client, ...) and they will immediately get executed, without any programming.
 
-#### A basic example, without programming: set the value of an Arduino pin
-Typing  *pinMode( 17, OUTPUT); digitalWrite(17, HIGH)* (+ ENTER) in the command line, will write a HIGH value to pin 17. Typing *digitalRead(17)* will then read back the value from pin 17, which will be '1' of course.
+#### A basic example, without programming
+We will first set the console display width for calculation results to 40 characters wide (by default, it's set to 64) and set the angle mode to degrees. We'll then define Arduino pin 17 as an output and write a HIGH value to the pin. Finally, we'll calculate the cosine of 60°. 
+This is all done by typing the next 3 lines in the command line of the Arduino IDE Serial Monitor (each time followed by ENTER):
 
 ![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/68c85502-383f-492e-8f76-44bd50de79ee)
 
+The result will look like this:
 
 ![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/d7381581-394a-4305-a506-3b3500b850c6)
 
@@ -101,8 +103,7 @@ The example files are:
 * overlap.jus: two method to print lines with overlapping print fields
 * SD_test.jus: perform some basic SD card tests
 * SD_parse.jus: write formatted data to an SD card, read it back and immediately parse this data into variables
-* web_calc.jus: a web server creating a web page giving access to a scientific calculator
-* 
+* web_calc.jus: a web server creating a web page giving access to a scientific calculator 
 ![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/7c0fa15c-bede-4925-8398-661a0ea572b0)
 
 # Documentation
