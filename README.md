@@ -15,7 +15,7 @@ You can enter statements directly in the command line of the Arduino IDE (the Se
 #### A basic example, without programming: set the value of an Arduino pin
 Typing  *pinMode( 17, OUTPUT); digitalWrite(17, HIGH)* (+ ENTER) in the command line, will write a HIGH value to pin 17. Typing *digitalRead(17)* will then read back the value from pin 17, which will be '1' of course.
 
-![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/d5d3b732-3c81-41a1-b9d5-e79214ece220)
+![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/d7381581-394a-4305-a506-3b3500b850c6)
 
 Statements you type are echoed after the Justina prompt (“Justina>“), so you have a nice history. Multiple statements can be entered at the same time, separated by semicolons.
 The result of  the last expression entered in the command line is printed on the next line. In this example: both digitalWrite and digitalRead are functions, digitalWrite returning the value written to the pin (1 is the value of predefined constant HIGH) and digitalRead reading back that same value from the pin .
@@ -33,7 +33,8 @@ The result of  the last expression entered in the command line is printed on the
 * Input and output: Justina reads data from / writes data to multiple input and output devices (connected via Serial, TCP IP, SPI, I2C...). You can even switch the console from the default (typically Serial) to another input or output device (for instance, switch console output to an OLED screen).
 * With an SD card breakout board connected via SPI, Justina creates, reads and writes SD card files...
 
- ![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/ef5ce67e-6a07-4944-8282-93b94ed63ae3)
+![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/c1eb6138-eb02-48ce-821d-73c8f42acaa5)
+
 * In Justina, input and output commands work with argument lists: for instance, with only one statement, you can read a properly formatted textline from a terminal or an SD card file and parse its contents into a series of variables.
 
 
@@ -49,7 +50,7 @@ The result of  the last expression entered in the command line is printed on the
 # Justina program editing
 You can use any text editor to write and edit your programs. But you might consider using Notepad++ as text editor, because a specific 'User Defined Language' (UDL) file for Justina is available to provide Justina syntax highlighting.
 
-![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/75c00179-27c6-429a-b155-97d2e8d06414)
+![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/82598732-6f96-42e5-979b-1b75cf208d6f)
 
 
 # Debugging
@@ -57,7 +58,8 @@ When a program is stopped (either by execution of the ‘stop’ command, by use
 
 Breakpoints can be activated based on a trigger expression or a hit count. You can also include a list of ‘view expressions’ for each breakpoint, and Justina will automatically trace specific variables or even expressions, letting you watch their values change as you single step through the program or a breakpoint is hit.
 
-![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/39b60741-2eb0-4418-947d-ea6a9da27035)
+![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/96a40004-d578-4241-8725-36363f49b295)
+
 
 While a procedure is stopped in debug mode, you can also manually review the procedure’s local and static variable contents or view the call stack.
 
@@ -86,7 +88,7 @@ and this without the need for Justina to have any knowledge about the hardware (
 # Justina language examples
 A few Justina language example files are provided in the repository folder 'extras/Justina_language_examples'. These text files obey the 8.3 file format, to make them compatible with the Arduino SD card file system. Also, they all have the '.jus' extension: opening these files in Notepad++ will automatically invoke Justina language highlighting (if the the Justina language extension is installed).
 
-![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/18d82b3d-26ec-4c1a-9722-71c86fd4621d)
+![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/f8e80375-9b27-4d3e-8fe0-ad082e6a198b)
 
 The example files are:
 * start.jus: can be used as startup program (if your Arduino is equipped with an SD card board). It sets things like the angle mode, number formatting etc.
@@ -98,7 +100,7 @@ The example files are:
 * SD_parse.jus: write formatted data to an SD card, read it back and immediately parse this data into variables
 * web_calc.jus: a web server creating a web page giving access to a scientific calculator
 
-![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/64b22e24-ebe8-42a4-ac5b-5a43533a3bf6)
+
 
 # Documentation
 Full documentation is provided in the repository ' extras' folder. 
