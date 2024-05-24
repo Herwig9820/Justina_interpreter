@@ -67,6 +67,7 @@ function webServer();
 	const logoFile = "/justina/images/jus_logo.jpg";											// Justina logo file
 	
 	const asc_space = 0x20;
+	const EVAL_PARSING_ERROR = 3502;															// eval ("...") EXECUTION error: error while PARSING string argument
 	
 	static lastExpressions(10) = "";															// stores last 10 expressions entered
 	static lastResultsText(10) = "";															// stores last 10 results, as text (using current display formatting)
@@ -74,6 +75,7 @@ function webServer();
 	var clientRequest=""; 																		// client request, as it is received
 	var expressionText = "", result = "";														// expression entered (as a string) and evaluation result (as a string, using current display formatting) 
 	var isMainPageRequest = FALSE, isLogoRequest = FALSE, isFaviconRequest = FALSE;
+	var executionError = 0, evalParsingError = 0;
 	
 	var inputLength =0, endPos=0;
 	var i = 0;
@@ -108,16 +110,22 @@ function webServer();
 					inputLength = endPos - 16;                                              	
 					if inputLength > 0;                                                     	
 																								
-						// isolate expression from GET request                              	
+						// isolate expression within GET request                              	
 						urlDecode(expressionText = mid(clientRequest, 16, endPos - 16));		// replace '%hh' 3-character sequences by Ascii character with hex Ascii code 'hh'; replace '+' characters with spaces
 						expressionText = trim(expressionText);
 						
-						// calculate result and handle error
+						// parse and evaluate expression entered by the user in the input box, and handle any error
 						if strCmp(expressionText, "") != 0;										// not an empty expression 
-							trapErrors TRUE;													// if error, than do not terminate but print error number
+							trapErrors TRUE;													// if error, than do not terminate but print error message in the answer box, instead of a result
+							
+							// first parse, than evaluate 'expressionText'
 							result = eval(expressionText);										// result (if no error: integer, float or string result)
-							if err() == 3502; result = "! Error in formula (parsing error)";
-							elseif err() != 0; result = "! Evaluation error (code " + cStr(err()) + ")"; 			
+							
+							// if an error occurs while PARSING expressionText, a specific EXECUTION error is produced (EVAL_PARSING_ERROR) 
+							// and the err() argument 'evalParsingError' returns the parsing error
+							executionError = err(evalParsingError);								// return execution error and, possibly, an associated parsing number 
+							if executionError == EVAL_PARSING_ERROR; result = "! Error in formula: parsing error " + cStr(evalParsingError); 
+							elseif executionError != 0; result = "! Error in formula: evaluation error " + cStr(executionError); 			
 							else; last = result;
 							end;
 							trapErrors FALSE; 													// disable error trapping and clear err()
@@ -294,8 +302,8 @@ function sendResponse_mainPage(lastExpressions(), lastResultsText(), logoFile);
 end;
 
 
-// send response message with image (logo as well as icon)
-// -------------------------------------------------------
+// send response message with image (OK for logo as well as icon)
+// --------------------------------------------------------------
 
 function sendResponse_image(imageFile);
 	
@@ -401,13 +409,13 @@ function intFormat(precision, separator, flags=-1);
 	holdFmtPrecision = sysVal(11); holdFmtSeparator = sysVal(13); holdFmtFlags = sysVal(12);
 	
 	// print formatted output to a variable
-	vprintLine out, "integer format: ", fmt(precision, 1, DEC, FLAG_NONE), ",  ", 
+	vprintLine out, "integer format: ", fmt(precision, 1, DEC, FMT_NONE), ",  ", 
 		quote(separator), 
-		ifte(flags & (FLAG_LEFT | FLAG_SIGN | FLAG_SPACE | FLAG_0X) , ", flags set: ", ""),  
-		ifte(flags & FLAG_LEFT, "left ", ""),
-		ifte(flags & FLAG_SIGN, "sign  ", ""),
-		ifte(flags & FLAG_SPACE, "space  ", ""),
-		ifte(flags & FLAG_0X, "0x", "");
+		ifte(flags & (FMT_LEFT | FMT_SIGN | FMT_SPACE | FMT_0X) , ", flags set: ", ""),  
+		ifte(flags & FMT_LEFT, "left ", ""),
+		ifte(flags & FMT_SIGN, "sign  ", ""),
+		ifte(flags & FMT_SPACE, "space  ", ""),
+		ifte(flags & FMT_0X, "0x", "");
 	
 	// dummy fmt(), only to restore fmt() precision, specifier and flags
 	fmt(0, holdFmtPrecision, holdFmtSeparator, holdFmtFlags);					

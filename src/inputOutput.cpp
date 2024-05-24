@@ -1146,8 +1146,8 @@ void Justina::printExecError(execResult_type execResult, bool  showStopmessage) 
         }
         printTo(0, execInfo);
 
-        if (execResult == result_eval_parsingError) { sprintf(execInfo, " (eval() parsing error %ld)\r\n", _evalParseErrorCode); }
-        else if (execResult == result_list_parsingError) { sprintf(execInfo, " (list input parsing error %ld)\r\n", _evalParseErrorCode); }
+        if (execResult == result_eval_parsingError) { sprintf(execInfo, " (eval() parsing error %ld)\r\n", _evalParsingError); }
+        else if (execResult == result_list_parsingError) { sprintf(execInfo, " (list input parsing error %ld)\r\n", _evalParsingError); }
         else { sprintf(execInfo, "\r\n"); }
         printTo(0, execInfo);
     }

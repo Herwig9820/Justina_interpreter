@@ -50,7 +50,7 @@ public:
 
 private:
     const char* _SSID, * _PASS;
-    IPAddress _serverAddress, _gatewayAddress, _subnetMask, _DNSaddress; //// const
+    IPAddress _serverAddress, _gatewayAddress, _subnetMask, _DNSaddress; 
 
     static constexpr unsigned long WIFI_UP_CHECK_INTERVAL{ 500 };       // minimum delay between two attempts to connect to WiFi (milliseconds) 
 

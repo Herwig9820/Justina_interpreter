@@ -1795,14 +1795,14 @@ private:
     // error trapping
     // --------------
 
-    int _trappedErrorNumber{ (int)result_execOK };
-
+    int _trappedExecError{ (int)result_execOK };
+    int _trappedEvalParsingError{ (int)result_parsing_OK };
 
     // evaluation strings (eval("...")), trace and trigger strings
     // -----------------------------------------------------------
 
     bool _parsingEvalString{ false };
-    long _evalParseErrorCode{ 0L };
+    long _evalParsingError{ 0L };
 
     bool _parsingExecutingTraceString{ false };
     bool _printTraceValueOnly{ false };                             // do not print trace expression, only print trace evaluation result (value)
@@ -1846,7 +1846,7 @@ private:
     // ----------------------
 
     void (*_housekeepingCallback)(long& appFlags);                  // pointer to callback function for heartbeat
-    
+
     long _appFlags = 0x00L;                                         // bidirectional flags to transfer info / requests between main program and Justina library
     unsigned long _lastCallBackTime{ 0 }, _currenttime{ 0 }, _previousTime{ 0 };
 

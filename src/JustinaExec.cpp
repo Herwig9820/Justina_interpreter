@@ -913,8 +913,12 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
     // E. Finalize: clear the error condition but remember error number
     // ----------------------------------------------------------------
 
-    _trappedErrorNumber = (int)execResult; execResult = result_execOK;
-    _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;    // if processing command, prevent executing the command 
+    _trappedExecError = (int)execResult;
+    _trappedEvalParsingError = ((_trappedExecError == result_eval_parsingError) || (_trappedExecError == result_list_parsingError)) ? _evalParsingError : result_parsing_OK;
+
+    execResult = result_execOK; _evalParsingError = result_parsing_OK;                                  // clear the error condition
+
+    _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                            // if processing command, prevent further execution of that command 
 
 #if PRINT_DEBUG_INFO
     _pDebugOut->print("== trapped error: CURRENT step = "); _pDebugOut->println(_programCounter - _programStorage);
@@ -922,7 +926,7 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
     _pDebugOut->print("   token type  = "); _pDebugOut->println((*_programCounter & 0x0F)); _pDebugOut->println();
 #endif
 
-    return true;            // error trapped
+    return true;            // error is now trapped
 }
 
 
@@ -2529,7 +2533,7 @@ Justina::execResult_type  Justina::launchEval(LE_evalStack*& pFunctionStackLvl, 
         _pDebugOut->print("   >> POP parsed statements (launch eval parse error): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _PROGRAM_MEMORY_SIZE));
     #endif
 
-        _evalParseErrorCode = result;       // remember
+        _evalParsingError = result;                                                                 // remember
         return result_eval_parsingError;
     }
 
@@ -2564,7 +2568,7 @@ Justina::execResult_type  Justina::launchEval(LE_evalStack*& pFunctionStackLvl, 
     // set next step to start of called function
     // -----------------------------------------
 
-    _activeFunctionData.pNextStep = _programStorage + _PROGRAM_MEMORY_SIZE;                              // first step in first statement in parsed eval() string
+    _activeFunctionData.pNextStep = _programStorage + _PROGRAM_MEMORY_SIZE;                         // first step in first statement in parsed eval() string
     _activeFunctionData.errorStatementStartStep = _programStorage + _PROGRAM_MEMORY_SIZE;
     _activeFunctionData.errorProgramCounter = _programStorage + _PROGRAM_MEMORY_SIZE;
 

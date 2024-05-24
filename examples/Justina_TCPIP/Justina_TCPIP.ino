@@ -273,10 +273,10 @@ void setConnectionStatusLeds() {
  /*
     Justina call:
     -------------
-    cpp_WiFiOff";
-    cpp_WiFiRestart",
-    cpp_TCPoff",
-    cpp_TCPon;
+    cpp_WiFiOff();
+    cpp_WiFiRestart();
+    cpp_TCPoff();
+    cpp_TCPon();
 */
 
 // switch off WiFi antenna

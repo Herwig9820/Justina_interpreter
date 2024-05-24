@@ -34,13 +34,13 @@ bStepOut        	print               cFloat				ltrim               read	        
 loop				printLine           cStr				trim                readLine	                            MSBFIRST            HEX             							!	
 trace           	printList           millis				left                readList	                            NO_PROMPT           HEX_U           							<<	
 viewExprOn			vprint              micros				mid                 vreadList	                            PROMPT              CHARS										>>	
-viewExprOff			vprintLine          wait				right               find	                                ECHO                FLAG_LEFT       							&	
-setNextLine			vprintList          digitalRead			toUpper             findUntil	                            NO_RESULTS          FLAG_SIGN       							|	
-abort           	listCallStack       digitalWrite		toLower             peek	                                RESULTS             FLAG_SPACE      							^	
-debug           	listBP              pinMode				space               available	                            QUOTE_RES           FLAG_POINT      							~	
-BPon				listVars            analogRead			repeatChar          flush	                                ENTER               FLAG_0X         							;	
-BPoff				listFiles           analogReference		replaceChar         setTimeout	                            ENTER_CANCEL        FLAG_000        							,	
-setBP				listFilesToSerial   analogWrite			findStr             getTimeout	                            YES_NO              FLAG_NONE       							(	
+viewExprOff			vprintLine          wait				right               find	                                ECHO                FMT_LEFT       								&	
+setNextLine			vprintList          digitalRead			toUpper             findUntil	                            NO_RESULTS          FMT_SIGN       								|	
+abort           	listCallStack       digitalWrite		toLower             peek	                                RESULTS             FMT_SPACE      								^	
+debug           	listBP              pinMode				space               available	                            QUOTE_RES           FMT_POINT      								~	
+BPon				listVars            analogRead			repeatChar          flush	                                ENTER               FMT_0X         								;	
+BPoff				listFiles           analogReference		replaceChar         setTimeout	                            ENTER_CANCEL        FMT_000        								,	
+setBP				listFilesToSerial   analogWrite			findStr             getTimeout	                            YES_NO              FMT_NONE       								(	
 clearBP	                                analogReadResolution	replaceStr      availableForWrite	                    YN_CANCEL           BOARD_OTHER     							)	
 enableBP	                            analogWriteResolution	strCmp          getWriteError	                        NO_DEFAULT          BOARD_SAMD      				
 disableBP	                            noTone			   	strCaseCmp          clearWriteError	                        ALLOW_DEFAULT 		BOARD_RP2040    	

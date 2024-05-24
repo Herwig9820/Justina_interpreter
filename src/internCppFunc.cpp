@@ -576,7 +576,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
 
                 for (int i = 0; i < maxLineLength; i++) {
                     // get a character if available and perform a regular housekeeping callback as well
-                    bool charFetched{false};
+                    bool charFetched{ false };
                     char c = getCharacter(charFetched, kill, doStop, doAbort, stdConsDummy, (streamNumber <= 0));           // time out only required if external IO
                     if (kill) {                                                                                             // kill request from caller ? 
                         _intermediateStringObjectCount--;
@@ -604,7 +604,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 bool isConstant = (!(argIsVarBits & (0x1 << (suppliedArgCount - 1))) || (_pEvalStackTop->varOrConst.sourceVarScopeAndFlags & var_isConstantVar));    // constant ?
                 if (!isConstant) { // if last argument is constant: skip saving value in last argument WITHOUT error  
 
-                    // last arguments is a NUMERIC variable: replace current value (number of characters to read) with number of characters read. Keep the variable's value type.
+                    // last argument is a NUMERIC variable: replace current value (number of characters to read) with number of characters read. Keep the variable's value type.
                     bool varIsLong = (argIsLongBits & (0x1 << (suppliedArgCount - 1)));
                     if (varIsLong) { *_pEvalStackTop->varOrConst.value.pLongConst = (long)charsRead; }
                     else { *_pEvalStackTop->varOrConst.value.pFloatConst = (float)charsRead; }
@@ -854,9 +854,9 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             #endif
                 _intermediateStringObjectCount--;
                 delete[] buffer;
-        }
+            }
 
-        // if an error occured while processing an argument, then an intermediate string object might still exist on the heap
+            // if an error occured while processing an argument, then an intermediate string object might still exist on the heap
             if (stringObjectCreated) {
             #if PRINT_HEAP_OBJ_CREA_DEL
                 _pDebugOut->print("\r\n----- (Intermd str) ");   _pDebugOut->println((uint32_t)value.pStringConst, HEX);
@@ -865,19 +865,19 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 _intermediateStringObjectCount--;
                 delete[] value.pStringConst;
 
-    }
+            }
 
 
-    // execution error ?
+            // execution error ?
             if (execResult != result_execOK) {
-                _evalParseErrorCode = parsingResult;                                                                        // only relevant in case a parsing error occurred
+                _evalParsingError = parsingResult;                                                                        // only relevant in case a list parsing error occurred
                 return execResult;
             }
 
             // save result: number of values that were actually saved 
             fcnResultValueType = value_isLong;
             fcnResult.longConst = valuesSaved;
-}
+        }
         break;
 
 
@@ -1778,7 +1778,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 fcnResult.longConst = (suppliedArgCount == 1) ? random(args[0].longConst) : random(args[0].longConst, args[1].longConst);
             }
             else if (functionCode == fnccod_randomSeed) { randomSeed(args[0].longConst); }                                  // arg: seed
-            }
+        }
         break;
 
 
@@ -1883,7 +1883,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         {
             if (!(argIsLongBits & (0x1 << 0)) && !(argIsFloatBits & (0x1 << 0))) { return result_arg_numberExpected; }
             int asciiCode = (argIsLongBits & (0x1 << 0)) ? args[0].longConst : int(args[0].floatConst);
-            if ((asciiCode < 0) || (asciiCode > 0xFF)) { return result_arg_outsideRange; }                                  
+            if ((asciiCode < 0) || (asciiCode > 0xFF)) { return result_arg_outsideRange; }
 
             // result is string
             fcnResultValueType = value_isStringPointer;
@@ -1907,7 +1907,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         {
             if (!(argIsLongBits & (0x1 << 0)) && !(argIsFloatBits & (0x1 << 0))) { return result_arg_numberExpected; }
             int asciiCode = (argIsLongBits & (0x1 << 0)) ? args[0].longConst : int(args[0].floatConst);
-            if ((asciiCode < 0) || (asciiCode > 0xFF)) { return result_arg_outsideRange; }                                  
+            if ((asciiCode < 0) || (asciiCode > 0xFF)) { return result_arg_outsideRange; }
 
             // result is string
             fcnResultValueType = value_isStringPointer;
@@ -1958,14 +1958,14 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         // replace one character in a string: replaceChar(string, ASCII code [character position] )
         // ---------------------------------
 
-		// this function replaces character position n in a string with a given ASCII code. No new string is created, 
-		// so the changed string will be lost if it's a Justina constant (not a variable) and the value is not immediately used
-		
+        // this function replaces character position n in a string with a given ASCII code. No new string is created, 
+        // so the changed string will be lost if it's a Justina constant (not a variable) and the value is not immediately used
+
         case fnccod_replaceChar:
         {
-            LE_evalStack * pStackLvl {(suppliedArgCount == 3) ? _pEvalStackMinus2 : _pEvalStackMinus1};                     // stack level for first argument (string variable)
-            bool isConstant = (!(argIsVarBits & (0x1 << 0)) || (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_isConstantVar));     
-            if (isConstant){return result_arg_variableExpected;}                                                            // first argument must be a variable string
+            LE_evalStack* pStackLvl{ (suppliedArgCount == 3) ? _pEvalStackMinus2 : _pEvalStackMinus1 };                     // stack level for first argument (string variable)
+            bool isConstant = (!(argIsVarBits & (0x1 << 0)) || (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_isConstantVar));
+            if (isConstant) { return result_arg_variableExpected; }                                                            // first argument must be a variable string
             if (!(argIsStringBits & (0x1 << 0))) { return result_arg_stringExpected; }
             if (!(argIsLongBits & (0x1 << 1))) { return result_arg_integerTypeExpected; }
             int charPos = 1;                                                                                                // first character in string
@@ -2136,7 +2136,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                     else { *_pEvalStackTop->varOrConst.value.pFloatConst = (float)(foundStartPos + 1); }
                 }
             }
-            }
+        }
         break;
 
 
@@ -2267,7 +2267,24 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
 
         case fnccod_getTrappedErr:
         {
-            fcnResult.longConst = _trappedErrorNumber;
+            if (suppliedArgCount == 1) {                                                        // return a trapped eval parsing error ?                                    
+                if (!(argIsVarBits & (0x1 << 0))) { return result_arg_variableExpected; }
+                
+                // if an array element, it's value should be long
+                bool returnArgIsArray = (_pEvalStackTop->varOrConst.sourceVarScopeAndFlags & var_isArray);
+                bool isLong = (argIsLongBits & (0x1 << 0));
+                bool isString = (argIsStringBits & (0x1 << 0));
+                if (returnArgIsArray && !isLong) { return result_array_valueTypeIsFixed; }
+
+                // if currently the variable contains a string object, delete it (if not empty)
+                if (isString) {execResult_type execResult = deleteVarStringObject(_pEvalStackTop); if (execResult != result_execOK) { break; } }
+
+                // save evaluation parsing error (or result_parsing_OK, if not an evaluation parsing error)
+                *_pEvalStackTop->varOrConst.value.pLongConst = _trappedEvalParsingError;
+                *_pEvalStackTop->varOrConst.varTypeAddress = (*_pEvalStackTop->varOrConst.varTypeAddress & ~value_typeMask) | value_isLong;
+            }
+
+            fcnResult.longConst = _trappedExecError;
             fcnResultValueType = value_isLong;
         }
         break;
@@ -2344,7 +2361,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                     _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
                     _pDebugOut->print("         sysval(19) ");   _pDebugOut->println(fcnResult.pStringConst);
                 #endif
-                }
+            }
                 break;
 
                 case 20:                                                                        // trace string
@@ -2439,15 +2456,15 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 break;
 
                 default: return result_arg_invalid; break;
-            }                                                                                       // switch (sysVal)
-        }
+        }                                                                                       // switch (sysVal)
+    }
         break;
 
-        }                                                                                           // end switch
+}                                                                                           // end switch
 
 
-            // post-process: delete function name token and arguments from evaluation stack, create stack entry for function result 
-            // -------------------------------------------------------------------------------------------------------------------
+    // post-process: delete function name token and arguments from evaluation stack, create stack entry for function result 
+    // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
@@ -2469,6 +2486,6 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
     }
 
     return result_execOK;
-        }
+}
 
 

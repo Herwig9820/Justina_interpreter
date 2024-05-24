@@ -170,7 +170,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             _lastUserCmdStep = *(char**)_pParsedCommandLineStackTop;                                                            // pop program step of last user cmd token ('tok_no_token')
             long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + _PROGRAM_MEMORY_SIZE) + 1;
             deleteConstStringObjects(_programStorage + _PROGRAM_MEMORY_SIZE);
-            memcpy((_programStorage + _PROGRAM_MEMORY_SIZE), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);    
+            memcpy((_programStorage + _PROGRAM_MEMORY_SIZE), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);
             parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
             _pParsedCommandLineStackTop = parsedCommandLineStack.getLastListElement();
         #if PRINT_PARSED_CMD_STACK
@@ -547,7 +547,10 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             value.longConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pLongConst) : pStackLvl->varOrConst.value.longConst);    // line is valid for all value types  
             bool trapEnable = (valueType == value_isLong) ? (bool)value.longConst : (bool)value.floatConst;
             _activeFunctionData.trapEnable = trapEnable ? 1 : 0;                                                        // counts for currently executing procedure only                                                       
-            if (trapEnable) { _trappedErrorNumber = (int)result_execOK; } // reset err() only when enabling, to allow testing for error after setting error trapping off
+            if (trapEnable) {
+                _trappedExecError = (int)result_execOK;                     // reset err() only when enabling, to allow testing for error after setting error trapping off
+                _trappedEvalParsingError = result_parsing_OK;               // eval() and list IO errors only
+            }
 
             // clean up
             clearEvalStackLevels(cmdArgCount);                              // clear evaluation stack and intermediate strings 
@@ -562,7 +565,8 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
 
         case cmdcod_clearError:
         {
-            _trappedErrorNumber = (int)result_execOK;
+            _trappedExecError = (int)result_execOK;
+            _trappedEvalParsingError = result_parsing_OK;               // eval() and list IO errors only
 
             // clean up
             clearEvalStackLevels(cmdArgCount);                              // clear evaluation stack and intermediate strings 
@@ -928,7 +932,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                     }
                     else {
                         // receive: get a character if available and perform a regular housekeeping callback as well
-                        bool charFetched{false};
+                        bool charFetched{ false };
                         c = getCharacter(charFetched, kill, doStop, doAbort, stdConsDummy, isReceive, waitForFirstChar);
                         newData = charFetched;
                         if (newData) {
@@ -937,7 +941,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                         }
                         waitForFirstChar = false;                                                   // for all next characters
                     }
-                    
+
                     if (verbose && (progressDotsByteCount > 2000)) {
                         progressDotsByteCount = 0;  printTo(0, '.');
                         if ((++dotCount & 0x3f) == 0) { printlnTo(0); }                             // print a crlf each 64 dots
@@ -1225,7 +1229,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             while (_pConsoleIn->available() > 0) { read(); }                                            // empty console buffer first (to allow the user to type in a 'single' character)
             do {                                                                                        // until new line character encountered
                 char c{};
-                bool charFetched{false};
+                bool charFetched{ false };
                 c = getCharacter(charFetched, kill, doStop, doAbort, stdConsDummy);                     // get a key (character from console) if available and perform a regular housekeeping callback as well
                 if (kill) { execResult = result_kill; return execResult; }                              // kill Justina interpreter ? (buffer is now flushed until next line character)
                 if (doAbort) { forcedAbortRequest = true; break; }                                      // stop a running Justina program (buffer is now flushed until next line character) 

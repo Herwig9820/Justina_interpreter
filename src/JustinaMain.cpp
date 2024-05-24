@@ -289,7 +289,7 @@ const Justina::InternCppFuncDef Justina::_internCppFunctions[]{
     {"dims",                    fnccod_dims,                    1,1,    0b00000001},
     {"type",                    fnccod_valueType,               1,1,    0b0},
     {"r",                       fnccod_last,                    0,1,    0b0 },              // short label for 'last result'
-    {"err",                     fnccod_getTrappedErr,           0,0,    0b0 },
+    {"err",                     fnccod_getTrappedErr,           0,1,    0b0 },
     {"isColdStart",             fnccod_isColdStart,             0,0,    0b0 },
     {"sysVal",                  fnccod_sysVal,                  1,1,    0b0},
 
@@ -539,13 +539,13 @@ const Justina::SymbNumConsts Justina::_symbNumConsts[]{
     {"CHARS",               "s",                        value_isStringPointer },    // character string   
 
     // formatting: flags
-    {"FLAG_LEFT",           "0x01",                      value_isLong},         // align output left within the print field 
-    {"FLAG_SIGN",           "0x02",                      value_isLong},         // always add a sign (- or +) preceding the value
-    {"FLAG_SPACE",          "0x04",                      value_isLong},         // precede the value with a space if no sign is written 
-    {"FLAG_POINT",          "0x08",                      value_isLong},         // if used with 'F', 'E', 'G' specifiers: add decimal point, even if no digits after decimal point  
-    {"FLAG_0X",             "0x08",                      value_isLong},         // if used with hex output 'X' specifier: precede non-zero values with 0x  
-    {"FLAG_000",            "0x10",                      value_isLong},         // if used with 'F', 'E', 'G' specifiers: pad with zeros 
-    {"FLAG_NONE",           "0x00",                      value_isLong},         // no flags 
+    {"FMT_LEFT",            "0x01",                      value_isLong},         // align output left within the print field 
+    {"FMT_SIGN",            "0x02",                      value_isLong},         // always add a sign (- or +) preceding the value
+    {"FMT_SPACE",           "0x04",                      value_isLong},         // precede the value with a space if no sign is written 
+    {"FMT_POINT",           "0x08",                      value_isLong},         // if used with 'F', 'E', 'G' specifiers: add decimal point, even if no digits after decimal point  
+    {"FMT_0X",              "0x08",                      value_isLong},         // if used with hex output 'X' specifier: precede non-zero values with 0x  
+    {"FMT_000",             "0x10",                      value_isLong},         // if used with 'F', 'E', 'G' specifiers: pad with zeros 
+    {"FMT_NONE",            "0x00",                      value_isLong},         // no flags 
 
     // boards
     {"BOARD_OTHER",         "0",                         value_isLong },        // board architecture is undefined
