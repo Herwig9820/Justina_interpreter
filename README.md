@@ -24,7 +24,7 @@ The result will look like this:
 
 ![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/d7381581-394a-4305-a506-3b3500b850c6)
 
-Statements you type are echoed after the Justina prompt (“Justina>“), so you have a nice history. Multiple statements can be entered at the same time, separated by semicolons.
+Statements you type are echoed after the Justina prompt (“Justina>“), providing a history of what has been entered. Multiple statements can be entered on a single line, separated by semicolons.
 The result of  the last expression entered in the command line is printed on the next line. In this example: both digitalWrite and digitalRead are functions, digitalWrite returning the value written to the pin (1 is the value of predefined constant HIGH) and digitalRead reading back that same value from the pin .
 
 
