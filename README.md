@@ -1,6 +1,6 @@
 # Justina_interpreter
 
-Justina is both an interpreter and an easy-to-use but capable programming language for Arduino. It was developed and built around a few objectives. 
+Justina is both an easy-to-use programming language for Arduino and a capable interpreter. It was developed and built around a few objectives. 
 * On top of the list: simplicity for the user. Justina is a structured language, but it’s non-object oriented (as opposed to the powerful but more complex c++ language). It has some similarities with Basic, a language that has been around for quite some time.
 * Equally important: it was built with Arduino in mind - more specifically, 32-bit Arduino’s: boards with a SAMD processor (like the nano 33 IoT), the nano ESP32 and the nano RP2040.
   
@@ -12,10 +12,15 @@ The Justina syntax has been kept as simple as possible. A program consists of st
 Because Justina is an interpreted language, a Justina  program is not compiled into machine language but it is parsed into so called tokens before execution. Parsing is a fast process, which makes Justina the ideal tool for quick prototyping. Once it is installed as an Arduino library, call Justina from within an Arduino c++ program and you will have the Justina interpreter ready to receive commands, evaluate expressions and execute Justina programs. 
 You can enter statements directly in the command line of the Arduino IDE (the Serial monitor by default, a TCP IP client, ...) and they will immediately get executed, without any programming.
 
-#### A basic example, without programming: set the value of an Arduino pin
-Typing  *pinMode( 17, OUTPUT); digitalWrite(17, HIGH)* (+ ENTER) in the command line, will write a HIGH value to pin 17. Typing *digitalRead(17)* will then read back the value from pin 17, which will be '1' of course.
+#### A basic example, without programming
+We will first set the console display width for calculation results to 40 characters wide (by default, it's set to 64) and set the angle mode to degrees. We'll then define Arduino pin 17 as an output and write a HIGH value to the pin. Finally, we'll calculate the cosine of 60°. 
+This is all done by typing the next 3 lines in the command line of the Arduino IDE Serial Monitor (each time followed by ENTER):
 
-![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/d5d3b732-3c81-41a1-b9d5-e79214ece220)
+![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/68c85502-383f-492e-8f76-44bd50de79ee)
+
+The result will look like this:
+
+![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/d7381581-394a-4305-a506-3b3500b850c6)
 
 Statements you type are echoed after the Justina prompt (“Justina>“), so you have a nice history. Multiple statements can be entered at the same time, separated by semicolons.
 The result of  the last expression entered in the command line is printed on the next line. In this example: both digitalWrite and digitalRead are functions, digitalWrite returning the value written to the pin (1 is the value of predefined constant HIGH) and digitalRead reading back that same value from the pin .
@@ -33,8 +38,9 @@ The result of  the last expression entered in the command line is printed on the
 * Input and output: Justina reads data from / writes data to multiple input and output devices (connected via Serial, TCP IP, SPI, I2C...). You can even switch the console from the default (typically Serial) to another input or output device (for instance, switch console output to an OLED screen).
 * With an SD card breakout board connected via SPI, Justina creates, reads and writes SD card files...
 
- ![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/ef5ce67e-6a07-4944-8282-93b94ed63ae3)
-* In Justina, input and output commands work with argument lists: for instance, with only one statement, you can read a properly formatted textline from a terminal or an SD card file and parse its contents into a series of variables.
+![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/c1eb6138-eb02-48ce-821d-73c8f42acaa5)
+
+* In Justina, input and output commands work with argument lists: for instance, with only one statement, you can read a properly formatted text line from a terminal or an SD card file and parse its contents into a series of variables.
 
 
 
@@ -49,7 +55,7 @@ The result of  the last expression entered in the command line is printed on the
 # Justina program editing
 You can use any text editor to write and edit your programs. But you might consider using Notepad++ as text editor, because a specific 'User Defined Language' (UDL) file for Justina is available to provide Justina syntax highlighting.
 
-![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/75c00179-27c6-429a-b155-97d2e8d06414)
+![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/82598732-6f96-42e5-979b-1b75cf208d6f)
 
 
 # Debugging
@@ -57,7 +63,8 @@ When a program is stopped (either by execution of the ‘stop’ command, by use
 
 Breakpoints can be activated based on a trigger expression or a hit count. You can also include a list of ‘view expressions’ for each breakpoint, and Justina will automatically trace specific variables or even expressions, letting you watch their values change as you single step through the program or a breakpoint is hit.
 
-![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/39b60741-2eb0-4418-947d-ea6a9da27035)
+![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/96a40004-d578-4241-8725-36363f49b295)
+
 
 While a procedure is stopped in debug mode, you can also manually review the procedure’s local and static variable contents or view the call stack.
 
@@ -69,9 +76,9 @@ While a procedure is stopped in debug mode, you can also manually review the pro
 A number of c++ example files, demonstrating how to call Justina, are provided in the repository folder 'examples':
 * Justina_easy: simply call Justina, and that's it
 * Justina_systemCallback: use system callback functions to
-  * ensure that procedures that need to be executed at regular intervals continue to be executed while control is within Justina. In this ecample: blinking a heartbeat led
+  * ensure that procedures that need to be executed at regular intervals continue to be executed while control is within Justina. In this example: blinking a heartbeat LED
   * to detect stop, abort, 'console reset' and kill requests (for example when a user presses a 'program abort' pushbutton),...
-  * to set status leds reporting the interpreter state (idle, stopped in debug mode, parsing, executing) and indicating whether a user or program error occured (e.g. to blink a led)
+  * to set status LEDs reporting the interpreter state (idle, stopped in debug mode, parsing, executing) and indicating whether a user or program error occurred (e.g. to blink a LED)
 and this without the need for Justina to have any knowledge about the hardware (pins, ...) used
 * Justina_userCPP: demonstrates how to write user c++ functions for use in a Justina program (for time critical or specific hardware oriented stuff or to extend built-in Justina functionality...). These c++ functions can then be called from Justina (from the Justina command line or from a Justina program), just like any other Justina function, with the same syntax, using an alias as function name and passing scalar or array variables as arguments
 * Justina_userCPP_lib: demonstrates how to create a Justina user c++ 'library' file. 
@@ -80,13 +87,13 @@ and this without the need for Justina to have any knowledge about the hardware (
   * using an OLED display with SSD1306 controller communicating over I2C as additional input device 
 * Justina_TCPIP: demonstrates various Justina features, namely
   * setting up a TCP/IP server for use as an additional Justina IO channel
-  * using Justina system callbacks to maintain the TCP/IP connection, blink a heartbeat led and set status leds to indicate the TCP/IP connection state
+  * using Justina system callbacks to maintain the TCP/IP connection, blink a heartbeat LED and set status LEDs to indicate the TCP/IP connection state
   * using Justina user c++ functions to control the TCP/IP connection from within Justina
 
 # Justina language examples
-A few Justina language example files are provided in the repository folder 'extras/Justina_language_examples'. These text files obey the 8.3 file format, to make them compatible with the Arduino SD card file system. Also, they all have the '.jus' extension: opening these files in Notepad++ will automatically invoke Justina language highlighting (if the the Justina language extension is installed).
+A few Justina language example files are provided in the repository folder 'extras/Justina_language_examples'. These text files obey the 8.3 file format, to make them compatible with the Arduino SD card file system. Also, they all have the '.jus' extension: opening these files in Notepad++ will automatically invoke Justina language highlighting (if the Justina language extension is installed).
 
-![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/18d82b3d-26ec-4c1a-9722-71c86fd4621d)
+![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/f8e80375-9b27-4d3e-8fe0-ad082e6a198b)
 
 The example files are:
 * start.jus: can be used as startup program (if your Arduino is equipped with an SD card board). It sets things like the angle mode, number formatting etc.
@@ -96,9 +103,8 @@ The example files are:
 * overlap.jus: two method to print lines with overlapping print fields
 * SD_test.jus: perform some basic SD card tests
 * SD_parse.jus: write formatted data to an SD card, read it back and immediately parse this data into variables
-* web_calc.jus: a web server creating a web page giving access to a scientific calculator
-
-![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/64b22e24-ebe8-42a4-ac5b-5a43533a3bf6)
+* web_calc.jus: a web server creating a web page giving access to a scientific calculator 
+![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/7c0fa15c-bede-4925-8398-661a0ea572b0)
 
 # Documentation
 Full documentation is provided in the repository ' extras' folder. 
