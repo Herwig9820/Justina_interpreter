@@ -1,4 +1,4 @@
-# Justina: a capable interpreter and an easy-to-use programming language for Arduino
+# Justina: a fully documented, easy-to-use programming language for Arduino
 
 ![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/f277744a-f5b7-4839-b0e2-feb266d47aaa)
 
