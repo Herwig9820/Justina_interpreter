@@ -24,16 +24,24 @@
 #include "Arduino.h"
 
 /*
-	Example code demonstrating how to setup an Arduino as a TCP/IP server
-	---------------------------------------------------------------------
+    Example code demonstrating how to setup an Arduino as a TCP/IP server or client.
+    This code also maintains the connection: method maintainConnection() MUST BE CALLED REGULARLY from your program main loop.
+    This allows you to isolate your application (an HTTP server, ...) from this TCP/IP maintenance code.
+
+    The constructor called will define whether Arduino is set up as a server or a client.
+    WiFi maintenance and TCP/IP connection maintenance is split into two different methods.
+    Variable '_connectionState' maintains the state of the connection ('state machine'). If this maintained state
+    (e.g., 'WiFi connected') does not correspond to the actual state (e.g., WiFi connection was lost) OR your application
+    requests a state change (e.g., 'switch off WiFi'), action is taken.
+
+    A number of utility functions are provided to switch WiFi on or off, to allow a TCP/IP connections or not, etc.
+    --------------------------------------------------------------------------------------------------------------------------
 */
 	
 	
 // ******************************************************************
 // ***                     class TCPconnection                    ***
 // ******************************************************************
-
-// class to control connection to WiFi and a client, if available
 
 class TCPconnection {
 
@@ -83,7 +91,7 @@ public:
     // constructor: connect as client (pass server IP address and port to connect to)
     TCPconnection(const char SSID[], const char PASS[], const IPAddress serverAddress, const int serverPort, connectionState_type initialConnState);
 
-
+    // utilities
     WiFiServer* getServer();                                            // (only if configured as server)
     WiFiClient* getClient();
     void maintainConnection();

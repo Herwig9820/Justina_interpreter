@@ -15,15 +15,21 @@
 #include "src/Justina_TCPIP.h"
 
 /*
-    Example code demonstrating how to setup an Arduino as a TCP/IP server
-    ---------------------------------------------------------------------
+    Example code demonstrating how to setup an Arduino as a TCP/IP server.
+    NOTE: by simply replacing the constructor for class TCPconnection (below), you can setup an Arduino as TCP/IP client.
+    ---------------------------------------------------------------------------------------------------------------------
+
     This sketch demonstrates various Justina features, namely
     - setting up Arduino as a TCP/IP server in order to use a TCP/IP terminal as an additional IO device
     - using Justina system callbacks to maintain the TCP/IP connection, blink a heartbeat led and set status leds to indicate the TCP/IP connection state
     - using Justina user c++ functions to control the TCP/IP connection from within Justina
 
     BEFORE running this sketch, please enter WiFi SSID and password in file 'secrets.h'.
-    Also, change static server address and port, gateway address, subnet mask and DNS address (see 'Create TCP/IP connection object', below)
+    Also, change static server address and port, and gateway address, subnet mask and DNS address (see 'Create TCP/IP connection object', below)
+
+    See the example of an HTTP server built on top of a TCP/IP server. The TCP/IP server is maintained by regular calls to method 
+    'myTCPconnection.maintainConnection()' (c++), while the HTTP server is written in Justina language. 
+    While control is within Justina, the TCP/IP connection is maintained by regular system callbacks in the background. 
 
     MORE INFORMATION: see Justina USER MANUAL, available on GitHub
 */
@@ -55,10 +61,11 @@ constexpr char menu[] = "Please type 'J' to start Justina interpreter\r\n";
 constexpr char SSID[] = SERVER_SSID, PASS[] = SERVER_PASS;                          // WiFi SSID and password defined in secrets.h                          
 
 // enter the correct server STATIC IP address and port here (CHECK / ADAPT your ROUTER settings as well)
+// (if configured as a HTTP/IP client, this is the IP address and port of the server to connect to) 
 const IPAddress serverAddress(192, 168, 0, 95);                                     // STATIC server IP (LAN)
 const int serverPort = 8085;
 
-// enter gateway address, subnet mask and DNS address here
+// enter gateway address, subnet mask and DNS address here (not relevant if configured as HTTP/IP  client)
 const IPAddress gatewayAddress(192, 168, 0, 1);
 const IPAddress subnetMask(255, 255, 255, 0);
 const IPAddress DNSaddress(195, 130, 130, 5);

@@ -13,8 +13,18 @@
 #include "Justina_TCPIP.h"
 
 /*
-	Example code demonstrating how to setup an Arduino as a TCP/IP server
-	---------------------------------------------------------------------
+	Example code demonstrating how to setup an Arduino as a TCP/IP server or client.
+    This code also maintains the connection: method maintainConnection() MUST BE CALLED REGULARLY from your program main loop. 
+    This allows you to isolate your application (an HTTP server, ...) from this TCP/IP maintenance code.
+
+    The constructor called will define whether Arduino is set up as a server or a client. 
+    WiFi maintenance and TCP/IP connection maintenance is split into two different methods.
+    Variable '_connectionState' maintains the state of the connection ('state machine'). If this maintained state
+    (e.g., 'WiFi connected') does not correspond to the actual state (e.g., WiFi connection was lost) OR your application 
+    requests a state change (e.g., 'switch off WiFi'), action is taken.
+    
+    A number of utility functions are provided to switch WiFi on or off, to allow a TCP/IP connections or not, etc.
+	--------------------------------------------------------------------------------------------------------------------------
 */
 		
 
@@ -62,14 +72,6 @@ TCPconnection::TCPconnection(const char SSID[], const char PASS[], const IPAddre
 }
 
 
-// ------------------------------------------------------
-// *   return a pointer to server resp. client object   *
-// ------------------------------------------------------
-
-WiFiServer* TCPconnection::getServer() { return &_server; }
-WiFiClient* TCPconnection::getClient() { return &_client; }
-
-
 // *********************************************************************************************
 // ***   Connection maintenance. Call this function regularly from within the user program   ***
 // *********************************************************************************************
@@ -110,7 +112,7 @@ void TCPconnection::maintainWiFiConnection() {
 
                 WiFi.begin((const char*)_SSID, (const char*)_PASS);
                 _connectionState = conn_1_WiFi_waitForConnecton;
-                if (_verbose) { Serial.println("-- Trying to connect WiFi..."); }
+                if (_verbose) { Serial.println(_isClient ? "-- Trying to connect WiFi..." : "-- Trying to connect server to WiFi..."); }
                 // remember time of this WiFi connection attempt
                 _WiFiWaitingForConnectonAt = _lastWiFiMaintenanceTime = millis();       // remember time of last WiFi maintenance AND time of this WiFi connection attempt
                 _resetWiFi = false;
@@ -131,7 +133,7 @@ void TCPconnection::maintainWiFiConnection() {
                     if (_verbose) {
                         IPAddress IP = WiFi.localIP();
                         char s[100];
-                        sprintf(s, "\r\n-- WiFi connected, local IP %d.%d.%d.%d (%ld dBm)", IP[0], IP[1], IP[2], IP[3], WiFi.RSSI());
+                        sprintf(s, "\r\n-- %sWiFi connected, local IP %d.%d.%d.%d (%ld dBm)", (_isClient ? "" : "server started. "), IP[0], IP[1], IP[2], IP[3], WiFi.RSSI());
                         Serial.println(s);
                     }
                 }
@@ -157,7 +159,8 @@ void TCPconnection::maintainWiFiConnection() {
             //  prepare for reconnection if connection is lost OR per user program request 
             if (_resetWiFi || (WiFi.status() != WL_CONNECTED)) {
                 _connectionState = conn_0_WiFi_notConnected;
-                if (_verbose) { Serial.println("-- WiFi disconnected"); }
+                if (_verbose) { Serial.println(_isClient ? "-- WiFi disconnected" : "-- WiFi disconnected, server stopped"); }
+                _server.end();
                 WiFi.disconnect();
             #if !defined ARDUINO_ARCH_ESP32
                 WiFi.end();
@@ -184,7 +187,7 @@ void TCPconnection::maintainTCPconnection() {
         case conn_2_WiFi_connected:
             if (_TCPenabled) {
                 _connectionState = conn_3_TCPwaitForNewClient;
-                if (_verbose) { Serial.println("-- waiting for client"); }
+                if (_verbose) { Serial.println(_isClient ? "-- trying to connect to server" : "-- waiting for a client"); }
             }
             break;
 
@@ -202,7 +205,7 @@ void TCPconnection::maintainTCPconnection() {
                     if (_verbose) {
                         IPAddress IP = _client.remoteIP();
                         char s[100];
-                        sprintf(s, "\r\n-- client connected, remote IP %d.%d.%d.%d", IP[0], IP[1], IP[2], IP[3]);
+                        sprintf(s, "\r\n-- %s, remote IP %d.%d.%d.%d", (_isClient ? "connected to server" : "client connected"), IP[0], IP[1], IP[2], IP[3]);
                         Serial.println(s);
                     }
                     _connectionState = conn_4_TCP_clientConnected;
@@ -222,7 +225,7 @@ void TCPconnection::maintainTCPconnection() {
         {
             if (!_client.connected() || !_TCPenabled) {
                 _client.stop();
-                if (_verbose) { Serial.println("-- client disconnected"); }
+                if (_verbose) { Serial.println(_isClient ? "-- disconnected from server" : "-- client disconnected"); }
                 _connectionState = conn_2_WiFi_connected;
             }
         }
@@ -234,10 +237,17 @@ void TCPconnection::maintainTCPconnection() {
 // ***   Utility functions   ***
 // *****************************
 
+// ------------------------------------------------------
+// *   return a pointer to server resp. client object   *
+// ------------------------------------------------------
+
+WiFiServer* TCPconnection::getServer() {return _isClient ? nullptr : &_server; }
+WiFiClient* TCPconnection::getClient() { return &_client; }
+
+
 // ------------------------------------
 // *   TCP/IP connection: settings    *
 // ------------------------------------
-
 
 void TCPconnection::WiFiOff() {                     // switch off WiFi antenna
     _resetWiFi = true;
@@ -259,7 +269,6 @@ void TCPconnection::TCPenable() {                   // enable TCP IO
 // --------------------
 // *   stop client    *
 // --------------------
-
 
 void TCPconnection::stopClient() {
     if (_connectionState == conn_4_TCP_clientConnected) {
