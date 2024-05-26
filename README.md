@@ -1,7 +1,9 @@
-# Justina_interpreter
+# Justina: a fully documented, easy-to-use programming language for Arduino
 
-Justina is both an easy-to-use programming language for Arduino and a capable interpreter. It was developed and built around a few objectives. 
-* On top of the list: simplicity for the user. Justina is a structured language, but it’s non-object oriented (as opposed to the powerful but more complex c++ language). It has some similarities with Basic, a language that has been around for quite some time.
+![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/f277744a-f5b7-4839-b0e2-feb266d47aaa)
+
+Justina (short for 'Just an Interpreter for Arduino') was developed and built around a few objectives. 
+* On top of the list: simplicity for the user. Justina is a structured language, but it’s non-object oriented (as opposed to the powerful but more complex c++ and Python languages).
 * Equally important: it was built with Arduino in mind - more specifically, 32-bit Arduino’s: boards with a SAMD processor (like the nano 33 IoT), the nano ESP32 and the nano RP2040.
   
 Justina does not impose any requirements or restrictions related to hardware (pin assignments, interrupts, timers,... - it does not use any), nor does it need to have any knowledge about it for proper operation.
@@ -22,7 +24,7 @@ The result will look like this:
 
 ![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/d7381581-394a-4305-a506-3b3500b850c6)
 
-Statements you type are echoed after the Justina prompt (“Justina>“), so you have a nice history. Multiple statements can be entered at the same time, separated by semicolons.
+Statements you type are echoed after the Justina prompt (“Justina>“), providing a history of what has been entered. Multiple statements can be entered on a single line, separated by semicolons.
 The result of  the last expression entered in the command line is printed on the next line. In this example: both digitalWrite and digitalRead are functions, digitalWrite returning the value written to the pin (1 is the value of predefined constant HIGH) and digitalRead reading back that same value from the pin .
 
 
