@@ -12,7 +12,7 @@
 
 #include "Justina.h"
 #include "secrets.h"               
-#include "src/Justina_TCP.h"
+#include "src/Justina_TCPIP.h"
 
 /*
     Example code demonstrating how to setup an Arduino as a TCP/IP server
@@ -54,16 +54,21 @@ constexpr char menu[] = "Please type 'J' to start Justina interpreter\r\n";
 // enter WiFi SSID and password in file secrets.h
 constexpr char SSID[] = SERVER_SSID, PASS[] = SERVER_PASS;                          // WiFi SSID and password defined in secrets.h                          
 
-// enter the correct server static IP address, gateway address, subnet mask and DNS address here
-const IPAddress serverAddress(192, 168, 0, 95);     // STATIC server IP (LAN)
+// enter the correct server STATIC IP address and port here (CHECK / ADAPT your ROUTER settings as well)
+const IPAddress serverAddress(192, 168, 0, 95);                                     // STATIC server IP (LAN)
+const int serverPort = 8085;
+
+// enter gateway address, subnet mask and DNS address here
 const IPAddress gatewayAddress(192, 168, 0, 1);
 const IPAddress subnetMask(255, 255, 255, 0);
 const IPAddress DNSaddress(195, 130, 130, 5);
-const int serverPort = 8085;
 
-// create TCP connection object to connect Arduino as TCP server 
+// create TCP connection object to connect Arduino as TCP server
+// last argument: desired connection state (choose WiFi not connected, WiFi connected or TCP connected)
 TCPconnection myTCPconnection(SSID, PASS, serverAddress, gatewayAddress, subnetMask, DNSaddress, serverPort, TCPconnection::conn_4_TCP_clientConnected);
-TCPconnection::connectionState_type _connectionState{ TCPconnection::conn_0_WiFi_notConnected };    // init connection state 
+
+// initialize variable maintaining the current connection state
+TCPconnection::connectionState_type _connectionState = TCPconnection::conn_0_WiFi_notConnected;    // assume not connected  
 
 
 // ---------------------

@@ -752,7 +752,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                     int IOstreamArgIndex = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_sendFile ? 1 : 0);              // init (default for send and receive only, if not specified)
                     if ((valueType[IOstreamArgIndex] == value_isLong) || (valueType[IOstreamArgIndex] == value_isFloat)) {      // external source/destination specified (console or an alternate I/O stream)
                         IOstreamNumber = ((valueType[IOstreamArgIndex] == value_isLong) ? args[IOstreamArgIndex].longConst : (long)args[IOstreamArgIndex].floatConst);
-                        if (IOstreamNumber > 0) { return result_IO_invalidStreamNumber; }    // external stream: stream number should be zero or negative
+                        if (IOstreamNumber > 0) { return result_IO_invalidStreamNumber; }    // external stream: external stream number should be zero or negative
                     }
                     else { return result_arg_numberExpected; }
                 }
@@ -845,6 +845,12 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                             if (!validAnswer) { printlnTo(0, "\r\n===== File exists already. Overwrite ? (please answer Y or N) ====="); }
                             else { break; }
                         } while (true);
+
+                        if (isReceive && verbose) {
+                            // set EXTERNAL stream to input from, again (it was changed to CONSOLE by getConsoleCharacters() method, to read user answer from CONSOLE)
+                            execResult = setStream(sourceStreamNumber, pSourceStream, false);                
+                            if (execResult != result_execOK) { return result_IO_invalidStreamNumber; }
+                        }
                     }
                 }
 
@@ -872,8 +878,8 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                     delete[]dirPath;
                     _systemStringObjectCount--;
                     if (execResult != result_execOK) { return execResult; }
+                    }
                 }
-            }
 
             if (proceed) {
                 if ((isSend || isCopy)) {
@@ -990,7 +996,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             // clean up
             clearEvalStackLevels(cmdArgCount);                                        // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                  // command execution ended
-        }
+            }
         break;
 
 
@@ -1169,8 +1175,8 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
 
                         // if NOT a variable REFERENCE, then value type on the stack indicates the real value type and NOT 'variable reference' ...
                         // but it does not need to be changed, because in the next step, the respective stack level will be deleted 
+                        }
                     }
-                }
 
 
                 if (cmdArgCount == (isInput ? 3 : 2)) {       // last argument (optional second if Info, third if Input statement) serves a dual purpose: allow cancel (on entry) and signal 'canceled' (on exit)
@@ -1182,12 +1188,12 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                     // if NOT a variable REFERENCE, then value type on the stack indicates the real value type and NOT 'variable reference' ...
                     // but it does not need to be changed, because in the next step, the respective stack level will be deleted 
                 }
-            } while (!answerValid);
+                } while (!answerValid);
 
-            // clean up
-            clearEvalStackLevels(cmdArgCount);                                                                                  // clear evaluation stack and intermediate strings
-            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                            // command execution ended
-        }
+                // clean up
+                clearEvalStackLevels(cmdArgCount);                                                                                  // clear evaluation stack and intermediate strings
+                _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                            // command execution ended
+            }
         break;
 
 
@@ -1479,9 +1485,9 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                 }
 
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-            }
+                    }
 
-            // finalize
+                    // finalize
             if (isPrintToVar) {                                                                                             // print to string ? save in variable
                 // receiving argument is a variable, and if it's an array element, it has string type 
 
@@ -1498,9 +1504,9 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                         delete[] assembledString;
                     }
                     return execResult;
-                }
+                    }
 
-                    // print line end without supplied arguments for printing: a string object does not exist yet, so create it now
+                        // print line end without supplied arguments for printing: a string object does not exist yet, so create it now
                 if (doPrintLineEnd) {
                     *pStreamPrintColumn = 0;                                                                                // to be consistent with handling of printing line end for printing to non-variable streams, but initialized to zero already 
                     if (cmdArgCount == 1) {                                                                                 // only receiving variable supplied: no string created yet     
@@ -1546,7 +1552,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                     delete[] assembledString;                             // not referenced in eval. stack (clippedString is), so will not be deleted as part of cleanup
                     _systemStringObjectCount--;
                 }
-            }
+                    }
 
             else {      // print to file or external IO
                 if (doPrintLineEnd) {
@@ -1558,7 +1564,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             // clean up
             clearEvalStackLevels(cmdArgCount);                                                                              // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
-        }
+                }
         break;
 
 
@@ -2079,15 +2085,15 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
         }
         break;
 
-    }       // end switch
+        }       // end switch
 
     return result_execOK;
-}
+                }
 
 
-// -------------------------------
-// *   test for loop condition   *
-// -------------------------------
+                // -------------------------------
+                // *   test for loop condition   *
+                // -------------------------------
 
 Justina::execResult_type Justina::testForLoopCondition(bool& testFails) {
 
@@ -2179,15 +2185,15 @@ Justina::execResult_type Justina::copyValueArgsFromStack(LE_evalStack*& pStackLv
         }
 
         pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-    }
+                }
 
     return result_execOK;
-}
+            }
 
 
-// -----------------------------------------------------------------------
-// *   replace a system string value with a copy of a new string value   * 
-// -----------------------------------------------------------------------
+            // -----------------------------------------------------------------------
+            // *   replace a system string value with a copy of a new string value   * 
+            // -----------------------------------------------------------------------
 
 void Justina::replaceSystemStringValue(char*& systemString, const char* newString) {
 

@@ -121,7 +121,7 @@ function webServer();
 							// first parse, than evaluate 'expressionText'
 							result = eval(expressionText);										// result (if no error: integer, float or string result)
 							
-							// if an error occurs while PARSING expressionText, a specific EXECUTION error is produced (EVAL_PARSING_ERROR) 
+							// if an error occurs while PARSING 'expressionText', a specific EXECUTION error is produced (EVAL_PARSING_ERROR) 
 							// and the err() argument 'evalParsingError' returns the parsing error
 							executionError = err(evalParsingError);								// return execution error and, possibly, an associated parsing number 
 							if executionError == EVAL_PARSING_ERROR; result = "! Error in formula: parsing error " + cStr(evalParsingError); 

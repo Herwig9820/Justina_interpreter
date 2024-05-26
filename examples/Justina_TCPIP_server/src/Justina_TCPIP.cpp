@@ -10,7 +10,7 @@
 *   2024, Herwig Taveirne                                                                                                *
 *************************************************************************************************************************/
 
-#include "Justina_TCP.h"
+#include "Justina_TCPIP.h"
 
 /*
 	Example code demonstrating how to setup an Arduino as a TCP/IP server
@@ -41,7 +41,7 @@ TCPconnection::TCPconnection(const char SSID[], const char PASS[],
     _isClient = false;
     _verbose = false;
     _resetWiFi = false;
-    _WiFiEnabled = (initialConnState == conn_3_TCPwaitForNewClient) || (initialConnState == conn_4_TCP_clientConnected);
+    _WiFiEnabled = (initialConnState >= conn_2_WiFi_connected);
     _TCPenabled = (initialConnState == conn_4_TCP_clientConnected);
 }
 
@@ -57,7 +57,7 @@ TCPconnection::TCPconnection(const char SSID[], const char PASS[], const IPAddre
     _isClient = true;
     _verbose = false;
     _resetWiFi = false;
-    _WiFiEnabled = (initialConnState == conn_3_TCPwaitForNewClient) || (initialConnState == conn_4_TCP_clientConnected);
+    _WiFiEnabled = (initialConnState >= conn_2_WiFi_connected);
     _TCPenabled = (initialConnState == conn_4_TCP_clientConnected);
 }
 
