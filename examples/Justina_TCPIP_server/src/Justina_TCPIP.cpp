@@ -1,26 +1,14 @@
-/***********************************************************************************************************
-*   Justina interpreter library                                                                            *
-*                                                                                                          *
-*   Copyright 2024, Herwig Taveirne                                                                        *
-*                                                                                                          *
-*   This file is part of the Justina Interpreter library.                                                  *
-*   The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
-*   the terms of the GNU General Public License as published by the Free Software Foundation, either       *
-*   version 3 of the License, or (at your option) any later version.                                       *
-*                                                                                                          *
-*   This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;              *
-*   without even the implied warranty of  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.             *
-*   See the GNU General Public License for more details.                                                   *
-*                                                                                                          *
-*   You should have received a copy of the GNU General Public License along with this program. If not,     *
-*   see https://www.gnu.org/licenses.                                                                      *
-*                                                                                                          *
-*   The library is intended to work with 32 bit boards using the SAMD architecture ,                       *
-*   the Arduino nano RP2040 and Arduino nano ESP32 boards.                                                 *
-*                                                                                                          *
-*   See GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter   *
-*                                                                                                          *
-************************************************************************************************************/
+/*************************************************************************************************************************
+*   Example Arduino sketch demonstrating Justina interpreter functionality												 *
+*                                                                                                                        *
+*   The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      *
+*   by the Free Software Foundation (https://www.gnu.org/licenses).                                                      *
+*   Refer to GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter            *
+*                                                                                                                        *
+*   This example code is in the public domain                                                                            *
+*                                                                                                                        *
+*   2024, Herwig Taveirne                                                                                                *
+*************************************************************************************************************************/
 
 #include "Justina_TCPIP.h"
 
