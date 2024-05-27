@@ -14,15 +14,15 @@
 
 /*
     Example code demonstrating how to write user c++ functions for Justina
-	----------------------------------------------------------------------
-	Built-in Justina functionality can be extended by writing specific functions in c++ ('user cpp functions). Such functions 
-    may include time-critical user routines, functions targeting specific hardware, functions extending functionality in a 
+    ----------------------------------------------------------------------
+    Built-in Justina functionality can be extended by writing specific functions in c++ ('user cpp functions). Such functions
+    may include time-critical user routines, functions targeting specific hardware, functions extending functionality in a
     specific domain, etc. These functions must then be 'registered' with Justina and given a 'Justina function name' (an alias).
     From then onward, these C++ functions can be called just like any other Justina function, with the same syntax,
     using the alias as function name and passing scalar or array variables as arguments.
 
-    This sketch demonstrates how to write user c++ functions and shows how to call these user c++ functions from Justina 
-    (from the Justina command line or from a Justina program). 
+    This sketch demonstrates how to write user c++ functions and shows how to call these user c++ functions from Justina
+    (from the Justina command line or from a Justina program).
 
     MORE INFORMATION: see Justina USER MANUAL, available on GitHub
 */
@@ -45,9 +45,9 @@ Justina justina;
 void doSomething(void** const pdata, const char* const valueType, const int argCount, int& execError) {
 
 /*
-    Justina call (if function is registered with same Justina name):
-    ----------------------------------------------------------------
-    doSomething();       // although this function returns nothing, a zero will be returned to Justina
+    Justina call (if function is registered as in this example):
+    ------------------------------------------------------------
+    cpp_doSomething();                                                      // although this function returns nothing, a zero will be returned to Justina
 
 */
 
@@ -62,9 +62,9 @@ void doSomething(void** const pdata, const char* const valueType, const int argC
 float addAllFloats(void** const pdata, const char* const valueType, const int argCount, int& execError) {
 
 /*
-    Justina call (if function is registered with same Justina name):
-    ----------------------------------------------------------------
-    addAllFloats(1.3, 2.5, 999, "hello");                                   // result returned: 3.8 (only floats are added)
+    Justina call (if function is registered as in this example):
+    ------------------------------------------------------------
+    cpp_addAllFloats(1.3, 2.5, 999, "hello");                               // result returned: 3.8 (only floats are added)
 
 */
 
@@ -85,10 +85,10 @@ float addAllFloats(void** const pdata, const char* const valueType, const int ar
 void changeAllArgValues(void** const pdata, const char* const valueType, const int argCount, int& execError) {
 
  /*
-    Justina call (if function is registered with same Justina name):
-    ----------------------------------------------------------------
+    Justina call (if function is registered as in this example):
+    ------------------------------------------------------------
     var longVar = 123, floatVar = 123., stringVar = "123";                  // create variables
-    changeAllArgValues(longVar, floatVar, stringVar);                       // although this function returns nothing, a zero will be returned to Justina
+    cpp_changeAllArgValues(longVar, floatVar, stringVar);                   // although this function returns nothing, a zero will be returned to Justina
 */
 
     for (int i = 0; i < argCount; i++) {                                    // for each argument...
@@ -126,9 +126,9 @@ void changeAllArgValues(void** const pdata, const char* const valueType, const i
 char* returnFirstArg(void** const pdata, const char* const valueType, const int argCount, int& execError) {
 
  /*
-    Justina call (if function is registered with same Justina name):
-    ----------------------------------------------------------------
-    returnFirstArg("Christian");                                            // result returned: "Christian"
+    Justina call (if function is registered as in this example):
+    ------------------------------------------------------------
+    cpp_returnFirstArg("Christian");                                        // result returned: "Christian"
 */
 
     // no need to test argument count (fixed to '1' - see STEP 2., below)  
@@ -177,7 +177,7 @@ Justina::CppBoolFunction const cppBoolFunctions[]{ };                       // u
 Justina::CppCharFunction const cppCharFunctions[]{ };                       // user c++ functions returning a character (char) 
 Justina::CppIntFunction const cppIntFunctions[]{ };                         // user c++ functions returning an integer (int) 
 Justina::CppLongFunction const cppLongFunctions[]{ };                       // user c++ functions returning a long integer (long) 
-                                                                            
+
 
 // -------------------------------
 // *   Arduino setup() routine   *

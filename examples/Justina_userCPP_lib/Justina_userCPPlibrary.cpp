@@ -24,11 +24,11 @@
 bool JustinaComplex::cmplxAdd(void** const pdata, const char* const valueType, const int argCount, int& execError) {
 
 /*
-    Justina call (if function is registered with identical Justina name):
-    ---------------------------------------------------------------------
+    Justina call (if function is registered as in this example):
+    ------------------------------------------------------------
     var a(2), b(2), sum(2);             // arrays for 3 complex numbers
     ...                                 // input : a(1), b(1) = real part, a(2), b(2) = imaginary part
-    cmplxAdd(a(1), b(1), sum(1));       // return: sum(1) = real part, sum(2) = imaginary (always pass an array element, not an array name)
+    cpp_cmplxAdd(a(1), b(1), sum(1));   // return: sum(1) = real part, sum(2) = imaginary (always pass an array element, not an array name)
 
 */
 
@@ -62,11 +62,11 @@ bool JustinaComplex::cmplxAdd(void** const pdata, const char* const valueType, c
 bool JustinaComplex::cmplxCtoP(void** const pdata, const char* const valueType, const int argCount, int& execError) {
 
 /*
-    Justina call (if function is registered with same Justina name):
-    ----------------------------------------------------------------
+    Justina call  (if function is registered as in this example):
+    --------------------------------------------------------------
     var cart(2), polar(2);              // arrays for Cartesian and polar coordinates, respectively
     ...                                 // input : cart(1) = real part, cart(2) = imaginary part
-    cmplxCtoP(cart(1), polar(1));       // return: polar(1) = radius, polar(2) = angle (always pass an array element, not an array name)
+    cpp_cmplxCtoP(cart(1), polar(1));   // return: polar(1) = radius, polar(2) = angle (always pass an array element, not an array name)
 
 */
 
