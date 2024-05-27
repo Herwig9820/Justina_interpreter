@@ -127,7 +127,7 @@ Justina::CppVoidFunction  const cppVoidFunctions[]{                             
     {"cpp_stopClient", stopClient, 0, 0},
     {"cpp_setVerbose", setVerboseConnection, 1, 1},
     {"cpp_localIP", getLocalIP, 1, 1},
-    { "cpp_remoteIP", getRemoteIP, 1, 1 }
+    {"cpp_remoteIP", getRemoteIP, 1, 1 }
 };
 
 Justina::CppLongFunction const cppLongFunctions[]{                                  // user c++ functions returning a long integer value

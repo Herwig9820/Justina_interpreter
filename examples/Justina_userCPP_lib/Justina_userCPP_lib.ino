@@ -15,19 +15,19 @@
 
 /*
     Example code demonstrating how to write a user c++ function library for use by the Justina interpreter
-	------------------------------------------------------------------------------------------------------
-	Built-in Justina functionality can be extended by writing specific functions in c++. Such functions may include 
-    time-critical user routines, functions targeting specific hardware, functions extending functionality in a specific 
+    ------------------------------------------------------------------------------------------------------
+    Built-in Justina functionality can be extended by writing specific functions in c++. Such functions may include
+    time-critical user routines, functions targeting specific hardware, functions extending functionality in a specific
     domain, etc. These functions must then be 'registered' with Justina and given a 'Justina function name' (an alias).
-    From then onward, these C++ functions can be called just like any other Justina function, with the same syntax, 
+    From then onward, these C++ functions can be called just like any other Justina function, with the same syntax,
     using the alias as function name and passing scalar or array variables as arguments.
 
-    This sketch demonstrates how to create a Justina user c++ 'library' file. The c++ functions it contains can then  
+    This sketch demonstrates how to create a Justina user c++ 'library' file. The c++ functions it contains can then
     be called from Justina (from the Justina command line or from a Justina program).
-	It also shows how to pass arrays (by reference) to a user c++ function.
+    It also shows how to pass arrays (by reference) to a user c++ function.
 
     MORE INFORMATION: see Justina USER MANUAL, available on GitHub
-	*/
+    */
 
 
 // create Justina_interpreter object with default values: IO via Serial only, SD card allowed, default SD card CS pin
@@ -51,8 +51,8 @@ bool JustinaComplex::cmplxCtoP(void** const pdata, const char* const valueType, 
 // arrays with a function attributes record (alias, function, min. and max. arguments allowed) for each user c++ function defined above
 // ------------------------------------------------------------------------------------------------------------------------------------
 Justina::CppBoolFunction const cppBoolFunctions[]{                          // user functions returning boolean value (bool)
-    {"cmplxAdd", JustinaComplex::cmplxAdd, 3, 3},                           // - complex number addition                   
-    {"cmplxCtoP", JustinaComplex::cmplxCtoP, 2, 2 }                         // - Cartesian to polar coordinates                   
+    {"cpp_cmplxAdd", JustinaComplex::cmplxAdd, 3, 3},                       // - complex number addition                   
+    {"cpp_cmplxCtoP", JustinaComplex::cmplxCtoP, 2, 2 }                     // - Cartesian to polar coordinates                   
 };
 // no user c++ functions defined with these return types: 
 // OK to comment out or remove next lines 
@@ -87,7 +87,7 @@ void setup() {
     justina.registerIntUserCppFunctions(cppIntFunctions, 0);                // user c++ functions returning an integer (int)
     justina.registerLongUserCppFunctions(cppLongFunctions, 0);              // user c++ functions returning a long integer (long)
     justina.registerVoidUserCppFunctions(cppVoidFunctions, 0);              // user c++ functions returning nothing (void)
-                                                                                     
+
     // run interpreter (control will stay there until you quit Justina)
     justina.begin();
 }

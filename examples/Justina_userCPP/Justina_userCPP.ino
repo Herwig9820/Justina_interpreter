@@ -159,16 +159,16 @@ char* returnFirstArg(void** const pdata, const char* const valueType, const int 
 // arrays with a function attributes record (alias, function, min. and max. arguments allowed) for each user c++ function defined above
 // ------------------------------------------------------------------------------------------------------------------------------------
 Justina::CppFloatFunction const cppFloatFunctions[]{                        // user c++ functions returning a floating point number (float) 
-    {"addAllFloats", addAllFloats, 0, 8}
+    {"cpp_addAllFloats", addAllFloats, 0, 8}
 };
 
 Justina::Cpp_pCharFunction const cpp_pCharFunctions[]{                      // user c++ functions returning a char*
-    { "returnFirstArg", returnFirstArg, 1, 1 }
+    {"cpp_returnFirstArg", returnFirstArg, 1, 1 }
 };
 
 Justina::CppVoidFunction  const cppVoidFunctions[]{                         // user c++ functions returning nothing
-    {"doSomething", doSomething, 0, 0},
-    {"changeAllArgValues", changeAllArgValues, 0, 8},
+    {"cpp_doSomething", doSomething, 0, 0},
+    {"cpp_changeAllArgValues", changeAllArgValues, 0, 8},
 };
 
 // no user c++ functions defined with these return types: 
