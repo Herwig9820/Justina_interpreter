@@ -2525,7 +2525,7 @@ bool Justina::parseString(char*& pNext, char*& pch, char*& pStringCst, char& val
     pch = pNext;                                                                                // pointer to first character to parse (any spaces have been skipped already)
     predefinedConstIndex = -1;                                                                  // init: assume literal constant
 
-    // first, check for symbolic string
+    // first, check for predefined constant name
     char* tokenStart = pNext;
     if (isalpha(pNext[0])) {                                                                    // first character is a letter ? could be predefined symbolic constant
         while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                             // position as if symbolic constant was found, for now
@@ -2550,15 +2550,17 @@ bool Justina::parseString(char*& pNext, char*& pch, char*& pStringCst, char& val
     // is not a symbolic string constant: string literal ?
 
     if ((pNext[0] != '\"')) { return true; }                                                    // no opening quote ? Is not an alphanumeric cst (it can still be something else)
+
     pNext++;                                                                                    // skip opening quote
     int escChars = 0;
-    pStringCst = nullptr;                                                                       // init
+
     while (pNext[0] != '\"') {                                                                  // do until closing quote, if any
         // if no closing quote found, an invalid escape sequence or a control character detected, reset pointer to first character to parse, indicate error and return
         if (pNext[0] == '\0') { pNext = pch; result = result_alphaClosingQuoteMissing; return false; }
         if (pNext[0] < ' ') { pNext = pch; result = result_alphaNoCtrlCharAllowed; return false; }
         if (pNext[0] == '\\') {
-            if ((pNext[1] == '\\') || (pNext[1] == '\"')) { pNext++; escChars++; }              // valid escape sequences: ' \\ ' (add backslash) and ' \" ' (add double quote)
+            // valid escape sequences: "\\" (add backslash), "\"" (add double quote), "\r" (add '\r' = cr) and "\n" (add '\n' = nl)
+            if ((pNext[1] == '\\') || (pNext[1] == '\"') || (pNext[1] == 'r') || (pNext[1] == 'n')) { pNext++; escChars++; }  
             else { pNext = pch; result = result_alphaConstInvalidEscSeq; return false; }
         }
         pNext++;
@@ -2568,32 +2570,39 @@ bool Justina::parseString(char*& pNext, char*& pch, char*& pStringCst, char& val
     if (pNext - (pch + 1) - escChars > MAX_ALPHA_CONST_LEN) { pNext = pch; result = result_alphaConstTooLong; return false; }
 
     // token is an alphanumeric constant, and it's allowed here
+    pStringCst = nullptr;                                                                       // init
     if (pNext - (pch + 1) - escChars > 0) {    // not an empty string: create string object 
         isIntermediateString ? _intermediateStringObjectCount++ : _parsedStringConstObjectCount++;
         pStringCst = new char[pNext - (pch + 1) - escChars + 1];                                // create char array on the heap to store alphanumeric constant, including terminating '\0'
         // store alphanumeric constant in newly created character array
         pStringCst[pNext - (pch + 1) - escChars] = '\0';                                        // store string terminating '\0' (pch + 1 points to character after opening quote, pNext points to closing quote)
         char* pSource = pch + 1, * pDestin = pStringCst;                                        // pSource points to character after opening quote
+        bool isEscSeq{ false };
         while (pSource + escChars < pNext) {                                                    // store alphanumeric constant in newly created character array (terminating '\0' already added)
-            if (pSource[0] == '\\') { pSource++; escChars--; }                                  // if escape sequences found: skip first escape sequence character (backslash)
+            if (isEscSeq = (pSource[0] == '\\')) { pSource++; escChars--; }                     // if escape sequences found: skip first escape sequence character (backslash)
             pDestin++[0] = pSource++[0];
+            
+            if(isEscSeq && ((pSource[-1] == 'r') || (pSource[-1] == 'n'))) {
+                pDestin[-1] = (pSource[-1] == 'r') ? '\r' : '\n';
+            }
+            
         }
     #if PRINT_HEAP_OBJ_CREA_DEL
         _pDebugOut->print(isIntermediateString ? "\r\n+++++ (Intermd str) " : "\r\n+++++ (parsed str ) "); _pDebugOut->println((uint32_t)pStringCst, HEX);
         _pDebugOut->print("       parse string "); _pDebugOut->println(pStringCst);
     #endif
-    }
+        }
     pNext++;                                                                                    // skip closing quote
 
     valueType = value_isStringPointer;
     result = result_parsing_OK;
     return true;                                                                                // valid string
-}
+    }
 
 
-// -------------------------------------------------------------------------
-// *   check if identifier storage exists already, optionally create new   *
-// -------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // *   check if identifier storage exists already, optionally create new   *
+    // -------------------------------------------------------------------------
 
 int Justina::getIdentifier(char** pIdentNameArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNewName, bool isUserVar) {
 
@@ -2767,12 +2776,12 @@ Justina::parsingResult_type Justina::deleteUserVariable(char* userVarName) {
             #endif
                 _userVarStringObjectCount--;
                 delete[]  userVarValues[index].pStringConst;
-            }
-        }
+    }
+}
 
-        // 5. move up next user variables one place
-        //    if a user variable is used in currently loaded program: adapt index in program storage
-        // -----------------------------------------------------------------------------------------
+// 5. move up next user variables one place
+//    if a user variable is used in currently loaded program: adapt index in program storage
+// -----------------------------------------------------------------------------------------
         for (int i = index; i < _userVarCount - 1; i++) {
             userVarNames[i] = userVarNames[i + 1];
             userVarValues[i] = userVarValues[i + 1];
@@ -2793,7 +2802,7 @@ Justina::parsingResult_type Justina::deleteUserVariable(char* userVarName) {
 
         _userVarCount--;
         varDeleted = true;
-    }
+}
 
     if (!varDeleted) { return result_variableNameExpected; }
 

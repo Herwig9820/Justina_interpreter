@@ -12,7 +12,7 @@
 
 #include "Justina.h"
 #include "secrets.h"               
-#include "TCPIP_lib/Justina_TCPIP.h"
+#include "src/Justina_TCPIP.h"
 
 /*
     Example code demonstrating how to setup an Arduino as a TCP/IP server.
