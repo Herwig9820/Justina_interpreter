@@ -145,9 +145,9 @@ char* returnFirstArg(void** const pdata, const char* const valueType, const int 
     You can return a string literal, because string literals are stored in static memory
     */
 
+    char* name = (char*)(pdata[0]); return name;        // OK
     // static char name[10] = "John";  return name;     // OK
-    // char* name = (char*)(pdata[0]); return name;     // OK
-    return "Peter";                                     // OK     
+    // return "Peter";                                  // OK     
 }
 
 

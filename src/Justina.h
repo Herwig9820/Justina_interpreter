@@ -88,7 +88,7 @@
 #define J_productName "Justina: JUST an INterpreter for Arduino"
 #define J_legalCopyright "Copyright 2024, Herwig Taveirne"
 #define J_version "1.1.1"            
-#define J_buildDate "May 23, 2024"
+#define J_buildDate "May 29, 2024"
 
 
 // ******************************************************************

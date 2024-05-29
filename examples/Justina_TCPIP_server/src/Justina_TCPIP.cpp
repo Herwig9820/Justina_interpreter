@@ -160,7 +160,6 @@ void TCPconnection::maintainWiFiConnection() {
             if (_resetWiFi || (WiFi.status() != WL_CONNECTED)) {
                 _connectionState = conn_0_WiFi_notConnected;
                 if (_verbose) { Serial.println(_isClient ? "-- WiFi disconnected" : "-- WiFi disconnected, server stopped"); }
-                _server.end();
                 WiFi.disconnect();
             #if !defined ARDUINO_ARCH_ESP32
                 WiFi.end();
