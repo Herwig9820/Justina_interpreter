@@ -4,7 +4,8 @@
 
 Justina (short for 'Just an Interpreter for Arduino') was developed and built around a few objectives. 
 * On top of the list: simplicity for the user. Justina is a structured language, but it’s non-object oriented (as opposed to the powerful but more complex c++ and Python languages).
-* Equally important: it was built with Arduino in mind - more specifically, 32-bit Arduino’s: boards with a SAMD processor (like the nano 33 IoT), the nano ESP32 and the nano RP2040.
+* Equally important: Justina was built with Arduino in mind - more specifically, 32-bit Arduino’s: boards with a SAMD processor (like the nano 33 IoT), the nano ESP32 and the nano RP2040.
+* High quality documentation: the Justina user manual completely covers functionality, including more technical aspects like integration with c++, system callbacks, examples and so on.
   
 Justina does not impose any requirements or restrictions related to hardware (pin assignments, interrupts, timers,... - it does not use any), nor does it need to have any knowledge about it for proper operation.
 The Justina syntax has been kept as simple as possible. A program consists of statements. A statement either consists of
