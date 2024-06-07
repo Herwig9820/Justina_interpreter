@@ -13,6 +13,8 @@ The Justina syntax has been kept as simple as possible. A program consists of st
 *	a single expression (always yielding a result).
 *	a command, starting with a keyword, optionally followed by a list of expressions (such a statement is called a command, because it ‘does’ something without actually calculating a result)
 
+![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/6e3fd8ab-006c-4d4a-bc63-2192c335afcb)
+
 Because Justina is an interpreted language, a Justina  program is not compiled into machine language but it is parsed into so called tokens before execution. Parsing is a fast process, which makes Justina the ideal tool for quick prototyping. Once it is installed as an Arduino library, call Justina from within an Arduino c++ program and you will have the Justina interpreter ready to receive commands, evaluate expressions and execute Justina programs. 
 You can enter statements directly in the command line of the Arduino IDE (the Serial monitor by default, a TCP IP client, ...) and they will immediately get executed, without any programming.
 
