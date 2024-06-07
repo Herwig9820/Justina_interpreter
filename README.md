@@ -47,12 +47,14 @@ The result of  the last expression entered in the command line is printed on the
 
 
 # Programming
-*	Write program functions with mandatory and optional parameters, accepting scalar and array arguments. When calling a function, variables (including arrays) are passed by reference. Constants and results of expressions are passed by value. 
-*	Variables or constants declared within a program are either global (accessible throughout the Justina program), local (accessible within a Justina function) or static (accessible within one Justina function, value preserved between calls)
-*	Variables not declared within a program but by a user from the command line, are called user variables (or user constants)
-*	Programs have access to user variables and users have access to global program variables (from the command line. User variables preserve their values when a program is cleared or another program is loaded.
-*	Parsing and execution errors are clearly indicated, with error numbers identifying the nature of the error. 
-*	Error trapping: if enabled, an error will not terminate a program, instead the error can be handled in code (either in the procedure where the error occurred or in a 'caller' procedure). It’s even possible to trap an error in the command line
+* Write program functions with both mandatory and optional parameters that accept scalar and array arguments. When calling a function, variables (including arrays) are passed by reference, while constants and the results of expressions are passed by value. 
+* Variables or constants declared within a program can be global (accessible throughout the Justina program), local (accessible only within a Justina function), or static (accessible within one Justina function, with the value preserved between calls). 
+* Variables not declared within a program but by a user from the command line are called user variables (or user constants). 
+* Programs have access to user variables, and users have access to global program variables from the command line. User variables preserve their values when a program is cleared or another program is loaded.
+* Parsing and execution errors are clearly indicated, with error numbers identifying the nature of the error.
+* Error trapping, if enabled, ensures that an error will not terminate a program; instead, the error can be handled in code (either in the procedure where the error occurred or in a ‘caller’ procedure). It’s even possible to trap an error in the command line. 
+* If Justina program files are available on an SD card (assuming an SD card board is connected), they can be directly read and parsed from there. Alternatively, your computer can send Justina program files to an Arduino, provided you use a Terminal app that can send files (the Arduino IDE does not provide that functionality; however, a very good—and free—choice is YAT Terminal).
+
 
 # Justina program editing
 You can use any text editor to write and edit your programs. But you might consider using Notepad++ as text editor, because a specific 'User Defined Language' (UDL) file for Justina is available to provide Justina syntax highlighting.
