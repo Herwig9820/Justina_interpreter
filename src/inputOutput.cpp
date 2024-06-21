@@ -1417,8 +1417,8 @@ void Justina::printParsingResult(parsingResult_type result, int funcNotDefIndex,
         if (_programMode) {
             if (_lastProgramStep == _programStorage) { strcpy(parsingInfo, "\r\nNo program loaded\r\n"); }
             else {
-                sprintf(parsingInfo, "\r\nProgram parsed without errors. %lu %% of program memory used (%lu of %lu bytes)\r\n",
-                    (uint32_t)(((_lastProgramStep - _programStorage + 1) * 100) / _PROGRAM_MEMORY_SIZE), (uint32_t)(_lastProgramStep - _programStorage + 1), _PROGRAM_MEMORY_SIZE);
+                sprintf(parsingInfo, "\r\nProgram '%s' parsed without errors.\r\n%lu %% of program memory used (%lu of %lu bytes)\r\n",
+                    _programName, (uint32_t)(((_lastProgramStep - _programStorage + 1) * 100) / _PROGRAM_MEMORY_SIZE), (uint32_t)(_lastProgramStep - _programStorage + 1), _PROGRAM_MEMORY_SIZE);
             }
         }
     }

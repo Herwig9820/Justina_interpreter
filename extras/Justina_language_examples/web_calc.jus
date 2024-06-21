@@ -14,7 +14,7 @@
 program calculatorWebServer; // this is a JUSTINA program
 
 /*
-	Example of a web server, creating a web page functioning as a calculator.
+	Example of a web server, creating a web page functioning as a scientific calculator.
 	An input box allows you to type in any expression (no commands) as long as it adheres to the Justina syntax:
 	internal Justina functions, Justina user functions and Justina user cpp functions are all allowed.
 	When submitted, the expression is evaluated by Justina ( eval() function) and the result (or the error, 
@@ -50,9 +50,10 @@ program calculatorWebServer; // this is a JUSTINA program
 	var last, r0, r1, r2, r3, r4, r5, r6, r7, r8, r9;											// 'last answer' register and user registers
 
 
-// webserver main loop: processes incoming HTTP client requests and, when the empty line 
-// following the HTTP request header is encountered, sends a HTML response.
-// Calls 2 Justina user c++ functions defined within Justina_TCPIP.ino: 
+// webserver main loop: processes incoming HTTP client requests and, when the empty line... 
+// ...following the HTTP request header is encountered, sends a HTML response.
+// Calls 3 Justina user c++ functions defined within Justina_TCPIP.ino: 
+// - cpp_setVerbose(TRUE): allow TCP/IP library to print WiFi and TCP/IP state changes
 // - cpp_connState() : checks WiFi and TCP/IP client connection state
 // - cpp_stopClient(): stops TCP/IP client at the end of a request/response cycle 
 // -------------------------------------------------------------------------------------
@@ -86,6 +87,7 @@ function webServer();
 	setTimeout(IO2, 500);																		// time out for readLine() function, in ms (NOT blocking for WiFi and TCP maintanance, handled in the background)		
 	cpp_setVerbose(TRUE);																		// allow TCP/IP library to print WiFi and TCP/IP state changes 
 																								
+	
 	coutLine line(), "** Webserver started ** (Type '&' (ampersand) + ENTER to stop)";
 	
 	while 1;                                                                                	
@@ -376,10 +378,10 @@ end;
 // arguments are entered as in 'floatFmt' command (flags:  optional arguments)
 // ---------------------------------------------------------------------------
 
-function floatFormat(precision, separator, flags = -1);			// floating point number format (note that 'flags' is optional)
+function floatFormat(precision, specifier, flags = -1);			// floating point number format (note that 'flags' is optional)
 	// set floating point number format
-	if (flags == -1); floatFmt precision, separator;			// keep current flag settings
-	else; floatFmt precision, separator, flags;	  
+	if (flags == -1); floatFmt precision, specifier;			// keep current flag settings
+	else; floatFmt precision, specifier, flags;	  
 	end; 
 	return "ok";												// avoid returning zero
 end;
@@ -392,25 +394,25 @@ end;
 // example), the current integer number formatting is returned as functon result
 // -----------------------------------------------------------------------------
 
-function intFormat(precision, separator, flags=-1);								
+function intFormat(precision, specifier, flags=-1);								
 	
 	var out;
-	var holdFmtPrecision, holdFmtSeparator, holdFmtFlags;
+	var holdFmtPrecision, holdFmtspecifier, holdFmtFlags;
 	
 	// set integer number format
-	if (flags == -1); intFmt precision, separator;				// keep current flag settings
-	else; intFmt precision, separator, flags;	  
+	if (flags == -1); intFmt precision, specifier;				// argument 'flag' = -1 or not present :keep current flag settings
+	else; intFmt precision, specifier, flags;	  
 	end; 
 	
 	// retrieve current integer number formatting flags (even if flags were not changed now -> optional parameter)
 	flags = sysVal(5);
 	
 	// we will use the fmt() function to force argument 'precision' to be printed correctly: remember current fmt() precision, specifier and flags
-	holdFmtPrecision = sysVal(11); holdFmtSeparator = sysVal(13); holdFmtFlags = sysVal(12);
+	holdFmtPrecision = sysVal(11); holdFmtspecifier = sysVal(13); holdFmtFlags = sysVal(12);
 	
 	// print formatted output to a variable
 	vprintLine out, "integer format: ", fmt(precision, 1, DEC, FMT_NONE), ",  ", 
-		quote(separator), 
+		quote(specifier), 
 		ifte(flags & (FMT_LEFT | FMT_SIGN | FMT_SPACE | FMT_0X) , ", flags set: ", ""),  
 		ifte(flags & FMT_LEFT, "left ", ""),
 		ifte(flags & FMT_SIGN, "sign  ", ""),
@@ -418,7 +420,7 @@ function intFormat(precision, separator, flags=-1);
 		ifte(flags & FMT_0X, "0x", "");
 	
 	// dummy fmt(), only to restore fmt() precision, specifier and flags
-	fmt(0, holdFmtPrecision, holdFmtSeparator, holdFmtFlags);					
+	fmt(0, holdFmtPrecision, holdFmtspecifier, holdFmtFlags);					
 	return out;												
 end;	
 

@@ -413,7 +413,7 @@ bool Justina::parseAsResWord(char*& pNext, parsingResult_type& result) {
 
         // commands (starting with a keyword) are not allowed within trace, BP view, BP trigger strings and in eval() strings.
         // if not allowed, reset pointer to first character to parse, indicate error and return
-        if (_parsingExecutingTraceString || _parsingExecutingTriggerString || _parsingEvalString) { pNext = pch; result = result_trace_eval_resWordNotAllowed; return false; }
+        if (_parsingExecutingTraceString || _parsingExecutingTriggerString || _parsingEvalString) { pNext = pch; result = result_trace_eval_commandNotAllowed; return false; }
         if (_parenthesisLevel > 0) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
         if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2_0)) { pNext = pch; result = result_resWordNotAllowedHere; return false; }
         if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && !(_lastTokenIsPostfixOp)) { pNext = pch; result = result_resWordNotAllowedHere; return false; }

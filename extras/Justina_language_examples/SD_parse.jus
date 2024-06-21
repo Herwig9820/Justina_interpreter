@@ -74,7 +74,7 @@ function parseAndPrintRecords(toFile = FALSE);									// optional argument (def
 	if (fileIn = fileNum("people.txt")) > 0; close (fileIn); end;				// verify the input file is closed			
 	fileIn = open("people.txt", READ);	
 	
-	if toFile == TRUE; 															// note: '== TRUE' is optional
+	if toFile;		 															
 		if (fileOut = fileNum("table.txt")) > 0; close (fileOut); end;			// verify the output file is closed	
 		streamOut = open("table.txt", WRITE | TRUNC | NEW_OK);
 	end;

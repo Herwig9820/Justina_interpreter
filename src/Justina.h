@@ -640,7 +640,7 @@ class Justina {
         result_block_wrongBlockSequence,
 
         // tracing, eval() and other PARSING errors during EXECUTION phase
-        result_trace_eval_resWordNotAllowed = 2100,
+        result_trace_eval_commandNotAllowed = 2100,
         result_trace_eval_genericNameNotAllowed,
         result_trace_userFunctonNotAllowed,                             // tracing restriction only
         result_trace_evalFunctonNotAllowed,                             // tracing restriction only

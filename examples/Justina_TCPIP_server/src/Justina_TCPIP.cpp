@@ -112,7 +112,7 @@ void TCPconnection::maintainWiFiConnection() {
 
                 WiFi.begin((const char*)_SSID, (const char*)_PASS);
                 _connectionState = conn_1_WiFi_waitForConnecton;
-                if (_verbose) { Serial.println(_isClient ? "-- Trying to connect WiFi..." : "-- Trying to connect server to WiFi..."); }
+                if (_verbose) { Serial.println(_isClient ? "\r\n-- Trying to connect WiFi..." : "\r\n-- Trying to connect server to WiFi..."); }
                 // remember time of this WiFi connection attempt
                 _WiFiWaitingForConnectonAt = _lastWiFiMaintenanceTime = millis();       // remember time of last WiFi maintenance AND time of this WiFi connection attempt
                 _resetWiFi = false;
@@ -159,7 +159,7 @@ void TCPconnection::maintainWiFiConnection() {
             //  prepare for reconnection if connection is lost OR per user program request 
             if (_resetWiFi || (WiFi.status() != WL_CONNECTED)) {
                 _connectionState = conn_0_WiFi_notConnected;
-                if (_verbose) { Serial.println(_isClient ? "-- WiFi disconnected" : "-- WiFi disconnected, server stopped"); }
+                if (_verbose) { Serial.println(_isClient ? "\r\n-- WiFi disconnected" : "\r\n-- WiFi disconnected, server stopped"); }
                 WiFi.disconnect();
             #if !defined ARDUINO_ARCH_ESP32
                 WiFi.end();
@@ -186,7 +186,7 @@ void TCPconnection::maintainTCPconnection() {
         case conn_2_WiFi_connected:
             if (_TCPenabled) {
                 _connectionState = conn_3_TCPwaitForNewClient;
-                if (_verbose) { Serial.println(_isClient ? "-- trying to connect to server" : "-- waiting for a client"); }
+                if (_verbose) { Serial.println(_isClient ? "\r\n-- trying to connect to server" : "\r\n-- waiting for a client"); }
             }
             break;
 
@@ -224,7 +224,7 @@ void TCPconnection::maintainTCPconnection() {
         {
             if (!_client.connected() || !_TCPenabled) {
                 _client.stop();
-                if (_verbose) { Serial.println(_isClient ? "-- disconnected from server" : "-- client disconnected"); }
+                if (_verbose) { Serial.println(_isClient ? "\r\n-- disconnected from server" : "\r\n-- client disconnected"); }
                 _connectionState = conn_2_WiFi_connected;
             }
         }
@@ -273,7 +273,7 @@ void TCPconnection::stopClient() {
     if (_connectionState == conn_4_TCP_clientConnected) {
         _client.stop();
         _connectionState = conn_3_TCPwaitForNewClient;
-        if (_verbose) { Serial.println("-- stop client: client disconnected"); }
+        if (_verbose) { Serial.println("\r\n-- stop client: client disconnected"); }
     }
 }
 

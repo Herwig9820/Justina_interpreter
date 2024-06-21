@@ -154,15 +154,15 @@ void setup() {
     // TCP connection
     // --------------
     _connectionState = TCPconnection::conn_0_WiFi_notConnected;
-    myTCPconnection.setVerbose(true);                                               // disable debug messages from within myTCPconnection
+    myTCPconnection.setVerbose(true);                                               // true: enable debug messages from within myTCPconnection
 
 
     // Justina library
     // ---------------
-    pExternalInputs[1] = static_cast<Stream*>(myTCPconnection.getClient());         // add TCP/IP client to available Justina output streams (within Justina IO commands, this will be stream IO2)
+    pExternalInputs[1] = static_cast<Stream*>(myTCPconnection.getClient());         // add TCP/IP client to available Justina IO streams (within Justina IO commands, this will be stream IO2)
     pExternalOutput[1] = static_cast<Print*>(myTCPconnection.getClient());
 
-    justina.setSystemCallbackFunction(&housekeeping);                               // set system callback function; it will be called regularly while control is within Justina 
+    justina.setSystemCallbackFunction(&housekeeping);                               // set system callback function (see below); it will be called regularly while control is within Justina 
 
     justina.registerVoidUserCppFunctions(cppVoidFunctions, 8);                      // register user c++ functions returning nothing (void), function count
     justina.registerLongUserCppFunctions(cppLongFunctions, 1);                      // register user c++ functions returning a long, function count
@@ -278,9 +278,9 @@ void setConnectionStatusLeds() {
 // ***   Justina user c++ functions (Justina functionality extensions)   ***
 // *************************************************************************
 
-// ------------------------------------
-// *   TCP/IP connection: settings    *
-// ------------------------------------
+// --------------------------------------------------------------------------------------
+// *   TCP/IP connection: switch OFF or restart WiFi, switch OFF or ON TCP connection   *
+// --------------------------------------------------------------------------------------
 
  /*
     Justina call:
@@ -365,10 +365,10 @@ long getConnectionState(void** const pdata, const char* const valueType, const i
 
     connection state returned:
     0: WiFi not connected
-    1: trying to connect WiFi
-    2: WiFi connected - TCP/IP disabled
-    3: WiFi connected - waiting for TCP/IP client
-    4: WiFi connected - TCP/IP client connected
+    1: trying to connect to WiFi
+    2: WiFi connected - TCP/IP OFF
+    3: WiFi connected - TCP/IP ON and waiting for a client to connect
+    4: WiFi connected - TCP/IP ON and client connected
  */
 
     return (long)myTCPconnection.getConnectionState();                                          // state = 0 to 4 (see connectionState_type enumeration)
