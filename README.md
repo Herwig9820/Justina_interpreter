@@ -4,12 +4,16 @@
 
 Justina (short for 'Just an Interpreter for Arduino') was developed and built around a few objectives. 
 * On top of the list: simplicity for the user. Justina is a structured language, but it’s non-object oriented (as opposed to the powerful but more complex c++ and Python languages).
-* Equally important: it was built with Arduino in mind - more specifically, 32-bit Arduino’s: boards with a SAMD processor (like the nano 33 IoT), the nano ESP32 and the nano RP2040.
+* Equally important: Justina was built with Arduino in mind - more specifically, 32-bit Arduino’s: boards with a SAMD processor (like the nano 33 IoT), the nano ESP32 and the nano RP2040.
+* High quality documentation: the Justina user manual completely covers functionality, including more technical aspects like integration with c++, system callbacks, examples and so on.
   
+
 Justina does not impose any requirements or restrictions related to hardware (pin assignments, interrupts, timers,... - it does not use any), nor does it need to have any knowledge about it for proper operation.
 The Justina syntax has been kept as simple as possible. A program consists of statements. A statement either consists of
 *	a single expression (always yielding a result).
 *	a command, starting with a keyword, optionally followed by a list of expressions (such a statement is called a command, because it ‘does’ something without actually calculating a result)
+
+![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/6e3fd8ab-006c-4d4a-bc63-2192c335afcb)
 
 Because Justina is an interpreted language, a Justina  program is not compiled into machine language but it is parsed into so called tokens before execution. Parsing is a fast process, which makes Justina the ideal tool for quick prototyping. Once it is installed as an Arduino library, call Justina from within an Arduino c++ program and you will have the Justina interpreter ready to receive commands, evaluate expressions and execute Justina programs. 
 You can enter statements directly in the command line of the Arduino IDE (the Serial monitor by default, a TCP IP client, ...) and they will immediately get executed, without any programming.
@@ -47,12 +51,14 @@ The result of  the last expression entered in the command line is printed on the
 
 
 # Programming
-*	Write program functions with mandatory and optional parameters, accepting scalar and array arguments. When calling a function, variables (including arrays) are passed by reference. Constants and results of expressions are passed by value. 
-*	Variables or constants declared within a program are either global (accessible throughout the Justina program), local (accessible within a Justina function) or static (accessible within one Justina function, value preserved between calls)
-*	Variables not declared within a program but by a user from the command line, are called user variables (or user constants)
-*	Programs have access to user variables and users have access to global program variables (from the command line. User variables preserve their values when a program is cleared or another program is loaded.
-*	Parsing and execution errors are clearly indicated, with error numbers identifying the nature of the error. 
-*	Error trapping: if enabled, an error will not terminate a program, instead the error can be handled in code (either in the procedure where the error occurred or in a 'caller' procedure). It’s even possible to trap an error in the command line
+* Write program functions with both mandatory and optional parameters that accept scalar and array arguments. When calling a function, variables (including arrays) are passed by reference, while constants and the results of expressions are passed by value. 
+* Variables or constants declared within a program can be global (accessible throughout the Justina program), local (accessible only within a Justina function), or static (accessible within one Justina function, with the value preserved between calls). 
+* Variables not declared within a program but by a user from the command line are called user variables (or user constants). 
+* Programs have access to user variables, and users have access to global program variables from the command line. User variables preserve their values when a program is cleared or another program is loaded.
+* Parsing and execution errors are clearly indicated, with error numbers identifying the nature of the error.
+* Error trapping, if enabled, ensures that an error will not terminate a program; instead, the error can be handled in code (either in the procedure where the error occurred or in a ‘caller’ procedure). It’s even possible to trap an error in the command line. 
+* If Justina program files are available on an SD card (assuming an SD card board is connected), they can be directly read and parsed from there. Alternatively, your computer can send Justina program files to an Arduino, provided you use a Terminal app that can send files (the Arduino IDE does not provide that functionality; however, a very good—and free—choice is YAT Terminal).
+
 
 # Justina program editing
 You can use any text editor to write and edit your programs. But you might consider using Notepad++ as text editor, because a specific 'User Defined Language' (UDL) file for Justina is available to provide Justina syntax highlighting.
