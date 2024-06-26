@@ -26,7 +26,7 @@
 #include "Justina.h"
 
 #define PRINT_HEAP_OBJ_CREA_DEL 0
-#define PRINT_DEBUG_INFO 0
+#define PRINT_DEBUG_INFO 1
 #define PRINT_OBJECT_COUNT_ERRORS 0
 
 
@@ -101,10 +101,12 @@ const Justina::ResWordDef Justina::_resWords[]{
 
     {"BPon",            cmdcod_BPon,            cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
     {"BPoff",           cmdcod_BPoff,           cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
+    {"BPactivate",      cmdcod_BPactivate,      cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
     {"setBP",           cmdcod_setBP,           cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
     {"clearBP",         cmdcod_clearBP,         cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
     {"enableBP",        cmdcod_enableBP,        cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
     {"disableBP",       cmdcod_disableBP,       cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
+    {"moveBP",          cmdcod_moveBP,          cmd_onlyImmediate,                                      2,2,    cmdPar_105,     cmdBlockNone},
 
     {"raiseError",      cmdcod_raiseError,      cmd_onlyImmOrInsideFuncBlock,                           1,1,    cmdPar_104,     cmdBlockNone},
     {"trapErrors",      cmdcod_trapErrors,      cmd_onlyImmOrInsideFuncBlock,                           1,1,    cmdPar_104,     cmdBlockNone},
@@ -561,10 +563,8 @@ const Justina::SymbNumConsts Justina::_symbNumConsts[]{
 // -------------------
 
 Justina::Justina(int JustinaStartupOptions, int SDcardChipSelectPin) : _justinaStartupOptions(JustinaStartupOptions), _SDcardChipSelectPin(SDcardChipSelectPin), _externIOstreamCount(1) {
-
-    Stream* pStream{ &Serial };
-    _ppExternInputStreams = &pStream;
-    _ppExternOutputStreams = (Print**)_ppExternInputStreams;
+    _ppExternInputStreams = _pDefaultExternalInput;
+    _ppExternOutputStreams = _pDefaultExternalOutput;
 
     constructorCommonPart();
 }
@@ -634,7 +634,7 @@ void Justina::constructorCommonPart() {
 // ------------------
 
 Justina::~Justina() {
-    resetMachine(true);                                 // delete all objects created on the heap: with = with user variables and FiFo stack
+    resetMachine(true, true);                           // delete all objects created on the heap: with = with user variables and FiFo stack
 
     // NOTE: object count of objects created / deleted in constructors / destructors is not maintained
     delete _pBreakpoints;                               // not an array: use 'delete'
@@ -722,7 +722,7 @@ void Justina::begin() {
     bool loadingStartupProgram{ false }, launchingStartFunction{ false };
     bool startJustinaWithoutAutostart{ true };
 
-    // initialize SD card now ?
+   // initialize SD card now ?
     // 0 = no card reader, 1 = card reader present, do not yet initialize, 2 = initialize card now, 3 = init card & run /Justina/start.jus function start() now
     if ((_justinaStartupOptions & SD_mask) >= SD_init) {
         printTo(0, "\r\nLooking for an SD card...\r\n");
@@ -762,6 +762,7 @@ void Justina::begin() {
 
             streamNumber = _loadProgFromStreamNo;                                                               // autostart step 1: temporarily switch from console input to startup file (opening the file here) 
             setStream(streamNumber, pStatementInputStream);                                                     // error checking done while opening file
+
             printTo(0, "Loading program '/Justina/start.jus'...\r\n");
         }
     }
@@ -865,6 +866,7 @@ void Justina::begin() {
             if (_programMode && allCharsReceived) {
                 result = _pBreakpoints->addOneSourceLineRangePair(BPstartLine - BPpreviousEndLine - 1, BPendLine - BPstartLine + 1);
             }
+
             // program mode: complete program read and parsed   /   imm. mode: all statements in command line read and parsed OR parsing error ?
             if (allCharsReceived || (result != result_parsing_OK)) {                                            // note: if all statements have been read, they also have been parsed
                 if (kill) { quitNow = true; }
@@ -928,8 +930,8 @@ void Justina::begin() {
     _SDinitOK = false;
     SD.end();                                                                                                   // stop SD card
 
-    // !!! if code is ever changed to clear memory when quitting: replace 'false' by 'true' or by condition
-    // if (false) { resetMachine(true); }                      
+    // !!! if code is ever changed to clear memory when quitting: replace 'false' condition by 'true' or an expression
+    // if (false) { resetMachine(true, true); }                      
 
     while (_pConsoleIn->available() > 0) { readFrom(0); }                                                       //  empty console buffer before quitting
     printlnTo(0, "\r\nJustina: bye\r\n");
@@ -1148,14 +1150,14 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
         if (clearIndicator != 0) {                     // 1 = clear program cmd, 2 = clear all cmd 
             while (_pConsoleIn->available() > 0) { readFrom(0); }                                               // empty console buffer first (to allow the user to start with an empty line)
             do {
-                char s[50];
+                char s[60];
                 sprintf(s, "===== Clear %s ? (please answer Y or N) =====", ((clearIndicator == 2) ? "memory" : "program"));
                 printlnTo(0, s);
 
                 // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
                 // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
                 bool doCancel{ false }, doStop{ false }, doAbort{ false }, doDefault{ false };      // not used but mandatory
-                int length{ 2 };
+                int length{ 2 };                                                                                // detects input > 1 character
                 char input[2 + 1] = "";                                                                         // init: empty string. Provide room for 1 character + terminating '\0'
                 // NOTE: stop, cancel and default arguments have no function here (execution has ended already), but abort and kill do
                 if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { kill = true; quitJustina = true; break; }  // kill request from caller ?
@@ -1164,7 +1166,10 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
                 bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
                 if (validAnswer) {
                     // 1 = clear program, 2 = clear all (including user variables)
-                    if (tolower(input[0]) == 'y') { printlnTo(0, (clearIndicator == 2) ? "clearing memory" : "clearing program"); resetMachine(clearIndicator == 2); }
+                    if (tolower(input[0]) == 'y') {
+                        printlnTo(0, (clearIndicator == 2) ? "clearing memory" : "clearing program");
+                        resetMachine(clearIndicator == 2, clearIndicator == 2);
+                    }
                     break;
                 }
             } while (true);
@@ -1257,14 +1262,18 @@ void Justina::traceAndPrintDebugInfo(execResult_type execResult) {
     pDeepestOpenFunction = (OpenFunctionData*)pFlowCtrlStackLvl;                                                // deepest level of nested functions
     nextStatementPointer = pDeepestOpenFunction->pNextStep;
 
-    // print the debug 'header' line
-    // -----------------------------
     bool isBreakpointStop = (execResult == result_stopForBreakpoint);
-    char msg[50 + MAX_IDENT_NAME_LEN] = "";
-    int length = sprintf(msg, "%s", (isBreakpointStop ? "\r\n-- BREAK " : "\r\n-- STOP "), _openDebugLevels - 1);
+
+    // print debug header ('STOP'or 'BREAK') line
+    // ------------------------------------------
+    int stopLineLength = max(_dispWidth, 30) + 2 + 2 + 1;                                                       // '2': starting and ending CRLF, '1': terminating \0, '30': STOP line minimum length (small display widths)
+    char msg[max(stopLineLength, 20 + MAX_IDENT_NAME_LEN)];                                                     // '20': line number and function: sufficient length for fixed part
+
+    int length = sprintf(msg, "%s", (isBreakpointStop ? "\r\n-- BREAK " : "\r\n-- STOP "));
     if (_openDebugLevels > 1) { length += sprintf(msg + length, "-- [%ld] ", _openDebugLevels); }
-    for (int i = 0; i < _dispWidth - length + 2; i++) { msg[length + i] = '-'; }
-    strcpy(msg + _dispWidth + 2, "\r\n");
+    int i{};
+    for (i = length; i < (stopLineLength - 2 - 1); i++) { msg[i] = '-'; }
+    strcpy(msg + i, "\r\n");                                                                                    // this adds terminating \0 as well
     printTo(_debug_sourceStreamNumber, msg);
 
     // print trace and breakpoint trace string, if any
@@ -1291,6 +1300,7 @@ void Justina::traceAndPrintDebugInfo(execResult_type execResult) {
     printTo(_debug_sourceStreamNumber, msg);
     prettyPrintStatements(_debug_sourceStreamNumber, 1, nextStatementPointer);                                  // print statement
     printTo(_debug_sourceStreamNumber, "\r\n");
+    return;
 }
 
 
@@ -1494,7 +1504,7 @@ void Justina::registerVoidUserCppFunctions(const CppVoidFunction* const pCppVoid
 // *   reset interpreter   *
 // -------------------------
 
-void Justina::resetMachine(bool withUserVariables) {
+void Justina::resetMachine(bool withUserVariables, bool withBreakpoints) {
 
     // delete all objects created on the heap
     // --------------------------------------
@@ -1529,12 +1539,12 @@ void Justina::resetMachine(bool withUserVariables) {
             _systemStringObjectCount--;
             delete[] _pTraceString;
             _pTraceString = nullptr;                                                                            // old trace string
+        }
     }
-}
 
-// delete all elements of the immediate mode parsed statements stack
-// (parsed immediate mode statements can be temporarily pushed on the immediate mode stack to be replaced either by parsed debug command lines or parsed eval() strings) 
-// also delete all parsed alphanumeric constants: (1) in the currently parsed program, (2) in parsed immediate mode statements (including those on the imm.mode parsed statements stack)) 
+    // delete all elements of the immediate mode parsed statements stack
+    // (parsed immediate mode statements can be temporarily pushed on the immediate mode stack to be replaced either by parsed debug command lines or parsed eval() strings) 
+    // also delete all parsed alphanumeric constants: (1) in the currently parsed program, (2) in parsed immediate mode statements (including those on the imm.mode parsed statements stack)) 
 
     clearParsedCommandLineStack(parsedCommandLineStack.getElementCount());                                      // including parsed string constants
     deleteConstStringObjects(_programStorage);
@@ -1552,10 +1562,19 @@ void Justina::resetMachine(bool withUserVariables) {
     parsingStack.deleteList();
 
     // reset Breakpoints objects and variables
-    _pBreakpoints->resetBreakpointsState();
+    if (withBreakpoints) { _pBreakpoints->resetBreakpointsState(); }                                            // '_breakpointsStatusDraft' is set false (breakpoint table empty)
+    else {
+        bool wasDraft = _pBreakpoints->_breakpointsStatusDraft;
+        _pBreakpoints->_breakpointsStatusDraft = (_pBreakpoints->_breakpointsUsed > 0);                         // '_breakpointsStatusDraft' set according to existence of entries in breakpoint table
+        if (!wasDraft && _pBreakpoints->_breakpointsStatusDraft) {
+            printlnTo(0); for (int i = 1; i <= 40; i++) { printTo(0, '*'); }
+            printlnTo(0, "\r\n** Breakpoint status now set to DRAFT **");                                     // because table not empty
+            for (int i = 1; i <= 40; i++) { printTo(0, '*'); } printlnTo(0);
+        }
+    }
 
-    // check that all heap objects are deleted (in fact only the count is checked)
-    // ---------------------------------------------------------------------------
+// check that all heap objects are deleted (in fact only the count is checked)
+// ---------------------------------------------------------------------------
     danglingPointerCheckAndCount(withUserVariables);                                                            // check and count
 
 

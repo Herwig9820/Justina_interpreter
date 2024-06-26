@@ -244,10 +244,12 @@ class Justina {
         cmdcod_debug,
         cmdcod_BPon,
         cmdcod_BPoff,
+        cmdcod_BPactivate,
         cmdcod_setBP,
         cmdcod_clearBP,
         cmdcod_enableBP,
         cmdcod_disableBP,
+        cmdcod_moveBP,
         cmdcod_nop,
         cmdcod_raiseError,
         cmdcod_trapErrors,
@@ -704,13 +706,18 @@ class Justina {
 
         // breakpoint errors
         result_BP_sourcelineNumberExpected = 3400,
-        result_BP_notAllowedForSourceLine,
-        result_BP_statementIsNonExecutable,
+        result_BP_invalidSourceLine,                                    // allowed range: 1 - 99999
+        result_BP_notAllowedForSourceLine,                              // no statement starting at source line
+        result_BP_statementIsNonExecutable,                             // statement is non-executable
         result_BP_maxBPentriesReached,
         result_BP_wasNotSet,
         result_BP_hitcountNotWithinRange,
         result_BP_sourceLineNotInStoppedFunction,
         result_BP_cannotMoveIntoBlocks,
+        result_BP_sourceIsDestination,
+        result_BP_noProgram,                                            // 'activate BP' statement
+        result_BP_notAllowedForSourceLinesInTable,
+        result_BP_nonExecStatementsInTable,
 
         // evaluation and list parsing function errors
         result_eval_emptyString = 3500,
@@ -780,7 +787,7 @@ class Justina {
     // ---------------------------------------------------------------
 
     static constexpr uint16_t IMM_MEM_SIZE{ 500 };                              // size, in bytes, of user command memory (stores parsed user statements entered from the keyboard)
-    static constexpr uint16_t BP_LINE_RANGE_PROGMEM_STOR_RATIO{ 5 };            // breakpoints: source line range storage as a % of program storage 
+    static constexpr uint16_t BP_LINE_RANGE_PROGMEM_STOR_RATIO{ 5 };            // breakpoints: source line range storage (to reconstitute source line numbers by counting parsed statements) as a % of program storage 
     static constexpr uint16_t MAX_BP_COUNT{ 10 };                               // breakpoints: maximum number of set breakpoints 
 
 
@@ -1294,7 +1301,7 @@ private:
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na, block_na, block_na };                                      // not a 'block' command
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[77];                                                                                      // keyword names
+    static const ResWordDef _resWords[79];                                                                                      // keyword names
     static const InternCppFuncDef _internCppFunctions[141];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
 #if (defined ARDUINO_ARCH_ESP32) 
@@ -1868,7 +1875,10 @@ private:
     // external IO, SD card and files
     // ------------------------------
 
-    Stream** _ppExternInputStreams{ nullptr };                      // available external IO streams (set by Justina caller)
+    Stream* _pDefaultExternalInput[1]{ &Serial };                   // if Justina input and output streams not specified by caller                                                                               
+    Print* _pDefaultExternalOutput[1]{ (Print*)&Serial };
+
+    Stream** _ppExternInputStreams{ nullptr };                      // available external IO streams (set by Justina caller or by constructor)
     Print** _ppExternOutputStreams{ nullptr };
 
     // for use by cout..., dbout, ... commands (without explicit stream indicated)
@@ -2065,7 +2075,7 @@ private:
     // reset Interpreter to clean state
     // --------------------------------
 
-    void resetMachine(bool withUserVariables);
+    void resetMachine(bool withUserVariables, bool withBreakpoints = false);
 
     void initInterpreterVariables(bool withUserVariables);
     void deleteIdentifierNameObjects(char** pIdentArray, int identifiersInUse, bool isUserVar = false);
@@ -2281,7 +2291,7 @@ class Breakpoints {
     Justina* _pJustina;
 
     struct BreakpointData {
-        char BPenabled : 1;                             // breakpoint is enabled (program will halt)
+        char BPenabled : 1;                             // breakpoint is enabled (program will stop)
         char BPwithViewExpr : 1;
         char BPwithHitCount : 1;
         char BPwithTriggerExpr : 1;
@@ -2294,7 +2304,8 @@ class Breakpoints {
         long hitCounter{ 0 };                           // hit counter
     };
 
-    bool _breakPontsAreOn{ true };
+    bool _breakpointsAreOn{ true };                     // global status for breakpoint table (user controlled)
+    bool _breakpointsStatusDraft{ false };              // set 'true', ONLY if machine reset while preserving breakpoints
     int _breakpointsUsed{ 0 };
     long _BPLineRangeMemorySize{};
     long _maxBreakpointCount{};
@@ -2318,8 +2329,8 @@ class Breakpoints {
     Justina::execResult_type findParsedStatementForSourceLine(long sourceLine, char*& pProgramStep);
 
     long BPsourceLineFromToBPlineSequence(long BPsourceLineOrIndex, bool toIndex = true);
-    Justina::execResult_type progMem_getSetClearBP(long lineSequenceNum, char*& pProgramStep, bool& BPwasSet, bool doSet = false, bool doClear = false);
-    Justina::execResult_type maintainBreakpointTable(long sourceLine, char* pProgramStep, bool BPwasSet, bool doSet, bool doClear, bool doEnable, bool doDisable,
+    Justina::execResult_type progMem_getSetClearBP(long lineSequenceNum, char*& pProgramStep, bool doSet = false, bool doClear = false);
+    Justina::execResult_type maintainBreakpointTable(long sourceLine, char* pProgramStep, bool doSet, bool doClear, bool doEnable, bool doDisable,
         int extraAttribCount, const char* viewString, long hitCount, const char* triggerString);
     BreakpointData* findBPtableRow(char* pParsedStatement, int& row);
     long findLineNumberForBPstatement(char* pProgramStepToFind);

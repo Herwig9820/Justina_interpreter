@@ -87,10 +87,10 @@ constexpr int terminalCount{ 2 };                                               
 
 // first position: default Justina console AND default input and output streams for Justina 
 Stream* pExternalInputs[terminalCount]{ &Serial, nullptr };                         // Justina input streams (Serial only)                                                                               
-Print* pExternalOutput[terminalCount]{ &Serial, nullptr };                          // Justina output streams (Serial; TCP/IP stream will be added in setup() )                                                      
+Print* pExternalOutputs[terminalCount]{ &Serial, nullptr };                          // Justina output streams (Serial; TCP/IP stream will be added in setup() )                                                      
 
 // create Justina interpreter object
-Justina justina(pExternalInputs, pExternalOutput, terminalCount);
+Justina justina(pExternalInputs, pExternalOutputs, terminalCount);
 
 
 // --------------------
@@ -160,7 +160,7 @@ void setup() {
     // Justina library
     // ---------------
     pExternalInputs[1] = static_cast<Stream*>(myTCPconnection.getClient());         // add TCP/IP client to available Justina IO streams (within Justina IO commands, this will be stream IO2)
-    pExternalOutput[1] = static_cast<Print*>(myTCPconnection.getClient());
+    pExternalOutputs[1] = static_cast<Print*>(myTCPconnection.getClient());
 
     justina.setSystemCallbackFunction(&housekeeping);                               // set system callback function (see below); it will be called regularly while control is within Justina 
 

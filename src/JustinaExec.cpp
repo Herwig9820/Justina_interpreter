@@ -963,23 +963,24 @@ void Justina::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNo
     }
 
 
-    // B. is a breakpoint set for this statement, is it enabled and does it have a hitcount or trigger condition ?
+    // B. is a breakpoint set for this statement, is it enabled and does it have a hit count or trigger condition ?
     // -----------------------------------------------------------------------------------------------------------
 
     Breakpoints::BreakpointData* pBreakpointDataRow = nullptr;
     int BPdataRow = -1;                                                                                     // init: no valid row
 
-    isActiveBreakpoint = _pBreakpoints->_breakPontsAreOn && (*(_programCounter - 1) == _semicolonBPset_token);        // breakpoints are on and statement has a breakpoint set ?
+    // note: when breakpoint table has 'DRAFT' status, parsed statements do not have 'breakpoint set' separators (preceding): no need to test for 'not DRAFT' status
+    isActiveBreakpoint = _pBreakpoints->_breakpointsAreOn && (*(_programCounter - 1) == _semicolonBPset_token);     // breakpoints are on and statement has a breakpoint set ?
     if (isActiveBreakpoint) {                                                                               // attributes must still be checked in breakpoints table
         pBreakpointDataRow = _pBreakpoints->findBPtableRow(_programCounter, BPdataRow);                     // find table entry
 
         // breakpoint is not enabled ? breakpoint is not active
         if (pBreakpointDataRow->BPenabled == 0b0) { isActiveBreakpoint = false; }
 
-        // enabled breakpoint has a hitcount set as trigger condition ? check hitcount
+        // enabled breakpoint has a hit count set as trigger condition ? check hit count
         else if (pBreakpointDataRow->BPwithHitCount == 0b1) {
-            isActiveBreakpoint = (pBreakpointDataRow->hitCount == ++pBreakpointDataRow->hitCounter);        // hitcount reached ?
-            if (isActiveBreakpoint) { pBreakpointDataRow->hitCounter = 0; }                                 // if hitcount reached, reset hit counter
+            isActiveBreakpoint = (pBreakpointDataRow->hitCount == ++pBreakpointDataRow->hitCounter);        // hit count reached ?
+            if (isActiveBreakpoint) { pBreakpointDataRow->hitCounter = 0; }                                 // if hit count reached, reset hit counter
         }
 
         // enabled breakpoint has a trigger expression set as trigger condition ? parse trigger expression
@@ -1035,8 +1036,8 @@ void Justina::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNo
         ((_stepCmdExecuted == db_stepOutOfBlock) && (flowCtrlStack.getElementCount() < _stepFlowCtrlStackLevels)) ||
         ((_stepCmdExecuted == db_stepToBlockEnd) && ((flowCtrlStack.getElementCount() < _stepFlowCtrlStackLevels) || nextIsSameLvlEnd));
 
-    // STOP if (1) breakpoint stop, (2) application flags requested stop, (3) a debug command was executed, one of the 'step...' commands was executed (imm. mode), 
-    // ...(4) one of the step commands was executed. NOTE: (5) the program encountered a stop command: not handled here. See 'stop' command
+    // STOP if (1) breakpoint stop, (2) application flags requested stop, (3) a debug command was executed,... 
+    // ...(4) one of the step commands was executed (imm. mode). NOTE: (5) the program encountered a stop command: not handled here. See 'stop' command
     requestStopForDebugNow = (isActiveBreakpoint || appFlagsRequestStop || _debugCmdExecuted || isStepCommand)
         && !isFunctionReturn;                                       // skip remainder of line where call to function occurred
     isFunctionReturn = false;
