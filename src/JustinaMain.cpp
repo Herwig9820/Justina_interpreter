@@ -26,7 +26,7 @@
 #include "Justina.h"
 
 #define PRINT_HEAP_OBJ_CREA_DEL 0
-#define PRINT_DEBUG_INFO 1
+#define PRINT_DEBUG_INFO 0
 #define PRINT_OBJECT_COUNT_ERRORS 0
 
 
@@ -634,7 +634,7 @@ void Justina::constructorCommonPart() {
 // ------------------
 
 Justina::~Justina() {
-    resetMachine(true, true);                           // delete all objects created on the heap: with = with user variables and FiFo stack
+    resetMachine(true, true);                           // delete all objects created on the heap, including user variables (+ FiFo stack), with trace expression and breakpoints
 
     // NOTE: object count of objects created / deleted in constructors / destructors is not maintained
     delete _pBreakpoints;                               // not an array: use 'delete'
@@ -930,8 +930,8 @@ void Justina::begin() {
     _SDinitOK = false;
     SD.end();                                                                                                   // stop SD card
 
-    // !!! if code is ever changed to clear memory when quitting: replace 'false' condition by 'true' or an expression
-    // if (false) { resetMachine(true, true); }                      
+    // !!! if code is ever changed to clear memory when quitting: include next line
+    /* resetMachine(true, true); */
 
     while (_pConsoleIn->available() > 0) { readFrom(0); }                                                       //  empty console buffer before quitting
     printlnTo(0, "\r\nJustina: bye\r\n");
@@ -1530,16 +1530,6 @@ void Justina::resetMachine(bool withUserVariables, bool withBreakpoints) {
     deleteVariableValueObjects(staticVarValues, staticVarType, _staticVarCount, 0, false);
     if (withUserVariables) {
         deleteVariableValueObjects(userVarValues, userVarType, _userVarCount, 0, false, true);
-
-        if (_pTraceString != nullptr) {        // internal trace 'variable'
-        #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print("\r\n----- (system var str) "); _pDebugOut->println((uint32_t)_pTraceString, HEX);
-            _pDebugOut->print("reset mach.: trace str "); _pDebugOut->println(_pTraceString);
-        #endif
-            _systemStringObjectCount--;
-            delete[] _pTraceString;
-            _pTraceString = nullptr;                                                                            // old trace string
-        }
     }
 
     // delete all elements of the immediate mode parsed statements stack
@@ -1561,14 +1551,30 @@ void Justina::resetMachine(bool withUserVariables, bool withBreakpoints) {
     // delete parsing stack (keeps track of open parentheses and open command blocks during parsing)
     parsingStack.deleteList();
 
-    // reset Breakpoints objects and variables
-    if (withBreakpoints) { _pBreakpoints->resetBreakpointsState(); }                                            // '_breakpointsStatusDraft' is set false (breakpoint table empty)
+    // delete trace string and delete breakpoint view and trigger strings ?
+    if (withBreakpoints) {
+        if (_pTraceString != nullptr) {        // internal trace 'variable'
+        #if PRINT_HEAP_OBJ_CREA_DEL
+            _pDebugOut->print("\r\n----- (system exp str) "); _pDebugOut->println((uint32_t)_pTraceString, HEX);
+            _pDebugOut->print("reset mach.: trace str "); _pDebugOut->println(_pTraceString);
+        #endif
+            _systemStringObjectCount--;
+            delete[] _pTraceString;
+            _pTraceString = nullptr;                                                                            // old trace string
+        }
+
+        _pBreakpoints->resetBreakpointsState();                                                                 // '_breakpointsStatusDraft' is set false (breakpoint table empty) 
+    }
+    
+    // if machine reset without clearing breakpoints, set breakpoints status to DRAFT then 
     else {
         bool wasDraft = _pBreakpoints->_breakpointsStatusDraft;
         _pBreakpoints->_breakpointsStatusDraft = (_pBreakpoints->_breakpointsUsed > 0);                         // '_breakpointsStatusDraft' set according to existence of entries in breakpoint table
+        _pBreakpoints->_BPlineRangeStorageUsed = 0;
+
         if (!wasDraft && _pBreakpoints->_breakpointsStatusDraft) {
             printlnTo(0); for (int i = 1; i <= 40; i++) { printTo(0, '*'); }
-            printlnTo(0, "\r\n** Breakpoint status now set to DRAFT **");                                     // because table not empty
+            printlnTo(0, "\r\n** Breakpoint status now set to DRAFT **");                                       // because table not empty
             for (int i = 1; i <= 40; i++) { printTo(0, '*'); } printlnTo(0);
         }
     }
@@ -1605,7 +1611,7 @@ void Justina::danglingPointerCheckAndCount(bool withUserVariables) {
         _pDebugOut->print("**** Variable / function name objects cleanup error. Remaining: "); _pDebugOut->println(_identifierNameStringObjectCount);
     #endif
         _identifierNameStringObjectErrors += abs(_identifierNameStringObjectCount);
-}
+    }
 
     if (_parsedStringConstObjectCount != 0) {
     #if PRINT_OBJECT_COUNT_ERRORS
@@ -1657,6 +1663,13 @@ void Justina::danglingPointerCheckAndCount(bool withUserVariables) {
             _userArrayObjectErrors += abs(_userArrayObjectCount);
         }
 
+        if (_lastValuesStringObjectCount != 0) {
+        #if PRINT_OBJECT_COUNT_ERRORS
+            _pDebugOut->print("**** Last value FiFo string objects cleanup error. Remaining: "); _pDebugOut->print(_lastValuesStringObjectCount);
+        #endif
+            _lastValuesStringObjectErrors += abs(_lastValuesStringObjectCount);
+        }
+
         if (_systemStringObjectCount != 0) {
         #if PRINT_OBJECT_COUNT_ERRORS
             _pDebugOut->print("**** System variable string objects cleanup error. Remaining: "); _pDebugOut->println(_systemStringObjectCount);
@@ -1664,12 +1677,6 @@ void Justina::danglingPointerCheckAndCount(bool withUserVariables) {
             _systemStringObjectErrors += abs(_systemStringObjectCount);
         }
 
-        if (_lastValuesStringObjectCount != 0) {
-        #if PRINT_OBJECT_COUNT_ERRORS
-            _pDebugOut->print("**** Last value FiFo string objects cleanup error. Remaining: "); _pDebugOut->print(_lastValuesStringObjectCount);
-        #endif
-            _lastValuesStringObjectErrors += abs(_lastValuesStringObjectCount);
-        }
 
     #if PRINT_DEBUG_INFO
         _pDebugOut->print(", user var names "); _pDebugOut->print(_userVarNameStringObjectCount);
@@ -1678,7 +1685,7 @@ void Justina::danglingPointerCheckAndCount(bool withUserVariables) {
 
         _pDebugOut->print(", last value strings "); _pDebugOut->print(_lastValuesStringObjectCount);
     #endif
-}
+    }
 }
 
 
@@ -1715,7 +1722,6 @@ void Justina::initInterpreterVariables(bool fullReset) {
     _pFlowCtrlStackTop = nullptr;
     _pParsedCommandLineStackTop = nullptr;
 
-    _intermediateStringObjectCount = 0;      // reset at the start of execution
     _localVarValueAreaCount = 0;
     _localVarStringObjectCount = 0;
     _localArrayObjectCount = 0;
@@ -1728,23 +1734,24 @@ void Justina::initInterpreterVariables(bool fullReset) {
     // reset counters for heap objects
     // -------------------------------
 
-    _identifierNameStringObjectCount = 0;
+    _identifierNameStringObjectCount = 0;                                       // object count
     _parsedStringConstObjectCount = 0;
-
+    _intermediateStringObjectCount = 0;      
     _globalStaticVarStringObjectCount = 0;
     _globalStaticArrayObjectCount = 0;
 
     if (fullReset) {
         _lastValuesCount = 0;                                                   // current last result FiFo depth (values currently stored)
+        _openFileCount = 0;
 
-        _userVarNameStringObjectCount = 0;
+        // reset counters for heap objects
+        // -------------------------------
+
+        _userVarNameStringObjectCount = 0;                                      
+        _lastValuesStringObjectCount = 0;
         _userVarStringObjectCount = 0;
         _userArrayObjectCount = 0;
         _systemStringObjectCount = 0;
-
-        _lastValuesStringObjectCount = 0;
-
-        _openFileCount = 0;
 
 
         // initialize format settings for numbers and strings (width, characters to print, flags, ...)
@@ -1808,7 +1815,7 @@ void Justina::deleteIdentifierNameObjects(char** pIdentNameArray, int identifier
         isUserVar ? _userVarNameStringObjectCount-- : _identifierNameStringObjectCount--;
         delete[] * (pIdentNameArray + index);
         index++;
-}
+    }
 }
 
 
@@ -1853,8 +1860,8 @@ void Justina::deleteOneArrayVarStringObjects(Justina::Val* varValues, int index,
         #endif
             isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
             delete[]  pString;                                                                                                      // applicable to string and array (same pointer)
+        }
     }
-}
 }
 
 
@@ -1877,7 +1884,7 @@ void Justina::deleteVariableValueObjects(Justina::Val* varValues, char* varType,
             #endif
                 isUserVar ? _userArrayObjectCount-- : isLocalVar ? _localArrayObjectCount-- : _globalStaticArrayObjectCount--;
                 delete[]  varValues[index].pArray;
-        }
+            }
             else if ((varType[index] & value_typeMask) == value_isStringPointer) {                                                  // variable is a scalar containing a string
                 if (varValues[index].pStringConst != nullptr) {
                 #if PRINT_HEAP_OBJ_CREA_DEL
@@ -1886,8 +1893,8 @@ void Justina::deleteVariableValueObjects(Justina::Val* varValues, char* varType,
                 #endif
                     isUserVar ? _userVarStringObjectCount-- : isLocalVar ? _localVarStringObjectCount-- : _globalStaticVarStringObjectCount--;
                     delete[]  varValues[index].pStringConst;
-    }
-}
+                }
+            }
         }
         index++;
     }
@@ -1910,8 +1917,8 @@ void Justina::deleteLastValueFiFoStringObjects() {
         #endif
             _lastValuesStringObjectCount--;
             delete[] lastResultValueFiFo[i].pStringConst;
+        }
     }
-}
 }
 
 
@@ -1941,13 +1948,13 @@ void Justina::deleteConstStringObjects(char* pFirstToken) {
             #endif
                 _parsedStringConstObjectCount--;
                 delete[] pAnum;
+            }
         }
-    }
         uint8_t tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) :
             (tokenType == tok_isSymbolicConstant) ? sizeof(TokenIsSymbolicConstant) : (*prgmCnt.pTokenChars >> 4) & 0x0F;
         prgmCnt.pTokenChars += tokenLength;
         tokenType = *prgmCnt.pTokenChars & 0x0F;
-}
+    }
 }
 
 

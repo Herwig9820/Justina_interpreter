@@ -227,7 +227,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             bool opIsString = ((uint8_t)valueType == value_isStringPointer);
             if (!opIsString) { return result_arg_stringExpected; }
 
-            replaceSystemStringValue(_pTraceString, value.pStringConst);
+            setNewSystemExpression(_pTraceString, value.pStringConst);
 
             // clean up
             clearEvalStackLevels(cmdArgCount);                              // clear evaluation stack and intermediate strings
@@ -236,9 +236,9 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
         break;
 
 
-        // ------------------------
+        // -----------------------------------------------------------------
         // while tracing: view values only, or preceded by trace expressions
-        // ------------------------
+        // -----------------------------------------------------------------
 
         case cmdcod_traceExprOn:
         case cmdcod_traceExprOff:
@@ -274,7 +274,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
         case cmdcod_BPon:
         case cmdcod_BPoff:
         {
-            _pBreakpoints->_breakPontsAreOn = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_BPon);
+            _pBreakpoints->_breakpointsAreOn = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_BPon);
 
             // clean up
             clearEvalStackLevels(cmdArgCount);                              // clear evaluation stack and intermediate strings 
@@ -282,7 +282,38 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
         }
         break;
 
-        // ------------------------------------------------------------------------
+
+        // -----------------------------------------------------
+        // activate breakpoints (if currently in status 'draft')
+        // -----------------------------------------------------
+
+        case cmdcod_BPactivate:
+        {
+            if (_pBreakpoints->_breakpointsStatusDraft) {
+                if ((_pBreakpoints->_breakpointsUsed > 0) && (*_programStorage == '\0')) { return result_BP_noProgram; }
+
+                for (int i = 1; i <= 2; i++) {                                                          // 1: dry run (checks only), 2 = set BP in memory
+                    for (int entry = 0; entry < _pBreakpoints->_breakpointsUsed; entry++) {
+                        // get line sequence number
+                        long lineSequenceNum = _pBreakpoints->BPsourceLineFromToBPlineSequence(_pBreakpoints->_pBreakpointData[entry].sourceLine, true);
+                        if (lineSequenceNum == -1) { return result_BP_notAllowedForSourceLinesInTable; }      // not a valid source line to set breakpoints
+                        // check that statement is executable
+                        char* pProgramStep{ nullptr };
+                        execResult = _pBreakpoints->progMem_getSetClearBP(lineSequenceNum, pProgramStep, (i == 2));   // i=1: check for errors only, 2 = set BP in memory
+                        if (execResult != Justina::result_execOK) { return result_BP_nonExecStatementsInTable; }
+                    }
+                }
+                _pBreakpoints->_breakpointsStatusDraft = false;
+            }
+
+            // clean up
+            clearEvalStackLevels(cmdArgCount);                              // clear evaluation stack and intermediate strings 
+            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;        // command execution ended
+        }
+        break;
+
+
+       // ------------------------------------------------------------------------
         // set next line to continue execution (pass control to that line and stop)
         // ------------------------------------------------------------------------
 
@@ -436,9 +467,9 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
         case cmdcod_enableBP:
         case cmdcod_disableBP:
         {
-            // all commands:   source line number [, source line number, ...]
-            // set breakpoint: source line number, view string [, trigger string] - or -
-            //                 source line number, view string , hit count
+            // set/clear/enable/disable breakpoints: source line number [, source line number, ...]
+            // set breakpoint                      : source line number, view string [, trigger string] - or -
+            //                                       source line number, view string , hit count
 
             bool argIsVar;
             execResult_type execResult{ result_execOK };
@@ -447,12 +478,11 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             char valueType;
             Val arg;
 
-            bool isSetBPwithHitcountViewExpr{ false };
             bool isWithViewExpression{ false };
             bool isWithHitCount{ false };
             long sourceLine{ 0 };
-            long hitCountBP1{ 0 };
-            char* triggerExprBP1{ nullptr }, * viewExprBP1{ nullptr };
+            long hitCount{ 0 };
+            char* triggerExpr{ nullptr }, * viewExpr{ nullptr };
             LE_evalStack* pArg1StackLvl = pStackLvl;
 
             if ((_activeFunctionData.activeCmd_ResWordCode == cmdcod_setBP) && ((cmdArgCount == 2) || (cmdArgCount == 3))) {
@@ -463,27 +493,28 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
 
                     if (i == 1) {
                         sourceLine = (valueType == value_isLong) ? arg.longConst : (long)arg.floatConst;
+                        if ((sourceLine < 1) || (sourceLine > 99999)) { return result_BP_invalidSourceLine; }
                     }
                     else if (i == 2) {       // if string, this is a view string
                         isWithViewExpression = (valueType == value_isStringPointer);
-                        if (isWithViewExpression) { viewExprBP1 = arg.pStringConst; }
-                        if (!isWithViewExpression) { break; }       // not a single breakpoint with view expression and optional hit count or trigger expression
+                        if (isWithViewExpression) { viewExpr = arg.pStringConst; }
+                        else { break; }       // not a single breakpoint with view expression and optional hit count or trigger expression
                     }
                     else if (i == 3) {
                         isWithHitCount = ((valueType == value_isLong) || (valueType == value_isFloat));     // third arg must be string (view expression, if provided)
                         if (isWithHitCount) {
-                            hitCountBP1 = (valueType == value_isLong ? arg.longConst : (long)arg.floatConst);
-                            if ((hitCountBP1 < 1) || (hitCountBP1 > 100000)) { return result_BP_hitcountNotWithinRange; }
+                            hitCount = (valueType == value_isLong ? arg.longConst : (long)arg.floatConst);
+                            if ((hitCount < 1) || (hitCount > 100000)) { return result_BP_hitcountNotWithinRange; }
                         }
-                        else { triggerExprBP1 = arg.pStringConst; }
+                        else { triggerExpr = arg.pStringConst; }
                     }
                 }
             }
 
             // set one breakpoint with view expression and, optionally, hit count or trigger expression ?
             if (isWithViewExpression) {
-                int extraAttribCount = cmdArgCount - 1;
-                execResult = _pBreakpoints->maintainBP(sourceLine, _activeFunctionData.activeCmd_ResWordCode, extraAttribCount, viewExprBP1, hitCountBP1, triggerExprBP1);
+                int extraAttribCount = cmdArgCount - 1;                         // 0: no extra attributes supplied, 1: with view expression, 2: idem, + hit count or trigger expression 
+                execResult = _pBreakpoints->maintainBP(sourceLine, _activeFunctionData.activeCmd_ResWordCode, extraAttribCount, viewExpr, hitCount, triggerExpr);
                 if (execResult != result_execOK) { return execResult; }
             }
 
@@ -495,10 +526,97 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                     // values have not been tested yet for numeric type
                     if ((valueType != value_isLong) && (valueType != value_isFloat)) { return result_BP_sourcelineNumberExpected; }
                     sourceLine = (valueType == value_isLong) ? arg.longConst : (long)arg.floatConst;
+                    if ((sourceLine < 1) || (sourceLine > 99999)) { return result_BP_invalidSourceLine; }
 
                     execResult = _pBreakpoints->maintainBP(sourceLine, _activeFunctionData.activeCmd_ResWordCode);
                     if (execResult != result_execOK) { return execResult; }
                 }
+            }
+
+            // current breakpoint status is draft ? If last BP has now been cleared, activate breakpoints again. Otherwise, print reminder message.
+            if (_pBreakpoints->_breakpointsStatusDraft) {
+                if (_pBreakpoints->_breakpointsUsed > 0) { printlnTo(0, "** (Note: breakpoints have status DRAFT) **"); }
+                else { _pBreakpoints->_breakpointsStatusDraft = false; }
+            }
+
+            // clean up
+            clearEvalStackLevels(cmdArgCount);                                  // clear evaluation stack and intermediate strings 
+            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;            // command execution ended
+        }
+        break;
+
+
+        // ----------------------------------------------------------
+        // move a breakpoint for a source line to another source line
+        // ----------------------------------------------------------
+
+        case cmdcod_moveBP:
+        {
+            // move breakpoint: from source line number, to source line number (always 2 arguments)
+
+            bool argIsVar;
+            execResult_type execResult{ result_execOK };
+
+            bool argIsArray;
+            char valueType;
+            Val arg;
+
+            bool isWithViewExpression{ false };
+            bool isWithHitCount{ false };
+            long sourceLine[2];
+            long hitCount{ 0 };
+            char* triggerExpr{ nullptr }, * viewExpr{ nullptr };
+            LE_evalStack* pArg1StackLvl = pStackLvl;
+
+            pStackLvl = pArg1StackLvl;          // points to first argument again
+            for (int i = 0; i < cmdArgCount; i++) {
+                copyValueArgsFromStack(pStackLvl, 1, &argIsVar, &argIsArray, &valueType, &arg);
+                // values have not been tested yet for numeric type
+                if ((valueType != value_isLong) && (valueType != value_isFloat)) { return result_BP_sourcelineNumberExpected; }
+                sourceLine[i] = (valueType == value_isLong) ? arg.longConst : (long)arg.floatConst;
+                if ((sourceLine[i] < 1) || (sourceLine[i] > 99999)) { return result_BP_invalidSourceLine; }
+            }
+            if (sourceLine[0] == sourceLine[1]) { return result_BP_sourceIsDestination; }
+
+            // find BP table entry for 'sending' source line (note: if BP table status is NOT draft, breakpoints are also set in program memory)
+            int sourceEntry{ 0 };
+            bool found{ false };
+            for (sourceEntry = 0; sourceEntry < _pBreakpoints->_breakpointsUsed; sourceEntry++) {
+                if (_pBreakpoints->_pBreakpointData[sourceEntry].sourceLine == sourceLine[0]) { found = true; break; }
+            }
+            if (!found) { return result_BP_wasNotSet; }                         // no breakpoint to move
+
+
+            // before clearing the 'sending' source line, check that the 'receiving' source line is a valid line (contains the start of an executable statement) 
+            long lineSequenceNum = _pBreakpoints->BPsourceLineFromToBPlineSequence(sourceLine[1], true);
+            if (lineSequenceNum == -1) { return result_BP_notAllowedForSourceLine; }        // not a valid source line (no start of a new statement)
+            // check that statement is executable
+            char* pProgramStep{ nullptr };
+            execResult = _pBreakpoints->progMem_getSetClearBP(lineSequenceNum, pProgramStep);       // check for errors only (no changes)
+            if (execResult != Justina::result_execOK) { return execResult; }
+                       
+            
+            // recover breakpoint attributes for 'sending' source line
+            setNewSystemExpression(viewExpr, _pBreakpoints->_pBreakpointData[sourceEntry].pView);
+            setNewSystemExpression(triggerExpr, _pBreakpoints->_pBreakpointData[sourceEntry].pTrigger);
+            hitCount = _pBreakpoints->_pBreakpointData[sourceEntry].hitCount;
+
+            // clear BP for 'sending' source line first (this ensures that there will be place in the BP table for the 'receiving' source line BP)
+            execResult = _pBreakpoints->maintainBP(sourceLine[0], cmdcod_clearBP);
+            if (execResult != result_execOK) { return execResult; }
+
+            // set BP for 'receiving' source line (extra attributes = 2: view expression, + hit count or trigger expression, supplied)
+            execResult = _pBreakpoints->maintainBP(sourceLine[1], cmdcod_setBP, 2, viewExpr, hitCount, triggerExpr);
+            if (execResult != result_execOK) { return execResult; }
+
+            // recover breakpoint attributes for 'sending' source line
+            setNewSystemExpression(viewExpr, nullptr);
+            setNewSystemExpression(triggerExpr, nullptr);
+
+            // current breakpoint status is draft ? If last BP has now been cleared, activate breakpoints again. Otherwise, print reminder message.
+            if (_pBreakpoints->_breakpointsStatusDraft) {
+                if (_pBreakpoints->_breakpointsUsed > 0) { printlnTo(0, "** (Note: breakpoints have status DRAFT) **"); }
+                else { _pBreakpoints->_breakpointsStatusDraft = false; }
             }
 
             // clean up
@@ -600,7 +718,8 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                 // external source specified ?
                 else if ((valueType[0] == value_isLong) || (valueType[0] == value_isFloat)) {                           // external source specified: console or alternate input
                     _loadProgFromStreamNo = ((valueType[0] == value_isLong) ? args[0].longConst : args[0].floatConst);
-                    if (_loadProgFromStreamNo > 0) { return result_IO_invalidStreamNumber; }
+                    if (_loadProgFromStreamNo == 0) {}                                                                  // do nothing
+                    else if (_loadProgFromStreamNo > 0) { return result_IO_invalidStreamNumber; }
                     else if ((-_loadProgFromStreamNo) > _externIOstreamCount) { return result_IO_invalidStreamNumber; }
                     else if (_ppExternInputStreams[(-_loadProgFromStreamNo) - 1] == nullptr) { return result_IO_noDeviceOrNotForInput; }
                 }
@@ -672,7 +791,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
 
                 do {
                     printlnTo(0, msg);
-                    int length{ 2 };
+                    int length{ 2 };                                                                                        // detects input > 1 character
                     char input[2 + 1] = "";                                                                                 // init: empty string
                     bool doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };
                     // NOTE: doCancel and doDefault are dummy arguments here
@@ -848,7 +967,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
 
                         if (isReceive && verbose) {
                             // set EXTERNAL stream to input from, again (it was changed to CONSOLE by getConsoleCharacters() method, to read user answer from CONSOLE)
-                            execResult = setStream(sourceStreamNumber, pSourceStream, false);                
+                            execResult = setStream(sourceStreamNumber, pSourceStream, false);
                             if (execResult != result_execOK) { return result_IO_invalidStreamNumber; }
                         }
                     }
@@ -878,8 +997,8 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                     delete[]dirPath;
                     _systemStringObjectCount--;
                     if (execResult != result_execOK) { return execResult; }
+                        }
                     }
-                }
 
             if (proceed) {
                 if ((isSend || isCopy)) {
@@ -996,7 +1115,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             // clean up
             clearEvalStackLevels(cmdArgCount);                                        // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                  // command execution ended
-            }
+                }
         break;
 
 
@@ -1175,8 +1294,8 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
 
                         // if NOT a variable REFERENCE, then value type on the stack indicates the real value type and NOT 'variable reference' ...
                         // but it does not need to be changed, because in the next step, the respective stack level will be deleted 
-                        }
                     }
+                }
 
 
                 if (cmdArgCount == (isInput ? 3 : 2)) {       // last argument (optional second if Info, third if Input statement) serves a dual purpose: allow cancel (on entry) and signal 'canceled' (on exit)
@@ -1188,12 +1307,12 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                     // if NOT a variable REFERENCE, then value type on the stack indicates the real value type and NOT 'variable reference' ...
                     // but it does not need to be changed, because in the next step, the respective stack level will be deleted 
                 }
-                } while (!answerValid);
+            } while (!answerValid);
 
-                // clean up
-                clearEvalStackLevels(cmdArgCount);                                                                                  // clear evaluation stack and intermediate strings
-                _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                            // command execution ended
-            }
+            // clean up
+            clearEvalStackLevels(cmdArgCount);                                                                                  // clear evaluation stack and intermediate strings
+            _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                            // command execution ended
+        }
         break;
 
 
@@ -1485,9 +1604,9 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                 }
 
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-                    }
+            }
 
-                    // finalize
+            // finalize
             if (isPrintToVar) {                                                                                             // print to string ? save in variable
                 // receiving argument is a variable, and if it's an array element, it has string type 
 
@@ -1504,9 +1623,9 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                         delete[] assembledString;
                     }
                     return execResult;
-                    }
+                }
 
-                        // print line end without supplied arguments for printing: a string object does not exist yet, so create it now
+                    // print line end without supplied arguments for printing: a string object does not exist yet, so create it now
                 if (doPrintLineEnd) {
                     *pStreamPrintColumn = 0;                                                                                // to be consistent with handling of printing line end for printing to non-variable streams, but initialized to zero already 
                     if (cmdArgCount == 1) {                                                                                 // only receiving variable supplied: no string created yet     
@@ -1552,7 +1671,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                     delete[] assembledString;                             // not referenced in eval. stack (clippedString is), so will not be deleted as part of cleanup
                     _systemStringObjectCount--;
                 }
-                    }
+            }
 
             else {      // print to file or external IO
                 if (doPrintLineEnd) {
@@ -1564,7 +1683,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             // clean up
             clearEvalStackLevels(cmdArgCount);                                                                              // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
-                }
+        }
         break;
 
 
@@ -1579,7 +1698,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
         case cmdcod_printBP:
         case cmdcod_listFiles:
         {
-            bool isConsolePrint{ true };    // init
+            bool isConsolePrint{ true };                                                                                    // init
             int streamNumber = 0;                                                                                           // init: console
             execResult = setStream(streamNumber, true); if (execResult != result_execOK) { return execResult; }             // init output stream
             int* pStreamPrintColumn = _pConsolePrintColumn;                                                                 // init 
@@ -2088,12 +2207,12 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
         }       // end switch
 
     return result_execOK;
-                }
+            }
 
 
-                // -------------------------------
-                // *   test for loop condition   *
-                // -------------------------------
+            // -------------------------------
+            // *   test for loop condition   *
+            // -------------------------------
 
 Justina::execResult_type Justina::testForLoopCondition(bool& testFails) {
 
@@ -2185,41 +2304,50 @@ Justina::execResult_type Justina::copyValueArgsFromStack(LE_evalStack*& pStackLv
         }
 
         pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-                }
+    }
 
     return result_execOK;
-            }
-
-
-            // -----------------------------------------------------------------------
-            // *   replace a system string value with a copy of a new string value   * 
-            // -----------------------------------------------------------------------
-
-void Justina::replaceSystemStringValue(char*& systemString, const char* newString) {
-
-    // delete current system string (if not nullptr)
-    if (systemString != nullptr) {
-    #if PRINT_HEAP_OBJ_CREA_DEL
-        _pDebugOut->print("\r\n----- (system var str) "); _pDebugOut->println((uint32_t)systemString, HEX);
-        _pDebugOut->print("   repl sys var str "); _pDebugOut->println(systemString);
-    #endif
-        _systemStringObjectCount--;
-        delete[] systemString;
-        systemString = nullptr;
-    }
-
-        // COPY new string in system variable (no move)
-    if (newString != nullptr) {                                             // new trace string
-        _systemStringObjectCount++;
-        systemString = new char[strlen(newString) + 2]; // room for additional semicolon (in case string is not ending with it) and terminating '\0'
-        strcpy(systemString, newString);                                    // copy the actual string
-        systemString[strlen(newString)] = term_semicolon[0];
-        systemString[strlen(newString) + 1] = '\0';
-    #if PRINT_HEAP_OBJ_CREA_DEL
-        _pDebugOut->print("\r\n+++++ (sys var str) "); _pDebugOut->println((uint32_t)systemString, HEX);
-        _pDebugOut->print("   repl sys var str "); _pDebugOut->println(systemString);
-    #endif
-    }
 }
 
+
+// --------------------------------------------------------------------------------------------------------
+// *   replace a system expression with a copy of a new string value and add a semicolon if not present   * 
+// --------------------------------------------------------------------------------------------------------
+
+void Justina::setNewSystemExpression(char*& systemExpression, const char* newExpression) {
+
+    // delete current system string (if not nullptr)
+    if (systemExpression != nullptr) {
+    #if PRINT_HEAP_OBJ_CREA_DEL
+        _pDebugOut->print("\r\n----- (system exp str) "); _pDebugOut->println((uint32_t)systemExpression, HEX);
+        _pDebugOut->print("   remove old sys expression "); _pDebugOut->println(systemExpression);
+    #endif
+        _systemStringObjectCount--;
+        delete[] systemExpression;
+        systemExpression = nullptr;
+    }
+
+    if (newExpression == nullptr) { return; }                       // nothing to do 
+    
+    // create a new system string, based on a new string; add a semicolon if not present
+
+    bool addSemicolon{ false };
+    int length = strlen(newExpression);
+    int i = length;
+    for (i = length - 1; i >= 0; i--) {
+        if ((i == 0) || (newExpression[i] != ' ')) { addSemicolon = (newExpression[i] != term_semicolon[0]); break; }
+    }
+
+    _systemStringObjectCount++;
+    systemExpression = new char[length + (addSemicolon ? 1 : 0) + 1];       // room for (optional: additional semicolon) and terminating '\0'
+    strcpy(systemExpression, newExpression);                                    // copy the actual string
+    if (addSemicolon) {
+        systemExpression[length] = term_semicolon[0];
+        systemExpression[length + 1] = '\0';
+    }
+#if PRINT_HEAP_OBJ_CREA_DEL
+    _pDebugOut->print("\r\n+++++ (system exp str) "); _pDebugOut->println((uint32_t)systemExpression, HEX);
+    _pDebugOut->print("   set new sys expr expression "); _pDebugOut->println(systemExpression);
+#endif
+}
 

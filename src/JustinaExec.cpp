@@ -2501,7 +2501,7 @@ Justina::execResult_type  Justina::launchEval(LE_evalStack*& pFunctionStackLvl, 
     pEvalParsingInput[strlen(parsingInput)] = term_semicolon[0];
     pEvalParsingInput[strlen(parsingInput) + 1] = '\0';
 #if PRINT_HEAP_OBJ_CREA_DEL
-    _pDebugOut->print("\r\n+++++ (system var str) "); _pDebugOut->println((uint32_t)pEvalParsingInput, HEX);
+    _pDebugOut->print("\r\n+++++ (system exp str) "); _pDebugOut->println((uint32_t)pEvalParsingInput, HEX);
     _pDebugOut->print("       launch eval (1) "); _pDebugOut->println(pEvalParsingInput);
 #endif
 
@@ -2510,7 +2510,7 @@ Justina::execResult_type  Justina::launchEval(LE_evalStack*& pFunctionStackLvl, 
     int dummy{};
     parsingResult_type result = parseStatement(pParsingInput_temp, pDummy, dummy);                  // parse all eval() expressions in ONE go (which is not the case for standard parsing and trace string parsing)
 #if PRINT_HEAP_OBJ_CREA_DEL
-    _pDebugOut->print("\r\n----- (system var str) "); _pDebugOut->println((uint32_t)pEvalParsingInput, HEX);
+    _pDebugOut->print("\r\n----- (system exp str) "); _pDebugOut->println((uint32_t)pEvalParsingInput, HEX);
     _pDebugOut->print("       launch eval (2) "); _pDebugOut->println(pEvalParsingInput);
 #endif
     _systemStringObjectCount--;

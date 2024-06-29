@@ -61,13 +61,15 @@ Breakpoints::~Breakpoints() {
 // -------------
 
 void Breakpoints::resetBreakpointsState() {
-    _BPlineRangeStorageUsed = 0;
-
     for (int i = 0; i < _breakpointsUsed; i++) {
-        _pJustina->replaceSystemStringValue(_pBreakpointData[i].pView, nullptr);        // remove any heap objects created for non-empty view or trigger strings    
-        _pJustina->replaceSystemStringValue(_pBreakpointData[i].pTrigger, nullptr);
+        _pJustina->setNewSystemExpression(_pBreakpointData[i].pView, nullptr);        // remove any heap objects created for non-empty view or trigger strings    
+        _pJustina->setNewSystemExpression(_pBreakpointData[i].pTrigger, nullptr);
     }
+
+    _BPlineRangeStorageUsed = 0;
     _breakpointsUsed = 0;
+    _breakpointsAreOn = true;
+    _breakpointsStatusDraft = false;
 }
 
 
@@ -87,8 +89,8 @@ on the memory required for parsed statements (program memory).
 - gap size is less than 2048 source lines and valid range size is less than 2048 source lines: 3 bytes are required in range pair table
 Larger line range sizes will produce an error.
 
-At the same time, during program parsing, statements for which setting a breakpoint is allowed, are marked by altering the statement separator preceding
-the parsed statement. This does NOT consume any extra memory.
+At the same time, during program parsing, statements for which setting a breakpoint is allowed, are marked by altering the statement separator token preceding
+the parsed statement. This does NOT consume any extra memory (it's merely a flag that is set).
 
 For each source line included in the range pair table, exactly one parsed statement receives the marking 'breakpoint allowed' (1-to-1).
 When a user sets, clears, ... a breakpoint later during debugging the program, the line sequence number of the source line in the range pair table
@@ -98,7 +100,7 @@ the source line statement is found.
 Example: 'gap range-valid range' pairs 3,5,7,2 show that the source file consists of 3+5+7+2 = 17 lines; lines 4->8 and lines 16->17 are valid source lines.
 A total of 5+2 = 7 parsed statements have been marked as 'breakpoint allowed'.
 If the user wants to set a breakpoint for line 16 for example, as this is the 6th valid line, Justina will find the 6th parsed statement and alter the
-preceding statement separator indicating the breakpoint is now set. Additional breakpoint attributes will be maintained in a separate table.
+preceding statement separator token, to indicate that the breakpoint is now set. Additional breakpoint attributes will be maintained in a separate table.
 */
 
 // -----------------------------------------------------------------------------------------------------------------
@@ -207,31 +209,33 @@ Justina::parsingResult_type Breakpoints::addOneSourceLineRangePair(long gapLineR
 
 Justina::execResult_type Breakpoints::maintainBP(long breakpointLine, char actionCmdCode, int extraAttribCount, const char* viewString, long hitCount, const char* triggerString) {
 
-    // 1. find source line sequence number for line number (base 0) 
-    // ------------------------------------------------------------
-
-    // note: line sequence number = line index in the set of source lines having a statement STARTING AT THE START of the source line (discarding spaces)
-    long lineSequenceNum = BPsourceLineFromToBPlineSequence(breakpointLine, true);
-    if (lineSequenceNum == -1) { return  Justina::result_BP_notAllowedForSourceLine; }      // not a valid source line (not within source line range or doesn't start with a Justina statement)
-
-
-    // 2. find parsed program statement and current breakpoint state ('set' or 'allowed but not set') for source line; if setBP or clearBP, adapt in program memory
-    // ------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-    // parsed statement for the first statement STARTING on a source line: 
-    // the semicolon step (statement separator) preceding the parsed statement is altered to indicate that a breakpoint is either set or allowed for this statement
-    // note: the FIRST statement STARTING on that source line must be an executable statement. Otherwise that sourceline does not accept breakpoints
+    Justina::execResult_type execResult{ Justina::result_execOK };
 
     char* pProgramStep{ nullptr };
-    bool BPwasSetInProgMem{};
     bool doSet = (actionCmdCode == Justina::cmdcod_setBP);
     bool doClear = (actionCmdCode == Justina::cmdcod_clearBP);
     bool doEnable = (actionCmdCode == Justina::cmdcod_enableBP);
     bool doDisable = (actionCmdCode == Justina::cmdcod_disableBP);
 
-    Justina::execResult_type execResult = progMem_getSetClearBP(lineSequenceNum, pProgramStep, BPwasSetInProgMem, doSet, doClear);
-    if (execResult != Justina::result_execOK) { return execResult; }
-    if (!BPwasSetInProgMem && !doSet) { return doClear ? Justina::result_execOK : Justina::result_BP_wasNotSet; }  // if BP not yet set, return either with error (clear) or with error 
+    if (!_breakpointsStatusDraft) {   // skip 1. and 2. if breakpoint table has status 'DRAFT'
+
+        // 1. find source line sequence number for line number (base 0) 
+        // ------------------------------------------------------------
+
+        // note: line sequence number = line index in the set of source lines having a statement STARTING AT THE START of the source line (discarding spaces)
+        long lineSequenceNum = BPsourceLineFromToBPlineSequence(breakpointLine, true);
+        if (lineSequenceNum == -1) { return  Justina::result_BP_notAllowedForSourceLine; }      // not a valid source line (doesn't start with a Justina statement)
+
+        // 2. find parsed program statement and current breakpoint state ('set' or 'allowed but not set') for source line; if setBP or clearBP, adapt in program memory
+        // ------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+        // parsed statement for the first statement STARTING on a source line: 
+        // the semicolon step (statement separator) preceding the parsed statement is altered to indicate that a breakpoint is either set or allowed for this statement
+        // note: the FIRST statement STARTING on that source line must be an executable statement. Otherwise that source line does not accept breakpoints
+
+        execResult = progMem_getSetClearBP(lineSequenceNum, pProgramStep, doSet, doClear);
+        if (execResult != Justina::result_execOK) { return execResult; }
+    }
 
     // 3. Maintain breakpoint settings in breakpoint data table, for all breakpoints currently set  
     // -------------------------------------------------------------------------------------------
@@ -240,7 +244,10 @@ Justina::execResult_type Breakpoints::maintainBP(long breakpointLine, char actio
     // ...that a breakpoint is either set or allowed for the parsed statement).
     // in other words, for each source line with a valid line sequence number, there is exactly one parsed statement where a breakpoint is either set or allowed, and vice versa (1-to-1). 
 
-    execResult = maintainBreakpointTable(breakpointLine, pProgramStep, BPwasSetInProgMem, doSet, doClear, doEnable, doDisable, extraAttribCount, viewString, hitCount, triggerString);
+    // NOTE: if the breakpoint table currently has status 'DRAFT', there is no link with 'real' source lines (any source line is valid), nor with parsed program statements. ...
+    //       ...(a program may even not exist). 
+    //       compatibility between action requested and BP existence is not tested: test in 'maintainBreakpointTable()'
+    execResult = maintainBreakpointTable(breakpointLine, pProgramStep, doSet, doClear, doEnable, doDisable, extraAttribCount, viewString, hitCount, triggerString);
 
     return execResult;
 }
@@ -264,10 +271,9 @@ Justina::execResult_type Breakpoints::findParsedStatementForSourceLine(long sour
 
     // parsed statement for the first statement STARTING on a source line: 
     // the semicolon step (statement separator) preceding the parsed statement is altered to indicate that a breakpoint is either set or allowed for this statement
-    // the (set or allowed) breakpoint is only used to check that this sourceline can be set as next line to execute (given next constraints are fulfilled) 
-    bool BPwasSetInProgMem{};
-    Justina::execResult_type execResult = progMem_getSetClearBP(lineSequenceNum, pProgramStep, BPwasSetInProgMem);
-    return execResult; 
+    // the (set or allowed) breakpoint setting is only used to check that this source line can be set as next line to execute (given next constraints are fulfilled) 
+    Justina::execResult_type execResult = progMem_getSetClearBP(lineSequenceNum, pProgramStep);
+    return execResult;
 }
 
 
@@ -275,7 +281,7 @@ Justina::execResult_type Breakpoints::findParsedStatementForSourceLine(long sour
 // *  find program step and current breakpoint state (set or 'allowed') for source line; if setBP or clearBP, adapt in program memory   *
 // --------------------------------------------------------------------------------------------------------------------------------------
 
-Justina::execResult_type Breakpoints::progMem_getSetClearBP(long lineSequenceNum, char*& pProgramStep, bool& BPwasSet, bool doSet, bool doClear) {
+Justina::execResult_type Breakpoints::progMem_getSetClearBP(long lineSequenceNum, char*& pProgramStep, bool doSet, bool doClear) {
 
     // 1. find parsed statement corresponding to source line sequence number
     // ---------------------------------------------------------------------
@@ -304,7 +310,10 @@ Justina::execResult_type Breakpoints::progMem_getSetClearBP(long lineSequenceNum
         int resWordIndex = ((Justina::TokenIsResWord*)pProgramStep)->tokenIndex;
         if (Justina::_resWords[resWordIndex].restrictions & Justina::cmd_skipDuringExec) { return Justina::result_BP_statementIsNonExecutable; }     // because not executable
     }
-    BPwasSet = (((Justina::TokenIsTerminal*)(pProgramStep - 1))->tokenTypeAndIndex == _pJustina->_semicolonBPset_token);        // if set, an entry is present in _pBreakpointData
+    // next line does not work if breakpoint table status is DRAFT (no link with program, if any) -> do this test later by checking existence of entry in breakpoint table 
+    //BPwasSet = (((Justina::TokenIsTerminal*)(pProgramStep - 1))->tokenTypeAndIndex == _pJustina->_semicolonBPset_token);        // BEFORE changing tokenTypeAndIndex (next line)
+
+    // set preceding separator token in program memory to indicate 'breakpoint set' or 'breakpoint allowed'
     if (doSet || doClear) { ((Justina::TokenIsTerminal*)(pProgramStep - 1))->tokenTypeAndIndex = doSet ? _pJustina->_semicolonBPset_token : _pJustina->_semicolonBPallowed_token; }                                 // flag 'breakpoint set'
 
     return Justina::result_execOK;
@@ -315,20 +324,24 @@ Justina::execResult_type Breakpoints::progMem_getSetClearBP(long lineSequenceNum
 // *   Maintain breakpoint settings for all breakpoints currently set   *
 // ----------------------------------------------------------------------
 
-Justina::execResult_type Breakpoints::maintainBreakpointTable(long sourceLine, char* pProgramStep, bool BPwasSet, bool doSet, bool doClear, bool doEnable, bool doDisable,
+Justina::execResult_type Breakpoints::maintainBreakpointTable(long sourceLine, char* pProgramStep, bool doSet, bool doClear, bool doEnable, bool doDisable,
     int extraArribCount, const char* viewString, long hitCount, const char* triggerString) {
 
     int entry{ 0 };
-    bool doInsertNewBP{ false };
+    bool BPwasSet{ false }, doInsertNewBP{ false };
+
+    for (entry = 0; entry < _breakpointsUsed; entry++) {
+        if (_pBreakpointData[entry].sourceLine == sourceLine) { BPwasSet = true; break; }
+    }
+
+    // action is set BP:              continue (even if BP was already set: attributes could change)
+    //           clear BP:            if BP is currently set, continue. Otherwise, return (all done) 
+    //           enable / disable BP: if BP is currently set, continue. Otherwise, return error (cannot enable/disable nonexistent BP)
+    if (!BPwasSet && !doSet) { return doClear ? Justina::result_execOK : Justina::result_BP_wasNotSet; }
 
     if (BPwasSet) {                                                                     // if BP was set, all actions are allowed
-        // find breakpoint entry in breakpoint data array
-        for (entry = 0; entry < _breakpointsUsed; entry++) {
-            if (_pBreakpointData[entry].pProgramStep == pProgramStep) { break; }        // always match 
-        }
-
+        // clear, enable, disable BP (if BP was not set, then control returned to caller already)
         if (doSet) {}                                                                   // do nothing
-        // clear ,enable, disable BP if BP was not set, then control returned to caller already
         else if (doClear) { _breakpointsUsed--; }                                       // (entry will be moved to end of defined breakpoints when corresponding objects have been deleted)   
         else if (doEnable) { _pBreakpointData[entry].BPenabled = 0b1; }
         else if (doDisable) { _pBreakpointData[entry].BPenabled = 0b0; }
@@ -339,7 +352,7 @@ Justina::execResult_type Breakpoints::maintainBreakpointTable(long sourceLine, c
         entry = _breakpointsUsed;                                                       // first free entry 
         _pBreakpointData[entry].BPenabled = 0b1;
         _pBreakpointData[entry].sourceLine = sourceLine;
-        _pBreakpointData[entry].pProgramStep = pProgramStep;
+        _pBreakpointData[entry].pProgramStep = pProgramStep;                            // if status DRAFT, then pProgramStep is dummy
         _pBreakpointData[entry].pView = nullptr;
         _pBreakpointData[entry].pTrigger = nullptr;
         _breakpointsUsed++;
@@ -348,13 +361,13 @@ Justina::execResult_type Breakpoints::maintainBreakpointTable(long sourceLine, c
 
     if (doSet or doClear) {     // adapt attributes
         // keep view, hit count or trigger if setting a breakpoint that was already set, AND those attributes are not supplied
-        bool keepView = (BPwasSet && doSet && (extraArribCount == 0));          // 'set' for an existing breakpoint: only change view string if supplied 
-        bool keepCondition = (BPwasSet && doSet && (extraArribCount <= 1));     // 'set' for an existing breakpoint: only change hit count or trigger string if supplied
+        bool keepView = (BPwasSet && doSet && (extraArribCount == 0));          // 'set' for an existing breakpoint: only change view string if supplied (0: no attributes supplied, 1: view string supplied)
+        bool keepCondition = (BPwasSet && doSet && (extraArribCount <= 1));     // 'set' for an existing breakpoint: only change hit count or trigger string if supplied (2: condition supplied)
 
         // save view string and hit count value / trigger string
         if (!keepView) {
             _pBreakpointData[entry].BPwithViewExpr = (viewString == nullptr) ? 0b0 : 0b1;
-            _pJustina->replaceSystemStringValue(_pBreakpointData[entry].pView, viewString);
+            _pJustina->setNewSystemExpression(_pBreakpointData[entry].pView, viewString);
         }
         if (!keepCondition) {
             _pBreakpointData[entry].BPwithHitCount = (hitCount > 0) ? 0b1 : 0b0;
@@ -362,7 +375,7 @@ Justina::execResult_type Breakpoints::maintainBreakpointTable(long sourceLine, c
 
             _pBreakpointData[entry].hitCount = hitCount;
             _pBreakpointData[entry].hitCounter = 0;
-            _pJustina->replaceSystemStringValue(_pBreakpointData[entry].pTrigger, triggerString);
+            _pJustina->setNewSystemExpression(_pBreakpointData[entry].pTrigger, triggerString);
         }
     }
 
@@ -394,8 +407,9 @@ Justina::execResult_type Breakpoints::maintainBreakpointTable(long sourceLine, c
 
 void Breakpoints::printBreakpoints() {
 
-    // print table header
-    _pJustina->print("Breakpoints are currently "); _pJustina->println(_breakPontsAreOn ? "ON\r\n" : "OFF\r\n");
+    // print table header lines
+
+    _pJustina->print("Breakpoints are currently "); _pJustina->println(_breakpointsAreOn ? "ON\r\n" : "OFF\r\n");
     _pJustina->println("source   enabled   view &\r\n  line             trigger\r\n------   -------   -------");
 
     char line[50];     // sufficient length for all line elements in first sprintf
@@ -421,6 +435,12 @@ void Breakpoints::printBreakpoints() {
     }
 
     if (BPprinted == 0) { _pJustina->println("(none)"); }       // useful if 'print enabled BP' only
+
+    if (_breakpointsStatusDraft) {
+        _pJustina->println(); for (int i = 1; i <= 35; i++) { _pJustina->print('*'); }
+        _pJustina->println("\r\n** Breakpoints have status DRAFT **");
+        for (int i = 1; i <= 35; i++) { _pJustina->print('*'); } _pJustina->println();
+    }
 }
 
 
@@ -442,9 +462,9 @@ Breakpoints::BreakpointData* Breakpoints::findBPtableRow(char* pParsedStatement,
 };
 
 
-// -------------------------------------------------------------------
-// *   find sourceline number for a parsed statement start address   *
-// -------------------------------------------------------------------
+// --------------------------------------------------------------------
+// *   find source line number for a parsed statement start address   *
+// --------------------------------------------------------------------
 
 long Breakpoints::findLineNumberForBPstatement(char* pProgramStepToFind) {
 
@@ -482,7 +502,7 @@ long Breakpoints::findLineNumberForBPstatement(char* pProgramStepToFind) {
 // ------------------------------------------------------------------------------------------------------------------
 // *   return the sequence number of a given source line OR the source line for a given sequence number.            *
 // *   the sequence number of a source line is the index (base 0) attributed to the source line, only counting...   *
-// *   ...source lines with at least one statement STARTING on that line.                              *
+// *   ...source lines with at least one statement STARTING on that line.                                           *
 // ------------------------------------------------------------------------------------------------------------------
 
 long Breakpoints::BPsourceLineFromToBPlineSequence(long BPlineOrIndex, bool toIndex) {
@@ -508,7 +528,7 @@ long Breakpoints::BPsourceLineFromToBPlineSequence(long BPlineOrIndex, bool toIn
 
         else if ((_BPlineRangeStorage[i] & 0b11) == 0b01) {     // LSB's = 0b01: gap and adjacent source line ranges stored in two bytes
             uint32_t temp{};
-            memcpy(&temp, _BPlineRangeStorage + i,   2);
+            memcpy(&temp, _BPlineRangeStorage + i, 2);
             gapLineRange = (temp >> 2) & 0x7F;                                                  // each 7 bits long
             adjacentLineRange = (temp >> 9) & 0x7F;
             i += 2;
@@ -516,7 +536,7 @@ long Breakpoints::BPsourceLineFromToBPlineSequence(long BPlineOrIndex, bool toIn
 
         else if ((_BPlineRangeStorage[i] & 0b11) == 0b11) {     // LSB's = 0b11: gap and adjacent source line ranges stored in three bytes
             uint32_t temp{};
-            memcpy(&temp, _BPlineRangeStorage +     i, 3);
+            memcpy(&temp, _BPlineRangeStorage + i, 3);
             gapLineRange = (temp >> 2) & 0x7FF;                                                 // each 11 bits long
             adjacentLineRange = (temp >> 13) & 0x7FF;
             i += 3;
@@ -550,37 +570,54 @@ long Breakpoints::BPsourceLineFromToBPlineSequence(long BPlineOrIndex, bool toIn
 // ----------------------------------------------------------------------------------------
 
 void Breakpoints::printLineRangesToDebugOut(Stream* output) {
-    // reconstruct gap and adjacent source line ranges
+    
+    // note that these ranges contain lines with the start of non-executable statements as well (var, ...)
+    
     int i = 0;
     long BPpreviousEndLine{ 0 };                        // introduce offset 1 here
+    int bytes{ 0 };
+    char s[80];
+
+    output->println("Ranges of source lines containing the start of a statement\r\n");
+
     while (i < _BPlineRangeStorageUsed) {
         long gapLineRange{}, adjacentLineRange{};
 
-        if (!(_BPlineRangeStorage[i] & 0x01)) {       // gap and adjacent source line ranges stored in one byte
+        if ((_BPlineRangeStorage[i] & 0b1) == 0b0) {       // gap and adjacent source line ranges stored in one byte
             gapLineRange = (((uint32_t)_BPlineRangeStorage[i]) >> 1) & 0x7;                 // 3 bits long
             adjacentLineRange = (((uint32_t)_BPlineRangeStorage[i]) >> 4) & 0xF;            // 4 bits long
-            i++;
+            bytes = 1;
         }
 
-        else if ((_BPlineRangeStorage[i] & 0x11) == 0x01) {       // gap and adjacent source line ranges stored in two bytes
+        else if ((_BPlineRangeStorage[i] & 0b11) == 0b01) {       // gap and adjacent source line ranges stored in two bytes
             uint32_t temp{};
             memcpy(&temp, _BPlineRangeStorage + i, 2);
             gapLineRange = (temp >> 2) & 0x7F;                                              // 7 bits long
             adjacentLineRange = (temp >> 9) & 0x7F;
-            i += 2;
+            bytes = 2;
         }
 
-        else if ((_BPlineRangeStorage[i] & 0x11) == 0x11) {       // gap and adjacent source line ranges stored in three bytes
+        else if ((_BPlineRangeStorage[i] & 0b11) == 0b11) {       // gap and adjacent source line ranges stored in three bytes
             uint32_t temp{};
             memcpy(&temp, _BPlineRangeStorage + i, 3);
             gapLineRange = (temp >> 2) & 0x7FF;                                             // 11 bits long
             adjacentLineRange = (temp >> 13) & 0x7FF;
-            i += 3;
+            bytes = 3;
         }
+        
+        i += bytes;
+        
         long BPstartLine = BPpreviousEndLine + gapLineRange + 1;
         long BPendLine = BPstartLine + adjacentLineRange - 1;
         BPpreviousEndLine = BPendLine;
-        output->print("RECONSTRUCT adjacent lines - start en finish: "); output->print(BPstartLine); output->print("-"); output->println(BPendLine);
+
+        sprintf(s, "%d bytes: gap range %ld, valid range %ld lines (valid from/to %ld-%ld)", bytes,gapLineRange, adjacentLineRange, BPstartLine, BPendLine);
+        output->println(s);
     }
+
+    sprintf(s, "\r\n%d bytes used", _BPlineRangeStorageUsed);
+    output->println(s);
+
+    return;
 }
 #endif

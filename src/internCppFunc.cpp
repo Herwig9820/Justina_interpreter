@@ -2418,9 +2418,10 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                     _intermediateStringObjectCount++;
                     fcnResult.pStringConst = new char[13 * 5 + 1];                              // includes place for 13 times 5 characters (3 digits max. for each number, max. 2 extra in between) and terminating \0
                     if (sysVal == 42) {     // print heap object counts
-                        // (1)program variable and function NAMES-(2)user variable NAMES-(3)parsed string constants-(4)last value strings-
-                        // (5)global and static variable strings-(6)global and static array storage areas-(7)user variable strings-(8)user array storage areas-
-                        // (9)local variable strings-(10)local array storage areas-(11)local variable base value areas-(12)intermediate string constants
+                        // (1)  program variable and function NAMES-(2)user variable NAMES-(3)parsed string constants-(4)last value strings-
+                        // (5)  global and static variable strings-(6)global and static array storage areas-(7)user variable strings-(8)user array storage areas-
+                        // (9)  local variable strings-(10)local array storage areas-(11)local variable base value areas-(12)intermediate strings-
+                        // (13) system expression strings
                         sprintf(fcnResult.pStringConst, "%0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d:%0d:%0d:%0d / %0d",
                             min(999, _identifierNameStringObjectCount), min(999, _userVarNameStringObjectCount), min(999, _parsedStringConstObjectCount), min(999, _lastValuesStringObjectCount),
                             min(999, _globalStaticVarStringObjectCount), min(999, _globalStaticArrayObjectCount), min(999, _userVarStringObjectCount), min(999, _userArrayObjectCount),

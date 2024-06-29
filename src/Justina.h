@@ -2276,8 +2276,8 @@ private:
     // delete one user variable
     parsingResult_type deleteUserVariable(char* userVarName = nullptr);
 
-    // replace a string stored in a system variable by another value
-    void replaceSystemStringValue(char*& systemString, const char* pNewString);
+    // replace string representing an expression,  stored in a system variable, by a copy of a new expression string
+    void setNewSystemExpression(char*& systemExpression, const char* newExpression);
 
 };
 

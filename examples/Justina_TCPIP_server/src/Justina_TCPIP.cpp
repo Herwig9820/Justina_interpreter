@@ -112,7 +112,7 @@ void TCPconnection::maintainWiFiConnection() {
 
                 WiFi.begin((const char*)_SSID, (const char*)_PASS);
                 _connectionState = conn_1_WiFi_waitForConnecton;
-                if (_verbose) { Serial.println(_isClient ? "\r\n-- Trying to connect WiFi..." : "\r\n-- Trying to connect server to WiFi..."); }
+                if (_verbose) { Serial.println(_isClient ? "\r\n-- Trying to connect WiFi..." : "\r\n-- Trying to connect TCP/IP server to WiFi..."); }
                 // remember time of this WiFi connection attempt
                 _WiFiWaitingForConnectonAt = _lastWiFiMaintenanceTime = millis();       // remember time of last WiFi maintenance AND time of this WiFi connection attempt
                 _resetWiFi = false;
@@ -133,7 +133,7 @@ void TCPconnection::maintainWiFiConnection() {
                     if (_verbose) {
                         IPAddress IP = WiFi.localIP();
                         char s[100];
-                        sprintf(s, "\r\n-- %sWiFi connected, local IP %d.%d.%d.%d (%ld dBm)", (_isClient ? "" : "server started. "), IP[0], IP[1], IP[2], IP[3], WiFi.RSSI());
+                        sprintf(s, "\r\n-- %sWiFi connected, local IP %d.%d.%d.%d (%ld dBm)", (_isClient ? "" : "TCP/IP server started. "), IP[0], IP[1], IP[2], IP[3], WiFi.RSSI());
                         Serial.println(s);
                     }
                 }
@@ -159,7 +159,7 @@ void TCPconnection::maintainWiFiConnection() {
             //  prepare for reconnection if connection is lost OR per user program request 
             if (_resetWiFi || (WiFi.status() != WL_CONNECTED)) {
                 _connectionState = conn_0_WiFi_notConnected;
-                if (_verbose) { Serial.println(_isClient ? "\r\n-- WiFi disconnected" : "\r\n-- WiFi disconnected, server stopped"); }
+                if (_verbose) { Serial.println(_isClient ? "\r\n-- WiFi disconnected" : "\r\n-- WiFi disconnected, TCP/IP server stopped"); }
                 WiFi.disconnect();
             #if !defined ARDUINO_ARCH_ESP32
                 WiFi.end();
