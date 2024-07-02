@@ -1,0 +1,18 @@
+Justina interpreter v1.2.1 - release notes
+------------------------------------------
+
+v1.1.1
+------
+initial version
+
+v1.2.1		
+------
+new functionality: 
+- when a program is deleted, any breakpoints set receive status 'draft' instead of being deleted as well.
+- introduction of two new commands: moveBP (move breakpoint to another source line) and BPactivate (remove breakpoint status 'draft') 
+- clearBP command can now clear all breakpoints at once, without having to specify source lines
+- user manual adapted to cover new functionality
+bugs solved:
+- creating a Justina object without passing input and output streams does not correctly initialize default input and output stream
+- clearProg and clearMem command: char* too short, risking memory corruption
+- loadProg command: default console does not always refer to correct input stream

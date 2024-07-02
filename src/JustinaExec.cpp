@@ -125,7 +125,7 @@ Justina::execResult_type  Justina::exec(char* startHere) {
             // Case: process keyword token
             // ---------------------------
 
-            case tok_isReservedWord:
+            case tok_isInternCommand:
             {
 
                 // parse-only statements (program, function, var, local, static, ...): skip for execution
@@ -943,7 +943,7 @@ void Justina::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNo
     if (!(executedStepIsprogram && nextStepIsprogram)) { return; }           // breakpoint / stop: only possible if last and next steps are program steps
 
     int tokenType = (*_programCounter) & 0x0F;
-    bool isResWord = (tokenType == tok_isReservedWord);
+    bool isResWord = (tokenType == tok_isInternCommand);
     int index = isResWord ? ((TokenIsResWord*)(_programCounter))->tokenIndex : 0;
 
     if (isResWord) {
@@ -1025,7 +1025,7 @@ void Justina::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNo
     // check if specific step command is applicable now
     bool nextIsSameLvlEnd{ false };
     if ((_stepCmdExecuted == db_stepToBlockEnd) && (flowCtrlStack.getElementCount() == _stepFlowCtrlStackLevels)
-        && ((*_programCounter & 0x0F) == tok_isReservedWord)) {
+        && ((*_programCounter & 0x0F) == tok_isInternCommand)) {
         nextIsSameLvlEnd = (_resWords[index].resWordCode == cmdcod_end);
     }
 
@@ -1209,7 +1209,7 @@ int Justina::jumpTokens(int n, char*& pStep, int& tokenCode) {
     int tokenIndex{ 0 };
 
     switch (tokenType) {
-        case tok_isReservedWord:
+        case tok_isInternCommand:
             tokenIndex = (((TokenIsResWord*)pStep)->tokenIndex);
             tokenCode = _resWords[tokenIndex].resWordCode;
             break;
@@ -1237,9 +1237,9 @@ int Justina::jumpTokens(int n, char*& pStep, int& tokenCode) {
 int Justina::findTokenStep(char*& pStep, bool excludeCurrent, char tokenType_spec, char criterium1, char criterium2, char criterium3, int* matchedCritNum, int* pTokenIndex) {
 
     // pStep: pointer to first token to test versus token group and (if applicable) token code
-    // tokenType_spec: if looking for a reserved word: 'tok_isReservedWord', if looking for a terminal, ALWAYS use tok_isTerminalGroup1 as argument
+    // tokenType_spec: if looking for an internal command: 'tok_isInternCommand', if looking for a terminal, ALWAYS use tok_isTerminalGroup1 as argument
 
-    // if looking for a specific reserved word or a specific terminal (optionally you can specify three terminals to look for)
+    // if looking for a specific command or a specific terminal (optionally you can specify three terminals to look for)
     char& tokenCode1_spec = criterium1;                                                                         // keyword code or terminal code to look for
     char& tokenCode2_spec = criterium2;                                                                         // optional second code (-1 if only one code to look for)
     char& tokenCode3_spec = criterium3;                                                                         // optional second code (-1 if 1 or 2 codes to look for)
@@ -1270,7 +1270,7 @@ int Justina::findTokenStep(char*& pStep, bool excludeCurrent, char tokenType_spe
             int tokenIndex{ 0 };
 
             switch (tokenType_spec) {
-                case tok_isReservedWord:
+                case tok_isInternCommand:
                 {
                     uint tokenIndex = (((TokenIsResWord*)pStep)->tokenIndex);
                     tokenCodeMatch = _resWords[tokenIndex].resWordCode == tokenCode1_spec;
@@ -1546,7 +1546,7 @@ void Justina::clearParsedCommandLineStack(int n) {
         // copy command line stack top to command line program storage and pop command line stack top
         _lastUserCmdStep = *(char**)_pParsedCommandLineStackTop;                                                // pop parsed user cmd length
         long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + _PROGRAM_MEMORY_SIZE) + 1;
-        deleteConstStringObjects(_programStorage + _PROGRAM_MEMORY_SIZE);                                            // current parsed user command statements in immediate mode program memory
+        deleteConstStringObjects(_programStorage + _PROGRAM_MEMORY_SIZE);                                       // current parsed user command statements in immediate mode program memory
         memcpy((_programStorage + _PROGRAM_MEMORY_SIZE), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);
         parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
         _pParsedCommandLineStackTop = parsedCommandLineStack.getLastListElement();
@@ -2711,7 +2711,7 @@ void Justina::initFunctionLocalNonParamVariables(char* pStep, int paramCount, in
 
     int count = paramCount;                                                                                                 // sum of mandatory and optional parameters
     while (count != localVarCount) {
-        findTokenStep(pStep, true, tok_isReservedWord, cmdcod_var, cmdcod_constVar);                                        // find local 'var' or 'const' keyword (always there)
+        findTokenStep(pStep, true, tok_isInternCommand, cmdcod_var, cmdcod_constVar);                                       // find local 'var' or 'const' keyword (always there)
 
         do {
             // in case variable is not an array and it does not have an initializer: init now as zero (float). Arrays without initializer will be initialized later

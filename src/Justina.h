@@ -87,8 +87,8 @@
 
 #define J_productName "Justina: JUST an INterpreter for Arduino"
 #define J_legalCopyright "Copyright 2024, Herwig Taveirne"
-#define J_version "1.1.1"            
-#define J_buildDate "May 29, 2024"
+#define J_version "1.2.1"            
+#define J_buildDate "July 1, 2024"
 
 
 // ******************************************************************
@@ -499,7 +499,7 @@ class Justina {
 
     enum tokenType_type {                                               // token type
         tok_no_token,                                                   // no token to process
-        tok_isReservedWord,
+        tok_isInternCommand,
         tok_isInternCppFunction,
         tok_isExternCppFunction,
         tok_isJustinaFunction,
@@ -959,7 +959,7 @@ class Justina {
 
     // commands parameters: number / type of parameters allowed for a group of commands
     static constexpr uint8_t cmdPar_none = 0;
-    static constexpr uint8_t cmdPar_resWord = 1;                        // note: currently, reserved words are not used as command parameters, instead they start a command
+    static constexpr uint8_t cmdPar_resWord = 1;                        
     static constexpr uint8_t cmdPar_varNoAssignment = 2;                // and no operators
     static constexpr uint8_t cmdPar_varOptAssignment = 3;
     static constexpr uint8_t cmdPar_expression = 4;
@@ -1619,7 +1619,7 @@ private:
     bool _justinaFunctionBlockOpen = false;                         // commands within FUNCTION...END block are being parsed (excluding END command)
     bool _isCommand = false;                                        // a command is being parsed (instruction starting with a keyword)
 
-    bool _isProgramCmd = false;                                     // flags: a specific command is being parsed (= starting with a reserved word)
+    bool _isProgramCmd = false;                                     // flags: a specific command is being parsed (= starting with a command name)
     bool _isJustinaFunctionCmd = false;
     bool _isGlobalOrUserVarCmd = false;
     bool _isLocalVarCmd = false;

@@ -103,7 +103,7 @@ const Justina::ResWordDef Justina::_resWords[]{
     {"BPoff",           cmdcod_BPoff,           cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
     {"BPactivate",      cmdcod_BPactivate,      cmd_onlyImmediate,                                      0,0,    cmdPar_102,     cmdBlockNone},
     {"setBP",           cmdcod_setBP,           cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
-    {"clearBP",         cmdcod_clearBP,         cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
+    {"clearBP",         cmdcod_clearBP,         cmd_onlyImmediate,                                      0,9,    cmdPar_112,     cmdBlockNone},
     {"enableBP",        cmdcod_enableBP,        cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
     {"disableBP",       cmdcod_disableBP,       cmd_onlyImmediate,                                      1,9,    cmdPar_112,     cmdBlockNone},
     {"moveBP",          cmdcod_moveBP,          cmd_onlyImmediate,                                      2,2,    cmdPar_105,     cmdBlockNone},
@@ -1418,7 +1418,7 @@ void Justina::setRTCCallbackFunction(void (*func)(uint16_t* date, uint16_t* time
 
     // this function is directly called from the main Arduino program, before the Justina begin() method is called
     // it stores the address of an optional 'RTC callback' function
-    // Justina can than call this function when it needs the date or time )
+    // Justina can than call this function when it needs the date or time 
 
     _dateTime = func;
 }

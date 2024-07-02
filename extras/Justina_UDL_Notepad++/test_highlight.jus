@@ -6,46 +6,46 @@
     commands (control block stat.: bold)	functions																			predefined constants									operators			
     ------------------------------------    --------------------------------------------------------------------------------    ---------------------------------------------------		----------------    
     	
-    var             	raiseError          sqrt					tone				ascToHexStr			fmt					e					CANCELED			BOARD_ESP32		=					
-    const           	trapErrors          sin						pulseIn             hexStrToAsc			tab					PI                  OK		 							+=					
-    static          	clearError          cos						shiftIn             quote				col                 HALF_PI             NOK 								-=					
-    delete          	quit                tan						shiftOut            isAlpha				pos                 QUART_PI            CONSOLE 							*=				
-    clearMem			dispWidth           asin					random              isAlphaNumeric		open                TWO_PI              IO1           						/=					
-    clearProg       	floatFmt            acos					randomSeed          isDigit				close               DEG_TO_RAD          IO2 								%=					
-    loadProg        	intFmt              atan					bit                 isHexDigit			position            RAD_TO_DEG          IO3 								<<=					
-    program         	dispMode            ln						bitRead             isControl			size                RADIANS             IO4									>>=					
-    function        	tabSize             lnp1					bitClear            isGraph				seek                DEGREES             FILE1           					&=					                   
-    for           		angleMode           log10            		bitSet				isPrintable			name				INTEGER           	FILE2								|=					
-    while           	setConsole          exp						bitWrite			isPunct				fullName            FLOAT               FILE3								^=					
-    if              	setConsoleIn        expm1					byteRead            isWhitespace		isDirectory         STRING             	FILE4           					++	
-    elseif          	setConsoleOut       round					byteWrite           isAscii				rewindDirectory     FALSE               FILE5           					--					
-    else            	setDebugOut         ceil					maskedWordRead      isLowerCase			openNext            TRUE              	READ            					<					
-    end             	info                floor					maskedWordClear     isUpperCase			exists              OFF                 WRITE           					>					
-    break           	input               trunc					maskedWordSet       eval				createDirectory     ON                  APPEND          					<=					
-    continue        	startSD             min						maskedWordWrite     ubound				removeDirectory     LOW                 SYNC            					>=	 				
-    return          	stopSD              max						mem32Read           dims				remove              HIGH                NEW_OK          					!=					
-    pause           	receiveFile         abs						mem32Write          type				fileNum             INPUT               NEW_ONLY        					==					
-    halt            	sendFile            signBit					mem8Read            r					isInUse             OUTPUT              TRUNC           					+	
-    stop            	copyFile            fmod					mem8Write           err					closeAll            INPUT_PULLUP        EOF             					-	
-    nop             	dbout               ifte					char                isColdStart	                            INPUT_PULLDOWN      FIXED           					*	
-    go              	dboutLine           switch					len                 sysVal	                                LED_BUILTIN         EXP             					/	
-    step            	cout                index					line                cin	                                    LED_RED             EXP_U           					%	
-    stepOut         	coutLine            choose					asc                 cinLine	                                LED_GREEN           SHORT           					**	
-    stepOver        	coutList            cInt					rtrim               cinList	                                LED_BLUE            SHORT_U         					&&	
-    bStepOut        	print               cFloat					ltrim               read	                                LSBFIRST            DEC             					||	
-    loop				printLine           cStr					trim                readLine	                            MSBFIRST            HEX             					!	
-    trace           	printList           millis					left                readList	                            NO_PROMPT           HEX_U           					<<	
-    viewExprOn			vprint              micros					mid                 vreadList	                            PROMPT              CHARS								>>	
-    viewExprOff			vprintLine          wait					right               find	                                ECHO                FMT_LEFT       						&	
-    setNextLine			vprintList          digitalRead				toUpper             findUntil	                            NO_RESULTS          FMT_SIGN       						|	
-    abort           	listCallStack       digitalWrite			toLower             peek	                                RESULTS             FMT_SPACE      						^	
-    debug           	listBP              pinMode					space               available	                            QUOTE_RES           FMT_POINT      						~	
-    BPon				listVars            analogRead				repeatChar          flush	                                ENTER               FMT_0X         						;	
-    BPoff				listFiles           analogReference			replaceChar         setTimeout	                            ENTER_CANCEL        FMT_000        						,	
-    setBP				listFilesToSerial   analogWrite				findStr             getTimeout	                            YES_NO              FMT_NONE       						(	
-    clearBP	                                analogReadResolution	replaceStr      	availableForWrite	                    YN_CANCEL           BOARD_OTHER     					)	
-    enableBP	                            analogWriteResolution	strCmp          	getWriteError	                        NO_DEFAULT          BOARD_SAMD      				
-    disableBP	                            noTone			   		strCaseCmp          clearWriteError	                        ALLOW_DEFAULT 		BOARD_RP2040    	
+    var             	enableBP            sqrt					tone				ascToHexStr			fmt					e					CANCELED			BOARD_ESP32		=					
+    const           	disableBP           sin						pulseIn             hexStrToAsc			tab					PI                  OK		 							+=					
+    static          	raiseError          cos						shiftIn             quote				col                 HALF_PI             NOK 								-=					
+    delete          	trapErrors          tan						shiftOut            isAlpha				pos                 QUART_PI            CONSOLE 							*=				
+    clearMem			clearError          asin					random              isAlphaNumeric		open                TWO_PI              IO1           						/=					
+    clearProg       	quit                acos					randomSeed          isDigit				close               DEG_TO_RAD          IO2 								%=					
+    loadProg        	dispWidth           atan					bit                 isHexDigit			position            RAD_TO_DEG          IO3 								<<=					
+    program         	floatFmt            ln						bitRead             isControl			size                RADIANS             IO4									>>=					
+    function        	intFmt              lnp1					bitClear            isGraph				seek                DEGREES             FILE1           					&=					                   
+    for           		dispMode            log10            		bitSet				isPrintable			name				INTEGER           	FILE2								|=					
+    while           	tabSize             exp						bitWrite			isPunct				fullName            FLOAT               FILE3								^=					
+    if              	angleMode           expm1					byteRead            isWhitespace		isDirectory         STRING             	FILE4           					++	
+    elseif          	setConsole          round					byteWrite           isAscii				rewindDirectory     FALSE               FILE5           					--					
+    else            	setConsoleIn        ceil					maskedWordRead      isLowerCase			openNext            TRUE              	READ            					<					
+    end             	setConsoleOut       floor					maskedWordClear     isUpperCase			exists              OFF                 WRITE           					>					
+    break           	setDebugOut         trunc					maskedWordSet       eval				createDirectory     ON                  APPEND          					<=					
+    continue        	info                min						maskedWordWrite     ubound				removeDirectory     LOW                 SYNC            					>=	 				
+    return          	input               max						mem32Read           dims				remove              HIGH                NEW_OK          					!=					
+    pause           	startSD             abs						mem32Write          type				fileNum             INPUT               NEW_ONLY        					==					
+    halt            	stopSD              signBit					mem8Read            r					isInUse             OUTPUT              TRUNC           					+	
+    stop            	receiveFile         fmod					mem8Write           err					closeAll            INPUT_PULLUP        EOF             					-	
+    nop             	sendFile            ifte					char                isColdStart	                            INPUT_PULLDOWN      FIXED           					*	
+    go              	copyFile            switch					len                 sysVal	                                LED_BUILTIN         EXP             					/	
+    step            	dbout               index					line                cin	                                    LED_RED             EXP_U           					%	
+    stepOut         	dboutLine           choose					asc                 cinLine	                                LED_GREEN           SHORT           					**	
+    stepOver        	cout                cInt					rtrim               cinList	                                LED_BLUE            SHORT_U         					&&	
+    bStepOut        	coutLine            cFloat					ltrim               read	                                LSBFIRST            DEC             					||	
+    loop				coutList            cStr					trim                readLine	                            MSBFIRST            HEX             					!	
+    trace           	print               millis					left                readList	                            NO_PROMPT           HEX_U           					<<	
+    viewExprOn			printLine           micros					mid                 vreadList	                            PROMPT              CHARS								>>	
+    viewExprOff			printList           wait					right               find	                                ECHO                FMT_LEFT       						&	
+    setNextLine			vprint              digitalRead				toUpper             findUntil	                            NO_RESULTS          FMT_SIGN       						|	
+    abort           	vprintLine          digitalWrite			toLower             peek	                                RESULTS             FMT_SPACE      						^	
+    debug           	vprintList          pinMode					space               available	                            QUOTE_RES           FMT_POINT      						~	
+    BPon				listCallStack       analogRead				repeatChar          flush	                                ENTER               FMT_0X         						;	
+    BPoff				listBP              analogReference			replaceChar         setTimeout	                            ENTER_CANCEL        FMT_000        						,	
+    BPactivate			listVars            analogWrite				findStr             getTimeout	                            YES_NO              FMT_NONE       						(	
+    setBP	            listFiles           analogReadResolution	replaceStr      	availableForWrite	                    YN_CANCEL           BOARD_OTHER     					)	
+    clearBP		        listFilesToSerial   analogWriteResolution	strCmp          	getWriteError	                        NO_DEFAULT          BOARD_SAMD      				
+    moveBP		                            noTone			   		strCaseCmp          clearWriteError	                        ALLOW_DEFAULT 		BOARD_RP2040    	
     -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	literal constants (examples)					    			user cpp routines (prefix to force highlight)               comments
     -----------------------------------                 			---------------------------------------------               --------

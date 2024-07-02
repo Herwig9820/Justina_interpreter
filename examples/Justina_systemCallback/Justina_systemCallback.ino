@@ -72,9 +72,11 @@ void setup() {
 
     justina.setSystemCallbackFunction(&Justina_housekeeping);               // set callback function; it will be called regularly while control is within Justina 
 
+    heartbeatPeriod = 500;                                                  // 'short' heartbeat ON and OFF time: heartbeat led will blink at a higher rate when control is within Justina                                              
     justina.begin();                                                        // run interpreter (control will stay there until you quit Justina)           
+    heartbeatPeriod = 1000;                                                 // 'long' heartbeat ON and OFF time: heartbeat led will blink at a lower rate when control is not within Justina                                              
 
-    Serial.println("Justina session just ended");
+    Serial.println("Justina session ended");
 }
 
 

@@ -1203,7 +1203,7 @@ void Justina::prettyPrintStatements(int outputStream, int instructionCount, char
 
         switch (tokenType)
         {
-            case tok_isReservedWord:
+            case tok_isInternCommand:
             {
                 TokenIsResWord* pToken = (TokenIsResWord*)progCnt.pTokenChars;
                 bool nextIsTerminal = ((nextTokenType == tok_isTerminalGroup1) || (nextTokenType == tok_isTerminalGroup2) || (nextTokenType == tok_isTerminalGroup3));

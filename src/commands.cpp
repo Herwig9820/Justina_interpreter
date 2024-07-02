@@ -81,7 +81,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             // skip non-executable commands
             do {
                 int tokenType = *_activeFunctionData.pNextStep & 0x0F;
-                if (tokenType != tok_isReservedWord) { break; }
+                if (tokenType != tok_isInternCommand) { break; }
                 int tokenIndex = ((TokenIsResWord*)_activeFunctionData.pNextStep)->tokenIndex;
                 if ((_resWords[tokenIndex].restrictions & cmd_skipDuringExec) == 0) { break; }
                 findTokenStep(_activeFunctionData.pNextStep, true, tok_isTerminalGroup1, termcod_semicolon, termcod_semicolon_BPset, termcod_semicolon_BPallowed);   // find semicolon (always match)
@@ -414,7 +414,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                     incRelativeLevel = false, decRelativeLvel = false;
 
                     // check for start and end block statements
-                    if (tokenType == tok_isReservedWord) {
+                    if (tokenType == tok_isInternCommand) {
                         int tokenIndex = (int)((TokenIsResWord*)step)->tokenIndex;
                         char resWordCode = _resWords[tokenIndex].resWordCode;
 
@@ -438,7 +438,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
 
             // E. set next step to statement corresponding to source line
             // ----------------------------------------------------------
-            pFlowCtrlStackLvl->pNextStep = nextStep_tobe;                   // points again to stopped function data level
+            pFlowCtrlStackLvl->pNextStep = nextStep_tobe;                       // points again to stopped function data level
             pFlowCtrlStackLvl->errorStatementStartStep = nextStep_tobe;
             pFlowCtrlStackLvl->errorProgramCounter = nextStep_tobe;
 
@@ -518,6 +518,41 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                 if (execResult != result_execOK) { return execResult; }
             }
 
+            else if ((_activeFunctionData.activeCmd_ResWordCode == cmdcod_clearBP) && (cmdArgCount == 0)) {
+                while (_pConsoleIn->available() > 0) { readFrom(0); }                                               // empty console buffer first (to allow the user to start with an empty line)
+                bool validAnswer{ false };
+                do {
+                    char s[60];
+                    sprintf(s, "===== Clear all breakpoints ? (please answer Y or N) =====");
+                    printlnTo(0, s);
+
+                    // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
+                    // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
+
+                    // read answer and store first one or two characters in 'input' variable. Return on '\n' (length is stored in 'length').
+                    int length{ 2 };                                // detects input > 1 character
+                    char input[2 + 1] = "";                         // init: empty string
+                    // NOTE: doCancel and doDefault are dummy arguments here
+                    bool kill{ false }, doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };
+                    if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return result_kill; }    // kill request from caller ?
+                    if (doAbort) { forcedAbortRequest = true; break; }                                             // ' abort running code (program or immediate mode statements)
+                    if (doStop) { forcedStopRequest = true; }                           // stop a running program (do not produce stop event yet, wait until program statement executed)
+
+                    // check answer
+                    validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
+                    if (validAnswer) {
+                        if (tolower(input[0]) == 'y') {
+                            for (int i = _pBreakpoints->_breakpointsUsed - 1; i >= 0; i--) {
+                                sourceLine = _pBreakpoints->_pBreakpointData[i].sourceLine;
+                                execResult = _pBreakpoints->maintainBP(sourceLine, cmdcod_clearBP);
+                                if (execResult != result_execOK) { return execResult; }
+                            }
+                        }
+                    }
+                    else { printlnTo(0, "\r\nYour answer is not valid. Please answer Y or N"); }
+                } while (!validAnswer);
+            }
+
             // set/clear/enable/disable multiple breakpoints
             else {
                 pStackLvl = pArg1StackLvl;          // points to first argument again
@@ -594,8 +629,8 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             char* pProgramStep{ nullptr };
             execResult = _pBreakpoints->progMem_getSetClearBP(lineSequenceNum, pProgramStep);       // check for errors only (no changes)
             if (execResult != Justina::result_execOK) { return execResult; }
-                       
-            
+
+
             // recover breakpoint attributes for 'sending' source line
             setNewSystemExpression(viewExpr, _pBreakpoints->_pBreakpointData[sourceEntry].pView);
             setNewSystemExpression(triggerExpr, _pBreakpoints->_pBreakpointData[sourceEntry].pTrigger);
@@ -684,7 +719,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
         case cmdcod_clearError:
         {
             _trappedExecError = (int)result_execOK;
-            _trappedEvalParsingError = result_parsing_OK;               // eval() and list IO errors only
+            _trappedEvalParsingError = result_parsing_OK;                   // eval() and list IO errors only
 
             // clean up
             clearEvalStackLevels(cmdArgCount);                              // clear evaluation stack and intermediate strings 
@@ -867,7 +902,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             // send or receive file: send or receive data to / from external IO stream 
             if (isSend || isReceive) {
                 int IOstreamNumber{ 0 };
-                if (cmdArgCount >= 2) {                                                            // source (receive) / destination (send) specified ?
+                if (cmdArgCount >= 2) {                                                                                         // source (receive) / destination (send) specified ?
                     int IOstreamArgIndex = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_sendFile ? 1 : 0);              // init (default for send and receive only, if not specified)
                     if ((valueType[IOstreamArgIndex] == value_isLong) || (valueType[IOstreamArgIndex] == value_isFloat)) {      // external source/destination specified (console or an alternate I/O stream)
                         IOstreamNumber = ((valueType[IOstreamArgIndex] == value_isLong) ? args[IOstreamArgIndex].longConst : (long)args[IOstreamArgIndex].floatConst);
@@ -993,12 +1028,12 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                             dirCreated = SD.mkdir(dirPath); if (!dirCreated) { execResult = result_SD_couldNotCreateFileDir; }
                         #endif
                         }
-                    }
+                        }
                     delete[]dirPath;
                     _systemStringObjectCount--;
                     if (execResult != result_execOK) { return execResult; }
-                        }
                     }
+                }
 
             if (proceed) {
                 if ((isSend || isCopy)) {
@@ -1115,7 +1150,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             // clean up
             clearEvalStackLevels(cmdArgCount);                                        // clear evaluation stack and intermediate strings
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                  // command execution ended
-                }
+            }
         break;
 
 
@@ -1202,7 +1237,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             bool isInput = (_activeFunctionData.activeCmd_ResWordCode == cmdcod_input);                                         // init
             bool isInfoWithYesNo = false;
 
-            bool checkForDefault = false;       // init
+            bool checkForDefault = false;                                                                                       // init
             bool checkForCancel = false;
             bool answerValid{ false };
 
@@ -1516,8 +1551,8 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                                 _pDebugOut->print("  cmd: coutList (1) ");   _pDebugOut->println(assembledString);
                             #endif
                             }
+                            }
                         }
-                    }
 
                     if (!isTabFunction && !isColFunction) {                                                                 // go for normal flow
                         // prepare one value for printing
@@ -1580,7 +1615,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                             _intermediateStringObjectCount--;
                             delete[] oldAssembString;
                         }
-                    }
+                        }
 
                     else {      // print to file or console ?
                         if (printString != nullptr) {
@@ -1601,12 +1636,12 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                         _intermediateStringObjectCount--;
                         delete[] printString;
                     }
-                }
+                    }
 
                 pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-            }
+                    }
 
-            // finalize
+                    // finalize
             if (isPrintToVar) {                                                                                             // print to string ? save in variable
                 // receiving argument is a variable, and if it's an array element, it has string type 
 
@@ -1636,9 +1671,9 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                         _pDebugOut->print("  cmd: coutList (6) ");   _pDebugOut->println(assembledString);
                     #endif
                     }
-                }
+                    }
 
-                // save new string in variable 
+                    // save new string in variable 
                 *pFirstArgStackLvl->varOrConst.value.ppStringConst = assembledString;                                       // init: copy pointer (OK if string length not above limit)
                 *pFirstArgStackLvl->varOrConst.varTypeAddress = (*pFirstArgStackLvl->varOrConst.varTypeAddress & ~value_typeMask) | value_isStringPointer;
 
@@ -1671,7 +1706,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
                     delete[] assembledString;                             // not referenced in eval. stack (clippedString is), so will not be deleted as part of cleanup
                     _systemStringObjectCount--;
                 }
-            }
+                }
 
             else {      // print to file or external IO
                 if (doPrintLineEnd) {
@@ -1683,7 +1718,7 @@ Justina::execResult_type Justina::execProcessedCommand(bool& isFunctionReturn, b
             // clean up
             clearEvalStackLevels(cmdArgCount);                                                                              // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_ResWordCode = cmdcod_none;                                                        // command execution ended
-        }
+                }
         break;
 
 
@@ -2300,19 +2335,19 @@ Justina::execResult_type Justina::copyValueArgsFromStack(LE_evalStack*& pStackLv
                     _pDebugOut->print("cpy args from stack ");   _pDebugOut->println(args[i].pStringConst);
                 #endif
                 }
+                }
             }
-        }
 
         pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-    }
+        }
 
     return result_execOK;
-}
+    }
 
 
-// --------------------------------------------------------------------------------------------------------
-// *   replace a system expression with a copy of a new string value and add a semicolon if not present   * 
-// --------------------------------------------------------------------------------------------------------
+    // --------------------------------------------------------------------------------------------------------
+    // *   replace a system expression with a copy of a new string value and add a semicolon if not present   * 
+    // --------------------------------------------------------------------------------------------------------
 
 void Justina::setNewSystemExpression(char*& systemExpression, const char* newExpression) {
 
@@ -2328,7 +2363,7 @@ void Justina::setNewSystemExpression(char*& systemExpression, const char* newExp
     }
 
     if (newExpression == nullptr) { return; }                       // nothing to do 
-    
+
     // create a new system string, based on a new string; add a semicolon if not present
 
     bool addSemicolon{ false };

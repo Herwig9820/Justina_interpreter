@@ -293,7 +293,7 @@ Justina::execResult_type Breakpoints::progMem_getSetClearBP(long lineSequenceNum
     int matchedCriteriumNumber{};
     int matchedSemiColonTokenIndex{ 0 };
 
-    if (lineSequenceNum == 0) { return Justina::result_BP_statementIsNonExecutable; }           // first statement is not preceded by a semicolon (statement separator)
+    if (lineSequenceNum == 0) { return Justina::result_BP_statementIsNonExecutable; }                   // first statement is not preceded by a semicolon (statement separator)
     while (i < lineSequenceNum) {                       // parsed statement corresponding to line sequence number (and source line statement) has been found (always a matching entry): exit          
         // find next semicolon token. It flags whether a breakpoint is allowed for the NEXT statement (pending further tests)   
         _pJustina->findTokenStep(pProgramStep, true, Justina::tok_isTerminalGroup1, Justina::termcod_semicolon,
@@ -306,7 +306,7 @@ Justina::execResult_type Breakpoints::progMem_getSetClearBP(long lineSequenceNum
                                                                                                         // breakpoint allowed or already set based on statement position in source file 
     int statementTokenType = _pJustina->jumpTokens(1, pProgramStep);                                    // first character of first token of next statement (following the 'flagged' semicolon token)
     // if a command, check that setting a breakpoint is allowed by the command attributes
-    if ((statementTokenType & 0x0F) == Justina::tok_isReservedWord) {                       // statement is a command ? check whether it's executable
+    if ((statementTokenType & 0x0F) == Justina::tok_isInternCommand) {                                  // statement is an internal command ? check whether it's executable
         int resWordIndex = ((Justina::TokenIsResWord*)pProgramStep)->tokenIndex;
         if (Justina::_resWords[resWordIndex].restrictions & Justina::cmd_skipDuringExec) { return Justina::result_BP_statementIsNonExecutable; }     // because not executable
     }

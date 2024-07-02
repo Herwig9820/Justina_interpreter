@@ -96,7 +96,7 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
         // determine token group of last token parsed (bits b4 to b0): this defines which tokens are allowed as next token
         _lastTokenGroup_sequenceCheck_bit = isOperator ? lastTokenGroup_0 :
             isComma ? lastTokenGroup_1 :
-            ((t == tok_no_token) || isSemicolon || (t == tok_isReservedWord)) ? lastTokenGroup_2 :
+            ((t == tok_no_token) || isSemicolon || (t == tok_isInternCommand)) ? lastTokenGroup_2 :
             ((t == tok_isConstant) || (t == tok_isSymbolicConstant) || isRightPar) ? lastTokenGroup_3 :
             ((t == tok_isInternCppFunction) || (t == tok_isExternCppFunction) || (t == tok_isJustinaFunction)) ? lastTokenGroup_4 :
             isLeftPar ? lastTokenGroup_5 : lastTokenGroup_6;                                                        // token group 6: scalar or array variable name
@@ -104,7 +104,7 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
         // a space may be required between last token and next token (not yet known), if one of them is a keyword
         // and the other token is either a keyword, an alphanumeric constant or a parenthesis
         // space check result is OK if a check is not required or if a space is present anyway
-        _leadingSpaceCheck = ((t == tok_isReservedWord) || _lastTokenIsString || isRightPar) && (pNext[0] != ' ');
+        _leadingSpaceCheck = ((t == tok_isInternCommand) || _lastTokenIsString || isRightPar) && (pNext[0] != ' ');
 
         // move to the first non-space character of next token 
         while (pNext[0] == ' ') { pNext++; }                                                                        // skip leading spaces
@@ -153,7 +153,7 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
         bool isStatementStart = (_lastTokenType_hold == tok_no_token) || (_lastTokenIsTerminal_hold ? (_lastTermCode_hold == termcod_semicolon) : false);
         bool isCommandStart = false;
         if (isStatementStart) {
-            isCommandStart = (_lastTokenType == tok_isReservedWord);                                                // keyword at start of statement ? is start of a command 
+            isCommandStart = (_lastTokenType == tok_isInternCommand);                                               // keyword at start of statement ? is start of a command 
             _isCommand = isCommandStart;                                                                            // is start of a command ? then within a command now. Otherwise, it's an 'expression only' statement
             if (_isCommand) { if (!checkCommandKeyword(result, resWordIndex)) { ; pNext = pNext_hold; break; } }    // start of a command: keyword
         }
@@ -321,7 +321,7 @@ bool Justina::checkCommandArgToken(parsingResult_type& result, int& clearIndicat
 
     static uint8_t allowedParType = cmdPar_none;                                                                    // init
 
-    bool isResWord = (_lastTokenType == tok_isReservedWord);
+    bool isResWord = (_lastTokenType == tok_isInternCommand);
     bool isGenIdent = (_lastTokenType == tok_isGenericName);
     bool isSemiColonSep = _lastTokenIsTerminal ? (_terminals[_tokenIndex].terminalCode == termcod_semicolon) : false;
     bool isLeftPar = _lastTokenIsTerminal ? (_terminals[_tokenIndex].terminalCode == termcod_leftPar) : false;
@@ -341,7 +341,7 @@ bool Justina::checkCommandArgToken(parsingResult_type& result, int& clearIndicat
     bool previousTokenWasCmdArgSep = false;
     previousTokenWasCmdArgSep = (_lastTokenIsTerminal_hold ? (_lastTermCode_hold == termcod_comma) : false) && (_parenthesisLevel == isLeftPar ? 1 : 0);
     bool isExpressionFirstToken = _lvl0_withinExpression &&
-        ((_lastTokenType_hold == tok_isReservedWord) || (_lastTokenType_hold == tok_isGenericName) || previousTokenWasCmdArgSep);
+        ((_lastTokenType_hold == tok_isInternCommand) || (_lastTokenType_hold == tok_isGenericName) || previousTokenWasCmdArgSep);
 
     // keep track of argument index within command
     // -------------------------------------------
@@ -445,12 +445,12 @@ bool Justina::parseAsResWord(char*& pNext, parsingResult_type& result) {
         bool hasTokenStep = (_resWords[resWordIndex].cmdBlockDef.blockType != block_none);
 
         TokenIsResWord* pToken = (TokenIsResWord*)_programCounter;
-        pToken->tokenType = tok_isReservedWord | ((sizeof(TokenIsResWord) - (hasTokenStep ? 0 : 2)) << 4);
+        pToken->tokenType = tok_isInternCommand | ((sizeof(TokenIsResWord) - (hasTokenStep ? 0 : 2)) << 4);
         pToken->tokenIndex = resWordIndex;
         if (hasTokenStep) { pToken->toTokenStep[0] = 0xFF; pToken->toTokenStep[1] = 0xFF; }                     // -1: no token ref. uint16_t not necessarily aligned with word size: store as two separate bytes                            
 
         _lastTokenStep = _programCounter - _programStorage;
-        _lastTokenType = tok_isReservedWord;
+        _lastTokenType = tok_isInternCommand;
         _lastTokenIsString = false, _lastTokenIsTerminal = false; _lastTokenIsPrefixOp = false; _lastTokenIsPostfixOp = false, _lastTokenIsPrefixIncrDecr = false;
 
     #if PRINT_PARSED_TOKENS
@@ -504,7 +504,7 @@ bool Justina::parseAsNumber(char*& pNext, parsingResult_type& result) {
 
     // is a variable required instead of a constant ?
     bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_incr) || (_lastTermCode == termcod_decr)) : false;
-    varRequired = varRequired || (_isConstVarCmd && ((_lastTokenIsTerminal) ? (_lastTermCode == termcod_comma) : (_lastTokenType == tok_isReservedWord)));
+    varRequired = varRequired || (_isConstVarCmd && ((_lastTokenIsTerminal) ? (_lastTermCode == termcod_comma) : (_lastTokenType == tok_isInternCommand)));
     if (varRequired) { pNext = pch; result = result_variableNameExpected; return false; }
 
     // Function command: check that constant can only appear after an equal sign
@@ -592,7 +592,7 @@ bool Justina::parseAsStringConstant(char*& pNext, parsingResult_type& result) {
 
         // is a variable required instead of a constant ?
         bool varRequired = _lastTokenIsTerminal ? ((_lastTermCode == termcod_incr) || (_lastTermCode == termcod_decr)) : false;
-        varRequired = varRequired || (_isConstVarCmd && ((_lastTokenIsTerminal) ? (_lastTermCode == termcod_comma) : (_lastTokenType == tok_isReservedWord)));
+        varRequired = varRequired || (_isConstVarCmd && ((_lastTokenIsTerminal) ? (_lastTermCode == termcod_comma) : (_lastTokenType == tok_isInternCommand)));
         if (varRequired) { pNext = pch; result = result_variableNameExpected; break; }
 
         // Function command: check that constant can only appear after an equal sign
@@ -1547,7 +1547,7 @@ bool Justina::parseAsJustinaFunction(char*& pNext, parsingResult_type& result) {
 
     if (_isAnyVarCmd) {     // is a variable declaration
         if (index == -1) { pNext = pch; return true; }                                                                  // it's not a defined Justina function: move on
-        else { pNext = pch; result = result_variableNameExpected; return false; }                                     // it's a Justina function: not allowed here
+        else { pNext = pch; result = result_variableNameExpected; return false; }                                       // it's a Justina function: not allowed here
     }
     if (_isDeleteVarCmd) { pNext = pch; result = result_variableNameExpected; return false; }
 
@@ -2137,7 +2137,7 @@ bool Justina::parseAsVariable(char*& pNext, parsingResult_type& result) {
 
                 // check whether this is the control variable (following the 'for' keyword) => this means there are no parenthesis levels to skip, below
                 char tokenType = *(_programStorage + _lastTokenStep);                                                   // step preceding the variable step (which is not yet stored in program memory)
-                if ((tokenType & 0x0f) == tok_isReservedWord) {                                                         // preceding step can only be a 'for' keyword, because we are in a 'for' command
+                if ((tokenType & 0x0f) == tok_isInternCommand) {                                                        // preceding step can only be a 'for' keyword, because we are in a 'for' command
 
                     // check if control variable is in use by a FOR outer loop
                     LE_parsingStack* pStackLvl = (LE_parsingStack*)parsingStack.getLastListElement();                   // current open block level
@@ -2226,8 +2226,8 @@ bool Justina::parseAsIdentifierName(char*& pNext, parsingResult_type& result) {
     if (_parsingExecutingTraceString || _parsingExecutingTriggerString || _parsingEvalString) { pNext = pch; result = result_trace_eval_genericNameNotAllowed; return false; }
 
     if (_parenthesisLevel > 0) { pNext = pch; result = result_identifierNotAllowedHere; return false; }
-    if (_isDeleteVarCmd) {        // delete variable: previous token can only be a reserved word ("delete") or a comma (token group one)
-        if ((_lastTokenType != tok_isReservedWord) && !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_1)) { pNext = pch; result = result_identifierNotAllowedHere; return false; }
+    if (_isDeleteVarCmd) {        // delete variable: previous token can only be a command ("delete") or a comma (token group one)
+        if ((_lastTokenType != tok_isInternCommand) && !(_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_1)) { pNext = pch; result = result_identifierNotAllowedHere; return false; }
     }
     else if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2_0)) { pNext = pch; result = result_identifierNotAllowedHere; return false; }
 
