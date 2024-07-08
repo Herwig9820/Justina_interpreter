@@ -25,7 +25,7 @@
 
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 0
+#define PRINT_HEAP_OBJ_CREA_DEL 1
 #define PRINT_DEBUG_INFO 0
 #define PRINT_OBJECT_COUNT_ERRORS 0
 
@@ -43,7 +43,7 @@
 // ----------------------------------
 
 
-const Justina::ResWordDef Justina::_resWords[]{
+const Justina::internCmdDef Justina::_internCommands[]{
     //  name            id code                 where allowed                                          #arg     param key       control info
     //  ----            -------                 -------------                                          ----     ---------       ------------   
 
@@ -1108,7 +1108,6 @@ bool Justina::finaliseParsing(parsingResult_type& result, bool& kill, int lineCo
 // ---------------------------------------------
 
 bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type execResult, bool& kill, int& clearIndicator, Stream*& pStatementInputStream, int& statementInputStreamNumber) {
-
     bool quitJustina{ false };
 
     // if in debug mode, trace expressions (if defined) and print debug info 
@@ -1454,15 +1453,16 @@ void Justina::execPeriodicHousekeeping(bool* pKillNow, bool* pForcedStop, bool* 
 }
 
 
-// ---------------------------------------------------------------------------------------------------------------------------------------------------------
-// *   sets pointers to the locations where the Arduino program stored information about user-defined (external) cpp functions (user callback functions)   *
-// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// *   sets pointers to the locations where the Arduino program stored information about user-defined (external) cpp functions and commands (user callback functions)   *
+// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     // the 'register...' functions are called from the main Arduino program, before the Justina begin() method is called
     // each function stores the starting address of an array with information about external (user callback) functions with a specific CPP return type 
     // for instance, _pExtCppFunctions[0] stores the address of the array containing information about cpp functions returning a boolean value
     // a null pointer indicates there are no functions of a specific type
     // cpp function return types are: 0 = bool, 1 = char, 2 = int, 3 = long, 4 = float, 5 = char*, 6 = void (but returns zero to Justina)
+
 
 void Justina::registerBoolUserCppFunctions(const CppBoolFunction* const  pCppBoolFunctions, const int cppBoolFunctionCount) {
     _pExtCppFunctions[0] = (CppBoolFunction*)pCppBoolFunctions;
@@ -1498,6 +1498,12 @@ void Justina::registerVoidUserCppFunctions(const CppVoidFunction* const pCppVoid
     _pExtCppFunctions[6] = (CppVoidFunction*)pCppVoidFunctions;
     _ExtCppFunctionCounts[6] = cppVoidFunctionCount;
 };
+
+// user commands
+void Justina::registerUserCommands(const CppCommand* const pCppCommands, const int cppCommandCount) {
+    _pExternCommands = (CppCommand*)pCppCommands;
+    _externCommandCount = cppCommandCount;
+}
 
 
 // -------------------------
@@ -1565,7 +1571,7 @@ void Justina::resetMachine(bool withUserVariables, bool withBreakpoints) {
 
         _pBreakpoints->resetBreakpointsState();                                                                 // '_breakpointsStatusDraft' is set false (breakpoint table empty) 
     }
-    
+
     // if machine reset without clearing breakpoints, set breakpoints status to DRAFT then 
     else {
         bool wasDraft = _pBreakpoints->_breakpointsStatusDraft;
@@ -1736,7 +1742,7 @@ void Justina::initInterpreterVariables(bool fullReset) {
 
     _identifierNameStringObjectCount = 0;                                       // object count
     _parsedStringConstObjectCount = 0;
-    _intermediateStringObjectCount = 0;      
+    _intermediateStringObjectCount = 0;
     _globalStaticVarStringObjectCount = 0;
     _globalStaticArrayObjectCount = 0;
 
@@ -1747,7 +1753,7 @@ void Justina::initInterpreterVariables(bool fullReset) {
         // reset counters for heap objects
         // -------------------------------
 
-        _userVarNameStringObjectCount = 0;                                      
+        _userVarNameStringObjectCount = 0;
         _lastValuesStringObjectCount = 0;
         _userVarStringObjectCount = 0;
         _userArrayObjectCount = 0;
@@ -1797,6 +1803,48 @@ void Justina::initInterpreterVariables(bool fullReset) {
 
         _printTraceValueOnly = 0;                                                   // init: view expression texts and values during tracing
     }
+}
+
+
+    // --------------------------------------------------------------------------------------------------------
+    // *   replace a system expression with a copy of a new string value and add a semicolon if not present   * 
+    // --------------------------------------------------------------------------------------------------------
+
+void Justina::setNewSystemExpression(char*& systemExpression, const char* newExpression) {
+
+    // delete current system string (if not nullptr)
+    if (systemExpression != nullptr) {
+    #if PRINT_HEAP_OBJ_CREA_DEL
+        _pDebugOut->print("\r\n----- (system exp str) "); _pDebugOut->println((uint32_t)systemExpression, HEX);
+        _pDebugOut->print("   remove old sys expression "); _pDebugOut->println(systemExpression);
+    #endif
+        _systemStringObjectCount--;
+        delete[] systemExpression;
+        systemExpression = nullptr;
+    }
+
+    if (newExpression == nullptr) { return; }                       // nothing to do 
+
+    // create a new system string, based on a new string; add a semicolon if not present
+
+    bool addSemicolon{ false };
+    int length = strlen(newExpression);
+    int i = length;
+    for (i = length - 1; i >= 0; i--) {
+        if ((i == 0) || (newExpression[i] != ' ')) { addSemicolon = (newExpression[i] != term_semicolon[0]); break; }
+    }
+
+    _systemStringObjectCount++;
+    systemExpression = new char[length + (addSemicolon ? 1 : 0) + 1];       // room for (optional: additional semicolon) and terminating '\0'
+    strcpy(systemExpression, newExpression);                                    // copy the actual string
+    if (addSemicolon) {
+        systemExpression[length] = term_semicolon[0];
+        systemExpression[length + 1] = '\0';
+    }
+#if PRINT_HEAP_OBJ_CREA_DEL
+    _pDebugOut->print("\r\n+++++ (system exp str) "); _pDebugOut->println((uint32_t)systemExpression, HEX);
+    _pDebugOut->print("   set new sys expr expression "); _pDebugOut->println(systemExpression);
+#endif
 }
 
 
@@ -1950,8 +1998,8 @@ void Justina::deleteConstStringObjects(char* pFirstToken) {
                 delete[] pAnum;
             }
         }
-        uint8_t tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) :
-            (tokenType == tok_isSymbolicConstant) ? sizeof(TokenIsSymbolicConstant) : (*prgmCnt.pTokenChars >> 4) & 0x0F;
+        uint8_t tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(Token_terminal) : (tokenType == tok_isConstant) ? sizeof(Token_constant) :
+            (tokenType == tok_isSymbolicConstant) ? sizeof(Token_symbolicConstant) : (*prgmCnt.pTokenChars >> 4) & 0x0F;
         prgmCnt.pTokenChars += tokenLength;
         tokenType = *prgmCnt.pTokenChars & 0x0F;
     }

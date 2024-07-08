@@ -307,14 +307,14 @@ Justina::execResult_type Breakpoints::progMem_getSetClearBP(long lineSequenceNum
     int statementTokenType = _pJustina->jumpTokens(1, pProgramStep);                                    // first character of first token of next statement (following the 'flagged' semicolon token)
     // if a command, check that setting a breakpoint is allowed by the command attributes
     if ((statementTokenType & 0x0F) == Justina::tok_isInternCommand) {                                  // statement is an internal command ? check whether it's executable
-        int resWordIndex = ((Justina::TokenIsResWord*)pProgramStep)->tokenIndex;
-        if (Justina::_resWords[resWordIndex].restrictions & Justina::cmd_skipDuringExec) { return Justina::result_BP_statementIsNonExecutable; }     // because not executable
+        int commandIndex = ((Justina::Token_internalCommand*)pProgramStep)->tokenIndex;
+        if (Justina::_internCommands[commandIndex].restrictions & Justina::cmd_skipDuringExec) { return Justina::result_BP_statementIsNonExecutable; }     // because not executable
     }
     // next line does not work if breakpoint table status is DRAFT (no link with program, if any) -> do this test later by checking existence of entry in breakpoint table 
-    //BPwasSet = (((Justina::TokenIsTerminal*)(pProgramStep - 1))->tokenTypeAndIndex == _pJustina->_semicolonBPset_token);        // BEFORE changing tokenTypeAndIndex (next line)
+    //BPwasSet = (((Justina::Token_terminal*)(pProgramStep - 1))->tokenTypeAndIndex == _pJustina->_semicolonBPset_token);        // BEFORE changing tokenTypeAndIndex (next line)
 
     // set preceding separator token in program memory to indicate 'breakpoint set' or 'breakpoint allowed'
-    if (doSet || doClear) { ((Justina::TokenIsTerminal*)(pProgramStep - 1))->tokenTypeAndIndex = doSet ? _pJustina->_semicolonBPset_token : _pJustina->_semicolonBPallowed_token; }                                 // flag 'breakpoint set'
+    if (doSet || doClear) { ((Justina::Token_terminal*)(pProgramStep - 1))->tokenTypeAndIndex = doSet ? _pJustina->_semicolonBPset_token : _pJustina->_semicolonBPallowed_token; }                                 // flag 'breakpoint set'
 
     return Justina::result_execOK;
 }

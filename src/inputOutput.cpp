@@ -25,7 +25,7 @@
 
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 0
+#define PRINT_HEAP_OBJ_CREA_DEL 1
 
 
 // *****************************************************************
@@ -1189,8 +1189,8 @@ void Justina::prettyPrintStatements(int outputStream, int instructionCount, char
     strcat(floatFmtStr, _dispFloatSpecifier);
 
     while (tokenType != tok_no_token) {                                                                                 // for all tokens in token list
-        int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(TokenIsTerminal) : (tokenType == tok_isConstant) ? sizeof(TokenIsConstant) :
-            (tokenType == tok_isSymbolicConstant) ? sizeof(TokenIsSymbolicConstant) : (*progCnt.pTokenChars >> 4) & 0x0F;
+        int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(Token_terminal) : (tokenType == tok_isConstant) ? sizeof(Token_constant) :
+            (tokenType == tok_isSymbolicConstant) ? sizeof(Token_symbolicConstant) : (*progCnt.pTokenChars >> 4) & 0x0F;
         TokenPointer nextProgCnt;
         nextProgCnt.pTokenChars = progCnt.pTokenChars + tokenLength;
         int nextTokenType = *nextProgCnt.pTokenChars & 0x0F;                                                            // next token type (look ahead)
@@ -1204,8 +1204,8 @@ void Justina::prettyPrintStatements(int outputStream, int instructionCount, char
         switch (tokenType)
         {
             case tok_isInternCommand:
+            case tok_isExternCommand:
             {
-                TokenIsResWord* pToken = (TokenIsResWord*)progCnt.pTokenChars;
                 bool nextIsTerminal = ((nextTokenType == tok_isTerminalGroup1) || (nextTokenType == tok_isTerminalGroup2) || (nextTokenType == tok_isTerminalGroup3));
                 bool nextIsSemicolon = false;
                 if (nextIsTerminal) {
@@ -1215,18 +1215,38 @@ void Justina::prettyPrintStatements(int outputStream, int instructionCount, char
                         || (_terminals[nextTokenIndex].terminalCode == termcod_semicolon_BPallowed);
                 }
 
-                sprintf(prettyToken, nextIsSemicolon ? "%s" : "%s ", _resWords[progCnt.pResW->tokenIndex]._resWordName);
+                sprintf(prettyToken, nextIsSemicolon ? "%s" : "%s ", (tokenType == tok_isInternCommand) ? _internCommands[progCnt.pInternCommand->tokenIndex]._commandName:
+                    ((CppCommand*)_pExternCommands)[progCnt.pExternCommand->tokenIndex].cppCommandName);
+                hasTrailingSpace = true;
+            }
+            break;
+
+            {
+                bool nextIsTerminal = ((nextTokenType == tok_isTerminalGroup1) || (nextTokenType == tok_isTerminalGroup2) || (nextTokenType == tok_isTerminalGroup3));
+                bool nextIsSemicolon = false;
+                if (nextIsTerminal) {
+                    int nextTokenIndex = ((nextProgCnt.pTermTok->tokenTypeAndIndex >> 4) & 0x0F);
+                    nextTokenIndex += ((nextTokenType == tok_isTerminalGroup2) ? 0x10 : (nextTokenType == tok_isTerminalGroup3) ? 0x20 : 0);
+                    nextIsSemicolon = (_terminals[nextTokenIndex].terminalCode == termcod_semicolon) || (_terminals[nextTokenIndex].terminalCode == termcod_semicolon_BPset)
+                        || (_terminals[nextTokenIndex].terminalCode == termcod_semicolon_BPallowed);
+                }
+
+                sprintf(prettyToken, nextIsSemicolon ? "%s" : "%s ", ((CppCommand*)_pExternCommands)[progCnt.pExternCommand->tokenIndex].cppCommandName);
                 hasTrailingSpace = true;
             }
             break;
 
             case tok_isInternCppFunction:
+            {
                 strcpy(prettyToken, _internCppFunctions[progCnt.pInternCppFunc->tokenIndex].funcName);
-                break;
+            }
+            break;
 
             case tok_isExternCppFunction:
+            {
                 strcpy(prettyToken, ((CppDummyVoidFunction*)_pExtCppFunctions[progCnt.pExternCppFunc->returnValueType])[progCnt.pExternCppFunc->funcIndexInType].cppFunctionName);
-                break;
+            }
+            break;
 
             case tok_isJustinaFunction:
             {
@@ -1634,6 +1654,6 @@ void  Justina::printToString(int width, int precision, bool inputIsString, bool 
 #endif
 
     return;
-    }
+}
 
 

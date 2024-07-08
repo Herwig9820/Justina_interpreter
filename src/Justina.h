@@ -500,6 +500,7 @@ class Justina {
     enum tokenType_type {                                               // token type
         tok_no_token,                                                   // no token to process
         tok_isInternCommand,
+        tok_isExternCommand,
         tok_isInternCppFunction,
         tok_isExternCppFunction,
         tok_isJustinaFunction,
@@ -532,7 +533,7 @@ class Justina {
         result_prefixOperatorNotAllowedhere,
         result_invalidOperator,
         result_parenthesisNotAllowedHere,
-        result_resWordNotAllowedHere,
+        result_commandNotAllowedHere,
         result_functionNotAllowedHere,
         result_variableNotAllowedHere,
         result_alphaConstNotAllowedHere,
@@ -619,13 +620,14 @@ class Justina {
         result_cmd_onlyInProgOutsideFunction,
         result_cmd_onlyImmediateNotWithinBlock,
 
-        result_cmd_resWordExpectedAsPar,
         result_cmd_expressionExpectedAsPar,
         result_cmd_varWithoutAssignmentExpectedAsPar,
         result_cmd_varWithOptionalAssignmentExpectedAsPar,
         result_cmd_variableExpectedAsPar,
         result_cmd_variableNameExpectedAsPar,
         result_cmd_identExpectedAsPar,
+        result_cmd_spareExpectedAsPar,
+        
         result_cmd_argumentMissing,
         result_cmd_tooManyArguments,
 
@@ -923,7 +925,7 @@ class Justina {
     // these constants are used to check to which token group (or group of token groups) a parsed token belongs
     static constexpr uint8_t lastTokenGroup_0 = 1 << 0;                 // operator
     static constexpr uint8_t lastTokenGroup_1 = 1 << 1;                 // comma
-    static constexpr uint8_t lastTokenGroup_2 = 1 << 2;                 // (line start), semicolon, keyword, generic identifier
+    static constexpr uint8_t lastTokenGroup_2 = 1 << 2;                 // (line start), semicolon, internal or external command, generic identifier
     static constexpr uint8_t lastTokenGroup_3 = 1 << 3;                 // number or alphanumeric (literal or symbolic) constant, right bracket
     static constexpr uint8_t lastTokenGroup_4 = 1 << 4;                 // internal cpp, external cpp or Justina function 
     static constexpr uint8_t lastTokenGroup_5 = 1 << 5;                 // left parenthesis
@@ -959,7 +961,7 @@ class Justina {
 
     // commands parameters: number / type of parameters allowed for a group of commands
     static constexpr uint8_t cmdPar_none = 0;
-    static constexpr uint8_t cmdPar_resWord = 1;                        
+    static constexpr uint8_t cmdPar_spare = 1;
     static constexpr uint8_t cmdPar_varNoAssignment = 2;                // and no operators
     static constexpr uint8_t cmdPar_varOptAssignment = 3;
     static constexpr uint8_t cmdPar_expression = 4;
@@ -976,6 +978,8 @@ class Justina {
 
     // command parameter spec name          param type and flags                           param type and flags                            param type and flags                             param type and flags
     // ---------------------------          --------------------                           --------------------                            --------------------                             --------------------
+    static inline const char cmdPar_extCmd[4]{ cmdPar_expression | cmdPar_multipleFlag,    cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
+
     static inline const char cmdPar_100[4]{ cmdPar_ident | cmdPar_multipleFlag,            cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
     static inline const char cmdPar_101[4]{ cmdPar_ident,                                  cmdPar_expression | cmdPar_multipleFlag,         cmdPar_none,                                    cmdPar_none };
     static inline const char cmdPar_102[4]{ cmdPar_none,                                   cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
@@ -1002,13 +1006,19 @@ class Justina {
     // bits b3210: indicate command (not parameter) usage restrictions 
     static constexpr char cmd_usageRestrictionMask = 0x0F;              // mask
 
+public:
     static constexpr char cmd_noRestrictions = 0x00;                    // command has no usage restrictions 
+private:
     static constexpr char cmd_onlyInProgram = 0x01;                     // command is only allowed inside a program
-    static constexpr char cmd_onlyInProgOutsideFunc = 0x02;             // command is only allowed inside a program
+    static constexpr char cmd_onlyInProgOutsideFunc = 0x02;             // command is only allowed inside a program, outside a function block
+public:
     static constexpr char cmd_onlyInFunctionBlock = 0x03;               // command is only allowed inside a function block
     static constexpr char cmd_onlyImmediate = 0x04;                     // command is only allowed in immediate mode
+private:
     static constexpr char cmd_onlyOutsideFunctionBlock = 0x05;          // command is only allowed outside a function block (so also in immediate mode)
+public:
     static constexpr char cmd_onlyImmOrInsideFuncBlock = 0x06;          // command is only allowed inside a function block or in immediate mode
+private:
     static constexpr char cmd_onlyProgramTop = 0x07;                    // only as first program statement
     static constexpr char cmd_onlyImmModeTop = 0x08;                    // only as first user command statement
     static constexpr char cmd_onlyImmediateNotWithinBlock = 0x09;       // command is only allowed in immediate mode, and only outside blocks
@@ -1113,7 +1123,10 @@ private:
     // other
     // -----
     static constexpr char c_JustinaFunctionFirstOccurFlag = 0x10;       // flag: min > max means not initialized
+
     static constexpr char c_JustinaFunctionMaxArgs = 0xF;               // must fit in 4 bits
+    static constexpr char c_internalFunctionMaxArgs = 0xF;              // must fit in 4 bits
+    static constexpr char c_externalFunctionMaxArgs = 8;                // maximum argument count for external (user c++) commands and functions
 
 
     // block statements: status flags (execution)
@@ -1174,67 +1187,73 @@ private:
         char pStringConst[4];
     };
 
-    struct TokenIsResWord {                                             // keyword token (command): length 2 or 4 (if not a block command, token step is not stored and length will be 2)
+    struct Token_internalCommand {                                      // internal command name: length 2 or 4 (if not a block command, token step is not stored and length will be 2)
         char tokenType;                                                 // will be set to specific token type
         char tokenIndex;                                                // index into list of tokens of a specific type
         char toTokenStep[2];                                            // tokens for block commands (IF, FOR, BREAK, END, ...): step number of 'block start' token or next block token (uint16_t)
     };
 
-    struct TokenIsConstant {                                            // token storage for a constant token: length 5
+    struct Token_externalCommand {                                      // external command name: length 2
+        char tokenType;                                                 // will be set to specific token type
+        char tokenIndex;                                                // index into list of tokens of a specific type
+    };
+
+    struct Token_constant {                                             // token storage for a constant token: length 5
         char tokenType;                                                 // will be set to specific token type
         CstValue cstValue;
     };
 
-    // NOTE: tokenType and cstValue members in same order as in TokenIsConstant struct 
-    struct TokenIsSymbolicConstant {                                    // token storage for a SYMBOLIC (PREDEFINED) constant token: length 5
+    // NOTE: tokenType and cstValue members in same order as in Token_constant struct 
+    struct Token_symbolicConstant {                                     // token storage for a SYMBOLIC (PREDEFINED) constant token: length 5
         char tokenType;                                                 // will be set to specific token type
         CstValue cstValue;
-        char nameIndex;                                                 // index into table with predefined symbolic constants
+        char nameIndex;                                                 // if predefined constant: index into table with predefined symbolic constants
     };
 
-    struct TokenIsInternCppFunction {                                   // token storage for internal cpp function: length 2
+    struct Token_internCppFunction {                                    // token storage for internal cpp function: length 2
         char tokenType;                                                 // will be set to specific token type
         char tokenIndex;                                                // index into list of tokens
     };
 
-    struct TokenIsExternCppFunction {                                   // token storage for external (user-provided) cpp function: length 3
+    struct Token_externCppFunction {                                    // token storage for external (user-provided) cpp function: length 3
         char tokenType;                                                 // will be set to specific token type
         char returnValueType;                                           // 0 = bool, 1 = char, 2 = int, 3 = long, 4 = float, 5 = char*, 6 = void (but returns zero to Justina)
         char funcIndexInType;                                           // index into list of external functions with a specific return type
     };
 
-    struct TokenIsJustinaFunction {                                     // token storage for Justina function: length 2
+    struct Token_JustinaFunction {                                      // token storage for Justina function: length 2
         char tokenType;                                                 // will be set to specific token type
         char identNameIndex;                                            // index into Justina function name and additional data storage 
     };
 
-    struct TokenIsVariable {                                            // token storage for variable: length 4
+    struct Token_variable {                                             // token storage for variable: length 4
         char tokenType;                                                 // will be set to specific token type
         char identInfo;                                                 // global, parameter, local, static variable; array or scalar
         char identNameIndex;                                            // index into variable name storage
         char identValueIndex;                                           // for global variables: equal to name index, for static and local variables: pointing to different storage areas 
     };
 
-    struct TokenIsTerminal {                                            // operators, separators, parenthesis: length 1 (token type and index combined)
+    struct Token_terminal {                                             // operators, separators, parenthesis: length 1 (token type and index combined)
         char tokenTypeAndIndex;                                         // will be set to specific token type (operator, left parenthesis, ...), AND bits 7 to 4 are set to token index
     };
 
 
     union TokenPointer {                                                // UNION of pointers to variables of all defined value types (long, float, char*)
         char* pTokenChars;
-        TokenIsResWord* pResW;
-        TokenIsConstant* pCstToken;
-        TokenIsSymbolicConstant* pSymbCstToken;
-        TokenIsInternCppFunction* pInternCppFunc;
-        TokenIsExternCppFunction* pExternCppFunc;
-        TokenIsJustinaFunction* pJustinaFunc;
-        TokenIsVariable* pVar;
-        TokenIsTerminal* pTermTok;
+        Token_internalCommand* pInternCommand;
+        Token_externalCommand* pExternCommand;
+        Token_constant* pCstToken;
+        Token_symbolicConstant* pSymbCstToken;
+        Token_internCppFunction* pInternCppFunc;
+        Token_externCppFunction* pExternCppFunc;
+        Token_JustinaFunction* pJustinaFunc;
+        Token_variable* pVar;
+        Token_terminal* pTermTok;
     };
 
 
-    // structure for command, internal cpp function, terminal / operator, predefined symbolic constant definitions
-    // -----------------------------------------------------------------------------------------------------------
+    // structure for internal command, internal cpp function, terminal / operator, predefined symbolic constant definitions
+    // --------------------------------------------------------------------------------------------------------------------
 
     struct CmdBlockDef {                                                // block commands
         char blockType;                                                 // block type ('for' block, 'if' block,...)
@@ -1243,10 +1262,10 @@ private:
         char blockMaxPredecessor;                                       // maximum position
     };
 
-    struct ResWordDef {                                                 // keywords with pattern for parameters (if keyword is used as command, starting an instruction)
-        const char* const _resWordName;
-        const char resWordCode;
-        const char restrictions;                                        // specifies where he use of a keyword is allowed (in a program, in a function, ...)
+    struct internCmdDef {                                               // keywords with pattern for parameters (if keyword is used as command, starting a statement)
+        const char* const _commandName;
+        const char commandCode;
+        const char restrictions;                                        // specifies whether the statement is executable and where the use is allowed (in a program, in a function, ...)
         const char minArgs;                                             // minimum & maximum number of arguments AND padding (boundary alignment)                                     
         const char maxArgs;
         const char* pCmdAllowedParTypes;
@@ -1298,10 +1317,10 @@ private:
     static constexpr CmdBlockDef cmdBlockGenEnd{ block_genericEnd, block_endPos, block_na, block_endPos };                      // all block types: block end 
 
     // other commands: first value indicates it's not a block command, other positions not used
-    static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na, block_na, block_na };                                      // not a 'block' command
+    static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na, block_na, block_na };                                      // not a 'block' command. NOTE: defined in JustinaMain.cpp
 
     // sizes MUST be specified AND must be exact
-    static const ResWordDef _resWords[79];                                                                                      // keyword names
+    static const internCmdDef _internCommands[79];                                                                              // keyword names
     static const InternCppFuncDef _internCppFunctions[141];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
 #if (defined ARDUINO_ARCH_ESP32) 
@@ -1309,7 +1328,7 @@ private:
 #else
     static const SymbNumConsts _symbNumConsts[78];                                                                              // predefined constants
 #endif
-    static constexpr int _resWordCount{ sizeof(_resWords) / sizeof(_resWords[0]) };                                             // count of keywords in keyword table 
+    static constexpr int _internCommandCount{ sizeof(_internCommands) / sizeof(_internCommands[0]) };                           // count of keywords in keyword table 
     static constexpr int _internCppFunctionCount{ (sizeof(_internCppFunctions)) / sizeof(_internCppFunctions[0]) };             // count of internal cpp functions in functions table
     static constexpr int _termTokenCount{ sizeof(_terminals) / sizeof(_terminals[0]) };                                         // count of operators and other terminals in terminals table
     static constexpr int _symbvalueCount{ sizeof(_symbNumConsts) / sizeof(_symbNumConsts[0]) };
@@ -1478,13 +1497,13 @@ private:
     struct OpenFunctionData {                                           // data about all open functions (active + call stack)
         char blockType : 6;                                             // command block: will identify stack level as a function block
         char trapEnable : 1;                                            // enable error trapping
-        char spareFlag : 1;
+        char activeCmd_isInternal : 1;                                  // command is internal
         char functionIndex;                                             // user function index 
         char callerEvalStackLevels;                                     // evaluation stack levels in use by caller(s) and main (call stack)
 
         // within a function, as in immediate mode, only one command can be active at a time (ended by semicolon), in contrast to command blocks, which can be nested, so command data can be stored here:
         // data is stored when a keyword is processed and it is cleared when the ending semicolon (ending the command) is processed
-        char activeCmd_ResWordCode;                                     // keyword code (set to 'cmdcod_none' again when semicolon is processed)
+        char activeCmd_commandCode;                                     // keyword code (set to 'cmdcod_none' again when semicolon is processed)
         char* activeCmd_tokenAddress;                                   // address in program memory of parsed keyword token                                
 
         // value area pointers (note: a value is a long, a float or a pointer to a string or array, or (if reference): pointer to 'source' (referenced) variable))
@@ -1516,16 +1535,16 @@ private:
     // for instance, if 2 cpp functions which return long values are present, the Arduino program must create an array of type 'CppLongType' with 2 elements  
 
     struct CppDummyVoidFunction {
-        const char* cppFunctionName;                                                                    // function name
-        void* func;                                                                                     // function pointer
+        const char* cppFunctionName;                                                                        // function name
+        void* func;                                                                                         // function pointer
         char minArgCount;
         char maxArgCount;
     };
 
 public:
     struct CppBoolFunction {
-        const char* cppFunctionName;                                                                    // function name
-        bool (*func)(void** const pdata, const char* const valueType, const int argCount, int& execError);    // function pointer
+        const char* cppFunctionName;                                                                        // function name
+        bool (*func)(void** const pdata, const char* const valueType, const int argCount, int& execError);  // function pointer
         char minArgCount;
         char maxArgCount;
     };
@@ -1568,8 +1587,22 @@ public:
     struct CppVoidFunction {
         const char* cppFunctionName;
         void (*func)(void** const pdata, const char* const valueType, const int argCount, int& execError);
-        char minArgCount;                                                                               // not used for external cpp (user) commands
+        char minArgCount;
         char maxArgCount;
+    };
+
+
+    // external cpp (user callback) commands structure
+    // -----------------------------------------------
+
+    // the Arduino program calling Justina must create an array variable for each return type that will be used  
+
+    struct CppCommand {
+        const char* cppCommandName;                                                                         // command name (alias)
+        void (*func)(void** const pdata, const char* const valueType, const int argCount, int& execError);
+        char minArgCount;
+        char maxArgCount;
+        char restrictions;                                                                                  // subset of defined usages
     };
 private:
 
@@ -1867,9 +1900,12 @@ private:
     // user callbacks (external cpp functions)
     // ---------------------------------------
 
-    // for bool, char, int, long,float, char*, void (returns zero to Justina) function return types; for commands (void return type)
+    // for bool, char, int, long, float, char*, void (returns zero to Justina) function return types; last element is for commands
     void* _pExtCppFunctions[7]{ nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
     int _ExtCppFunctionCounts[7]{ 0,0,0,0,0,0,0 };
+
+    void* _pExternCommands{ nullptr };
+    int _externCommandCount{ 0 };
 
 
     // external IO, SD card and files
@@ -1998,6 +2034,7 @@ public:
     // sets pointers to the locations where the Arduino program stored information about user-defined (external) cpp functions (user callback functions)
     // -------------------------------------------------------------------------------------------------------------------------------------------------
 
+    void registerUserCommands(const CppCommand* const pCppCommands, const int cppCommandCount);
     void registerBoolUserCppFunctions(const CppBoolFunction* const  pCppBoolFunctions, const int cppBoolFunctionCount);
     void registerCharUserCppFunctions(const CppCharFunction* const  pCppCharFunctions, const int cppCharFunctionCount);
     void registerIntUserCppFunctions(const CppIntFunction* const  pCppIntFunctions, const int cppIntFunctionCount);
@@ -2102,7 +2139,8 @@ private:
 
     // parse one statement from source statement input buffer
     parsingResult_type parseStatement(char*& pInputLine, char*& pNextParseStatement, int& clearIndicator, bool isNewSourceLine = false, long sourceLine = 0);
-    bool parseAsResWord(char*& pNext, parsingResult_type& result);
+    bool parseAsInternCommand(char*& pNext, parsingResult_type& result);
+    bool parseAsExternCommand(char*& pNext, parsingResult_type& result);
     bool parseAsNumber(char*& pNext, parsingResult_type& result);
     bool parseAsStringConstant(char*& pNext, parsingResult_type& result);
     bool parseTerminalToken(char*& pNext, parsingResult_type& result);
@@ -2113,8 +2151,8 @@ private:
     bool parseAsIdentifierName(char*& pNext, parsingResult_type& result);
 
     // checking command statement syntax
-    bool checkCommandKeyword(parsingResult_type& result, int& resWordIndex);
-    bool checkCommandArgToken(parsingResult_type& result, int& clearIndicatore, int resWordIndex);
+    bool checkCommandKeyword(parsingResult_type& result, int commandIndex, bool commandIsInternal);
+    bool checkCommandArgToken(parsingResult_type& result, int& clearIndicatore, int commandIndex, bool commandIsInternal);
 
     // various checks while parsing
     bool checkArrayDimCountAndSize(parsingResult_type& result, int* arrayDef_dims, int& dimCnt);
@@ -2142,13 +2180,14 @@ private:
 
     execResult_type  exec(char* startHere);
     execResult_type  execParenthesesPair(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount, bool& forcedStopRequest, bool& forcedAbortRequest);
-    execResult_type  execProcessedCommand(bool& isFunctionReturn, bool& forcedStopRequest, bool& forcedAbortRequest);
+    execResult_type  execInternalCommand(bool& isFunctionReturn, bool& forcedStopRequest, bool& forcedAbortRequest);
+    execResult_type  execExternalCommand();
     execResult_type  execAllProcessedOperators();
     execResult_type  execUnaryOperation(bool isPrefix);
     execResult_type  execInfixOperation();
     void makeIntermediateConstant(LE_evalStack* pEvalStackLvl);
     execResult_type  execInternalCppFunction(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount, bool& forcedStopRequest, bool& forcedAbortRequest);
-    execResult_type  execExternalCppFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount);
+    execResult_type  execExternalCppProcedure(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount, bool isCommand = false);
     execResult_type  launchJustinaFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount);
     execResult_type  launchEval(LE_evalStack*& pFunctionStackLvl, char* parsingInput);
     void  terminateJustinaFunction(bool addZeroReturnValue = false);
@@ -2183,7 +2222,7 @@ private:
     execResult_type copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, bool* argIsArray, char* valueType, Val* args, bool passVarRefOrConst = false, Val* dummyArgs = nullptr);
 
     // fetch variable base address (where a value is stored, or a pointer to a char*, a source variable (function parameters) or (array variable) the start of array storage (on the heap)
-    void* fetchVarBaseAddress(TokenIsVariable* pVarToken, char*& pVarType, char& valueType, char& sourceVarScopeAndFlags);
+    void* fetchVarBaseAddress(Token_variable* pVarToken, char*& pVarType, char& valueType, char& sourceVarScopeAndFlags);
 
     // replace array variable base address and subscripts with the array element address on the evaluation stack
     Justina::execResult_type arrayAndSubscriptsToarrayElement(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount);
