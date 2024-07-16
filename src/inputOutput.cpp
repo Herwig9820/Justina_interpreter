@@ -25,7 +25,7 @@
 
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 1
+#define PRINT_HEAP_OBJ_CREA_DEL 0
 
 
 // *****************************************************************
@@ -1215,7 +1215,7 @@ void Justina::prettyPrintStatements(int outputStream, int instructionCount, char
                         || (_terminals[nextTokenIndex].terminalCode == termcod_semicolon_BPallowed);
                 }
 
-                sprintf(prettyToken, nextIsSemicolon ? "%s" : "%s ", (tokenType == tok_isInternCommand) ? _internCommands[progCnt.pInternCommand->tokenIndex]._commandName:
+                sprintf(prettyToken, nextIsSemicolon ? "%s" : "%s ", (tokenType == tok_isInternCommand) ? _internCommands[progCnt.pInternCommand->tokenIndex]._commandName :
                     ((CppCommand*)_pExternCommands)[progCnt.pExternCommand->tokenIndex].cppCommandName);
                 hasTrailingSpace = true;
             }
@@ -1432,6 +1432,7 @@ void Justina::prettyPrintStatements(int outputStream, int instructionCount, char
 
 void Justina::printParsingResult(parsingResult_type result, int funcNotDefIndex, char* const pInstruction, int lineCount, char* pErrorPos) {
 
+    bool checkBPstatusMsg{ false };
     char parsingInfo[100 + MAX_IDENT_NAME_LEN] = "";                                        // provide sufficient room for longest possible message (int: no OK message in immediate mode)
     if (result == result_parsing_OK) {                                                      // prepare message with parsing result
         if (_programMode) {
@@ -1439,6 +1440,7 @@ void Justina::printParsingResult(parsingResult_type result, int funcNotDefIndex,
             else {
                 sprintf(parsingInfo, "\r\nProgram '%s' parsed without errors.\r\n%lu %% of program memory used (%lu of %lu bytes)\r\n",
                     _programName, (uint32_t)(((_lastProgramStep - _programStorage + 1) * 100) / _PROGRAM_MEMORY_SIZE), (uint32_t)(_lastProgramStep - _programStorage + 1), _PROGRAM_MEMORY_SIZE);
+                checkBPstatusMsg = true;
             }
         }
     }
@@ -1464,7 +1466,9 @@ void Justina::printParsingResult(parsingResult_type result, int funcNotDefIndex,
         else { sprintf(parsingInfo, "  Parsing error %d", result); }
     }
 
-    if (strlen(parsingInfo) > 0) { printlnTo(0, parsingInfo); _lastPrintedIsPrompt = false; }
+    if (strlen(parsingInfo) > 0) { printlnTo(0, parsingInfo); }
+
+    if (checkBPstatusMsg && _pBreakpoints->_breakpointsStatusDraft) { printlnTo(0, "NOTE: Breakpoints have status DRAFT:\r\n      Review and activate breakpoints if required\r\n"); _lastPrintedIsPrompt = false; }
 };
 
 
@@ -1523,16 +1527,16 @@ void Justina::quoteAndExpandEscSeq(char*& stringValue) {
     stringValue = output;
 
     return;
-}
+    }
 
 
-// -------------------------------
-// *   check format specifiers   *
-// -------------------------------
+    // -------------------------------
+    // *   check format specifiers   *
+    // -------------------------------
 
-//  the first element (index 0) in the two arrays pointed to by 'valueType' resp. 'operands', is 'precision' (if available)
-//  - intFmt, floatFmt command:    precision [, specifier]  [, flags] ]
-//  - fmt() function          : [, precision [, specifier]  [, flags  [, character count] ] ] 
+    //  the first element (index 0) in the two arrays pointed to by 'valueType' resp. 'operands', is 'precision' (if available)
+    //  - intFmt, floatFmt command:    precision [, specifier]  [, flags] ]
+    //  - fmt() function          : [, precision [, specifier]  [, flags  [, character count] ] ] 
 
 Justina::execResult_type Justina::checkFmtSpecifiers(bool isDispFmtCmd, int argCount, char* valueType, Val* operands, char& specifier, int& precision, int& flags) {
 
@@ -1636,11 +1640,11 @@ void  Justina::printToString(int width, int precision, bool inputIsString, bool 
             #endif
                 _intermediateStringObjectCount--;
                 delete[] pString;                                               // delete old string
-            }
-        }
-        sprintf(fcnResult.pStringConst, fmtString, width, precision, ((*value).pStringConst == nullptr) ? (expandStrings ? "\"\"" : "") : (*value).pStringConst, &charsPrinted);
     }
-    // note: hex output for floating point numbers is not provided (Arduino)
+}
+        sprintf(fcnResult.pStringConst, fmtString, width, precision, ((*value).pStringConst == nullptr) ? (expandStrings ? "\"\"" : "") : (*value).pStringConst, &charsPrinted);
+}
+// note: hex output for floating point numbers is not provided (Arduino)
     else if (isIntFmt) {
         sprintf(fcnResult.pStringConst, fmtString, width, precision, (*valueType == value_isLong) ? (*value).longConst : (long)(*value).floatConst, &charsPrinted);
     }

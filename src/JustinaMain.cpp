@@ -25,7 +25,7 @@
 
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 1
+#define PRINT_HEAP_OBJ_CREA_DEL 0
 #define PRINT_DEBUG_INFO 0
 #define PRINT_OBJECT_COUNT_ERRORS 0
 
@@ -42,6 +42,7 @@
 // commands: keywords with attributes
 // ----------------------------------
 
+// maximum number of allowed arguments should be no more than defined in constant 'c_internalFncOrCmdMaxArgs'
 
 const Justina::internCmdDef Justina::_internCommands[]{
     //  name            id code                 where allowed                                          #arg     param key       control info
@@ -64,6 +65,7 @@ const Justina::internCmdDef Justina::_internCommands[]{
 
     {"program",         cmdcod_program,         cmd_onlyProgramTop | cmd_skipDuringExec,                1,1,    cmdPar_103,     cmdBlockNone},
     {"function",        cmdcod_function,        cmd_onlyInProgram | cmd_skipDuringExec,                 1,1,    cmdPar_108,     cmdBlockJustinaFunction},
+    {"procedure",       cmdcod_voidFunction,    cmd_onlyInProgram | cmd_skipDuringExec,                 1,1,    cmdPar_108,     cmdBlockJustinaFunction},
 
     {"for",             cmdcod_for,             cmd_onlyImmOrInsideFuncBlock,                           2,3,    cmdPar_109,     cmdBlockFor},
     {"while",           cmdcod_while,           cmd_onlyImmOrInsideFuncBlock,                           1,1,    cmdPar_104,     cmdBlockWhile},
@@ -168,7 +170,8 @@ const Justina::internCmdDef Justina::_internCommands[]{
 
 // the 8 array pattern bits indicate the order of arrays and scalars; bit b0 to bit b7 refer to parameter 1 to 8, if a bit is set, an array is expected as argument
 // if more than 8 arguments are supplied, only arguments 1 to 8 can be set as array arguments
-// maximum number of parameters should be no more than 16
+
+// maximum number of allowed arguments should be no more than defined in constant 'c_internalFncOrCmdMaxArgs'
 
 const Justina::InternCppFuncDef Justina::_internCppFunctions[]{
     //  name                    id code                         #arg    array pattern
@@ -625,7 +628,7 @@ void Justina::constructorCommonPart() {
     // set linked list debug printing. Pointer to debug out stream pointer: will follow if debug stream is changed
     parsingStack.setDebugOutStream(&_pDebugOut);                                                    // for debug printing within linked list object
 
-    initInterpreterVariables(true);                     // init internal variables 
+    initInterpreterVariables(true);                                                                 // init internal variables 
 };
 
 
@@ -634,10 +637,11 @@ void Justina::constructorCommonPart() {
 // ------------------
 
 Justina::~Justina() {
-    resetMachine(true, true);                           // delete all objects created on the heap, including user variables (+ FiFo stack), with trace expression and breakpoints
+    // delete all objects created on the heap, including user variables (+ FiFo stack), with trace expression and breakpoints
+    resetMachine(true, true);                           
 
     // NOTE: object count of objects created / deleted in constructors / destructors is not maintained
-    delete _pBreakpoints;                               // not an array: use 'delete'
+    delete _pBreakpoints;                                                                           // not an array: use 'delete'
     delete[] _pPrintColumns;
 };
 
@@ -695,8 +699,8 @@ void Justina::begin() {
     int index{}, semicolonBPallowed_index{}, semicolonBPset_index{}, matches{};
 
     for (index = _termTokenCount - 1, matches = 0; index >= 0; index--) {      // for all defined terminals
-        if (_terminals[index].terminalCode == termcod_semicolon_BPallowed) { semicolonBPallowed_index = index; matches; }           // token corresponds to terminal code ? Then exit loop    
-        if (_terminals[index].terminalCode == termcod_semicolon_BPset) { semicolonBPset_index = index; matches++; }                 // token corresponds to terminal code ? Then exit loop    
+        if (_terminals[index].terminalCode == termcod_semicolon_BPallowed) { semicolonBPallowed_index = index; matches; }   // token corresponds to terminal code ? Then exit loop    
+        if (_terminals[index].terminalCode == termcod_semicolon_BPset) { semicolonBPset_index = index; matches++; }         // token corresponds to terminal code ? Then exit loop    
         if (matches == 2) { break; }
     }
     _semicolonBPallowed_token = (semicolonBPallowed_index <= 0x0F) ? tok_isTerminalGroup1 : (semicolonBPallowed_index <= 0x1F) ? tok_isTerminalGroup2 : tok_isTerminalGroup3;
@@ -1139,6 +1143,7 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
         _parenthesisLevel = 0;                                  // current number of open parentheses (during parsing)
 
         _justinaFunctionBlockOpen = false;
+        _JustinaVoidFunctionBlockOpen = false;
     }
 
     // the clear memory / clear all command is executed AFTER the execution phase
@@ -1181,6 +1186,8 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
      // ...the parsed command line stack and included parsed constants will be deleted later (resetMachine routine).
     if ((execResult != result_stopForDebug) && (execResult != result_stopForBreakpoint)) { deleteConstStringObjects(_programStorage + _PROGRAM_MEMORY_SIZE); } // always
 
+    resetFunctionFlags();
+
     // finalize: last actions before 'ready' mode (prompt displayed depending on settings)
     // -----------------------------------------------------------------------------------
     _programMode = false;
@@ -1207,7 +1214,7 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
         // flush any remaining input characters:
         // - if a program was loaded now, then the stream is still the stream from where the program was loaded (only flush if an external IO stream)
         // - if not in program load mode, then the stream will be the console
-        if ((statementInputStreamNumber <= 0) && (pStatementInputStream->available() > 0)) {  // skip if initially buffer is empty
+        if ((statementInputStreamNumber <= 0) && (pStatementInputStream->available() > 0)) {                    // skip if initially buffer is empty
             bool stop{ false }, abort{ false };     // dummy, as we are entering idle mode anyway
             setStream(statementInputStreamNumber); flushInputCharacters(stop, abort);
         }
@@ -1385,10 +1392,22 @@ void Justina::parseAndExecTraceOrBPviewString(int BPindex) {
 // -------------------------------------------------------------
 
 bool Justina::checkAllJustinaFunctionsDefined(int& index) const {
-    index = 0;
-    while (index < _justinaFunctionCount) {                                                                     // points to variable in use
+    for (int index = 0; index < _justinaFunctionCount; index++) {                                              // points to variable in use
         if (justinaFunctionData[index].pJustinaFunctionStartToken == nullptr) { return false; }
-        index++;
+    }
+    return true;
+}
+
+
+// ---------------------------------------------------------------------------------------------------
+// *   reset flags indicating that Justina function calls are found that are part of an expression   *
+// ---------------------------------------------------------------------------------------------------
+
+// this flag is maintained in the master data for each Justina function / procedure
+
+bool Justina::resetFunctionFlags() {
+    for (int index = 0; index <_justinaFunctionCount; index++) {                                               // points to variable in use
+        justinaFunctionData[index].callsAsPartOfExpression = 0;
     }
     return true;
 }
@@ -1711,6 +1730,7 @@ void Justina::initInterpreterVariables(bool fullReset) {
     _staticVarCountInFunction = 0;
     _staticVarCount = 0;
     _justinaFunctionBlockOpen = false;
+    _JustinaVoidFunctionBlockOpen =false;
 
     _programVarNameCount = 0;
     if (fullReset) { _userVarCount = 0; }
@@ -1769,8 +1789,8 @@ void Justina::initInterpreterVariables(bool fullReset) {
         _dispIntegerPrecision = DEFAULT_INT_PRECISION;
 
         strcpy(_dispFloatSpecifier, DEFAULT_FLOAT_SPECIFIER);
-        strcpy(_dispIntegerSpecifier, DEFAULT_INT_SPECIFIER);                       // here without 'd' (long integer) : will be added  
-        strcpy(_dispStringSpecifier, DEFAULT_STR_SPECIFIER);                        // here without 'd' (long integer) : will be added  
+        strcpy(_dispIntegerSpecifier, DEFAULT_INT_SPECIFIER);                   // here without 'd' (long integer) : will be added  
+        strcpy(_dispStringSpecifier, DEFAULT_STR_SPECIFIER);                    // here without 'd' (long integer) : will be added  
 
         _dispFloatFmtFlags = DEFAULT_FLOAT_FLAGS;
         _dispIntegerFmtFlags = DEFAULT_INT_FLAGS;
@@ -1783,16 +1803,16 @@ void Justina::initInterpreterVariables(bool fullReset) {
 
         // fmt() function settings 
         // -----------------------
-        _fmt_width = DEFAULT_FMT_WIDTH;                                             // width
+        _fmt_width = DEFAULT_FMT_WIDTH;                                         // width
 
-        _fmt_numPrecision = DEFAULT_FLOAT_PRECISION;                                // precision
+        _fmt_numPrecision = DEFAULT_FLOAT_PRECISION;                            // precision
         _fmt_strCharsToPrint = DEFAULT_STR_CHARS_TO_PRINT;
 
-        strcpy(_fmt_numSpecifier, DEFAULT_FLOAT_SPECIFIER);                         // specifier   
+        strcpy(_fmt_numSpecifier, DEFAULT_FLOAT_SPECIFIER);                     // specifier   
         strcpy(_fmt_stringSpecifier, DEFAULT_STR_SPECIFIER);
 
-        _fmt_numFmtFlags = DEFAULT_FLOAT_FLAGS;                                     // flags
-        _fmt_stringFmtFlags = DEFAULT_STR_FLAGS;                                    // flags
+        _fmt_numFmtFlags = DEFAULT_FLOAT_FLAGS;                                 // flags
+        _fmt_stringFmtFlags = DEFAULT_STR_FLAGS;                                // flags
 
 
         // display and other settings
@@ -1801,7 +1821,7 @@ void Justina::initInterpreterVariables(bool fullReset) {
         _promptAndEcho = 2, _printLastResult = 1;
         _angleMode = 0;
 
-        _printTraceValueOnly = 0;                                                   // init: view expression texts and values during tracing
+        _printTraceValueOnly = 0;                                               // init: view expression texts and values during tracing
     }
 }
 
@@ -1823,7 +1843,7 @@ void Justina::setNewSystemExpression(char*& systemExpression, const char* newExp
         systemExpression = nullptr;
     }
 
-    if (newExpression == nullptr) { return; }                       // nothing to do 
+    if (newExpression == nullptr) { return; }                               // nothing to do 
 
     // create a new system string, based on a new string; add a semicolon if not present
 
@@ -1836,7 +1856,7 @@ void Justina::setNewSystemExpression(char*& systemExpression, const char* newExp
 
     _systemStringObjectCount++;
     systemExpression = new char[length + (addSemicolon ? 1 : 0) + 1];       // room for (optional: additional semicolon) and terminating '\0'
-    strcpy(systemExpression, newExpression);                                    // copy the actual string
+    strcpy(systemExpression, newExpression);                                // copy the actual string
     if (addSemicolon) {
         systemExpression[length] = term_semicolon[0];
         systemExpression[length + 1] = '\0';
@@ -1855,7 +1875,7 @@ void Justina::setNewSystemExpression(char*& systemExpression, const char* newExp
 
 void Justina::deleteIdentifierNameObjects(char** pIdentNameArray, int identifiersInUse, bool isUserVar) {
     int index = 0;          // points to last variable in use
-    while (index < identifiersInUse) {                       // points to variable in use
+    while (index < identifiersInUse) {                                      // points to variable in use
     #if PRINT_HEAP_OBJ_CREA_DEL
         _pDebugOut->print(isUserVar ? "\r\n----- (usrvar name) " : "\r\n----- (ident name ) "); _pDebugOut->println((uint32_t) * (pIdentNameArray + index), HEX);
         _pDebugOut->print("       delete ident "); _pDebugOut->println(*(pIdentNameArray + index));

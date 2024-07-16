@@ -25,7 +25,7 @@
 
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 1
+#define PRINT_HEAP_OBJ_CREA_DEL 0
 
 
 // *****************************************************************
@@ -2407,7 +2407,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 case 39:fcnResult.longConst = _openDebugLevels; break;                          // number of stopped programs
                 case 40:fcnResult.longConst = parsedCommandLineStack.getElementCount(); break;  // immediate mode parsed programs stack element count: stopped program count + open eval() strings (being executed)
 
-                case 41: fcnResult.longConst = evalStack.getCreatedObjectCount(); break;       // created list object count (across linked lists: count is static)
+                case 41: fcnResult.longConst = evalStack.getCreatedObjectCount(); break;        // created list object count (across linked lists: count is static)
 
                 case 42:                                                                        // current active object count
                 case 43:                                                                        // current accumulated object count errors since cold start
@@ -2455,7 +2455,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 break;
 
                 default: return result_arg_invalid; break;
-            }                                                                                       // switch (sysVal)
+            }                                                                                   // switch (sysVal)
         }
         break;
 

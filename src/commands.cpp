@@ -25,7 +25,7 @@
 
 #include "Justina.h"
 
-#define PRINT_HEAP_OBJ_CREA_DEL 1
+#define PRINT_HEAP_OBJ_CREA_DEL 0
 #define PRINT_PARSED_CMD_STACK 0
 #define PRINT_DEBUG_INFO 0
 
@@ -61,9 +61,13 @@ Justina::execResult_type Justina::execExternalCommand() {
     _pDebugOut->print("   process command code: "); _pDebugOut->println((int)_activeFunctionData.activeCmd_commandCode);
 #endif
 
-    execResult = execExternalCppProcedure(pStackLvl, pStackLvl,cmdArgCount, true);              // note: first argument (parameter pFunctionStackLvl) not used for commands
+    execResult = execExternalCppFncOrCmd(pStackLvl, pStackLvl, cmdArgCount, true);              // note: first argument (parameter pFunctionStackLvl) not used for commands
+    if(execResult != result_execOK){return execResult;}
 
-    return execResult;
+    // NOTE: arguments are already deleted from evaluation stack in routine 'execExternalCppFncOrCmd()' 
+    _activeFunctionData.activeCmd_commandCode = cmdcod_none;                                    // command execution ended
+
+    return result_execOK;
 }
 
 
@@ -555,7 +559,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             }
 
             else if ((_activeFunctionData.activeCmd_commandCode == cmdcod_clearBP) && (cmdArgCount == 0)) {
-                while (_pConsoleIn->available() > 0) { readFrom(0); }                                               // empty console buffer first (to allow the user to start with an empty line)
+                while (_pConsoleIn->available() > 0) { readFrom(0); }                                       // empty console buffer first (to allow the user to start with an empty line)
                 bool validAnswer{ false };
                 do {
                     char s[60];
@@ -571,7 +575,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                     // NOTE: doCancel and doDefault are dummy arguments here
                     bool kill{ false }, doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };
                     if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return result_kill; }    // kill request from caller ?
-                    if (doAbort) { forcedAbortRequest = true; break; }                                             // ' abort running code (program or immediate mode statements)
+                    if (doAbort) { forcedAbortRequest = true; break; }                  // ' abort running code (program or immediate mode statements)
                     if (doStop) { forcedStopRequest = true; }                           // stop a running program (do not produce stop event yet, wait until program statement executed)
 
                     // check answer
@@ -2266,9 +2270,11 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
         case cmdcod_return:
         {
             isFunctionReturn = true;
-            bool returnWithZero = (cmdArgCount == 0);                                                                       // RETURN statement without expression, or END statement: return a zero
-            terminateJustinaFunction(returnWithZero);
-            execResult_type execResult = execAllProcessedOperators();                                                       // continue in caller !!!
+
+            // NOT a void Justina function  -AND-  RETURN statement without expression, or END statement: return a zero
+            bool isVoidFunctionDef = (justinaFunctionData[_activeFunctionData.functionIndex].isVoidFunctionDef == 1);
+            terminateJustinaFunction(isVoidFunctionDef, !isVoidFunctionDef && (cmdArgCount == 0));                          // return statement (non-void function) has a return value ? 
+            execResult_type execResult = isVoidFunctionDef ? result_execOK : execAllProcessedOperators();
             if (execResult != result_execOK) { return execResult; }
 
             // DO NOT reset _activeFunctionData.activeCmd_commandCode: _activeFunctionData will receive its values in routine terminateJustinaFunction()
@@ -2371,13 +2377,13 @@ Justina::execResult_type Justina::copyValueArgsFromStack(LE_evalStack*& pStackLv
                     _pDebugOut->print("cpy args from stack ");   _pDebugOut->println(args[i].pStringConst);
                 #endif
                 }
+                }
             }
-        }
 
         pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-    }
+        }
 
     return result_execOK;
-}
+    }
 
 

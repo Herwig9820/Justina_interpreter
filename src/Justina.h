@@ -87,8 +87,8 @@
 
 #define J_productName "Justina: JUST an INterpreter for Arduino"
 #define J_legalCopyright "Copyright 2024, Herwig Taveirne"
-#define J_version "1.2.1"            
-#define J_buildDate "July 1, 2024"
+#define J_version "1.3.1"            
+#define J_buildDate "July 19, 2024"
 
 
 // ******************************************************************
@@ -215,6 +215,7 @@ class Justina {
         cmdcod_printCallSt,
         cmdcod_printBP,
         cmdcod_function,
+        cmdcod_voidFunction,
         cmdcod_static,
         cmdcod_constVar,
         cmdcod_var,
@@ -526,6 +527,7 @@ class Justina {
         result_tokenNotFound,
         result_missingLeftParenthesis,
         result_missingRightParenthesis,
+        result_missingExpression,
 
         // token not allowed errors
         result_separatorNotAllowedHere = 1100,
@@ -569,7 +571,6 @@ class Justina {
 
         // function definition or call errors
         result_function_wrongArgCount = 1500,
-        result_function_redefinitionNotAllowed,
         result_function_mandatoryArgFoundAfterOptionalArgs,
         result_function_maxArgsExceeded,
         result_function_prevCallsWrongArgCount,
@@ -581,6 +582,9 @@ class Justina {
         result_function_undefinedFunctionOrArray,
         result_function_arrayParamMustHaveEmptyDims,
         result_function_needsParentheses,
+        result_function_cannotUseProceduresInExpression,
+        result_function_void_returnValueNotAllowed,
+        result_function_returnValueExpected,
 
         // variable errors
         result_var_nameInUseForFunction = 1600,
@@ -619,6 +623,7 @@ class Justina {
         result_cmd_onlyImmediateOrInFunction,
         result_cmd_onlyInProgOutsideFunction,
         result_cmd_onlyImmediateNotWithinBlock,
+        result_cmd_extCmdRestrictionNotValid,
 
         result_cmd_expressionExpectedAsPar,
         result_cmd_varWithoutAssignmentExpectedAsPar,
@@ -627,7 +632,7 @@ class Justina {
         result_cmd_variableNameExpectedAsPar,
         result_cmd_identExpectedAsPar,
         result_cmd_spareExpectedAsPar,
-        
+
         result_cmd_argumentMissing,
         result_cmd_tooManyArguments,
 
@@ -1122,11 +1127,12 @@ private:
 
     // other
     // -----
-    static constexpr char c_JustinaFunctionFirstOccurFlag = 0x10;       // flag: min > max means not initialized
+    static constexpr char c_JustinaFunctionFirstOccurFlag = 0x10;       // Justina functions: flag: min > max means not initialized
 
-    static constexpr char c_JustinaFunctionMaxArgs = 0xF;               // must fit in 4 bits
-    static constexpr char c_internalFunctionMaxArgs = 0xF;              // must fit in 4 bits
-    static constexpr char c_externalFunctionMaxArgs = 8;                // maximum argument count for external (user c++) commands and functions
+    // maximum allowed argument count per function / command type
+    static constexpr char c_JustinaFunctionMaxArgs = 0xF;               // Justina functions: argument count (0 to 15) MUST fit in 4 bits
+    static constexpr char c_internalFncOrCmdMaxArgs = 0xF;              // Internal c++ functions and commands: keep max. arg. count identical to max. Justina function arg. count
+    static constexpr char c_ExternalFncOrCmdMaxArgs = 8;                // External (user) c++ functions and commands: arg. count determines argument array sizes 
 
 
     // block statements: status flags (execution)
@@ -1320,7 +1326,7 @@ private:
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na, block_na, block_na };                                      // not a 'block' command. NOTE: defined in JustinaMain.cpp
 
     // sizes MUST be specified AND must be exact
-    static const internCmdDef _internCommands[79];                                                                              // keyword names
+    static const internCmdDef _internCommands[80];                                                                              // keyword names
     static const InternCppFuncDef _internCppFunctions[141];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
 #if (defined ARDUINO_ARCH_ESP32) 
@@ -1372,8 +1378,8 @@ private:
         OpenCmdBlockLvl openBlock;
     };
 
-    // structure to collect data about Justina functions during parsing
-    // ----------------------------------------------------------------
+    // structure to collect master data about Justina functions during parsing
+    // -----------------------------------------------------------------------
 
     struct JustinaFunctionData {
         char* pJustinaFunctionStartToken;                               // Justina function: pointer to start of parsed function (token)
@@ -1381,7 +1387,10 @@ private:
         char paramOnlyCountInFunction;
         char localVarCountInFunction;                                   // needed to reserve run time storage for local variables 
         char staticVarCountInFunction;                                  // needed when in debugging mode only
-        char spare;                                                     // boundary alignment
+
+        char isVoidFunctionDef : 1;
+        char callsAsPartOfExpression : 1;                               // set if at least one call to this function/procedure is part of an expression (which is not allowed for a Justina procedure (no return value))
+        char spare : 6;                                                 // boundary alignment
 
         char localVarNameRefs_startIndex;                               // not in function, but overall, needed when in debugging mode only
         char staticVarStartIndex;                                       // needed when in debugging mode only
@@ -1650,10 +1659,14 @@ private:
     // ----------------
 
     bool _justinaFunctionBlockOpen = false;                         // commands within FUNCTION...END block are being parsed (excluding END command)
+    bool _JustinaVoidFunctionBlockOpen = false;
+
     bool _isCommand = false;                                        // a command is being parsed (instruction starting with a keyword)
 
     bool _isProgramCmd = false;                                     // flags: a specific command is being parsed (= starting with a command name)
     bool _isJustinaFunctionCmd = false;
+    bool _isVoidJustinaFunctionCmd = false;
+    bool _isReturnCommand = false;
     bool _isGlobalOrUserVarCmd = false;
     bool _isLocalVarCmd = false;
     bool _isStaticVarCmd = false;
@@ -1665,17 +1678,17 @@ private:
     bool _isForCommand = false;
 
     bool _userVarUnderConstruction = false;                         // user variable is created, but process is not terminated
-    bool _leadingSpaceCheck{ false };
+    bool _leadingSpaceCheck = false;
 
-    bool _lvl0_withinExpression;                                    // currently parsing an expression
-    bool _lvl0_isPurePrefixIncrDecr;                                // the prefix increment/decrement operator just parsed is the first token of a (sub-) expression
-    bool _lvl0_isPureVariable;                                      // the variable token just parsed is the first token of a (sub-) expression (or the second token but only if preceded by a prefix incr/decr token)
-    bool _lvl0_isVarWithAssignment;                                 // operator just parsed is a (compound or pure) assignment operator, preceded by a 'pure' variable (see preceding line)
+    bool _lvl0_withinExpression{};                                  // currently parsing an expression
+    bool _lvl0_isPurePrefixIncrDecr{};                              // the prefix increment/decrement operator just parsed is the first token of a (sub-) expression
+    bool _lvl0_isPureVariable{};                                    // the variable token just parsed is the first token of a (sub-) expression (or the second token but only if preceded by a prefix incr/decr token)
+    bool _lvl0_isVarWithAssignment{};                               // operator just parsed is a (compound or pure) assignment operator, preceded by a 'pure' variable (see preceding line)
 
-    int _initVarOrParWithUnaryOp;                                   // commands declaring variables or function parameters: initializer unary operators only: -1 = minus, 1 = plus, 0 = no unary op 
+    int _initVarOrParWithUnaryOp{};                                 // commands declaring variables or function parameters: initializer unary operators only: -1 = minus, 1 = plus, 0 = no unary op 
 
     // allowed parameter types for a command (variables with optional assignment, any expression, generic identifier only,...)  
-    const char* _pCmdAllowedParTypes;                               // (the pointer itself is not constant)
+    const char* _pCmdAllowedParTypes{};                             // (the pointer itself is not constant)
 
     int _cmdParSpecColumn{ 0 };
     int _cmdArgNo{ 0 };                                             // argument number within a command
@@ -1767,17 +1780,17 @@ private:
 // ...when the program resumes, so that execution can continue there. If multiple programs are currently stopped (see: flow control stack), this stack will contain multiple entries
     LinkedList parsedCommandLineStack;
     char* _pParsedCommandLineStackTop{ nullptr };
-    int _openDebugLevels{ 0 };                                      // number of stopped programs: equals parsed command line stack depth minus open eval() strings (= eval() strings being executed)
+    int _openDebugLevels{ 0 };                                              // number of stopped programs: equals parsed command line stack depth minus open eval() strings (= eval() strings being executed)
 
-    char _semicolonBPallowed_token{}, _semicolonBPset_token{};      // will be initialized when Justina starts up
+    char _semicolonBPallowed_token{}, _semicolonBPset_token{};              // will be initialized when Justina starts up
 
 
     // console settings and output and print commands
     // ----------------------------------------------
 
-    int _angleMode{ 0 };                                                            // 0 = radians, 1 = degrees
-    int _promptAndEcho{ 2 };                                                        // print prompt and print input echo
-    int _printLastResult{ 1 };                                                      // print last result: 0 = do not print, 1 = print, 2 = print and expand backslash sequences in string constants  
+    int _angleMode{ 0 };                                                    // 0 = radians, 1 = degrees
+    int _promptAndEcho{ 2 };                                                // print prompt and print input echo
+    int _printLastResult{ 1 };                                              // print last result: 0 = do not print, 1 = print, 2 = print and expand backslash sequences in string constants  
 
 
     // display settings (last values, command line echo, tracing, print commands
@@ -1788,15 +1801,15 @@ private:
     int _dispFloatPrecision = DEFAULT_FLOAT_PRECISION;
     int _dispIntegerPrecision = DEFAULT_INT_PRECISION;
 
-    char _dispFloatSpecifier[2]{ "" };                                              // will be initialized in Justina constructor 
+    char _dispFloatSpecifier[2]{ "" };                                      // will be initialized in Justina constructor 
     char _dispIntegerSpecifier[2]{ "" };
     char _dispStringSpecifier[2]{ "" };
 
     int _dispFloatFmtFlags = DEFAULT_FLOAT_FLAGS;
     int _dispIntegerFmtFlags = DEFAULT_INT_FLAGS;
-    int _dispStringFmtFlags = DEFAULT_STR_FLAGS;                                    // string format flags are fixed, cannot be changed
+    int _dispStringFmtFlags = DEFAULT_STR_FLAGS;                            // string format flags are fixed, cannot be changed
 
-    char _dispFloatFmtString[20] = "";                                              // long enough to contain all format specifier parts; initialized during reset
+    char _dispFloatFmtString[20] = "";                                      // long enough to contain all format specifier parts; initialized during reset
     char _dispIntegerFmtString[15] = "";
     char _dispStringFmtString[20] = "";
 
@@ -1808,27 +1821,27 @@ private:
 
     int _fmt_width = DEFAULT_FMT_WIDTH;
 
-    int _fmt_numPrecision = DEFAULT_FLOAT_PRECISION;                                // all numeric types
-    int _fmt_strCharsToPrint = DEFAULT_STR_CHARS_TO_PRINT;                          // string type
+    int _fmt_numPrecision = DEFAULT_FLOAT_PRECISION;                        // all numeric types
+    int _fmt_strCharsToPrint = DEFAULT_STR_CHARS_TO_PRINT;                  // string type
 
-    char _fmt_numSpecifier[2]{ "" };                                                // will be initialized in Justina constructor                                              
+    char _fmt_numSpecifier[2]{ "" };                                        // will be initialized in Justina constructor                                              
     char _fmt_stringSpecifier[2]{ "" };
 
     int _fmt_numFmtFlags = DEFAULT_FLOAT_FLAGS;
     int _fmt_stringFmtFlags = DEFAULT_STR_FLAGS;
 
 
-    int _tabSize{ DEFAULT_TAB_SIZE };                                                              // tab size, default value if not changed by tabSize command 
+    int _tabSize{ DEFAULT_TAB_SIZE };                                       // tab size, default value if not changed by tabSize command 
 
 
     // debugging
     // ---------
 
-    int _stepCallStackLevel{ 0 };                                   // call stack levels at the moment of a step, ... debugging command 
-    int _stepFlowCtrlStackLevels{ 0 };                              // total flow control stack levels at the moment of a step, ... debugging command
-    int _stepCmdExecuted{ db_continue };                            // type of debugging command executed (step, ...)
-    bool _debugCmdExecuted{ false };                                // a debug command was executed
-    bool _pendingStopForDebug{ false };                             // remember to stop anyway if trigger string result (not yet calculated) is zero
+    int _stepCallStackLevel{ 0 };                                           // call stack levels at the moment of a step, ... debugging command 
+    int _stepFlowCtrlStackLevels{ 0 };                                      // total flow control stack levels at the moment of a step, ... debugging command
+    int _stepCmdExecuted{ db_continue };                                    // type of debugging command executed (step, ...)
+    bool _debugCmdExecuted{ false };                                        // a debug command was executed
+    bool _pendingStopForDebug{ false };                                     // remember to stop anyway if trigger string result (not yet calculated) is zero
 
     Breakpoints* _pBreakpoints{ nullptr };
 
@@ -1845,7 +1858,7 @@ private:
     long _evalParsingError{ 0L };
 
     bool _parsingExecutingTraceString{ false };
-    bool _printTraceValueOnly{ false };                             // do not print trace expression, only print trace evaluation result (value)
+    bool _printTraceValueOnly{ false };                                     // do not print trace expression, only print trace evaluation result (value)
     char* _pTraceString{ nullptr };
     Val _traceResultValue{};
     char _traceResultValueType{};
@@ -1885,9 +1898,9 @@ private:
     // system (main) callback
     // ----------------------
 
-    void (*_housekeepingCallback)(long& appFlags);                  // pointer to callback function for heartbeat
+    void (*_housekeepingCallback)(long& appFlags);                                      // pointer to callback function for heartbeat
 
-    long _appFlags = 0x00L;                                         // bidirectional flags to transfer info / requests between main program and Justina library
+    long _appFlags = 0x00L;                                                             // bidirectional flags to transfer info / requests between main program and Justina library
     unsigned long _lastCallBackTime{ 0 }, _currenttime{ 0 }, _previousTime{ 0 };
 
 
@@ -2156,11 +2169,12 @@ private:
 
     // various checks while parsing
     bool checkArrayDimCountAndSize(parsingResult_type& result, int* arrayDef_dims, int& dimCnt);
-    bool checkJustinaFunctionArguments(parsingResult_type& result, int& minArgCnt, int& maxArgCnt);
+    bool checkJustinaFunctionArguments(parsingResult_type& result, int& minArgCnt, int& maxArgCnt, bool thisTokenIsRightParenthesis);
     bool checkInternCppFuncArgArrayPattern(parsingResult_type& result);
-    bool checkExternCppFuncArgArrayPattern(parsingResult_type& result);
+    bool checkExternCppFuncArgIsScalar(parsingResult_type& result);
     bool checkJustinaFuncArgArrayPattern(parsingResult_type& result, bool isFunctionClosingParenthesis);
     bool checkAllJustinaFunctionsDefined(int& index) const;
+    bool resetFunctionFlags();
 
     // basic parsing routines for constants, without other syntax checks etc. 
     bool parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueType, int& predefinedConstIndex, parsingResult_type& result);
@@ -2187,10 +2201,10 @@ private:
     execResult_type  execInfixOperation();
     void makeIntermediateConstant(LE_evalStack* pEvalStackLvl);
     execResult_type  execInternalCppFunction(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount, bool& forcedStopRequest, bool& forcedAbortRequest);
-    execResult_type  execExternalCppProcedure(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount, bool isCommand = false);
+    execResult_type  execExternalCppFncOrCmd(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int maxArgs, bool isCommand = false);
     execResult_type  launchJustinaFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount);
     execResult_type  launchEval(LE_evalStack*& pFunctionStackLvl, char* parsingInput);
-    void  terminateJustinaFunction(bool addZeroReturnValue = false);
+    void  terminateJustinaFunction(bool isVoidFunction, bool addZeroReturnValue = false);
     void  terminateEval();
 
     // Justina functions: initialize parameter variables with provided arguments (pass by reference)

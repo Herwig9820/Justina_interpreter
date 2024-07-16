@@ -14,7 +14,7 @@
 program SD_parseRecords; // this is a JUSTINA program
 
 /*
-	This example demonstates how to write records with formatted data to an SD card file and how to 
+	This example demonstrates how to write records with formatted data to an SD card file and how to 
 	read back these records and parse the values they contain into variables of the correct data types.
 	
 	Function call: 
@@ -28,8 +28,7 @@ program SD_parseRecords; // this is a JUSTINA program
 // contains the name, eye and hair color, length, weight and age of a person.
 // -----------------------------------------------------------------------------
 
-function writeRecords();
-	
+procedure writeRecords();
 	startSD;																	// in case the SD card was not yet initialized
 		
 	var testFile = 0;															// init as integer
@@ -56,6 +55,8 @@ function writeRecords();
 		cout readLine(testFile);
 	end;
 	close(testFile);
+	
+	return;
 end;
 
 
@@ -67,7 +68,7 @@ end;
 function parseAndPrintRecords(toFile = FALSE);									// optional argument (default is CONSOLE)
 		
 	startSD;																	// in case the SD card was not yet initialized
-
+	
 	var streamOut = CONSOLE; 													// init output stream to console
 		
 	var fileIn = 0, fileOut = 0;												// init file numbers attributed to open files
