@@ -143,7 +143,7 @@ Justina::execResult_type  Justina::exec(char* startHere) {
                 _pDebugOut->print(" ["); _pDebugOut->print(_internCommands[tokenIndex]._commandName); _pDebugOut->println("]");
             #endif
 
-                bool skipStatement = ((_internCommands[tokenIndex].restrictions & cmd_skipDuringExec) != 0);
+                bool skipStatement = ((_internCommands[tokenIndex].usageRestrictions & cmd_skipDuringExec) != 0);
                 if (skipStatement) {
                     // a function can only stop on its first statement if it's NOT called from the command line (or from within an eval() function). To circumvent that,...
                     // ...when the function was launched, the function() statement itself has been made the 'first' function statement to execute. Because it is non_executable,...
@@ -986,7 +986,7 @@ void Justina::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNo
 
     if (isInternalCommand) {
         // breakpoint / stop: not for non-executable statements (note that BREAKPOINTS CANNOT BE SET for non-executable statements anyway)  
-        bool nextIsExecutable = !(_internCommands[index].restrictions & cmd_skipDuringExec);                      // next step is executable
+        bool nextIsExecutable = !(_internCommands[index].usageRestrictions & cmd_skipDuringExec);                      // next step is executable
         if (!nextIsExecutable) { return; }
 
         // breakpoint / stop: not for initial 'for' loop 'end' statement (before any statement in for..end body was executed)

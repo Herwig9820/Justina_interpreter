@@ -123,7 +123,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                 int tokenType = *_activeFunctionData.pNextStep & 0x0F;
                 if (tokenType != tok_isInternCommand) { break; }
                 int tokenIndex = ((Token_internalCommand*)_activeFunctionData.pNextStep)->tokenIndex;
-                if ((_internCommands[tokenIndex].restrictions & cmd_skipDuringExec) == 0) { break; }
+                if ((_internCommands[tokenIndex].usageRestrictions & cmd_skipDuringExec) == 0) { break; }
                 findTokenStep(_activeFunctionData.pNextStep, true, tok_isTerminalGroup1, termcod_semicolon, termcod_semicolon_BPset, termcod_semicolon_BPallowed);   // find semicolon (always match)
                 jumpTokens(1, _activeFunctionData.pNextStep);                                   // first token after semicolon
             } while (true);

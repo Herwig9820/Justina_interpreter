@@ -50,12 +50,12 @@
 	literal constants (examples)					    			user c++ routines (prefix to force highlight)               comments
     -----------------------------------                 			---------------------------------------------               --------
 																																	
-    123					/* integer               */					uc_         /*user commands (c++) */                        // this is a single-line comment 
-    123.    			/* floating point number */     			uf_	        /*user functions (c++) */                       /* this is a multi- line comment */ 
-    35e-4				/* floating point number */     			user_                                                       
-    0x12e2				/* integer (hex)         */             	usr_                                                        
-    "hello"				/* string                */             	cpp_                                                        
-    
+    123					/* integer               */					uf_         /*external Justina functions */                // this is a single-line comment 
+    123.    			/* floating point number */     			ufcn_	        					                       	/* this is a multi- line comment */ 
+    35e-4				/* floating point number */     			usrf_                                                  
+    0x12e2				/* integer (hex)         */             	uc_         /* external Justina commands */                                             
+    "hello"				/* string                */             	ucmd_                                                   
+																	usrc_
     
     
     

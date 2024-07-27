@@ -308,7 +308,7 @@ Justina::execResult_type Breakpoints::progMem_getSetClearBP(long lineSequenceNum
     // if a command, check that setting a breakpoint is allowed by the command attributes
     if ((statementTokenType & 0x0F) == Justina::tok_isInternCommand) {                                  // statement is an internal command ? check whether it's executable
         int commandIndex = ((Justina::Token_internalCommand*)pProgramStep)->tokenIndex;
-        if (Justina::_internCommands[commandIndex].restrictions & Justina::cmd_skipDuringExec) { return Justina::result_BP_statementIsNonExecutable; }     // because not executable
+        if (Justina::_internCommands[commandIndex].usageRestrictions & Justina::cmd_skipDuringExec) { return Justina::result_BP_statementIsNonExecutable; }     // because not executable
     }
     // next line does not work if breakpoint table status is DRAFT (no link with program, if any) -> do this test later by checking existence of entry in breakpoint table 
     //BPwasSet = (((Justina::Token_terminal*)(pProgramStep - 1))->tokenTypeAndIndex == _pJustina->_semicolonBPset_token);        // BEFORE changing tokenTypeAndIndex (next line)

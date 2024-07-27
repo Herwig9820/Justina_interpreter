@@ -34,7 +34,7 @@ program simpleWebServer; // this is a JUSTINA program
 	connection maintenance. From the perspective of the HTTP server, this is a pure background process and continues
 	even when the webserver is waiting for characters to come in (readLine() functon).
 	
-	Function call: webServer();
+	Procedure call: webServer();
 	While web client is not connected, press ampersand ( & ) to exit
 	
 	To test it out, open a web browser and type the complete url: http://nnn.nnn.nnn.nnn:port (fill in server IP address and port)
@@ -53,7 +53,7 @@ var switchStates(5) =  0 ; 																	// default: all switches off
 //	webserver main	
 // ---------------
 
-function webServer();
+procedure webServer();
 	
 	const TCP_CONNECTED = 4;
 
@@ -117,7 +117,7 @@ end;
 // send response message to (re-)draw main page
 // --------------------------------------------
 
-function sendMainPageResponse();
+procedure sendMainPageResponse();
 	
 	// send response header
 	printLine IO2, ("HTTP/1.1 200 OK");
@@ -176,7 +176,7 @@ end;
 // send response message indicating 'no favorite icon'
 // ---------------------------------------------------
 
-function sendFaviconResponse();
+procedure sendFaviconResponse();
 	printLine IO2, "HTTP/1.1 404 Not Found";
     printLine IO2, ("Content-type:text/html");
 	printLine IO2, "Connection: keep-alive";

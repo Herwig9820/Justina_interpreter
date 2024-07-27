@@ -186,13 +186,26 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
 // *   Start of a command only: apply additional command syntax rules   *
 // ----------------------------------------------------------------------
 
-bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, bool commandIsInternal) {           // command syntax checks
+bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, bool commandIsInternal) {               // command syntax checks
 
 #if PRINT_PARSED_TOKENS
     _pDebugOut->println("   checking command keyword");
 #endif
-    _pCmdAllowedParTypes = commandIsInternal ? _internCommands[commandIndex].pCmdAllowedParTypes : cmdPar_extCmd;   // remember allowed parameter types
-    _cmdParSpecColumn = 0;                                                                                          // reset actual command parameter counter
+    int key_allowedParTypes{};
+    int index{ 0 };
+    if (!commandIsInternal) {
+        key_allowedParTypes = ((CppCommand*)_pExternCommands)[commandIndex].argTypeRestrictions;                        // external command ?
+
+        int records = sizeof(cmdArgSeq_records) / sizeof(cmdArgSeq_records[0]);                                         // check validity argument sequence key 
+        for (index = 0; index < records; index++) {
+            if (cmdArgSeq_records[index].key == key_allowedParTypes) { break; }
+        }
+
+        if (index == records) {result =  result_cmd_argTypeRestrictionNotValid; return false; }
+    }
+
+    _pCmdAllowedParTypes = commandIsInternal ? _internCommands[commandIndex].pCmdAllowedParTypes : cmdArgSeq_records[index].record;   // remember allowed parameter types
+    _cmdParSpecColumn = 0;                                                                                              // reset actual command parameter counter
     _cmdArgNo = 0;
 
     constexpr Justina::CmdBlockDef externCmdBlockNone{ block_none, block_na, block_na, block_na };
@@ -217,20 +230,20 @@ bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, 
         _isClearProgCmd = _internCommands[commandIndex].commandCode == cmdcod_clearProg;
         _isClearAllCmd = _internCommands[commandIndex].commandCode == cmdcod_clearAll;
 
-        _isAnyVarCmd = _isGlobalOrUserVarCmd || _isLocalVarCmd || _isStaticVarCmd;                                  //  var, local, static
+        _isAnyVarCmd = _isGlobalOrUserVarCmd || _isLocalVarCmd || _isStaticVarCmd;                                      //  var, local, static
     }
 
     // is this command allowed here ? Check restrictions
     // -------------------------------------------------
 
     // retrieve restrictions
-    char cmdRestriction = commandIsInternal ? _internCommands[commandIndex].restrictions & cmd_usageRestrictionMask : ((CppCommand*)_pExternCommands)[commandIndex].restrictions;
+    char cmdRestriction = commandIsInternal ? _internCommands[commandIndex].usageRestrictions & cmd_usageRestrictionMask : ((CppCommand*)_pExternCommands)[commandIndex].usageRestrictions;
 
     // external (user cpp) commands: check if specified usage restriction is valid
     // note: external commands are always executable (not 'parsing only')
     if (!commandIsInternal && (cmdRestriction != cmd_noRestrictions) && (cmdRestriction != cmd_onlyInFunctionBlock)
         && (cmdRestriction != cmd_onlyImmediate) && (cmdRestriction != cmd_onlyImmOrInsideFuncBlock)) {
-        result = result_cmd_extCmdRestrictionNotValid; return false;
+        result = result_cmd_usageRestrictionNotValid; return false;
     }
 
     if ((cmdRestriction == cmd_onlyProgramTop) && (_lastTokenStep != 0)) { result = result_cmd_onlyProgramStart; return false; }        // not a 'program' command
@@ -348,7 +361,7 @@ bool Justina::checkCommandArgToken(parsingResult_type& result, int& clearIndicat
     _pDebugOut->println("   checking command argument");
 #endif
 
-    static uint8_t allowedParType = cmdPar_none;                                                                    // init
+    static uint8_t allowedParType = cmdArg_none;                                                                    // init
 
     bool isSpareTokenType = false;                                                                                  // spare
     bool isGenIdent = (_lastTokenType == tok_isGenericName);
@@ -393,11 +406,11 @@ bool Justina::checkCommandArgToken(parsingResult_type& result, int& clearIndicat
 // ---------------------------------------------------------------------------------------------------------------------------------------------------
     bool multipleParameter = false, optionalParameter = false;
     if (isSpareTokenType || isGenIdent || isExpressionFirstToken || isSemiColonSep) {
-        allowedParType = (_cmdParSpecColumn == sizeof(_pCmdAllowedParTypes)) ? cmdPar_none : (uint8_t)(_pCmdAllowedParTypes[_cmdParSpecColumn]);
-        multipleParameter = (allowedParType & cmdPar_multipleFlag);
-        optionalParameter = (allowedParType & cmdPar_optionalFlag);
+        allowedParType = (_cmdParSpecColumn == sizeof(cmdArgSeq_100)) ? cmdArg_none : (uint8_t)(_pCmdAllowedParTypes[_cmdParSpecColumn]);   //sizeof array: OK, because elements are char type (1 byte each) 
+        multipleParameter = (allowedParType & cmdArg_multipleFlag);
+        optionalParameter = (allowedParType & cmdArg_optionalFlag);
         if (!multipleParameter) { _cmdParSpecColumn++; }                                                            // increase parameter count, unless multiple parameters of this type are accepted  
-        allowedParType = allowedParType & ~cmdPar_flagMask;
+        allowedParType = allowedParType & ~cmdArg_flagMask;
     }
 
     if (isSemiColonSep) {                                                                                           // semicolon: end of command                                                    
@@ -414,15 +427,16 @@ bool Justina::checkCommandArgToken(parsingResult_type& result, int& clearIndicat
     // ... and skip commas separating arguments (because these commas have just reset variables used for command argument constraints checking, preparing for next command argument (if any))
 
     if ((_parenthesisLevel == 0) && (!isLvl0CommaSep)) {                                                                        // a comma resets variables used for command argument constraint checks
-        if (allowedParType == cmdPar_spare && !isSpareTokenType) { result = result_cmd_spareExpectedAsPar; return false; }      // does not occur, but keep for completeness
-        if (allowedParType == cmdPar_ident && !isGenIdent) { result = _isDeleteVarCmd ? result_cmd_variableNameExpectedAsPar : result_cmd_identExpectedAsPar; return false; }
-        if ((allowedParType == cmdPar_expression) && !_lvl0_withinExpression) { result = result_cmd_expressionExpectedAsPar; return false; }    // does not occur, but keep for completeness
+        if (allowedParType == cmdArg_none) { result = result_cmd_tooManyArguments; return false; }                                // irrespective of defined max. arg. count for command
+        if (allowedParType == cmdArg_spare && !isSpareTokenType) { result = result_cmd_spareExpectedAsPar; return false; }      // does not occur, but keep for completeness
+        if (allowedParType == cmdArg_ident && !isGenIdent) { result = _isDeleteVarCmd ? result_cmd_variableNameExpectedAsPar : result_cmd_identExpectedAsPar; return false; }
+        if ((allowedParType == cmdArg_expression) && !_lvl0_withinExpression) { result = result_cmd_expressionExpectedAsPar; return false; }    // does not occur, but keep for completeness
 
-        if ((allowedParType == cmdPar_varOptAssignment) && !_lvl0_isPurePrefixIncrDecr && !_lvl0_isPureVariable && !_isConstVarCmd && !_lvl0_isVarWithAssignment) {
+        if ((allowedParType == cmdArg_varOptAssignment) && !_lvl0_isPurePrefixIncrDecr && !_lvl0_isPureVariable && !_isConstVarCmd && !_lvl0_isVarWithAssignment) {
             result = (parsingResult_type)result_cmd_varWithOptionalAssignmentExpectedAsPar; return false;
         }
 
-        if ((allowedParType == cmdPar_varNoAssignment) && !_lvl0_isPureVariable) {
+        if ((allowedParType == cmdArg_varNoAssignment) && !_lvl0_isPureVariable) {
             result = isAssignmentOp ? (parsingResult_type)result_cmd_varWithoutAssignmentExpectedAsPar : (parsingResult_type)result_cmd_variableExpectedAsPar; return false;
         }
     }
@@ -730,11 +744,11 @@ bool Justina::parseAsStringConstant(char*& pNext, parsingResult_type& result) {
         #endif
             _parsedStringConstObjectCount--;
             delete[] pStringCst;
-        }
+}
         pNext = pch;  return false;
-    }
+}
 
-    // expression syntax check 
+// expression syntax check 
     _thisLvl_lastIsVariable = false;
     _thislvl_lastIsConstVar = false;
 
@@ -771,7 +785,7 @@ bool Justina::parseAsStringConstant(char*& pNext, parsingResult_type& result) {
         #endif
             _parsedStringConstObjectCount--;
             delete[] pStringCst;
-        }
+    }
         pToken->tokenType = tok_no_token;       // because already set
         pNext = pch;  return false;
     }
@@ -1145,7 +1159,6 @@ bool Justina::parseTerminalToken(char*& pNext, parsingResult_type& result) {
                 }
             }
 
-            ////else if (){}
             else {}                                                                                             // for documentation only: all cases handled
 
 
@@ -2187,20 +2200,20 @@ bool Justina::parseAsVariable(char*& pNext, parsingResult_type& result) {
                             #endif
 
                             }
-                        }
                     }
+                }
                     if (!isOpenFunctionStaticVariable && !isOpenFunctionLocalVariable && !isOpenFunctionParam) {
                         pNext = pch; result = result_var_notDeclared; return false;
                     }
 
-                }
+    }
 
                 else {
                     pNext = pch; result = result_var_notDeclared; return false;
                 }
-            }
+}
 
-        }
+}
 
         else {
             // global PROGRAM variable exists already: check for double definition (USER variables: detected when NAME was declared a second time) 
@@ -2417,10 +2430,10 @@ bool Justina::parseAsIdentifierName(char*& pNext, parsingResult_type& result) {
             _parsedStringConstObjectCount--;
             delete[] pIdentifierName;
             pNext = pch; return false;
-        }
     }
+}
 
-    // expression syntax check 
+// expression syntax check 
     _thisLvl_lastIsVariable = false;
     _thislvl_lastIsConstVar = false;
 
@@ -2493,16 +2506,17 @@ bool Justina::checkJustinaFunctionArguments(parsingResult_type& result, int& min
     // if a parameter in the function definition is (1) a scalar variable without assignment to a constant, OR (2) an array variable, the corresponding argument in a function call is mandatory
     // -> if the last token processed (before the current token, which is either a comma or a right parenthesis) is a (scalar) variable or an array variable closing parenthesis,...
     // ...the corresponding argument is mandatory; otherwise it is optional
-    bool argWasMandatory = ((_lastTokenType == tok_isVariable) ||  (_lastTokenIsTerminal && (_lastTermCode == termcod_rightPar))) ;  
+    bool argWasMandatory = ((_lastTokenType == tok_isVariable) || (_lastTokenIsTerminal && (_lastTermCode == termcod_rightPar)));
     bool alreadyOptArgs = (minArgCnt != maxArgCnt);
 
     if (argWasMandatory && alreadyOptArgs) { result = result_function_mandatoryArgFoundAfterOptionalArgs; return false; }
     if (argWasMandatory) { minArgCnt++; }
     maxArgCnt++;
-    
+
     // if last token was a comma, check that max argument count will not be exceeded (number must fit in 4 bits)
     if ((!thisTokenIsRightParenthesis) && (maxArgCnt >= c_JustinaFunctionMaxArgs)) {
-        result = result_function_maxArgsExceeded; return false; }
+        result = result_function_maxArgsExceeded; return false;
+    }
     return true;
 }
 
@@ -2748,18 +2762,18 @@ bool Justina::parseString(char*& pNext, char*& pch, char*& pStringCst, char& val
         _pDebugOut->print(isIntermediateString ? "\r\n+++++ (Intermd str) " : "\r\n+++++ (parsed str ) "); _pDebugOut->println((uint32_t)pStringCst, HEX);
         _pDebugOut->print("       parse string "); _pDebugOut->println(pStringCst);
     #endif
-    }
+            }
     pNext++;                                                                                    // skip closing quote
 
     valueType = value_isStringPointer;
     result = result_parsing_OK;
     return true;                                                                                // valid string
-}
+        }
 
 
-// -------------------------------------------------------------------------
-// *   check if identifier storage exists already, optionally create new   *
-// -------------------------------------------------------------------------
+        // -------------------------------------------------------------------------
+        // *   check if identifier storage exists already, optionally create new   *
+        // -------------------------------------------------------------------------
 
 int Justina::getIdentifier(char** pIdentNameArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNewName, bool isUserVar) {
 
@@ -2921,10 +2935,10 @@ Justina::parsingResult_type Justina::deleteUserVariable(char* userVarName) {
         #endif
             delete[]  userVarValues[index].pArray;
             _userArrayObjectCount--;
-        }
+    }
 
-        // 4. if variable is a scalar string value: delete string
-        // ------------------------------------------------------
+    // 4. if variable is a scalar string value: delete string
+    // ------------------------------------------------------
         else if (isString) {                                                                                // variable is a scalar containing a string
             if (userVarValues[index].pStringConst != nullptr) {
             #if PRINT_HEAP_OBJ_CREA_DEL
@@ -2933,12 +2947,12 @@ Justina::parsingResult_type Justina::deleteUserVariable(char* userVarName) {
             #endif
                 _userVarStringObjectCount--;
                 delete[]  userVarValues[index].pStringConst;
-            }
-        }
+}
+    }
 
-        // 5. move up next user variables one place
-        //    if a user variable is used in currently loaded program: adapt index in program storage
-        // -----------------------------------------------------------------------------------------
+    // 5. move up next user variables one place
+    //    if a user variable is used in currently loaded program: adapt index in program storage
+    // -----------------------------------------------------------------------------------------
         for (int i = index; i < _userVarCount - 1; i++) {
             userVarNames[i] = userVarNames[i + 1];
             userVarValues[i] = userVarValues[i + 1];
@@ -2959,11 +2973,9 @@ Justina::parsingResult_type Justina::deleteUserVariable(char* userVarName) {
 
         _userVarCount--;
         varDeleted = true;
-    }
+}
 
     if (!varDeleted) { return result_variableNameExpected; }
 
     return result_parsing_OK;
 }
-
-

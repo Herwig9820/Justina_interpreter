@@ -17,16 +17,15 @@ program SD_parseRecords; // this is a JUSTINA program
 	This example demonstrates how to write records with formatted data to an SD card file and how to 
 	read back these records and parse the values they contain into variables of the correct data types.
 	
-	Function call: 
-	- writeRecords();
-	- parseAndPrintRecords(toFile);  // toFile: numeric expression; if zero, will be interpreted as FALSE (send output to console))
-	
+	Procedure call: writeRecords();
+	Function call: parseAndPrintRecords(toFile);  // toFile: numeric expression; if FALSE, will send output to console instead of to file 'table.txt'
+	         returns: number of incomplete records
 */
 
 
-// this function creates a few records in an SD file named "people"; each record  
+// this procedure creates a few records in an SD file named "people"; each record  
 // contains the name, eye and hair color, length, weight and age of a person.
-// -----------------------------------------------------------------------------
+// ------------------------------------------------------------------------------
 
 procedure writeRecords();
 	startSD;																	// in case the SD card was not yet initialized
@@ -62,8 +61,9 @@ end;
 
 //  this function reads records, containing formatted data, from an SD card file and
 //  parses the values into variables. Then the list is output in a tabular format.
-//  you can choose to send the output to the console or to a file named "table.txt".
-// ---------------------------------------------------------------------------------
+//  if function argument is false, then send the output to the console; otherwise to file '"table.txt'.
+// 	the function returns the number of incomplete records found.
+// ----------------------------------------------------------------------------------------------------
 
 function parseAndPrintRecords(toFile = FALSE);									// optional argument (default is CONSOLE)
 		

@@ -36,7 +36,7 @@ program calculatorWebServer; // this is a JUSTINA program
 	
 	NOTE: the image files are available in the Justina library in folder 'Justina_interpreter\extras\Justina_language_examples\images'
 
-	Function call: webServer();
+	Procedure call: webServer();
 	While web client is not connected, press ampersand ( & ) to exit
 	
 	To test (or use !) the scientific calculator, open a web browser and type the complete url: http://nnn.nnn.nnn.nnn:port (fill in server IP address and port)
@@ -58,7 +58,7 @@ program calculatorWebServer; // this is a JUSTINA program
 // - cpp_stopClient(): stops TCP/IP client at the end of a request/response cycle 
 // -------------------------------------------------------------------------------------
 
-function webServer();
+procedure webServer();
 	
 	// variables hidden from the web browser 'calculator' user
 	
@@ -94,7 +94,7 @@ function webServer();
 		while cpp_connState() != TCP_CONNECTED;													// as long as HTTP client not connected
 			if cin() == asc("&"); 																// check console for ampersand button entry; exit web server if found
 				coutLine line(), "** Webserver stopped **";
-				return; 
+				return 0; 
 			end;				
 		end; 	                                                                            	
 																								
@@ -189,7 +189,7 @@ end;
 // send HTML response message to (re-)draw main page
 // -------------------------------------------------
 
-function sendResponse_mainPage(lastExpressions(), lastResultsText(), logoFile);
+procedure sendResponse_mainPage(lastExpressions(), lastResultsText(), logoFile);
 	
 	var i=0;
 	
@@ -307,7 +307,7 @@ end;
 // send response message with image (OK for logo as well as icon)
 // --------------------------------------------------------------
 
-function sendResponse_image(imageFile);
+procedure sendResponse_image(imageFile);
 	
 	var fileFound = FALSE;
 	
@@ -339,7 +339,7 @@ end;
 // replace '%hh' 3-character sequences by Ascii character with hex Ascii code 'hh'; replace '+' characters with spaces 
 // -------------------------------------------------------------------------------------------------------------------
 
-function urlDecode(url);
+procedure urlDecode(url);
 	const asc_space = 0x20, asc_plus = 0x2b, asc_percent = 0x25;
 	var sourceLength = 0;
 	var src=1, dest=1;												// source and destination character indexes (in the same string)
@@ -421,7 +421,8 @@ function intFormat(precision, specifier, flags=-1);
 	
 	// dummy fmt(), only to restore fmt() precision, specifier and flags
 	fmt(0, holdFmtPrecision, holdFmtspecifier, holdFmtFlags);					
-	return out;												
+	
+	return out;											
 end;	
 
 

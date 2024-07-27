@@ -19,15 +19,15 @@ program evalInput; // this is a JUSTINA program
 	- the eval() function, to parse and evaluate expressions stored in a string, during execution
 	- error trapping
 	
-	The function asks to enter a series of amounts of an unnamed material, in metric ton.
+	The program asks to enter a series of amounts of an unnamed material, in metric ton.
 	All amounts are added up and finally, when the user cancels further input, the...
 	... total amount is printed to the console, in kilograms.
 	
-	Function call: evalInput();
+	Procedure call: evalInput();
 */
 
 
-function evalInput();
+procedure evalInput();
 	var question, answer, flag;
 	var amount = 0, totalAmount = 0; 
 	

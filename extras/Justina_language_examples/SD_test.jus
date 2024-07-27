@@ -14,11 +14,13 @@
 program SD_card_tests; // this is a JUSTINA program
 
 /*
-	This function writes a few lines of information to an SD file, opening the file in various modes.
+	This procedure writes a few lines of information to an SD file, opening the file in various modes.
 	The file contents are read back and printed on the console.	
+	
+	Procedure call: fileTests(filename);
 */
 
-function fileTests(fname);
+procedure fileTests(fname);
 	
 	startSD;																			// in case the SD card was not yet initialized
 

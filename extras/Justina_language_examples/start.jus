@@ -21,11 +21,13 @@ program startJustina; // this is a JUSTINA program
 	- Justina startup options must allow autostart: add 'Justina::SD_runStart' as startup option when the Justina object is created (see user manual appendix A)
 	- An SD card board must be connected 
 	- the program file must be named 'start.jus' and must reside in the root folder of the SD card
-	- the main program function must be defined as 'start()', without parameters  
+	- the main program function or procedure must be defined as 'start()', without parameters  
+	
+	Procedure call: start();
 */
 	
 	
-function start();
+procedure start();
 	coutLine repeatChar("-", 59), line(), 
 		"---- Executing startup file 'start.jus' ----", line(), repeatChar("-", 59);
 	

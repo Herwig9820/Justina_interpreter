@@ -155,6 +155,7 @@ class LinkedList {
     void setListName(char* listName);
     char* getListName();
     void setDebugOutStream(Print** pDebugOutStream);
+
     static long getCreatedObjectCount();
 };
 
@@ -623,7 +624,7 @@ class Justina {
         result_cmd_onlyImmediateOrInFunction,
         result_cmd_onlyInProgOutsideFunction,
         result_cmd_onlyImmediateNotWithinBlock,
-        result_cmd_extCmdRestrictionNotValid,
+        result_cmd_usageRestrictionNotValid,
 
         result_cmd_expressionExpectedAsPar,
         result_cmd_varWithoutAssignmentExpectedAsPar,
@@ -632,6 +633,7 @@ class Justina {
         result_cmd_variableNameExpectedAsPar,
         result_cmd_identExpectedAsPar,
         result_cmd_spareExpectedAsPar,
+        result_cmd_argTypeRestrictionNotValid,
 
         result_cmd_argumentMissing,
         result_cmd_tooManyArguments,
@@ -931,7 +933,7 @@ class Justina {
     static constexpr uint8_t lastTokenGroup_0 = 1 << 0;                 // operator
     static constexpr uint8_t lastTokenGroup_1 = 1 << 1;                 // comma
     static constexpr uint8_t lastTokenGroup_2 = 1 << 2;                 // (line start), semicolon, internal or external command, generic identifier
-    static constexpr uint8_t lastTokenGroup_3 = 1 << 3;                 // number or alphanumeric (literal or symbolic) constant, right bracket
+    static constexpr uint8_t lastTokenGroup_3 = 1 << 3;                 // number or alphanumeric (literal or symbolic) constant, right parenthesis
     static constexpr uint8_t lastTokenGroup_4 = 1 << 4;                 // internal cpp, external cpp or Justina function 
     static constexpr uint8_t lastTokenGroup_5 = 1 << 5;                 // left parenthesis
     static constexpr uint8_t lastTokenGroup_6 = 1 << 6;                 // variable, generic identifier
@@ -961,75 +963,75 @@ class Justina {
     static constexpr uint8_t varIsConstantBit{ B00000001 };
 
 
-    // commands (FUNCTION, FOR, ...): allowed command parameters for commands with a specific key (parsing)
-    // ----------------------------------------------------------------------------------------------------
-
-    // commands parameters: number / type of parameters allowed for a group of commands
-    static constexpr uint8_t cmdPar_none = 0;
-    static constexpr uint8_t cmdPar_spare = 1;
-    static constexpr uint8_t cmdPar_varNoAssignment = 2;                // and no operators
-    static constexpr uint8_t cmdPar_varOptAssignment = 3;
-    static constexpr uint8_t cmdPar_expression = 4;
-    static constexpr uint8_t cmdPar_JustinaFunction = 5;
-    static constexpr uint8_t cmdPar_numConstOnly = 6;
-    static constexpr uint8_t cmdPar_ident = 7;
-
-    // flags may be combined with value of one of the allowed types above
-    static constexpr uint8_t cmdPar_flagMask = 0x18;                    // allowed 0 to n times. Only for last command parameter
-    static constexpr uint8_t cmdPar_multipleFlag = 0x08;                // allowed 0 to n times. Only for last command parameter
-    static constexpr uint8_t cmdPar_optionalFlag = 0x10;                // allowed 0 to 1 times. If parameter is present, next parameters do not have to be optional 
-
-    // keys for grouping together commands with the same number / type of parameters
-
-    // command parameter spec name          param type and flags                           param type and flags                            param type and flags                             param type and flags
-    // ---------------------------          --------------------                           --------------------                            --------------------                             --------------------
-    static inline const char cmdPar_extCmd[4]{ cmdPar_expression | cmdPar_multipleFlag,    cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
-
-    static inline const char cmdPar_100[4]{ cmdPar_ident | cmdPar_multipleFlag,            cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
-    static inline const char cmdPar_101[4]{ cmdPar_ident,                                  cmdPar_expression | cmdPar_multipleFlag,         cmdPar_none,                                    cmdPar_none };
-    static inline const char cmdPar_102[4]{ cmdPar_none,                                   cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
-    static inline const char cmdPar_103[4]{ cmdPar_ident,                                  cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
-    static inline const char cmdPar_104[4]{ cmdPar_expression,                             cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
-    static inline const char cmdPar_105[4]{ cmdPar_expression,                             cmdPar_expression,                               cmdPar_none,                                    cmdPar_none };
-    static inline const char cmdPar_106[4]{ cmdPar_expression | cmdPar_optionalFlag,       cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
-    static inline const char cmdPar_107[4]{ cmdPar_expression | cmdPar_multipleFlag,       cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
-    static inline const char cmdPar_108[4]{ cmdPar_JustinaFunction,                        cmdPar_none,                                     cmdPar_none,                                    cmdPar_none };
-    static inline const char cmdPar_109[4]{ cmdPar_varOptAssignment,                       cmdPar_expression,                               cmdPar_expression | cmdPar_optionalFlag,        cmdPar_none };
-    static inline const char cmdPar_110[4]{ cmdPar_ident,                                  cmdPar_ident | cmdPar_multipleFlag,              cmdPar_none,                                    cmdPar_none };
-    static inline const char cmdPar_111[4]{ cmdPar_varOptAssignment,                       cmdPar_varOptAssignment | cmdPar_multipleFlag,   cmdPar_none,                                    cmdPar_none };
-    static inline const char cmdPar_112[4]{ cmdPar_expression,                             cmdPar_expression | cmdPar_multipleFlag,         cmdPar_none,                                    cmdPar_none };
-    static inline const char cmdPar_113[4]{ cmdPar_expression,                             cmdPar_varOptAssignment,                         cmdPar_varOptAssignment,                        cmdPar_none };
-    static inline const char cmdPar_114[4]{ cmdPar_expression,                             cmdPar_varOptAssignment | cmdPar_optionalFlag,   cmdPar_none,                                    cmdPar_none };
-    static inline const char cmdPar_115[4]{ cmdPar_expression,                             cmdPar_expression | cmdPar_optionalFlag,         cmdPar_none,                                    cmdPar_none };
-    static inline const char cmdPar_116[4]{ cmdPar_expression,                             cmdPar_expression,                               cmdPar_expression | cmdPar_multipleFlag,        cmdPar_none };
-    static inline const char cmdPar_117[4]{ cmdPar_expression,                             cmdPar_expression,                               cmdPar_expression | cmdPar_optionalFlag,        cmdPar_none };
-
-
-    // commands (FUNCTION, FOR, ...): usage restrictions for specific commands (parsing)
-    // ---------------------------------------------------------------------------------
+    // commands: usage restrictions - tested during PARSING
+    // ----------------------------------------------------
 
     // bits b3210: indicate command (not parameter) usage restrictions 
     static constexpr char cmd_usageRestrictionMask = 0x0F;              // mask
 
-public:
     static constexpr char cmd_noRestrictions = 0x00;                    // command has no usage restrictions 
-private:
     static constexpr char cmd_onlyInProgram = 0x01;                     // command is only allowed inside a program
     static constexpr char cmd_onlyInProgOutsideFunc = 0x02;             // command is only allowed inside a program, outside a function block
-public:
     static constexpr char cmd_onlyInFunctionBlock = 0x03;               // command is only allowed inside a function block
     static constexpr char cmd_onlyImmediate = 0x04;                     // command is only allowed in immediate mode
-private:
     static constexpr char cmd_onlyOutsideFunctionBlock = 0x05;          // command is only allowed outside a function block (so also in immediate mode)
-public:
     static constexpr char cmd_onlyImmOrInsideFuncBlock = 0x06;          // command is only allowed inside a function block or in immediate mode
-private:
     static constexpr char cmd_onlyProgramTop = 0x07;                    // only as first program statement
     static constexpr char cmd_onlyImmModeTop = 0x08;                    // only as first user command statement
     static constexpr char cmd_onlyImmediateNotWithinBlock = 0x09;       // command is only allowed in immediate mode, and only outside blocks
 
     // bit b7: skip command during execution
     static constexpr char cmd_skipDuringExec = 0x80;                    // command is parsed but not executed
+
+    // external (user cpp) Justina commands only: usage restriction keys
+public:
+    static constexpr char userCmd_noRestriction = cmd_onlyImmOrInsideFuncBlock;     // != cmd_noRestrictions value !
+    static constexpr char userCmd_programOnly = cmd_onlyInFunctionBlock;
+    static constexpr char userCmd_commandLineOnly = cmd_onlyImmediate;
+private:
+
+
+    // commands: argument type restrictions - tested during PARSING
+    // ------------------------------------------------------------
+
+    // commands parameters: allowed argument types
+    static constexpr uint8_t cmdArg_none = 0;
+    static constexpr uint8_t cmdArg_spare = 1;
+    static constexpr uint8_t cmdArg_varNoAssignment = 2;                // and no operators
+    static constexpr uint8_t cmdArg_varOptAssignment = 3;
+    static constexpr uint8_t cmdArg_expression = 4;
+    static constexpr uint8_t cmdArg_JustinaFunction = 5;
+    static constexpr uint8_t cmdArg_numConstOnly = 6;
+    static constexpr uint8_t cmdArg_ident = 7;
+
+    // flags may be combined with value of one of the allowed types above
+    static constexpr uint8_t cmdArg_flagMask = 0x18;                    // allowed 0 to n times. Only for last command parameter
+    static constexpr uint8_t cmdArg_multipleFlag = 0x08;                // allowed 0 to n times. Only for last command parameter
+    static constexpr uint8_t cmdArg_optionalFlag = 0x10;                // allowed 0 to 1 times. If parameter is present, next parameters do not have to be optional 
+
+    // commands: argument type sequences 
+    // command parameter spec name             param type and flags                             param type and flags                            param type and flags    param type and flags
+    static inline const char cmdArgSeq_100[4]{ cmdArg_none,                                     cmdArg_none,                                    cmdArg_none,            cmdArg_none };
+    static inline const char cmdArgSeq_101[4]{ cmdArg_expression | cmdArg_multipleFlag,         cmdArg_none,                                    cmdArg_none,            cmdArg_none };
+    static inline const char cmdArgSeq_102[4]{ cmdArg_varOptAssignment | cmdArg_multipleFlag,   cmdArg_none,                                    cmdArg_none,            cmdArg_none };
+    static inline const char cmdArgSeq_103[4]{ cmdArg_varOptAssignment,                         cmdArg_expression | cmdArg_multipleFlag,        cmdArg_none,            cmdArg_none };
+    static inline const char cmdArgSeq_104[4]{ cmdArg_expression,                               cmdArg_varOptAssignment | cmdArg_multipleFlag,  cmdArg_none,            cmdArg_none };
+
+    static inline const char cmdArgSeq_109[4]{ cmdArg_JustinaFunction,                          cmdArg_none,                                    cmdArg_none,            cmdArg_none };
+    static inline const char cmdArgSeq_110[4]{ cmdArg_ident | cmdArg_multipleFlag,              cmdArg_none,                                    cmdArg_none,            cmdArg_none };
+
+    // argument type sequence keys
+public:
+    // notes: more detailed argument type checking must be done during execution 
+    //        minimum and maximum allowed number of arguments is defined in the user command definitions  
+    static constexpr char argSeq_expressions = 101;                     // cmdArgSeq_101: 0..n expressions 
+    static constexpr char argSeq_vars = 102;                            // cmdArgSeq_102: 0..n variables with optional assignments
+    static constexpr char argSeq_1var_expr = 103;                       // cmdArgSeq_103: 1 variable with optional assignment, 0..n expressions
+private:
+
+    // external (user cpp) Justina commands only: argument type sequences available
+    struct CmdArgKey { char key; const char* record; };
+    static inline const CmdArgKey cmdArgSeq_records[4]{ {argSeq_expressions, cmdArgSeq_101}, {argSeq_vars, cmdArgSeq_102}, {argSeq_1var_expr, cmdArgSeq_103} };
 
 
     // variable scope and value type bits 
@@ -1071,7 +1073,7 @@ public:
     static constexpr uint8_t value_isFloat = 0x02;
     static constexpr uint8_t value_isString = 0x03;
 private:
-    static constexpr uint8_t value_isStringPointer = 0x03;              // same as value_isString (for use by calling Arduino program)
+    static constexpr uint8_t value_isStringPointer = value_isString;    // same as value_isString (for use by calling Arduino program)
 
 
     // application flag bits
@@ -1271,7 +1273,7 @@ private:
     struct internCmdDef {                                               // keywords with pattern for parameters (if keyword is used as command, starting a statement)
         const char* const _commandName;
         const char commandCode;
-        const char restrictions;                                        // specifies whether the statement is executable and where the use is allowed (in a program, in a function, ...)
+        const char usageRestrictions;                                   // specifies whether the statement is executable and where the use is allowed (in a program, in a function, ...)
         const char minArgs;                                             // minimum & maximum number of arguments AND padding (boundary alignment)                                     
         const char maxArgs;
         const char* pCmdAllowedParTypes;
@@ -1607,11 +1609,21 @@ public:
     // the Arduino program calling Justina must create an array variable for each return type that will be used  
 
     struct CppCommand {
-        const char* cppCommandName;                                                                         // command name (alias)
+        // constructors
+        CppCommand(const char* a_cppCommandName, void (*a_func)(void** const pdata, const char* const valueType, const int argCount, int& execError), char a_minArgCount, char a_maxArgCount);
+
+        CppCommand(const char* a_cppCommandName, void (*a_func)(void** const pdata, const char* const valueType, const int argCount, int& execError), char a_minArgCount, char a_maxArgCount,
+            char a_usageRestrictions);
+
+        CppCommand(const char* a_cppCommandName, void (*a_func)(void** const pdata, const char* const valueType, const int argCount, int& execError), char a_minArgCount, char a_maxArgCount,
+            char a_usageRestrictions, char a_argTypeRstrictions);
+
+        const char* cppCommandName;                                 // command name (alias)
         void (*func)(void** const pdata, const char* const valueType, const int argCount, int& execError);
         char minArgCount;
         char maxArgCount;
-        char restrictions;                                                                                  // subset of defined usages
+        char usageRestrictions = userCmd_noRestriction;             // subset of defined usage restrictions
+        char argTypeRestrictions = argSeq_expressions;              // subset of defined argument restrictions
     };
 private:
 
@@ -2044,10 +2056,11 @@ public:
     void setRTCCallbackFunction(void (*func)(uint16_t* date, uint16_t* time));
 
 
-    // sets pointers to the locations where the Arduino program stored information about user-defined (external) cpp functions (user callback functions)
-    // -------------------------------------------------------------------------------------------------------------------------------------------------
+    // sets pointers to the locations where the Arduino program stored information about user-defined (external Justina) c++ functions (user callback functions)
+    // ---------------------------------------------------------------------------------------------------------------------------------------------------------
 
     void registerUserCommands(const CppCommand* const pCppCommands, const int cppCommandCount);
+
     void registerBoolUserCppFunctions(const CppBoolFunction* const  pCppBoolFunctions, const int cppBoolFunctionCount);
     void registerCharUserCppFunctions(const CppCharFunction* const  pCppCharFunctions, const int cppCharFunctionCount);
     void registerIntUserCppFunctions(const CppIntFunction* const  pCppIntFunctions, const int cppIntFunctionCount);
