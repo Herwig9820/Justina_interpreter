@@ -899,8 +899,8 @@ void Justina::begin() {
                     execResult_type execResult{ result_execOK };
                     if (!_programMode && (result == result_parsing_OK)) {
                         execResult = exec(_programStorage + _PROGRAM_MEMORY_SIZE);                              // execute parsed user statements
-                        if (execResult == result_kill) { kill = true; }
-                        if (kill || (execResult == result_quit)) { printlnTo(0); quitNow = true; }              // make sure Justina prompt will be printed on a new line
+                        if (execResult == EVENT_kill) { kill = true; }
+                        if (kill || (execResult == EVENT_quit)) { printlnTo(0); quitNow = true; }               // make sure Justina prompt will be printed on a new line
                     }
 
                     quitNow = quitNow || prepareForIdleMode(result, execResult, kill, clearCmdIndicator, pStatementInputStream, streamNumber); // return value: quit Justina now
@@ -1134,7 +1134,7 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
 
     // if in debug mode, trace expressions (if defined) and print debug info 
     // ---------------------------------------------------------------------
-    if ((_openDebugLevels > 0) && (execResult != result_kill) && (execResult != result_quit) && (execResult != result_initiateProgramLoad)) { traceAndPrintDebugInfo(execResult); }
+    if ((_openDebugLevels > 0) && (execResult != EVENT_kill) && (execResult != EVENT_quit) && (execResult != result_initiateProgramLoad)) { traceAndPrintDebugInfo(execResult); }
 
     // re-init or reset interpreter state 
     // ----------------------------------
@@ -1202,7 +1202,7 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
     // Identifiers must stay available.
     // -> if stopping a program for debug, do not delete parsed strings (in imm. mode command), because that command line has now been pushed on...
      // ...the parsed command line stack and included parsed constants will be deleted later (resetMachine routine).
-    if ((execResult != result_stopForDebug) && (execResult != result_stopForBreakpoint)) { deleteConstStringObjects(_programStorage + _PROGRAM_MEMORY_SIZE); } // always
+    if ((execResult != EVENT_stopForDebug) && (execResult != EVENT_stopForBreakpoint)) { deleteConstStringObjects(_programStorage + _PROGRAM_MEMORY_SIZE); } // always
 
     resetFunctionFlags();
 
@@ -1243,7 +1243,7 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
     }
 
     // has an error occurred ? (exclude 'events' reported as an error)
-    bool isError = (result != result_parsing_OK) || ((execResult != result_execOK) && (execResult < result_startOfEvents));
+    bool isError = (result != result_parsing_OK) || ((execResult != result_execOK) && (execResult < EVENT_startOfEvents));
     isError ? (_appFlags |= appFlag_errorConditionBit) : (_appFlags &= ~appFlag_errorConditionBit);             // set or clear error condition flag 
     // status 'idle in debug mode' or 'idle' 
     (_appFlags &= ~appFlag_statusMask);
@@ -1286,7 +1286,7 @@ void Justina::traceAndPrintDebugInfo(execResult_type execResult) {
     pDeepestOpenFunction = (OpenFunctionData*)pFlowCtrlStackLvl;                                                // deepest level of nested functions
     nextStatementPointer = pDeepestOpenFunction->pNextStep;
 
-    bool isBreakpointStop = (execResult == result_stopForBreakpoint);
+    bool isBreakpointStop = (execResult == EVENT_stopForBreakpoint);
 
     // print debug header ('STOP'or 'BREAK') line
     // ------------------------------------------
@@ -1409,8 +1409,8 @@ void Justina::parseAndExecTraceOrBPviewString(int BPindex) {
 // *   check if all Justina functions referenced are defined   *
 // -------------------------------------------------------------
 
-bool Justina::checkAllJustinaFunctionsDefined(int& index) const {
-    for (int index = 0; index < _justinaFunctionCount; index++) {                                               // points to variable in use
+bool Justina::checkAllJustinaFunctionsDefined(int& index)  {
+    for (index = 0; index < _justinaFunctionCount; index++) {                                               // points to variable in use
         if (justinaFunctionData[index].pJustinaFunctionStartToken == nullptr) { return false; }
     }
     return true;

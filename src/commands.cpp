@@ -133,7 +133,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
             // RETURN with 'event' error
             _activeFunctionData.activeCmd_commandCode = cmdcod_none;                            // command execution ended
-            return result_stopForDebug;
+            return EVENT_stopForDebug;
         }
         break;
 
@@ -144,7 +144,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
         case cmdcod_quit:
         {
-            return result_quit;
+            return EVENT_quit;
         }
         break;
 
@@ -219,7 +219,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             --_openDebugLevels;
 
             // abort: all done
-            if (_activeFunctionData.activeCmd_commandCode == cmdcod_abort) { return result_abort; }
+            if (_activeFunctionData.activeCmd_commandCode == cmdcod_abort) { return EVENT_abort; }
 
             _stepCmdExecuted = (_activeFunctionData.activeCmd_commandCode == cmdcod_step) ? db_singleStep :
                 (_activeFunctionData.activeCmd_commandCode == cmdcod_stepOut) ? db_stepOut :
@@ -574,7 +574,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                     char input[2 + 1] = "";                         // init: empty string
                     // NOTE: doCancel and doDefault are dummy arguments here
                     bool kill{ false }, doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };
-                    if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return result_kill; }    // kill request from caller ?
+                    if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return EVENT_kill; }    // kill request from caller ?
                     if (doAbort) { forcedAbortRequest = true; break; }                  // ' abort running code (program or immediate mode statements)
                     if (doStop) { forcedStopRequest = true; }                           // stop a running program (do not produce stop event yet, wait until program statement executed)
 
@@ -718,7 +718,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
             execResult_type errNum = (opIsLong) ? (execResult_type)value.longConst : (execResult_type)value.floatConst;
             // if error to be raised is not within this range, simply ignore it 
-            if ((errNum != result_execOK) && (execResult < result_startOfEvents)) { return errNum; }
+            if ((errNum != result_execOK) && (execResult < EVENT_startOfEvents)) { return errNum; }
 
             // clean up
             clearEvalStackLevels(cmdArgCount);                              // clear evaluation stack and intermediate strings 
@@ -870,7 +870,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                     char input[2 + 1] = "";                                                                                 // init: empty string
                     bool doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };
                     // NOTE: doCancel and doDefault are dummy arguments here
-                    if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return result_kill; }  // kill request from caller ? 
+                    if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return EVENT_kill; }  // kill request from caller ? 
                     if (doAbort) { forcedAbortRequest = true; break; }                                                      // abort running code (program or immediate mode statements)
                     else if (doStop) { forcedStopRequest = true; }                                                          // stop a running program (do not produce stop event yet, wait until program statement executed)
 
@@ -1015,7 +1015,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                             char input[2 + 1] = "";                         // init: empty string
                             // NOTE: doCancel and doDefault are dummy arguments here
                             bool kill{ false }, doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };
-                            if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return result_kill; }    // kill request from caller ?
+                            if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return EVENT_kill; }     // kill request from caller ?
                             if (doAbort) { proceed = false; forcedAbortRequest = true; break; }                                             // ' abort running code (program or immediate mode statements)
                             if (doStop) { forcedStopRequest = true; }                           // stop a running program (do not produce stop event yet, wait until program statement executed)
 
@@ -1031,7 +1031,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                             bool flushInput = isReceive && ((pSourceStream == _pConsoleIn) ? !validAnswer : (validAnswer && !proceed));
                             if (flushInput) {
                                 if (pSourceStream->available() > 0) { kill = flushInputCharacters(doStop, doAbort); }
-                                if (kill) { return result_kill; }
+                                if (kill) { return EVENT_kill; }
                                 if (doAbort) { proceed = false; forcedAbortRequest = true; break; }         // abort running code (program or immediate mode statements)
                                 if (doStop) { forcedStopRequest = true; }                                   // stop a running program (do not produce stop event yet, wait until program statement executed)
                             }
@@ -1151,7 +1151,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                     if (kill) {                                                                     // kill request from caller ?
                         if (isSend || isCopy) { SD_closeFile(sourceStreamNumber); }
                         if (isReceive || isCopy) { SD_closeFile(destinationStreamNumber); }
-                        return result_kill;
+                        return EVENT_kill;
                     }
                     if (doAbort) {                                                                  // abort running code (program or immediate mode statements) ?
                         if (isSend || isCopy) { forcedAbortRequest = true; break; }
@@ -1322,7 +1322,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                 bool doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };
                 int length{ MAX_USER_INPUT_LEN };
                 char input[MAX_USER_INPUT_LEN + 1] = "";                                                                        // init: empty string
-                if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return result_kill; }
+                if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return EVENT_kill; }
                 if (doAbort) { forcedAbortRequest = true; break; }                                                              // abort running code (program or immediate mode statements)
                 else if (doStop) { forcedStopRequest = true; }                                                                  // stop a running program (do not produce stop event yet, wait until program statement executed)
 
@@ -1431,7 +1431,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                 char c{};
                 bool charFetched{ false };
                 c = getCharacter(charFetched, kill, doStop, doAbort, stdConsDummy);                     // get a key (character from console) if available and perform a regular housekeeping callback as well
-                if (kill) { execResult = result_kill; return execResult; }                              // kill Justina interpreter ? (buffer is now flushed until next line character)
+                if (kill) { execResult = EVENT_kill; return execResult; }                               // kill Justina interpreter ? (buffer is now flushed until next line character)
                 if (doAbort) { forcedAbortRequest = true; break; }                                      // stop a running Justina program (buffer is now flushed until next line character) 
                 if (doStop) { forcedStopRequest = true; }                                               // stop a running program (do not produce stop event yet, wait until program statement executed)
 

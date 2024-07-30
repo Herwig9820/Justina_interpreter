@@ -86,5 +86,5 @@ procedure fileTests(fname);
 	coutLine line(), "*** now sending the complete file to the console...";
 	sendFile fname, CONSOLE;
 	
-	coutLine "******* STOP test *******";
+	coutLine "******* STOP test *******", line();
 end;

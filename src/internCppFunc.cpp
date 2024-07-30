@@ -585,7 +585,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                         _pDebugOut->print("      read line (2) ");   _pDebugOut->println(buffer);
                     #endif
                         delete[] buffer;
-                        return result_kill;
+                        return EVENT_kill;
                     }
                     if (doAbort) { forcedAbortRequest = true; break; }                                                      // stop a running Justina program (buffer is now flushed until nex line character) 
                     if (doStop) { forcedStopRequest = true; }                                                               // stop a running program (do not produce stop event yet, wait until program statement executed)
@@ -704,7 +704,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                             _pDebugOut->print("     parse list (2) ");   _pDebugOut->println(buffer);
                         #endif
                             delete[] buffer;
-                            return result_kill;
+                            return EVENT_kill;
                         }
                     }
                     if (doAbort) { forcedAbortRequest = true; break; }                                                      // stop a running Justina program  
@@ -926,7 +926,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 // get a character if available and perform a regular housekeeping callback as well
                 bool charFetched{ false };
                 char c = getCharacter(charFetched, kill, doStop, doAbort, stdConsDummy, (streamNumber <= 0));               // time out only required if external IO
-                if (kill) { return result_kill; }                                                                           // kill request from caller ? 
+                if (kill) { return EVENT_kill; }                                                                            // kill request from caller ? 
                 if (doAbort) { forcedAbortRequest = true; break; }                                                          // stop a running Justina program 
                 if (doStop) { forcedStopRequest = true; }                                                                   // stop a running program (do not produce stop event yet, wait until program statement executed)
                 if (!charFetched) { targetFound = false; break; }                                                           // target was not found
@@ -1726,7 +1726,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 while (startTime + (unsigned long)args[0].longConst > millis()) {
                     bool kill, doStop{}, doAbort{};
                     execPeriodicHousekeeping(&kill, &doStop, &doAbort);
-                    if (kill) { return result_kill; }                                                                       // kill Justina interpreter ? (buffer is now flushed until next line character)
+                    if (kill) { return EVENT_kill; }                                                                        // kill Justina interpreter ? (buffer is now flushed until next line character)
                     if (doAbort) { forcedAbortRequest = true; break; }                                                      // stop a running Justina program 
                     if (doStop) { forcedStopRequest = true; }                                                               // stop a running program (do not produce stop event yet, wait until program statement executed)
                     if (forcedStopRequest) { break; }                                                                       // atypical flow: as this is a pure delay not doing anything else, break on stop as well

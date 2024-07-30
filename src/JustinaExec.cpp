@@ -578,7 +578,7 @@ Justina::execResult_type  Justina::exec(char* startHere) {
 
                         // NOTE: STOP and ABORT commands do NOT set 'appFlagsRequestStop' & 'appFlagsRequestAbort', but return a 'stop' or 'abort' error instead
                         execResult = execInternalCommand(isFunctionReturn, appFlagsRequestStop, appFlagsRequestAbort);
-                        if (execResult == result_abort) { abortCommandReceived = true; }                                            // user typed
+                        if (execResult == EVENT_abort) { abortCommandReceived = true; }                                             // user typed
                         if (execResult != result_execOK) { doCaseBreak = true; }                                                    // error: break (case label) immediately
                     }
 
@@ -629,7 +629,7 @@ Justina::execResult_type  Justina::exec(char* startHere) {
         // if error trapping is on, trap any error. This effectively clears the error condition. A subsequent call to err() will return the error number 
         // ---------------------------------------------------------------------------------------------------------------------------------------------
         // did an error occur in a Justina function, the (debug) command line or an eval() string ? 
-        if (!_parsingExecutingTraceString && !_parsingExecutingTriggerString && (execResult != result_execOK) && (execResult < result_startOfEvents)) {    // Trap the error if error trapping is enabled
+        if (!_parsingExecutingTraceString && !_parsingExecutingTriggerString && (execResult != result_execOK) && (execResult < EVENT_startOfEvents)) {    // Trap the error if error trapping is enabled
             bool errorTrapped = trapError(isEndOfStatementSeparator, execResult);                               // if error trapped, execResult will be reset (no error)
             // reset 'isComma', because error trapping moves the next step to first step after the statement producing an execution error, in the function were error trapping is enabled 
             if (errorTrapped) { isComma = false; }
@@ -640,7 +640,7 @@ Justina::execResult_type  Justina::exec(char* startHere) {
 
         if (_parsingExecutingTriggerString) {
             // stop evaluation if done evaluating OR if an execution error occurred during evaluation
-            bool isTriggerEvalEnd = (isEndOfStatementSeparator || (execResult != result_execOK) && (execResult < result_startOfEvents));
+            bool isTriggerEvalEnd = (isEndOfStatementSeparator || (execResult != result_execOK) && (execResult < EVENT_startOfEvents));
             if (isTriggerEvalEnd) { checkTriggerResult(execResult); isEndOfStatementSeparator = false; }     // avoid end of statement processing (below)
 
         }
@@ -687,7 +687,7 @@ Justina::execResult_type  Justina::exec(char* startHere) {
             bool kill, forcedStop{}, forcedAbort{};
 
             execPeriodicHousekeeping(&kill, &forcedStop, &forcedAbort);
-            if (kill) { execResult = result_kill; return execResult; }                                      // kill Justina interpreter ? (buffer is now flushed until next line character)
+            if (kill) { execResult = EVENT_kill; return execResult; }                                       // kill Justina interpreter ? (buffer is now flushed until next line character)
             appFlagsRequestStop = appFlagsRequestStop || forcedStop;
             appFlagsRequestAbort = appFlagsRequestAbort || forcedAbort;
             if (appFlagsRequestStop) { showStopmessage = true; }                                            // relevant for message only
@@ -704,8 +704,8 @@ Justina::execResult_type  Justina::exec(char* startHere) {
                 checkForStop(isActiveBreakpoint, doStopForDebugNow, appFlagsRequestStop, isFunctionReturn, programCnt_previousStatementStart);
                 tokenType = *_programCounter & 0x0F;             // adapt next token type (could be changed by a breakpoint trigger string)
 
-                if (appFlagsRequestAbort) { execResult = result_abort; }
-                else if (doStopForDebugNow) { execResult = (isActiveBreakpoint ? result_stopForBreakpoint : result_stopForDebug); }
+                if (appFlagsRequestAbort) { execResult = EVENT_abort; }
+                else if (doStopForDebugNow) { execResult = (isActiveBreakpoint ? EVENT_stopForBreakpoint : EVENT_stopForDebug); }
             }
         }
 
@@ -792,7 +792,7 @@ Justina::execResult_type  Justina::exec(char* startHere) {
     // adapt imm. mode parsed statement stack, flow control stack and evaluation stack
       // -------------------------------------------------------------------------------
 
-    if ((execResult == result_stopForDebug) || (execResult == result_stopForBreakpoint)) {                              // stopping for debug now ('STOP' command or single step)
+    if ((execResult == EVENT_stopForDebug) || (execResult == EVENT_stopForBreakpoint)) {                                // stopping for debug now ('STOP' command or single step)
         // push caller function data (or main = user entry level in immediate mode) on FLOW CONTROL stack 
 
         _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
@@ -813,7 +813,7 @@ Justina::execResult_type  Justina::exec(char* startHere) {
     }
 
     // no programs in debug: always; otherwise: only if error is in fact quit or kill event 
-    else if ((_openDebugLevels == 0) || (execResult == result_quit) || (execResult == result_kill)) {                   // do not clear stacks while in debug mode, except when quitting
+    else if ((_openDebugLevels == 0) || (execResult == EVENT_quit) || (execResult == EVENT_kill)) {                     // do not clear stacks while in debug mode, except when quitting
         int dummy{};
         _openDebugLevels = 0;       // (if not yet zero)
         clearParsedCommandLineStack(parsedCommandLineStack.getElementCount());
@@ -1203,7 +1203,7 @@ void Justina::checkTriggerResult(execResult_type& execResult) {
 
     // if trigger expression evaluated to true, return with breakpoint event
     // if not, but a 'stop' command was pending (until after execution of trigger string, so until now), return with stop event
-    execResult = isActiveBreakpoint ? result_stopForBreakpoint : _pendingStopForDebug ? result_stopForDebug : result_execOK;
+    execResult = isActiveBreakpoint ? EVENT_stopForBreakpoint : _pendingStopForDebug ? EVENT_stopForDebug : result_execOK;
     _pendingStopForDebug = false;
 
     return;

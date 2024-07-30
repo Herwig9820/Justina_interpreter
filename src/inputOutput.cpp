@@ -1087,7 +1087,7 @@ void Justina::printCallStack() {
 void Justina::printExecError(execResult_type execResult, bool  showStopmessage) {
     if (*_pConsolePrintColumn != 0) { printlnTo(0);  *_pConsolePrintColumn = 0; }
 
-    bool isEvent = (execResult >= result_startOfEvents);                                                                // not an error but an event ?
+    bool isEvent = (execResult >= EVENT_startOfEvents);                                                                // not an error but an event ?
 
     // plain error, or event ? 
     if (!isEvent) {
@@ -1152,10 +1152,10 @@ void Justina::printExecError(execResult_type execResult, bool  showStopmessage) 
         printTo(0, execInfo);
     }
 
-    else if (execResult == result_quit) { printTo(0, "\r\nExecuting 'quit' command\r\n"); }
-    else if (execResult == result_kill) {}      // do nothing
-    else if (execResult == result_abort) { printTo(0, "\r\n+++ Abort: code execution terminated +++\r\n"); }
-    else if (execResult == result_stopForDebug) { if (showStopmessage) { printTo(0, "\r\n+++ Program stopped +++\r\n"); } }
+    else if (execResult == EVENT_quit) { printTo(0, "\r\nExecuting 'quit' command\r\n"); }
+    else if (execResult == EVENT_kill) {}      // do nothing
+    else if (execResult == EVENT_abort) { printTo(0, "\r\n+++ Abort: code execution terminated +++\r\n"); }
+    else if (execResult == EVENT_stopForDebug) { if (showStopmessage) { printTo(0, "\r\n+++ Program stopped +++\r\n"); } }
     else if (execResult == result_initiateProgramLoad) {}                                                               // (nothing to do here for this event)
 
     _lastValueIsStored = false;                                                                                         // prevent printing last result (if any)
@@ -1448,7 +1448,7 @@ void Justina::printParsingResult(parsingResult_type result, int funcNotDefIndex,
     else  if ((result == result_function_undefinedFunctionOrArray) && _programMode) {       // in program mode only 
         // during Justina function call parsing, it is not always known whether the function exists (because function can be defined after a call) 
         // -> a line number can not be given, but the undefined function can
-        sprintf(parsingInfo, "\r\n  Parsing error %d: function or array '%s' is not defined", result, JustinaFunctionNames[funcNotDefIndex]);
+        sprintf(parsingInfo, "\r\n  Parsing error %d: function or array '%s' is not defined", (int)result, JustinaFunctionNames[funcNotDefIndex]);
     }
 
     else {                                                                                  // parsing error
@@ -1462,8 +1462,8 @@ void Justina::printParsingResult(parsingResult_type result, int funcNotDefIndex,
         point[pErrorPos - pInstruction + 3] = '\0';
         printlnTo(0, point);
 
-        if (_programMode) { sprintf(parsingInfo, "  Parsing error %d: statement ending at line %d", result, lineCount + 1); }
-        else { sprintf(parsingInfo, "  Parsing error %d", result); }
+        if (_programMode) { sprintf(parsingInfo, "  Parsing error %d: statement ending at line %d", (int)result, lineCount + 1); }
+        else { sprintf(parsingInfo, "  Parsing error %d", (int)result); }
     }
 
     if (strlen(parsingInfo) > 0) { printlnTo(0, parsingInfo); }

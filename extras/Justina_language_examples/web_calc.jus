@@ -94,7 +94,7 @@ procedure webServer();
 		while cpp_connState() != TCP_CONNECTED;													// as long as HTTP client not connected
 			if cin() == asc("&"); 																// check console for ampersand button entry; exit web server if found
 				coutLine line(), "** Webserver stopped **";
-				return 0; 
+				return; 
 			end;				
 		end; 	                                                                            	
 																								

@@ -88,7 +88,7 @@
 #define J_productName "Justina: JUST an INterpreter for Arduino"
 #define J_legalCopyright "Copyright 2024, Herwig Taveirne"
 #define J_version "1.3.1"            
-#define J_buildDate "July 19, 2024"
+#define J_buildDate "August 2, 2024"
 
 
 // ******************************************************************
@@ -670,6 +670,7 @@ class Justina {
         result_parse_kill
     };
 
+public:
     // error codes for all EXECUTION errors
     enum execResult_type {
         result_execOK = 0,
@@ -764,17 +765,18 @@ class Justina {
 
         // *** MANDATORY =>LAST<= range of errors: events ***
         // *** ------------------------------------------ ***
-        result_startOfEvents = 9000,
+        EVENT_startOfEvents = 9000,
 
         // abort, kill, quit, stop EVENTS (first handled as errors - which they are not - initially following the same flow)
-        result_stopForDebug = 9000,                                     // 'Stop' command executed (from inside a program only): this enters debug mode
-        result_stopForBreakpoint,                                       // breakpoint encountered
-        result_abort,                                                   // abort running program (return to Justina prompt)
-        result_kill,                                                    // caller requested to exit Justina interpreter
-        result_quit,                                                    // 'Quit' command executed (exit Justina interpreter)
+        EVENT_stopForDebug = 9000,                                      // 'Stop' command executed (from inside a program only): this enters debug mode
+        EVENT_stopForBreakpoint,                                        // breakpoint encountered
+        EVENT_abort,                                                    // abort running program (return to Justina prompt)
+        EVENT_kill,                                                     // caller requested to exit Justina interpreter
+        EVENT_quit,                                                     // 'Quit' command executed (exit Justina interpreter)
 
         result_initiateProgramLoad                                      // command processed to start loading a program
     };
+private:
 
     // debug codes
     enum dbType_type {
@@ -1138,7 +1140,7 @@ private:
 
 
     // block statements: status flags (execution)
-   // ------------------------------------------
+    // ------------------------------------------
 
     static constexpr uint8_t withinIteration = 0x01;                    // flag is set at the start of each iteration and cleared at the end
     static constexpr uint8_t forLoopInit = 0x02;                        // flag signals start of first iteration of a FOR loop
@@ -1475,7 +1477,7 @@ private:
     // flow control stack data (execution)
     // -----------------------------------
 
-    // each function called, EXCEPT the currently ACTIVE function (deepest call stack level), and all other block commands (e.g. while...end, etc.), use a flow control stack level
+    // each function called - BUT NOT the currently ACTIVE function (deepest call stack level) - , and all other block commands (e.g. while...end, etc.), use a flow control stack level
     // flow control data for the currently active function - or the main program level if no function is currently active - is stored in structure '_activeFunctionData' (NOT on the flow control stack)
     // -> if executing a command in immediate mode, and not within a called function or open block, the control flow stack has no elements
     // -> if executing a 'start block' command (like 'while', ...), a structure of type 'OpenBlockTestData' containing flow control data for that open block is pushed to the flow control stack,
@@ -1609,6 +1611,13 @@ public:
     // the Arduino program calling Justina must create an array variable for each return type that will be used  
 
     struct CppCommand {
+        const char* cppCommandName;                                 // command name (alias)
+        void (*func)(void** const pdata, const char* const valueType, const int argCount, int& execError);
+        char minArgCount;
+        char maxArgCount;
+        char usageRestrictions = userCmd_noRestriction;             // subset of defined usage restrictions
+        char argTypeRestrictions = argSeq_expressions;              // subset of defined argument restrictions
+
         // constructors
         CppCommand(const char* a_cppCommandName, void (*a_func)(void** const pdata, const char* const valueType, const int argCount, int& execError), char a_minArgCount, char a_maxArgCount);
 
@@ -1617,13 +1626,6 @@ public:
 
         CppCommand(const char* a_cppCommandName, void (*a_func)(void** const pdata, const char* const valueType, const int argCount, int& execError), char a_minArgCount, char a_maxArgCount,
             char a_usageRestrictions, char a_argTypeRstrictions);
-
-        const char* cppCommandName;                                 // command name (alias)
-        void (*func)(void** const pdata, const char* const valueType, const int argCount, int& execError);
-        char minArgCount;
-        char maxArgCount;
-        char usageRestrictions = userCmd_noRestriction;             // subset of defined usage restrictions
-        char argTypeRestrictions = argSeq_expressions;              // subset of defined argument restrictions
     };
 private:
 
@@ -2186,7 +2188,7 @@ private:
     bool checkInternCppFuncArgArrayPattern(parsingResult_type& result);
     bool checkExternCppFuncArgIsScalar(parsingResult_type& result);
     bool checkJustinaFuncArgArrayPattern(parsingResult_type& result, bool isFunctionClosingParenthesis);
-    bool checkAllJustinaFunctionsDefined(int& index) const;
+    bool checkAllJustinaFunctionsDefined(int& index);
     bool resetFunctionFlags();
 
     // basic parsing routines for constants, without other syntax checks etc. 

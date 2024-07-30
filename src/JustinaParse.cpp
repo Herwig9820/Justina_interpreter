@@ -186,7 +186,7 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
 // *   Start of a command only: apply additional command syntax rules   *
 // ----------------------------------------------------------------------
 
-bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, bool commandIsInternal) {               // command syntax checks
+bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, bool commandIsInternal) {           // command syntax checks
 
 #if PRINT_PARSED_TOKENS
     _pDebugOut->println("   checking command keyword");
@@ -194,9 +194,9 @@ bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, 
     int key_allowedParTypes{};
     int index{ 0 };
     if (!commandIsInternal) {
-        key_allowedParTypes = ((CppCommand*)_pExternCommands)[commandIndex].argTypeRestrictions;                        // external command ?
+        key_allowedParTypes = ((CppCommand*)_pExternCommands)[commandIndex].argTypeRestrictions;                    // external command ?
 
-        int records = sizeof(cmdArgSeq_records) / sizeof(cmdArgSeq_records[0]);                                         // check validity argument sequence key 
+        int records = sizeof(cmdArgSeq_records) / sizeof(cmdArgSeq_records[0]);                                     // check validity argument sequence key 
         for (index = 0; index < records; index++) {
             if (cmdArgSeq_records[index].key == key_allowedParTypes) { break; }
         }
@@ -205,7 +205,7 @@ bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, 
     }
 
     _pCmdAllowedParTypes = commandIsInternal ? _internCommands[commandIndex].pCmdAllowedParTypes : cmdArgSeq_records[index].record;   // remember allowed parameter types
-    _cmdParSpecColumn = 0;                                                                                              // reset actual command parameter counter
+    _cmdParSpecColumn = 0;                                                                                          // reset actual command parameter counter
     _cmdArgNo = 0;
 
     constexpr Justina::CmdBlockDef externCmdBlockNone{ block_none, block_na, block_na, block_na };
@@ -230,7 +230,7 @@ bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, 
         _isClearProgCmd = _internCommands[commandIndex].commandCode == cmdcod_clearProg;
         _isClearAllCmd = _internCommands[commandIndex].commandCode == cmdcod_clearAll;
 
-        _isAnyVarCmd = _isGlobalOrUserVarCmd || _isLocalVarCmd || _isStaticVarCmd;                                      //  var, local, static
+        _isAnyVarCmd = _isGlobalOrUserVarCmd || _isLocalVarCmd || _isStaticVarCmd;                                  //  var, local, static
     }
 
     // is this command allowed here ? Check restrictions
@@ -427,7 +427,7 @@ bool Justina::checkCommandArgToken(parsingResult_type& result, int& clearIndicat
     // ... and skip commas separating arguments (because these commas have just reset variables used for command argument constraints checking, preparing for next command argument (if any))
 
     if ((_parenthesisLevel == 0) && (!isLvl0CommaSep)) {                                                                        // a comma resets variables used for command argument constraint checks
-        if (allowedParType == cmdArg_none) { result = result_cmd_tooManyArguments; return false; }                                // irrespective of defined max. arg. count for command
+        if (allowedParType == cmdArg_none) { result = result_cmd_tooManyArguments; return false; }                              // irrespective of defined max. arg. count for command
         if (allowedParType == cmdArg_spare && !isSpareTokenType) { result = result_cmd_spareExpectedAsPar; return false; }      // does not occur, but keep for completeness
         if (allowedParType == cmdArg_ident && !isGenIdent) { result = _isDeleteVarCmd ? result_cmd_variableNameExpectedAsPar : result_cmd_identExpectedAsPar; return false; }
         if ((allowedParType == cmdArg_expression) && !_lvl0_withinExpression) { result = result_cmd_expressionExpectedAsPar; return false; }    // does not occur, but keep for completeness
