@@ -1,5 +1,3 @@
-#include <TensorFlowLite_ESP32.h>
-
 /*************************************************************************************************************************
 *   Example Arduino sketch demonstrating Justina interpreter functionality												 *
 *                                                                                                                        *
