@@ -38,7 +38,7 @@
 
 
 // set directives to 0 if output device is not present, set to 1 if present, 0 if not (OLED: output only)  
-#define WITH_OLED_SW_SPI 1                      // use SW SPI OLED ? Note: HW (hardware) SPI interferes with SD card breakout box, if used
+#define WITH_OLED_SW_SPI 0                      // use SW SPI OLED ? Note: HW (hardware) SPI interferes with SD card breakout box, if used
 #define WITH_OLED_HW_I2C 1                      // use HW I2C OLED ?
 
 // Define the dimension of the U8x8log window

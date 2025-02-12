@@ -26,7 +26,7 @@
 #ifndef _JUSTINA_h
 #define _JUSTINA_h
 
-#if !defined(ARDUINO_ARCH_SAMD) && !defined(ARDUINO_ARCH_RP2040) && !defined(ARDUINO_ARCH_ESP32)
+#if !defined(ARDUINO_ARCH_SAMD) && !defined(ARDUINO_ARCH_RP2040) && !defined(ARDUINO_ARCH_ESP32) && !defined(ARDUINO_ARCH_NRF52840)
 #error “The Justina interpreter library only supports boards with a SAMD, RP2040 or ESP32 architecture.”
 #endif
 
@@ -42,7 +42,7 @@
 #endif
 
 // default values in case "Justina_constants.h" is not found OR it doesn't contain a #define statement for a particular constant
-#if defined(ARDUINO_ARCH_RP2040) || defined(ARDUINO_ARCH_ESP32)
+#if defined(ARDUINO_ARCH_RP2040) || defined(ARDUINO_ARCH_ESP32) || defined(ARDUINO_ARCH_NRF52840)
 
 #if !defined(PROGMEM_SIZE)
 #define PROGMEM_SIZE 65536      // program memory, in bytes (INCLUDING immediate mode parsed statements size). Maximum: 2^16 = 65536. Minimum: 2000 
@@ -98,6 +98,8 @@
 // store and retrieve data in linked lists
 
 class LinkedList {
+
+private:
     friend class Justina;
 
     // --------------------
@@ -167,6 +169,7 @@ class LinkedList {
 class Breakpoints;                                                      // forward declaration
 
 class Justina {
+private:
     friend class Breakpoints;
 
     // --------------------
@@ -1612,13 +1615,14 @@ public:
 
     struct CppCommand {
         const char* cppCommandName;                                 // command name (alias)
-        void (*func)(void** const pdata, const char* const valueType, const int argCount, int& execError);
+        void (*func)(void** const pdata, const char* const valueType, const int argCount, int& execError);      // program start address 
         char minArgCount;
         char maxArgCount;
         char usageRestrictions = userCmd_noRestriction;             // subset of defined usage restrictions
         char argTypeRestrictions = argSeq_expressions;              // subset of defined argument restrictions
 
         // constructors
+
         CppCommand(const char* a_cppCommandName, void (*a_func)(void** const pdata, const char* const valueType, const int argCount, int& execError), char a_minArgCount, char a_maxArgCount);
 
         CppCommand(const char* a_cppCommandName, void (*a_func)(void** const pdata, const char* const valueType, const int argCount, int& execError), char a_minArgCount, char a_maxArgCount,
@@ -1627,8 +1631,9 @@ public:
         CppCommand(const char* a_cppCommandName, void (*a_func)(void** const pdata, const char* const valueType, const int argCount, int& execError), char a_minArgCount, char a_maxArgCount,
             char a_usageRestrictions, char a_argTypeRstrictions);
     };
-private:
 
+
+private:
 
     // -----------------
     // *   variables   *
@@ -2354,6 +2359,8 @@ private:
 // ******************************************************************
 
 class Breakpoints {
+
+private:
     friend class Justina;
 
     Justina* _pJustina;
@@ -2396,6 +2403,7 @@ class Breakpoints {
     Justina::execResult_type maintainBP(long breakpointLine, char actionCmdCode, int extraAttribCount = 0, const char* viewString = nullptr, long hitCount = 0, const char* triggerString = nullptr);
     Justina::execResult_type findParsedStatementForSourceLine(long sourceLine, char*& pProgramStep);
 
+    // utilities
     long BPsourceLineFromToBPlineSequence(long BPsourceLineOrIndex, bool toIndex = true);
     Justina::execResult_type progMem_getSetClearBP(long lineSequenceNum, char*& pProgramStep, bool doSet = false, bool doClear = false);
     Justina::execResult_type maintainBreakpointTable(long sourceLine, char* pProgramStep, bool doSet, bool doClear, bool doEnable, bool doDisable,

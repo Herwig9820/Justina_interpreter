@@ -1742,10 +1742,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 fcnResult.longConst = args[1].longConst;                                                                    // return value written to pin (could be the result of an expression)
             }
             else if (functionCode == fnccod_analogRead) { fcnResult.longConst = analogRead(args[0].longConst); }            // arg: pin
-        #if defined(ARDUINO_ARCH_SAMD)                                                                                      // analog reference only for 
-            else if (functionCode == fnccod_analogReference) { analogReference(args[0].longConst); }                        // arg: reference type (0 to 5: see Arduino doc - 2 is external reference)
-        #else
-            else if (functionCode == fnccod_analogReference) {}                                                             // reference type not available
+        #if defined(ARDUINO_ARCH_SAMD) || defined(ARDUINO_ARCH_RP2040) || defined( ARDUINO_ARCH_NRF52840)                    
+            else if (functionCode == fnccod_analogReference) { analogReference(args[0].longConst); }                        // arg: reference type (0 to 5: see Arduino doc - 2 is external reference)                                     
         #endif
             else if (functionCode == fnccod_analogWrite) { analogWrite(args[0].longConst, args[1].longConst); }             // args: pin, value
             else if (functionCode == fnccod_analogReadResolution) { analogReadResolution(args[0].longConst); }              // arg: bits
@@ -1763,11 +1761,11 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             #endif
             }
             else if (functionCode == fnccod_shiftOut) {                                                                     // args: data pin, clock pin, bit order, value
-            #if defined ARDUINO_ARCH_ESP32
+            #if defined ARDUINO_ARCH_ESP32 
                 shiftOut(args[0].longConst, args[1].longConst, args[2].longConst, args[3].longConst);
-            #else
+            #else    
                 shiftOut(args[0].longConst, args[1].longConst, (BitOrder)args[2].longConst, args[3].longConst);
-            #endif
+            #endif            
             }
             else if (functionCode == fnccod_tone) {                                                                         // args: pin, frequency, (optional) duration
                 (suppliedArgCount == 2) ? tone(args[0].longConst, args[1].longConst) : tone(args[0].longConst, args[1].longConst, args[2].longConst);
@@ -2448,6 +2446,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                     fcnResult.longConst = 2; break;
                 #elif defined(ARDUINO_ARCH_ESP32)
                     fcnResult.longConst = 3; break;
+                #elif defined(ARDUINO_ARCH_NRF52840)
+                    fcnResult.longConst = 4; break;
                 #else 
                     fcnResult.longConst = 0; break;     // none of these
                 #endif

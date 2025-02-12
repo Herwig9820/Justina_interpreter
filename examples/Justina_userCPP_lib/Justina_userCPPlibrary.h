@@ -13,7 +13,6 @@
 #ifndef _JUSTINA_USERCPP_h
 #define _JUSTINA_USERCPP_h
 
-#include "Arduino.h"
 #include "Justina.h"
 
 /*

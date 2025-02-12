@@ -177,7 +177,8 @@ Justina::CppVoidFunction  const cppVoidFunctions[]{                         // u
 };
 
 Justina::CppFloatFunction const cppFloatFunctions[]{                        // user C++ functions returning a floating point number (float) 
-    {"usrf_addAllFloats", addAllFloats, 0, 8}
+    {"usrf_addAllFloats", addAllFloats, 0, 8},
+    {"usrf_addTwoFloats", addAllFloats, 2, 2 }                              // two Justina external functions referring to the same user function
 };
 
 Justina::Cpp_pCharFunction const cpp_pCharFunctions[]{                      // user C++ functions returning a char*
@@ -209,8 +210,8 @@ void setup() {
     justina.registerUserCommands(cppCommands, 1);
 
     // external Justina functions: for each C++ function return type: pass address of arrays containing function attributes AND argument count
-    justina.registerFloatUserCppFunctions(cppFloatFunctions, 1);            // user C++ functions returning a floating point number (float)
-    justina.register_pCharUserCppFunctions(cpp_pCharFunctions, 1);         // user C++ functions returning a char* 
+    justina.registerFloatUserCppFunctions(cppFloatFunctions, 2);            // user C++ functions returning a floating point number (float)
+    justina.register_pCharUserCppFunctions(cpp_pCharFunctions, 1);          // user C++ functions returning a char* 
     justina.registerVoidUserCppFunctions(cppVoidFunctions, 1);              // user C++ functions returning nothing (void)
 
     // no user C++ functions defined with these return types: OK to pass addresses with COUNT 0 -OR- to comment out or remove next lines              
@@ -218,7 +219,6 @@ void setup() {
     justina.registerCharUserCppFunctions(cppCharFunctions, 0);              // user C++ functions returning a character (char)
     justina.registerIntUserCppFunctions(cppIntFunctions, 0);                // user C++ functions returning an integer (int)
     justina.registerLongUserCppFunctions(cppLongFunctions, 0);              // user C++ functions returning a long integer (long)
-
 
     // run interpreter (control will stay there until you quit Justina)
     justina.begin();

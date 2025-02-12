@@ -45,11 +45,10 @@ To change allocated memory sizes WITHOUT CHANGING ANY OF THE FILES IN THE JUSTIN
 - adapt the values in the #define directives
 */
 
-#if defined(ARDUINO_ARCH_RP2040) || defined(ARDUINO_ARCH_ESP32)
-	
+#if defined(ARDUINO_ARCH_RP2040) || defined(ARDUINO_ARCH_ESP32) || defined(ARDUINO_ARCH_NRF52840)
 #define PROGMEM_SIZE 30000	 	// program memory size, in bytes. Maximum: 2^16 = 65536. Minimum is 2000 (of which 500 are reserved for immediate mode (user) commands)
 #else
-#define PROGMEM_SIZE 5000		// SAMD processors have limited memory. Test carefully if you increase this limit. But don't go lower than 2000 	 	
+#define PROGMEM_SIZE 5000		// some microcontrollers have limited memory. Test carefully if you increase this limit. Also, don't go lower than 2000 	 	
 #endif
 
 #define MAXVAR_USER 100         // max. distinct user variables allowed. Absolute limit: 255
