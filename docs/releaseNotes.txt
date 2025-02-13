@@ -1,12 +1,18 @@
-Justina interpreter v1.2.1 - release notes
-------------------------------------------
+-------------------------------------------------
+Justina interpreter library                                              
+Copyright 2024, 2025 Herwig Taveirne 
 
-v1.1.1
+https://github.com/Herwig9820/Justina_interpreter
+
+Release notes
+-------------------------------------------------
+
+v1.1.1 (May 29, 2024)
 ------
 initial version
 
-v1.2.1		
-------
+v1.2.1 (July 2, 2024)		
+---------------------
 new functionality: 
 - when a program is deleted, any breakpoints set receive status 'draft' instead of being deleted.
 - introduction of two new commands: moveBP (move breakpoint to another source line) and BPactivate (remove breakpoint status 'draft') 
@@ -17,13 +23,19 @@ bugs solved:
 - clearProg and clearMem command: char* too short, risking memory corruption
 - loadProg command: default console does not always refer to correct input stream
 
-v1.3.1
-------
+v1.3.1 (August 2, 2024)
+-----------------------
 new functionality:
-- user c++ functions, implementing 'external' Justina commands
-- Justina procedures (not returning a value)
+- user c++ functions, implementing 'external' (c++) Justina commands (NOT returning a result)
+- Justina procedures ('procedure(...);', NOT returning a value)
 - debugging: layout of STOP and BREAK lines changed to increase clarity
 - user manual adapted to cover new functionality
 bugs solved:
 - processor resets or hangs when using r() function 
 - if undefined function encountered in program: processor resets or hangs while printing function name  
+
+c1.3.2 (***************
+---------------
+new functionality:
+- Arduino nano 33 BLE microcontroller added (ARDUINO_ARCH_NRF52840 architecture)
+ 
