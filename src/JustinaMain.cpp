@@ -551,9 +551,10 @@ const Justina::SymbNumConsts Justina::_symbNumConsts[]{
 
     // boards
     {"BOARD_OTHER",         "0",                         value_isLong },        // board architecture is undefined
-    {"BOARD_SAMD",          "1",                         value_isLong },        // board architecture is SAMD
+    {"BOARD_SAMD",          "1",                         value_isLong },        // board architecture is SAMD (nano 33 IoT)
     {"BOARD_RP2040",        "2",                         value_isLong },        // board architecture is RP2040 
     {"BOARD_ESP32",         "3",                         value_isLong },        // board architecture is ESP32 
+    {"BOARD_NRF52840",      "4",                         value_isLong }         // board architecture is NRF52840 (nano 33 BLE) 
 
 };
 

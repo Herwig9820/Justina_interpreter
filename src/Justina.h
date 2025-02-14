@@ -86,9 +86,9 @@
 // max. Justina functions allowed. Absolute limit: 255
 
 #define J_productName "Justina: JUST an INterpreter for Arduino"
-#define J_legalCopyright "Copyright 2024, Herwig Taveirne"
-#define J_version "1.3.1"            
-#define J_buildDate "August 2, 2024"
+#define J_legalCopyright "Copyright 2024, 2025 Herwig Taveirne"
+#define J_version "1.3.2"            
+#define J_buildDate "February 14, 2025" 
 
 
 // ******************************************************************
@@ -1337,7 +1337,7 @@ private:
     static const InternCppFuncDef _internCppFunctions[141];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
 #if (defined ARDUINO_ARCH_ESP32) 
-    static const SymbNumConsts _symbNumConsts[81];                                                                              // predefined constants
+    static const SymbNumConsts _symbNumConsts[82];                                                                              // predefined constants
 #else
     static const SymbNumConsts _symbNumConsts[78];                                                                              // predefined constants
 #endif

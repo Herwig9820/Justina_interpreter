@@ -23,8 +23,8 @@ bugs solved:
 - clearProg and clearMem command: char* too short, risking memory corruption
 - loadProg command: default console does not always refer to correct input stream
 
-v1.3.1 (August 2, 2024)
------------------------
+v1.3.1 (July 30, 2024)
+----------------------
 new functionality:
 - user c++ functions, implementing 'external' (c++) Justina commands (NOT returning a result)
 - Justina procedures ('procedure(...);', NOT returning a value)
@@ -34,8 +34,8 @@ bugs solved:
 - processor resets or hangs when using r() function 
 - if undefined function encountered in program: processor resets or hangs while printing function name  
 
-c1.3.2 (***************
----------------
+v1.3.2 (February 14, 2025)
+--------------------------
 new functionality:
 - Arduino nano 33 BLE microcontroller added (ARDUINO_ARCH_NRF52840 architecture)
  

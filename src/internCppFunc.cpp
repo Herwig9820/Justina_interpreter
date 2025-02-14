@@ -2440,13 +2440,13 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
 
                 case 44:                                                                        // processor board or architecture
                 {
-                #if  defined(ARDUINO_ARCH_SAMD) 
+                #if  defined(ARDUINO_ARCH_SAMD)             // nano 33 IoT
                     fcnResult.longConst = 1; break;
                 #elif defined(ARDUINO_ARCH_RP2040) 
                     fcnResult.longConst = 2; break;
-                #elif defined(ARDUINO_ARCH_ESP32)
+                #elif defined(ARDUINO_ARCH_ESP32)   
                     fcnResult.longConst = 3; break;
-                #elif defined(ARDUINO_ARCH_NRF52840)
+                #elif defined(ARDUINO_ARCH_NRF52840)        // nano 33 BLE
                     fcnResult.longConst = 4; break;
                 #else 
                     fcnResult.longConst = 0; break;     // none of these
