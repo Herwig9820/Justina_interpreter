@@ -27,7 +27,7 @@
 #define _JUSTINA_h
 
 #if !defined(ARDUINO_ARCH_SAMD) && !defined(ARDUINO_ARCH_RP2040) && !defined(ARDUINO_ARCH_ESP32) && !defined(ARDUINO_ARCH_NRF52840)
-#error “The Justina interpreter library only supports boards with a SAMD, RP2040 or ESP32 architecture.”
+#error “The Justina interpreter library only supports boards with a SAMD, RP2040, NRF52840 or ESP32 architecture.”
 #endif
 
 #include "Arduino.h"
@@ -87,8 +87,8 @@
 
 #define J_productName "Justina: JUST an INterpreter for Arduino"
 #define J_legalCopyright "Copyright 2024, 2025 Herwig Taveirne"
-#define J_version "1.3.2"            
-#define J_buildDate "February 14, 2025" 
+#define J_version "1.3.3"            
+#define J_buildDate "February 15, 2025" 
 
 
 // ******************************************************************
@@ -1339,7 +1339,7 @@ private:
 #if (defined ARDUINO_ARCH_ESP32) 
     static const SymbNumConsts _symbNumConsts[82];                                                                              // predefined constants
 #else
-    static const SymbNumConsts _symbNumConsts[78];                                                                              // predefined constants
+    static const SymbNumConsts _symbNumConsts[79];                                                                              // predefined constants
 #endif
     static constexpr int _internCommandCount{ sizeof(_internCommands) / sizeof(_internCommands[0]) };                           // count of keywords in keyword table 
     static constexpr int _internCppFunctionCount{ (sizeof(_internCppFunctions)) / sizeof(_internCppFunctions[0]) };             // count of internal cpp functions in functions table

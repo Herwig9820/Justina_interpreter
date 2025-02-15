@@ -27,9 +27,9 @@
     BEFORE running this sketch, please enter WiFi SSID and password in file 'secrets.h'.
     Also, change static server address and port, and gateway address, subnet mask and DNS address (see 'Create TCP/IP connection object', below)
 
-    See the example of an HTTP server built on top of a TCP/IP server. The TCP/IP server is maintained by regular calls to method 
-    'myTCPconnection.maintainConnection()' (c++), while the HTTP server is written in Justina language. 
-    While control is within Justina, the TCP/IP connection is maintained by regular system callbacks in the background. 
+    See the example of an HTTP server built on top of a TCP/IP server. The TCP/IP server is maintained by regular calls to method
+    'myTCPconnection.maintainConnection()' (c++), while the HTTP server is written in Justina language.
+    While control is within Justina, the TCP/IP connection is maintained by regular system callbacks in the background.
 
     MORE INFORMATION: see Justina USER MANUAL, available on GitHub
 */
@@ -87,7 +87,7 @@ constexpr int terminalCount{ 2 };                                               
 
 // first position: default Justina console AND default input and output streams for Justina 
 Stream* pExternalInputs[terminalCount]{ &Serial, nullptr };                         // Justina input streams (Serial only)                                                                               
-Print* pExternalOutputs[terminalCount]{ &Serial, nullptr };                          // Justina output streams (Serial; TCP/IP stream will be added in setup() )                                                      
+Print* pExternalOutputs[terminalCount]{ &Serial, nullptr };                         // Justina output streams (Serial; TCP/IP stream will be added in setup() )                                                      
 
 // create Justina interpreter object
 Justina justina(pExternalInputs, pExternalOutputs, terminalCount);
@@ -252,7 +252,8 @@ void setConnectionStatusLeds() {
 
         // toggle led on/off state (blink led) ?
         uint32_t currentTime = millis();
-        if ((lastLedChangeTime + 200 < currentTime) || (currentTime < lastLedChangeTime)) {     // (note: also handles millis() overflow after about 47 days)
+        int32_t waitTime = (TCPledState ? 50 : 450);                                            // time between led state changes (ms)
+        if (((lastLedChangeTime + waitTime) < currentTime) || (currentTime < lastLedChangeTime)) { // (note: also handles millis() overflow after about 47 days)
             TCPledState = !TCPledState;
             digitalWrite(TCP_CONNECTED_PIN, TCPledState);                                       // BLINK: TCP enabled but client not yet connected                                         
             lastLedChangeTime = currentTime;
