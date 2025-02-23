@@ -759,7 +759,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                     }
 
                     // parsing functions below return...
-                    //  - true: no parsing error. parsingResult determines whether token recognised (result_parsing_OK) or not (result_tokenNotFound) - in which case it can still be another token type
+                    //  - true: no parsing error. parsingResult determines whether token recognized (result_parsing_OK) or not (result_tokenNotFound) - in which case it can still be another token type
                     //  - false: parsing error. parsingResult indicates which error.
 
                     // float or integer ?

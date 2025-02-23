@@ -114,7 +114,7 @@ procedure webServer();
 																								
 						// isolate expression within GET request                              	
 						urlDecode(expressionText = mid(clientRequest, 16, endPos - 16));		// replace '%hh' 3-character sequences by Ascii character with hex Ascii code 'hh'; replace '+' characters with spaces
-						expressionText = trim(expressionText);
+						expressionText	= trim(expressionText);
 						
 						// parse and evaluate expression entered by the user in the input box, and handle any error
 						if strCmp(expressionText, "") != 0;										// not an empty expression 
@@ -132,7 +132,7 @@ procedure webServer();
 							end;
 							trapErrors FALSE; 													// disable error trapping and clear err()
 							
-							// format result according to current display settin	g
+							// format result according to current display setting
 							if type(result) == INTEGER; result =  fmt(result, 0, sysVal(4), sysVal(6), sysVal(5));
 							elseif type(result) == FLOAT;  result = fmt(result, 0, sysVal(1), sysVal(3), sysVal(2));
 							end;	

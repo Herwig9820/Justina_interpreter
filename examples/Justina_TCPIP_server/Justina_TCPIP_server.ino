@@ -49,7 +49,9 @@ constexpr int WiFi_CONNECTED_PIN{ 14 };                                         
 constexpr int TCP_CONNECTED_PIN{ 15 };                                              // blink: TCP enabled but no terminal connected; ON: terminal connected
 #endif
 
-unsigned long heartbeatPeriod{ 1000 };                                              // 'long' heartbeat ON and OFF time: heartbeat led will blink at this (low) rate when control is not within Justina
+unsigned long HEARTBEAT_PERIOD{ 1000 };                                             // 'long' heartbeat ON and OFF time: heartbeat led will blink at this (low) rate when control is not within Justina
+unsigned long CLIENT_ACTIVITY_TIMEOUT{ 30000 };
+
 constexpr char menu[] = "Please type 'J' to start Justina interpreter\r\n";
 
 
@@ -90,7 +92,7 @@ Stream* pExternalInputs[terminalCount]{ &Serial, nullptr };                     
 Print* pExternalOutputs[terminalCount]{ &Serial, nullptr };                         // Justina output streams (Serial; TCP/IP stream will be added in setup() )                                                      
 
 // create Justina interpreter object
-Justina justina(pExternalInputs, pExternalOutputs, terminalCount);
+Justina justina(pExternalInputs, pExternalOutputs, terminalCount, 2);
 
 
 // --------------------
@@ -176,6 +178,8 @@ void setup() {
 // ------------------------------
 
 void loop() {
+    static unsigned long lastClientActivity{ millis() };
+
     heartbeat();                                                                    // blink a led to show program is running
     myTCPconnection.maintainConnection();                                           // maintain TCP connection
     setConnectionStatusLeds();                                                      // set WiFi and TCP connection status leds 
@@ -185,12 +189,28 @@ void loop() {
         c = Serial.read();
         if ((c == 'j') || (c == 'J')) {
             // start interpreter: control will not return to here until the user quits
-            heartbeatPeriod = 500;                                                  // 'short' heartbeat ON and OFF time: heartbeat led will blink at a higher rate when control is within Justina                                              
+            HEARTBEAT_PERIOD = 500;                                                 // 'short' heartbeat ON and OFF time: heartbeat led will blink at a higher rate when control is within Justina                                              
             justina.begin();                                                        // start interpreter (control will stay there until quitting Justina)
-            heartbeatPeriod = 1000;                                                 // 'long' heartbeat ON and OFF time: heartbeat led will blink at a lower rate when control is not within Justina                                              
+            HEARTBEAT_PERIOD = 1000;                                                // 'long' heartbeat ON and OFF time: heartbeat led will blink at a lower rate when control is not within Justina                                              
+            lastClientActivity = millis();                                          // reset client activity timer
             Serial.println(menu);
         }
     }
+
+    // while NOT in Justina, the lines below execute method 'myTCPconnection.stopClient() if no client activity is detected during a certain time.
+
+    // NOTE: while control is in Justina, the TCP connection is maintained by the system callback function 'housekeeping' (called regularly from within Justina). 
+    //       To stop a client while Justina is running, for instance after a time out, call user defined Justina function 'cpp_stopClient()' (see above). 
+    //       See the Justina example program 'calculatorWebServer' in file 'web_calc.jus'. 
+
+    if ((myTCPconnection.getConnectionState() == myTCPconnection.conn_4_TCP_clientConnected)) {
+        if (myTCPconnection.getClient()->available()) {
+            lastClientActivity = millis();
+            Serial.write(myTCPconnection.getClient()->read());                      // read received data and process it (here: simply print it on the serial monitor)
+        }
+        else if ((millis() - lastClientActivity) > CLIENT_ACTIVITY_TIMEOUT) { myTCPconnection.stopClient(); }   // stop client if no activity for a certain time
+    }
+    else { lastClientActivity = millis(); }                                         // reset client activity timer as long as client is not connected
 }
 
 
@@ -226,7 +246,7 @@ void heartbeat() {
 
     uint32_t currentTime = millis();
     // also handle millis() overflow after about 47 days
-    if ((lastHeartbeat + heartbeatPeriod < currentTime) || (currentTime < previousTime)) {      // heartbeat period has passed
+    if ((lastHeartbeat + HEARTBEAT_PERIOD < currentTime) || (currentTime < previousTime)) {     // heartbeat period has passed
         lastHeartbeat = currentTime;
         ledOn = !ledOn;
         digitalWrite(HEARTBEAT_PIN, ledOn);                                                     // change led state
@@ -252,7 +272,7 @@ void setConnectionStatusLeds() {
 
         // toggle led on/off state (blink led) ?
         uint32_t currentTime = millis();
-        int32_t waitTime = (TCPledState ? 50 : 450);                                            // time between led state changes (ms)
+        int32_t waitTime = (TCPledState ? 10 : 2290);                                            // time between led state changes (ms)
         if (((lastLedChangeTime + waitTime) < currentTime) || (currentTime < lastLedChangeTime)) { // (note: also handles millis() overflow after about 47 days)
             TCPledState = !TCPledState;
             digitalWrite(TCP_CONNECTED_PIN, TCPledState);                                       // BLINK: TCP enabled but client not yet connected                                         

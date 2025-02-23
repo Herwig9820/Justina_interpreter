@@ -37,8 +37,8 @@
     A number of utility functions are provided to switch WiFi on or off, to allow a TCP/IP connections or not, etc.
     --------------------------------------------------------------------------------------------------------------------------
 */
-	
-	
+
+
 // ******************************************************************
 // ***                     class TCPconnection                    ***
 // ******************************************************************
@@ -58,9 +58,10 @@ public:
 
 private:
     const char* _SSID, * _PASS;
-    IPAddress _serverAddress, _gatewayAddress, _subnetMask, _DNSaddress; 
+    IPAddress _serverAddress, _gatewayAddress, _subnetMask, _DNSaddress;
 
     static constexpr unsigned long WIFI_UP_CHECK_INTERVAL{ 500 };       // minimum delay between two attempts to connect to WiFi (milliseconds) 
+    static constexpr unsigned long WIFI_REPORT_INTERVAL{ 5000 };
 
     bool _verbose{};
     bool _resetWiFi{};
@@ -71,11 +72,10 @@ private:
     bool _TCPenabled{};
 
     // state machine: WiFi and client connection state
-    connectionState_type _connectionState{ TCPconnection::conn_0_WiFi_notConnected };                            
-    unsigned long _WiFiWaitingForConnectonAt{};
-    unsigned long _lastWiFiMaintenanceTime{};                           // timestamps in milliseconds
-    unsigned long _lastTCPmaintenanceTime{};
-
+    connectionState_type _connectionState{ TCPconnection::conn_0_WiFi_notConnected };
+    unsigned long _WiFiWaitingForConnectonAt{ millis() };               // timestamps in milliseconds
+    unsigned long _lastWiFiMaintenanceTime{ millis() };  
+   
     WiFiServer _server;                                                 // WiFi server object
     WiFiClient _client;                                                 // WiFi client object
 

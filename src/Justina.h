@@ -502,6 +502,27 @@ private:
         termcod_rightPar
     };
 
+    enum symbConst_type {
+        symb_any = -1,
+        symb_number = 0,
+        symb_angle,
+        symb_bool,
+        symb_numType,
+        symb_digitalIO,
+        symb_dispMode,
+        symb_dispResults,
+        symb_infoCmd,
+        symb_inputCmd,
+        symb_success,
+        symb_IOstream,
+        symb_access,
+        symb_filePos,
+        symb_fmtSpec,
+        symb_fmtFlag,
+        symb_board,
+        symb_setup
+    };
+
     enum tokenType_type {                                               // token type
         tok_no_token,                                                   // no token to process
         tok_isInternCommand,
@@ -554,6 +575,7 @@ private:
         result_variableNameExpected,
         result_assignmentOrSeparatorExpected,
         result_separatorExpected,
+        result_setupCommandExpected,
 
         // used memory errors
         result_maxVariableNamesReached = 1300,
@@ -1120,6 +1142,11 @@ public:
     static constexpr long SD_allowed = 0x1;                             // card reader is allowed but do not initialize card (maybe no SD card inserted, no SD card board present). This is the default
     static constexpr long SD_init = 0x2;                                // init SD card upon Justina begin() 
     static constexpr long SD_runStart = 0x3;                            // init SD card upon Justina begin(); load program "start.jus(); execute start() 
+    static constexpr long MAX_SETUP_ARGS = 8;                           // maximum number of tokens in a setup file line
+    
+    static const char SETUP_FILE_PATH[19];
+    static const char AUTOSTART_FILE_PATH[19];
+
 private:
 
     // system callbacks: time interval
@@ -1305,6 +1332,7 @@ private:
     struct SymbNumConsts {
         const char* symbolName;
         const char* symbolValue;
+        char symbolType;
         char valueType;                                                 // float or long
     };
 
@@ -1337,9 +1365,9 @@ private:
     static const InternCppFuncDef _internCppFunctions[141];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
 #if (defined ARDUINO_ARCH_ESP32) 
-    static const SymbNumConsts _symbNumConsts[82];                                                                              // predefined constants
+    static const SymbNumConsts _symbNumConsts[89];                                                                              // predefined constants
 #else
-    static const SymbNumConsts _symbNumConsts[79];                                                                              // predefined constants
+    static const SymbNumConsts _symbNumConsts[86];                                                                              // predefined constants
 #endif
     static constexpr int _internCommandCount{ sizeof(_internCommands) / sizeof(_internCommands[0]) };                           // count of keywords in keyword table 
     static constexpr int _internCppFunctionCount{ (sizeof(_internCppFunctions)) / sizeof(_internCppFunctions[0]) };             // count of internal cpp functions in functions table
@@ -1422,6 +1450,11 @@ private:
         void** ppArray;                                                 // 'pointer to pointer' to memory block reserved for array of any Justina type                                        
 
         char bytes[4];
+    };
+
+    struct ValueAndType {
+        Val value;
+        char valueType;
     };
 
 
@@ -2161,6 +2194,9 @@ private:
     // parsing
     // -------
 
+    void processSetupFile();
+    parsingResult_type tokenizeSetupLine(char* setupLine, Val* value, char* valueType, int* predefinedConstIndex, int& argCount);
+
     // read one character from a stream (stream must be set prior to call)
     char getCharacter(bool& charFetched, bool& killNow, bool& forcedStop, bool& forcedAbort, bool& setStdConsole, bool enableTimeOut = false, bool useLongTimeout = false);
 
@@ -2281,7 +2317,7 @@ private:
 #if defined ARDUINO_ARCH_ESP32
     char* SD_ESP32_convert_accessMode(int mode);
 #endif
-    execResult_type SD_open(int& fileNumber, char* filePath, int mod = READ_FILE);
+    execResult_type SD_open(int& fileNumber, const char* filePath, int mod = READ_FILE);
     execResult_type SD_openNext(int dirFileNumber, int& fileNumber, File* pDirectory, int mod = READ_FILE);
 
     void SD_closeFile(int fileNumber);
@@ -2295,8 +2331,8 @@ private:
     execResult_type determineStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, Stream*& pStream, int& streamNumber, bool forOutput = false, int allowFileTypes = 1);
     execResult_type determineStream(int streamNumber, Stream*& pStream, bool forOutput = false, int allowFileTypes = 1);
 
-    bool pathValid(char* path);
-    bool fileIsOpen(char* path);
+    bool pathValid(const char* path);
+    bool fileIsOpen(const char* path);
 
 
     // Justina error handling, debugging, tracing

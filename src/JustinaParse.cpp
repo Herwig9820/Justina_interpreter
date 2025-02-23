@@ -61,7 +61,7 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
     _lvl0_isVarWithAssignment = false;
 
     // initializer unary operators
-    _initVarOrParWithUnaryOp = 0;   // no prefix, plus or minus
+    _initVarOrParWithUnaryOp = 0;   // 0=no prefix, 1=plus, 2=minus
 
     _parenthesisLevel = 0;                                                              // current number of open parentheses (during parsing)
 
@@ -201,7 +201,7 @@ bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, 
             if (cmdArgSeq_records[index].key == key_allowedParTypes) { break; }
         }
 
-        if (index == records) {result =  result_cmd_argTypeRestrictionNotValid; return false; }
+        if (index == records) { result = result_cmd_argTypeRestrictionNotValid; return false; }
     }
 
     _pCmdAllowedParTypes = commandIsInternal ? _internCommands[commandIndex].pCmdAllowedParTypes : cmdArgSeq_records[index].record;   // remember allowed parameter types
@@ -713,7 +713,7 @@ bool Justina::parseAsStringConstant(char*& pNext, parsingResult_type& result) {
         if ((_lastTokenGroup_sequenceCheck_bit & lastTokenGroup_0) && _lastTokenIsPostfixOp) { pNext = pch; result = result_alphaConstNotAllowedHere; break; }
 
         // allow token (pending further tests) if within a command, if in immediate mode and inside a function   
-        // can only happen with only with initializer, if constant string is preceded by unary plus or minus operator
+        // can only happen with initializer, if constant string is preceded by unary plus or minus operator
         if (_initVarOrParWithUnaryOp != 0) { pNext = pch; result = result_alphaConstNotAllowedHere; break; }
         bool tokenAllowed = (_isCommand || (!_programMode) || _justinaFunctionBlockOpen);
         if (!tokenAllowed) { pNext = pch; result = result_alphaConstNotAllowedHere; break; }
@@ -744,11 +744,11 @@ bool Justina::parseAsStringConstant(char*& pNext, parsingResult_type& result) {
         #endif
             _parsedStringConstObjectCount--;
             delete[] pStringCst;
-}
+        }
         pNext = pch;  return false;
-}
+    }
 
-// expression syntax check 
+    // expression syntax check 
     _thisLvl_lastIsVariable = false;
     _thislvl_lastIsConstVar = false;
 
@@ -785,7 +785,7 @@ bool Justina::parseAsStringConstant(char*& pNext, parsingResult_type& result) {
         #endif
             _parsedStringConstObjectCount--;
             delete[] pStringCst;
-    }
+        }
         pToken->tokenType = tok_no_token;       // because already set
         pNext = pch;  return false;
     }
@@ -2200,20 +2200,20 @@ bool Justina::parseAsVariable(char*& pNext, parsingResult_type& result) {
                             #endif
 
                             }
+                        }
                     }
-                }
                     if (!isOpenFunctionStaticVariable && !isOpenFunctionLocalVariable && !isOpenFunctionParam) {
                         pNext = pch; result = result_var_notDeclared; return false;
                     }
 
-    }
+                }
 
                 else {
                     pNext = pch; result = result_var_notDeclared; return false;
                 }
-}
+            }
 
-}
+        }
 
         else {
             // global PROGRAM variable exists already: check for double definition (USER variables: detected when NAME was declared a second time) 
@@ -2396,7 +2396,7 @@ bool Justina::parseAsIdentifierName(char*& pNext, parsingResult_type& result) {
     }
     else if (!(_lastTokenGroup_sequenceCheck_bit & lastTokenGroups_6_3_2_0)) { pNext = pch; result = result_identifierNotAllowedHere; return false; }
 
-    // if variable name is too long, reset pointer to first character to parse, indicate error and return
+    // if name is too long, reset pointer to first character to parse, indicate error and return
     if (pNext - pch > MAX_IDENT_NAME_LEN) { pNext = pch; result = result_identifierTooLong;  return false; }
 
     // token is an identifier name, and it's allowed here
@@ -2430,10 +2430,10 @@ bool Justina::parseAsIdentifierName(char*& pNext, parsingResult_type& result) {
             _parsedStringConstObjectCount--;
             delete[] pIdentifierName;
             pNext = pch; return false;
+        }
     }
-}
 
-// expression syntax check 
+    // expression syntax check 
     _thisLvl_lastIsVariable = false;
     _thislvl_lastIsConstVar = false;
 
@@ -2618,7 +2618,7 @@ bool Justina::parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueTyp
     predefinedConstIndex = -1;                                                                  // init: assume literal constant
 
     // first, check for symbolic number
-    char* tokenStart = pNext;
+        char* tokenStart = pNext;
     if (isalpha(pNext[0])) {                                                                    // first character is a letter ? could be symbolic constant
         while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                             // position as if symbolic constant was found, for now
 
@@ -2762,18 +2762,18 @@ bool Justina::parseString(char*& pNext, char*& pch, char*& pStringCst, char& val
         _pDebugOut->print(isIntermediateString ? "\r\n+++++ (Intermd str) " : "\r\n+++++ (parsed str ) "); _pDebugOut->println((uint32_t)pStringCst, HEX);
         _pDebugOut->print("       parse string "); _pDebugOut->println(pStringCst);
     #endif
-            }
+    }
     pNext++;                                                                                    // skip closing quote
 
     valueType = value_isStringPointer;
     result = result_parsing_OK;
     return true;                                                                                // valid string
-        }
+}
 
 
-        // -------------------------------------------------------------------------
-        // *   check if identifier storage exists already, optionally create new   *
-        // -------------------------------------------------------------------------
+// -------------------------------------------------------------------------
+// *   check if identifier storage exists already, optionally create new   *
+// -------------------------------------------------------------------------
 
 int Justina::getIdentifier(char** pIdentNameArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNewName, bool isUserVar) {
 
@@ -2935,10 +2935,10 @@ Justina::parsingResult_type Justina::deleteUserVariable(char* userVarName) {
         #endif
             delete[]  userVarValues[index].pArray;
             _userArrayObjectCount--;
-    }
+        }
 
-    // 4. if variable is a scalar string value: delete string
-    // ------------------------------------------------------
+        // 4. if variable is a scalar string value: delete string
+        // ------------------------------------------------------
         else if (isString) {                                                                                // variable is a scalar containing a string
             if (userVarValues[index].pStringConst != nullptr) {
             #if PRINT_HEAP_OBJ_CREA_DEL
@@ -2947,12 +2947,12 @@ Justina::parsingResult_type Justina::deleteUserVariable(char* userVarName) {
             #endif
                 _userVarStringObjectCount--;
                 delete[]  userVarValues[index].pStringConst;
-}
-    }
+            }
+        }
 
-    // 5. move up next user variables one place
-    //    if a user variable is used in currently loaded program: adapt index in program storage
-    // -----------------------------------------------------------------------------------------
+        // 5. move up next user variables one place
+        //    if a user variable is used in currently loaded program: adapt index in program storage
+        // -----------------------------------------------------------------------------------------
         for (int i = index; i < _userVarCount - 1; i++) {
             userVarNames[i] = userVarNames[i + 1];
             userVarValues[i] = userVarValues[i + 1];
@@ -2973,7 +2973,7 @@ Justina::parsingResult_type Justina::deleteUserVariable(char* userVarName) {
 
         _userVarCount--;
         varDeleted = true;
-}
+    }
 
     if (!varDeleted) { return result_variableNameExpected; }
 

@@ -39,3 +39,10 @@ v1.3.2 (February 14, 2025)
 new functionality:
 - Arduino nano 33 BLE microcontroller added (ARDUINO_ARCH_NRF52840 architecture)
  
+v1.3.3 (February 15, 2025)
+--------------------------
+- library version correctly maintained in library.properties file (no new features)
+
+vx.x.x (date)
+----------------
+- 

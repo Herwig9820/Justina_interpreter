@@ -140,7 +140,7 @@ void TCPconnection::maintainWiFiConnection() {
 
                 else {                                                                  // WiFi is not yet connected
                     // regularly report status ('still trying...' etc.)
-                    if (_WiFiWaitingForConnectonAt + 5000 < millis() && _verbose) {
+                    if (_WiFiWaitingForConnectonAt + WIFI_REPORT_INTERVAL < millis() && _verbose) {
                         _WiFiWaitingForConnectonAt = millis();                          // for printing only
                         if (_verbose) { Serial.print("."); }
                     }

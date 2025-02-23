@@ -74,7 +74,7 @@ char* Justina::SD_ESP32_convert_accessMode(int mode) {
 // *   open an SD file   *
 // -----------------------
 
-Justina::execResult_type Justina::SD_open(int& fileNumber, char* filePath, int mode) {
+Justina::execResult_type Justina::SD_open(int& fileNumber, const char* filePath, int mode) {
     fileNumber = 0;                                                                                                         // init: no file number yet
 
     if ((_justinaStartupOptions & SD_mask) == SD_notAllowed) { return result_SD_noCardOrNotAllowed; }
@@ -334,7 +334,7 @@ void Justina::printDirectory(File dir, int indentLevel) {
 // *   check validity of a file path   *
 // -------------------------------------
 
-bool Justina::pathValid(char* path) {
+bool Justina::pathValid(const char* path) {
 
     // SD library allows to run into issues if path is not valid (hanging, invalid creation of directories / files)
     // this routine performs a few basic checks: 
@@ -347,7 +347,7 @@ bool Justina::pathValid(char* path) {
     if ((path[0] == ' ') || (path[strlen(path) - 1] == '/') || (path[strlen(path) - 1] == ' ')) { return false; }
 
     bool previousIsSlash{ true }, currentIsSlash{ false };
-    char* p{};
+    const char* p{};
     for (p = path + 1; p < path + strlen(path); p++) {                                                                      // skip first character in test 
         currentIsSlash = (p[0] == '/');
         if (previousIsSlash && currentIsSlash) { break; }
@@ -361,7 +361,7 @@ bool Justina::pathValid(char* path) {
 // *   check if a file is currently open   *
 // -----------------------------------------
 
-bool Justina::fileIsOpen(char* path) {
+bool Justina::fileIsOpen(const char* path) {
     // currently open files ? Check that the same file is not open already
     for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
         if (openFiles[i].fileNumberInUse) {

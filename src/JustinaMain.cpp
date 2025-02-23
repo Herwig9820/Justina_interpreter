@@ -429,134 +429,147 @@ const Justina::TerminalDef Justina::_terminals[]{
 
 const Justina::SymbNumConsts Justina::_symbNumConsts[]{
 
-    // name                 // value                    // value type
-    // ----                 --------                    // ----------
-
-    // math: floating point constants (with more precision than what will actually be used)
-    {"e",                   "2.7182818284590452354",    value_isFloat},         // base of natural logarithm (more digits then actually needed for float)
-    {"PI",                  "3.14159265358979323846",   value_isFloat},         // PI (more digits then actually needed for float)
-    {"HALF_PI",             "1.57079632679489661923",   value_isFloat},         // PI / 2
-    {"QUART_PI",            "0.78539816339744830962",   value_isFloat},         // PI / 4
-    {"TWO_PI",              "6.2831853071795864769",    value_isFloat},         // 2 * PI 
-
-    {"DEG_TO_RAD",          "0.01745329251994329577",   value_isFloat},         // conversion factor: degrees to radians
-    {"RAD_TO_DEG",          "57.2957795130823208768",   value_isFloat},         // radians to degrees
-
-    // angle mode
-    {"RADIANS",             "0",                        value_isLong},
-    {"DEGREES",             "1",                        value_isLong},
+    // symbol name          // value                    // symbol type  // value type
+    // -----------          --------                    --------------  // ----------
 
     // boolean values
-    {"FALSE",               "0",                        value_isLong},          // value for boolean 'false'
-    {"TRUE",                "1",                        value_isLong},          // value for boolean 'true'
+    {"FALSE",               "0",                        symb_bool,      value_isLong},          // value for boolean 'false'
+    {"TRUE",                "1",                        symb_bool,      value_isLong},          // value for boolean 'true'
 
-    {"OFF",                 "0",                        value_isLong},          // value for boolean 'false'
-    {"ON",                  "1",                        value_isLong},          // value for boolean 'true'
+    {"OFF",                 "0",                        symb_bool,      value_isLong},          // value for boolean 'false'
+    {"ON",                  "1",                        symb_bool,      value_isLong},          // value for boolean 'true'
+
+    {"LOW",                 "0",                        symb_bool,      value_isLong},          // standard ARduino constants for digital I/O
+    {"HIGH",                "1",                        symb_bool,      value_isLong},
+
+    // math: floating point constants (with more precision than what will actually be used)
+    {"e",                   "2.7182818284590452354",    symb_number,    value_isFloat},         // base of natural logarithm (more digits then actually needed for float)
+    {"PI",                  "3.14159265358979323846",   symb_number,    value_isFloat},         // PI (more digits then actually needed for float)
+    {"HALF_PI",             "1.57079632679489661923",   symb_number,    value_isFloat},         // PI / 2
+    {"QUART_PI",            "0.78539816339744830962",   symb_number,    value_isFloat},         // PI / 4
+    {"TWO_PI",              "6.2831853071795864769",    symb_number,    value_isFloat},         // 2 * PI 
+
+    {"DEG_TO_RAD",          "0.01745329251994329577",   symb_number,    value_isFloat},         // conversion factor: degrees to radians
+    {"RAD_TO_DEG",          "57.2957795130823208768",   symb_number,    value_isFloat},         // radians to degrees
+
+    // angle mode
+    {"RADIANS",             "0",                        symb_angle,     value_isLong},
+    {"DEGREES",             "1",                        symb_angle,     value_isLong},
 
     // data types
-    {"INTEGER",             "1",                        value_isLong},          // value type of an integer value
-    {"FLOAT",               "2",                        value_isLong},          // value type of a float value
-    {"STRING",              "3",                        value_isLong},          // value type of a string value
+    {"INTEGER",             "1",                        symb_numType,   value_isLong},          // value type of an integer value
+    {"FLOAT",               "2",                        symb_numType,   value_isLong},          // value type of a float value
+    {"STRING",              "3",                        symb_numType,   value_isLong},          // value type of a string value
+
+    {"EOF",                 "-1",                       symb_numType,   value_isLong},          // seek(n, EOF) is same as seek(n, size(n))
 
     // digital I/O
-    {"LOW",                 "0",                        value_isLong},          // standard ARduino constants for digital I/O
-    {"HIGH",                "1",                        value_isLong},
-    {"INPUT",               "0x1",                      value_isLong},          // standard ARduino constants for digital I/O
-    {"OUTPUT",              "0x3",                      value_isLong},
-    {"INPUT_PULLUP",        "0x5",                      value_isLong},
-    {"INPUT_PULLDOWN",      "0x9",                      value_isLong},
-    {"LED_BUILTIN",         "13",                       value_isLong},
-#if (defined ARDUINO_ARCH_ESP32) 
-    {"LED_RED",             "14",                       value_isLong},
-    {"LED_GREEN",           "15",                       value_isLong},
-    {"LED_BLUE",            "16",                       value_isLong},
-#endif
-    {"LSBFIRST",            "0x0",                      value_isLong},          // standard ARduino constants for digital I/O
-    {"MSBFIRST",            "0x1",                      value_isLong},
+    {"INPUT",               "0x1",                      symb_digitalIO, value_isLong},          // standard ARduino constants for digital I/O
+    {"OUTPUT",              "0x3",                      symb_digitalIO, value_isLong},
+    {"INPUT_PULLUP",        "0x5",                      symb_digitalIO, value_isLong},
+    {"INPUT_PULLDOWN",      "0x9",                      symb_digitalIO, value_isLong},
+    {"LED_BUILTIN",         "13",                       symb_digitalIO, value_isLong},
+#if (defined ARDUINO_ARCH_ESP32)                         
+    {"LED_RED",             "14",                       symb_digitalIO, value_isLong},
+    {"LED_GREEN",           "15",                       symb_digitalIO, value_isLong},
+    {"LED_BLUE",            "16",                       symb_digitalIO, value_isLong},
+#endif                                                   
+    {"LSBFIRST",            "0x0",                      symb_digitalIO, value_isLong},          // standard ARduino constants for digital I/O
+    {"MSBFIRST",            "0x1",                      symb_digitalIO, value_isLong},
 
     // display mode command first argument: prompt and echo display
-    {"NO_PROMPT",           "0",                        value_isLong},          // do not print prompt and do not echo user input
-    {"PROMPT",              "1",                        value_isLong},          // print prompt but no not echo user input
-    {"ECHO",                "2",                        value_isLong},          // print prompt and echo user input
+    {"NO_PROMPT",           "0",                        symb_dispMode,  value_isLong},          // do not print prompt and do not echo user input
+    {"PROMPT",              "1",                        symb_dispMode,  value_isLong},          // print prompt but no not echo user input
+    {"ECHO",                "2",                        symb_dispMode,  value_isLong},          // print prompt and echo user input
 
     // display mode command second argument: last result format
-    {"NO_RESULTS",          "0",                        value_isLong},          // do not print last result
-    {"RESULTS",             "1",                        value_isLong},          // print last result
-    {"QUOTE_RES",           "2",                        value_isLong},          // print last result, quote string results 
+    {"NO_RESULTS",          "0",                        symb_dispResults,   value_isLong},      // do not print last result
+    {"RESULTS",             "1",                        symb_dispResults,   value_isLong},      // print last result
+    {"QUOTE_RES",           "2",                        symb_dispResults,   value_isLong},      // print last result, quote string results 
 
     // info command: type of confirmation required ("request answer yes/no, ...")
-    {"ENTER",               "0",                        value_isLong},          // confirmation required by pressing ENTER (any preceding characters are skipped)
-    {"ENTER_CANCEL",        "1",                        value_isLong},          // idem, but if '\c' encountered in input stream the operation is canceled by user 
-    {"YES_NO",              "2",                        value_isLong},          // only yes or no answer allowed, by pressing 'y' or 'n' followed by ENTER   
-    {"YN_CANCEL",           "3",                        value_isLong},          // idem, but if '\c' encountered in input stream the operation is canceled by user 
+    {"ENTER",               "0",                        symb_infoCmd,   value_isLong},          // confirmation required by pressing ENTER (any preceding characters are skipped)
+    {"ENTER_CANCEL",        "1",                        symb_infoCmd,   value_isLong},          // idem, but if '\c' encountered in input stream the operation is canceled by user 
+    {"YES_NO",              "2",                        symb_infoCmd,   value_isLong},          // only yes or no answer allowed, by pressing 'y' or 'n' followed by ENTER   
+    {"YN_CANCEL",           "3",                        symb_infoCmd,   value_isLong},          // idem, but if '\c' encountered in input stream the operation is canceled by user 
 
     // input command: default allowed  
-    {"NO_DEFAULT",          "0",                        value_isLong},          // '\d' sequences ('default') in the input stream are ignored
-    {"ALLOW_DEFAULT",       "1",                        value_isLong},          // if '\d' sequence is encountered in the input stream, default value is returned
+    {"NO_DEFAULT",          "0",                        symb_inputCmd,  value_isLong},          // '\d' sequences ('default') in the input stream are ignored
+    {"ALLOW_DEFAULT",       "1",                        symb_inputCmd,  value_isLong},          // if '\d' sequence is encountered in the input stream, default value is returned
 
     // input and info command: flag 'user canceled' (input argument 3 / info argument 2 return value - argument must be a variable)
-    {"CANCELED",            "0",                        value_isLong},          // operation was canceled by user (\c sequence encountered)
-    {"OK",                  "1",                        value_isLong},          // OK 
-    {"NOK",                 "-1",                       value_isLong},          // NOT OK 
+    {"CANCELED",            "0",                        symb_success,   value_isLong},          // operation was canceled by user (\c sequence encountered)
+    {"OK",                  "1",                        symb_success,   value_isLong},          // OK 
+    {"NOK",                 "-1",                       symb_success,   value_isLong},          // NOT OK 
 
     // input / output streams
-    {"CONSOLE",             "0",                        value_isLong},          // IO: read from / print to console
-    {"IO1",                 "-1",                       value_isLong},          // IO: read from / print to alternative I/O port 1 (if defined)
-    {"IO2",                 "-2",                       value_isLong},          // IO: read from / print to alternative I/O port 2 (if defined)
-    {"IO3",                 "-3",                       value_isLong},          // IO: read from / print to alternative I/O port 3 (if defined)
-    {"IO4",                 "-4",                       value_isLong},          // IO: read from / print to alternative I/O port 4 (if defined)
-    {"FILE1",               "1",                        value_isLong},          // IO: read from / print to open SD file 1
-    {"FILE2",               "2",                        value_isLong},          // IO: read from / print to open SD file 2 
-    {"FILE3",               "3",                        value_isLong},          // IO: read from / print to open SD file 3 
-    {"FILE4",               "4",                        value_isLong},          // IO: read from / print to open SD file 4 
-    {"FILE5",               "5",                        value_isLong},          // IO: read from / print to open SD file 5 
+    {"CONSOLE",             "0",                        symb_IOstream,  value_isLong},          // IO: read from / print to console
+    {"IO1",                 "-1",                       symb_IOstream,  value_isLong},          // IO: read from / print to alternative I/O port 1 (if defined)
+    {"IO2",                 "-2",                       symb_IOstream,  value_isLong},          // IO: read from / print to alternative I/O port 2 (if defined)
+    {"IO3",                 "-3",                       symb_IOstream,  value_isLong},          // IO: read from / print to alternative I/O port 3 (if defined)
+    {"IO4",                 "-4",                       symb_IOstream,  value_isLong},          // IO: read from / print to alternative I/O port 4 (if defined)
+    {"FILE1",               "1",                        symb_IOstream,  value_isLong},          // IO: read from / print to open SD file 1
+    {"FILE2",               "2",                        symb_IOstream,  value_isLong},          // IO: read from / print to open SD file 2 
+    {"FILE3",               "3",                        symb_IOstream,  value_isLong},          // IO: read from / print to open SD file 3 
+    {"FILE4",               "4",                        symb_IOstream,  value_isLong},          // IO: read from / print to open SD file 4 
+    {"FILE5",               "5",                        symb_IOstream,  value_isLong},          // IO: read from / print to open SD file 5 
 
     // file access type on open: constants can be bitwise 'or'ed
     // READ can be combined with WRITE or APPEND; APPEND automatically includes WRITE (but only possible to append)
-    {"READ",                "0x1",                      value_isLong},          // open SD file for read access
-    {"WRITE",               "0x2",                      value_isLong},          // open SD file for write access
-    {"APPEND",              "0x6",                      value_isLong},          // open SD file for write access, writes will occur at end of file
+    {"READ",                "0x1",                      symb_access,    value_isLong},          // open SD file for read access
+    {"WRITE",               "0x2",                      symb_access,    value_isLong},          // open SD file for write access
+    {"APPEND",              "0x6",                      symb_access,    value_isLong},          // open SD file for write access, writes will occur at end of file
     // NOTE: next 4 file access constants HAVE NO FUNCTION with nano ESP32 boards - they don't do anything
-    {"SYNC",                "0x8",                      value_isLong},          // synchronous writes: send data physically to the card after each write 
-    {"NEW_OK",              "0x10",                     value_isLong},          // creating new files if non-existent is allowed, open existing files
-    {"NEW_ONLY",            "0x30",                     value_isLong},          // create new file only - do not open an existing file
-    {"TRUNC",               "0x40",                     value_isLong},          // truncate file to zero bytes on open (NOT if file is opened for read access only)
-
-    // file EOF 
-    {"EOF",                 "-1",                       value_isLong},          // seek(n, EOF) is same as seek(n, size(n))
+    {"SYNC",                "0x8",                      symb_access,    value_isLong},          // synchronous writes: send data physically to the card after each write 
+    {"NEW_OK",              "0x10",                     symb_access,    value_isLong},          // creating new files if non-existent is allowed, open existing files
+    {"NEW_ONLY",            "0x30",                     symb_access,    value_isLong},          // create new file only - do not open an existing file
+    {"TRUNC",               "0x40",                     symb_access,    value_isLong},          // truncate file to zero bytes on open (NOT if file is opened for read access only)
 
     // formatting: specifiers for floating point numbers
-    {"FIXED",               "f",                        value_isStringPointer},     // fixed point notation
-    {"EXP_U",               "E",                        value_isStringPointer},     // scientific notation, exponent: 'E'
-    {"EXP",                 "e",                        value_isStringPointer},     // scientific notation, exponent: 'e' 
-    {"SHORT_U",             "G",                        value_isStringPointer},     // shortest notation possible; if exponent: 'E' 
-    {"SHORT",               "g",                        value_isStringPointer },    // shortest notation possible; if exponent: 'e'   
+    {"FIXED",               "f",                        symb_fmtSpec,   value_isStringPointer}, // fixed point notation
+    {"EXP_U",               "E",                        symb_fmtSpec,   value_isStringPointer}, // scientific notation, exponent: 'E'
+    {"EXP",                 "e",                        symb_fmtSpec,   value_isStringPointer}, // scientific notation, exponent: 'e' 
+    {"SHORT_U",             "G",                        symb_fmtSpec,   value_isStringPointer}, // shortest notation possible; if exponent: 'E' 
+    {"SHORT",               "g",                        symb_fmtSpec,   value_isStringPointer}, // shortest notation possible; if exponent: 'e'   
 
-    // formatting: specifiers for integers
-    {"DEC",                 "d",                        value_isStringPointer},     // base 10 (decimal)
-    {"HEX_U",               "X",                        value_isStringPointer},     // base 16 (hex), digits A..F
-    {"HEX",                 "x",                        value_isStringPointer},     // base 16 (hex), digits a..f
+    // formatting: specifiers for integers              symb_fmtSpec,   
+    {"DEC",                 "d",                        symb_fmtSpec,   value_isStringPointer}, // base 10 (decimal)
+    {"HEX_U",               "X",                        symb_fmtSpec,   value_isStringPointer}, // base 16 (hex), digits A..F
+    {"HEX",                 "x",                        symb_fmtSpec,   value_isStringPointer}, // base 16 (hex), digits a..f
 
-    // formatting: specifier for character strings 
-    {"CHARS",               "s",                        value_isStringPointer },    // character string   
+    // formatting: specifier for character strings         
+    {"CHARS",               "s",                        symb_fmtSpec,   value_isStringPointer },    // character string   
 
     // formatting: flags
-    {"FMT_LEFT",            "0x01",                      value_isLong},         // align output left within the print field 
-    {"FMT_SIGN",            "0x02",                      value_isLong},         // always add a sign (- or +) preceding the value
-    {"FMT_SPACE",           "0x04",                      value_isLong},         // precede the value with a space if no sign is written 
-    {"FMT_POINT",           "0x08",                      value_isLong},         // if used with 'F', 'E', 'G' specifiers: add decimal point, even if no digits after decimal point  
-    {"FMT_0X",              "0x08",                      value_isLong},         // if used with hex output 'X' specifier: precede non-zero values with 0x  
-    {"FMT_000",             "0x10",                      value_isLong},         // if used with 'F', 'E', 'G' specifiers: pad with zeros 
-    {"FMT_NONE",            "0x00",                      value_isLong},         // no flags 
+    {"FMT_LEFT",            "0x01",                     symb_fmtFlag,   value_isLong},          // align output left within the print field 
+    {"FMT_SIGN",            "0x02",                     symb_fmtFlag,   value_isLong},          // always add a sign (- or +) preceding the value
+    {"FMT_SPACE",           "0x04",                     symb_fmtFlag,   value_isLong},          // precede the value with a space if no sign is written 
+    {"FMT_POINT",           "0x08",                     symb_fmtFlag,   value_isLong},          // if used with 'F', 'E', 'G' specifiers: add decimal point, even if no digits after decimal point  
+    {"FMT_0X",              "0x08",                     symb_fmtFlag,   value_isLong},          // if used with hex output 'X' specifier: precede non-zero values with 0x  
+    {"FMT_000",             "0x10",                     symb_fmtFlag,   value_isLong},          // if used with 'F', 'E', 'G' specifiers: pad with zeros 
+    {"FMT_NONE",            "0x00",                     symb_fmtFlag,   value_isLong},          // no flags 
 
-    // boards
-    {"BOARD_OTHER",         "0",                         value_isLong },        // board architecture is undefined
-    {"BOARD_SAMD",          "1",                         value_isLong },        // board architecture is SAMD (nano 33 IoT)
-    {"BOARD_RP2040",        "2",                         value_isLong },        // board architecture is RP2040 
-    {"BOARD_ESP32",         "3",                         value_isLong },        // board architecture is ESP32 
-    {"BOARD_NRF52840",      "4",                         value_isLong }         // board architecture is NRF52840 (nano 33 BLE) 
+    // boards                                                       
+    {"BOARD_OTHER",         "0",                        symb_board,     value_isLong },         // board architecture is undefined
+    {"BOARD_SAMD",          "1",                        symb_board,     value_isLong },         // board architecture is SAMD (nano 33 IoT)
+    {"BOARD_RP2040",        "2",                        symb_board,     value_isLong },         // board architecture is RP2040 
+    {"BOARD_ESP32",         "3",                        symb_board,     value_isLong },         // board architecture is ESP32 
+    {"BOARD_NRF52840",      "4",                        symb_board,     value_isLong },         // board architecture is NRF52840 (nano 33 BLE) 
 
+    // settings in setup file
+    {"DISP_WIDTH",          "0",                        symb_setup,     value_isLong},
+    {"DISP_MODE",           "1",                        symb_setup,     value_isLong},
+    {"FLOAT_FMT",           "2",                        symb_setup,     value_isLong},
+    {"INT_FMT",             "3",                        symb_setup,     value_isLong},
+    {"TAB_SIZE",            "4",                        symb_setup,     value_isLong},
+    {"ANGLE",               "5",                        symb_setup,     value_isLong},
+    {"RUN",                 "6",                        symb_setup,     value_isLong}
 };
+
+// constant strings
+// ----------------
+const char Justina::SETUP_FILE_PATH[]{ "/Justina/setup.txt" };
+const char Justina::AUTOSTART_FILE_PATH[] = "/Justina/start.jus";
 
 
 // ---------------------------
@@ -652,17 +665,20 @@ Justina::~Justina() {
 
 // register external command, providing alias, function pointer, min. and max. allowed arguments
 Justina::CppCommand::CppCommand(const char* a_cppCommandName, void (*a_func)(void** const pdata, const char* const valueType, const int argCount, int& execError), char a_minArgCount, char a_maxArgCount) :
-    cppCommandName(a_cppCommandName), func(a_func), minArgCount(a_minArgCount), maxArgCount(a_maxArgCount) {}
+    cppCommandName(a_cppCommandName), func(a_func), minArgCount(a_minArgCount), maxArgCount(a_maxArgCount) {
+}
 
 // register external command, providing alias, function pointer, min. and max. allowed arguments, usage restriction)
 Justina::CppCommand::CppCommand(const char* a_cppCommandName, void (*a_func)(void** const pdata, const char* const valueType, const int argCount, int& execError), char a_minArgCount, char a_maxArgCount,
     char a_usageRestrictions) :
-    cppCommandName(a_cppCommandName), func(a_func), minArgCount(a_minArgCount), maxArgCount(a_maxArgCount), usageRestrictions(a_usageRestrictions) {}
+    cppCommandName(a_cppCommandName), func(a_func), minArgCount(a_minArgCount), maxArgCount(a_maxArgCount), usageRestrictions(a_usageRestrictions) {
+}
 
 // register external command, providing alias, function pointer, min. and max. allowed arguments, usage restriction, argument type restriction
 Justina::CppCommand::CppCommand(const char* a_cppCommandName, void (*a_func)(void** const pdata, const char* const valueType, const int argCount, int& execError), char a_minArgCount, char a_maxArgCount,
     char a_usageRestrictions, char a_argTypeRestrictions) :
-    cppCommandName(a_cppCommandName), func(a_func), minArgCount(a_minArgCount), maxArgCount(a_maxArgCount), usageRestrictions(a_usageRestrictions), argTypeRestrictions(a_argTypeRestrictions) {}
+    cppCommandName(a_cppCommandName), func(a_func), minArgCount(a_minArgCount), maxArgCount(a_maxArgCount), usageRestrictions(a_usageRestrictions), argTypeRestrictions(a_argTypeRestrictions) {
+}
 
 
 // ----------------------------
@@ -746,26 +762,39 @@ void Justina::begin() {
     bool startJustinaWithoutAutostart{ true };
 
    // initialize SD card now ?
-    // 0 = no card reader, 1 = card reader present, do not yet initialize, 2 = initialize card now, 3 = init card & run /Justina/start.jus function start() now
+    // 0 = no card reader, 1 = card reader present, do not yet initialize, 2 = initialize card now, 3 = init card & run startup file function start() now
     if ((_justinaStartupOptions & SD_mask) >= SD_init) {
-        printTo(0, "\r\nLooking for an SD card...\r\n");
+        printlnTo(0, "\r\nLooking for an SD card...");
         execResult_type execResult = startSD();
-        printTo(0, _SDinitOK ? "SD card found\r\n" : "SD card error: SD card NOT found\r\n");
+        printlnTo(0, _SDinitOK ? "SD card found" : "SD card error: SD card NOT found");
     }
 
+    processSetupFile();                                                                     // process setup file, if present
+
+
+
+
+
+
+
+
+
+
+
+
     if ((_justinaStartupOptions & SD_mask) == SD_runStart) {
-        // open startup file and retrieve file number (which would be one, normally)
+    // open startup file and retrieve file number (which would be one, normally)
         _initiateProgramLoad = _SDinitOK;
         if (_initiateProgramLoad) {
-            printlnTo(0, "Looking for 'start.jus' program file in /Justina folder...");
-            if (!SD.exists("/Justina/start.jus")) { _initiateProgramLoad = false; printlnTo(0, "'start.jus' program NOT found in folder /Justina"); }      // ADD staring slash ! (required by ESP32 SD library)
+            printlnTo(0, "Looking for autostart program file in /Justina folder...");
+            if (!SD.exists(AUTOSTART_FILE_PATH)) { _initiateProgramLoad = false; printlnTo(0, "Autostart program file NOT found in folder /Justina"); }      // ADD starting slash ! (required by ESP32 SD library)
         }
 
         if (_initiateProgramLoad) {
-            execResult_type execResult = SD_open(_loadProgFromStreamNo, "/Justina/start.jus", READ_FILE);       // this performs a few card & file checks as well
+            execResult_type execResult = SD_open(_loadProgFromStreamNo, AUTOSTART_FILE_PATH, READ_FILE);       // this performs a few card & file checks as well
             _initiateProgramLoad = (execResult == result_execOK);
-            if (!_initiateProgramLoad) { printTo(0, "Could not open 'start.jus' program - error "); printlnTo(0, execResult); }
-            if (openFiles[_loadProgFromStreamNo - 1].file.size() == 0) { _initiateProgramLoad = false;  printTo(0, "File '/Justina/start.jus' is empty - error "); printlnTo(0, result_SD_fileIsEmpty); }
+            if (!_initiateProgramLoad) { printTo(0, "Could not open autostart program file - error "); printlnTo(0, execResult); }
+            if (openFiles[_loadProgFromStreamNo - 1].file.size() == 0) { _initiateProgramLoad = false;  printTo(0, "Autostart program file is empty - error "); printlnTo(0, result_SD_fileIsEmpty); }
         }
 
         if (_initiateProgramLoad) {                                                                             // !!! second 'if(_initiateProgramLoad)'
@@ -786,7 +815,7 @@ void Justina::begin() {
             streamNumber = _loadProgFromStreamNo;                                                               // autostart step 1: temporarily switch from console input to startup file (opening the file here) 
             setStream(streamNumber, pStatementInputStream);                                                     // error checking done while opening file
 
-            printTo(0, "Loading program '/Justina/start.jus'...\r\n");
+            printTo(0, "Loading program file '"); printTo(0, AUTOSTART_FILE_PATH); printlnTo(0, "'...");
         }
     }
 
@@ -965,6 +994,135 @@ void Justina::begin() {
     // Objects that are not deleted now, will be deleted when the Justina object is deleted (destructor).  
     // (program and variable memory itself is only freed when the Justina object itself is deleted).
     return;                                                                                                     // return to calling program
+}
+
+
+// -----------------------------------------
+// *   process setup file (if it exists)   *
+// -----------------------------------------
+
+void Justina::processSetupFile() {
+    Val value[MAX_SETUP_ARGS];
+    char valueType[MAX_SETUP_ARGS];
+    int predefinedConstIndex[MAX_SETUP_ARGS];                                                                                         // index of predefined constant (if value is a predefined constant)
+
+    int argCount{ 0 };                                                      // initialize argument count 
+    int errorArgNo{ 0 };
+    char setupLine[51]{ "" };    // 50 character buffer for setup file lines + '\0'
+
+    if (_SDinitOK) {
+        if (SD.exists(SETUP_FILE_PATH)) {
+            execResult_type execResult = SD_open(_loadProgFromStreamNo, SETUP_FILE_PATH, READ_FILE);       // this performs a few card & file checks as well
+
+            if (execResult == result_execOK) {
+                int line{ 0 };
+                File& file = openFiles[_loadProgFromStreamNo - 1].file;
+                printlnTo(0, "Reading setup file, applying settings...");
+                while (file.available()) {
+
+                    // read one line from '/Justina/setup.txt'
+                    // ---------------------------------------
+                    // readBytesUntil: sets current FILE position to the first character after the '\n' character found (could be EOF = -1)...
+                    //                 ... or, if the line is too long, to the character after the last character read
+                    int bytesRead = file.readBytesUntil('\r', setupLine, sizeof(setupLine) - 1);
+                    setupLine[bytesRead] = '\0';                                                        // Null-terminate the string
+                    ++line;
+
+                    // perform checks: skip line read if it does not fit into buffer or if it's a blank line or comment line, and...
+                    // ...move file position to the start of the next line (or to EOF) - will be read in next loop
+
+                    if ((setupLine[0] == '*') || (setupLine[0] == '\0')) { file.find("\n"); Serial.print("** line "); Serial.print(line); Serial.println(" is blank or comment "); continue; }// skip blank lines and comment lines
+                    else if (file.peek() == '\r') { file.read(); file.read(); }                         // '\r' NOT read, but is next in file: maximum line length used (still OK) -> skip '\r\n' 
+                    else if (file.peek() == '\n') { file.read(); }                                      // '\r' found in file: file pointer now positioned at '\n' character -> skip it 
+                    else {                                                                              // line too long: skip it, except when only containing spaces and tab
+                        char c{ '\0' }; while (strchr(" \t", (c = file.read())) != nullptr) {}          // look for first non-space (and non-tab) character 
+                        file.find("\n");                                                                // skip '\n' character
+                        if (c != '\r') { Serial.print("** line "); Serial.print(line); Serial.println(" is too long ");  continue; }                                                    // line too long: skip it 
+                    }
+
+                    // lex (tokenize) a line, check for valid setup command
+                    // ----------------------------------------------------
+                    parsingResult_type parsingResult = tokenizeSetupLine(setupLine, value, valueType, predefinedConstIndex, argCount);      // parse line: read and process tokens
+                    if (parsingResult != result_parsing_OK) { errorArgNo = argCount; }
+                    Serial.print("** line "); Serial.print(line); Serial.print(", arg.count: "); Serial.println(argCount);
+
+                    // parse tokens
+                    // ------------
+      
+                    
+                    // check for valid setup command (this error takes precedence over lexing errors)
+                    if (argCount >= 1) {
+                        if (predefinedConstIndex[0] == -1) { parsingResult = result_setupCommandExpected; errorArgNo = 1; }                     // not a predefined constant ? -> not a setup command                       
+                        else if (_symbNumConsts[predefinedConstIndex[0]].symbolType != symb_setup) { parsingResult = result_setupCommandExpected; errorArgNo = 1; }   // is predefined constant: is it a setup command ?
+                    }
+
+                    // in case lexing went OK, continue with parsing
+                    if (parsingResult == result_parsing_OK) {
+                        //// call ...
+                    }
+
+                    // delete parsed string objects //// mag niet bij warm entry !!!!
+                    // ----------------------------
+                    for (int i = 0; i < argCount; i++) {
+                        if (valueType[i] == value_isString) {
+                            if ((value[i].pStringConst != nullptr) && (predefinedConstIndex[i] == -1)) {
+                            #if PRINT_HEAP_OBJ_CREA_DEL
+                                _pDebugOut->print("\r\n----- (parsed str ) ");   _pDebugOut->println((uint32_t)pIdentifierName, HEX);
+                                _pDebugOut->print("   parse setup cmd  ");   _pDebugOut->println(pIdentifierName);
+                            #endif
+                                _parsedStringConstObjectCount--;
+                                delete[] value[i].pStringConst;
+                                value[i].pStringConst = nullptr;
+                            }
+                        }
+                    }
+
+                    if (parsingResult != result_parsing_OK) {
+                        Serial.print("== Parsing error "); Serial.print(parsingResult); Serial.print(" in setup file, line "); Serial.print(line); Serial.print(", token No. "); Serial.println(errorArgNo);
+                    }
+                }
+                close(file);
+            }
+            else { printlnTo(0, "Could not open setup file"); }
+        }
+        else { printlnTo(0, "Setup file not found"); }
+    }
+}
+
+
+// ---------------------------------------
+// *   lex (tokenize) a setup file line  *
+// ---------------------------------------
+
+Justina::parsingResult_type Justina::tokenizeSetupLine(char* setupLine, Val* value, char* valueType, int* predefinedConstIndex, int& argCount) {
+
+    char* pNext{ setupLine }, * pch{};
+    bool parsingError{ false };
+    parsingResult_type result{ result_parsing_OK };
+
+    for (argCount = 0; argCount < MAX_SETUP_ARGS; argCount++) {
+        // move to the first non-space character of next token. If end of line reached, the line is parsed without errors
+        // !!! NOTE: strchr() does not function as it should according to the standard - this should work as well: 'while (strchr(" \t\r\n", pNext[0]) != nullptr) { pNext++; } !!!
+        while (strchr(" \t\r\n\0", pNext[0]) != nullptr) { if (pNext[0] == '\0') { break; } pNext++; }                                                                                                                                             // skip leading spaces
+        if (pNext[0] == '\0') { break; }                                                                                // no more arguments: current 'argCount' value is final (base 1)
+
+        // tokenize integer, string constants (both literal or symbolic); setup command (symbolic only)
+        do {
+            // parse a literal number (long or float) or string (enclosed in quotation marks), or a predefined constant (number or string)
+            if (!parseIntFloat(pNext, pch, value[argCount], valueType[argCount], predefinedConstIndex[argCount], result)) { break; }                                     // return false: parsing error
+            if (result == result_parsing_OK) {Serial.print(" long arg: "); Serial.print(value[argCount].longConst); Serial.println(); break; }
+
+            if (!parseString(pNext, pch, value[argCount].pStringConst, valueType[argCount], predefinedConstIndex[argCount], result, false)) { break; }                   // return false: parsing error     
+            if (result == result_parsing_OK) {Serial.print(" string arg: >"); Serial.print(value[argCount].pStringConst); Serial.println("<"); break; }                                                              // value is a string: return it 
+
+            result = result_token_not_recognised; 
+        } while (false);
+
+        if (result != result_parsing_OK) { argCount++; break; }                                                                // return with error in last argument ('argCount' value needs to be incremented) 
+
+    };
+
+    return result;                                                                                                                       // return with success
 }
 
 
@@ -1410,7 +1568,7 @@ void Justina::parseAndExecTraceOrBPviewString(int BPindex) {
 // *   check if all Justina functions referenced are defined   *
 // -------------------------------------------------------------
 
-bool Justina::checkAllJustinaFunctionsDefined(int& index)  {
+bool Justina::checkAllJustinaFunctionsDefined(int& index) {
     for (index = 0; index < _justinaFunctionCount; index++) {                                               // points to variable in use
         if (justinaFunctionData[index].pJustinaFunctionStartToken == nullptr) { return false; }
     }
