@@ -502,7 +502,7 @@ private:
         termcod_rightPar
     };
 
-    enum symbConst_type {
+    enum symbConst_group_code {
         symb_any = -1,
         symb_number = 0,
         symb_angle,
@@ -523,6 +523,139 @@ private:
         symb_setup
     };
 
+    //
+    enum symbol_code {
+        // boolean symbols group
+        value_false = 0,
+        value_true,
+
+        value_off,
+        value_on,
+
+        value_low,
+        value_high,
+
+        // number group
+        value_e,
+        value_pi,
+        value_half_pi,
+        value_quart_pi,
+        value_two_pi,
+
+        value_deg_to_rad,
+        value_rad_to_deg,
+
+        value_eof,
+
+        // angle group
+        value_radians,
+        value_degrees,
+
+        // number type group
+        value_integer,
+        value_float,
+        value_string,
+
+        // digital IO group
+        value_input,
+        value_output,
+        value_input_pl_up,
+        value_input_pl_down,
+        value_led_blt_in,
+
+        value_led_red,
+        value_led_green,
+        value_led_blue,
+
+        value_lsb_first,
+        value_msb_first,
+
+        // display mode group
+        value_no_prompt,
+        value_prompt,
+        value_echo,
+
+        // display results group
+        value_no_results,
+        value_disp_results,
+        value_quote_results,
+
+        // info command group
+        value_enter,
+        value_enter_cancel,
+        value_yes_no,
+        value_yn_cancel,
+
+        // enter command group
+        value_no_default,
+        value_allow_default,
+
+        // success group
+        value_canceled,
+        value_ok,
+        value_nok,
+
+        // input/output streams group
+        value_console,
+        value_IO1,
+        value_IO2,
+        value_IO3,
+        value_IO4,
+        value_file1,
+        value_file2,
+        value_file3,
+        value_file4,
+        value_file5,
+
+        // file access group
+        value_read,
+        value_write,
+        value_append,
+        value_sync,
+        value_new_ok,
+        value_new_only,
+        value_trunc,
+
+        // format specifier group
+        value_fixed,            // for floating point numbers
+        value_exp_upper,
+        value_exp,
+        value_short_upper,
+        value_short,
+        
+        value_dec,              // for integers
+        value_hex_upper,
+        value_hex,
+
+        value_chars,            // for text
+
+        // formatting flags group
+        value_fmt_left,
+        value_fmt_sign,
+        value_fmt_space,
+        value_fmt_pnt,
+        value_fmt_0x,
+        value_fmt_000,
+        value_fmt_none,
+
+        // board type group
+        value_board_other,
+        value_board_samd,
+        value_board_rp2040,
+        value_board_esp32,
+        value_board_nrf52840,
+
+        // setup command group
+        value_disp_width,
+        value_disp_mode,
+        value_float_fmt,
+        value_int_fmt,
+        value_tab_size,
+        value_angle_mode,
+        value_run,
+    };
+
+
     enum tokenType_type {                                               // token type
         tok_no_token,                                                   // no token to process
         tok_isInternCommand,
@@ -542,6 +675,7 @@ private:
 
         tok_isEvalEnd,                                                  // execution only, signals end of parsed eval() statements and of trigger strings
     };
+
 
     // error codes for all PARSING errors
     enum parsingResult_type {                                           // token parsing result
@@ -1332,7 +1466,8 @@ private:
     struct SymbNumConsts {
         const char* symbolName;
         const char* symbolValue;
-        char symbolType;
+        char symbolGroup;                                               // group of symbols
+        char symbolCode;                                                // code for a specific symbol
         char valueType;                                                 // float or long
     };
 
@@ -2196,6 +2331,7 @@ private:
 
     void processSetupFile();
     parsingResult_type tokenizeSetupLine(char* setupLine, Val* value, char* valueType, int* predefinedConstIndex, int& argCount);
+    parsingResult_type parseSetupLine(Val* value, char* valueType, int* predefinedConstIndex, int& argCount);
 
     // read one character from a stream (stream must be set prior to call)
     char getCharacter(bool& charFetched, bool& killNow, bool& forcedStop, bool& forcedAbort, bool& setStdConsole, bool enableTimeOut = false, bool useLongTimeout = false);
@@ -2233,8 +2369,8 @@ private:
     bool resetFunctionFlags();
 
     // basic parsing routines for constants, without other syntax checks etc. 
-    bool parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueType, int& predefinedConstIndex, parsingResult_type& result);
-    bool parseString(char*& pNext, char*& pch, char*& string, char& valueType, int& predefinedConstIndex, parsingResult_type& result, bool isIntermediateString);
+    bool parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueType, int& predefinedConstIndex, parsingResult_type& result, bool isSetupCmd = false);
+    bool parseString(char*& pNext, char*& pch, char*& string, char& valueType, int& predefinedConstIndex, parsingResult_type& result, bool isIntermediateString, bool isSetupCmd=false);
 
     // find an identifier (Justina variable or Justina function), init a Justina variable
     int getIdentifier(char** pIdentArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNew, bool isUserVar = false);

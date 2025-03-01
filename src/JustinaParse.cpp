@@ -173,7 +173,6 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
 
     // one statement parsed (or error: no token found OR command syntax error OR semicolon encountered)
 
-
     pInputStart = pNext;                                                                                            // set to next character (if error: indicates error position)
 
     if (_userVarUnderConstruction) { deleteUserVariable(); }
@@ -2611,21 +2610,24 @@ bool Justina::checkJustinaFuncArgArrayPattern(parsingResult_type& result, bool i
 
 // called while parsing expressions and while executing specifying print commands (e.g. 'readList')
 
-bool Justina::parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueType, int& predefinedConstIndex, parsingResult_type& result) {
+bool Justina::parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueType, int& predefinedConstIndex, parsingResult_type& result, bool isSetupCmd) {
 
     result = result_tokenNotFound;                                                              // init: flag 'no token found'
     pch = pNext;                                                                                // pointer to first character to parse (any spaces have been skipped already)
     predefinedConstIndex = -1;                                                                  // init: assume literal constant
 
     // first, check for symbolic number
-        char* tokenStart = pNext;
+    char* tokenStart = pNext;
     if (isalpha(pNext[0])) {                                                                    // first character is a letter ? could be symbolic constant
         while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                             // position as if symbolic constant was found, for now
 
         for (int index = _symbvalueCount - 1; index >= 0; index--) {                            // for all defined symbolic names: check against alphanumeric token (NOT ending by '\0')
             if (strlen(_symbNumConsts[index].symbolName) != pNext - pch) { continue; }          // token has correct length ? If not, skip remainder of loop ('continue')                            
             if (strncmp(_symbNumConsts[index].symbolName, pch, pNext - pch) != 0) { continue; } // token corresponds to symbolic name ? If not, skip remainder of loop ('continue')    
+
             // symbol found: 
+            if ((!isSetupCmd) && (_symbNumConsts[index].symbolGroup == symb_setup)){ pNext = pch;result = result_token_not_recognised; return false; }
+
             bool isNumber = ((_symbNumConsts[index].valueType == value_isLong) || (_symbNumConsts[index].valueType == value_isFloat));
             if (isNumber) {
                 if ((_symbNumConsts[index].valueType == value_isLong)) { value.longConst = strtol(_symbNumConsts[index].symbolValue, nullptr, 0); }
@@ -2690,7 +2692,7 @@ bool Justina::parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueTyp
 
 // called while parsing expressions and while executing specifying print commands (e.g. 'readList')
 
-bool Justina::parseString(char*& pNext, char*& pch, char*& pStringCst, char& valueType, int& predefinedConstIndex, parsingResult_type& result, bool isIntermediateString) {
+bool Justina::parseString(char*& pNext, char*& pch, char*& pStringCst, char& valueType, int& predefinedConstIndex, parsingResult_type& result, bool isIntermediateString, bool isSetupCmd) {
 
     result = result_tokenNotFound;                                                              // init: flag 'no token found'
     pch = pNext;                                                                                // pointer to first character to parse (any spaces have been skipped already)
@@ -2703,7 +2705,10 @@ bool Justina::parseString(char*& pNext, char*& pch, char*& pStringCst, char& val
         for (int index = _symbvalueCount - 1; index >= 0; index--) {                            // for all defined symbolic names: check against alphanumeric token (NOT ending by '\0')
             if (strlen(_symbNumConsts[index].symbolName) != pNext - pch) { continue; }          // token has correct length ? If not, skip remainder of loop ('continue')                            
             if (strncmp(_symbNumConsts[index].symbolName, pch, pNext - pch) != 0) { continue; } // token corresponds to symbolic name ? If not, skip remainder of loop ('continue')    
+
             // symbol found: 
+            if ((!isSetupCmd) && (_symbNumConsts[index].symbolGroup == symb_setup)) { pNext = pch; result = result_token_not_recognised; return false; }
+
             bool isString = (_symbNumConsts[index].valueType == value_isStringPointer);
             if (isString) {
                 pStringCst = (char*)_symbNumConsts[index].symbolValue;                          // no copy of the string itself: point to the table value entry

@@ -272,7 +272,7 @@ void setConnectionStatusLeds() {
 
         // toggle led on/off state (blink led) ?
         uint32_t currentTime = millis();
-        int32_t waitTime = (TCPledState ? 10 : 2290);                                            // time between led state changes (ms)
+        int32_t waitTime = (TCPledState ? 10 : 3890);                                            // time between led state changes (ms)
         if (((lastLedChangeTime + waitTime) < currentTime) || (currentTime < lastLedChangeTime)) { // (note: also handles millis() overflow after about 47 days)
             TCPledState = !TCPledState;
             digitalWrite(TCP_CONNECTED_PIN, TCPledState);                                       // BLINK: TCP enabled but client not yet connected                                         
