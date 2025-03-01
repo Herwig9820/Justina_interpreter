@@ -519,140 +519,130 @@ private:
         symb_filePos,
         symb_fmtSpec,
         symb_fmtFlag,
-        symb_board,
-        symb_setup
+        symb_board
     };
 
     //
     enum symbol_code {
         // boolean symbols group
-        value_false = 0,
-        value_true,
+        valcod_false = 0,
+        valcod_true,
 
-        value_off,
-        value_on,
+        valcod_off,
+        valcod_on,
 
-        value_low,
-        value_high,
+        valcod_low,
+        valcod_high,
 
         // number group
-        value_e,
-        value_pi,
-        value_half_pi,
-        value_quart_pi,
-        value_two_pi,
+        valcod_e,
+        valcod_pi,
+        valcod_half_pi,
+        valcod_quart_pi,
+        valcod_two_pi,
 
-        value_deg_to_rad,
-        value_rad_to_deg,
+        valcod_deg_to_rad,
+        valcod_rad_to_deg,
 
-        value_eof,
+        valcod_eof,
 
         // angle group
-        value_radians,
-        value_degrees,
+        valcod_radians,
+        valcod_degrees,
 
         // number type group
-        value_integer,
-        value_float,
-        value_string,
+        valcod_integer,
+        valcod_float,
+        valcod_string,
 
         // digital IO group
-        value_input,
-        value_output,
-        value_input_pl_up,
-        value_input_pl_down,
-        value_led_blt_in,
+        valcod_input,
+        valcod_output,
+        valcod_input_pl_up,
+        valcod_input_pl_down,
+        valcod_led_blt_in,
 
-        value_led_red,
-        value_led_green,
-        value_led_blue,
+        valcod_led_red,
+        valcod_led_green,
+        valcod_led_blue,
 
-        value_lsb_first,
-        value_msb_first,
+        valcod_lsb_first,
+        valcod_msb_first,
 
         // display mode group
-        value_no_prompt,
-        value_prompt,
-        value_echo,
+        valcod_no_prompt,
+        valcod_prompt,
+        valcod_echo,
 
         // display results group
-        value_no_results,
-        value_disp_results,
-        value_quote_results,
+        valcod_no_results,
+        valcod_disp_results,
+        valcod_quote_results,
 
         // info command group
-        value_enter,
-        value_enter_cancel,
-        value_yes_no,
-        value_yn_cancel,
+        valcod_enter,
+        valcod_enter_cancel,
+        valcod_yes_no,
+        valcod_yn_cancel,
 
         // enter command group
-        value_no_default,
-        value_allow_default,
+        valcod_no_default,
+        valcod_allow_default,
 
         // success group
-        value_canceled,
-        value_ok,
-        value_nok,
+        valcod_canceled,
+        valcod_ok,
+        valcod_nok,
 
         // input/output streams group
-        value_console,
-        value_IO1,
-        value_IO2,
-        value_IO3,
-        value_IO4,
-        value_file1,
-        value_file2,
-        value_file3,
-        value_file4,
-        value_file5,
+        valcod_console,
+        valcod_IO1,
+        valcod_IO2,
+        valcod_IO3,
+        valcod_IO4,
+        valcod_file1,
+        valcod_file2,
+        valcod_file3,
+        valcod_file4,
+        valcod_file5,
 
         // file access group
-        value_read,
-        value_write,
-        value_append,
-        value_sync,
-        value_new_ok,
-        value_new_only,
-        value_trunc,
+        valcod_read,
+        valcod_write,
+        valcod_append,
+        valcod_sync,
+        valcod_new_ok,
+        valcod_new_only,
+        valcod_trunc,
 
         // format specifier group
-        value_fixed,            // for floating point numbers
-        value_exp_upper,
-        value_exp,
-        value_short_upper,
-        value_short,
+        valcod_fixed,            // for floating point numbers
+        valcod_exp_upper,
+        valcod_exp,
+        valcod_short_upper,
+        valcod_short,
         
-        value_dec,              // for integers
-        value_hex_upper,
-        value_hex,
+        valcod_dec,              // for integers
+        valcod_hex_upper,
+        valcod_hex,
 
-        value_chars,            // for text
+        valcod_chars,            // for text
 
         // formatting flags group
-        value_fmt_left,
-        value_fmt_sign,
-        value_fmt_space,
-        value_fmt_pnt,
-        value_fmt_0x,
-        value_fmt_000,
-        value_fmt_none,
+        valcod_fmt_left,
+        valcod_fmt_sign,
+        valcod_fmt_space,
+        valcod_fmt_pnt,
+        valcod_fmt_0x,
+        valcod_fmt_000,
+        valcod_fmt_none,
 
         // board type group
-        value_board_other,
-        value_board_samd,
-        value_board_rp2040,
-        value_board_esp32,
-        value_board_nrf52840,
-
-        // setup command group
-        value_disp_width,
-        value_disp_mode,
-        value_float_fmt,
-        value_int_fmt,
-        value_tab_size,
-        value_angle_mode,
-        value_run,
+        valcod_board_other,
+        valcod_board_samd,
+        valcod_board_rp2040,
+        valcod_board_esp32,
+        valcod_board_nrf52840,
     };
 
 
@@ -709,7 +699,6 @@ private:
         result_variableNameExpected,
         result_assignmentOrSeparatorExpected,
         result_separatorExpected,
-        result_setupCommandExpected,
 
         // used memory errors
         result_maxVariableNamesReached = 1300,
@@ -1278,7 +1267,6 @@ public:
     static constexpr long SD_runStart = 0x3;                            // init SD card upon Justina begin(); load program "start.jus(); execute start() 
     static constexpr long MAX_SETUP_ARGS = 8;                           // maximum number of tokens in a setup file line
     
-    static const char SETUP_FILE_PATH[19];
     static const char AUTOSTART_FILE_PATH[19];
 
 private:
@@ -1463,12 +1451,12 @@ private:
         char associativityAnduse;
     };
 
-    struct SymbNumConsts {
-        const char* symbolName;
-        const char* symbolValue;
+    struct SymbNumConsts {                                              // predefined symbolic constants
+        const char* symbolName;                                         // symbolic name of the constant
+        const char* symbolValue;                                        // value of the constant
         char symbolGroup;                                               // group of symbols
         char symbolCode;                                                // code for a specific symbol
-        char valueType;                                                 // float or long
+        char valueType;                                                 // indicator: value is float or long 
     };
 
 
@@ -1500,9 +1488,9 @@ private:
     static const InternCppFuncDef _internCppFunctions[141];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
 #if (defined ARDUINO_ARCH_ESP32) 
-    static const SymbNumConsts _symbNumConsts[89];                                                                              // predefined constants
+    static const SymbNumConsts _symbNumConsts[82];                                                                              // predefined constants
 #else
-    static const SymbNumConsts _symbNumConsts[86];                                                                              // predefined constants
+    static const SymbNumConsts _symbNumConsts[79];                                                                              // predefined constants
 #endif
     static constexpr int _internCommandCount{ sizeof(_internCommands) / sizeof(_internCommands[0]) };                           // count of keywords in keyword table 
     static constexpr int _internCppFunctionCount{ (sizeof(_internCppFunctions)) / sizeof(_internCppFunctions[0]) };             // count of internal cpp functions in functions table
@@ -2329,10 +2317,6 @@ private:
     // parsing
     // -------
 
-    void processSetupFile();
-    parsingResult_type tokenizeSetupLine(char* setupLine, Val* value, char* valueType, int* predefinedConstIndex, int& argCount);
-    parsingResult_type parseSetupLine(Val* value, char* valueType, int* predefinedConstIndex, int& argCount);
-
     // read one character from a stream (stream must be set prior to call)
     char getCharacter(bool& charFetched, bool& killNow, bool& forcedStop, bool& forcedAbort, bool& setStdConsole, bool enableTimeOut = false, bool useLongTimeout = false);
 
@@ -2369,8 +2353,8 @@ private:
     bool resetFunctionFlags();
 
     // basic parsing routines for constants, without other syntax checks etc. 
-    bool parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueType, int& predefinedConstIndex, parsingResult_type& result, bool isSetupCmd = false);
-    bool parseString(char*& pNext, char*& pch, char*& string, char& valueType, int& predefinedConstIndex, parsingResult_type& result, bool isIntermediateString, bool isSetupCmd=false);
+    bool parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueType, int& predefinedConstIndex, parsingResult_type& result);
+    bool parseString(char*& pNext, char*& pch, char*& string, char& valueType, int& predefinedConstIndex, parsingResult_type& result, bool isIntermediateString);
 
     // find an identifier (Justina variable or Justina function), init a Justina variable
     int getIdentifier(char** pIdentArray, int& identifiersInUse, int maxIdentifiers, char* pIdentNameToCheck, int identLength, bool& createNew, bool isUserVar = false);

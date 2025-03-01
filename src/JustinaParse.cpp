@@ -2610,7 +2610,7 @@ bool Justina::checkJustinaFuncArgArrayPattern(parsingResult_type& result, bool i
 
 // called while parsing expressions and while executing specifying print commands (e.g. 'readList')
 
-bool Justina::parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueType, int& predefinedConstIndex, parsingResult_type& result, bool isSetupCmd) {
+bool Justina::parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueType, int& predefinedConstIndex, parsingResult_type& result) {
 
     result = result_tokenNotFound;                                                              // init: flag 'no token found'
     pch = pNext;                                                                                // pointer to first character to parse (any spaces have been skipped already)
@@ -2624,9 +2624,6 @@ bool Justina::parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueTyp
         for (int index = _symbvalueCount - 1; index >= 0; index--) {                            // for all defined symbolic names: check against alphanumeric token (NOT ending by '\0')
             if (strlen(_symbNumConsts[index].symbolName) != pNext - pch) { continue; }          // token has correct length ? If not, skip remainder of loop ('continue')                            
             if (strncmp(_symbNumConsts[index].symbolName, pch, pNext - pch) != 0) { continue; } // token corresponds to symbolic name ? If not, skip remainder of loop ('continue')    
-
-            // symbol found: 
-            if ((!isSetupCmd) && (_symbNumConsts[index].symbolGroup == symb_setup)){ pNext = pch;result = result_token_not_recognised; return false; }
 
             bool isNumber = ((_symbNumConsts[index].valueType == value_isLong) || (_symbNumConsts[index].valueType == value_isFloat));
             if (isNumber) {
@@ -2692,7 +2689,7 @@ bool Justina::parseIntFloat(char*& pNext, char*& pch, Val& value, char& valueTyp
 
 // called while parsing expressions and while executing specifying print commands (e.g. 'readList')
 
-bool Justina::parseString(char*& pNext, char*& pch, char*& pStringCst, char& valueType, int& predefinedConstIndex, parsingResult_type& result, bool isIntermediateString, bool isSetupCmd) {
+bool Justina::parseString(char*& pNext, char*& pch, char*& pStringCst, char& valueType, int& predefinedConstIndex, parsingResult_type& result, bool isIntermediateString) {
 
     result = result_tokenNotFound;                                                              // init: flag 'no token found'
     pch = pNext;                                                                                // pointer to first character to parse (any spaces have been skipped already)
@@ -2705,9 +2702,6 @@ bool Justina::parseString(char*& pNext, char*& pch, char*& pStringCst, char& val
         for (int index = _symbvalueCount - 1; index >= 0; index--) {                            // for all defined symbolic names: check against alphanumeric token (NOT ending by '\0')
             if (strlen(_symbNumConsts[index].symbolName) != pNext - pch) { continue; }          // token has correct length ? If not, skip remainder of loop ('continue')                            
             if (strncmp(_symbNumConsts[index].symbolName, pch, pNext - pch) != 0) { continue; } // token corresponds to symbolic name ? If not, skip remainder of loop ('continue')    
-
-            // symbol found: 
-            if ((!isSetupCmd) && (_symbNumConsts[index].symbolGroup == symb_setup)) { pNext = pch; result = result_token_not_recognised; return false; }
 
             bool isString = (_symbNumConsts[index].valueType == value_isStringPointer);
             if (isString) {

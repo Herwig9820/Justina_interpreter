@@ -433,141 +433,131 @@ const Justina::SymbNumConsts Justina::_symbNumConsts[]{
     // -----------          -----                       -----------------   -----------         ----------
 
     // boolean values                                                                    
-    {"FALSE",               "0",                        symb_bool,          value_false,        value_isLong},          // value for boolean 'false'
-    {"TRUE",                "1",                        symb_bool,          value_true,         value_isLong},          // value for boolean 'true'
+    {"FALSE",               "0",                        symb_bool,          valcod_false,           value_isLong},          // value for boolean 'false'
+    {"TRUE",                "1",                        symb_bool,          valcod_true,            value_isLong},          // value for boolean 'true'
 
-    {"OFF",                 "0",                        symb_bool,          value_off,          value_isLong},          // value for boolean 'false'
-    {"ON",                  "1",                        symb_bool,          value_on,           value_isLong},          // value for boolean 'true'
+    {"OFF",                 "0",                        symb_bool,          valcod_off,             value_isLong},          // value for boolean 'false'
+    {"ON",                  "1",                        symb_bool,          valcod_on,              value_isLong},          // value for boolean 'true'
 
-    {"LOW",                 "0",                        symb_bool,          value_low,          value_isLong},          // standard ARduino constants for digital I/O
-    {"HIGH",                "1",                        symb_bool,          value_high,         value_isLong},
+    {"LOW",                 "0",                        symb_bool,          valcod_low,             value_isLong},          // standard ARduino constants for digital I/O
+    {"HIGH",                "1",                        symb_bool,          valcod_high,            value_isLong},
 
     // math: floating point constants (with more precision than what will actually be used)
-    {"e",                   "2.7182818284590452354",    symb_number,        value_e,            value_isFloat},         // base of natural logarithm (more digits then actually needed for float)
-    {"PI",                  "3.14159265358979323846",   symb_number,        value_pi,           value_isFloat},         // PI (more digits then actually needed for float)
-    {"HALF_PI",             "1.57079632679489661923",   symb_number,        value_half_pi,      value_isFloat},         // PI / 2
-    {"QUART_PI",            "0.78539816339744830962",   symb_number,        value_quart_pi,     value_isFloat},         // PI / 4
-    {"TWO_PI",              "6.2831853071795864769",    symb_number,        value_two_pi,       value_isFloat},         // 2 * PI 
+    {"e",                   "2.7182818284590452354",    symb_number,        valcod_e,               value_isFloat},         // base of natural logarithm (more digits then actually needed for float)
+    {"PI",                  "3.14159265358979323846",   symb_number,        valcod_pi,              value_isFloat},         // PI (more digits then actually needed for float)
+    {"HALF_PI",             "1.57079632679489661923",   symb_number,        valcod_half_pi,         value_isFloat},         // PI / 2
+    {"QUART_PI",            "0.78539816339744830962",   symb_number,        valcod_quart_pi,        value_isFloat},         // PI / 4
+    {"TWO_PI",              "6.2831853071795864769",    symb_number,        valcod_two_pi,          value_isFloat},         // 2 * PI 
 
-    {"DEG_TO_RAD",          "0.01745329251994329577",   symb_number,        value_deg_to_rad,   value_isFloat},         // conversion factor: degrees to radians
-    {"RAD_TO_DEG",          "57.2957795130823208768",   symb_number,        value_rad_to_deg,   value_isFloat},         // radians to degrees
+    {"DEG_TO_RAD",          "0.01745329251994329577",   symb_number,        valcod_deg_to_rad,      value_isFloat},         // conversion factor: degrees to radians
+    {"RAD_TO_DEG",          "57.2957795130823208768",   symb_number,        valcod_rad_to_deg,      value_isFloat},         // radians to degrees
 
-    {"EOF",                 "-1",                       symb_number,        value_eof,          value_isLong},          // seek(n, EOF) is same as seek(n, size(n))
+    {"EOF",                 "-1",                       symb_number,        valcod_eof,             value_isLong},          // seek(n, EOF) is same as seek(n, size(n))
 
    // angle mode                                                                        
-    {"RADIANS",             "0",                        symb_angle,         value_radians,      value_isLong},
-    {"DEGREES",             "1",                        symb_angle,         value_degrees,      value_isLong},
+    {"RADIANS",             "0",                        symb_angle,         valcod_radians,         value_isLong},
+    {"DEGREES",             "1",                        symb_angle,         valcod_degrees,         value_isLong},
 
     // data types                                                                        
-    {"INTEGER",             "1",                        symb_numType,       value_integer,      value_isLong},          // value type of an integer value
-    {"FLOAT",               "2",                        symb_numType,       value_float,        value_isLong},          // value type of a float value
-    {"STRING",              "3",                        symb_numType,       value_string,       value_isLong},          // value type of a string value
+    {"INTEGER",             "1",                        symb_numType,       valcod_integer,         value_isLong},          // value type of an integer value
+    {"FLOAT",               "2",                        symb_numType,       valcod_float,           value_isLong},          // value type of a float value
+    {"STRING",              "3",                        symb_numType,       valcod_string,          value_isLong},          // value type of a string value
 
     // digital I/O                                                                       
-    {"INPUT",               "0x1",                      symb_digitalIO,     value_input,        value_isLong},          // standard ARduino constants for digital I/O
-    {"OUTPUT",              "0x3",                      symb_digitalIO,     value_output,       value_isLong},
-    {"INPUT_PULLUP",        "0x5",                      symb_digitalIO,     value_input_pl_up,  value_isLong},
-    {"INPUT_PULLDOWN",      "0x9",                      symb_digitalIO,     value_input_pl_down,value_isLong},
-    {"LED_BUILTIN",         "13",                       symb_digitalIO,     value_led_blt_in,   value_isLong},
+    {"INPUT",               "0x1",                      symb_digitalIO,     valcod_input,           value_isLong},          // standard ARduino constants for digital I/O
+    {"OUTPUT",              "0x3",                      symb_digitalIO,     valcod_output,          value_isLong},
+    {"INPUT_PULLUP",        "0x5",                      symb_digitalIO,     valcod_input_pl_up,     value_isLong},
+    {"INPUT_PULLDOWN",      "0x9",                      symb_digitalIO,     valcod_input_pl_down,   value_isLong},
+    {"LED_BUILTIN",         "13",                       symb_digitalIO,     valcod_led_blt_in,      value_isLong},
 #if (defined ARDUINO_ARCH_ESP32)                                                         
-    {"LED_RED",             "14",                       symb_digitalIO,     value_led_red,      value_isLong},
-    {"LED_GREEN",           "15",                       symb_digitalIO,     value_led_green,    value_isLong},
-    {"LED_BLUE",            "16",                       symb_digitalIO,     value_led_blue,     value_isLong},
+    {"LED_RED",             "14",                       symb_digitalIO,     valcod_led_red,         value_isLong},
+    {"LED_GREEN",           "15",                       symb_digitalIO,     valcod_led_green,       value_isLong},
+    {"LED_BLUE",            "16",                       symb_digitalIO,     valcod_led_blue,        value_isLong},
 #endif                                                                                   
-    {"LSBFIRST",            "0x0",                      symb_digitalIO,     value_lsb_first,    value_isLong},          // standard ARduino constants for digital I/O
-    {"MSBFIRST",            "0x1",                      symb_digitalIO,     value_msb_first,    value_isLong},
+    {"LSBFIRST",            "0x0",                      symb_digitalIO,     valcod_lsb_first,       value_isLong},          // standard ARduino constants for digital I/O
+    {"MSBFIRST",            "0x1",                      symb_digitalIO,     valcod_msb_first,       value_isLong},
 
     // display mode command first argument: prompt and echo display                      
-    {"NO_PROMPT",           "0",                        symb_dispMode,      value_no_prompt,    value_isLong},          // do not print prompt and do not echo user input
-    {"PROMPT",              "1",                        symb_dispMode,      value_prompt,       value_isLong},          // print prompt but no not echo user input
-    {"ECHO",                "2",                        symb_dispMode,      value_echo,         value_isLong},          // print prompt and echo user input
+    {"NO_PROMPT",           "0",                        symb_dispMode,      valcod_no_prompt,       value_isLong},          // do not print prompt and do not echo user input
+    {"PROMPT",              "1",                        symb_dispMode,      valcod_prompt,          value_isLong},          // print prompt but no not echo user input
+    {"ECHO",                "2",                        symb_dispMode,      valcod_echo,            value_isLong},          // print prompt and echo user input
 
     // display mode command second argument: last result format                      
-    {"NO_RESULTS",          "0",                        symb_dispResults,   value_no_results,   value_isLong},          // do not print last result
-    {"RESULTS",             "1",                        symb_dispResults,   value_disp_results, value_isLong},          // print last result
-    {"QUOTE_RES",           "2",                        symb_dispResults,   value_quote_results,value_isLong},          // print last result, quote string results 
+    {"NO_RESULTS",          "0",                        symb_dispResults,   valcod_no_results,      value_isLong},          // do not print last result
+    {"RESULTS",             "1",                        symb_dispResults,   valcod_disp_results,    value_isLong},          // print last result
+    {"QUOTE_RES",           "2",                        symb_dispResults,   valcod_quote_results,   value_isLong},          // print last result, quote string results 
 
     // info command: type of confirmation required ("request answer yes/no, ...")
-    {"ENTER",               "0",                        symb_infoCmd,       value_enter,        value_isLong},          // confirmation required by pressing ENTER (any preceding characters are skipped)
-    {"ENTER_CANCEL",        "1",                        symb_infoCmd,       value_enter_cancel, value_isLong},          // idem, but if '\c' encountered in input stream the operation is canceled by user 
-    {"YES_NO",              "2",                        symb_infoCmd,       value_yes_no,       value_isLong},          // only yes or no answer allowed, by pressing 'y' or 'n' followed by ENTER   
-    {"YN_CANCEL",           "3",                        symb_infoCmd,       value_yn_cancel,    value_isLong},          // idem, but if '\c' encountered in input stream the operation is canceled by user 
+    {"ENTER",               "0",                        symb_infoCmd,       valcod_enter,           value_isLong},          // confirmation required by pressing ENTER (any preceding characters are skipped)
+    {"ENTER_CANCEL",        "1",                        symb_infoCmd,       valcod_enter_cancel,    value_isLong},          // idem, but if '\c' encountered in input stream the operation is canceled by user 
+    {"YES_NO",              "2",                        symb_infoCmd,       valcod_yes_no,          value_isLong},          // only yes or no answer allowed, by pressing 'y' or 'n' followed by ENTER   
+    {"YN_CANCEL",           "3",                        symb_infoCmd,       valcod_yn_cancel,       value_isLong},          // idem, but if '\c' encountered in input stream the operation is canceled by user 
 
     // input command: default allowed                                                    
-    {"NO_DEFAULT",          "0",                        symb_inputCmd,      value_no_default,   value_isLong},          // '\d' sequences ('default') in the input stream are ignored
-    {"ALLOW_DEFAULT",       "1",                        symb_inputCmd,      value_allow_default,value_isLong},          // if '\d' sequence is encountered in the input stream, default value is returned
+    {"NO_DEFAULT",          "0",                        symb_inputCmd,      valcod_no_default,      value_isLong},          // '\d' sequences ('default') in the input stream are ignored
+    {"ALLOW_DEFAULT",       "1",                        symb_inputCmd,      valcod_allow_default,   value_isLong},          // if '\d' sequence is encountered in the input stream, default value is returned
 
     // input and info command: flag 'user canceled' (input argument 3 / info argument 2 return value - argument must be a variable)
-    {"CANCELED",            "0",                        symb_success,       value_canceled,     value_isLong},          // operation was canceled by user (\c sequence encountered)
-    {"OK",                  "1",                        symb_success,       value_ok,           value_isLong},          // OK 
-    {"NOK",                 "-1",                       symb_success,       value_nok,          value_isLong},          // NOT OK 
+    {"CANCELED",            "0",                        symb_success,       valcod_canceled,        value_isLong},          // operation was canceled by user (\c sequence encountered)
+    {"OK",                  "1",                        symb_success,       valcod_ok,              value_isLong},          // OK 
+    {"NOK",                 "-1",                       symb_success,       valcod_nok,             value_isLong},          // NOT OK 
 
     // input / output streams                                                            
-    {"CONSOLE",             "0",                        symb_IOstream,      value_console,      value_isLong},          // IO: read from / print to console
-    {"IO1",                 "-1",                       symb_IOstream,      value_IO1,          value_isLong},          // IO: read from / print to alternative I/O port 1 (if defined)
-    {"IO2",                 "-2",                       symb_IOstream,      value_IO2,          value_isLong},          // IO: read from / print to alternative I/O port 2 (if defined)
-    {"IO3",                 "-3",                       symb_IOstream,      value_IO3,          value_isLong},          // IO: read from / print to alternative I/O port 3 (if defined)
-    {"IO4",                 "-4",                       symb_IOstream,      value_IO4,          value_isLong},          // IO: read from / print to alternative I/O port 4 (if defined)
-    {"FILE1",               "1",                        symb_IOstream,      value_file1,        value_isLong},          // IO: read from / print to open SD file 1
-    {"FILE2",               "2",                        symb_IOstream,      value_file2,        value_isLong},          // IO: read from / print to open SD file 2 
-    {"FILE3",               "3",                        symb_IOstream,      value_file3,        value_isLong},          // IO: read from / print to open SD file 3 
-    {"FILE4",               "4",                        symb_IOstream,      value_file4,        value_isLong},          // IO: read from / print to open SD file 4 
-    {"FILE5",               "5",                        symb_IOstream,      value_file5,        value_isLong},          // IO: read from / print to open SD file 5 
+    {"CONSOLE",             "0",                        symb_IOstream,      valcod_console,         value_isLong},          // IO: read from / print to console
+    {"IO1",                 "-1",                       symb_IOstream,      valcod_IO1,             value_isLong},          // IO: read from / print to alternative I/O port 1 (if defined)
+    {"IO2",                 "-2",                       symb_IOstream,      valcod_IO2,             value_isLong},          // IO: read from / print to alternative I/O port 2 (if defined)
+    {"IO3",                 "-3",                       symb_IOstream,      valcod_IO3,             value_isLong},          // IO: read from / print to alternative I/O port 3 (if defined)
+    {"IO4",                 "-4",                       symb_IOstream,      valcod_IO4,             value_isLong},          // IO: read from / print to alternative I/O port 4 (if defined)
+    {"FILE1",               "1",                        symb_IOstream,      valcod_file1,           value_isLong},          // IO: read from / print to open SD file 1
+    {"FILE2",               "2",                        symb_IOstream,      valcod_file2,           value_isLong},          // IO: read from / print to open SD file 2 
+    {"FILE3",               "3",                        symb_IOstream,      valcod_file3,           value_isLong},          // IO: read from / print to open SD file 3 
+    {"FILE4",               "4",                        symb_IOstream,      valcod_file4,           value_isLong},          // IO: read from / print to open SD file 4 
+    {"FILE5",               "5",                        symb_IOstream,      valcod_file5,           value_isLong},          // IO: read from / print to open SD file 5 
 
     // file access type on open: constants can be bitwise 'or'ed                     
     // READ can be combined with WRITE or APPEND; APPEND automatically includes WRITE (but only possible to append)
-    {"READ",                "0x1",                      symb_access,        value_read,         value_isLong},          // open SD file for read access
-    {"WRITE",               "0x2",                      symb_access,        value_write,        value_isLong},          // open SD file for write access
-    {"APPEND",              "0x6",                      symb_access,        value_append,       value_isLong},          // open SD file for write access, writes will occur at end of file
+    {"READ",                "0x1",                      symb_access,        valcod_read,            value_isLong},          // open SD file for read access
+    {"WRITE",               "0x2",                      symb_access,        valcod_write,           value_isLong},          // open SD file for write access
+    {"APPEND",              "0x6",                      symb_access,        valcod_append,          value_isLong},          // open SD file for write access, writes will occur at end of file
     // NOTE: next 4 file access constants HAVE NO FUNCTION with nano ESP32 boards - they don't do anything
-    {"SYNC",                "0x8",                      symb_access,        value_sync,         value_isLong},          // synchronous writes: send data physically to the card after each write 
-    {"NEW_OK",              "0x10",                     symb_access,        value_new_ok,       value_isLong},          // creating new files if non-existent is allowed, open existing files
-    {"NEW_ONLY",            "0x30",                     symb_access,        value_new_only,     value_isLong},          // create new file only - do not open an existing file
-    {"TRUNC",               "0x40",                     symb_access,        value_trunc,        value_isLong},          // truncate file to zero bytes on open (NOT if file is opened for read access only)
+    {"SYNC",                "0x8",                      symb_access,        valcod_sync,            value_isLong},          // synchronous writes: send data physically to the card after each write 
+    {"NEW_OK",              "0x10",                     symb_access,        valcod_new_ok,          value_isLong},          // creating new files if non-existent is allowed, open existing files
+    {"NEW_ONLY",            "0x30",                     symb_access,        valcod_new_only,        value_isLong},          // create new file only - do not open an existing file
+    {"TRUNC",               "0x40",                     symb_access,        valcod_trunc,           value_isLong},          // truncate file to zero bytes on open (NOT if file is opened for read access only)
 
     // formatting: specifiers for floating point numbers                             
-    {"FIXED",               "f",                        symb_fmtSpec,       value_fixed,        value_isStringPointer}, // fixed point notation
-    {"EXP_U",               "E",                        symb_fmtSpec,       value_exp_upper,    value_isStringPointer}, // scientific notation, exponent: 'E'
-    {"EXP",                 "e",                        symb_fmtSpec,       value_exp,          value_isStringPointer}, // scientific notation, exponent: 'e' 
-    {"SHORT_U",             "G",                        symb_fmtSpec,       value_short_upper,  value_isStringPointer}, // shortest notation possible; if exponent: 'E' 
-    {"SHORT",               "g",                        symb_fmtSpec,       value_short,        value_isStringPointer}, // shortest notation possible; if exponent: 'e'   
+    {"FIXED",               "f",                        symb_fmtSpec,       valcod_fixed,           value_isStringPointer}, // fixed point notation
+    {"EXP_U",               "E",                        symb_fmtSpec,       valcod_exp_upper,       value_isStringPointer}, // scientific notation, exponent: 'E'
+    {"EXP",                 "e",                        symb_fmtSpec,       valcod_exp,             value_isStringPointer}, // scientific notation, exponent: 'e' 
+    {"SHORT_U",             "G",                        symb_fmtSpec,       valcod_short_upper,     value_isStringPointer}, // shortest notation possible; if exponent: 'E' 
+    {"SHORT",               "g",                        symb_fmtSpec,       valcod_short,           value_isStringPointer}, // shortest notation possible; if exponent: 'e'   
 
     // formatting: specifiers for integers              symb_fmtSpec,                    
-    {"DEC",                 "d",                        symb_fmtSpec,       value_dec,          value_isStringPointer}, // base 10 (decimal)
-    {"HEX_U",               "X",                        symb_fmtSpec,       value_hex_upper,    value_isStringPointer}, // base 16 (hex), digits A..F
-    {"HEX",                 "x",                        symb_fmtSpec,       value_hex,          value_isStringPointer}, // base 16 (hex), digits a..f
+    {"DEC",                 "d",                        symb_fmtSpec,       valcod_dec,             value_isStringPointer}, // base 10 (decimal)
+    {"HEX_U",               "X",                        symb_fmtSpec,       valcod_hex_upper,       value_isStringPointer}, // base 16 (hex), digits A..F
+    {"HEX",                 "x",                        symb_fmtSpec,       valcod_hex,             value_isStringPointer}, // base 16 (hex), digits a..f
 
     // formatting: specifier for character strings                                       
-    {"CHARS",               "s",                        symb_fmtSpec,       value_chars,        value_isStringPointer },// character string   
+    {"CHARS",               "s",                        symb_fmtSpec,       valcod_chars,           value_isStringPointer },// character string   
 
     // formatting: flags                                                                 
-    {"FMT_LEFT",            "0x01",                     symb_fmtFlag,       value_fmt_left,     value_isLong},          // align output left within the print field 
-    {"FMT_SIGN",            "0x02",                     symb_fmtFlag,       value_fmt_sign,     value_isLong},          // always add a sign (- or +) preceding the value
-    {"FMT_SPACE",           "0x04",                     symb_fmtFlag,       value_fmt_space,    value_isLong},          // precede the value with a space if no sign is written 
-    {"FMT_POINT",           "0x08",                     symb_fmtFlag,       value_fmt_pnt,      value_isLong},          // if used with 'F', 'E', 'G' specifiers: add decimal point, even if no digits after decimal point  
-    {"FMT_0X",              "0x08",                     symb_fmtFlag,       value_fmt_0x,       value_isLong},          // if used with hex output 'X' specifier: precede non-zero values with 0x  
-    {"FMT_000",             "0x10",                     symb_fmtFlag,       value_fmt_000,      value_isLong},          // if used with 'F', 'E', 'G' specifiers: pad with zeros 
-    {"FMT_NONE",            "0x00",                     symb_fmtFlag,       value_fmt_none,     value_isLong},          // no flags 
+    {"FMT_LEFT",            "0x01",                     symb_fmtFlag,       valcod_fmt_left,        value_isLong},          // align output left within the print field 
+    {"FMT_SIGN",            "0x02",                     symb_fmtFlag,       valcod_fmt_sign,        value_isLong},          // always add a sign (- or +) preceding the value
+    {"FMT_SPACE",           "0x04",                     symb_fmtFlag,       valcod_fmt_space,       value_isLong},          // precede the value with a space if no sign is written 
+    {"FMT_POINT",           "0x08",                     symb_fmtFlag,       valcod_fmt_pnt,         value_isLong},          // if used with 'F', 'E', 'G' specifiers: add decimal point, even if no digits after decimal point  
+    {"FMT_0X",              "0x08",                     symb_fmtFlag,       valcod_fmt_0x,          value_isLong},          // if used with hex output 'X' specifier: precede non-zero values with 0x  
+    {"FMT_000",             "0x10",                     symb_fmtFlag,       valcod_fmt_000,         value_isLong},          // if used with 'F', 'E', 'G' specifiers: pad with zeros 
+    {"FMT_NONE",            "0x00",                     symb_fmtFlag,       valcod_fmt_none,        value_isLong},          // no flags 
 
-    {"BOARD_OTHER",         "0",                        symb_board,         value_board_other,  value_isLong },         // board architecture is undefined
-    {"BOARD_SAMD",          "1",                        symb_board,         value_board_samd,   value_isLong },         // board architecture is SAMD (nano 33 IoT)
-    {"BOARD_RP2040",        "2",                        symb_board,         value_board_rp2040, value_isLong },         // board architecture is RP2040 
-    {"BOARD_ESP32",         "3",                        symb_board,         value_board_esp32,  value_isLong },         // board architecture is ESP32 
-    {"BOARD_NRF52840",      "4",                        symb_board,         value_board_nrf52840,   value_isLong },     // board architecture is NRF52840 (nano 33 BLE) 
-
-    // settings in setup file: these symbols can ONLY be used within a setup file, NOT from within Justina !
-    {"DISP_WIDTH",          "0",                        symb_setup,         value_disp_width,   value_isLong},
-    {"DISP_MODE",           "1",                        symb_setup,         value_disp_mode,    value_isLong},
-    {"FLOAT_FMT",           "2",                        symb_setup,         value_float_fmt,    value_isLong},
-    {"INT_FMT",             "3",                        symb_setup,         value_int_fmt,      value_isLong},
-    {"TAB_SIZE",            "4",                        symb_setup,         value_tab_size,     value_isLong},
-    {"ANGLE_MODE",          "5",                        symb_setup,         value_angle_mode,   value_isLong},
-    {"RUN",                 "6",                        symb_setup,         value_run,          value_isLong}
+    {"BOARD_OTHER",         "0",                        symb_board,         valcod_board_other,     value_isLong },         // board architecture is undefined
+    {"BOARD_SAMD",          "1",                        symb_board,         valcod_board_samd,      value_isLong },         // board architecture is SAMD (nano 33 IoT)
+    {"BOARD_RP2040",        "2",                        symb_board,         valcod_board_rp2040,    value_isLong },         // board architecture is RP2040 
+    {"BOARD_ESP32",         "3",                        symb_board,         valcod_board_esp32,     value_isLong },         // board architecture is ESP32 
+    {"BOARD_NRF52840",      "4",                        symb_board,         valcod_board_nrf52840,  value_isLong }          // board architecture is NRF52840 (nano 33 BLE) 
 };
 
 // constant strings
 // ----------------
-const char Justina::SETUP_FILE_PATH[]{ "/Justina/setup.txt" };
 const char Justina::AUTOSTART_FILE_PATH[] = "/Justina/start.jus";
 
 
@@ -767,19 +757,6 @@ void Justina::begin() {
         execResult_type execResult = startSD();
         printlnTo(0, _SDinitOK ? "SD card found" : "SD card error: SD card NOT found");
     }
-
-    processSetupFile();                                                                     // process setup file, if present
-
-
-
-
-
-
-
-
-
-
-
 
     if ((_justinaStartupOptions & SD_mask) == SD_runStart) {
     // open startup file and retrieve file number (which would be one, normally)
@@ -993,232 +970,6 @@ void Justina::begin() {
     // Objects that are not deleted now, will be deleted when the Justina object is deleted (destructor).  
     // (program and variable memory itself is only freed when the Justina object itself is deleted).
     return;                                                                                                     // return to calling program
-}
-
-
-// -----------------------------------------
-// *   process setup file (if it exists)   *
-// -----------------------------------------
-
-void Justina::processSetupFile() {
-    Val value[MAX_SETUP_ARGS];
-    char valueType[MAX_SETUP_ARGS];
-    int predefinedConstIndex[MAX_SETUP_ARGS];               // index of predefined constant (if value is a predefined constant)
-
-    int tokenCount{ 0 };                                    // initialize argument count 
-    int errorArgNo{ 0 };
-    char setupLine[51]{ "" };                               // 50 character buffer for setup file lines + '\0'
-
-    if (_SDinitOK) {
-        if (SD.exists(SETUP_FILE_PATH)) {
-            execResult_type execResult = SD_open(_loadProgFromStreamNo, SETUP_FILE_PATH, READ_FILE);    // this performs a few card & file checks as well
-
-            if (execResult == result_execOK) {
-                int line{ 0 };
-                char s[100]{ "" };
-                File& file = openFiles[_loadProgFromStreamNo - 1].file;
-                printlnTo(0, "Reading setup file, applying settings...");
-
-                while (file.available()) {
-
-                    // read one line from '/Justina/setup.txt'
-                    // ---------------------------------------
-                    // readBytesUntil: sets current FILE position to the first character after the '\n' character found (could be EOF = -1)...
-                    //                 ... or, if the line is too long, to the character after the last character read
-                    int bytesRead = file.readBytesUntil('\r', setupLine, sizeof(setupLine) - 1);
-                    setupLine[bytesRead] = '\0';                                                            // Null-terminate the string
-                    ++line;
-                    if (line == 19) { Serial.print(">"); Serial.print(setupLine); Serial.print("<"); for (int i = 0; i < bytesRead; i++) { Serial.println(setupLine[i], HEX); } delay(1000); }
-
-                    // perform checks: skip line read if it's a blank line or comment line or if the line is too long, and...
-                    // ...move file position to the start of the next line (or to EOF) - will be read in next loop
-
-                    if ((setupLine[0] == '*') || (setupLine[0] == '\0')) { file.find("\n"); continue; }     // skip blank lines and comment lines
-                    else if (file.peek() == '\r') { file.read(); file.read(); }                             // '\r' NOT read, but is next in FILE: maximum line length used (still OK) -> skip '\r\n' 
-                    else if (file.peek() == '\n') { file.read(); }                                          // '\r' read: file pointer now positioned at '\n' character -> skip it 
-                    else {                                                                                  // line too long: skip it, except when only containing spaces and tab
-                        char c{ '\0' }; while (strchr(" \t", (c = file.read())) != nullptr) {}              // look for first non-space (and non-tab) character 
-                        file.find("\n");                                                                    // skip '\n' character: FILE position is to start of next line
-                        if (c != '\r') {
-                            sprintf(s, "line %d: max. length exceeded", line);
-                            printlnTo(0, s);
-                            continue;                                                                       // line too long: skip this line
-                        }
-                    }
-
-                    // lex (tokenize) and parse a setup line, check for valid setup command
-                    // --------------------------------------------------------------------
-                    parsingResult_type parsingResult = tokenizeSetupLine(setupLine, value, valueType, predefinedConstIndex, tokenCount);   // lex (tokenize) line
-                    if (parsingResult != result_parsing_OK) {
-                        sprintf(s, "line %d: lexing error %d - token No %d", line, parsingResult, ++tokenCount);
-                        printlnTo(0, s);
-                        continue;                                                                           // line too long: skip this line
-                    }
-
-                    parsingResult = parseSetupLine(value, valueType, predefinedConstIndex, tokenCount);   // syntax & semantics checks
-                    if (parsingResult != result_parsing_OK) {
-                        sprintf(s, "line %d: parsing error %d -, token No %d", line, parsingResult, ++tokenCount);
-                        printlnTo(0, s);
-                        continue;
-                    }
-
-
-                     // delete parsed string objects
-                     // ----------------------------
-                    for (int i = 0; i < tokenCount; i++) {
-                        if (valueType[i] == value_isString) {
-                            if ((value[i].pStringConst != nullptr) && (predefinedConstIndex[i] == -1)) {
-                            #if PRINT_HEAP_OBJ_CREA_DEL
-                                _pDebugOut->print("\r\n----- (parsed str ) ");   _pDebugOut->println((uint32_t)pIdentifierName, HEX);
-                                _pDebugOut->print("   parse setup cmd  ");   _pDebugOut->println(pIdentifierName);
-                            #endif
-                                _parsedStringConstObjectCount--;
-                                delete[] value[i].pStringConst;
-                                value[i].pStringConst = nullptr;
-                            }
-                        }
-                    }
-                }
-                close(file);
-            }
-            else { printlnTo(0, "Could not open setup file"); }
-        }
-        else { printlnTo(0, "Setup file not found"); }
-    }
-}
-
-
-// ---------------------------------------
-// *   lex (tokenize) a setup file line  *
-// ---------------------------------------
-
-Justina::parsingResult_type Justina::tokenizeSetupLine(char* setupLine, Val* value, char* valueType, int* predefinedConstIndex, int& tokenCount) {
-
-    /*
-    simplified lexing, only looking for numbers (integers and floats) and strings.
-    lexing numbers: 'parseIntFloat()' does not look for optional number prefix '-' or '+': this is handled separately and combined into one token within this procedure
-    */
-
-    char* pNext{ setupLine }, * pch{};
-    bool parsingError{ false };
-    parsingResult_type result{ result_parsing_OK };
-
-    _initVarOrParWithUnaryOp = 0;           // init
-
-    for (tokenCount = 0; tokenCount < MAX_SETUP_ARGS; tokenCount++) {
-        // move to the first non-space character of next token. If end of line reached, the line is parsed without errors
-        // !!! NOTE: strchr() does not function as it should according to the standard - this single line should work, but it doesn't: 'while (strchr(" \t\r\n", pNext[0]) != nullptr) { pNext++; } 
-        while (strchr(" \t\r\n\0", pNext[0]) != nullptr) { if (pNext[0] == '\0') { break; } pNext++; }                                                                                                                                             // skip leading spaces
-        if (pNext[0] == '\0') { break; }                                                            // no more arguments (current 'tokenCount' value is up to date (base 1))
-
-        // tokenize integer, string constants (both literal or symbolic); setup command (symbolic only)
-        do {
-            // minus or plus sign ? 
-            // --------------------
-            if (strchr("-+", pNext[0]) != nullptr) {
-                result = (_initVarOrParWithUnaryOp == 0) ? result_parsing_OK : result = result_numberInvalidFormat;
-                _initVarOrParWithUnaryOp = (result == result_parsing_OK) ? ((pNext[0] == '-') ? -1 : 1) : 0;
-                if (result != result_parsing_OK) { break; }     // does NOT count as an argument (only on completion of a number)
-                // move to next non-space character
-                pNext++;
-                while (strchr(" \t\r\n\0", pNext[0]) != nullptr) { if (pNext[0] == '\0') { break; } pNext++; }                                                                                                                                             // skip leading spaces
-                // if no more tokens, current 'tokenCount' does not yet account for the prefix operator
-                if (pNext[0] == '\0') { break; }                                                    // no more tokens                                                                              
-            }
-
-            // number ?
-            // --------
-            //literal number (long or float), or a predefined  number constant ? 
-            if (!parseIntFloat(pNext, pch, value[tokenCount], valueType[tokenCount], predefinedConstIndex[tokenCount], result, true)) { break; }  // return false: parsing error
-            if (result == result_parsing_OK) {
-                // setup file parsing: symbolic 'constants' are not considered as belonging to a number type: prefix operator is not allowed 
-                if ((_initVarOrParWithUnaryOp != 0) && (predefinedConstIndex[tokenCount] != -1)) { result = result_invalidOperator; }
-                _initVarOrParWithUnaryOp = 0;
-                break;                                                                              // value is an integer or a long
-            }
-
-            // string literal (enclosed in quotation marks), or a predefined string constant ?
-            if (!parseString(pNext, pch, value[tokenCount].pStringConst, valueType[tokenCount], predefinedConstIndex[tokenCount], result, false, true)) { break; }  // return false: parsing error     
-            if (result == result_parsing_OK) {
-                // setup file parsing: symbolic 'constants' (not considered as belonging to a number type) and string literals: prefix operator is not allowed  
-                if (_initVarOrParWithUnaryOp != 0) { result = result_invalidOperator; }
-                _initVarOrParWithUnaryOp = 0;
-                break;
-            }                                                                                       // value is a string 
-
-            result = result_token_not_recognised;
-        } while (false);
-
-        if (result != result_parsing_OK) { break; }                                                 // return with error in last argument ('tokenCount' was not yet incremented) 
-
-    }
-
-    if (_initVarOrParWithUnaryOp != 0) { result = result_numberInvalidFormat; }
-
-    return result;                                                                                  // return with success
-}
-
-
-// ------------------------------------------------------------
-// *   perform syntax and semantics check on tokenized line   *
-// ------------------------------------------------------------
-
-Justina::parsingResult_type Justina::parseSetupLine(Val* value, char* valueType, int* predefinedConstIndex, int& tokenCount) {
-
-    parsingResult_type result{ result_parsing_OK };                                          // init
-
-    // check for a valid setup command
-    if (predefinedConstIndex[0] == -1) { tokenCount = 0; return result_setupCommandExpected; }
-    else if (_symbNumConsts[predefinedConstIndex[0]].symbolGroup != symb_setup) { tokenCount = 1; return result_setupCommandExpected; }
-
-
-    switch (_symbNumConsts[predefinedConstIndex[0]].symbolCode) {
-        case value_disp_width:
-        {
-            Serial.print("parsing: "); Serial.println(1);
-        }
-        break;
-
-        case value_disp_mode:
-        {
-            Serial.print("parsing: "); Serial.println(2);
-        }
-        break;
-
-        case value_float_fmt:
-        {
-            Serial.print("parsing: "); Serial.println(3);
-        }
-        break;
-
-        case value_int_fmt:
-        {
-            Serial.print("parsing: "); Serial.println(4);
-        }
-        break;
-
-        case value_tab_size:
-        {
-            Serial.print("parsing: "); Serial.println(5);
-        }
-        break;
-
-        case value_angle_mode:
-        {
-            Serial.print("parsing: "); Serial.println(6);
-        }
-        break;
-
-        case value_run:
-        {
-            Serial.print("parsing: "); Serial.println(7);
-        }
-        break;
-
-        default:break;
-    }
-
-    return result;
 }
 
 
