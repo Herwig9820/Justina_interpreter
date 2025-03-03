@@ -38,21 +38,22 @@
 // The 4 Arduino pins defined below will be set as output pins in setup(). 
 // Connect each of these pins to the anode of a LED and connect each LED cathode to a terminal of a resistor. Wire the other terminal to ground.
 
-constexpr int HEARTBEAT_PIN{ 9 };                                                   // signals that the program is running
-constexpr int DATA_IO_PIN{ 5 };                                                     // signals Justina is sending or receiving data (from/to any external IO device) 
+constexpr int HEARTBEAT_PIN{ 9 };                                           // signals that the program is running
+constexpr int DATA_IO_PIN{ 5 };                                             // signals Justina is sending or receiving data (from/to any external IO device) 
 
 #if defined ARDUINO_ARCH_ESP32
-constexpr int WiFi_CONNECTED_PIN{ 17 };                                             // ON indicates WiFi is connected 
-constexpr int TCP_CONNECTED_PIN{ 18 };                                              // blink: TCP enabled but no terminal connected; ON: terminal connected
+constexpr int WiFi_CONNECTED_PIN{ 17 };                                     // ON indicates WiFi is connected 
+constexpr int TCP_CONNECTED_PIN{ 18 };                                      // blink: TCP enabled but no terminal connected; ON: terminal connected
 #else
-constexpr int WiFi_CONNECTED_PIN{ 14 };                                             // ON indicates WiFi is connected 
-constexpr int TCP_CONNECTED_PIN{ 15 };                                              // blink: TCP enabled but no terminal connected; ON: terminal connected
+constexpr int WiFi_CONNECTED_PIN{ 14 };                                     // ON indicates WiFi is connected 
+constexpr int TCP_CONNECTED_PIN{ 15 };                                      // blink: TCP enabled but no terminal connected; ON: terminal connected
 #endif
 
-unsigned long HEARTBEAT_PERIOD{ 1000 };                                             // 'long' heartbeat ON and OFF time: heartbeat led will blink at this (low) rate when control is not within Justina
-unsigned long CLIENT_ACTIVITY_TIMEOUT{ 30000 };
-
 constexpr char menu[] = "Please type 'J' to start Justina interpreter\r\n";
+
+// variables
+unsigned long HEARTBEAT_PERIOD{ 1000 };                                     // 'long' heartbeat ON and OFF time: heartbeat led will blink at this (low) rate when control is not within Justina
+unsigned long CLIENT_ACTIVITY_TIMEOUT{ 30000 };                             // stop client if no activity for this period of time (ms)     
 
 
 // -------------------------------
@@ -158,6 +159,10 @@ void setup() {
     _connectionState = TCPconnection::conn_0_WiFi_notConnected;
     myTCPconnection.setVerbose(true);                                               // true: enable debug messages from within myTCPconnection
 
+    /*
+    Add next line to start with TCP disabled (enable it later before calling Justina or from within Justina)
+    myTCPconnection.TCPdisable();                                                   // disable TCP IO (will be enabled by Justina interpreter)
+    */
 
     // Justina library
     // ---------------
@@ -178,10 +183,9 @@ void setup() {
 // ------------------------------
 
 void loop() {
-    static unsigned long lastClientActivity{ millis() };
-
     heartbeat();                                                                    // blink a led to show program is running
     myTCPconnection.maintainConnection();                                           // maintain TCP connection
+    handleSimpleTCPkeepAlive();                                                     // handle a simple 'TCP keep alive' time out: disconnect client if no incoming client data for some time
     setConnectionStatusLeds();                                                      // set WiFi and TCP connection status leds 
 
     char c;
@@ -192,25 +196,15 @@ void loop() {
             HEARTBEAT_PERIOD = 500;                                                 // 'short' heartbeat ON and OFF time: heartbeat led will blink at a higher rate when control is within Justina                                              
             justina.begin();                                                        // start interpreter (control will stay there until quitting Justina)
             HEARTBEAT_PERIOD = 1000;                                                // 'long' heartbeat ON and OFF time: heartbeat led will blink at a lower rate when control is not within Justina                                              
-            lastClientActivity = millis();                                          // reset client activity timer
             Serial.println(menu);
         }
     }
-
-    // while NOT in Justina, the lines below execute method 'myTCPconnection.stopClient() if no client activity is detected during a certain time.
-
-    // NOTE: while control is in Justina, the TCP connection is maintained by the system callback function 'housekeeping' (called regularly from within Justina). 
-    //       To stop a client while Justina is running, for instance after a time out, call user defined Justina function 'cpp_stopClient()' (see above). 
-    //       See the Justina example program 'calculatorWebServer' in file 'web_calc.jus'. 
-
+    // read received data while not in Justina and process it (here: simply print it on the serial monitor)
     if ((myTCPconnection.getConnectionState() == myTCPconnection.conn_4_TCP_clientConnected)) {
         if (myTCPconnection.getClient()->available()) {
-            lastClientActivity = millis();
-            Serial.write(myTCPconnection.getClient()->read());                      // read received data and process it (here: simply print it on the serial monitor)
+            Serial.write(myTCPconnection.getClient()->read());
         }
-        else if ((millis() - lastClientActivity) > CLIENT_ACTIVITY_TIMEOUT) { myTCPconnection.stopClient(); }   // stop client if no activity for a certain time
     }
-    else { lastClientActivity = millis(); }                                         // reset client activity timer as long as client is not connected
 }
 
 
@@ -221,6 +215,7 @@ void loop() {
 void housekeeping(long& appFlags) {                                                 // appFlags: receive Justina status and send requests to Justina - not used here
     heartbeat();                                                                    // blink a led to show program is running
     myTCPconnection.maintainConnection();                                           // maintain TCP connection
+    handleSimpleTCPkeepAlive();                                                     // handle a simple 'TCP keep alive' time out: disconnect client if no incoming client data for some time
     setConnectionStatusLeds();                                                      // set WiFi and TCP connection status leds 
 
     // signal that Justina is sending or receiving data (from any external IO device) by blinking a led
@@ -261,6 +256,8 @@ void heartbeat() {
 
 void setConnectionStatusLeds() {
 
+    constexpr uin32_t TCPledOnTime{ 10 }, TCPledOffTime{ 2890 };
+
     static TCPconnection::connectionState_type oldConnectionState{ TCPconnection::conn_0_WiFi_notConnected };
     static uint32_t lastLedChangeTime{ 0 };
     static bool TCPledState{ false };
@@ -272,8 +269,8 @@ void setConnectionStatusLeds() {
 
         // toggle led on/off state (blink led) ?
         uint32_t currentTime = millis();
-        int32_t waitTime = (TCPledState ? 10 : 3890);                                            // time between led state changes (ms)
-        if (((lastLedChangeTime + waitTime) < currentTime) || (currentTime < lastLedChangeTime)) { // (note: also handles millis() overflow after about 47 days)
+        int32_t ledStateTime = (TCPledState ? TCPledOnTime : TCPledOffTime);                    // time between led state changes (on + off period: do not select a multiple of heartbeat period)
+        if (((lastLedChangeTime + ledStateTime) < currentTime) || (currentTime < lastLedChangeTime)) { // (note: also handles millis() overflow after about 47 days)
             TCPledState = !TCPledState;
             digitalWrite(TCP_CONNECTED_PIN, TCPledState);                                       // BLINK: TCP enabled but client not yet connected                                         
             lastLedChangeTime = currentTime;
@@ -292,6 +289,32 @@ void setConnectionStatusLeds() {
     }
 
     oldConnectionState = _connectionState;
+}
+
+
+// ------------------------------------------------------------------------------------------------------------
+// *   handle a simple 'TCP keep alive' feature: disconnect client if no incoming client data for some time   *
+// ------------------------------------------------------------------------------------------------------------
+
+void handleSimpleTCPkeepAlive() {
+
+    static unsigned long lastClientActivity{ millis() };        // last client activity time (used to stop client if no activity for a certain time)            
+
+    // Execute method 'myTCPconnection.stopClient() if no client activity is detected during a certain time (no data received).
+    // This implements a simple 'TCP keep alive' feature without the necessity to receive 'keep alive' messages (packets) from the client.
+    // This procedure is called:
+    // (1) in the main loop() (see below) while control is not within Justina
+    // (2) in the housekeeping function (see below) while control is within Justina
+    //     -> Alternatively, to stop a client while Justina is running, call user defined Justina function 'cpp_stopClient()' from within Justina directly. 
+    //     See the Justina example program 'calculatorWebServer' in file 'web_calc.jus' (stops client as soon as no more incoming data).
+
+    if ((myTCPconnection.getConnectionState() == myTCPconnection.conn_4_TCP_clientConnected)) {
+        if (myTCPconnection.getClient()->available()) {
+            lastClientActivity = millis();
+        }
+        else if ((millis() - lastClientActivity) > CLIENT_ACTIVITY_TIMEOUT) { myTCPconnection.stopClient(); }   // stop client if no activity for a certain time
+    }
+    else { lastClientActivity = millis(); }                     // reset client activity timer as long as client is not connected
 }
 
 

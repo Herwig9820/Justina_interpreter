@@ -1575,11 +1575,6 @@ private:
         char bytes[4];
     };
 
-    struct ValueAndType {
-        Val value;
-        char valueType;
-    };
-
 
     //  evaluation stack data (execution)
     // ----------------------------------
