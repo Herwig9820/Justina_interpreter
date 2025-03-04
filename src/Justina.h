@@ -2232,7 +2232,8 @@ public:
     // -----------------------------------
 
     void begin();                                                   // call from Arduino main program
-
+    void JustinaMainLoop(bool& loadingStartupProgram, bool& launchingStartFunction,  bool& startJustinaWithoutAutostart,bool& parsedStatementStartsOnNewLine, bool& parsedStatementStartLinesAdjacent, long& statementStartsAtLine, long& parsedStatementAllowingBPstartsAtLine,
+        long& BPstartLine, long& BPendLine, long& BPpreviousEndLine, bool& kill, Stream*& pStatementInputStream, int& streamNumber);
 
     // Justina print functions
     // -----------------------
@@ -2319,7 +2320,7 @@ private:
 
     // add character (as read from stream) to the source statement input buffer; strip comment characters, redundant white space; handle escape sequences within source; ... 
     bool addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool& withinMultiLineComment,
-        bool& redundantSemiColon, bool isEndOfFile, bool& bufferOverrun, bool  _flushAllUntilEOF, int& _lineCount, int& _statementCharCount, char c);
+        bool& redundantSemiColon, bool isEndOfFile, bool& bufferOverrun, bool  flushAllUntilEOF, long& lineCount, long& statementCharCount, char c);
 
     // parse one statement from source statement input buffer
     parsingResult_type parseStatement(char*& pInputLine, char*& pNextParseStatement, int& clearIndicator, bool isNewSourceLine = false, long sourceLine = 0);
@@ -2356,9 +2357,9 @@ private:
     bool initVariable(uint16_t varTokenStep, uint16_t constTokenStep);
 
     // process parsed input and start execution
-    bool finaliseParsing(parsingResult_type& result, bool& kill, int lineCount, char* pErrorPos, bool allCharsReceived);
+    bool finaliseParsing(parsingResult_type& result, bool& kill, long lineCount, char* pErrorPos, bool allCharsReceived);
     bool prepareForIdleMode(parsingResult_type result, execResult_type execResult, bool& kill, int& clearIndicator, Stream*& pStatementInputStream, int& statementInputStreamNumber);
-
+    void clearMemory(int& clearIndicator, bool& kill, bool& quitJustina);
 
     // execution
     // ---------
@@ -2472,7 +2473,7 @@ private:
 
     // unparse statement and pretty print, print parsing result (OK or error number), print variables, print call stack, SD card directory
     void prettyPrintStatements(int outputStream, int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
-    void printParsingResult(parsingResult_type result, int funcNotDefIndex, char* const pInputLine, int lineCount, char* pErrorPos);
+    void printParsingResult(parsingResult_type result, int funcNotDefIndex, char* const pInputLine, long lineCount, char* pErrorPos);
     void printExecError(execResult_type execResult, bool showStopmessage);
     void printVariables(bool userVars);
     void printCallStack();

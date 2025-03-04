@@ -256,7 +256,7 @@ void heartbeat() {
 
 void setConnectionStatusLeds() {
 
-    constexpr uin32_t TCPledOnTime{ 10 }, TCPledOffTime{ 2890 };
+    constexpr uint32_t TCPledOnTime{ 10 }, TCPledOffTime{ 2890 };
 
     static TCPconnection::connectionState_type oldConnectionState{ TCPconnection::conn_0_WiFi_notConnected };
     static uint32_t lastLedChangeTime{ 0 };

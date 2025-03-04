@@ -1430,7 +1430,7 @@ void Justina::prettyPrintStatements(int outputStream, int instructionCount, char
 // *   print parsing result   *
 // ----------------------------
 
-void Justina::printParsingResult(parsingResult_type result, int funcNotDefIndex, char* const pInstruction, int lineCount, char* pErrorPos) {
+void Justina::printParsingResult(parsingResult_type result, int funcNotDefIndex, char* const pInstruction, long lineCount, char* pErrorPos) {
 
     bool checkBPstatusMsg{ false };
     char parsingInfo[100 + MAX_IDENT_NAME_LEN] = "";                                        // provide sufficient room for longest possible message (int: no OK message in immediate mode)
@@ -1462,7 +1462,7 @@ void Justina::printParsingResult(parsingResult_type result, int funcNotDefIndex,
         point[pErrorPos - pInstruction + 3] = '\0';
         printlnTo(0, point);
 
-        if (_programMode) { sprintf(parsingInfo, "  Parsing error %d: statement ending at line %d", (int)result, lineCount + 1); }
+        if (_programMode) { sprintf(parsingInfo, "  Parsing error %d: statement ending at line %ld", (int)result, lineCount + 1); }
         else { sprintf(parsingInfo, "  Parsing error %d", (int)result); }
     }
 
