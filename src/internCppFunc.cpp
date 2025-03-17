@@ -1,7 +1,7 @@
 /***********************************************************************************************************
 *   Justina interpreter library                                                                            *
 *                                                                                                          *
-*   Copyright 2024, 2025 Herwig Taveirne                                                                        *
+*   Copyright 2024, 2025 Herwig Taveirne                                                                   *
 *                                                                                                          *
 *   This file is part of the Justina Interpreter library.                                                  *
 *   The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
@@ -226,6 +226,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // check directory file number (also perform related file and SD card object checks)
             File* pFile{};
             int allowedFileTypes = (functionCode == fnccod_isDirectory) ? 0 : 2;                                            // 0: all file types allowed, 1: files only, 2: directories only
+            bool allowSystemFiles = (functionCode == fnccod_isDirectory);                                                   // allow system files only for isDirectory() function
             execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, pFile, allowedFileTypes);
             if (execResult != result_execOK) { return execResult; }
 
@@ -283,9 +284,9 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         break;
 
 
-        // ----------------------------
-        // SD card: close or flush file
-        // ----------------------------
+        // ----------------------------------------------------
+        // SD card: close or flush file (only NON-SYSTEM files)
+        // ----------------------------------------------------
 
         case fnccod_closeAll:
         {
@@ -300,16 +301,16 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         // SD: check if a file for a given file number is open
         // ---------------------------------------------------
 
-        case fnccod_hasOpenFile:
+        case fnccod_slotHasOpenFile:
         {
             File* pFile{};
-            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, pFile, 0);                // file number (all file types)
+            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, pFile, 0);            // file number (all file types, system files)
             // do not produce error if file is not open; all other errors result in error being reported
-            if ((execResult != result_execOK) && (execResult != result_SD_fileIsNotOpen)) { return execResult; }            // error
+            if ((execResult != result_execOK) && (execResult != result_SD_fileIsNotOpen) && (execResult != result_SD_isOpenSystemFile)) { return execResult; }  // error
 
             // save result
             fcnResultValueType = value_isLong;
-            fcnResult.longConst = (execResult == result_execOK);   // 0 (not open) or 1 (open)
+            fcnResult.longConst = (execResult == result_SD_fileIsNotOpen) ? 0 : (execResult == result_execOK) ? 1 : 2;  // 0 (file not open), 1 (user file open) or 2 (system file open)
         }
         break;
 
@@ -328,13 +329,13 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
 
             if ((functionCode != fnccod_available) || (suppliedArgCount > 0)) {
                 // perform checks and set pointer to IO stream or file
-                execResult_type execResult = determineStream(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber);     // stream for input (required for available() function)
+                execResult_type execResult = determineStream(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber, false, 1, true);     // stream for input (required for available() function)
                 if (execResult != result_execOK) { return execResult; }
                 if ((streamNumber <= 0) && (functionCode != fnccod_available)) { return result_SD_invalidFileNumber; }      // because a file number expected here
             }
 
             // retrieve and return value
-            int val{};
+            long val{};
             if (functionCode == fnccod_position) { val = (static_cast<File*>(pStream))->position(); }                       // SD file only
             else if (functionCode == fnccod_size) { val = (static_cast<File*>(pStream))->size(); }                          // SD file only
             else { val = pStream->available(); }                                                                            // can be I/O stream as well
@@ -418,7 +419,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         {
             // check file number (also perform related file and SD card object checks)
             File* pFile{};
-            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, pFile, 0);                // all file types
+            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, pFile, 0, true);          // all file types
             if (execResult != result_execOK) { return execResult; }
 
             int fileNumber = (argIsLongBits & (0x1 << 0)) ? (args[0].longConst) : (args[0].floatConst);
@@ -491,7 +492,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 // read character from stream now 
                 char c{ 0xff };                                                                                             // init: no character read
                 if (functionCode == fnccod_peek) { c = pStream->peek(); }
-                else if (pStream->available()) { _streamNumberIn = streamNumber; _pStreamIn = pStream; c = read(); }        // set global variables 
+                else if (pStream->available()) { _streamNumberIn = streamNumber; _pStreamIn = pStream; c = read(); }        // set global variables before reading
 
                 // save result
                 fcnResultValueType = value_isLong;

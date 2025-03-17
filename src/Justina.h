@@ -1,7 +1,7 @@
 /***********************************************************************************************************
 *   Justina interpreter library                                                                            *
 *                                                                                                          *
-*   Copyright 2024, 2025 Herwig Taveirne                                                                        *
+*   Copyright 2024, 2025 Herwig Taveirne                                                                   *
 *                                                                                                          *
 *   This file is part of the Justina Interpreter library.                                                  *
 *   The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
@@ -281,6 +281,9 @@ private:
         cmdcod_angle,
         cmdcod_declCB,
         cmdcod_loadProg,
+        cmdcod_execBatchFile,       // batch files only: run batch file
+        cmdcod_ditchBatchFile,      // batch files only: ditch all remaining commands in batch file, return to calling batch file (or console)
+        cmdcod_gotoLabel,           // batch files only: goto numeric label in batch file 
         cmdcod_receiveFile,
         cmdcod_sendFile,
         cmdcod_copyFile,
@@ -442,7 +445,7 @@ private:
         fnccod_rewindDirectory,
         fnccod_openNextFile,
         fnccod_fileNumber,
-        fnccod_hasOpenFile,
+        fnccod_slotHasOpenFile,
         fnccod_closeAll,
         fnccod_exists,
         fnccod_mkdir,
@@ -621,7 +624,7 @@ private:
         valcod_exp,
         valcod_short_upper,
         valcod_short,
-        
+
         valcod_dec,              // for integers
         valcod_hex_upper,
         valcod_hex,
@@ -648,11 +651,11 @@ private:
 
     enum tokenType_type {                                               // token type
         tok_no_token,                                                   // no token to process
-        tok_isInternCommand,
-        tok_isExternCommand,
-        tok_isInternCppFunction,
-        tok_isExternCppFunction,
-        tok_isJustinaFunction,
+        tok_isInternCommand,                                            // internal Justina command (e.g. 'dispWidth')
+        tok_isExternCommand,                                            // external command (user command written in c++ )       
+        tok_isInternCppFunction,                                        // internal Justina cpp function (e.g. 'sin')
+        tok_isExternCppFunction,                                        // external function (user function written in c++ )
+        tok_isJustinaFunction,                                          // Justina function (user function written in Justina)
         tok_isConstant,
         tok_isSymbolicConstant,                                         // predefined Justina constant
         tok_isVariable,                                                 // including constant variables (CONST)
@@ -859,7 +862,7 @@ public:
         result_divByZero,
         result_testexpr_numberExpected,
 
-        // abort, kill, quit
+        // program load, abort, kill, quit
         result_noProgramStopped = 3300,                                 // 'go' command not allowed because not in debug mode
 
         // breakpoint errors
@@ -901,11 +904,16 @@ public:
         result_SD_pathIsNotValid,
         result_SD_sourceIsDestination,
         result_SD_fileNotAllowedHere,
+        result_SD_fileNameExpected,
+        result_SD_isOpenSystemFile,
+        result_SD_openBatchFiles_cannotStopSDcard,
 
         // IO streams
         result_IO_invalidStreamNumber = 3700,
         result_IO_noDeviceOrNotForInput,
         result_IO_noDeviceOrNotForOutput,
+        result_IO_maxBatchFileNestingExceeded,
+        result_IO_noBatchFile,
 
         // end of valid exec error range (tested upon return of user cpp functions containing an error code)
         result_endOfExecErrorRange = 4999,
@@ -922,7 +930,10 @@ public:
         EVENT_kill,                                                     // caller requested to exit Justina interpreter
         EVENT_quit,                                                     // 'Quit' command executed (exit Justina interpreter)
 
-        result_initiateProgramLoad                                      // command processed to start loading a program
+        EVENT_initiateProgramLoad,                                      // command processed to start loading a program
+
+        EVENT_BATCH_GOTOLABEL,                                          // batch file only: goto label in batch file
+        EVENT_BATCH_DITCH                                               // batch file only: ditch all remaining commands in batch file, return to calling batch file (or console)
     };
 private:
 
@@ -1266,7 +1277,7 @@ public:
     static constexpr long SD_init = 0x2;                                // init SD card upon Justina begin() 
     static constexpr long SD_runStart = 0x3;                            // init SD card upon Justina begin(); load program "start.jus(); execute start() 
     static constexpr long MAX_SETUP_ARGS = 8;                           // maximum number of tokens in a setup file line
-    
+
     static const char AUTOSTART_FILE_PATH[19];
 
 private:
@@ -1484,7 +1495,7 @@ private:
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na, block_na, block_na };                                      // not a 'block' command. NOTE: defined in JustinaMain.cpp
 
     // sizes MUST be specified AND must be exact
-    static const internCmdDef _internCommands[80];                                                                              // keyword names
+    static const internCmdDef _internCommands[83];                                                                              // keyword names
     static const InternCppFuncDef _internCppFunctions[141];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
 #if (defined ARDUINO_ARCH_ESP32) 
@@ -1641,8 +1652,8 @@ private:
     //    and flow control data for the CALLED function will now be stored in structure '_activeFunctionData'  
     //    if a function is ended, the corresponding flow control data will be COPIED to structure '_activeFunctionData' again before it is popped from the stack
 
-    struct openBlockGeneric {
-        char blockType : 6;                                             // command block: will identify stack level as an if...end, for...end, ... block
+    struct OpenBlockGeneric {
+        char blockType : 6;                                             // command block: will identify stack level as a function block or an if...end, for...end, ... block
         char spareFlags : 2;
     };
 
@@ -1661,7 +1672,7 @@ private:
         char* nextTokenAddress;                                         // address of token directly following 'FOR...; statement
     };
 
-    struct OpenFunctionData {                                           // data about all open functions (active + call stack)
+    struct OpenFunctionData {                                           // data about all open Justina functions (active + call stack)
         char blockType : 6;                                             // command block: will identify stack level as a function block
         char trapEnable : 1;                                            // enable error trapping
         char activeCmd_isInternal : 1;                                  // command is internal
@@ -1671,6 +1682,7 @@ private:
         // within a function, as in immediate mode, only one command can be active at a time (ended by semicolon), in contrast to command blocks, which can be nested, so command data can be stored here:
         // data is stored when a keyword is processed and it is cleared when the ending semicolon (ending the command) is processed
         char activeCmd_commandCode;                                     // keyword code (set to 'cmdcod_none' again when semicolon is processed)
+
         char* activeCmd_tokenAddress;                                   // address in program memory of parsed keyword token                                
 
         // value area pointers (note: a value is a long, a float or a pointer to a string or array, or (if reference): pointer to 'source' (referenced) variable))
@@ -1681,8 +1693,9 @@ private:
         char* pNextStep;                                                // next step to execute (look ahead)
         char* errorStatementStartStep;                                  // first token in statement where execution error occurs (error reporting)
         char* errorProgramCounter;                                      // token to point to in statement (^) if execution error occurs (error reporting)
-    };
 
+        char statementInputStream[2]{ 0, 0 };                           // two-level statement input stream stack (0: console input; > 0: batch file input streams - allows nesting one level)
+    };
 
     // structure to maintain data about open files (SD card)
     // -----------------------------------------------------
@@ -1690,7 +1703,9 @@ private:
     struct OpenFile {
         File file;
         char* filePath{ nullptr };                                      // including file name
-        bool fileNumberInUse{ false };                                  // file number = position in structure (base 0) + 1
+        char fileNumberInUse : 1 { 0 };                                 // file number = position in structure (base 0) + 1
+        char isSystemFile : 1 { 0 };                                    // a system file can not be closed by user
+        char spare : 6;
         int currentPrintColumn{ 0 };
     };
 
@@ -1942,8 +1957,8 @@ private:
     //
     // if execution of a NEW program is started while in debug mode, the whole process as described above is repeated. So, you can have more than one program being suspended
     LinkedList flowCtrlStack;
-    void* _pFlowCtrlStackTop{ nullptr };                                        // pointers to flow control stack top elements
-    int _callStackDepth{ 0 };                                                   // number of currently open Justina functions + open eval() functions + count of stopped programs (in debug mode): ...
+    void* _pFlowCtrlStackTop{ nullptr };                                    // pointers to flow control stack top elements
+    int _callStackDepth{ 0 };                                               // number of currently open Justina functions + open eval() functions + count of stopped programs (in debug mode): ...
     // ...this equals flow ctrl stack depth MINUS open loops (if, for, ...)
 
 // while at least one program is stopped (debug mode), the PARSED code of the original command line from where execution started is pushed to a separate stack, and popped again ...
@@ -2232,8 +2247,8 @@ public:
     // -----------------------------------
 
     void begin();                                                   // call from Arduino main program
-    void JustinaMainLoop(bool& loadingStartupProgram, bool& launchingStartFunction,  bool& startJustinaWithoutAutostart,bool& parsedStatementStartsOnNewLine, bool& parsedStatementStartLinesAdjacent, long& statementStartsAtLine, long& parsedStatementAllowingBPstartsAtLine,
-        long& BPstartLine, long& BPendLine, long& BPpreviousEndLine, bool& kill, Stream*& pStatementInputStream, int& streamNumber);
+    void JustinaMainLoop(bool& loadingStartupProgram, bool& launchingStartFunction, bool& startJustinaWithoutAutostart, bool& parsedStatementStartsOnNewLine, bool& parsedStatementStartLinesAdjacent,
+        long& statementStartsAtLine, long& parsedStatementAllowingBPstartsAtLine, long& BPstartLine, long& BPendLine, long& BPpreviousEndLine, bool& kill);
 
     // Justina print functions
     // -----------------------
@@ -2297,7 +2312,7 @@ private:
     // reset Interpreter to clean state
     // --------------------------------
 
-    void resetMachine(bool withUserVariables, bool withBreakpoints = false);
+    void resetMachine(bool withUserVariables, bool withBreakpoints = false, bool keepDebugLevelBatchFile =false);
 
     void initInterpreterVariables(bool withUserVariables);
     void deleteIdentifierNameObjects(char** pIdentArray, int identifiersInUse, bool isUserVar = false);
@@ -2358,7 +2373,7 @@ private:
 
     // process parsed input and start execution
     bool finaliseParsing(parsingResult_type& result, bool& kill, long lineCount, char* pErrorPos, bool allCharsReceived);
-    bool prepareForIdleMode(parsingResult_type result, execResult_type execResult, bool& kill, int& clearIndicator, Stream*& pStatementInputStream, int& statementInputStreamNumber);
+    bool prepareForIdleMode(parsingResult_type result, execResult_type execResult, bool& kill, int& clearIndicator);
     void clearMemory(int& clearIndicator, bool& kill, bool& quitJustina);
 
     // execution
@@ -2417,7 +2432,7 @@ private:
     // clear execution stacks
     void clearEvalStack();
     void clearEvalStackLevels(int n);
-    void clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, bool errorWhileCurrentlyStoppedPrograms = false, bool isAbortCommand = false);
+    void clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, bool errorWhileCurrentlyStoppedPrograms = false, bool isAbortCommand = false, bool keepDebugLevelBatchFile =false);
     void clearParsedCommandLineStack(int n);
 
     execResult_type deleteVarStringObject(LE_evalStack* pStackLvl);
@@ -2428,7 +2443,7 @@ private:
     // --------------------------
 
     execResult_type startSD();
-    void SD_closeAllFiles();
+    void SD_closeAllFiles(bool includeSystemFiles=false);
 
 #if defined ARDUINO_ARCH_ESP32
     char* SD_ESP32_convert_accessMode(int mode);
@@ -2438,14 +2453,18 @@ private:
 
     void SD_closeFile(int fileNumber);
     execResult_type SD_listFiles();
-    execResult_type SD_fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File*& pFile, int allowFileTypes = 1);
-    execResult_type SD_fileChecks(bool argIsLong, bool argIsFloat, Val arg, File*& pFile, int allowFileTypes = 1);
-    execResult_type SD_fileChecks(File*& pFile, int fileNumber, int allowFileTypes = 1);
-    execResult_type setStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, int& streamNumber, bool forOutput = false);
-    execResult_type setStream(int streamNumber, bool forOutput = false);
-    execResult_type setStream(int streamNumber, Stream*& pStream, bool forOutput = false);
-    execResult_type determineStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, Stream*& pStream, int& streamNumber, bool forOutput = false, int allowFileTypes = 1);
-    execResult_type determineStream(int streamNumber, Stream*& pStream, bool forOutput = false, int allowFileTypes = 1);
+    
+    execResult_type determineStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, Stream*& pStream, int& streamNumber, bool forOutput = false,
+        int allowedFileTypes = 1, bool allowSystemFiles = 0);
+    execResult_type determineStream(int streamNumber, Stream*& pStream, bool forOutput = false, int allowedFileTypes = 1, bool allowSystemFiles = 0);
+    
+    execResult_type SD_fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File*& pFile, int allowedFileTypes = 1, bool allowSystemFiles = false);
+    execResult_type SD_fileChecks(bool argIsLong, bool argIsFloat, Val arg, File*& pFile, int allowedFileTypes = 1, bool allowSystemFiles = false);
+    execResult_type SD_fileChecks(File*& pFile, int fileNumber, int allowedFileTypes = 1, bool allowSystemFiles = false);
+    
+    execResult_type setStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, int& streamNumber, bool forOutput = false, bool allowSystemFiles = false);
+    execResult_type setStream(int streamNumber, bool forOutput = false, bool allowSystemFiles = false);
+    execResult_type setStream(int streamNumber, Stream*& pStream, bool forOutput = false, bool allowSystemFiles=false);
 
     bool pathValid(const char* path);
     bool fileIsOpen(const char* path);

@@ -1,7 +1,7 @@
 /***********************************************************************************************************
 *   Justina interpreter library                                                                            *
 *                                                                                                          *
-*   Copyright 2024, 2025 Herwig Taveirne                                                                        *
+*   Copyright 2024, 2025 Herwig Taveirne                                                                   *
 *                                                                                                          *
 *   This file is part of the Justina Interpreter library.                                                  *
 *   The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
@@ -45,7 +45,7 @@ Justina::execResult_type  Justina::exec(char* startHere) {
 #if PRINT_PROCESSED_TOKEN
     _pDebugOut->print("\r\n**** enter exec: eval stack depth: "); _pDebugOut->println(evalStack.getElementCount());
 #endif
-// init
+    // init
     _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_executing;                  // status 'executing'
 
     int tokenType = *startHere & 0x0F;
@@ -790,15 +790,17 @@ Justina::execResult_type  Justina::exec(char* startHere) {
 
 
     // adapt imm. mode parsed statement stack, flow control stack and evaluation stack
-      // -------------------------------------------------------------------------------
+    // -------------------------------------------------------------------------------
+
+    // 1. Events: EVENT_stopForDebug or EVENT_stopForBreakpoint ?
 
     if ((execResult == EVENT_stopForDebug) || (execResult == EVENT_stopForBreakpoint)) {                                // stopping for debug now ('STOP' command or single step)
         // push caller function data (or main = user entry level in immediate mode) on FLOW CONTROL stack 
-
         _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
         *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                                                 // push caller function data to stack
         ++_callStackDepth;      // user function level added to flow control stack
         _activeFunctionData.callerEvalStackLevels = evalStack.getElementCount();                                        // store evaluation stack levels in use by callers (call stack)
+        _activeFunctionData.statementInputStream[0] = _activeFunctionData.statementInputStream[1] = 0;                  // init: input stream is console
 
         // push current command line storage to command line stack, to make room for debug commands
     #if PRINT_PARSED_CMD_STACK
@@ -812,34 +814,68 @@ Justina::execResult_type  Justina::exec(char* startHere) {
         ++_openDebugLevels;
     }
 
-    // no programs in debug: always; otherwise: only if error is in fact quit or kill event 
-    else if ((_openDebugLevels == 0) || (execResult == EVENT_quit) || (execResult == EVENT_kill)) {                     // do not clear stacks while in debug mode, except when quitting
-        int dummy{};
-        _openDebugLevels = 0;       // (if not yet zero)
-        clearParsedCommandLineStack(parsedCommandLineStack.getElementCount());
-        clearFlowCtrlStack(dummy);                                                                                      // and remaining local storage + local variable string and array values
-        clearEvalStack();
+
+    // 2. Events: EVENT_BATCH_DITCH or EVENT_BATCH_GOTOLABEL ?
+
+    else if ((execResult == EVENT_BATCH_GOTOLABEL) || (execResult == EVENT_BATCH_DITCH)) {
+        // delete open blocks resulting from single-line block commands (while, for, if) created by the currently executed batch file line (= immediate mode)
+        while (_pFlowCtrlStackTop != nullptr) {
+            char blockType = ((OpenBlockGeneric*)_pFlowCtrlStackTop)->blockType;
+            if ((blockType == block_if) || (blockType == block_for) || (blockType == block_while)) {
+                flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);
+                _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
+            }
+            else { break; }
+        }
     }
 
-    // program or command line exec error (could be an app flags abort request), OR abort command entered by the user,
-    // while at least one other program is currently stopped in debug mode ?
-    else if (execResult != result_execOK) {
+
+    // 3. (program or command line) execution ERROR (could be an app flags abort request) OR Event: EVENT_abort,...
+    //    while at least one other program is currently stopped in debug mode ?
+
+    else if (((execResult != result_execOK) && (execResult < EVENT_startOfEvents)) || (execResult == EVENT_abort)) {
         int deleteImmModeCmdStackLevels{ 0 };
-        clearFlowCtrlStack(deleteImmModeCmdStackLevels, true, abortCommandReceived);                                    // returns imm. mode command stack levels to delete
-        clearParsedCommandLineStack(deleteImmModeCmdStackLevels);                                                       // do not delete all stack levels but only supplied level count
+        clearFlowCtrlStack(deleteImmModeCmdStackLevels, true, abortCommandReceived);                        // first argument returns imm. mode command stack levels to delete
+        clearParsedCommandLineStack(deleteImmModeCmdStackLevels);                                           // do not delete all stack levels but only supplied level count
         clearEvalStackLevels(evalStack.getElementCount() - (int)_activeFunctionData.callerEvalStackLevels);
     }
 
+
+    // 4.Event: EVENT_initiateProgramLoad ?
+
+    else if (execResult == EVENT_initiateProgramLoad) {
+        int dummy{};
+        _openDebugLevels = 0;                                                                               // (if not yet zero)
+        clearParsedCommandLineStack(parsedCommandLineStack.getElementCount());
+        clearFlowCtrlStack(dummy, false, false, true);                                                      // and remaining local storage + local variable string and array values
+        clearEvalStack();
+    }
+
+
+    // 5. Event: EVENT_quit or EVENT_kill ? 
+    else if ((execResult == EVENT_quit) || (execResult == EVENT_kill)) {                                    // do not clear stacks while in debug mode, except when quitting
+        int dummy{};
+        _openDebugLevels = 0;                                                                               // (if not yet zero)
+        clearParsedCommandLineStack(parsedCommandLineStack.getElementCount());
+        clearFlowCtrlStack(dummy);                                                                          // and remaining local storage + local variable string and array values
+        clearEvalStack();
+    }
+
+
+    // 6. No execution error
+    else {}                                                                                                 // nothing to do 
+
+
     // adapt application flags
-    _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_idle;                                                       // status 'idle'
+    _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_idle;                                           // status 'idle'
 
 #if PRINT_DEBUG_INFO
     _pDebugOut->print("**** exit exec: eval stack depth: "); _pDebugOut->println(evalStack.getElementCount());
     _pDebugOut->print("     EXEC: return error code: "); _pDebugOut->println(execResult);
     _pDebugOut->println("     returning to main");
 #endif
-    _activeFunctionData.pNextStep = _programStorage + _PROGRAM_MEMORY_SIZE;                                             // only to signal 'immediate mode command level'
-    return execResult;                                                                                                  // return result, in case it's needed by caller
+    _activeFunctionData.pNextStep = _programStorage + _PROGRAM_MEMORY_SIZE;                                 // only to signal 'immediate mode command level'
+    return execResult;                                                                                      // return result, in case it's needed by caller
 };
 
 
@@ -990,7 +1026,7 @@ void Justina::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNo
         if (!nextIsExecutable) { return; }
 
         // breakpoint / stop: not for initial 'for' loop 'end' statement (before any statement in for..end body was executed)
-        char blockType = ((openBlockGeneric*)_pFlowCtrlStackTop)->blockType;
+        char blockType = ((OpenBlockGeneric*)_pFlowCtrlStackTop)->blockType;
         bool isForLoopInit = (blockType == block_for) ? (((OpenBlockTestData*)_pFlowCtrlStackTop)->loopControl & forLoopInit) : false;
         if (isForLoopInit) { return; }
 
@@ -1039,6 +1075,7 @@ void Justina::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNo
 
                 _activeFunctionData.blockType = block_trigger;                                                          // now executing parsed 'trigger eval' string
                 _activeFunctionData.activeCmd_commandCode = cmdcod_none;                                                // command execution ended 
+                _activeFunctionData.statementInputStream[0] = _activeFunctionData.statementInputStream[1] = 0;          // input stream is console
 
                 _activeFunctionData.callerEvalStackLevels = evalStack.getElementCount();                                // store evaluation stack levels in use by callers (call stack)
 
@@ -1498,7 +1535,7 @@ void Justina::clearEvalStackLevels(int n) {
 // *   Clear flow control stack   *
 // --------------------------------
 
-void Justina::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, bool terminateOneProgramOnly, bool isAbortCommand) {
+void Justina::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, bool terminateOneProgramOnly, bool isAbortCommand, bool keepDebugLevelBatchFile) {
 
     // if argument 'terminateOneProgramOnly' is false, delete all stack levels
     // if 'terminateOneProgramOnly' is true: at least one program is currently stopped (debug mode)
@@ -1511,59 +1548,73 @@ void Justina::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, bool terminat
     int totalProgramsToTerminate = (isAbortCommand) ? 2 : 1;                        // abort command: terminate the running program containing the abort command AND the most recent stopped program
     int programsYetToTerminate = totalProgramsToTerminate;                          // counter
 
-    if (flowCtrlStack.getElementCount() > 0) {                                      // skip if only main level (no program running)
-        bool isInitialLoop{ true };
-        void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;
+    bool isInitialLoop{ true };
+    void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;
 
-        do {
-            // first loop: retrieve block type of currently active function (could be 'main' level = immediate mode instruction as well)
-            char blockType = isInitialLoop ? _activeFunctionData.blockType : ((openBlockGeneric*)pFlowCtrlStackLvl)->blockType;             // first character of structure is block type
+    char currentInputStream[2] = { _activeFunctionData.statementInputStream[0],  _activeFunctionData.statementInputStream[1] };
 
-            if (blockType == block_JustinaFunction) {                               // block type: function (can be a real program function, or an implicit 'immediate mode' function (the start of ANY program) 
-                if (!isInitialLoop) { _activeFunctionData = *((OpenFunctionData*)pFlowCtrlStackLvl); }              // after first loop, load from stack
+    do {
+        // first loop: retrieve block type of currently active function (could be 'main' level = immediate mode instruction as well)
+        char blockType = isInitialLoop ? _activeFunctionData.blockType : ((OpenBlockGeneric*)pFlowCtrlStackLvl)->blockType;             // first character of structure is block type
 
-                if (terminateOneProgramOnly && (programsYetToTerminate == 0)) { break; }                            // all done
+        if (blockType == block_JustinaFunction) {                               // block type: function (can be a real program function, or an implicit 'immediate mode' function (the start of ANY program) 
+            if (!isInitialLoop) { _activeFunctionData = *((OpenFunctionData*)pFlowCtrlStackLvl); }              // after first loop, load from stack
 
-                bool isProgramFunction = (_activeFunctionData.pNextStep < (_programStorage + _PROGRAM_MEMORY_SIZE));// is this a program function ?
-                if (isProgramFunction) {                                                                            // program function: delete local storage
-                    {
-                        int functionIndex = _activeFunctionData.functionIndex;
-                        int localVarCount = justinaFunctionData[functionIndex].localVarCountInFunction;
-                        int paramOnlyCount = justinaFunctionData[functionIndex].paramOnlyCountInFunction;
-                        if (localVarCount > 0) {
-                            deleteStringArrayVarsStringObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, paramOnlyCount, false, false, true);
-                            deleteVariableValueObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, paramOnlyCount, false, false, true);
+            if (terminateOneProgramOnly && (programsYetToTerminate == 0)) { break; }                            // all done
 
-                        #if PRINT_HEAP_OBJ_CREA_DEL
-                            _pDebugOut->print("\r\n----- (LOCAL STORAGE) ");   _pDebugOut->println((uint32_t)(_activeFunctionData.pLocalVarValues), HEX);
-                        #endif
-                            _localVarValueAreaCount -= 3;
-                            // release local variable storage for function that has been called
-                            delete[] _activeFunctionData.pLocalVarValues;
-                            delete[] _activeFunctionData.pVariableAttributes;
-                            delete[] _activeFunctionData.ppSourceVarTypes;
+            bool isProgramFunction = (_activeFunctionData.pNextStep < (_programStorage + _PROGRAM_MEMORY_SIZE));// is this a program function ?
+            if (isProgramFunction) {                                                                            // program function: delete local storage
+                int functionIndex = _activeFunctionData.functionIndex;
+                int localVarCount = justinaFunctionData[functionIndex].localVarCountInFunction;
+                int paramOnlyCount = justinaFunctionData[functionIndex].paramOnlyCountInFunction;
+                if (localVarCount > 0) {
+                    deleteStringArrayVarsStringObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, paramOnlyCount, false, false, true);
+                    deleteVariableValueObjects(_activeFunctionData.pLocalVarValues, _activeFunctionData.pVariableAttributes, localVarCount, paramOnlyCount, false, false, true);
+
+                #if PRINT_HEAP_OBJ_CREA_DEL
+                    _pDebugOut->print("\r\n----- (LOCAL STORAGE) ");   _pDebugOut->println((uint32_t)(_activeFunctionData.pLocalVarValues), HEX);
+                #endif
+                    _localVarValueAreaCount -= 3;
+                    // release local variable storage for function that has been called
+                    delete[] _activeFunctionData.pLocalVarValues;
+                    delete[] _activeFunctionData.pVariableAttributes;
+                    delete[] _activeFunctionData.ppSourceVarTypes;
+                }
+            }
+            else {                                                              // immediate mode 'function': (debug) command line (the start of ANY program)
+                if (!(isInitialLoop && keepDebugLevelBatchFile)) {
+                    if (_activeFunctionData.statementInputStream[0] > 0) {
+                        SD_closeFile(_activeFunctionData.statementInputStream[0]);
+                        _activeFunctionData.statementInputStream[0] = 0;
+                        if (_activeFunctionData.statementInputStream[1] > 0) {
+                            SD_closeFile(_activeFunctionData.statementInputStream[1]);
+                            _activeFunctionData.statementInputStream[1] = 0;
                         }
                     }
                 }
-                else {                                                              // immediate mode 'function' (the start of ANY program)
-                    if (terminateOneProgramOnly) { programsYetToTerminate--; }
-                }
-                if (!isInitialLoop) { --_callStackDepth; }                          // one function removed from the call stack
+
+                if (terminateOneProgramOnly) { programsYetToTerminate--; }
             }
 
-            else if (blockType == block_eval) {
-                if (!isInitialLoop) { --_callStackDepth; }
-                ++deleteImmModeCmdStackLevels;                                      // update count of 'parsed command line' stack levels to be deleted (parsedCommandLineStack)
-            }
+            if (!isInitialLoop) { --_callStackDepth; }                          // one function removed from the call stack
+        }
 
-            if (!isInitialLoop) {                                                   // delete stack top
-                flowCtrlStack.deleteListElement(nullptr);
-                pFlowCtrlStackLvl = flowCtrlStack.getLastListElement();
-            }
+        else if (blockType == block_eval) {
+            if (!isInitialLoop) { --_callStackDepth; }
+            ++deleteImmModeCmdStackLevels;                                      // update count of 'parsed command line' stack levels to be deleted (parsedCommandLineStack)
+        }
 
-            if (pFlowCtrlStackLvl == nullptr) { break; }                            // all done
-            isInitialLoop = false;
-        } while (true);
+        if (!isInitialLoop) {                                                   // delete stack top
+            flowCtrlStack.deleteListElement(nullptr);
+            pFlowCtrlStackLvl = flowCtrlStack.getLastListElement();
+        }
+
+        if (pFlowCtrlStackLvl == nullptr) { break; }                            // all done
+        isInitialLoop = false;
+    } while (true);
+
+    if (keepDebugLevelBatchFile) {
+        _activeFunctionData.statementInputStream[0] = currentInputStream[0]; _activeFunctionData.statementInputStream[1] = currentInputStream[1];
     }
 
     _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
@@ -2457,7 +2508,7 @@ Justina::execResult_type  Justina::launchJustinaFunction(LE_evalStack*& pFunctio
     _activeFunctionData.functionIndex = pFunctionStackLvl->function.index;                          // index of Justina function to call
     _activeFunctionData.blockType = block_JustinaFunction;
     _activeFunctionData.activeCmd_commandCode = cmdcod_none;                                        // command execution ended      
-
+    _activeFunctionData.statementInputStream[0] = _activeFunctionData.statementInputStream[1] = 0;  // input stream is console
 
     // create local variable storage for Justina function to be called
     // ---------------------------------------------------------------
@@ -2613,6 +2664,7 @@ Justina::execResult_type  Justina::launchEval(LE_evalStack*& pFunctionStackLvl, 
     if (pFunctionStackLvl != nullptr) { _activeFunctionData.functionIndex = pFunctionStackLvl->function.index; }        // index of (Justina) eval() function - but will not be used
     _activeFunctionData.blockType = block_eval;                                                     // now executing parsed 'eval' string
     _activeFunctionData.activeCmd_commandCode = cmdcod_none;                                        // command execution ended 
+    _activeFunctionData.statementInputStream[0] = _activeFunctionData.statementInputStream[1] = 0;  // input stream is console
 
     _activeFunctionData.callerEvalStackLevels = evalStack.getElementCount();                        // store evaluation stack levels in use by callers (call stack)
 
@@ -2921,7 +2973,7 @@ void Justina::terminateJustinaFunction(bool isVoidFunction, bool addZeroReturnVa
 
     char blockType = block_none;                                                                                            // init
     do {
-        blockType = ((openBlockGeneric*)_pFlowCtrlStackTop)->blockType;                                                                             // always at least one level present for caller (because returning to it)
+        blockType = ((OpenBlockGeneric*)_pFlowCtrlStackTop)->blockType;                                                                             // always at least one level present for caller (because returning to it)
 
         // load local storage pointers again for caller function and restore pending step & active function information for caller function
         if ((blockType == block_JustinaFunction) || (blockType == block_eval)) { _activeFunctionData = *(OpenFunctionData*)_pFlowCtrlStackTop; }    // caller level
@@ -2970,7 +3022,7 @@ void Justina::terminateEval() {
 
     char blockType = block_none;                                                                                            // init
     do {
-        blockType = ((openBlockGeneric*)_pFlowCtrlStackTop)->blockType;                                                     // always at least one level present for caller (because returning to it)
+        blockType = ((OpenBlockGeneric*)_pFlowCtrlStackTop)->blockType;                                                     // always at least one level present for caller (because returning to it)
 
         // load local storage pointers again for caller function and restore pending step & active function information for caller function
         if ((blockType == block_JustinaFunction) || (blockType == block_eval)) { _activeFunctionData = *(OpenFunctionData*)_pFlowCtrlStackTop; }
@@ -3217,7 +3269,7 @@ void* Justina::fetchVarBaseAddress(Token_variable* pVarToken, char*& sourceVarTy
 
             if (!isDebugCmdLevel) {       // find debug level in flow control stack instead
                 do {
-                    blockType = ((openBlockGeneric*)pFlowCtrlStackLvl)->blockType;
+                    blockType = ((OpenBlockGeneric*)pFlowCtrlStackLvl)->blockType;
                     isDebugCmdLevel = (blockType == block_JustinaFunction) ? (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + _PROGRAM_MEMORY_SIZE)) : false;
                     pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                 } while (!isDebugCmdLevel);                                                                                 // stack level for open function found immediate below debug line found (always match)

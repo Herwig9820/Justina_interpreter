@@ -1,7 +1,7 @@
 /***********************************************************************************************************
 *   Justina interpreter library                                                                            *
 *                                                                                                          *
-*   Copyright 2024, 2025 Herwig Taveirne                                                                        *
+*   Copyright 2024, 2025 Herwig Taveirne                                                                   *
 *                                                                                                          *
 *   This file is part of the Justina Interpreter library.                                                  *
 *   The Justina interpreter library is free software: you can redistribute it and/or modify it under       *

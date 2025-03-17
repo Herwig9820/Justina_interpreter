@@ -1,7 +1,7 @@
 /***********************************************************************************************************
 *   Justina interpreter library                                                                            *
 *                                                                                                          *
-*   Copyright 2024, 2025 Herwig Taveirne                                                                        *
+*   Copyright 2024, 2025 Herwig Taveirne                                                                   *
 *                                                                                                          *
 *   This file is part of the Justina Interpreter library.                                                  *
 *   The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
@@ -2133,7 +2133,7 @@ bool Justina::parseAsVariable(char*& pNext, parsingResult_type& result) {
                         bool isDebugCmdLevel = (blockType == block_JustinaFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + _PROGRAM_MEMORY_SIZE)) : false;
                         if (!isDebugCmdLevel) {                                                                         // find debug level in flow control stack instead
                             do {
-                                blockType = ((openBlockGeneric*)pFlowCtrlStackLvl)->blockType;
+                                blockType = ((OpenBlockGeneric*)pFlowCtrlStackLvl)->blockType;
                                 isDebugCmdLevel = (blockType == block_JustinaFunction) ? (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + _PROGRAM_MEMORY_SIZE)) : false;
                                 pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                             } while (!isDebugCmdLevel);                                                                 // stack level for open function found immediate below debug line found (always match)

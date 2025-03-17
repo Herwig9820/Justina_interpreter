@@ -1,7 +1,7 @@
 /***********************************************************************************************************
 *   Justina interpreter library                                                                            *
 *                                                                                                          *
-*   Copyright 2024, 2025 Herwig Taveirne                                                                        *
+*   Copyright 2024, 2025 Herwig Taveirne                                                                   *
 *                                                                                                          *
 *   This file is part of the Justina Interpreter library.                                                  *
 *   The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
@@ -62,7 +62,7 @@ Justina::execResult_type Justina::execExternalCommand() {
 #endif
 
     execResult = execExternalCppFncOrCmd(pStackLvl, pStackLvl, cmdArgCount, true);              // note: first argument (parameter pFunctionStackLvl) not used for commands
-    if(execResult != result_execOK){return execResult;}
+    if (execResult != result_execOK) { return execResult; }
 
     // NOTE: arguments are already deleted from evaluation stack in routine 'execExternalCppFncOrCmd()' 
     _activeFunctionData.activeCmd_commandCode = cmdcod_none;                                    // command execution ended
@@ -193,13 +193,13 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                 char blockType{};
                 do {
                     // skip all debug level blocks and open function block (always there). Then, check the next control flow stack level (also always there)
-                    blockType = ((openBlockGeneric*)pFlowCtrlStackLvl)->blockType;
+                    blockType = ((OpenBlockGeneric*)pFlowCtrlStackLvl)->blockType;
                     pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                 } while ((blockType != block_JustinaFunction) && (blockType != block_eval));
 
                 // access the flow control stack level below the stack level for the active function, and check the block type: is it an open block within the function ?
                 // (if not, then it's the stack level for the caller already)
-                blockType = ((openBlockGeneric*)pFlowCtrlStackLvl)->blockType;
+                blockType = ((OpenBlockGeneric*)pFlowCtrlStackLvl)->blockType;
                 if ((blockType != block_for) && (blockType != block_while) && (blockType != block_if)) { OpenBlock = false; }   // is it an open block ?
             }
 
@@ -218,8 +218,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
         #endif
             --_openDebugLevels;
 
-            // abort: all done
-            if (_activeFunctionData.activeCmd_commandCode == cmdcod_abort) { return EVENT_abort; }
+            if (_activeFunctionData.activeCmd_commandCode == cmdcod_abort) { return EVENT_abort; }                              // abort: all done
 
             _stepCmdExecuted = (_activeFunctionData.activeCmd_commandCode == cmdcod_step) ? db_singleStep :
                 (_activeFunctionData.activeCmd_commandCode == cmdcod_stepOut) ? db_stepOut :
@@ -233,7 +232,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             char blockType = block_none;            // init
             do {
                 // always at least one open function (because returning to caller from it)
-                blockType = ((openBlockGeneric*)_pFlowCtrlStackTop)->blockType;
+                blockType = ((OpenBlockGeneric*)_pFlowCtrlStackTop)->blockType;
 
                 // load local storage pointers again for interrupted function and restore pending step & active function information for interrupted function
                 if (blockType == block_JustinaFunction) { _activeFunctionData = *(OpenFunctionData*)_pFlowCtrlStackTop; }
@@ -367,7 +366,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             // -------------------------------
             bool operandIsVar = (pStackLvl->varOrConst.tokenType == tok_isVariable);
             int valueType = (int)(operandIsVar ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType);
-            Val value;
+            Val value{};
             if ((valueType != value_isLong) && (valueType != value_isFloat)) { return result_BP_sourcelineNumberExpected; }
             value.floatConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pFloatConst) : pStackLvl->varOrConst.value.floatConst);    // line is valid for all value types  
             long sourceLine = (valueType == value_isLong) ? value.longConst : (long)value.floatConst;
@@ -800,12 +799,112 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                 }
             }
 
-            return result_initiateProgramLoad;                                                                          // not an error but an 'event'
+            return EVENT_initiateProgramLoad;                                                                           // not an error but an 'event'
 
-            // no clean up to do (return statement executed already)
+            // no clean up to do (return statement executed here already)
         }
         break;
 
+
+        // -------------------------------------------
+        // Execute a batch file (program) from SD card
+        // -------------------------------------------
+
+        case cmdcod_execBatchFile:
+        {
+            // guaranteed 1 argument: source file name (arg. count check during parsing)
+            bool argIsVar[1];
+            bool argIsArray[1];
+            char valueType[1];
+            Val args[1];
+            copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
+
+            // SD source file name specified ?
+            int streamNumber{};
+            if (valueType[0] != value_isStringPointer) { return result_SD_fileNameExpected; }               // load program from SD file
+            if (_activeFunctionData.statementInputStream[1] != 0) { return result_IO_maxBatchFileNestingExceeded; }
+
+            // open file and retrieve file number
+            execResult = SD_open(streamNumber, args[0].pStringConst, READ_FILE);                            // this performs a few card & file checks as well
+            if (execResult != result_execOK) { return execResult; }
+            if (openFiles[streamNumber - 1].file.isDirectory()) { SD_closeFile(streamNumber);  return result_SD_directoryNotAllowed; }
+            if (openFiles[streamNumber - 1].file.size() == 0) { SD_closeFile(streamNumber);  return result_SD_fileIsEmpty; }
+            openFiles[streamNumber - 1].isSystemFile = 1;                                                   // mark as system file: prevent user from closing this batch file          
+
+            _activeFunctionData.statementInputStream[1] = _activeFunctionData.statementInputStream[0];      // set batch file stream number
+            _activeFunctionData.statementInputStream[0] = streamNumber;                                     // set batch file stream number
+
+            // clean up
+            clearEvalStackLevels(cmdArgCount);                                                              // clear evaluation stack and intermediate strings 
+            _activeFunctionData.activeCmd_commandCode = cmdcod_none;                                        // command execution ended
+        }
+        break;
+
+
+        // -----------------------------------------------------------------------------------
+        // end executing a batch file and return to the caller (calling batch file or console) 
+        // -----------------------------------------------------------------------------------
+
+        case cmdcod_ditchBatchFile:
+        {
+            if (_activeFunctionData.statementInputStream[0] == 0) { return result_IO_noBatchFile; }
+            int streamNumber = _activeFunctionData.statementInputStream[0];
+            SD_closeFile(streamNumber);                                                         // will close batch file (is a system file)
+            _activeFunctionData.statementInputStream[0] = _activeFunctionData.statementInputStream[1];
+            _activeFunctionData.statementInputStream[1] = 0;
+
+            return EVENT_BATCH_DITCH;                                                           // not an error but an 'event'
+        }
+        break;
+
+        // --------------------------------------------------------
+        // go to a label in the batch file currently being executed  
+        // --------------------------------------------------------
+
+        case cmdcod_gotoLabel:
+        {
+            // enter a label as the first part of a comment line that starts at the beginning of a line. Terminate the label with two slashes, followed by an optional comment.
+            // Example: //loop start// this is the start of a multi-line loop in a batch file
+            // Jump to this label with command "gotoLabel "loop start" (do not add the slashes)
+            
+            // guaranteed 1 argument: label name (arg. count check during parsing)
+            bool argIsVar[1];
+            bool argIsArray[1];
+            char valueType[1];
+            Val args[1];
+            copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
+
+            if (valueType[0] != value_isStringPointer) { return result_arg_stringExpected; }    // label to look for must be a string
+            if (args[0].pStringConst == nullptr) { return result_arg_nonEmptyStringExpected; }  // label to look for must be a non-empty string
+
+            int streamNumber = _activeFunctionData.statementInputStream[0];                     // stream assigned to the currently executing batch file
+            if (streamNumber == 0) { return result_IO_noBatchFile; }                            // currently not executing a batch file
+
+            File file = openFiles[streamNumber - 1].file;
+            unsigned long currentPosition = file.position();                                    // save current position in batch file
+
+            int labelLength = 2 + strlen(args[0].pStringConst) + 2;                             // excluding terminating '\0'
+            char label[labelLength + 1];
+            strcpy(label, "//");
+            strcat(label, args[0].pStringConst);
+            strcat(label, "//");
+
+            // find label in batch file
+            file.seek(0);                                                                       // start at beginning of file
+            bool isLabel = file.find(label);
+            if (isLabel) {                                                                      // label with surrounding "//" found ?
+                if (file.position() > labelLength) {                                            // not at beginning of file ?
+                    unsigned long p = file.seek(file.position() - labelLength - 1);             // go back to the character preceding the label text
+                    isLabel = (file.read() == '\n');                                            // preceding character must be '\n' (end of previous line)
+                }
+            }
+            if (isLabel) { file.find("\n"); }                                                   // skip remainder of current line - find start of next line (could be end of file) 
+            else { file.seek(currentPosition); }                                                // label not found: return to original position
+
+            clearEvalStackLevels(cmdArgCount);                                                  // clear evaluation stack and intermediate strings 
+            return EVENT_BATCH_GOTOLABEL;                                                       // not an error but an 'event'
+        }
+        break;
 
         // ----------------------------------
         // set console input or output stream
@@ -824,7 +923,6 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             if ((valueType[0] != value_isLong) && (valueType[0] != value_isFloat)) { return result_arg_numberExpected; }
             int streamNumber = (valueType[0] == value_isLong) ? args[0].longConst : args[0].floatConst;
 
-            // NOTE: set debug out: file number is acceptable, even if no open file is associated with it at this time
             if ((streamNumber >= MAX_OPEN_SD_FILES) || ((-streamNumber) > _externIOstreamCount) || (streamNumber == 0)) { return result_IO_invalidStreamNumber; }
             if ((streamNumber > 0) && (_activeFunctionData.activeCmd_commandCode != cmdcod_setDebugOut)) { return result_SD_fileNotAllowedHere; }
 
@@ -1216,6 +1314,12 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
         case cmdcod_stopSD:
         {
+            for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
+                if (openFiles[i].fileNumberInUse && openFiles[i].isSystemFile) {
+                    return result_SD_openBatchFiles_cannotStopSDcard;               // system file open: cannot stop SD card
+                }
+            }
+
             SD_closeAllFiles();
             _SDinitOK = false;
             SD.end();
@@ -1506,9 +1610,8 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             LE_evalStack* pFirstArgStackLvl = pStackLvl;
             char argSep[3] = "  "; argSep[0] = term_comma[0];
 
-            int streamNumber{ 0 };                                  // init
-
-            if (isDebugPrint) { _pStreamOut = _pDebugOut; }
+            int streamNumber{ 0 };                                                                                          // init
+            if (isDebugPrint) { _streamNumberOut = _debug_sourceStreamNumber; _pStreamOut = _pDebugOut; }
             else {
                 execResult = setStream(streamNumber, true); if (execResult != result_execOK) { return execResult; }         // init stream for output
             }
@@ -1660,9 +1763,9 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                     else {      // print to file or console ?
                         if (printString != nullptr) {
                             // if a direct argument of a print function ENDS with CR or LF, reset print column to 0
-                            long printed = print(printString);                                                              // we need the position n the string of the last character printed
-                            if ((printString[printed - 1] == '\r') || (printString[printed - 1] == '\n')) { *pStreamPrintColumn = 0; }      // reset print column for stream to 0
-                            else { *pStreamPrintColumn += printed; }                                                        // not a CR or LF character at end of string ? adapt print column for stream 
+                            long printed = print(printString);                                                                          // we need the position in the string of the last character printed
+                            if ((printString[printed - 1] == '\r') || (printString[printed - 1] == '\n')) { *pStreamPrintColumn = 0; }  // reset print column for stream to 0
+                            else { *pStreamPrintColumn += printed; }                                                                    // not a CR or LF character at end of string ? adapt print column for stream 
                         }
                         if ((i < cmdArgCount) && doPrintList) { *pStreamPrintColumn += print(argSep); }
                     }
@@ -1960,7 +2063,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
         case cmdcod_dispmod:      // takes two arguments
         {
-            // mandatory argument 1: 0 = do not print prompt and do not echo user input; 1 = print prompt but no not echo user input; 2 = print prompt and echo user input 
+            // mandatory argument 1: 0 = do not print prompt and do not echo user input; 1 = print prompt but do not echo user input; 2 = print prompt and echo user input 
             // mandatory argument 2: 0 = do not print last result; 1 = print last result; 2 = expand last result escape sequences and print last result
 
             bool argIsVar[2];
@@ -1978,7 +2081,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                 if (argIsFloat) { args[i].longConst = (int)args[i].floatConst; }
                 if ((args[i].longConst < 0) || (args[i].longConst > 2)) { execResult = result_arg_invalid; return execResult; };
             }
-            if ((args[0].longConst == 0) && (args[1].longConst == 0)) { execResult = result_arg_invalid; return execResult; };   // no prompt AND no last result print: do not allow
+            ////if ((args[0].longConst == 0) && (args[1].longConst == 0)) { execResult = result_arg_invalid; return execResult; };   // no prompt AND no last result print: do not allow
 
             // if last result printing switched back on, then prevent printing pending last result (if any)
             _lastValueIsStored = false;                                                                                     // prevent printing last result (if any)
@@ -2050,7 +2153,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             bool initNew{ true };        // IF...END: only one iteration (always new), FOR...END loop: always first iteration of a new loop, because only pass (command skipped for next iterations)
             if (_activeFunctionData.activeCmd_commandCode == cmdcod_while) {                                                // while block: start of an iteration
                 if (flowCtrlStack.getElementCount() != 0) {                                                                 // at least one open (outer) block exists in current function (or main) ?
-                    char blockType = ((openBlockGeneric*)_pFlowCtrlStackTop)->blockType;
+                    char blockType = ((OpenBlockGeneric*)_pFlowCtrlStackTop)->blockType;
                     if ((blockType == block_for) || (blockType == block_if)) { initNew = true; }
                     else if (blockType == block_while) {
                         // currently executing an iteration of an outer 'if', 'while' or 'for' loop ? Then this is the start of the first iteration of a new (inner) 'if' or 'while' loop
@@ -2184,7 +2287,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             char blockType = block_none;
             bool isLoop{};
             do {
-                blockType = ((openBlockGeneric*)_pFlowCtrlStackTop)->blockType;
+                blockType = ((OpenBlockGeneric*)_pFlowCtrlStackTop)->blockType;
                 // inner block(s) could be IF...END blocks (before reaching loop block)
                 isLoop = ((blockType == block_while) || (blockType == block_for));
                 if (isLoop) {
@@ -2217,7 +2320,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
         case cmdcod_end:
         {
-            char blockType = ((openBlockGeneric*)_pFlowCtrlStackTop)->blockType;
+            char blockType = ((OpenBlockGeneric*)_pFlowCtrlStackTop)->blockType;
 
             if ((blockType == block_if) || (blockType == block_while) || (blockType == block_for)) {
 
@@ -2377,13 +2480,13 @@ Justina::execResult_type Justina::copyValueArgsFromStack(LE_evalStack*& pStackLv
                     _pDebugOut->print("cpy args from stack ");   _pDebugOut->println(args[i].pStringConst);
                 #endif
                 }
-                }
             }
-
-        pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
         }
 
-    return result_execOK;
+        pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
     }
+
+    return result_execOK;
+}
 
 
