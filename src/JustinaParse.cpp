@@ -38,7 +38,7 @@
 // *   parse ONE statement in a character string, ended by an optional ';' character and a '\0' mandatory character   *
 // --------------------------------------------------------------------------------------------------------------------
 
-Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& pNextParseStatement, int& clearIndicator, bool isNewSourceLine, long sourceLine) {
+Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& pNextParseStatement, int& clearIndicator, bool& isSilentOnOffStatement) {
     _lastTokenType_hold = tok_no_token;
     _lastTokenType = tok_no_token;                                                      // no token yet
 
@@ -67,6 +67,8 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
 
     _isCommand = false;
 
+    isSilentOnOffStatement = false;
+
     int commandIndex{};
     bool isInternalCommand{};
 
@@ -89,7 +91,7 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
 
         if ((_lastTokenType == tok_no_token) || isSemicolon) {
             _isProgramCmd = false;
-            _isJustinaFunctionCmd = false; _isVoidJustinaFunctionCmd = false; _isGlobalOrUserVarCmd = false; _isLocalVarCmd = false; _isStaticVarCmd = false; _isAnyVarCmd = false, _isConstVarCmd = false;;
+            _isJustinaFunctionCmd = false; _isVoidJustinaFunctionCmd = false; _isGlobalOrUserVarCmd = false; _isLocalVarCmd = false; _isStaticVarCmd = false; _isAnyVarCmd = false, _isConstVarCmd = false;
             _isForCommand = false;
             _isDeleteVarCmd = false;
             _isClearProgCmd = false;
@@ -162,7 +164,7 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
             if (_isCommand) {
                 isInternalCommand = (_lastTokenType == tok_isInternCommand);                                        // remember during parsing of this statement
                 commandIndex = _tokenIndex;
-                if (!checkCommandKeyword(result, commandIndex, isInternalCommand)) { ; pNext = pNext_hold; break; }
+                if (!checkCommandKeyword(result, commandIndex, isInternalCommand, isSilentOnOffStatement)) { ; pNext = pNext_hold; break; }
             }
         }
 
@@ -177,6 +179,8 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
 
     if (_userVarUnderConstruction) { deleteUserVariable(); }
 
+    if (result != result_parsing_OK) { isSilentOnOffStatement = false; }
+    
     return result;
 }
 
@@ -185,7 +189,7 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
 // *   Start of a command only: apply additional command syntax rules   *
 // ----------------------------------------------------------------------
 
-bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, bool commandIsInternal) {           // command syntax checks
+bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, bool commandIsInternal, bool& isSilentKeyword) {           // command syntax checks
 
 #if PRINT_PARSED_TOKENS
     _pDebugOut->println("   checking command keyword");
@@ -230,6 +234,8 @@ bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, 
         _isClearAllCmd = _internCommands[commandIndex].commandCode == cmdcod_clearAll;
 
         _isAnyVarCmd = _isGlobalOrUserVarCmd || _isLocalVarCmd || _isStaticVarCmd;                                  //  var, local, static
+
+        isSilentKeyword = _internCommands[commandIndex].commandCode == cmdcod_silent;
     }
 
     // is this command allowed here ? Check restrictions

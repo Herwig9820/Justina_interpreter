@@ -764,7 +764,7 @@ Justina::execResult_type  Justina::exec(char* startHere) {
         if (execResult == result_execOK) {              // no error: print last result
 
             if (*_pConsolePrintColumn != 0) { printlnTo(0); *_pConsolePrintColumn = 0; }
-            if (_lastValueIsStored && (_printLastResult > 0)) {
+            if (!_silent && _lastValueIsStored && (_printLastResult > 0)) {
 
                 bool isLong = (lastResultTypeFiFo[0] == value_isLong);
                 bool isFloat = (lastResultTypeFiFo[0] == value_isFloat);
@@ -1169,10 +1169,10 @@ Justina::parsingResult_type Justina::parseTriggerString(int BPindex) {
 
 
     // note: application flags are not adapted (would not be passed to caller immediately)
-    int dummy{};
+    int dummyInt{};bool dummyBool{};
 
     _parsingExecutingTriggerString = true;         // after the last 'error' return in this procedure
-    parsingResult_type parsingResult = parseStatement(pTriggerParsingInput, pDummy, dummy);
+    parsingResult_type parsingResult = parseStatement(pTriggerParsingInput, pDummy, dummyInt, dummyBool);
     _parsingExecutingTriggerString = false;
 
     if (parsingResult != result_parsing_OK) {
@@ -2608,8 +2608,8 @@ Justina::execResult_type  Justina::launchEval(LE_evalStack*& pFunctionStackLvl, 
 
     char* pParsingInput_temp = pEvalParsingInput;                                                   // temp, because value will be changed upon return (preserve original pointer value)
     // note: application flags are not adapted (would not be passed to caller immediately)
-    int dummy{};
-    parsingResult_type result = parseStatement(pParsingInput_temp, pDummy, dummy);                  // parse all eval() expressions in ONE go (which is not the case for standard parsing and trace string parsing)
+    int dummyInt{};bool dummyBool{};
+    parsingResult_type result = parseStatement(pParsingInput_temp, pDummy, dummyInt, dummyBool);                  // parse all eval() expressions in ONE go (which is not the case for standard parsing and trace string parsing)
 #if PRINT_HEAP_OBJ_CREA_DEL
     _pDebugOut->print("\r\n----- (system exp str) "); _pDebugOut->println((uint32_t)pEvalParsingInput, HEX);
     _pDebugOut->print("       launch eval (2) "); _pDebugOut->println(pEvalParsingInput);
@@ -2709,15 +2709,14 @@ void Justina::initFunctionParamVarWithSuppliedArg(int suppliedArgCount, LE_evalS
 
             // parsed, or intermediate, constant OR constant variable, passed as argument (constant: never an array)
             else {
+                #if PRINT_DEBUG_INFO
+                    _pDebugOut->print("** start local values at address: "); _pDebugOut->println((uint32_t)(_activeFunctionData.pLocalVarValues), HEX);
+                    _pDebugOut->print("   variable address             : "); _pDebugOut->println((uint32_t)(_activeFunctionData.pLocalVarValues + i), HEX);
+                #endif
+
                 _activeFunctionData.pVariableAttributes[i] = valueType;                                                     // local variable value type (long, float, char*)
                 if (operandIsLong || operandIsFloat) {
                     _activeFunctionData.pLocalVarValues[i].floatConst = operandIsVariable ? *pStackLvl->varOrConst.value.pFloatConst : pStackLvl->varOrConst.value.floatConst;
-
-                #if PRINT_DEBUG_INFO
-                    _pDebugOut->print("** INIT SUPPLIED FUNCTION PARAMETER - value: "); _pDebugOut->println(pStackLvl->varOrConst.value.longConst);
-                    _pDebugOut->print("   start local values at address: "); _pDebugOut->println((uint32_t)(_activeFunctionData.pLocalVarValues), HEX);
-                    _pDebugOut->print("   variable address             : "); _pDebugOut->println((uint32_t)(_activeFunctionData.pLocalVarValues + i), HEX);
-                #endif
                 }
                 else {                                                                                                      // function argument is string constant: create a local copy
                     _activeFunctionData.pLocalVarValues[i].pStringConst = nullptr;                                          // init (empty string)

@@ -219,6 +219,7 @@ Justina::execResult_type Justina::SD_openNext(int dirFileNumber, int& fileNumber
                     openFiles[fileNumber - 1].isSystemFile = 0;
                     delete[] openFiles[fileNumber - 1].filePath;
                     _systemStringObjectCount--;
+                    // do NOT delete 'argument' members of openFiles[fileNumber - 1]... (pointers are not initialized)
                     return result_SD_fileAlreadyOpen;                                                                       // return with error
                 }
             }
@@ -229,7 +230,6 @@ Justina::execResult_type Justina::SD_openNext(int dirFileNumber, int& fileNumber
 }
 
 
-
 // ------------------------
 // *   close an SD file   *
 // ------------------------
@@ -237,14 +237,38 @@ Justina::execResult_type Justina::SD_openNext(int dirFileNumber, int& fileNumber
 void Justina::SD_closeFile(int fileNumber) {
 
     // checks must have been done before calling this function
+    if (openFiles[fileNumber - 1].fileNumberInUse == 0) { return; }       // safety
 
     if (static_cast <Stream*>(&openFiles[fileNumber - 1].file) == static_cast <Stream*>(_pDebugOut)) { _pDebugOut = _pConsoleOut; }
-    openFiles[fileNumber - 1].file.close();                                                                                 // does not return errors
+
     _openFileCount--;
+    delete[] openFiles[fileNumber - 1].filePath;  // (never an empty string)
+    _systemStringObjectCount--;
+
+    if (openFiles[fileNumber - 1].isSystemFile) {
+        // delete string values passed as arguments to batch file (SKIP first argument: is not maintained here) 
+        int cmdArgCount = openFiles[fileNumber - 1].argCount;
+        for (int i = 1; i < cmdArgCount; i++) {
+            if (openFiles[fileNumber - 1].pValueType[i] == value_isString) {
+                if (openFiles[fileNumber - 1].pArgs[i].pStringConst != nullptr) {
+                #if PRINT_HEAP_OBJ_CREA_DEL
+                    _pDebugOut->print("\r\n----- (bat par str) ");   _pDebugOut->println((uint32_t)openFiles[fileNumber - 1].pArgs[i].pStringConst, HEX);
+                    _pDebugOut->print(" batch file par str ");   _pDebugOut->println(openFiles[fileNumber - 1].pArgs[i].pStringConst);
+                #endif
+                    delete[]openFiles[fileNumber - 1].pArgs[i].pStringConst;
+                    _systemStringObjectCount--;
+                }
+            }
+        }
+
+        // delete storage for values passed as arguments to batch file 
+        delete[] openFiles[fileNumber - 1].pValueType;
+        delete[] openFiles[fileNumber - 1].pArgs;
+    }
+
     openFiles[fileNumber - 1].fileNumberInUse = 0;
     openFiles[fileNumber - 1].isSystemFile = 0;
-    delete[] openFiles[fileNumber - 1].filePath;
-    _systemStringObjectCount--;
+    openFiles[fileNumber - 1].file.close();                                                                                 // does not return errors
 }
 
 
@@ -256,18 +280,42 @@ void  Justina::SD_closeAllFiles(bool includeSystemFiles) {     // close all open
 
     if (!_SDinitOK) { return; }          // card is NOT initialized: nothing to do
 
-    for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
-        if ((openFiles[i].fileNumberInUse) && (!openFiles[i].isSystemFile || includeSystemFiles)) {
+    for (int stream = 0; stream < MAX_OPEN_SD_FILES; ++stream) {
+        if ((openFiles[stream].fileNumberInUse) && (!openFiles[stream].isSystemFile || includeSystemFiles)) {
 
-            if (static_cast <Stream*>(&openFiles[i].file) == static_cast <Stream*>(_pDebugOut)) {    // debug out could also be an external io stream: test for file (which is open; otherwise debug would not point to it)
+            if (static_cast <Stream*>(&openFiles[stream].file) == static_cast <Stream*>(_pDebugOut)) {    // debug out could also be an external io stream: test for file (which is open; otherwise debug would not point to it)
                 _pDebugOut = _pConsoleOut;
             }
 
-            openFiles[i].fileNumberInUse = 0;                                                                               // slot is open again
-            openFiles[i].isSystemFile = 0;
-            delete[] openFiles[i].filePath;
+            delete[] openFiles[stream].filePath;  // (never an empty string)
             _systemStringObjectCount--;
-            openFiles[i].file.close();                                                                                      // does not return errors
+
+            if (openFiles[stream].isSystemFile) {
+                // delete string values passed as arguments to batch file (SKIP first argument: is not maintained here)
+                int cmdArgCount = openFiles[stream].argCount;
+                for (int i = 1; i < cmdArgCount; i++) {
+                    if (openFiles[stream].pValueType[i] == value_isString) {
+                        if (openFiles[stream].pArgs[i].pStringConst != nullptr) { delete[]openFiles[stream].pArgs[i].pStringConst; }
+                    }
+
+                    if (openFiles[stream].pArgs[i].pStringConst != nullptr) {
+                    #if PRINT_HEAP_OBJ_CREA_DEL
+                        _pDebugOut->print("\r\n----- (bat par str) ");   _pDebugOut->println((uint32_t)openFiles[stream].pArgs[i].pStringConst, HEX);
+                        _pDebugOut->print(" batch file par str ");   _pDebugOut->println(openFiles[stream].pArgs[i].pStringConst);
+                    #endif
+                        delete[]openFiles[stream].pArgs[i].pStringConst;
+                        _systemStringObjectCount--;
+                    }
+                }
+
+                // delete storage for values passed as arguments to batch file 
+                delete[] openFiles[stream].pValueType;
+                delete[] openFiles[stream].pArgs;
+            }
+
+            openFiles[stream].fileNumberInUse = 0;                                                                               // slot is open again
+            openFiles[stream].isSystemFile = 0;
+            openFiles[stream].file.close();                                                                                      // does not return errors
             _openFileCount--;
         }
     }
@@ -282,6 +330,7 @@ Justina::execResult_type Justina::SD_listFiles() {
 
     if ((_justinaStartupOptions & SD_mask) == SD_notAllowed) { return result_SD_noCardOrNotAllowed; }
     if (!_SDinitOK) { return result_SD_noCardOrCardError; }
+    if (_openFileCount == MAX_OPEN_SD_FILES) { return result_SD_maxOpenFilesReached; }                                      // max. open files reached
 
     // print to console (default), or to any other defined I/O device, or to a file, but without date and time stamp (unfortunately this fixed in SD library)
     // before calling this function, output stream must be set by function 'setStream(...)'

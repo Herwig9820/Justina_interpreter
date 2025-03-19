@@ -352,7 +352,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
         break;
 
 
-       // ------------------------------------------------------------------------
+        // ------------------------------------------------------------------------
         // set next line to continue execution (pass control to that line and stop)
         // ------------------------------------------------------------------------
 
@@ -812,27 +812,58 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
         case cmdcod_execBatchFile:
         {
-            // guaranteed 1 argument: source file name (arg. count check during parsing)
-            bool argIsVar[1];
-            bool argIsArray[1];
-            char valueType[1];
-            Val args[1];
+            if ((_justinaStartupOptions & SD_mask) == SD_notAllowed) { return result_SD_noCardOrNotAllowed; }
+            if (!_SDinitOK) { return result_SD_noCardOrCardError; }
+            if (_openFileCount == MAX_OPEN_SD_FILES) { return result_SD_maxOpenFilesReached; }                                      // max. open files reached
+
+            if (_activeFunctionData.statementInputStream[1] != 0) { return result_IO_maxBatchFileNestingExceeded; }
+
+            bool* argIsVar = new bool[cmdArgCount];
+            bool* argIsArray = new bool[cmdArgCount];
+            char* valueType = new char[cmdArgCount];
+            Val* args = new Val[cmdArgCount];
+
             copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
+            delete[] argIsVar; delete[] argIsArray;     // not needed
 
             // SD source file name specified ?
             int streamNumber{};
-            if (valueType[0] != value_isStringPointer) { return result_SD_fileNameExpected; }               // load program from SD file
-            if (_activeFunctionData.statementInputStream[1] != 0) { return result_IO_maxBatchFileNestingExceeded; }
+            if (valueType[0] != value_isStringPointer) { delete[]valueType; delete[]args; return result_SD_fileNameExpected; }               // must be an SD file
 
-            // open file and retrieve file number
             execResult = SD_open(streamNumber, args[0].pStringConst, READ_FILE);                            // this performs a few card & file checks as well
-            if (execResult != result_execOK) { return execResult; }
-            if (openFiles[streamNumber - 1].file.isDirectory()) { SD_closeFile(streamNumber);  return result_SD_directoryNotAllowed; }
-            if (openFiles[streamNumber - 1].file.size() == 0) { SD_closeFile(streamNumber);  return result_SD_fileIsEmpty; }
-            openFiles[streamNumber - 1].isSystemFile = 1;                                                   // mark as system file: prevent user from closing this batch file          
+            if (execResult != result_execOK) { delete[]valueType; delete[]args; return execResult; }
+            else {
+                if (openFiles[streamNumber - 1].file.isDirectory()) { SD_closeFile(streamNumber); delete[]valueType; delete[]args;  return result_SD_directoryNotAllowed; }
+                else if (openFiles[streamNumber - 1].file.size() == 0) { SD_closeFile(streamNumber); delete[]valueType; delete[]args;  return result_SD_fileIsEmpty; }
+            }
 
-            _activeFunctionData.statementInputStream[1] = _activeFunctionData.statementInputStream[0];      // set batch file stream number
-            _activeFunctionData.statementInputStream[0] = streamNumber;                                     // set batch file stream number
+            openFiles[streamNumber - 1].isSystemFile = 1;                                                   // mark as system file: prevent user from closing this batch file          
+            openFiles[streamNumber - 1].argCount = cmdArgCount;     // batch name and optional arguments
+            openFiles[streamNumber - 1].pValueType = valueType;
+            openFiles[streamNumber - 1].pArgs = args;
+            openFiles[streamNumber - 1].silent = 0;
+            _silent = false;
+
+            // create string objects for batch file arguments, but SKIP first argument (batch filename is already stored in openFiles[streamNumber - 1].filePath)
+            for (int i = 1; i < cmdArgCount; i++) {
+                if (openFiles[streamNumber - 1].pValueType[i] == value_isString) {
+                    char* tempString = openFiles[streamNumber - 1].pArgs[i].pStringConst;
+                    openFiles[streamNumber - 1].pArgs[i].pStringConst = nullptr;                                          // init (empty string)
+                    if (tempString != nullptr) {
+                        int stringlen = strlen(tempString);
+                        _systemStringObjectCount++;
+                        openFiles[streamNumber - 1].pArgs[i].pStringConst = new char[stringlen + 1];
+                        strcpy(openFiles[streamNumber - 1].pArgs[i].pStringConst, tempString);
+                    #if PRINT_HEAP_OBJ_CREA_DEL
+                        _pDebugOut->print("\r\n+++++ (bat par str) ");   _pDebugOut->println((uint32_t)openFiles[streamNumber - 1].pArgs[i].pStringConst, HEX);
+                        _pDebugOut->print("   batch file param ");   _pDebugOut->println(openFiles[streamNumber - 1].pArgs[i].pStringConst);
+                    #endif
+                    }
+                };
+            }
+
+            _activeFunctionData.statementInputStream[1] = _activeFunctionData.statementInputStream[0];      // set 'calling' batch file stream number (to console or to calling batch file)
+            _activeFunctionData.statementInputStream[0] = streamNumber;                                     // set batch file stream number to batch file
 
             // clean up
             clearEvalStackLevels(cmdArgCount);                                                              // clear evaluation stack and intermediate strings 
@@ -847,11 +878,16 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
         case cmdcod_ditchBatchFile:
         {
-            if (_activeFunctionData.statementInputStream[0] == 0) { return result_IO_noBatchFile; }
+            if (_activeFunctionData.statementInputStream[0] <= 0) { return result_IO_noBatchFile; }
+
             int streamNumber = _activeFunctionData.statementInputStream[0];
             SD_closeFile(streamNumber);                                                         // will close batch file (is a system file)
+
             _activeFunctionData.statementInputStream[0] = _activeFunctionData.statementInputStream[1];
             _activeFunctionData.statementInputStream[1] = 0;
+
+            streamNumber = _activeFunctionData.statementInputStream[0];
+            _silent = (streamNumber > 0) ? bool(openFiles[streamNumber - 1].silent) : false;
 
             return EVENT_BATCH_DITCH;                                                           // not an error but an 'event'
         }
@@ -866,8 +902,8 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             // enter a label as the first part of a comment line that starts at the beginning of a line. Terminate the label with two slashes, followed by an optional comment.
             // Example: //loop start// this is the start of a multi-line loop in a batch file
             // Jump to this label with command "gotoLabel "loop start" (do not add the slashes)
-            
-            // guaranteed 1 argument: label name (arg. count check during parsing)
+
+            // 1 argument: label name (arg. count check during parsing)
             bool argIsVar[1];
             bool argIsArray[1];
             char valueType[1];
@@ -878,7 +914,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             if (args[0].pStringConst == nullptr) { return result_arg_nonEmptyStringExpected; }  // label to look for must be a non-empty string
 
             int streamNumber = _activeFunctionData.statementInputStream[0];                     // stream assigned to the currently executing batch file
-            if (streamNumber == 0) { return result_IO_noBatchFile; }                            // currently not executing a batch file
+            if (streamNumber <= 0) { return result_IO_noBatchFile; }                            // currently not executing a batch file
 
             File file = openFiles[streamNumber - 1].file;
             unsigned long currentPosition = file.position();                                    // save current position in batch file
@@ -905,6 +941,32 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             return EVENT_BATCH_GOTOLABEL;                                                       // not an error but an 'event'
         }
         break;
+
+
+        // -----------------------------------------------------
+        // set silent mode ON or OFF during batch file execution
+        // -----------------------------------------------------
+
+        case cmdcod_silent:
+        {
+            int streamNumber = _activeFunctionData.statementInputStream[0];
+            if (streamNumber <= 0) { return result_IO_noBatchFile; }
+
+            bool argIsVar[1];
+            bool argIsArray[1];
+            char valueType[1];
+            Val args[1];
+            copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
+            if ((valueType[0] != value_isLong) && (valueType[0] != value_isFloat)) { return result_arg_numberExpected; }
+            _silent = bool((valueType[0] == value_isLong) ? (args[0].longConst) : (args[0].floatConst));
+            openFiles[streamNumber - 1].silent = _silent ? 1 : 0;
+
+            // clean up
+            clearEvalStackLevels(cmdArgCount);                                      // clear evaluation stack and intermediate strings 
+            _activeFunctionData.activeCmd_commandCode = cmdcod_none;                // command execution ended
+        }
+        break;
+
 
         // ----------------------------------
         // set console input or output stream
@@ -2454,6 +2516,7 @@ Justina::execResult_type Justina::copyValueArgsFromStack(LE_evalStack*& pStackLv
         valueType[i] = argIsVar ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
 
         args[i].longConst = (argIsVar ? (*pStackLvl->varOrConst.value.pLongConst) : pStackLvl->varOrConst.value.longConst);         // retrieve value (valid for ALL value types)
+
         if (prepareForCallback) {                                                                                                   // preparing for callback function 
             // numeric argument ?
             if (((valueType[i] & value_typeMask) == value_isLong) || ((valueType[i] & value_typeMask) == value_isFloat)) {

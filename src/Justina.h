@@ -284,6 +284,7 @@ private:
         cmdcod_execBatchFile,       // batch files only: run batch file
         cmdcod_ditchBatchFile,      // batch files only: ditch all remaining commands in batch file, return to calling batch file (or console)
         cmdcod_gotoLabel,           // batch files only: goto numeric label in batch file 
+        cmdcod_silent,
         cmdcod_receiveFile,
         cmdcod_sendFile,
         cmdcod_copyFile,
@@ -340,6 +341,7 @@ private:
         fnccod_nl,
         fnccod_format,
         fnccod_sysVal,
+        fnccod_batchFilePar,
 
         fnccod_ltrim,
         fnccod_rtrim,
@@ -1495,8 +1497,8 @@ private:
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na, block_na, block_na };                                      // not a 'block' command. NOTE: defined in JustinaMain.cpp
 
     // sizes MUST be specified AND must be exact
-    static const internCmdDef _internCommands[83];                                                                              // keyword names
-    static const InternCppFuncDef _internCppFunctions[141];                                                                     // internal cpp function names and codes with min & max arguments allowed
+    static const internCmdDef _internCommands[84];                                                                              // keyword names
+    static const InternCppFuncDef _internCppFunctions[142];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
 #if (defined ARDUINO_ARCH_ESP32) 
     static const SymbNumConsts _symbNumConsts[82];                                                                              // predefined constants
@@ -1702,11 +1704,17 @@ private:
 
     struct OpenFile {
         File file;
+        int currentPrintColumn{ 0 };
         char* filePath{ nullptr };                                      // including file name
         char fileNumberInUse : 1 { 0 };                                 // file number = position in structure (base 0) + 1
         char isSystemFile : 1 { 0 };                                    // a system file can not be closed by user
-        char spare : 6;
-        int currentPrintColumn{ 0 };
+        char spare : 5;
+
+        // batch files: argument count and addresses of copied arguments
+        char silent : 1{0};                                             // controls prompt and echo during batch file execution
+        int argCount{};                                                 // exec command: argument cont (batch file name and optional arguments)
+        char* pValueType{ nullptr };                                    // arguments: value type (long, float, string)
+        Val* pArgs{ nullptr };                                          // arguments: values
     };
 
 
@@ -1976,7 +1984,7 @@ private:
     int _angleMode{ 0 };                                                    // 0 = radians, 1 = degrees
     int _promptAndEcho{ 2 };                                                // print prompt and print input echo
     int _printLastResult{ 1 };                                              // print last result: 0 = do not print, 1 = print, 2 = print and expand backslash sequences in string constants  
-
+    bool _silent{ false };
 
     // display settings (last values, command line echo, tracing, print commands
     // -------------------------------------------------------------------------
@@ -2312,7 +2320,7 @@ private:
     // reset Interpreter to clean state
     // --------------------------------
 
-    void resetMachine(bool withUserVariables, bool withBreakpoints = false, bool keepDebugLevelBatchFile =false);
+    void resetMachine(bool withUserVariables, bool withBreakpoints = false, bool keepDebugLevelBatchFile = false);
 
     void initInterpreterVariables(bool withUserVariables);
     void deleteIdentifierNameObjects(char** pIdentArray, int identifiersInUse, bool isUserVar = false);
@@ -2338,7 +2346,7 @@ private:
         bool& redundantSemiColon, bool isEndOfFile, bool& bufferOverrun, bool  flushAllUntilEOF, long& lineCount, long& statementCharCount, char c);
 
     // parse one statement from source statement input buffer
-    parsingResult_type parseStatement(char*& pInputLine, char*& pNextParseStatement, int& clearIndicator, bool isNewSourceLine = false, long sourceLine = 0);
+    parsingResult_type parseStatement(char*& pInputLine, char*& pNextParseStatement, int& clearIndicator, bool &isSilentOnOffStatement);
     bool parseAsInternCommand(char*& pNext, parsingResult_type& result);
     bool parseAsExternCommand(char*& pNext, parsingResult_type& result);
     bool parseAsNumber(char*& pNext, parsingResult_type& result);
@@ -2351,7 +2359,7 @@ private:
     bool parseAsIdentifierName(char*& pNext, parsingResult_type& result);
 
     // checking command statement syntax
-    bool checkCommandKeyword(parsingResult_type& result, int commandIndex, bool commandIsInternal);
+    bool checkCommandKeyword(parsingResult_type& result, int commandIndex, bool commandIsInternal, bool& isSilentKeyword);
     bool checkCommandArgToken(parsingResult_type& result, int& clearIndicatore, int commandIndex, bool commandIsInternal);
 
     // various checks while parsing
@@ -2372,8 +2380,8 @@ private:
     bool initVariable(uint16_t varTokenStep, uint16_t constTokenStep);
 
     // process parsed input and start execution
-    bool finaliseParsing(parsingResult_type& result, bool& kill, long lineCount, char* pErrorPos, bool allCharsReceived);
-    bool prepareForIdleMode(parsingResult_type result, execResult_type execResult, bool& kill, int& clearIndicator);
+    bool finaliseParsing(parsingResult_type& result, bool& kill, long lineCount, char* pErrorPos, bool allCharsReceived, bool isSilentOnOffStatement);
+    bool prepareForIdleMode(parsingResult_type result, execResult_type execResult, bool& kill, int& clearIndicator, bool isSilentOnOffStatement);
     void clearMemory(int& clearIndicator, bool& kill, bool& quitJustina);
 
     // execution
@@ -2432,7 +2440,7 @@ private:
     // clear execution stacks
     void clearEvalStack();
     void clearEvalStackLevels(int n);
-    void clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, bool errorWhileCurrentlyStoppedPrograms = false, bool isAbortCommand = false, bool keepDebugLevelBatchFile =false);
+    void clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, bool errorWhileCurrentlyStoppedPrograms = false, bool isAbortCommand = false, bool keepDebugLevelBatchFile = false);
     void clearParsedCommandLineStack(int n);
 
     execResult_type deleteVarStringObject(LE_evalStack* pStackLvl);
@@ -2443,7 +2451,7 @@ private:
     // --------------------------
 
     execResult_type startSD();
-    void SD_closeAllFiles(bool includeSystemFiles=false);
+    void SD_closeAllFiles(bool includeSystemFiles = false);
 
 #if defined ARDUINO_ARCH_ESP32
     char* SD_ESP32_convert_accessMode(int mode);
@@ -2453,18 +2461,18 @@ private:
 
     void SD_closeFile(int fileNumber);
     execResult_type SD_listFiles();
-    
+
     execResult_type determineStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, Stream*& pStream, int& streamNumber, bool forOutput = false,
         int allowedFileTypes = 1, bool allowSystemFiles = 0);
     execResult_type determineStream(int streamNumber, Stream*& pStream, bool forOutput = false, int allowedFileTypes = 1, bool allowSystemFiles = 0);
-    
+
     execResult_type SD_fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File*& pFile, int allowedFileTypes = 1, bool allowSystemFiles = false);
     execResult_type SD_fileChecks(bool argIsLong, bool argIsFloat, Val arg, File*& pFile, int allowedFileTypes = 1, bool allowSystemFiles = false);
     execResult_type SD_fileChecks(File*& pFile, int fileNumber, int allowedFileTypes = 1, bool allowSystemFiles = false);
-    
+
     execResult_type setStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, int& streamNumber, bool forOutput = false, bool allowSystemFiles = false);
     execResult_type setStream(int streamNumber, bool forOutput = false, bool allowSystemFiles = false);
-    execResult_type setStream(int streamNumber, Stream*& pStream, bool forOutput = false, bool allowSystemFiles=false);
+    execResult_type setStream(int streamNumber, Stream*& pStream, bool forOutput = false, bool allowSystemFiles = false);
 
     bool pathValid(const char* path);
     bool fileIsOpen(const char* path);

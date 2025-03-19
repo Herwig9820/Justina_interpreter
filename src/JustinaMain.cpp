@@ -82,9 +82,10 @@ const Justina::internCmdDef Justina::_internCommands[]{
 
     // batch file commands
     // -------------------
-    {"exec",            cmdcod_execBatchFile,   cmd_onlyImmediate,                                      1,1,    cmdArgSeq_101,  cmdBlockNone},      // execute a batch file (not a program)
+    {"exec",            cmdcod_execBatchFile,   cmd_onlyImmediate,                                      1,10,   cmdArgSeq_101,  cmdBlockNone},      // execute a batch file (not a program) and pass optional arguments
     {"ditch",           cmdcod_ditchBatchFile,  cmd_onlyImmediate,                                      0,0,    cmdArgSeq_100,  cmdBlockNone},      // stop executing a batch file (not a program)
     {"gotoLabel",       cmdcod_gotoLabel,       cmd_onlyImmediate,                                      1,1,    cmdArgSeq_101,  cmdBlockNone},      // jump to a label in a batch file     
+    {"silent",          cmdcod_silent,          cmd_onlyImmediate,                                      1,1,    cmdArgSeq_101,  cmdBlockNone},      // batch files only: no prompt, no last results     
 
     // debugging commands
     // ------------------
@@ -298,10 +299,11 @@ const Justina::InternCppFuncDef Justina::_internCppFunctions[]{
     {"ubound",                  fnccod_ubound,                  2,2,    0b00000001},        // first parameter is array (LSB)
     {"dims",                    fnccod_dims,                    1,1,    0b00000001},
     {"type",                    fnccod_valueType,               1,1,    0b0},
-    {"r",                       fnccod_last,                    0,1,    0b0 },              // short label for 'last result'
+    {"r",                       fnccod_last,                    0,1,    0b0 },              // function: retrieve last result
     {"err",                     fnccod_getTrappedErr,           0,1,    0b0 },
     {"isColdStart",             fnccod_isColdStart,             0,0,    0b0 },
-    {"sysVal",                  fnccod_sysVal,                  1,1,    0b0},
+    {"sysVal",                  fnccod_sysVal,                  1,1,    0b0 },
+    {"p",                       fnccod_batchFilePar,            1,1,    0b0 },              // function: retrieve batch file parameter
 
     // input and output functions
     {"cin",                     fnccod_cin,                    0,2,    0b0 },
@@ -435,8 +437,9 @@ const Justina::TerminalDef Justina::_terminals[]{
 
 const Justina::SymbNumConsts Justina::_symbNumConsts[]{
 
-    // symbol name          value                       symbol group code   symbol_code         value type
-    // -----------          -----                       -----------------   -----------         ----------
+    // symbol name          value                       symbol group code   symbol_code             value type
+    //                                                  <-     currently not used-    >         
+    // -----------          -----                       -----------------   -----------             ----------
 
     // boolean values                                                                    
     {"FALSE",               "0",                        symb_bool,          valcod_false,           value_isLong},          // value for boolean 'false'
@@ -819,6 +822,7 @@ void Justina::JustinaMainLoop(bool& loadingStartupProgram, bool& launchingStartF
 
     static bool flushAllUntilEOF{ false };
 
+    bool isSilentOnOffStatement{ false };
     bool withinStringEscSequence{ false }, lastCharWasSemiColon{ false }, within1LineComment{ false }, withinMultiLineComment{ false }, withinString{ false }, redundantSemiColon = false;
     int clearCmdIndicator{ 0 };                                                             // 1 = clear program cmd, 2 = clear all cmd
     long lineCount, statementCharCount{ 0 }, parsedStatementCount{ 0 };
@@ -904,7 +908,7 @@ void Justina::JustinaMainLoop(bool& loadingStartupProgram, bool& launchingStartF
                 result = _pBreakpoints->collectSourceLineRangePairs(_semicolonBPallowed_token, parsedStatementStartsOnNewLine, parsedStatementStartLinesAreAdjacent,
                     statementStartsAtLine, parsedStatementAllowingBPstartsAtLine, BPstartLine, BPendLine, BPpreviousEndLine);
 
-                if (result == result_parsing_OK) { result = parseStatement(pStatement, pDummy, clearCmdIndicator, parsedStatementStartsOnNewLine, parsedStatementAllowingBPstartsAtLine); }       // parse ONE statement only 
+                if (result == result_parsing_OK) { result = parseStatement(pStatement, pDummy, clearCmdIndicator, isSilentOnOffStatement); }        // parse ONE statement only 
 
                 if ((++parsedStatementCount & 0x0f) == 0) {
                     printTo(0, '.');                                                                            // print a dot each 64 parsed lines
@@ -930,8 +934,8 @@ void Justina::JustinaMainLoop(bool& loadingStartupProgram, bool& launchingStartF
             if (allCharsReceived || (result != result_parsing_OK)) {                                            // note: if all statements have been read, they also have been parsed
                 if (kill) { quitNow = true; }
                 else {
-                    quitNow = finaliseParsing(result, kill, lineCount, pErrorPos, allCharsReceived);            // return value: quit Justina now
-                    // if not in program mode and no parsing error: execute
+                    quitNow = finaliseParsing(result, kill, lineCount, pErrorPos, allCharsReceived, isSilentOnOffStatement);            // return value: quit Justina now
+                        // if not in program mode and no parsing error: execute
                     execResult_type execResult{ result_execOK };
                     if (!_programMode && (result == result_parsing_OK)) {
                         execResult = exec(_programStorage + _PROGRAM_MEMORY_SIZE);                              // execute parsed user statements
@@ -939,7 +943,7 @@ void Justina::JustinaMainLoop(bool& loadingStartupProgram, bool& launchingStartF
                         if (kill || (execResult == EVENT_quit)) { printlnTo(0); quitNow = true; }               // make sure Justina prompt will be printed on a new line
                     }
 
-                    quitNow = quitNow || prepareForIdleMode(result, execResult, kill, clearCmdIndicator);       // return value: quit Justina now
+                    quitNow = quitNow || prepareForIdleMode(result, execResult, kill, clearCmdIndicator, isSilentOnOffStatement);       // return value: quit Justina now
                 }
 
                 if (result == result_parsing_OK) {
@@ -1089,7 +1093,7 @@ bool Justina::addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString
 // *   finalize parsing   *  
 // ------------------------
 
-bool Justina::finaliseParsing(parsingResult_type& result, bool& kill, long lineCount, char* pErrorPos, bool allCharsReceived) {
+bool Justina::finaliseParsing(parsingResult_type& result, bool& kill, long lineCount, char* pErrorPos, bool allCharsReceived, bool isSilentOnOffStatement) {
 
     bool quitJustina{ false };
 
@@ -1108,8 +1112,10 @@ bool Justina::finaliseParsing(parsingResult_type& result, bool& kill, long lineC
             printParsingResult(result, funcNotDefIndex, _statement, lineCount, pErrorPos);
         }
         else {
-            if (_promptAndEcho == 2) { prettyPrintStatements(0, 0); printlnTo(0); }                             // immediate mode and result OK: pretty print input line
-            else if (_promptAndEcho == 1) { printlnTo(0); }
+            if (!_silent && !isSilentOnOffStatement) {
+                if (_promptAndEcho == 2) { prettyPrintStatements(0, 0); printlnTo(0); }                             // immediate mode and result OK: pretty print input line
+                else if (_promptAndEcho == 1) { printlnTo(0); }
+            }
         }
     }
     else {          // parsing error, abort or kill during parsing
@@ -1144,7 +1150,7 @@ bool Justina::finaliseParsing(parsingResult_type& result, bool& kill, long lineC
 // *   finalize execution: prepare for idle mode
 // ---------------------------------------------
 
-bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type execResult, bool& kill, int& clearIndicator) {
+bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type execResult, bool& kill, int& clearIndicator, bool isSilentOnOffStatement) {
 
     // if in debug mode, trace expressions (if defined) and print debug info 
     if ((_openDebugLevels > 0) && (execResult != EVENT_kill) && (execResult != EVENT_quit) && (execResult != EVENT_initiateProgramLoad)) { traceAndPrintDebugInfo(execResult); }
@@ -1156,17 +1162,24 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
 
         // if imm. mode parsing error: close open batch files for this debug level only
         else {
-            if (_activeFunctionData.statementInputStream[0] > 0) {
-                SD_closeFile(_activeFunctionData.statementInputStream[0]);
+            int streamNumber = _activeFunctionData.statementInputStream[0];
+            if (streamNumber > 0) {
+                SD_closeFile(streamNumber);
                 _activeFunctionData.statementInputStream[0] = 0;
-                if (_activeFunctionData.statementInputStream[1] > 0) {
-                    SD_closeFile(_activeFunctionData.statementInputStream[1]);
+
+                int streamNumber = _activeFunctionData.statementInputStream[1];
+                if (streamNumber > 0) {
+                    SD_closeFile(streamNumber);
                     _activeFunctionData.statementInputStream[1] = 0;
                 }
             }
+            else {
+                setStream(streamNumber);
+                bool stop{ false }, abort{ false };                                         // dummy, as we are entering idle mode anyway
+                flushInputCharacters(stop, abort);                                          // flush any remaining input characters (e.g. after a program parsing error)
+            }
         }
     }
-
 
 #if PRINT_DEBUG_INFO  
     // NOTE !!! Also set PRINT_DEBUG_INFO to 1 in file Breakpoints !!!
@@ -1223,8 +1236,8 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
         _programCounter = _programStorage;
 
         if (_lastPrintedIsPrompt) { printlnTo(0); }                                             // print new line if last printed was a prompt
-        if (_loadProgFromStreamNo > 0) {printTo(0, "Loading program "); printTo(0, openFiles[_loadProgFromStreamNo-1].filePath); printTo(0, "...\r\n"); }
-        else {printTo(0, "Waiting for program...\r\n");}
+        if (_loadProgFromStreamNo > 0) { printTo(0, "Loading program "); printTo(0, openFiles[_loadProgFromStreamNo - 1].filePath); printTo(0, "...\r\n"); }
+        else { printTo(0, "Waiting for program...\r\n"); }
         _lastPrintedIsPrompt = false;
 
         // set stream to PROGRAM input stream (is a valid stream, already checked)
@@ -1262,11 +1275,13 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
 
         // NOT in program load mode ? (then executing immediate mode statements; the stream is either the console or a batch file)
         else {
-            if (_activeFunctionData.statementInputStream[0] > 0) {           // currently executing batch file statements ? (stream > 0)     
-                if (openFiles[_activeFunctionData.statementInputStream[0] - 1].file.available() == 0) {        // if console input stream is an external stream and empty, close it
-                    SD_closeFile(_activeFunctionData.statementInputStream[0]);
+            int streamNumber = _activeFunctionData.statementInputStream[0];
+            if (streamNumber > 0) {           // currently executing batch file statements ? (stream > 0)     
+                if (openFiles[streamNumber - 1].file.available() == 0) {        // if console input stream is an external stream and empty, close it
+                    SD_closeFile(streamNumber);
                     _activeFunctionData.statementInputStream[0] = _activeFunctionData.statementInputStream[1];  // pop
                     _activeFunctionData.statementInputStream[1] = 0;
+
                 }
             }
         }
@@ -1275,9 +1290,12 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
         setStream(statementInputStreamNumber, pStatementInputStream, false, true);
     }
 
+    int streamNumber = _activeFunctionData.statementInputStream[0];
+    _silent = (streamNumber > 0) ? openFiles[streamNumber - 1].silent : false;
 
-    // has an error occurred ? (exclude 'events' reported as an error)
-    // ---------------------------------------------------------------
+
+// has an error occurred ? (exclude 'events' reported as an error)
+// ---------------------------------------------------------------
     bool isError = (result != result_parsing_OK) || ((execResult != result_execOK) && (execResult < EVENT_startOfEvents));
     isError ? (_appFlags |= appFlag_errorConditionBit) : (_appFlags &= ~appFlag_errorConditionBit);     // set or clear error condition flag 
     // status 'idle in debug mode' or 'idle' 
@@ -1288,7 +1306,7 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
     // print new prompt and exit
     // -------------------------
     _lastPrintedIsPrompt = false;
-    if ((_promptAndEcho != 0) && (execResult != EVENT_initiateProgramLoad)) {
+    if (!_silent && (_promptAndEcho != 0) && (execResult != EVENT_initiateProgramLoad)) {
         printTo(0, "Justina> "); _lastPrintedIsPrompt = true;
     }
 
@@ -1433,8 +1451,8 @@ void Justina::parseAndExecTraceOrBPviewString(int BPindex) {
         if (valuePrinted) { printTo(_debug_sourceStreamNumber, ", "); }                                         // separate values (if more than one)
 
         // note: application flags are not adapted (would not be passed to caller immediately)
-        int dummy{};
-        parsingResult_type result = parseStatement(pTraceParsingInput, pNextParseStatement, dummy);             // parse ONE statement
+        int dummyInt{}; bool dummyBool{};
+        parsingResult_type result = parseStatement(pTraceParsingInput, pNextParseStatement, dummyInt, dummyBool);             // parse ONE statement
         if (result == result_parsing_OK) {
             if (!_printTraceValueOnly) {
                 // do NOT pretty print if parsing error, to avoid bad-looking partially printed statements (even if there will be an execution error later)

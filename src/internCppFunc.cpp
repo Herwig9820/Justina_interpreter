@@ -1292,6 +1292,44 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         break;
 
 
+        // -----------------------------
+        // retrieve batch file parameter
+        // -----------------------------
+
+        case fnccod_batchFilePar:
+        {
+            // this function has one argument: the batch file parameter to retrieve. 0 will return the full name of the open batch file,...
+            // ... 1..n will return the value of the (optional) arguments given when the batch file was called.
+
+            int streamNumber = _activeFunctionData.statementInputStream[0];
+            if (streamNumber <= 0) { return result_IO_noBatchFile; }
+
+            if (!(argIsLongBits & (0x1 << 0)) && !(argIsFloatBits & (0x1 << 0))) { return result_arg_numberExpected; }
+            int argNumber = (argIsLongBits & (0x1 << 0)) ? args[0].longConst : int(args[0].floatConst);
+            int argCount = openFiles[streamNumber - 1].argCount;
+            if ((argNumber < 0) || (argNumber > argCount - 1)) { return result_arg_outsideRange; }      // first argument is batch file name
+
+            fcnResultValueType = openFiles[streamNumber - 1].pValueType[argNumber];
+            if (argNumber == 0) { fcnResult.pStringConst = openFiles[streamNumber - 1].filePath; }
+            else { fcnResult = openFiles[streamNumber - 1].pArgs[argNumber]; }    // OK for all value types
+
+            // result is a non-empty string ? an object still has to be created on the heap
+            if ((fcnResultValueType == value_isStringPointer) && (fcnResult.pStringConst != nullptr)) {
+                _intermediateStringObjectCount++;
+                char* temp = (argNumber==0) ? openFiles[streamNumber - 1].filePath : openFiles[streamNumber - 1].pArgs[argNumber].pStringConst;
+                
+                fcnResult.pStringConst = new char[strlen(temp) + 1];
+                strcpy(fcnResult.pStringConst, temp);
+            #if PRINT_HEAP_OBJ_CREA_DEL
+                _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+                _pDebugOut->print("     batch file arg ");   _pDebugOut->println(fcnResult.pStringConst);
+            #endif            
+            }
+        }
+        break;
+
+
+
         // ---------------------------------------------------
         // format a number or a string into a formatted string
         // ---------------------------------------------------
@@ -1771,7 +1809,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             else if (functionCode == fnccod_tone) {                                                                         // args: pin, frequency, (optional) duration
                 (suppliedArgCount == 2) ? tone(args[0].longConst, args[1].longConst) : tone(args[0].longConst, args[1].longConst, args[2].longConst);
             }
-            else if (functionCode == fnccod_random) {                                                                       //args: bondaries
+            else if (functionCode == fnccod_random) {                                                                       //args: boundaries
                 fcnResult.longConst = (suppliedArgCount == 1) ? random(args[0].longConst) : random(args[0].longConst, args[1].longConst);
             }
             else if (functionCode == fnccod_randomSeed) { randomSeed(args[0].longConst); }                                  // arg: seed
