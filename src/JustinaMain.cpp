@@ -861,7 +861,7 @@ void Justina::JustinaMainLoop(bool& loadingStartupProgram, bool& launchingStartF
             bool charFetched{ false };
             c = getCharacter(charFetched, kill, forcedStop, forcedAbort, stdConsole, true, waitForFirstProgramCharacter);    // forced stop has no effect here
             if (charFetched) {
-                if (waitForFirstProgramCharacter) { printlnTo(0, "Receiving and parsing program... please wait"); }
+                if (!_silent && waitForFirstProgramCharacter) { printlnTo(0, "Receiving and parsing program... please wait"); }  
                 _appFlags &= ~appFlag_errorConditionBit;                                                        // clear error condition flag 
                 _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_parsing;                                // status 'parsing'
             }
@@ -910,7 +910,7 @@ void Justina::JustinaMainLoop(bool& loadingStartupProgram, bool& launchingStartF
 
                 if (result == result_parsing_OK) { result = parseStatement(pStatement, pDummy, clearCmdIndicator, isSilentOnOffStatement); }        // parse ONE statement only 
 
-                if ((++parsedStatementCount & 0x0f) == 0) {
+                if (!_silent &&  ((++parsedStatementCount & 0x0f) == 0)) {
                     printTo(0, '.');                                                                            // print a dot each 64 parsed lines
                     if ((parsedStatementCount & 0x0fff) == 0) { printlnTo(0); }                                 // print a crlf each 64 dots
                 }
@@ -926,7 +926,7 @@ void Justina::JustinaMainLoop(bool& loadingStartupProgram, bool& launchingStartF
             }
 
             // last 'gap' source line range and 'adjacent' source line "start of statement" range of source file
-            if (_programMode && allCharsReceived) {
+            if (_programMode && allCharsReceived && (result == result_parsing_OK)) {
                 result = _pBreakpoints->addOneSourceLineRangePair(BPstartLine - BPpreviousEndLine - 1, BPendLine - BPstartLine + 1);
             }
 
@@ -1109,7 +1109,7 @@ bool Justina::finaliseParsing(parsingResult_type& result, bool& kill, long lineC
     if (result == result_parsing_OK) {
         if (_programMode) {
             // parsing OK message (program mode only - no message in immediate mode)  
-            printParsingResult(result, funcNotDefIndex, _statement, lineCount, pErrorPos);
+            if (!_silent){printParsingResult(result, funcNotDefIndex, _statement, lineCount, pErrorPos);}
         }
         else {
             if (!_silent && !isSilentOnOffStatement) {
@@ -1162,6 +1162,8 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
 
         // if imm. mode parsing error: close open batch files for this debug level only
         else {
+            Serial.println("** batch file nesting = 0");
+
             int streamNumber = _activeFunctionData.statementInputStream[0];
             if (streamNumber > 0) {
                 SD_closeFile(streamNumber);
@@ -1236,8 +1238,8 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
         _programCounter = _programStorage;
 
         if (_lastPrintedIsPrompt) { printlnTo(0); }                                             // print new line if last printed was a prompt
-        if (_loadProgFromStreamNo > 0) { printTo(0, "Loading program "); printTo(0, openFiles[_loadProgFromStreamNo - 1].filePath); printTo(0, "...\r\n"); }
-        else { printTo(0, "Waiting for program...\r\n"); }
+        if (_loadProgFromStreamNo > 0) { if(!_silent){printTo(0, "Loading program "); printTo(0, openFiles[_loadProgFromStreamNo - 1].filePath); printTo(0, "...\r\n"); }}
+        else { printTo(0, "Waiting for program...\r\n"); }                                      // even if silent, print (hint for the user)
         _lastPrintedIsPrompt = false;
 
         // set stream to PROGRAM input stream (is a valid stream, already checked)
@@ -1281,7 +1283,7 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
                     SD_closeFile(streamNumber);
                     _activeFunctionData.statementInputStream[0] = _activeFunctionData.statementInputStream[1];  // pop
                     _activeFunctionData.statementInputStream[1] = 0;
-
+                    Serial.println("** batch file nesting - 1");
                 }
             }
         }
@@ -1301,7 +1303,6 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
     // status 'idle in debug mode' or 'idle' 
     (_appFlags &= ~appFlag_statusMask);
     (_openDebugLevels > 0) ? (_appFlags |= appFlag_stoppedInDebug) : (_appFlags |= appFlag_idle);
-    execResult = result_execOK;
 
     // print new prompt and exit
     // -------------------------
@@ -1310,6 +1311,7 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
         printTo(0, "Justina> "); _lastPrintedIsPrompt = true;
     }
 
+    execResult = result_execOK;
     return quitJustina;
 }
 
@@ -1702,7 +1704,7 @@ void Justina::resetMachine(bool withUserVariables, bool withBreakpoints, bool ke
         _pBreakpoints->_breakpointsStatusDraft = (_pBreakpoints->_breakpointsUsed > 0);                         // '_breakpointsStatusDraft' set according to existence of entries in breakpoint table
         _pBreakpoints->_BPlineRangeStorageUsed = 0;
 
-        if (!wasDraft && _pBreakpoints->_breakpointsStatusDraft) {
+        if (!_silent && !wasDraft && _pBreakpoints->_breakpointsStatusDraft) {
             printlnTo(0); for (int i = 1; i <= 40; i++) { printTo(0, '*'); }
             printlnTo(0, "\r\n** Breakpoint status now set to DRAFT **");                                       // because table not empty
             for (int i = 1; i <= 40; i++) { printTo(0, '*'); } printlnTo(0);
@@ -1719,7 +1721,7 @@ void Justina::resetMachine(bool withUserVariables, bool withBreakpoints, bool ke
     initInterpreterVariables(withUserVariables);
 
 
-    printlnTo(0);
+    if(!_silent) {printlnTo(0);}
 }
 
 

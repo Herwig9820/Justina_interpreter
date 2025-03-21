@@ -947,17 +947,18 @@ bool Justina::flushInputCharacters(bool& forcedStop, bool& forcedAbort) {
         if (kill) { break; }                                                    // kill Justina interpreter (buffer is now flushed until next line character)
         if (abort) { forcedAbort = true; }                                      // do NOT exit immediately, keep on flushing
         if (stop) { forcedStop = true; }
-        if (((millis() - start) > 1000) && !messageGiven) { messageGiven = true; printlnTo(0, "Flushing incoming characters... Please wait"); }
+        if (((millis() - start) > 1000) && !messageGiven) { messageGiven = true;if(!_silent ){ printlnTo(0, "Flushing incoming characters... Please wait"); }}
 
         // after a set time, start showing progress by printing dots 
-        if (messageGiven) {
+        if (!_silent && messageGiven) {
             if ((++charCounter & 0x1fff) == 0) {                                // print a dot each 512 characters
                 printTo(0, '.');
                 if ((charCounter & 0xfffff) == 0) { printlnTo(0); }             // print a crlf each 64 dots
             }
         }
     } while (charFetched);
-    printlnTo(0);
+
+    if(_silent){printlnTo(0);}
     return kill;
 }
 

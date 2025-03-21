@@ -801,6 +801,7 @@ Justina::execResult_type  Justina::exec(char* startHere) {
         ++_callStackDepth;      // user function level added to flow control stack
         _activeFunctionData.callerEvalStackLevels = evalStack.getElementCount();                                        // store evaluation stack levels in use by callers (call stack)
         _activeFunctionData.statementInputStream[0] = _activeFunctionData.statementInputStream[1] = 0;                  // init: input stream is console
+        Serial.println("** batch file nesting = 0");
 
         // push current command line storage to command line stack, to make room for debug commands
     #if PRINT_PARSED_CMD_STACK
@@ -930,8 +931,10 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
         else {                                                                                          // Justina function
             // NOT a void Justina function  -AND-  RETURN statement without expression, or END statement: return a zero
             bool isVoidFunctionDef = (justinaFunctionData[_activeFunctionData.functionIndex].isVoidFunctionDef == 1);
+            Serial.println("**** trapError (B)");
             if (!_activeFunctionData.trapEnable) {
                 // this function is not trapping errors: terminate function (and keep looking for function in the call stack with error trapping enabled)
+                Serial.println("     Terminate function");
                 terminateJustinaFunction(isVoidFunctionDef, !isVoidFunctionDef);                        // return zero, except when a void Justina function
             }
             else { break; }                                                                             // function with error trapping found (always there, see previous test)
@@ -1076,6 +1079,7 @@ void Justina::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNo
                 _activeFunctionData.blockType = block_trigger;                                                          // now executing parsed 'trigger eval' string
                 _activeFunctionData.activeCmd_commandCode = cmdcod_none;                                                // command execution ended 
                 _activeFunctionData.statementInputStream[0] = _activeFunctionData.statementInputStream[1] = 0;          // input stream is console
+                Serial.println("** batch file nesting = 0");
 
                 _activeFunctionData.callerEvalStackLevels = evalStack.getElementCount();                                // store evaluation stack levels in use by callers (call stack)
 
@@ -1583,6 +1587,8 @@ void Justina::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, bool terminat
             }
             else {                                                              // immediate mode 'function': (debug) command line (the start of ANY program)
                 if (!(isInitialLoop && keepDebugLevelBatchFile)) {
+                    Serial.println("** batch file nesting = 0");
+
                     if (_activeFunctionData.statementInputStream[0] > 0) {
                         SD_closeFile(_activeFunctionData.statementInputStream[0]);
                         _activeFunctionData.statementInputStream[0] = 0;
@@ -2509,6 +2515,7 @@ Justina::execResult_type  Justina::launchJustinaFunction(LE_evalStack*& pFunctio
     _activeFunctionData.blockType = block_JustinaFunction;
     _activeFunctionData.activeCmd_commandCode = cmdcod_none;                                        // command execution ended      
     _activeFunctionData.statementInputStream[0] = _activeFunctionData.statementInputStream[1] = 0;  // input stream is console
+    Serial.println("** batch file nesting = 0");
 
     // create local variable storage for Justina function to be called
     // ---------------------------------------------------------------
@@ -2665,6 +2672,7 @@ Justina::execResult_type  Justina::launchEval(LE_evalStack*& pFunctionStackLvl, 
     _activeFunctionData.blockType = block_eval;                                                     // now executing parsed 'eval' string
     _activeFunctionData.activeCmd_commandCode = cmdcod_none;                                        // command execution ended 
     _activeFunctionData.statementInputStream[0] = _activeFunctionData.statementInputStream[1] = 0;  // input stream is console
+    Serial.println("** batch file nesting = 0");
 
     _activeFunctionData.callerEvalStackLevels = evalStack.getElementCount();                        // store evaluation stack levels in use by callers (call stack)
 
@@ -2972,12 +2980,20 @@ void Justina::terminateJustinaFunction(bool isVoidFunction, bool addZeroReturnVa
 
     char blockType = block_none;                                                                                            // init
     do {
-        blockType = ((OpenBlockGeneric*)_pFlowCtrlStackTop)->blockType;                                                                             // always at least one level present for caller (because returning to it)
+        blockType = ((OpenBlockGeneric*)_pFlowCtrlStackTop)->blockType;                                                    // always at least one level present for caller (because returning to it)
 
         // load local storage pointers again for caller function and restore pending step & active function information for caller function
         if ((blockType == block_JustinaFunction) || (blockType == block_eval)) { _activeFunctionData = *(OpenFunctionData*)_pFlowCtrlStackTop; }    // caller level
 
         // delete FLOW CONTROL stack level (any optional CALLED function open block stack level) 
+        
+        Serial.print("**** delete caller level: ");
+        Serial.print("block type : "); Serial.println(((OpenFunctionData*)_pFlowCtrlStackTop)->blockType);
+        Serial.print("is internal: "); Serial.println(((OpenFunctionData*)_pFlowCtrlStackTop)->activeCmd_isInternal);
+        Serial.print("func index : "); Serial.println(((OpenFunctionData*)_pFlowCtrlStackTop)->functionIndex);
+        Serial.print("trap enable: "); Serial.println(((OpenFunctionData*)_pFlowCtrlStackTop)->trapEnable);
+        Serial.println();
+        
         flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);
         _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
 

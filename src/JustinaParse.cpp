@@ -180,7 +180,7 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
     if (_userVarUnderConstruction) { deleteUserVariable(); }
 
     if (result != result_parsing_OK) { isSilentOnOffStatement = false; }
-    
+
     return result;
 }
 

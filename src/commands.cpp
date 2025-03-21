@@ -609,7 +609,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
             // current breakpoint status is draft ? If last BP has now been cleared, activate breakpoints again. Otherwise, print reminder message.
             if (_pBreakpoints->_breakpointsStatusDraft) {
-                if (_pBreakpoints->_breakpointsUsed > 0) { printlnTo(0, "** (Note: breakpoints have status DRAFT) **"); }
+                if (_pBreakpoints->_breakpointsUsed > 0) { if (!_silent) { printlnTo(0, "** (Note: breakpoints have status DRAFT) **"); } }
                 else { _pBreakpoints->_breakpointsStatusDraft = false; }
             }
 
@@ -689,7 +689,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
             // current breakpoint status is draft ? If last BP has now been cleared, activate breakpoints again. Otherwise, print reminder message.
             if (_pBreakpoints->_breakpointsStatusDraft) {
-                if (_pBreakpoints->_breakpointsUsed > 0) { printlnTo(0, "** (Note: breakpoints have status DRAFT) **"); }
+                if (_pBreakpoints->_breakpointsUsed > 0) { if(!_silent) {printlnTo(0, "** (Note: breakpoints have status DRAFT) **");} }
                 else { _pBreakpoints->_breakpointsStatusDraft = false; }
             }
 
@@ -861,6 +861,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                     }
                 };
             }
+            Serial.println("** batch file nesting + 1");
 
             _activeFunctionData.statementInputStream[1] = _activeFunctionData.statementInputStream[0];      // set 'calling' batch file stream number (to console or to calling batch file)
             _activeFunctionData.statementInputStream[0] = streamNumber;                                     // set batch file stream number to batch file
@@ -882,6 +883,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
             int streamNumber = _activeFunctionData.statementInputStream[0];
             SD_closeFile(streamNumber);                                                         // will close batch file (is a system file)
+            Serial.println("** batch file nesting - 1");
 
             _activeFunctionData.statementInputStream[0] = _activeFunctionData.statementInputStream[1];
             _activeFunctionData.statementInputStream[1] = 0;
