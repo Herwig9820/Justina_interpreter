@@ -558,41 +558,47 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             }
 
             else if ((_activeFunctionData.activeCmd_commandCode == cmdcod_clearBP) && (cmdArgCount == 0)) {
-                while (_pConsoleIn->available() > 0) { readFrom(0); }                                       // empty console buffer first (to allow the user to start with an empty line)
-                bool validAnswer{ false };
-                do {
-                    char s[60];
-                    sprintf(s, "===== Clear all breakpoints ? (please answer Y or N) =====");
-                    printlnTo(0, s);
+                bool OKforAction{ _silent };
+                
+                if (!_silent) {
+                    while (_pConsoleIn->available() > 0) { readFrom(0); }                                       // empty console buffer first (to allow the user to start with an empty line)
+                    bool validAnswer{ false };
+                    do {
+                        char s[60];
+                        sprintf(s, "===== Clear all breakpoints ? (please answer Y or N) =====");
+                        printlnTo(0, s);
 
-                    // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
-                    // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
+                        // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
+                        // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
 
-                    // read answer and store first one or two characters in 'input' variable. Return on '\n' (length is stored in 'length').
-                    int length{ 2 };                                // detects input > 1 character
-                    char input[2 + 1] = "";                         // init: empty string
-                    // NOTE: doCancel and doDefault are dummy arguments here
-                    bool kill{ false }, doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };
-                    if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return EVENT_kill; }    // kill request from caller ?
-                    if (doAbort) { forcedAbortRequest = true; break; }                  // ' abort running code (program or immediate mode statements)
-                    if (doStop) { forcedStopRequest = true; }                           // stop a running program (do not produce stop event yet, wait until program statement executed)
+                        // read answer and store first one or two characters in 'input' variable. Return on '\n' (length is stored in 'length').
+                        int length{ 2 };                                // detects input > 1 character
+                        char input[2 + 1] = "";                         // init: empty string
+                        // NOTE: doCancel and doDefault are dummy arguments here
+                        bool kill{ false }, doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };
+                        if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return EVENT_kill; }    // kill request from caller ?
+                        if (doAbort) { forcedAbortRequest = true; break; }                  // ' abort running code (program or immediate mode statements)
+                        if (doStop) { forcedStopRequest = true; }                           // stop a running program (do not produce stop event yet, wait until program statement executed)
 
-                    // check answer
-                    validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
-                    if (validAnswer) {
-                        if (tolower(input[0]) == 'y') {
-                            for (int i = _pBreakpoints->_breakpointsUsed - 1; i >= 0; i--) {
-                                sourceLine = _pBreakpoints->_pBreakpointData[i].sourceLine;
-                                execResult = _pBreakpoints->maintainBP(sourceLine, cmdcod_clearBP);
-                                if (execResult != result_execOK) { return execResult; }
-                            }
+                        // check answer
+                        validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
+                        if (validAnswer) {
+                            if (tolower(input[0]) == 'y') { OKforAction = true; }
                         }
+                        else { printlnTo(0, "\r\nYour answer is not valid. Please answer Y or N"); }
+                    } while (!validAnswer);
+                }
+
+                if (OKforAction) {
+                    for (int i = _pBreakpoints->_breakpointsUsed - 1; i >= 0; i--) {
+                        sourceLine = _pBreakpoints->_pBreakpointData[i].sourceLine;
+                        execResult = _pBreakpoints->maintainBP(sourceLine, cmdcod_clearBP);
+                        if (execResult != result_execOK) { return execResult; }
                     }
-                    else { printlnTo(0, "\r\nYour answer is not valid. Please answer Y or N"); }
-                } while (!validAnswer);
+                }
             }
 
-            // set/clear/enable/disable multiple breakpoints
+           // set/clear/enable/disable multiple breakpoints
             else {
                 pStackLvl = pArg1StackLvl;          // points to first argument again
                 for (int i = 1; i <= cmdArgCount; i++) {
@@ -689,7 +695,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
             // current breakpoint status is draft ? If last BP has now been cleared, activate breakpoints again. Otherwise, print reminder message.
             if (_pBreakpoints->_breakpointsStatusDraft) {
-                if (_pBreakpoints->_breakpointsUsed > 0) { if(!_silent) {printlnTo(0, "** (Note: breakpoints have status DRAFT) **");} }
+                if (_pBreakpoints->_breakpointsUsed > 0) { if (!_silent) { printlnTo(0, "** (Note: breakpoints have status DRAFT) **"); } }
                 else { _pBreakpoints->_breakpointsStatusDraft = false; }
             }
 
@@ -738,7 +744,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             Val value;
             value.longConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pLongConst) : pStackLvl->varOrConst.value.longConst);    // line is valid for all value types  
             bool trapEnable = (valueType == value_isLong) ? (bool)value.longConst : (bool)value.floatConst;
-            _activeFunctionData.trapEnable = trapEnable ? 1 : 0;                                                        // counts for currently executing procedure only                                                       
+            _activeFunctionData.trapEnable = (trapEnable ? 1 : 0);                                                        // counts for currently executing procedure only                                                       
             if (trapEnable) {
                 _trappedExecError = (int)result_execOK;                     // reset err() only when enabling, to allow testing for error after setting error trapping off
                 _trappedEvalParsingError = result_parsing_OK;               // eval() and list IO errors only
@@ -861,10 +867,10 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                     }
                 };
             }
-            Serial.println("** batch file nesting + 1");
-
             _activeFunctionData.statementInputStream[1] = _activeFunctionData.statementInputStream[0];      // set 'calling' batch file stream number (to console or to calling batch file)
             _activeFunctionData.statementInputStream[0] = streamNumber;                                     // set batch file stream number to batch file
+
+            Serial.print("** batch file nesting + 1 : "); Serial.print((int)_activeFunctionData.statementInputStream[0]); Serial.println((int)_activeFunctionData.statementInputStream[1]);
 
             // clean up
             clearEvalStackLevels(cmdArgCount);                                                              // clear evaluation stack and intermediate strings 
@@ -883,10 +889,10 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
             int streamNumber = _activeFunctionData.statementInputStream[0];
             SD_closeFile(streamNumber);                                                         // will close batch file (is a system file)
-            Serial.println("** batch file nesting - 1");
 
             _activeFunctionData.statementInputStream[0] = _activeFunctionData.statementInputStream[1];
             _activeFunctionData.statementInputStream[1] = 0;
+            Serial.print("** batch file nesting - 1 : "); Serial.print((int)_activeFunctionData.statementInputStream[0]); Serial.println((int)_activeFunctionData.statementInputStream[1]);
 
             streamNumber = _activeFunctionData.statementInputStream[0];
             _silent = (streamNumber > 0) ? bool(openFiles[streamNumber - 1].silent) : false;
@@ -1019,46 +1025,56 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                 char streamTypes[15];
                 char msg[80];
 
+                bool OKforAction{ _silent };
+
+                if (!_silent) {
                 // NOTE: in case of debug output change, the streams below are not actually used
-                strcpy(streamTypes, setConsIn ? "input" : (setConsOut || setDebugOut) ? "output" : "I/O");
-                sprintf(msg, "\r\nWARNING: please check first that the selected %s device is available\r\n  ", streamTypes);
-                printlnTo(0, msg);
-                strcpy(streamTypes, setConsIn ? "for input" : setConsOut ? "for output" : setDebugOut ? "for debug output" : "");
-                sprintf(msg, "===== Change console %s ? (please answer Y or N) =====", streamTypes);
-
-                do {
+                    strcpy(streamTypes, setConsIn ? "input" : (setConsOut || setDebugOut) ? "output" : "I/O");
+                    sprintf(msg, "\r\nWARNING: please check first that the selected %s device is available\r\n  ", streamTypes);
                     printlnTo(0, msg);
-                    int length{ 2 };                                                                                        // detects input > 1 character
-                    char input[2 + 1] = "";                                                                                 // init: empty string
-                    bool doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };
-                    // NOTE: doCancel and doDefault are dummy arguments here
-                    if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return EVENT_kill; }  // kill request from caller ? 
-                    if (doAbort) { forcedAbortRequest = true; break; }                                                      // abort running code (program or immediate mode statements)
-                    else if (doStop) { forcedStopRequest = true; }                                                          // stop a running program (do not produce stop event yet, wait until program statement executed)
+                    strcpy(streamTypes, setConsIn ? "for input" : setConsOut ? "for output" : setDebugOut ? "for debug output" : "");
+                    sprintf(msg, "===== Change console %s ? (please answer Y or N) =====", streamTypes);
 
-                    bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
-                    if (validAnswer) {
-                        sprintf(msg, "---------- Changing console now %s ----------\r\n", streamTypes);
+                    do {
                         printlnTo(0, msg);
-                        if (tolower(input[0]) == 'y') {
-                            if (setConsIn || setConsole) {
-                                if (_ppExternInputStreams[(-streamNumber) - 1] == nullptr) { return result_IO_noDeviceOrNotForInput; }
+                        int length{ 2 };                                                                                        // detects input > 1 character
+                        char input[2 + 1] = "";                                                                                 // init: empty string
+                        bool doStop{ false }, doAbort{ false }, doCancel{ false }, doDefault{ false };
+                        // NOTE: doCancel and doDefault are dummy arguments here
+                        if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { return EVENT_kill; }  // kill request from caller ? 
+                        if (doAbort) { forcedAbortRequest = true; break; }                                                      // abort running code (program or immediate mode statements)
+                        else if (doStop) { forcedStopRequest = true; }                                                          // stop a running program (do not produce stop event yet, wait until program statement executed)
+
+                        bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
+                        if (validAnswer) {
+                            if (tolower(input[0]) == 'y') {
+                                sprintf(msg, "---------- Changing console now %s ----------\r\n", streamTypes);
+                                printlnTo(0, msg);
+                                OKforAction = true;
                             }
-                            if (setConsOut || setConsole) {
-                                if (_ppExternOutputStreams[(-streamNumber) - 1] == nullptr) { return result_IO_noDeviceOrNotForOutput; }
-                                _consoleOut_sourceStreamNumber = streamNumber;
-                                _pConsoleOut = _ppExternOutputStreams[(-streamNumber) - 1];      // external IO (stream number -1 => array index 0, etc.)
-                                _pConsolePrintColumn = &_pPrintColumns[(-streamNumber) - 1];
-                            }
-                            // only after all tests are done !
-                            if (setConsIn || setConsole) {
-                                _consoleIn_sourceStreamNumber = streamNumber;
-                                _pConsoleIn = _ppExternInputStreams[(-streamNumber) - 1];
-                            }
+                            break;
                         }
-                        break;
+                    } while (true);
+                }
+
+                // perform action ?
+                if (OKforAction) {
+                    if (setConsIn || setConsole) {
+                        if (_ppExternInputStreams[(-streamNumber) - 1] == nullptr) { return result_IO_noDeviceOrNotForInput; }
                     }
-                } while (true);
+                    if (setConsOut || setConsole) {
+                        if (_ppExternOutputStreams[(-streamNumber) - 1] == nullptr) { return result_IO_noDeviceOrNotForOutput; }
+                        _consoleOut_sourceStreamNumber = streamNumber;
+                        _pConsoleOut = _ppExternOutputStreams[(-streamNumber) - 1];      // external IO (stream number -1 => array index 0, etc.)
+                        _pConsolePrintColumn = &_pPrintColumns[(-streamNumber) - 1];
+                    }
+                    // only after all tests are done !
+                    if (setConsIn || setConsole) {
+                        _consoleIn_sourceStreamNumber = streamNumber;
+                        _pConsoleIn = _ppExternInputStreams[(-streamNumber) - 1];
+                    }
+
+                }
             }
 
             // clean up
@@ -2232,6 +2248,9 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                     (_activeFunctionData.activeCmd_commandCode == cmdcod_if) ? block_if :
                     (_activeFunctionData.activeCmd_commandCode == cmdcod_while) ? block_while :
                     block_for;       // start of 'if...end' or 'while...end' block
+
+                // used to check whether open block belongs to called batch file or to caller (batch file or console)
+                ((OpenBlockTestData*)_pFlowCtrlStackTop)->currentStatementInputStream = _activeFunctionData.statementInputStream[0];
 
                 // FOR...END loops only: initialize ref to control variable, final value and step
                 if (_activeFunctionData.activeCmd_commandCode == cmdcod_for) {

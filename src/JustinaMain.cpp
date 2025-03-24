@@ -82,7 +82,7 @@ const Justina::internCmdDef Justina::_internCommands[]{
 
     // batch file commands
     // -------------------
-    {"exec",            cmdcod_execBatchFile,   cmd_onlyImmediate,                                      1,10,   cmdArgSeq_101,  cmdBlockNone},      // execute a batch file (not a program) and pass optional arguments
+    {"exec",            cmdcod_execBatchFile,   cmd_onlyImmediate,                                      1,10,   cmdArgSeq_101,  cmdBlockNone},      // execute a batch file (not a program) and pass optional arguments, return to calling batch file or console
     {"ditch",           cmdcod_ditchBatchFile,  cmd_onlyImmediate,                                      0,0,    cmdArgSeq_100,  cmdBlockNone},      // stop executing a batch file (not a program)
     {"gotoLabel",       cmdcod_gotoLabel,       cmd_onlyImmediate,                                      1,1,    cmdArgSeq_101,  cmdBlockNone},      // jump to a label in a batch file     
     {"silent",          cmdcod_silent,          cmd_onlyImmediate,                                      1,1,    cmdArgSeq_101,  cmdBlockNone},      // batch files only: no prompt, no last results     
@@ -861,7 +861,7 @@ void Justina::JustinaMainLoop(bool& loadingStartupProgram, bool& launchingStartF
             bool charFetched{ false };
             c = getCharacter(charFetched, kill, forcedStop, forcedAbort, stdConsole, true, waitForFirstProgramCharacter);    // forced stop has no effect here
             if (charFetched) {
-                if (!_silent && waitForFirstProgramCharacter) { printlnTo(0, "Receiving and parsing program... please wait"); }  
+                if (!_silent && waitForFirstProgramCharacter) { printlnTo(0, "Receiving and parsing program... please wait"); }
                 _appFlags &= ~appFlag_errorConditionBit;                                                        // clear error condition flag 
                 _appFlags = (_appFlags & ~appFlag_statusMask) | appFlag_parsing;                                // status 'parsing'
             }
@@ -910,7 +910,7 @@ void Justina::JustinaMainLoop(bool& loadingStartupProgram, bool& launchingStartF
 
                 if (result == result_parsing_OK) { result = parseStatement(pStatement, pDummy, clearCmdIndicator, isSilentOnOffStatement); }        // parse ONE statement only 
 
-                if (!_silent &&  ((++parsedStatementCount & 0x0f) == 0)) {
+                if (!_silent && ((++parsedStatementCount & 0x0f) == 0)) {
                     printTo(0, '.');                                                                            // print a dot each 64 parsed lines
                     if ((parsedStatementCount & 0x0fff) == 0) { printlnTo(0); }                                 // print a crlf each 64 dots
                 }
@@ -1109,7 +1109,7 @@ bool Justina::finaliseParsing(parsingResult_type& result, bool& kill, long lineC
     if (result == result_parsing_OK) {
         if (_programMode) {
             // parsing OK message (program mode only - no message in immediate mode)  
-            if (!_silent){printParsingResult(result, funcNotDefIndex, _statement, lineCount, pErrorPos);}
+            if (!_silent) { printParsingResult(result, funcNotDefIndex, _statement, lineCount, pErrorPos); }
         }
         else {
             if (!_silent && !isSilentOnOffStatement) {
@@ -1156,14 +1156,13 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
     if ((_openDebugLevels > 0) && (execResult != EVENT_kill) && (execResult != EVENT_quit) && (execResult != EVENT_initiateProgramLoad)) { traceAndPrintDebugInfo(execResult); }
 
     // re-init or reset interpreter state 
+    bool isResetNow{ false };
     if (result != result_parsing_OK) {
         // if program parsing error: reset machine, because variable storage might not be consistent with program any more. This will also close all open batch files
-        if (_programMode) { resetMachine(false); }
+        if (_programMode) { resetMachine(false); isResetNow = true; }
 
         // if imm. mode parsing error: close open batch files for this debug level only
         else {
-            Serial.println("** batch file nesting = 0");
-
             int streamNumber = _activeFunctionData.statementInputStream[0];
             if (streamNumber > 0) {
                 SD_closeFile(streamNumber);
@@ -1180,6 +1179,8 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
                 bool stop{ false }, abort{ false };                                         // dummy, as we are entering idle mode anyway
                 flushInputCharacters(stop, abort);                                          // flush any remaining input characters (e.g. after a program parsing error)
             }
+
+            Serial.print("** (A) batch file nesting = 0 : "); Serial.print((int)_activeFunctionData.statementInputStream[0]); Serial.println((int)_activeFunctionData.statementInputStream[1]);
         }
     }
 
@@ -1191,10 +1192,13 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
     }
 #endif
    // before loading a program, clear memory except user variables
-    else if (execResult == EVENT_initiateProgramLoad) { resetMachine(false, false, true); }
+    else if (execResult == EVENT_initiateProgramLoad) { resetMachine(false, false, true); isResetNow = true; }
 
-    // no program error (could be immediate mode error however), not initiating program load: only reset a couple of items here 
-    else {
+    // no program error (could be immediate mode error however), not initiating program load 
+    else {}                                                     // nothing to do
+
+    // only reset a couple of items here
+    if (!isResetNow) {
         parsingStack.deleteList();
         _blockLevel = 0;                                        // current number of open block commands (during parsing) - block level + parenthesis level = parsing stack depth
         _parenthesisLevel = 0;                                  // current number of open parentheses (during parsing)
@@ -1238,7 +1242,7 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
         _programCounter = _programStorage;
 
         if (_lastPrintedIsPrompt) { printlnTo(0); }                                             // print new line if last printed was a prompt
-        if (_loadProgFromStreamNo > 0) { if(!_silent){printTo(0, "Loading program "); printTo(0, openFiles[_loadProgFromStreamNo - 1].filePath); printTo(0, "...\r\n"); }}
+        if (_loadProgFromStreamNo > 0) { if (!_silent) { printTo(0, "Loading program "); printTo(0, openFiles[_loadProgFromStreamNo - 1].filePath); printTo(0, "...\r\n"); } }
         else { printTo(0, "Waiting for program...\r\n"); }                                      // even if silent, print (hint for the user)
         _lastPrintedIsPrompt = false;
 
@@ -1283,7 +1287,7 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
                     SD_closeFile(streamNumber);
                     _activeFunctionData.statementInputStream[0] = _activeFunctionData.statementInputStream[1];  // pop
                     _activeFunctionData.statementInputStream[1] = 0;
-                    Serial.println("** batch file nesting - 1");
+                    Serial.print("** batch file nesting - 1 : "); Serial.print((int)_activeFunctionData.statementInputStream[0]); Serial.println((int)_activeFunctionData.statementInputStream[1]);
                 }
             }
         }
@@ -1296,8 +1300,8 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
     _silent = (streamNumber > 0) ? openFiles[streamNumber - 1].silent : false;
 
 
-// has an error occurred ? (exclude 'events' reported as an error)
-// ---------------------------------------------------------------
+    // has an error occurred ? (exclude 'events' reported as an error)
+    // ---------------------------------------------------------------
     bool isError = (result != result_parsing_OK) || ((execResult != result_execOK) && (execResult < EVENT_startOfEvents));
     isError ? (_appFlags |= appFlag_errorConditionBit) : (_appFlags &= ~appFlag_errorConditionBit);     // set or clear error condition flag 
     // status 'idle in debug mode' or 'idle' 
@@ -1319,32 +1323,37 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
 // *   clear program memory / all memory   *
 // -----------------------------------------
 
+// executed AFTER all statements in the command line containing the 'clearProg' or 'clearMem' statement have been executed, just before returning to idle
+
 void Justina::clearMemory(int& clearIndicator, bool& kill, bool& quitJustina) {                 // 1 = clear program cmd, 2 = clear all cmd
-    while (_pConsoleIn->available() > 0) { readFrom(0); }                                       // empty console buffer first (to allow the user to start with an empty line)
-    do {
-        char s[60];
-        sprintf(s, "===== Clear %s ? (please answer Y or N) =====", ((clearIndicator == 2) ? "memory" : "program"));
-        printlnTo(0, s);
+    if (_silent) { resetMachine(clearIndicator == 2, clearIndicator == 2, true); }
+    else {
+        while (_pConsoleIn->available() > 0) { readFrom(0); }                                       // empty console buffer first (to allow the user to start with an empty line)
+        do {
+            char s[60];
+            sprintf(s, "===== Clear %s ? (please answer Y or N) =====", ((clearIndicator == 2) ? "memory" : "program"));
+            printlnTo(0, s);
 
-        // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
-        // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
-        bool doCancel{ false }, doStop{ false }, doAbort{ false }, doDefault{ false };          // not used but mandatory
-        int length{ 2 };                                                                        // detects input > 1 character
-        char input[2 + 1] = "";                                                                 // init: empty string. Provide room for 1 character + terminating '\0'
-        // NOTE: stop, cancel and default arguments have no function here (execution has ended already), but abort and kill do
-        if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { kill = true; quitJustina = true; break; }  // kill request from caller ?
+            // read characters and store in 'input' variable. Return on '\n' (length is stored in 'length').
+            // return flags doAbort, doStop, doCancel, doDefault if user included corresponding escape sequences in input string.
+            bool doCancel{ false }, doStop{ false }, doAbort{ false }, doDefault{ false };          // not used but mandatory
+            int length{ 2 };                                                                        // detects input > 1 character
+            char input[2 + 1] = "";                                                                 // init: empty string. Provide room for 1 character + terminating '\0'
+            // NOTE: stop, cancel and default arguments have no function here (execution has ended already), but abort and kill do
+            if (getConsoleCharacters(doStop, doAbort, doCancel, doDefault, input, length, '\n')) { kill = true; quitJustina = true; break; }  // kill request from caller ?
 
-        if (doAbort) { break; }        // avoid a next loop (getConsoleCharacters exits immediately when abort request received, not waiting for any characters)
-        bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
-        if (validAnswer) {
-            // 1 = clear program, 2 = clear all (including user variables)
-            if (tolower(input[0]) == 'y') {
-                printlnTo(0, (clearIndicator == 2) ? "clearing memory" : "clearing program");
-                resetMachine(clearIndicator == 2, clearIndicator == 2);
+            if (doAbort) { break; }        // avoid a next loop (getConsoleCharacters exits immediately when abort request received, not waiting for any characters)
+            bool validAnswer = (strlen(input) == 1) && ((tolower(input[0]) == 'n') || (tolower(input[0]) == 'y'));
+            if (validAnswer) {
+                // 1 = clear program, 2 = clear all (including user variables)
+                if (tolower(input[0]) == 'y') {
+                    printlnTo(0, (clearIndicator == 2) ? "clearing memory" : "clearing program");
+                    resetMachine(clearIndicator == 2, clearIndicator == 2, true);
+                }
+                break;
             }
-            break;
-        }
-    } while (true);
+        } while (true);
+    }
 }
 
 
@@ -1675,6 +1684,7 @@ void Justina::resetMachine(bool withUserVariables, bool withBreakpoints, bool ke
     // delete all elements of the flow control stack 
     // in the process, delete all local variable areas referenced in elements of the flow control stack referring to functions, including local variable string and array values
     int dummy{};
+    Serial.print("** reset machine: before clearFlowCtrlStack. Keep debug level batch file ?");Serial.println(keepDebugLevelBatchFile);
     clearFlowCtrlStack(dummy, false, false, keepDebugLevelBatchFile);
 
     // clear expression evaluation stack
@@ -1721,7 +1731,7 @@ void Justina::resetMachine(bool withUserVariables, bool withBreakpoints, bool ke
     initInterpreterVariables(withUserVariables);
 
 
-    if(!_silent) {printlnTo(0);}
+    if (!_silent) { printlnTo(0); }
 }
 
 

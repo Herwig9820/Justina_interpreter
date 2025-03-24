@@ -281,7 +281,7 @@ private:
         cmdcod_angle,
         cmdcod_declCB,
         cmdcod_loadProg,
-        cmdcod_execBatchFile,       // batch files only: run batch file
+        cmdcod_execBatchFile,       // batch files only: exec batch file and return to calling batch file
         cmdcod_ditchBatchFile,      // batch files only: ditch all remaining commands in batch file, return to calling batch file (or console)
         cmdcod_gotoLabel,           // batch files only: goto numeric label in batch file 
         cmdcod_silent,
@@ -1655,16 +1655,16 @@ private:
     //    if a function is ended, the corresponding flow control data will be COPIED to structure '_activeFunctionData' again before it is popped from the stack
 
     struct OpenBlockGeneric {
-        char blockType : 6;                                             // command block: will identify stack level as a function block or an if...end, for...end, ... block
-        char spareFlags : 2;
+        char blockType : 6{};                                             // command block: will identify stack level as a function block or an if...end, for...end, ... block
+        char spareFlags : 2{};
     };
 
     struct OpenBlockTestData {
-        char blockType : 6;                                             // command block: will identify stack level as an if...end, for...end, ... block
-        char spareFlags : 2;
-        char loopControl;                                               // flags: within iteration, request break from loop, test failed
-        char testValueType;                                             // 'for' loop tests: value type used for loop tests
-        char spare;                                                     // boundary alignment
+        char blockType : 6{};                                             // command block: will identify stack level as an if...end, for...end, ... block
+        char spareFlags : 2{};
+        char loopControl{};                                               // flags: within iteration, request break from loop, test failed
+        char testValueType{};                                             // 'for' loop tests: value type used for loop tests
+        char currentStatementInputStream{};                               // batch files only: determine whether open blocks (for, if, ...) belong to calling or called batch file
 
         // FOR...END loop only
         char* pControlValueType;
@@ -1675,11 +1675,11 @@ private:
     };
 
     struct OpenFunctionData {                                           // data about all open Justina functions (active + call stack)
-        char blockType : 6;                                             // command block: will identify stack level as a function block
-        char trapEnable : 1;                                            // enable error trapping
-        char activeCmd_isInternal : 1;                                  // command is internal
-        char functionIndex;                                             // user function index 
-        char callerEvalStackLevels;                                     // evaluation stack levels in use by caller(s) and main (call stack)
+        char blockType : 6{ };                                          // command block: will identify stack level as a function block
+        char trapEnable : 1{ 0 };                                       // enable error trapping
+        char activeCmd_isInternal : 1{};                                // command is internal
+        char functionIndex{};                                           // user function index 
+        char callerEvalStackLevels{ 0 };                                // evaluation stack levels in use by caller(s) and main (call stack)
 
         // within a function, as in immediate mode, only one command can be active at a time (ended by semicolon), in contrast to command blocks, which can be nested, so command data can be stored here:
         // data is stored when a keyword is processed and it is cleared when the ending semicolon (ending the command) is processed
@@ -2346,7 +2346,7 @@ private:
         bool& redundantSemiColon, bool isEndOfFile, bool& bufferOverrun, bool  flushAllUntilEOF, long& lineCount, long& statementCharCount, char c);
 
     // parse one statement from source statement input buffer
-    parsingResult_type parseStatement(char*& pInputLine, char*& pNextParseStatement, int& clearIndicator, bool &isSilentOnOffStatement);
+    parsingResult_type parseStatement(char*& pInputLine, char*& pNextParseStatement, int& clearIndicator, bool& isSilentOnOffStatement);
     bool parseAsInternCommand(char*& pNext, parsingResult_type& result);
     bool parseAsExternCommand(char*& pNext, parsingResult_type& result);
     bool parseAsNumber(char*& pNext, parsingResult_type& result);

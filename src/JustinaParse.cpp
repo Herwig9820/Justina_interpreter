@@ -2420,7 +2420,8 @@ bool Justina::parseAsIdentifierName(char*& pNext, parsingResult_type& result) {
     }
 
     else if (_isDeleteVarCmd) {
-        // NOTE: deletion of user variables NEEDS to be done during parsing (before execution starts)  to keep system consistency, because variable creation also occurs during parsing
+// Deletion of user variables is done at the time the "delete" statement is PARSED (immediate mode only command).  
+// This is necessary to maintain system consistency, because variable creation also occurs during parsing.
 
         char* p = pNext;
         while (p[0] == ' ') { p++; }                                                            // find first non-space character
@@ -2897,6 +2898,10 @@ bool Justina::initVariable(uint16_t varTokenStep, uint16_t constTokenStep) {
 // ------------------------------
 // *   delete a user variable   *
 // ------------------------------
+
+// Deletion of user variables is done at the time the "delete" statement is PARSED (immediate mode only command).  
+// This is necessary to maintain system consistency, because variable creation also occurs during parsing.
+
 
 Justina::parsingResult_type Justina::deleteUserVariable(char* userVarName) {
 
