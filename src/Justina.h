@@ -187,6 +187,7 @@ private:
         block_alterFlow,                                                // alter flow in specific open block types
         block_genericEnd,                                               // ends any type of open block
 
+        block_batchFile,
         block_eval,                                                     // execution only, signals execution of parsed eval() string 
         block_trigger,                                                  // execution only, signals execution of parsed trigger string
 
@@ -866,6 +867,7 @@ public:
 
         // program load, abort, kill, quit
         result_noProgramStopped = 3300,                                 // 'go' command not allowed because not in debug mode
+        result_noProgLoadLoadInDebugMode,
 
         // breakpoint errors
         result_BP_sourcelineNumberExpected = 3400,
@@ -914,7 +916,6 @@ public:
         result_IO_invalidStreamNumber = 3700,
         result_IO_noDeviceOrNotForInput,
         result_IO_noDeviceOrNotForOutput,
-        result_IO_maxBatchFileNestingExceeded,
         result_IO_noBatchFile,
 
         // end of valid exec error range (tested upon return of user cpp functions containing an error code)
@@ -933,12 +934,9 @@ public:
         EVENT_quit,                                                     // 'Quit' command executed (exit Justina interpreter)
 
         EVENT_initiateProgramLoad,                                      // command processed to start loading a program
-
-        EVENT_BATCH_GOTOLABEL,                                          // batch file only: goto label in batch file
-        EVENT_BATCH_DITCH                                               // batch file only: ditch all remaining commands in batch file, return to calling batch file (or console)
     };
-private:
 
+private:
     // debug codes
     enum dbType_type {
         db_continue = 0,
@@ -1664,7 +1662,7 @@ private:
         char spareFlags : 2{};
         char loopControl{};                                               // flags: within iteration, request break from loop, test failed
         char testValueType{};                                             // 'for' loop tests: value type used for loop tests
-        char currentStatementInputStream{};                               // batch files only: determine whether open blocks (for, if, ...) belong to calling or called batch file
+        char spare{};                                                       // boundary alignment
 
         // FOR...END loop only
         char* pControlValueType;
@@ -1675,7 +1673,7 @@ private:
     };
 
     struct OpenFunctionData {                                           // data about all open Justina functions (active + call stack)
-        char blockType : 6{ };                                          // command block: will identify stack level as a function block
+        char blockType : 6{ block_JustinaFunction};                     // command block: will identify stack level as a function block
         char trapEnable : 1{ 0 };                                       // enable error trapping
         char activeCmd_isInternal : 1{};                                // command is internal
         char functionIndex{};                                           // user function index 
@@ -1696,7 +1694,7 @@ private:
         char* errorStatementStartStep;                                  // first token in statement where execution error occurs (error reporting)
         char* errorProgramCounter;                                      // token to point to in statement (^) if execution error occurs (error reporting)
 
-        char statementInputStream[2]{ 0, 0 };                           // two-level statement input stream stack (0: console input; > 0: batch file input streams - allows nesting one level)
+        char statementInputStream{ 0 };                                 // statement input stream (0: console input; > 0: batch file input streams)
     };
 
     // structure to maintain data about open files (SD card)
@@ -1821,14 +1819,14 @@ private:
     int _justinaStartupOptions{ 0 };                                // see constants SD_notAllowed, SD_allowed, SD_init, SD_runStart
     char _programName[MAX_IDENT_NAME_LEN + 1];
     char* _lastProgramStep{ nullptr };
-    char* _lastUserCmdStep{ nullptr };                              // location in Justine imm. mode program memory where final 'tok_no_token' token is placed
+    char* _lastUserCmdLineStep{ nullptr };                              // location in Justine imm. mode program memory where final 'tok_no_token' token is placed
 
 
     // parsing 
     // -------
 
     bool _programMode{ false };
-    char _statement[MAX_STATEMENT_LEN + 1] = "";                    // character buffer for one statement read from console, SD file or any other external IO channel, ready to be parsed
+    char _sourceStatement[MAX_STATEMENT_LEN + 1] = "";                    // character buffer for one statement read from console, SD file or any other external IO channel, ready to be parsed
 
     LinkedList parsingStack;                                        // during parsing: parsing stack keeps track of open parentheses and open blocks
     LE_parsingStack* _pParsingStack;                                // stack used during parsing to keep track of open blocks (e.g. for...end) , functions, open parentheses
@@ -2322,7 +2320,7 @@ private:
 
     void resetMachine(bool withUserVariables, bool withBreakpoints = false, bool keepDebugLevelBatchFile = false);
 
-    void initInterpreterVariables(bool withUserVariables);
+    void initInterpreterVariables(bool withUserVariables, bool keepDebugLevelBatchFile);
     void deleteIdentifierNameObjects(char** pIdentArray, int identifiersInUse, bool isUserVar = false);
     void deleteStringArrayVarsStringObjects(Val* varValues, char* varType, int varNameCount, int paramOnlyCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false);
     void deleteVariableValueObjects(Val* varValues, char* varType, int varNameCount, int paramOnlyCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false);
@@ -2387,7 +2385,7 @@ private:
     // execution
     // ---------
 
-    execResult_type  exec(char* startHere);
+    execResult_type  exec(char* startHere, bool isBatchFileEnd = false);
     execResult_type  execParenthesesPair(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount, bool& forcedStopRequest, bool& forcedAbortRequest);
     execResult_type  execInternalCommand(bool& isFunctionReturn, bool& forcedStopRequest, bool& forcedAbortRequest);
     execResult_type  execExternalCommand();
@@ -2399,8 +2397,9 @@ private:
     execResult_type  execExternalCppFncOrCmd(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int maxArgs, bool isCommand = false);
     execResult_type  launchJustinaFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount);
     execResult_type  launchEval(LE_evalStack*& pFunctionStackLvl, char* parsingInput);
-    void  terminateJustinaFunction(bool isVoidFunction, bool addZeroReturnValue = false);
-    void  terminateEval();
+    void terminateJustinaFunction(bool isVoidFunction, bool addZeroReturnValue = false);
+    void terminateEval();
+    void terminateBatchFile();
 
     // Justina functions: initialize parameter variables with provided arguments (pass by reference)
     void initFunctionParamVarWithSuppliedArg(int suppliedArgCount, LE_evalStack*& pFirstArgStackLvl);
@@ -2440,7 +2439,7 @@ private:
     // clear execution stacks
     void clearEvalStack();
     void clearEvalStackLevels(int n);
-    void clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, bool errorWhileCurrentlyStoppedPrograms = false, bool isAbortCommand = false, bool keepDebugLevelBatchFile = false);
+    void clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, bool terminateOneProgramOnly = false, bool isAbortCommand = false, bool keepExecutingBatchFile = false);
     void clearParsedCommandLineStack(int n);
 
     execResult_type deleteVarStringObject(LE_evalStack* pStackLvl);

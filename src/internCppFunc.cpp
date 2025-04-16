@@ -28,9 +28,9 @@
 #define PRINT_HEAP_OBJ_CREA_DEL 0
 
 
-// *****************************************************************
+// *****************************************************
 // ***        class Justina - implementation         ***
-// *****************************************************************
+// *****************************************************
 
 
 // -------------------------------------
@@ -482,7 +482,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
 
             bool stayHere = (functionCode == fnccod_peek) ? true : (suppliedArgCount < ((functionCode == fnccod_cin) ? 1 : 2));
             if (stayHere) {
-                Stream* pStream{ _pConsoleIn };                                                                             // init
+                Stream* pStream{ _pConsoleIn };                                                 // init
                 int streamNumber{ 0 };
                 // note: available() and peek() are only available as methods of a stream: determineStream(...) returns that stream, whereas setStream(...) sets _pStreamIn and _pStreamOut...
                 // ... for use with Justina methods
@@ -490,9 +490,9 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 if (execResult != result_execOK) { return execResult; }
 
                 // read character from stream now 
-                char c{ 0xff };                                                                                             // init: no character read
+                char c{ 0xff };                                                                 // init: no character read
                 if (functionCode == fnccod_peek) { c = pStream->peek(); }
-                else if (pStream->available()) { _streamNumberIn = streamNumber; _pStreamIn = pStream; c = read(); }        // set global variables before reading
+                else if (pStream->available()) { setStream(streamNumber); c = read(); }         // set global variables before reading //// TEST wijziging
 
                 // save result
                 fcnResultValueType = value_isLong;
@@ -1301,7 +1301,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // this function has one argument: the batch file parameter to retrieve. 0 will return the full name of the open batch file,...
             // ... 1..n will return the value of the (optional) arguments given when the batch file was called.
 
-            int streamNumber = _activeFunctionData.statementInputStream[0];
+            int streamNumber = _activeFunctionData.statementInputStream;
             if (streamNumber <= 0) { return result_IO_noBatchFile; }
 
             if (!(argIsLongBits & (0x1 << 0)) && !(argIsFloatBits & (0x1 << 0))) { return result_arg_numberExpected; }

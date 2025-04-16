@@ -30,9 +30,9 @@
 #define PRINT_DEBUG_INFO 0
 
 
-// *****************************************************************
+// *****************************************************
 // ***        class Justina - implementation         ***
-// *****************************************************************
+// *****************************************************
 
 // --------------------------------------------------------------------------------------------------------------------
 // *   parse ONE statement in a character string, ended by an optional ';' character and a '\0' mandatory character   *
@@ -114,7 +114,7 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
 
         // move to the first non-space character of next token 
         while (pNext[0] == ' ') { pNext++; }                                                                        // skip leading spaces
-        if (pNext[0] == '\0') { pNextParseStatement = pNext; break; }                                               // end of statement: prepare to quit parsing  
+        if (pNext[0] == '\0') {  pNextParseStatement = pNext; break;   }                                            // end of statement: prepare to quit parsing  
 
         // trace, BP view or BP trigger string ? parse one statement at a time, then execute it first (note: within BP trigger strings, only the first expression will be parsed and executed)
         if ((_parsingExecutingTraceString || _parsingExecutingTriggerString) && isSemicolon) { pNextParseStatement = pNext;  break; }

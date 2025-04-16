@@ -29,25 +29,30 @@
 #define PRINT_PARSED_CMD_STACK 0
 #define PRINT_DEBUG_INFO 0
 
-// *****************************************************************
+// *****************************************************
 // ***        class Justina - implementation         ***
-// *****************************************************************
+// *****************************************************
 
+/* -------------------------------------------------------------------------------------------------------------------------------------------
+    Commands
+    --------
+    Structure of a command: 'keyword expression, expression, ... ;' where 'keyword' is the command name
+    The expression list as a whole is not put between parentheses (in contrast to function arguments)
+    During parsing, preliminary checks have been done already: minimum, maximum number of expressions allowed, type of expressions allowed etc.
+    further checks are performed at runtime: do expressions yield a result of the correct type, etc.
+------------------------------------------------------------------------------------------------------------------------------------------- */
 
 // ----------------------------------------------
-// *   execute an external (user cpp) command   *
+// *   execute an external (user c++) command   *
 // ----------------------------------------------
 
 Justina::execResult_type Justina::execExternalCommand() {
 
-    // this c++ function is called when the END of a command statement (semicolon) is encountered during execution, and all arguments (expressions)...
-    // ...have been evaluated and their results put on the evaluation stack
-    // now it is time to use these results to execute a specific command and pop the stack afterwards
-    // A command does NOT push a result on the stack
-
-    // IMPORTANT: when adding code for new Justina functions, it must be written so that when a Justina  error occurs, a c++ RETURN <error code> statement is executed.
-    // BUT prior to this, all 'intermediate character strings' which are NOT referenced within the evaluation stack MUST BE  DELETED (if referenced, they will be deleted automatically by error handling)
-
+    /* ---------------------------------------------------------------------------------------------------------------------------------------------------
+        This c++ function executes an external (user c++) command. It is called when the END of the command statement (semicolon) is encountered during...
+        ...execution, and all arguments (expression results) have been evaluated and their results put on the evaluation stack.
+        A command does NOT push a result on the stack.
+    --------------------------------------------------------------------------------------------------------------------------------------------------- */
     execResult_type execResult = result_execOK;
     int cmdArgCount = evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels;
 
@@ -75,22 +80,18 @@ Justina::execResult_type Justina::execExternalCommand() {
 // *   execute an internal command   *
 // -----------------------------------
 
-// structure of a command: keyword expression, expression, ... ;
-// when control arrives here, all arguments are already on the stack
-// during parsing, preliminary checks have been done already: minimum, maximum number of expressions allowed, type of expressions allowed etc.
-// further checks are performed at runtime: do expressions yield a result of the correct type, etc.
-// the expression list as a whole is not put between parentheses (in contrast to function arguments)
-
-// arguments 'forcedStopRequest' and 'forcedAbortRequest': only relevant commands waiting for user input or with a long execution time  
-
 Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bool& forcedStopRequest, bool& forcedAbortRequest) {
+    /* ---------------------------------------------------------------------------------------------------------------------------------------------------
+        This c++ function executes an internal command. It is called when the END of the command statement (semicolon) is encountered during execution,...
+        ...and all arguments (expression results) have been evaluated and their results put on the evaluation stack.
+        A command does NOT push a result on the stack.
 
-    // this c++ function is called when the END of a command statement (semicolon) is encountered during execution, and all arguments (expressions)...
-    // ...have been evaluated and their results put on the evaluation stack
-    // now it is time to use these results to execute a specific command and pop the stack afterwards
+        IMPORTANT: when adding code for new Justina commands, it must be written so that when a Justina  error occurs, a c++ RETURN <error code> statement
+        is executed AFTER all 'intermediate character strings' which are NOT referenced within the evaluation stack are DELETED (if referenced, they...
+        ...will be deleted automatically by error handling)
 
-    // IMPORTANT: when adding code for new Justina functions, it must be written so that when a Justina  error occurs, a c++ RETURN <error code> statement is executed.
-    // BUT prior to this, all 'intermediate character strings' which are NOT referenced within the evaluation stack MUST BE  DELETED (if referenced, they will be deleted automatically by error handling)
+        Arguments 'forcedStopRequest' and 'forcedAbortRequest': only relevant for commands waiting for user input or with a long execution time
+    --------------------------------------------------------------------------------------------------------------------------------------------------- */
 
     isFunctionReturn = false;  // init
     execResult_type execResult = result_execOK;
@@ -154,16 +155,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
         // --------------------------------------
 
         // these commands behave as if an error occurred, in order to follow the same processing logic  
-        // the commands are issued from the command line and restart a program stopped for debug (except the abort command)
-
-        // step: executes one program step. If a 'parsing only' statement is encountered, it will simply be skipped
-        // step over: if the statement is a function call, executes the function without stopping until control returns to the caller. For other statements, behaves like 'step'
-        // step out: continues execution without stopping, until control is passed to the caller
-        // step out of block: if in an open block (while, for, ...), continues execution until control passes to a statement outside the open block. Otherwise, behaves like 'step'
-        // step to block end: if in an open block (while, for, ...), continues execution until the next statement to execute is the 'block end' statement...
-        // ... this allows you to execute a 'for' loop one loop at the time, for instance. If outside an open block, behaves like 'step' 
-        // go: continues execution until control returns to the user
-       // abort a program while it is stopped
+        // the commands are issued from the command line and (except the abort command) restart a program stopped for debug
 
         case cmdcod_step:
         case cmdcod_stepOver:
@@ -173,6 +165,16 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
         case cmdcod_go:
         case cmdcod_abort:
         {
+        /* -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+            step: executes one program step. If a 'parsing only' statement is encountered, it will simply be skipped
+            step over: if the statement is a function call, executes the function without stopping until control returns to the caller. For other statements, behaves like 'step'
+            step out: continues execution without stopping, until control is passed to the caller
+            step out of block: if in an open block (while, for, ...), continues execution until control passes to a statement outside the open block. Otherwise, behaves like 'step'
+            step to block end: if in an open block (while, for, ...), continues execution until the next statement to execute is the 'block end' statement...
+            ... this allows you to execute a 'for' loop one loop at the time, for instance. If outside an open block, behaves like 'step'
+            go: continues execution until control returns to the user
+            abort a program while it is stopped
+        ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- */
 
             bool OpenBlock{ true };
             char nextStepBlockAction{ block_na };          // init
@@ -182,20 +184,23 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             // is this a debugging command requiring an open block ? (-> step out of block, step to block end commands)
             if (((_activeFunctionData.activeCmd_commandCode == cmdcod_stepOutOfBlock) ||
                 (_activeFunctionData.activeCmd_commandCode == cmdcod_stepToBlockEnd))) {
-
-                // determine whether an open block exists within the active function:
-                // to do that, locate flow control stack level below the stopped function data 
-                // note: because program is currently stopped, _activeFunctionData represents the debug level command line. FlowCtrlStack top levels contain...
-                // ...any open blocks for the debug level, then the level representing the stopped function and only then any open blocks for that stopped function, ...
-                // followed by levels for other open functions in the call stack with their open blocks... and finally a level representing the command line...
-                // ...from where the program was called, with any open blocks (if any programs are stopped, additional levels are present, basically repeating the same scheme).
+                /* ------------------------------------------------------------------------------------------------------------------------------------------------------
+                    determine whether an open block exists within the active function:
+                    to do that, locate the flow control stack level below the stopped function level
+                    note: because the program is currently stopped, _activeFunctionData represents the debug level command line. FlowCtrlStack top levels contain...
+                    ...any open blocks for the debug level, then the level representing the stopped function and only then any open blocks for that stopped function, ...
+                    followed by levels for other open functions (in turn followed by levels for any open batch files) in the call stack, each with their open blocks...
+                    ...and finally a level representing the command line from where the program was called, with any open blocks.
+                    (if other programs are stopped as well, additional levels are present, basically repeating the same scheme).
+                    The deepest stack levels are for the command line from where the first program that was stopped, was called, with any open blocks.
+                ------------------------------------------------------------------------------------------------------------------------------------------------------ */
                 void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;
                 char blockType{};
                 do {
-                    // skip all debug level blocks and open function block (always there). Then, check the next control flow stack level (also always there)
+                    // skip all debug level open blocks, if any, and the open function block (always there). Then, check the next control flow stack level (also always there)
                     blockType = ((OpenBlockGeneric*)pFlowCtrlStackLvl)->blockType;
                     pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
-                } while ((blockType != block_JustinaFunction) && (blockType != block_eval));
+                } while ((blockType == block_while) || (blockType == block_for) || (blockType == block_if));
 
                 // access the flow control stack level below the stack level for the active function, and check the block type: is it an open block within the function ?
                 // (if not, then it's the stack level for the caller already)
@@ -207,14 +212,14 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             // overwrite the parsed command line (containing the 'step', 'go' or 'abort' command) with the command line stack top and pop the command line stack top
             // before removing, delete any parsed string constants for that command line
 
-            _lastUserCmdStep = *(char**)_pParsedCommandLineStackTop;                                                            // pop program step of last user cmd token ('tok_no_token')
-            long parsedUserCmdLen = _lastUserCmdStep - (_programStorage + _PROGRAM_MEMORY_SIZE) + 1;
+            _lastUserCmdLineStep = *(char**)_pParsedCommandLineStackTop;                                                        // pop program step of last user cmd token ('tok_no_token')
+            long parsedUserCmdLen = _lastUserCmdLineStep - (_programStorage + _PROGRAM_MEMORY_SIZE) + 1;
             deleteConstStringObjects(_programStorage + _PROGRAM_MEMORY_SIZE);
             memcpy((_programStorage + _PROGRAM_MEMORY_SIZE), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);
             parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
             _pParsedCommandLineStackTop = parsedCommandLineStack.getLastListElement();
         #if PRINT_PARSED_CMD_STACK
-            _pDebugOut->print("   >> POP parsed statements (Go): steps = "); _pDebugOut->println(_lastUserCmdStep - (_programStorage + _PROGRAM_MEMORY_SIZE));
+            _pDebugOut->print("   >> POP parsed statements (Go): steps = "); _pDebugOut->println(_lastUserCmdLineStep - (_programStorage + _PROGRAM_MEMORY_SIZE));
         #endif
             --_openDebugLevels;
 
@@ -240,7 +245,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                 // delete FLOW CONTROL stack level that contained caller function storage pointers and return address (all just retrieved to _activeFunctionData)
                 flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);
                 _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
-            } while (blockType != block_JustinaFunction);
+            } while ((blockType == block_while) || (blockType == block_for) || (blockType == block_if));                        // as long as deleted stack level was open block (for, while, if)  
             --_callStackDepth;          // deepest open function removed from flow control stack (as well as optional debug command line open blocks) 
 
             // info needed to check when commands like step out, ... have finished executing, returning control to user
@@ -387,7 +392,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             // in the flow control stack, skip any optional debug command line open blocks (top of flow ctrl stack) and find stopped function data to find out
             int debugLineNestingLevel = 0;
             OpenFunctionData* pFlowCtrlStackLvl = (OpenFunctionData*)_pFlowCtrlStackTop;
-            while (pFlowCtrlStackLvl->blockType != block_JustinaFunction) {
+            while (pFlowCtrlStackLvl->blockType != block_JustinaFunction) {                                         // not the stopped function ?
                 debugLineNestingLevel++;
                 pFlowCtrlStackLvl = (OpenFunctionData*)flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
             }
@@ -403,6 +408,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             // D. Check that setting a next line doesn't pass control to an inner block 
             // ------------------------------------------------------------------------
 
+            /* -------------------------------------------------------------------------------------------------------------------------------
             // control cannot pass to a block (e.g. for...end) that doesn't contain the deepest block where control was until now
             // however, it is allowed to quit inner blocks, setting control to an outer block or even the function level
             // during the scan, for each 'block start' statement, a corresponding 'block end' statement must be encountered as well
@@ -419,6 +425,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
             // - jumping backward:   (statement jumped to)..BE (stop scan: result known)                      NOT OK
             // - jumping backward:   (statement jumped to)..BS..BE..BS..BS..BE..(statement jumped from)       OK
+            ------------------------------------------------------------------------------------------------------------------------------- */
 
             char*& nextStep_asis = pFlowCtrlStackLvl->pNextStep;            // where control is currently
             int relativeNestingLevel = 0;                                   // block nesting level within the function, relative to the block nesting level at the start of this check
@@ -559,7 +566,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
             else if ((_activeFunctionData.activeCmd_commandCode == cmdcod_clearBP) && (cmdArgCount == 0)) {
                 bool OKforAction{ _silent };
-                
+
                 if (!_silent) {
                     while (_pConsoleIn->available() > 0) { readFrom(0); }                                       // empty console buffer first (to allow the user to start with an empty line)
                     bool validAnswer{ false };
@@ -779,6 +786,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
         case cmdcod_loadProg:
         {
+            if (_openDebugLevels > 0) { return result_noProgLoadLoadInDebugMode; }       // no program can be loaded while stopped programs exist (it would abort all these stopped programs)
             _loadProgFromStreamNo = 0;                                      // init: load from console 
             if (cmdArgCount == 1) {                                         // source specified (console, alternate input or file name)
                 bool argIsVar[1];
@@ -792,7 +800,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                     // open file and retrieve file number
                     execResult = SD_open(_loadProgFromStreamNo, args[0].pStringConst, READ_FILE);                       // this performs a few card & file checks as well
                     if (execResult != result_execOK) { return execResult; }
-                    if (openFiles[_loadProgFromStreamNo - 1].file.size() == 0) { return result_SD_fileIsEmpty; }
+                    if (openFiles[_loadProgFromStreamNo - 1].file.size() == 0) { SD_closeFile(_loadProgFromStreamNo); return result_SD_fileIsEmpty; }
                 }
 
                 // external source specified ?
@@ -804,7 +812,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                     else if (_ppExternInputStreams[(-_loadProgFromStreamNo) - 1] == nullptr) { return result_IO_noDeviceOrNotForInput; }
                 }
             }
-
+            Serial.print("** END loadProg command code. Block = "); Serial.println((int)_activeFunctionData.blockType);
             return EVENT_initiateProgramLoad;                                                                           // not an error but an 'event'
 
             // no clean up to do (return statement executed here already)
@@ -818,43 +826,59 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
         case cmdcod_execBatchFile:
         {
+            Serial.println("START EXEC BATCH FILE");
+            /* ---------------------------------------------------------------------------------------------------------------------------------------------------
+                A batch file is executed line by line in 'immediate mode', just like a command line.
+                - block structures (for, while, if...) must reside within single lines (same as for command lines).
+                  note: use the 'gotoLabel' command within a (while, if...) block structure to implement conditional back and forward jumps within the batch file.
+                Call a batch file from the command line or from another batch file. Batch files stay open as long as batch file lines are executed.
+                - open batch files are closed automatically and can NOT be closed manually by the user with the 'close()' function.
+                Optional arguments of this command are available while the batch file is executing (see function 'p()' ).
+                You can load and run a program from within a batch file, but you cannot execute a batch file from within a program.
+                Use batch files to load and run multiple programs in sequence (storing intermediate data in files), to set breakpoints for a stopped program, ....
+                - use a batch file named 'autostart.bat' to automatically start a program upon reset or power up.
+            --------------------------------------------------------------------------------------------------------------------------------------------------- */
+
             if ((_justinaStartupOptions & SD_mask) == SD_notAllowed) { return result_SD_noCardOrNotAllowed; }
             if (!_SDinitOK) { return result_SD_noCardOrCardError; }
-            if (_openFileCount == MAX_OPEN_SD_FILES) { return result_SD_maxOpenFilesReached; }                                      // max. open files reached
-
-            if (_activeFunctionData.statementInputStream[1] != 0) { return result_IO_maxBatchFileNestingExceeded; }
+            if (_openFileCount == MAX_OPEN_SD_FILES) { return result_SD_maxOpenFilesReached; }                  // max. open files reached
 
             bool* argIsVar = new bool[cmdArgCount];
             bool* argIsArray = new bool[cmdArgCount];
             char* valueType = new char[cmdArgCount];
             Val* args = new Val[cmdArgCount];
 
+            // arguments: source file name and 0 to 9 additional scalar arguments
             copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
-            delete[] argIsVar; delete[] argIsArray;     // not needed
+            delete[] argIsVar; delete[] argIsArray;                                                             // not needed
 
             // SD source file name specified ?
-            int streamNumber{};
-            if (valueType[0] != value_isStringPointer) { delete[]valueType; delete[]args; return result_SD_fileNameExpected; }               // must be an SD file
+            if (valueType[0] != value_isStringPointer) { delete[]valueType; delete[]args; return result_SD_fileNameExpected; }
 
-            execResult = SD_open(streamNumber, args[0].pStringConst, READ_FILE);                            // this performs a few card & file checks as well
+
+            // open batch file, lock as system file and store a reference to the optional arguments
+            // ------------------------------------------------------------------------------------
+
+            int streamNumber{};
+            execResult = SD_open(streamNumber, args[0].pStringConst, READ_FILE);                                // this performs a few card & file checks as well
             if (execResult != result_execOK) { delete[]valueType; delete[]args; return execResult; }
             else {
                 if (openFiles[streamNumber - 1].file.isDirectory()) { SD_closeFile(streamNumber); delete[]valueType; delete[]args;  return result_SD_directoryNotAllowed; }
                 else if (openFiles[streamNumber - 1].file.size() == 0) { SD_closeFile(streamNumber); delete[]valueType; delete[]args;  return result_SD_fileIsEmpty; }
             }
 
-            openFiles[streamNumber - 1].isSystemFile = 1;                                                   // mark as system file: prevent user from closing this batch file          
-            openFiles[streamNumber - 1].argCount = cmdArgCount;     // batch name and optional arguments
+            openFiles[streamNumber - 1].isSystemFile = 1;                                                       // mark as system file: prevent user from closing this batch file          
+            openFiles[streamNumber - 1].argCount = cmdArgCount;                                                 // batch name and optional arguments
             openFiles[streamNumber - 1].pValueType = valueType;
             openFiles[streamNumber - 1].pArgs = args;
             openFiles[streamNumber - 1].silent = 0;
-            _silent = false;
+            _silent = false;                                                                                    // init
 
-            // create string objects for batch file arguments, but SKIP first argument (batch filename is already stored in openFiles[streamNumber - 1].filePath)
+            // create string objects for batch file arguments, but SKIP first argument (batch filename - already stored in openFiles[streamNumber - 1].filePath)
             for (int i = 1; i < cmdArgCount; i++) {
                 if (openFiles[streamNumber - 1].pValueType[i] == value_isString) {
                     char* tempString = openFiles[streamNumber - 1].pArgs[i].pStringConst;
-                    openFiles[streamNumber - 1].pArgs[i].pStringConst = nullptr;                                          // init (empty string)
+                    openFiles[streamNumber - 1].pArgs[i].pStringConst = nullptr;                                // init (empty string)
                     if (tempString != nullptr) {
                         int stringlen = strlen(tempString);
                         _systemStringObjectCount++;
@@ -867,14 +891,45 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                     }
                 };
             }
-            _activeFunctionData.statementInputStream[1] = _activeFunctionData.statementInputStream[0];      // set 'calling' batch file stream number (to console or to calling batch file)
-            _activeFunctionData.statementInputStream[0] = streamNumber;                                     // set batch file stream number to batch file
 
-            Serial.print("** batch file nesting + 1 : "); Serial.print((int)_activeFunctionData.statementInputStream[0]); Serial.println((int)_activeFunctionData.statementInputStream[1]);
+
+            // push the currently parsed command line to the 'command line stack', to make room for parsed statements of the called batch file  
+            // -> the parsed command line pushed, contains the parsed statement 'calling' (parsing and executing) the batch file 
+            // -------------------------------------------------------------------------------------------------------------------------------
+
+        #if PRINT_PARSED_CMD_STACK
+            _pDebugOut->print("   >> PUSH parsed statements (call batch file): steps = "); _pDebugOut->println(_lastUserCmdLineStep - (_programStorage + _PROGRAM_MEMORY_SIZE));
+        #endif
+            long parsedUserCmdLen = _lastUserCmdLineStep - (_programStorage + _PROGRAM_MEMORY_SIZE) + 1;
+            _pParsedCommandLineStackTop = (char*)parsedCommandLineStack.appendListElement(sizeof(char*) + parsedUserCmdLen);
+            *(char**)_pParsedCommandLineStackTop = _lastUserCmdLineStep;
+            memcpy(_pParsedCommandLineStackTop + sizeof(char*), (_programStorage + _PROGRAM_MEMORY_SIZE), parsedUserCmdLen);
+
+
+            // create FLOW CONTROL stack entry to keep track of newly opened batch file
+            // ------------------------------------------------------------------------
+
+            // note that calling a batch file does NOT change most of the _activeFunctionData members. Only purpose is to...
+            // ...(1) keep track of source input (batch file stream number), (2) prepare to start executing parsed batch file lines
+
+            _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
+            *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;
+            ++_callStackDepth;                                                                      // new batch file call
+            _activeFunctionData.blockType = block_batchFile;
+            _activeFunctionData.trapEnable = 0;                                                     // init: no error trapping at this level
+
+            // set stream to file number of opened batch file 
+            _activeFunctionData.statementInputStream = streamNumber;                                // set batch file stream number
+
+            // prepare to execute first statement from new batch file (to be parsed)
+            _activeFunctionData.pNextStep = _programStorage + _PROGRAM_MEMORY_SIZE;                 // execution to start here
+            _activeFunctionData.errorStatementStartStep = _programStorage + _PROGRAM_MEMORY_SIZE;
+            _activeFunctionData.errorProgramCounter = _programStorage + _PROGRAM_MEMORY_SIZE;
+            *(_programStorage + _PROGRAM_MEMORY_SIZE) = '\0';
 
             // clean up
-            clearEvalStackLevels(cmdArgCount);                                                              // clear evaluation stack and intermediate strings 
-            _activeFunctionData.activeCmd_commandCode = cmdcod_none;                                        // command execution ended
+            clearEvalStackLevels(cmdArgCount);                                                      // clear evaluation stack ("exec" command arguments and associated intermediate strings) 
+            _activeFunctionData.activeCmd_commandCode = cmdcod_none;                                // command execution ended
         }
         break;
 
@@ -885,19 +940,15 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
         case cmdcod_ditchBatchFile:
         {
-            if (_activeFunctionData.statementInputStream[0] <= 0) { return result_IO_noBatchFile; }
+            // use to end executing a batch file before the end of the file is reached
+            int streamNumber = _activeFunctionData.statementInputStream;                            // stream assigned to the currently executing batch file
+            if (streamNumber <= 0) { return result_IO_noBatchFile; }                                // currently not executing a batch file
 
-            int streamNumber = _activeFunctionData.statementInputStream[0];
-            SD_closeFile(streamNumber);                                                         // will close batch file (is a system file)
+            terminateBatchFile();
 
-            _activeFunctionData.statementInputStream[0] = _activeFunctionData.statementInputStream[1];
-            _activeFunctionData.statementInputStream[1] = 0;
-            Serial.print("** batch file nesting - 1 : "); Serial.print((int)_activeFunctionData.statementInputStream[0]); Serial.println((int)_activeFunctionData.statementInputStream[1]);
-
-            streamNumber = _activeFunctionData.statementInputStream[0];
-            _silent = (streamNumber > 0) ? bool(openFiles[streamNumber - 1].silent) : false;
-
-            return EVENT_BATCH_DITCH;                                                           // not an error but an 'event'
+            // clean up
+            clearEvalStackLevels(cmdArgCount);                                                      // clear evaluation stack ("exec" command arguments and associated intermediate strings) 
+            _activeFunctionData.activeCmd_commandCode = cmdcod_none;                                // command execution ended
         }
         break;
 
@@ -907,9 +958,12 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
         case cmdcod_gotoLabel:
         {
-            // enter a label as the first part of a comment line that starts at the beginning of a line. Terminate the label with two slashes, followed by an optional comment.
-            // Example: //loop start// this is the start of a multi-line loop in a batch file
-            // Jump to this label with command "gotoLabel "loop start" (do not add the slashes)
+            /* -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                A label is defined as the first part of a single-line comment, which must start at the beginning of a line. It is terminated by two slashes, followed by an optional comment.
+                Spaces are allowed within a label. The starting and ending slashes themselves are not part of the label.
+                Label example (quotes added for clarity here): '//loop start// this is the start of a multi-line loop in a batch file'
+                Use the 'gotoLabel' command within a (while, if...) block structure to implement conditional back and forward jumps to a defined label within the batch file.
+            ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- */
 
             // 1 argument: label name (arg. count check during parsing)
             bool argIsVar[1];
@@ -921,7 +975,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             if (valueType[0] != value_isStringPointer) { return result_arg_stringExpected; }    // label to look for must be a string
             if (args[0].pStringConst == nullptr) { return result_arg_nonEmptyStringExpected; }  // label to look for must be a non-empty string
 
-            int streamNumber = _activeFunctionData.statementInputStream[0];                     // stream assigned to the currently executing batch file
+            int streamNumber = _activeFunctionData.statementInputStream;                        // stream assigned to the currently executing batch file
             if (streamNumber <= 0) { return result_IO_noBatchFile; }                            // currently not executing a batch file
 
             File file = openFiles[streamNumber - 1].file;
@@ -945,8 +999,21 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             if (isLabel) { file.find("\n"); }                                                   // skip remainder of current line - find start of next line (could be end of file) 
             else { file.seek(currentPosition); }                                                // label not found: return to original position
 
-            clearEvalStackLevels(cmdArgCount);                                                  // clear evaluation stack and intermediate strings 
-            return EVENT_BATCH_GOTOLABEL;                                                       // not an error but an 'event'
+            // if 'gotoLabel' command is part of a control structure (for, while,...), remove open blocks; but KEEP current batch file 
+            char blockType{ block_none };                                                       // init
+            do {
+                blockType = ((OpenBlockGeneric*)_pFlowCtrlStackTop)->blockType;                 // always at least one level present for caller (because returning to it)
+                if (blockType == block_batchFile) { break; }
+
+
+                flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);                            // delete FLOW CONTROL stack level (only if (optional) CALLED function open block stack level)
+                _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
+            } while (true);
+
+
+            // clean up
+            clearEvalStackLevels(cmdArgCount);                                                  // clear evaluation stack ("exec" command arguments and associated intermediate strings) 
+            _activeFunctionData.activeCmd_commandCode = cmdcod_none;                            // command execution ended
         }
         break;
 
@@ -957,7 +1024,17 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
         case cmdcod_silent:
         {
-            int streamNumber = _activeFunctionData.statementInputStream[0];
+            /* --------------------------------------------------------------------------------------------------------------------------------------------
+                Set silent mode ON or OFF during batch file execution to suppress output to the console. Silent mode is OFF if a batch file is not running.
+                When silent mode is ON, echo, last result printing, Justina prompts, specific info and warning messages etc. are all suppressed.
+                Silent mode does NOT affect any of the print commands (coutLine, ...).
+                Calling a batch file sets silent mode to OFF initially (use this command as the very first statement in the batch file to suppress output).
+                Note that silent mode is set for the currently executing batch file only.
+                When returning to a calling batch file, silent mode that was last set for that batch file is restored.
+                The silent command itself is never echoed
+            -------------------------------------------------------------------------------------------------------------------------------------------- */
+
+            int streamNumber = _activeFunctionData.statementInputStream;
             if (streamNumber <= 0) { return result_IO_noBatchFile; }
 
             bool argIsVar[1];
@@ -1417,37 +1494,41 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
         // --------------------------------------------------------------------
 
         case cmdcod_info:                                                           // display message on CONSOLE and request response
-
-            // mandatory argument 1: prompt (string expression)
-            // optional argument 2: numeric variable
-            // - on entry: value is 0 or argument not supplied: confirmation required by pressing ENTER (any preceding characters are skipped)
-            //             value is 1: idem, but if '\c' encountered in input stream the operation is canceled by user 
-            //             value is 2: only positive or negative answer allowed, by pressing 'y' or 'n' followed by ENTER   
-            //             value is 3: idem, but if '\c' encountered in input stream the operation is canceled by user 
-            // - on exit:  value is 0: operation was canceled by user, 1 if operation confirmed by user
-
-            // NO BREAK here: continue with Input command code
-
-
         case cmdcod_input:                                                          // request user to input a string
         {
-            // if '\c' is encountered in the input stream, the operation is canceled by the user
+            /* -----------------------------------------------------------------------------------------------------------------------------------
+                info command:
+                -------------
+                mandatory argument 1: prompt (string expression)
+                optional argument 2: numeric variable
+                - on entry: value is 0 or argument not supplied: confirmation required by pressing ENTER (any preceding characters are skipped)
+                            value is 1: idem, but if '\c' encountered in input stream the operation is canceled by user
+                            value is 2: only positive or negative answer allowed, by pressing 'y' or 'n' followed by ENTER
+                            value is 3: idem, but if '\c' encountered in input stream the operation is canceled by user
+                - on exit:  value is 0: operation was canceled by user, 1 if operation confirmed by user
 
-            // mandatory argument 1: prompt (character string expression)
-            // mandatory argument 2: variable
-            // - on entry: if the argument contains a default value (see further) OR it's an array element, then it must contain a string value
-            // - on exit:  string value entered by the user
-            // mandatory argument 3: numeric variable
-            // - on entry: value is 0: '\d' sequences in the input stream are ignored
-            //             value is 1: if '\d' is encountered in the input stream, argument 2 is not changed (default value provided on entry)
-            // - on exit:  value is 0: operation was canceled by user, value is 1: a value was entered by the user
+                NO BREAK here: continue with Input command code
 
-            // notes: if both '\c' and '\d' are encountered in the input stream, '\c' (cancel operation) takes precedence over '\d' (use default)
-            //        if a '\' character is followed by a character other then 'c' or 'd', the backslash character is discarded
+                if '\c' is encountered in the input stream, the operation is canceled by the user
+
+                input command:
+                -------------
+                mandatory argument 1: prompt (character string expression)
+                mandatory argument 2: variable
+                - on entry: if the argument contains a default value (see further) OR it's an array element, then it must contain a string value
+                - on exit:  string value entered by the user
+                mandatory argument 3: numeric variable
+                - on entry: value is 0: '\d' sequences in the input stream are ignored
+                            value is 1: if '\d' is encountered in the input stream, argument 2 is not changed (default value provided on entry)
+                - on exit:  value is 0: operation was canceled by user, value is 1: a value was entered by the user
+
+                notes: if both '\c' and '\d' are encountered in the input stream, '\c' (cancel operation) takes precedence over '\d' (use default)
+                       if a '\' character is followed by a character other then 'c' or 'd', the backslash character is discarded
 
 
-            // the 'input' and 'info' statements only accept variables for specific arguments. IN contrast to functions, which can only test this at runtime,...
-            // ... statements can test this during parsing. This is why there are no tests related to constants here. 
+                the 'input' and 'info' statements only accept variables for specific arguments. IN contrast to functions, which can only test...
+                ... this at runtime, statements can test this during parsing. This is why there are no tests related to constants here.
+            ----------------------------------------------------------------------------------------------------------------------------------- */
 
             bool argIsVar[3];
             bool argIsArray[3];
@@ -2071,31 +2152,33 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
         case cmdcod_floatfmt:
         case cmdcod_intfmt:
         {
-            // floatFmt precision [, specifier]  [, flags] ]    : set formatting for floats 
-            // intFmt precision [, specifier]  [, flags] ]      : set formatting for integers
-            // NOTE: string printing : NOT affected
+            /* ------------------------------------------------------------------------------------------------------------------------------------------------------
+                floatFmt precision [, specifier]  [, flags] ]    : set formatting for floats
+                intFmt precision [, specifier]  [, flags] ]      : set formatting for integers
+                NOTE: string printing : NOT affected
 
-            // these settings are used for printing last calculation result, user input echo, print commands output and values traced in debug mode('trace' command)
+                these settings are used for printing last calculation result, user input echo, print commands output and values traced in debug mode('trace' command)
 
-            // precision: 
-            // floatFmt command with 'f', 'e' or 'E' specifier: number of digits printed after the decimal point    
-            //                  with 'g' or 'G' specifier: MAXIMUM number of significant digits to be printed 
-            // intFmt command with 'd', 'x' and 'X': MINIMUM number of digits to be written (if the integer is shorter, it will be padded with leading zeros)
+                precision:
+                floatFmt command with 'f', 'e' or 'E' specifier: number of digits printed after the decimal point
+                                 with 'g' or 'G' specifier: MAXIMUM number of significant digits to be printed
+                intFmt command with 'd', 'x' and 'X': MINIMUM number of digits to be written (if the integer is shorter, it will be padded with leading zeros)
 
-            // specifier (optional parameter):
-            // floatFmt command: 'f', 'e', 'E', 'g' or 'G' specifiers allowed
-            // =>  'f': fixed point, 'e' or 'E': scientific, 'g' or 'G': shortest notation (fixed or scientific). 'E' or 'G': exponent character printed in capitals    
-            // intFmt command: 'd', 'x' and 'X' specifiers allowed
-            // =>  'd' signed integer, 'x' or 'X': unsigned hexadecimal integer. 'X': hex number is printed in capitals
+                specifier (optional parameter):
+                floatFmt command: 'f', 'e', 'E', 'g' or 'G' specifiers allowed
+                =>  'f': fixed point, 'e' or 'E': scientific, 'g' or 'G': shortest notation (fixed or scientific). 'E' or 'G': exponent character printed in capitals
+                intFmt command: 'd', 'x' and 'X' specifiers allowed
+                =>  'd' signed integer, 'x' or 'X': unsigned hexadecimal integer. 'X': hex number is printed in capitals
 
-            // flags (optional parameter): 
-            // value 0x1 = left justify within print field, 0x2 = force sign, 0x4 = insert a space if no sign, 0x8: (1) floating point numbers: ALWAYS add a decimal point, even if no digits follow...
-            // ...(2) integers:  precede non-zero numbers with '0x' or '0X' if printed in hexadecimal format, value 0x10 = pad with zeros within print field
+                flags (optional parameter):
+                value 0x1 = left justify within print field, 0x2 = force sign, 0x4 = insert a space if no sign, 0x8: (1) floating point numbers:
+                ALWAYS add a decimal point, even if no digits follow...
+                ...(2) integers:  precede non-zero numbers with '0x' or '0X' if printed in hexadecimal format, value 0x10 = pad with zeros within print field
 
-            // once set, and if not provided again, specifier and flags are used as defaults for next calls to these commands
+                once set, and if not provided again, specifier and flags are used as defaults for next calls to these commands
 
-            // NOTE: strings are always printed unchanged, right justified. Use the fmt() function to format strings
-
+                NOTE: strings are always printed unchanged, right justified. Use the fmt() function to format strings
+            ------------------------------------------------------------------------------------------------------------------------------------------------------*/
             bool argIsVar[3];
             bool argIsArray[3];
             char valueType[3];
@@ -2248,9 +2331,6 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                     (_activeFunctionData.activeCmd_commandCode == cmdcod_if) ? block_if :
                     (_activeFunctionData.activeCmd_commandCode == cmdcod_while) ? block_while :
                     block_for;       // start of 'if...end' or 'while...end' block
-
-                // used to check whether open block belongs to called batch file or to caller (batch file or console)
-                ((OpenBlockTestData*)_pFlowCtrlStackTop)->currentStatementInputStream = _activeFunctionData.statementInputStream[0];
 
                 // FOR...END loops only: initialize ref to control variable, final value and step
                 if (_activeFunctionData.activeCmd_commandCode == cmdcod_for) {
@@ -2526,7 +2606,6 @@ Justina::execResult_type Justina::testForLoopCondition(bool& testFails) {
 
 Justina::execResult_type Justina::copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsNonConstantVar, bool* argIsArray, char* valueType, Val* args, bool prepareForCallback, Val* dummyArgs) {
     execResult_type execResult;
-
 
     for (int i = 0; i < argCount; i++) {
         bool argIsVar = (pStackLvl->varOrConst.tokenType == tok_isVariable);                                                        // could be a constant variable

@@ -25,7 +25,7 @@
 
 #include "Justina.h"
 
-#define PRINT_LLIST_OBJ_CREA_DEL 0
+#define PRINT_LLIST_OBJ_CREA_DEL 1
 
 
 // *****************************************************************
@@ -140,8 +140,10 @@ char* LinkedList::deleteListElement(void* pPayload) {                           
     ((pElem->pPrev == nullptr) ? _pFirstElement : pElem->pPrev->pNext) = pElem->pNext;
     ((pElem->pNext == nullptr) ? _pLastElement : pElem->pNext->pPrev) = pElem->pPrev;
 
+    if(_listID==2){Serial.println("deleting flowctrlstack list element..."); delay(300);}
     _listElementCount--;
     delete[]pElem;
+    if(_listID==2){Serial.print(">>>> in linkedLists, after delete element: flowctrlstack top points to "); Serial.println((uint32_t)p); delay(300);}
 
     if (p == nullptr) { return nullptr; }
     // move pointer 1 list element header length: point to payload of next element in list (or nullptr if last element deleted)

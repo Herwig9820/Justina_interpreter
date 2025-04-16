@@ -28,9 +28,9 @@
 #define PRINT_HEAP_OBJ_CREA_DEL 0
 
 
-// *****************************************************************
+// *****************************************************
 // ***        class Justina - implementation         ***
-// *****************************************************************
+// *****************************************************
 
 
 // --------------------------
@@ -947,7 +947,7 @@ bool Justina::flushInputCharacters(bool& forcedStop, bool& forcedAbort) {
         if (kill) { break; }                                                    // kill Justina interpreter (buffer is now flushed until next line character)
         if (abort) { forcedAbort = true; }                                      // do NOT exit immediately, keep on flushing
         if (stop) { forcedStop = true; }
-        if (((millis() - start) > 1000) && !messageGiven) { messageGiven = true;if(!_silent ){ printlnTo(0, "Flushing incoming characters... Please wait"); }}
+        if (((millis() - start) > 1000) && !messageGiven) { messageGiven = true; if (!_silent) { printlnTo(0, "Flushing incoming characters... Please wait"); } }
 
         // after a set time, start showing progress by printing dots 
         if (!_silent && messageGiven) {
@@ -958,7 +958,7 @@ bool Justina::flushInputCharacters(bool& forcedStop, bool& forcedAbort) {
         }
     } while (charFetched);
 
-    if(_silent){printlnTo(0);}
+    if (_silent) { printlnTo(0); }
     return kill;
 }
 
@@ -1119,6 +1119,15 @@ void Justina::printCallStack() {
                 println("eval() string");
                 indent += 4;
             }
+
+            else if (blockType == block_batchFile) {
+                int streamNumber = ((OpenFunctionData*)pFlowCtrlStackLvl)->statementInputStream;
+                for (int space = 0; space < indent - 4; ++space) { print(" "); }
+                if (indent > 0) { print("|__ "); }
+                print("batch file: "); println(openFiles[streamNumber - 1].filePath);
+                indent += 4;
+            }
+
             else if (blockType == block_JustinaFunction) {
                 if (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep < (_programStorage + _PROGRAM_MEMORY_SIZE)) {
                     for (int space = 0; space < indent - 4; ++space) { print(" "); }
@@ -1129,16 +1138,6 @@ void Justina::printCallStack() {
                     indent += 4;
                 }
                 else {
-                    for (int i = 0; i <= 1; i++) {
-                        int streamNumber = ((OpenFunctionData*)pFlowCtrlStackLvl)->statementInputStream[i];
-                        if (streamNumber > 0) {      // batch file ?
-                            for (int space = 0; space < indent - 4; ++space) { print(" "); }
-                            if (indent > 0) { print("|__ "); }
-                            print("batch file: "); println(openFiles[streamNumber - 1].filePath);
-                            indent += 4;
-                        }
-                    }
-
                     for (int space = 0; space < indent - 4; ++space) { print(" "); }
                     if (indent > 0) { print("|__ "); }
                     println((i < flowCtrlStack.getElementCount() - 1) ? "debugging command line" : "command line");     // command line
@@ -1146,6 +1145,7 @@ void Justina::printCallStack() {
                     println();               // empty line
                 }
             }
+
             pFlowCtrlStackLvl = (i == -1) ? _pFlowCtrlStackTop : flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
         }
     }
@@ -1230,7 +1230,6 @@ void Justina::printExecError(execResult_type execResult, bool  showStopmessage) 
     else if (execResult == EVENT_stopForDebug) { if (showStopmessage) { printTo(0, "\r\n+++ Program stopped +++\r\n"); } }
     else if (execResult == EVENT_stopForBreakpoint) { if (showStopmessage) { printTo(0, "\r\n+++ Breakpoint +++\r\n"); } }
     else if (execResult == EVENT_initiateProgramLoad) {}                                                               // (nothing to do here for this event)
-    else if ((execResult == EVENT_BATCH_GOTOLABEL) || (execResult == EVENT_BATCH_DITCH)) {}                             // (nothing to do here for these events)
     else { printTo(0, "\r\n+++ Event +++ "); printlnTo(0, execResult); }
 
     _lastValueIsStored = false;                                                                                         // prevent printing last result (if any)
