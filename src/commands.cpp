@@ -941,7 +941,6 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
             ////_activeFunctionData.statementInputStream[1] = _activeFunctionData.statementInputStream[0];      // set 'calling' batch file stream number (to console or to calling batch file)
             _activeFunctionData.statementInputStream[0] = streamNumber;                                     // set batch file stream number to batch file
->>>>>>> Stashed changes
 
 
             // push the currently parsed command line to the 'command line stack', to make room for parsed statements of the called batch file  
