@@ -1525,32 +1525,29 @@ void Justina::clearEvalStackLevels(int n) {
 // *   Clear flow control stack   *
 // --------------------------------
 
-void Justina::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, bool terminateOneProgramOnly, bool isAbortCommand, bool keepExecutingBatchFile) {
+void Justina::clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, bool terminateOneProgramOnly, bool isAbortCommand, bool keepDebugLevelBatchFile) {
 
-    /* ------------------------------------------------------------------------------------------------------------------------------------------------------------------
-        Argument'deleteImmModeCmdStackLevels' maintains the count of flowCtrlStack levels for imm.mode statements.
-        Argument 'terminateOneProgramOnly': if false, delete all stack levels. If true, delete only one program.
-        Argument 'isAbortCommand':
-        - if false, an error has been encountered in a RUNNING program (or this program received an 'abort request' via the application flags) and needs to be terminated
-        - if true, the user has entered the 'abort' command, which means the most recent STOPPED program needs to be terminated. But first (because higher up in the
-          flow control stack), the 'immediate mode program' containing the abort statement needs to be terminated as well. So, TWO programs need to be terminated.
-        Argument 'keepExecutingBatchFile': if true, do not continue clearing flow control stack levels once an open batch file level is reached.
-    ------------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+    // 'deleteImmModeCmdStackLevels' maintains the count of flowCtrlStack levels for imm.mode statements
+    // if argument 'terminateOneProgramOnly' is false, delete all stack levels
+    // if 'terminateOneProgramOnly' is true: at least one program is currently stopped (debug mode)
+    // - if argument 'isAbortCommand' = false, an error has been encountered in a RUNNING program (or this program received an 'abort request' via the application flags) and needs to be terminated
+    // - if 'abortCommand' is true, the user has entered the 'abort' command, which means the most recent STOPPED program needs to be terminated. But first (because higher up in the flow control stack),
+    //   the 'immediate mode program' (an abort statement can not be contained in a program) containing the abort statement needs to be terminated as well. So, TWO programs need to be terminated
 
-    deleteImmModeCmdStackLevels = 0;                                // init number of immediate mode parsed command stack levels to delete afterwards (parsedCommandLineStack)
+    deleteImmModeCmdStackLevels = 0;                                                // init number of immediate mode parsed command stack levels to delete afterwards (parsedCommandLineStack)
 
-    int totalProgramsToTerminate = (isAbortCommand) ? 2 : 1;        // abort command: terminate the running program containing the abort command AND the most recent stopped program
-    int programsYetToTerminate = totalProgramsToTerminate;          // counter
+    int totalProgramsToTerminate = (isAbortCommand) ? 2 : 1;                        // abort command: terminate the running program containing the abort command AND the most recent stopped program
+    int programsYetToTerminate = totalProgramsToTerminate;                          // counter
 
     bool isInitialLoop{ true };
-    bool isBatchFileLevelToKeep{ false };
-
-    if (keepExecutingBatchFile) { terminateOneProgramOnly = isAbortCommand = false; }                           // safety
     void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;
+
+    char currentInputStream[2] = { _activeFunctionData.statementInputStream[0],  _activeFunctionData.statementInputStream[1] };
 
     do {
         // first loop: retrieve block type of currently active function (could be 'main' level = immediate mode instruction as well)
-        char blockType = (isInitialLoop ? _activeFunctionData.blockType : ((OpenBlockGeneric*)pFlowCtrlStackLvl)->blockType);       // first character of structure is block type
+        char blockType = isInitialLoop ? _activeFunctionData.blockType : ((OpenBlockGeneric*)pFlowCtrlStackLvl)->blockType;             // first character of structure is block type
+
         if (blockType == block_JustinaFunction) {                               // block type: function (can be a real program function, or an implicit 'immediate mode' function (the start of ANY program) 
             if (!isInitialLoop) { _activeFunctionData = *((OpenFunctionData*)pFlowCtrlStackLvl); }              // after first loop, load from stack
 
@@ -2635,7 +2632,7 @@ Justina::execResult_type  Justina::launchEval(LE_evalStack*& pFunctionStackLvl, 
     }
 
     // last step of just parsed eval() string. Note: adding sizeof(tok_no_token) because not yet added
-    _lastUserCmdLineStep = _programCounter + sizeof(tok_no_token);                                  // if parsing error, do not change
+    _lastUserCmdLineStep = _programCounter + sizeof(tok_no_token);                                      // if parsing error, do not change
 
     *(_programCounter) = tok_isEvalEnd | 0x10;                                                      // replace '\0' after parsed statements with 'end eval ()' token (length 1 in upper 4 bits)
     *(_programCounter + 1) = tok_no_token;
@@ -3061,13 +3058,22 @@ void Justina::terminateBatchFile() {
     } while ((blockType == block_while) || (blockType == block_for) || (blockType == block_if));        // as long as deleted stack level was open block (for, while, if)  
 
 
-    int streamNumber = _activeFunctionData.statementInputStream;                                        // caller stream (batch file or command line)
-    _silent = (streamNumber > 0) ? bool(openFiles[streamNumber - 1].silent) : false;
+    } while ((blockType != block_JustinaFunction) && (blockType != block_eval));                                            // caller level can be caller eval() or caller Justina function
+    --_callStackDepth;                                                                                                      // caller reached: call stack depth decreased by 1
 
     Serial.println("**** A"); delay(300);
     clearParsedCommandLineStack(1);
     Serial.println("**** B"); delay(300);
 
+    _lastUserCmdLineStep = *(char**)_pParsedCommandLineStackTop;                                                                // pop parsed user cmd length
+    long parsedUserCmdLen = _lastUserCmdLineStep - (_programStorage + _PROGRAM_MEMORY_SIZE) + 1;
+    deleteConstStringObjects(_programStorage + _PROGRAM_MEMORY_SIZE);
+    memcpy((_programStorage + _PROGRAM_MEMORY_SIZE), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);
+    parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
+    _pParsedCommandLineStackTop = (char*)parsedCommandLineStack.getLastListElement();
+#if PRINT_PARSED_CMD_STACK
+    _pDebugOut->print("   >> POP parsed statements (terminate eval): steps = "); _pDebugOut->println(_lastUserCmdLineStep - (_programStorage + _PROGRAM_MEMORY_SIZE));
+#endif
 }
 
 // -----------------------------------------------

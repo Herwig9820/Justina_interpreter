@@ -26,7 +26,7 @@
 #include "Justina.h"
 
 #define PRINT_HEAP_OBJ_CREA_DEL 0
-#define PRINT_PARSED_TOKENS 0
+#define PRINT_PARSED_TOKENS 1
 #define PRINT_DEBUG_INFO 0
 
 
@@ -114,7 +114,7 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
 
         // move to the first non-space character of next token 
         while (pNext[0] == ' ') { pNext++; }                                                                        // skip leading spaces
-        if (pNext[0] == '\0') {  pNextParseStatement = pNext; break;   }                                            // end of statement: prepare to quit parsing  
+        if (pNext[0] == '\0') { pNextParseStatement = pNext; break; }                                            // end of statement: prepare to quit parsing  
 
         // trace, BP view or BP trigger string ? parse one statement at a time, then execute it first (note: within BP trigger strings, only the first expression will be parsed and executed)
         if ((_parsingExecutingTraceString || _parsingExecutingTriggerString) && isSemicolon) { pNextParseStatement = pNext;  break; }
@@ -420,9 +420,15 @@ bool Justina::checkCommandArgToken(parsingResult_type& result, int& clearIndicat
 
     if (isSemiColonSep) {                                                                                           // semicolon: end of command                                                    
         // NOTE: clear program / memory command will be executed when normal execution ends (before entering idle mode, waiting for input)
-        if (_isClearProgCmd) { clearIndicator = 1; }                                                                // clear program: set flag 
-        else if (_isClearAllCmd) { clearIndicator = 2; }                                                            // clear all: set flag
-        return true;                                                                                                // nothing more to do for this command
+        if (_isClearProgCmd) {
+            clearIndicator = 1;                                                                // clear program: set flag 
+            //a program can not be cleared while stopped programs exist (it would abort all these stopped programs)
+            if (_openDebugLevels > 0) { result = result_cmd_noProgClearInDebugMode;  return false; }                 // this is a PARSING error
+        }
+        else if (_isClearAllCmd) {
+            clearIndicator = 2;                                                                                     // clear all: set flag
+        }
+        return true;                                                                                               // nothing more to do for this command
     }
 
 
@@ -2419,9 +2425,11 @@ bool Justina::parseAsIdentifierName(char*& pNext, parsingResult_type& result) {
         strcpy(_programName, pIdentifierName);
     }
 
-    else if (_isDeleteVarCmd) {
-// Deletion of user variables is done at the time the "delete" statement is PARSED (immediate mode only command).  
-// This is necessary to maintain system consistency, because variable creation also occurs during parsing.
+    else if (_isDeleteVarCmd) {                                                                 // delete specified user variables
+        // Deleting user variables is only possible in immediate mode (command line or batch file).
+        // If a line contains multiple statements, the line must start with the 'delete' statement.  
+        // Deletion of user variables is done when the "delete" statement is PARSED.  
+        // This is necessary to maintain system consistency, because variable creation also occurs during parsing.
 
         char* p = pNext;
         while (p[0] == ' ') { p++; }                                                            // find first non-space character
@@ -2899,9 +2907,7 @@ bool Justina::initVariable(uint16_t varTokenStep, uint16_t constTokenStep) {
 // *   delete a user variable   *
 // ------------------------------
 
-// Deletion of user variables is done at the time the "delete" statement is PARSED (immediate mode only command).  
-// This is necessary to maintain system consistency, because variable creation also occurs during parsing.
-
+// Deletion of user variables is done at the time the "delete" statement is PARSED (immediate mode only).  
 
 Justina::parsingResult_type Justina::deleteUserVariable(char* userVarName) {
 

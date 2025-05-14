@@ -735,7 +735,7 @@ void Justina::begin() {
     _constructorInvoked = false;                                                            // reset
 
     int streamNumber{ 0 };
-    setStream(0);                                                                           // set _pStreamIn to console, for use by Justina methods
+    setCurrentStream(0);                                                                    // perform checks and set input stream (to console)
 
     bool kill{ false };
     bool loadingStartupProgram{ false }, launchingStartFunction{ false };                   // loading startup program resp. launching start() function
@@ -761,10 +761,12 @@ void Justina::begin() {
             execResult_type execResult = SD_open(_loadProgFromStreamNo, AUTOSTART_FILE_PATH, READ_FILE);       // this performs a few card & file checks as well
             _initiateProgramLoad = (execResult == result_execOK);
             if (!_initiateProgramLoad) { printTo(0, "Could not open autostart program file - error "); printlnTo(0, execResult); }
-            if (openFiles[_loadProgFromStreamNo - 1].file.size() == 0) {
+
+            // the SD library does not provide a way to check if the file is a directory, or it's empty, before the file is opened 
+            if (openFiles[_loadProgFromStreamNo - 1].file.isDirectory() || (openFiles[_loadProgFromStreamNo - 1].file.size() == 0)) {
                 SD_closeFile(_loadProgFromStreamNo);
                 _initiateProgramLoad = false;
-                printTo(0, "Autostart program file is empty - error "); printlnTo(0, result_SD_fileIsEmpty);
+                printlnTo(0, "Autostart program file is empty or is directory");
             }
         }
 
@@ -852,7 +854,10 @@ void Justina::JustinaMainLoop(bool& loadingStartupProgram, bool& launchingStartF
 
         _initiateProgramLoad = false;
 
+        bool endOfBatchFile = (!_programMode && (_activeFunctionData.blockType == block_batchFile) && (_pStreamIn->available() == 0));
+
         if (startJustinaWithoutAutostart) { allCharsReceived = true; startJustinaWithoutAutostart = false; }
+
         else if (launchingStartFunction) {                                                                      // autostart step 2: launch function
             // do not read from console; instead insert characters here
             strcpy(_sourceStatement, "start();");                                                               // NOTE: ending ';' is important
@@ -860,6 +865,14 @@ void Justina::JustinaMainLoop(bool& loadingStartupProgram, bool& launchingStartF
             allCharsReceived = true;                                                                            // ready for parsing
             launchingStartFunction = false;                                                                     // nothing to prepare any more
         }
+
+       // end of batch file: terminate batch file
+        else if (endOfBatchFile) {
+            strcpy(_sourceStatement, "ditch;");                                                               // NOTE: ending ';' is important
+            statementCharCount = strlen(_sourceStatement);
+            allCharsReceived = true;                                                                            // ready for parsing
+        }
+
         else {     // note: while waiting for first program character, allow a longer time out              
             bool charFetched{ false };
             c = getCharacter(charFetched, kill, forcedStop, forcedAbort, stdConsole, true, waitForFirstProgramCharacter);    // forced stop has no effect here
@@ -940,13 +953,7 @@ void Justina::JustinaMainLoop(bool& loadingStartupProgram, bool& launchingStartF
                     // if not in program mode and no parsing error: execute
                     execResult_type execResult{ result_execOK };
                     if (!_programMode && (result == result_parsing_OK)) {
-
-                        bool isBatchFileEnd = false;                                                            // flag: end of batch file reached
-                        if (_streamNumberIn > 0) { isBatchFileEnd = (openFiles[_streamNumberIn - 1].file.available() == 0); }
-
-                        Serial.print("** BEFORE EXEC: block type = "); Serial.print((int)_activeFunctionData.blockType); Serial.print(", stream = "); Serial.println((int)_activeFunctionData.statementInputStream);
-                        execResult = exec(_programStorage + _PROGRAM_MEMORY_SIZE, isBatchFileEnd);              // execute parsed user statements
-                        Serial.print("**  AFTER EXEC: block type = "); Serial.print((int)_activeFunctionData.blockType); Serial.print(", stream = "); Serial.println((int)_activeFunctionData.statementInputStream);
+                        execResult = exec(_programStorage + _PROGRAM_MEMORY_SIZE);              // execute parsed user statements
                         if (execResult == EVENT_kill) { kill = true; }
                         if (kill || (execResult == EVENT_quit)) { printlnTo(0); quitNow = true; }               // make sure Justina prompt will be printed on a new line
                     }
@@ -1159,29 +1166,42 @@ bool Justina::finaliseParsing(parsingResult_type& result, bool& kill, long lineC
 // ---------------------------------------------
 
 bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type execResult, bool& kill, int& clearIndicator, bool isSilentOnOffStatement) {
+    bool isResetNow{ false };
+    Serial.print("**** A1 - parsing result "); Serial.println(result); delay(100);
 
     // if in debug mode, trace expressions (if defined) and print debug info 
+    // ---------------------------------------------------------------------
     if ((_openDebugLevels > 0) && (execResult != EVENT_kill) && (execResult != EVENT_quit) && (execResult != EVENT_initiateProgramLoad)) { traceAndPrintDebugInfo(execResult); }
+    Serial.print("**** A2 - parsing result "); Serial.println(result); delay(100);
 
-    // re-init or reset interpreter state 
-    bool isResetNow{ false };
+
+    // parsing error ? (program parsing error or immediate mode (command line or batch file) error)
+    // --------------------------------------------------------------------------------------------
+    
     if (result != result_parsing_OK) {
-        // if program parsing error: reset machine, because variable storage might not be consistent with program any more. This will also close all open batch files
+        // program parsing error ? reset machine (but keep user variables and breakpoints) - this clears any newly created program variables 
+        // This will also close all open batch files when the corresponding flow control stack levels will be deleted.
+        // The program file itself will be closed a little bit further down in this procedure.
         if (_programMode) { resetMachine(false); isResetNow = true; }
 
+        // parsing error in command line (or in a batch file) - no program is running 
         else {
-            int streamNumber = _activeFunctionData.statementInputStream;
-            setStream(streamNumber);
+            // if parsing error occurred in a batch file, this will close it as well as any calling batch files and reset input stream to console
+            int deleteImmModeCmdStackLevels{ 0 };
+
+            // close any open batch files for the current (debug or 'root') command line
+            while (_activeFunctionData.blockType == block_batchFile) {
+                terminateBatchFile();
+                Serial.println("****    - deleting 1 level");
+            }
+            Serial.print("**** A3 - parsing result "); Serial.println(result); delay(100);
+
+            int streamNumber = _activeFunctionData.statementInputStream;        // this is now the console stream again
             bool stop{ false }, abort{ false };                 // dummy, as we are entering idle mode anyway
-            flushInputCharacters(stop, abort);                  // flush any remaining input characters (e.g. after a program   
+            setCurrentStream(streamNumber);                     // perform checks and set input stream to current statement input (console or batch file)
+            flushInputCharacters(stop, abort);                  // flush any remaining input characters (e.g. after a program load)  
         }
     }
-
-   // before loading a program, clear memory except user variables
-    else if (execResult == EVENT_initiateProgramLoad) { resetMachine(false, false, true); isResetNow = true; }
-
-    // no program error (could be immediate mode error however), not initiating program load 
-    else {}                                                     // nothing to do
 
 #if PRINT_DEBUG_INFO  
     // NOTE !!! Also set PRINT_DEBUG_INFO to 1 in file Breakpoints !!!
@@ -1192,6 +1212,14 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
 #endif
 
 
+    Serial.print("**** B - parsing result "); Serial.println(result); delay(100);
+
+    // 'clear memory' / 'clear all' command ? Is executed AFTER the execution phase, if no parsing or execution errors 
+    bool quitJustina{ false };
+    // note: clearing a program is only allowed if no stopped programs (see 'clear program' command)
+    if ((result == result_parsing_OK) && (execResult == result_execOK) && (clearIndicator != 0)) { clearMemory(clearIndicator, kill, quitJustina); }
+    Serial.println("**** C"); delay(100);
+
     // only reset a couple of items here
     if (!isResetNow) {
         parsingStack.deleteList();
@@ -1201,10 +1229,6 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
         _justinaFunctionBlockOpen = false;
         _JustinaVoidFunctionBlockOpen = false;
     }
-
-    // clear memory / clear all command ? Is executed AFTER the execution phase, if no parsing or execution errors 
-    bool quitJustina{ false };
-    if ((result == result_parsing_OK) && (execResult == result_execOK) && (clearIndicator != 0)) { clearMemory(clearIndicator, kill, quitJustina); }
 
 
     // execution finished (not stopping in debug mode), with or without error: delete parsed strings in imm mode command : they are on the heap and not needed any more. 
@@ -1226,58 +1250,63 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
     Next code block mainly handles the stream for immediate mode statements
     -------------------------------------------------------------------------------------------- */
 
+    Serial.println("**** D"); delay(100);
+
     static int statementInputStreamNumber = 0;  // console input stream number (default)
     static Stream* pStatementInputStream = _pConsoleIn;  // console input stream (default)
 
-  // INITIATING a program load ?
-    // ---------------------------
+    // INITIATING a program load ? Before loading a program, clear memory except user variables and breakpoints; do NOT close the currently active batch file
+    // note: initiating a program load is only allowed if no stopped programs (see 'load program' command)
     if (execResult == EVENT_initiateProgramLoad) {
+        resetMachine(false, false, true); isResetNow = true;
         _initiateProgramLoad = true;
         _programMode = true;
         _programCounter = _programStorage;
 
-        if (_lastPrintedIsPrompt) { printlnTo(0); }                         // print new line if last printed was a prompt
+        if (_lastPrintedIsPrompt) { printlnTo(0); }                             // print new line if last printed was a prompt
         if (_loadProgFromStreamNo > 0) { if (!_silent) { printTo(0, "Loading program "); printTo(0, openFiles[_loadProgFromStreamNo - 1].filePath); printTo(0, "...\r\n"); } }
-        else { printTo(0, "Waiting for program...\r\n"); }                  // even if silent, print (hint for the user)
+        else { printTo(0, "Waiting for program...\r\n"); }                      // even if silent, print (hint for the user)
         _lastPrintedIsPrompt = false;
 
         // set stream to PROGRAM input stream (is a valid stream, already checked)
         statementInputStreamNumber = _loadProgFromStreamNo;
-        setStream(statementInputStreamNumber, pStatementInputStream);
+        setCurrentStream(statementInputStreamNumber, pStatementInputStream);    // perform checks and set input stream to program input stream (external or file)
 
         // flush any characters currently in stream input buffer, waiting to be read (useful for remote terminals)
         if (statementInputStreamNumber <= 0) { while (pStatementInputStream->available()) { readFrom(statementInputStreamNumber); } }
     }
 
 
-    // at this point, all parsing errors have been handled.
-    // either (1) a program was loaded without errors just now, OR (2) program / batch file line / command line execution ended (with or without an execution error)
-    // -------------------------------------------------------------------------------------------------------------------------------------------------------------
+    // set correct statement input stream again; if a Justina program file is open, close it 
+    // -----------------------------------------------------------
     else {
-        // a program was loaded just now ? 
+        // program load ended ? (program was loaded correctly, or program load ended with a program parsing error) 
         if (_programMode) {                                                     // At this time, the stream is still the stream from where the program was loaded 
             _programMode = false;
 
-            // note: statementInputStreamNumber (= _loadProgFromStreamNo) and pStatementInputStream are still correct, but setStream needed before flushing characters 
-            setStream(statementInputStreamNumber, pStatementInputStream);
+            // program load (with or without success) from external IO channel ? Flush any remaining characters in the input buffer
+            // note: statementInputStreamNumber (= _loadProgFromStreamNo) and pStatementInputStream are still correct, but setCurrentStream needed before flushing characters 
+            setCurrentStream(statementInputStreamNumber, pStatementInputStream);
             if (statementInputStreamNumber <= 0) {
                 if (pStatementInputStream->available() > 0) {                   // skip if initially buffer is empty
                     bool stop{ false }, abort{ false };                         // dummy, as we are entering idle mode anyway
                     flushInputCharacters(stop, abort);                          // flush any remaining input characters (e.g. after a program parsing error)
                 }
             }
-            // program was loaded from a file ?
-            else { SD_closeFile(_loadProgFromStreamNo); }                       // may close file now 
+            // program load (with or without success) from a file ?
+            else { SD_closeFile(_loadProgFromStreamNo); }                       // may close program file now 
+
             _loadProgFromStreamNo = 0;                                          // back to the default stream (console) for program load    
         }
 
         statementInputStreamNumber = _activeFunctionData.statementInputStream;
-        setStream(statementInputStreamNumber, pStatementInputStream, false, true);
+        setCurrentStream(statementInputStreamNumber, pStatementInputStream, false, true);
     }
 
 
-    // has an error occurred ? (exclude 'events' reported as an error)
-    // ---------------------------------------------------------------
+    /* ---------------------------------------------
+    finalize: set application flags and print prompt
+    --------------------------------------------- */
     bool isError = (result != result_parsing_OK) || ((execResult != result_execOK) && (execResult < EVENT_startOfEvents));
     isError ? (_appFlags |= appFlag_errorConditionBit) : (_appFlags &= ~appFlag_errorConditionBit);     // set or clear error condition flag 
     // status 'idle in debug mode' or 'idle' 
@@ -1285,7 +1314,6 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
     (_openDebugLevels > 0) ? (_appFlags |= appFlag_stoppedInDebug) : (_appFlags |= appFlag_idle);
 
     // print new prompt and exit
-    // -------------------------
     if (!_silent && (_promptAndEcho != 0) && (execResult != EVENT_initiateProgramLoad)) {
         if (_lastPrintedIsPrompt) { printlnTo(0); }                             // avoid two prompts on the same line
         printTo(0, "Justina> "); _lastPrintedIsPrompt = true;
@@ -1303,7 +1331,8 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
 // executed AFTER all statements in the command line containing the 'clearProg' or 'clearMem' statement have been EXECUTED, just before returning to idle
 
 void Justina::clearMemory(int& clearIndicator, bool& kill, bool& quitJustina) {                     // 1 = clear program cmd, 2 = clear all cmd
-    if (_silent) { resetMachine(clearIndicator == 2, clearIndicator == 2, true); }
+    // if only clearing a program, keep batch files open (this is only allowed if no stopped programs - see 'clear program' command)
+    if (_silent) { resetMachine(clearIndicator == 2, clearIndicator == 2, clearIndicator == 1); }
     else {
         while (_pConsoleIn->available() > 0) { readFrom(0); }                                       // empty console buffer first (to allow the user to start with an empty line)
         do {
@@ -1325,7 +1354,8 @@ void Justina::clearMemory(int& clearIndicator, bool& kill, bool& quitJustina) { 
                 // 1 = clear program, 2 = clear all (including user variables)
                 if (tolower(input[0]) == 'y') {
                     printlnTo(0, (clearIndicator == 2) ? "clearing memory" : "clearing program");
-                    resetMachine(clearIndicator == 2, clearIndicator == 2, true);
+                    // if only clearing a program, keep batch files open (this is only allowed if no stopped programs - see 'clear program' command)
+                    resetMachine(clearIndicator == 2, clearIndicator == 2, clearIndicator == 1);
                 }
                 break;
             }
@@ -1343,8 +1373,8 @@ void Justina::traceAndPrintDebugInfo(execResult_type execResult) {
     // - if an error occurred in a RUNNING program, the program is terminated and the number of STOPPED programs ('in debug mode') does not change.
     // - if an error occurred while executing a command line, then this count is not changed either
     // flow control stack:
-    // - at this point, structure '_activeFunctionData' always contains flow control data for the main program level (command line - in debug mode if the count of open programs is not zero)
-    // - the flow control stack maintains data about open block commands, open functions and eval() strings in execution (call stack)
+    // - at this point, structure '_activeFunctionData' always contains flow control data for the main program level (command line or open batch file - in debug mode if the count of open programs is not zero)
+    // - the flow control stack maintains data about open block commands, open batch file, open functions and eval() strings in execution (call stack)
     // => skip stack elements for any command line open block commands or eval() strings in execution, and fetch the data for the function where control will resume when started again
 
     char* nextStatementPointer = _programCounter;
@@ -1627,7 +1657,7 @@ void Justina::resetMachine(bool withUserVariables, bool withBreakpoints, bool ke
     // delete all objects created on the heap
     // --------------------------------------
 
-    // note: objects living only during execution do not need to be deleted: they are all always deleted when the execution phase ends (even if with execution errors)
+    // note: objects living during execution only, do not need to be deleted: they are all always deleted when the execution phase ends (even if with execution errors)
     // more in particular: evaluation stack, intermediate alphanumeric constants, local storage areas, local variable strings, local array objects
 
     // delete identifier name objects on the heap (variable names, Justina function names) 
@@ -1652,16 +1682,11 @@ void Justina::resetMachine(bool withUserVariables, bool withBreakpoints, bool ke
 
     // delete all elements of the flow control stack 
     // in the process, delete all local variable areas referenced in elements of the flow control stack referring to functions, including local variable string and array values
-
-    Serial.print("**** reset machine: 'keepExecutingBatchFile' = "); Serial.println(keepDebugLevelBatchFile);
-    Serial.print("     block type: "); Serial.print((int)_activeFunctionData.blockType); Serial.print(", stream was "); Serial.println((int)_activeFunctionData.statementInputStream);
-
+    // if 'keepDebugLevelBatchFile' is false, then an active batch file and any calling batch files will be closed as well
     int deleteImmModeCmdStackLevels{};
     clearFlowCtrlStack(deleteImmModeCmdStackLevels, false, false, keepDebugLevelBatchFile);
 
-    Serial.print("     reset to block type: "); Serial.print((int)_activeFunctionData.blockType); Serial.print(", stream "); Serial.println((int)_activeFunctionData.statementInputStream);
-
-    // delete all elements of the immediate mode parsed statements stack
+    // delete elements of the immediate mode parsed statements stack 
     // (parsed immediate mode statements can be temporarily pushed on the immediate mode stack to be replaced either by parsed debug command lines or parsed eval() strings) 
     // also delete all parsed alphanumeric constants: (1) in the currently parsed program, (2) in parsed immediate mode statements (including those on the imm.mode parsed statements stack)) 
 
@@ -1703,9 +1728,11 @@ void Justina::resetMachine(bool withUserVariables, bool withBreakpoints, bool ke
         }
     }
 
-// check that all heap objects are deleted (in fact only the count is checked)
-// ---------------------------------------------------------------------------
-    danglingPointerCheckAndCount(withUserVariables);                                                            // check and count
+    // check that all heap objects are deleted (in fact only the count is checked)
+    // ---------------------------------------------------------------------------
+    // With open batch files OR when stopped programs exist, the flow control stack and associated objects (batch file names and parameters)... 
+    //       ...are NOT completely cleared: do not check dangling pointers then
+    if ((_activeFunctionData.statementInputStream == 0) && (_openDebugLevels == 0)) { danglingPointerCheckAndCount(withUserVariables); }        // check and count
 
 
     // initialize interpreter object variables
@@ -1849,20 +1876,21 @@ void Justina::initInterpreterVariables(bool fullReset, bool keepDebugLevelBatchF
         _pParsedCommandLineStackTop = nullptr;
         _activeFunctionData.callerEvalStackLevels = 0;                              // this is the highest program level
         _callStackDepth = 0;                                                        // equals flow control stack depth minus open loop (if, for, ...) blocks (= blocks being executed)
+        _openDebugLevels = 0;                                                       // equals imm mode cmd stack depth minus open eval() strings (= eval() strings being executed)
     }
 
     _localVarValueAreaCount = 0;
     _localVarStringObjectCount = 0;
     _localArrayObjectCount = 0;
 
-    _openDebugLevels = 0;                                                           // equals imm mode cmd stack depth minus open eval() strings (= eval() strings being executed)
 
 
     // reset counters for heap objects
     // -------------------------------
-
+    if (!keepDebugLevelBatchFile) {         // if open batch files, not all parsedCommandLineStack levels are cleared: corresponding parsed string objects are preserved  
+        _parsedStringConstObjectCount = 0;
+    }
     _identifierNameStringObjectCount = 0;                                           // object count
-    _parsedStringConstObjectCount = 0;
     _intermediateStringObjectCount = 0;
     _globalStaticVarStringObjectCount = 0;
     _globalStaticArrayObjectCount = 0;
@@ -2010,7 +2038,7 @@ void Justina::deleteStringArrayVarsStringObjects(Justina::Val* varValues, char* 
 // *   delete variable heap objects: array variable character strings for ONE array variable   *
 // ---------------------------------------------------------------------------------------------
 
-// no checks are made - make sure the variable is an array variable storing strings
+// no checks are made - make sure the variable is an array variable of type 'string' (storing strings)
 
 void Justina::deleteOneArrayVarStringObjects(Justina::Val* varValues, int index, bool isUserVar, bool isLocalVar) {
     void* pArrayStorage = varValues[index].pArray;                                                                                  // void pointer to an array of string pointers; element 0 contains dimensions and dimension count
@@ -2091,10 +2119,10 @@ void Justina::deleteLastValueFiFoStringObjects() {
 }
 
 
-// -----------------------------------------------------------------------------------------
-// *   delete all parsed alphanumeric constant value heap objects                          *
-// *   note: this includes UNQUALIFIED identifier names stored as alphanumeric constants   *
-// -----------------------------------------------------------------------------------------
+// ----------------------------------------------------------------------------------------------------------
+// *   delete all parsed alphanumeric constant value heap objects in a program or in imm. mode statements   *
+// *   note: this includes UNQUALIFIED identifier names stored as alphanumeric constants                    *
+// ----------------------------------------------------------------------------------------------------------
 
 // must be called before deleting tokens (list elements) 
 
@@ -2109,12 +2137,13 @@ void Justina::deleteConstStringObjects(char* pFirstToken) {
         bool isStringConst = (tokenType == tok_isConstant) ? (((*prgmCnt.pTokenChars >> 4) & value_typeMask) == value_isStringPointer) : false;
 
         if (isStringConst || (tokenType == tok_isGenericName)) {
-            memcpy(&pAnum, prgmCnt.pCstToken->cstValue.pStringConst, sizeof(pAnum));                    // pointer not necessarily aligned with word size: copy memory instead
+            memcpy(&pAnum, prgmCnt.pCstToken->cstValue.pStringConst, sizeof(pAnum));                    // copy pointer (not necessarily aligned with word size: copy memory instead)
             if (pAnum != nullptr) {
             #if PRINT_HEAP_OBJ_CREA_DEL
                 _pDebugOut->print("\r\n----- (parsed str ) ");   _pDebugOut->println((uint32_t)pAnum, HEX);
                 _pDebugOut->print("   del.const.string ");   _pDebugOut->println(pAnum);
             #endif
+                Serial.print("**** DELETE CONSTANT STRING: "); Serial.println(pAnum);
                 _parsedStringConstObjectCount--;
                 delete[] pAnum;
             }

@@ -181,6 +181,7 @@ private:
         // value 1: block type
         block_none,                                                     // command is not a block command
         block_JustinaFunction,
+        block_batchFile,
         block_for,
         block_while,
         block_if,
@@ -779,6 +780,7 @@ private:
         result_cmd_onlyInProgOutsideFunction,
         result_cmd_onlyImmediateNotWithinBlock,
         result_cmd_usageRestrictionNotValid,
+        result_cmd_noProgClearInDebugMode,
 
         result_cmd_expressionExpectedAsPar,
         result_cmd_varWithoutAssignmentExpectedAsPar,
@@ -909,6 +911,7 @@ public:
         result_SD_sourceIsDestination,
         result_SD_fileNotAllowedHere,
         result_SD_fileNameExpected,
+        result_SD_pathMustStartFromRootDir,
         result_SD_isOpenSystemFile,
         result_SD_openBatchFiles_cannotStopSDcard,
 
@@ -1677,7 +1680,8 @@ private:
         char trapEnable : 1{ 0 };                                       // enable error trapping
         char activeCmd_isInternal : 1{};                                // command is internal
         char functionIndex{};                                           // user function index 
-        char callerEvalStackLevels{ 0 };                                // evaluation stack levels in use by caller(s) and main (call stack)
+        char callerEvalStackLevels : 7{ 0 };                            // evaluation stack levels in use by caller(s) and main (call stack)
+        char errorHandlerActive : 1{ 0 };                               // an error is being handled in the current function or batch file line
 
         // within a function, as in immediate mode, only one command can be active at a time (ended by semicolon), in contrast to command blocks, which can be nested, so command data can be stored here:
         // data is stored when a keyword is processed and it is cleared when the ending semicolon (ending the command) is processed
@@ -2385,7 +2389,7 @@ private:
     // execution
     // ---------
 
-    execResult_type  exec(char* startHere, bool isBatchFileEnd = false);
+    execResult_type  exec(char* startHere);
     execResult_type  execParenthesesPair(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount, bool& forcedStopRequest, bool& forcedAbortRequest);
     execResult_type  execInternalCommand(bool& isFunctionReturn, bool& forcedStopRequest, bool& forcedAbortRequest);
     execResult_type  execExternalCommand();
@@ -2397,6 +2401,7 @@ private:
     execResult_type  execExternalCppFncOrCmd(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int maxArgs, bool isCommand = false);
     execResult_type  launchJustinaFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount);
     execResult_type  launchEval(LE_evalStack*& pFunctionStackLvl, char* parsingInput);
+    execResult_type  launchBatchFileExecution(int cmdArgCount, LE_evalStack*& pStackLvl);
     void terminateJustinaFunction(bool isVoidFunction, bool addZeroReturnValue = false);
     void terminateEval();
     void terminateBatchFile();
@@ -2427,7 +2432,7 @@ private:
     void pushVariable(int tokenType);
 
     // copy function arguments with attributes from the evaluation stack to value and attribute arrays, for use by internal and external (user callback) functions
-    execResult_type copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, bool* argIsArray, char* valueType, Val* args, bool passVarRefOrConst = false, Val* dummyArgs = nullptr);
+    void copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, bool* argIsArray, char* valueType, Val* args, bool passVarRefOrConst = false, Val* dummyArgs = nullptr);
 
     // fetch variable base address (where a value is stored, or a pointer to a char*, a source variable (function parameters) or (array variable) the start of array storage (on the heap)
     void* fetchVarBaseAddress(Token_variable* pVarToken, char*& pVarType, char& valueType, char& sourceVarScopeAndFlags);
@@ -2469,11 +2474,12 @@ private:
     execResult_type SD_fileChecks(bool argIsLong, bool argIsFloat, Val arg, File*& pFile, int allowedFileTypes = 1, bool allowSystemFiles = false);
     execResult_type SD_fileChecks(File*& pFile, int fileNumber, int allowedFileTypes = 1, bool allowSystemFiles = false);
 
-    execResult_type setStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, int& streamNumber, bool forOutput = false, bool allowSystemFiles = false);
-    execResult_type setStream(int streamNumber, bool forOutput = false, bool allowSystemFiles = false);
-    execResult_type setStream(int streamNumber, Stream*& pStream, bool forOutput = false, bool allowSystemFiles = false);
+    execResult_type setCurrentStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, int& streamNumber, bool forOutput = false, bool allowSystemFiles = false);
+    execResult_type setCurrentStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, int& streamNumber, Stream*& pStream, bool forOutput = false, bool allowSystemFiles = false);
+    execResult_type setCurrentStream(int streamNumber, bool forOutput = false, bool allowSystemFiles = false);
+    execResult_type setCurrentStream(int streamNumber, Stream*& pStream, bool forOutput = false, bool allowSystemFiles = false);
 
-    bool pathValid(const char* path);
+    execResult_type pathValid(const char* path);
     bool fileIsOpen(const char* path);
 
 
@@ -2519,7 +2525,7 @@ private:
     void quoteAndExpandEscSeq(char*& input);
 
     // find / jump to tokens in program memory
-    int findTokenStep(char*& pStep, bool excludeCurrent, char tokenTypeToFind, char criterium1, char criterium2 = -1, char criterium3 = -1, int* matchedCritNum = nullptr, int* tokenIndex = nullptr);
+    int findTokenStep(char*& pStep, bool excludeCurrent, char tokenTypeToFind, char criterium1 = -1, char criterium2 = -1, char criterium3 = -1, int* matchedCritNum = nullptr, int* tokenIndex = nullptr);
     int jumpTokens(int n, char*& pStep, int& tokenCode);
     int jumpTokens(int n, char*& pStep);
     int jumpTokens(int n);

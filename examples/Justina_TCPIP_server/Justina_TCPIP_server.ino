@@ -65,8 +65,8 @@ constexpr char SSID[] = SERVER_SSID, PASS[] = SERVER_PASS;                      
 
 // enter the correct server STATIC IP address and port here (CHECK / ADAPT your ROUTER settings as well)
 // (if configured as a HTTP/IP client, this is the IP address and port of the server to connect to) 
-const IPAddress serverAddress(192, 168, 0, 96);                                     // STATIC server IP (LAN)
-const int serverPort = 8086;
+const IPAddress serverAddress(192, 168, 0, 95);                                     // STATIC server IP (LAN)
+const int serverPort = 8085;
 
 // enter gateway address, subnet mask and DNS address here (not relevant if configured as HTTP/IP  client)
 const IPAddress gatewayAddress(192, 168, 0, 1);

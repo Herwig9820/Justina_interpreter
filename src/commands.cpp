@@ -212,7 +212,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             // overwrite the parsed command line (containing the 'step', 'go' or 'abort' command) with the command line stack top and pop the command line stack top
             // before removing, delete any parsed string constants for that command line
 
-            _lastUserCmdLineStep = *(char**)_pParsedCommandLineStackTop;                                                        // pop program step of last user cmd token ('tok_no_token')
+            _lastUserCmdLineStep = *(char**)_pParsedCommandLineStackTop;                                                            // pop program step of last user cmd token ('tok_no_token')
             long parsedUserCmdLen = _lastUserCmdLineStep - (_programStorage + _PROGRAM_MEMORY_SIZE) + 1;
             deleteConstStringObjects(_programStorage + _PROGRAM_MEMORY_SIZE);
             memcpy((_programStorage + _PROGRAM_MEMORY_SIZE), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);
@@ -892,6 +892,103 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                 };
             }
 
+            // push current command line storage to command line stack, to make room for the evaluation string (to parse) 
+            // ----------------------------------------------------------------------------------------------------------
+
+            // the parsed command line pushed, contains the parsed statements 'calling' (parsing and executing) the eval() string 
+            // this is either an outer level parsed eval() string, or the parsed command line where execution started  
+
+        #if PRINT_PARSED_CMD_STACK
+            _pDebugOut->print("   >> PUSH parsed statements (launch eval): steps = "); _pDebugOut->println(_lastUserCmdLineStep - (_programStorage + _PROGRAM_MEMORY_SIZE));
+        #endif
+            long parsedUserCmdLen = _lastUserCmdLineStep - (_programStorage + _PROGRAM_MEMORY_SIZE) + 1;
+            _pParsedCommandLineStackTop = (char*)parsedCommandLineStack.appendListElement(sizeof(char*) + parsedUserCmdLen);
+            *(char**)_pParsedCommandLineStackTop = _lastUserCmdLineStep;
+            memcpy(_pParsedCommandLineStackTop + sizeof(char*), (_programStorage + _PROGRAM_MEMORY_SIZE), parsedUserCmdLen);
+
+
+
+
+
+            // remember token address of the Justina function token (this is where the Justina function is called), in case an error occurs (while passing arguments etc.)   
+            ////_activeFunctionData.errorProgramCounter = pFunctionStackLvl->function.tokenAddress;
+
+            // push caller function data (or main = user entry level in immediate mode) on FLOW CONTROL stack 
+            // ----------------------------------------------------------------------------------------------
+
+            _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
+            *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                                 // push caller function data to stack
+            ++_callStackDepth;                                                                              // caller can be main, another Justina function or an eval() string
+
+            ////_activeFunctionData.functionIndex = pFunctionStackLvl->function.index;                          // index of Justina function to call
+            _activeFunctionData.blockType = block_batchFile;
+            _activeFunctionData.trapEnable = 0;
+
+
+
+            // set next step to start of called function
+            // -----------------------------------------
+
+            _activeFunctionData.pNextStep = _programStorage + _PROGRAM_MEMORY_SIZE;                         // first step in first statement in parsed eval() string
+            _activeFunctionData.errorStatementStartStep = _programStorage + _PROGRAM_MEMORY_SIZE;
+            _activeFunctionData.errorProgramCounter = _programStorage + _PROGRAM_MEMORY_SIZE;
+
+
+
+
+
+            ////_activeFunctionData.statementInputStream[1] = _activeFunctionData.statementInputStream[0];      // set 'calling' batch file stream number (to console or to calling batch file)
+            _activeFunctionData.statementInputStream[0] = streamNumber;                                     // set batch file stream number to batch file
+
+
+
+            // push current command line storage to command line stack, to make room for the evaluation string (to parse) 
+            // ----------------------------------------------------------------------------------------------------------
+
+            // the parsed command line pushed, contains the parsed statements 'calling' (parsing and executing) the eval() string 
+            // this is either an outer level parsed eval() string, or the parsed command line where execution started  
+
+        #if PRINT_PARSED_CMD_STACK
+            _pDebugOut->print("   >> PUSH parsed statements (launch eval): steps = "); _pDebugOut->println(_lastUserCmdLineStep - (_programStorage + _PROGRAM_MEMORY_SIZE));
+        #endif
+            long parsedUserCmdLen = _lastUserCmdLineStep - (_programStorage + _PROGRAM_MEMORY_SIZE) + 1;
+            _pParsedCommandLineStackTop = (char*)parsedCommandLineStack.appendListElement(sizeof(char*) + parsedUserCmdLen);
+            *(char**)_pParsedCommandLineStackTop = _lastUserCmdLineStep;
+            memcpy(_pParsedCommandLineStackTop + sizeof(char*), (_programStorage + _PROGRAM_MEMORY_SIZE), parsedUserCmdLen);
+
+
+
+
+
+            // remember token address of the Justina function token (this is where the Justina function is called), in case an error occurs (while passing arguments etc.)   
+            ////_activeFunctionData.errorProgramCounter = pFunctionStackLvl->function.tokenAddress;
+
+            // push caller function data (or main = user entry level in immediate mode) on FLOW CONTROL stack 
+            // ----------------------------------------------------------------------------------------------
+
+            _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
+            *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                                 // push caller function data to stack
+            ++_callStackDepth;                                                                              // caller can be main, another Justina function or an eval() string
+
+            ////_activeFunctionData.functionIndex = pFunctionStackLvl->function.index;                          // index of Justina function to call
+            _activeFunctionData.blockType = block_batchFile;
+            _activeFunctionData.trapEnable = 0;
+
+
+
+            // set next step to start of called function
+            // -----------------------------------------
+
+            _activeFunctionData.pNextStep = _programStorage + _PROGRAM_MEMORY_SIZE;                         // first step in first statement in parsed eval() string
+            _activeFunctionData.errorStatementStartStep = _programStorage + _PROGRAM_MEMORY_SIZE;
+            _activeFunctionData.errorProgramCounter = _programStorage + _PROGRAM_MEMORY_SIZE;
+
+
+
+
+
+            ////_activeFunctionData.statementInputStream[1] = _activeFunctionData.statementInputStream[0];      // set 'calling' batch file stream number (to console or to calling batch file)
+            _activeFunctionData.statementInputStream[0] = streamNumber;                                     // set batch file stream number to batch file
 
             // push the currently parsed command line to the 'command line stack', to make room for parsed statements of the called batch file  
             // -> the parsed command line pushed, contains the parsed statement 'calling' (parsing and executing) the batch file 
