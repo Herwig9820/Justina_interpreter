@@ -892,6 +892,11 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                 };
             }
 
+<<<<<<< Updated upstream
+=======
+
+
+>>>>>>> Stashed changes
             // push current command line storage to command line stack, to make room for the evaluation string (to parse) 
             // ----------------------------------------------------------------------------------------------------------
 
