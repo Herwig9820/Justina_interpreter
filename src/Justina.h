@@ -188,7 +188,6 @@ private:
         block_alterFlow,                                                // alter flow in specific open block types
         block_genericEnd,                                               // ends any type of open block
 
-        block_batchFile,
         block_eval,                                                     // execution only, signals execution of parsed eval() string 
         block_trigger,                                                  // execution only, signals execution of parsed trigger string
 
@@ -1968,8 +1967,8 @@ private:
     // if execution of a NEW program is started while in debug mode, the whole process as described above is repeated. So, you can have more than one program being suspended
     LinkedList flowCtrlStack;
     void* _pFlowCtrlStackTop{ nullptr };                                    // pointers to flow control stack top elements
-    int _callStackDepth{ 0 };                                               // number of currently open Justina functions + open eval() functions + count of stopped programs (in debug mode): ...
-    // ...this equals flow ctrl stack depth MINUS open loops (if, for, ...)
+    int _callStackDepth{ 0 };                                               // number of currently open Justina functions + open eval() functions + open batch files + count of stopped programs...
+                                                                            // ...(in debug mode): this equals flow ctrl stack depth MINUS open loops (if, for, ...)
 
 // while at least one program is stopped (debug mode), the PARSED code of the original command line from where execution started is pushed to a separate stack, and popped again ...
 // ...when the program resumes, so that execution can continue there. If multiple programs are currently stopped (see: flow control stack), this stack will contain multiple entries
