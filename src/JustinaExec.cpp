@@ -1576,6 +1576,7 @@ void Justina::clearFlowCtrlStack(int& parsedCmdStackLevelsToPop, bool deleteSing
     // The first command level resides either in _activeFunctionData  (if it contains the abort command) or in the flow ctrl stack (if the abort command is executed from a called batch file).   
     int cmdLevelsToLookFor{ isAbortCommand ? 2 : 1 };                           // init; counts down to 1
 
+    
     while (true) {
         Serial.println("<<<< LOOP");
         if (blockType == block_JustinaFunction) {
@@ -1586,7 +1587,7 @@ void Justina::clearFlowCtrlStack(int& parsedCmdStackLevelsToPop, bool deleteSing
 
             if (isCmdLine) {
                 Serial.println("C");
-                // when a (debug) command level is deleted from flowCtrlStack, a parsedStatementLineStack level must be popped from the parsed statement lines stack as well
+                // when a (debug) command level was deleted from flowCtrlStack, a parsedStatementLineStack level must be popped from the parsed statement lines stack as well
                 if (!initialLoop) { Serial.println("--C"); ++parsedCmdStackLevelsToPop; }                       // update count of 'parsed command line' stack levels to be deleted (parsedStatementLineStack)
 
                 // -> if an abort command ('abort') is entered (a program is stopped), loop until the SECOND command line is reached (from where the program was started)   
@@ -1624,7 +1625,7 @@ void Justina::clearFlowCtrlStack(int& parsedCmdStackLevelsToPop, bool deleteSing
         // ----------------
         else if (blockType == block_batchFile) {
             Serial.println("B");
-            // when a batch file level is deleted from flowCtrlStack, a parsedStatementLineStack level must be popped from the parsed statement lines stack as well
+            // when a batch file level was deleted from flowCtrlStack, a parsedStatementLineStack level must be popped from the parsed statement lines stack as well
             if (!initialLoop) { Serial.println("--B"); ++parsedCmdStackLevelsToPop; }   // update count of 'parsed command line' stack levels to be deleted (parsedStatementLineStack)
 
             if (keepExecutingBatchFile) { Serial.println("B break");  break; }          // continue execution of batch file lines ? break 
@@ -1638,7 +1639,7 @@ void Justina::clearFlowCtrlStack(int& parsedCmdStackLevelsToPop, bool deleteSing
         // ------------
         else if (blockType == block_eval) {
             Serial.println("E");
-            // when an eval() level is deleted from flowCtrlStack, a parsedStatementLineStack level must be popped from the parsed statement lines stack as well
+            // when an eval() level was deleted from flowCtrlStack, a parsedStatementLineStack level must be popped from the parsed statement lines stack as well
             if (!initialLoop) { Serial.println("--E"); ++parsedCmdStackLevelsToPop; }   // update count of 'parsed command line' stack levels to be deleted (parsedStatementLineStack)
         }
 
@@ -1661,9 +1662,6 @@ void Justina::clearFlowCtrlStack(int& parsedCmdStackLevelsToPop, bool deleteSing
 
         initialLoop = false;
     };
-
-
-
 }
 
 
@@ -2735,6 +2733,7 @@ Justina::execResult_type Justina::launchBatchFileExecution(int cmdArgCount, LE_e
     /* ---------------------------------------------------------------------------------------------------------------------------------------------------
         A batch file is executed line by line in 'immediate mode', just like a command line.
         - block structures (for, while, if...) must reside within single lines (same as for command lines).
+        - at the start of each line, error trapping is disabled and the error handler status is reset as well 
           note: use the 'gotoLabel' command within a (while, if...) block structure to implement conditional back and forward jumps within the batch file.
         Call a batch file from the command line or from another batch file. Batch files stay open as long as batch file lines are executed.
         - open batch files are closed automatically and can NOT be closed manually by the user with the 'close()' function.

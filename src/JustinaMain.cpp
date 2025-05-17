@@ -1168,21 +1168,26 @@ bool Justina::finaliseParsing(parsingResult_type& result, bool& kill, long lineC
 bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type execResult, bool& kill, int& clearIndicator, bool isSilentOnOffStatement) {
     bool isResetNow{ false };
 
+    // ---------------------------------------------------------------------
     // if in debug mode, trace expressions (if defined) and print debug info 
     // ---------------------------------------------------------------------
     if ((_openDebugLevels > 0) && (execResult != EVENT_kill) && (execResult != EVENT_quit) && (execResult != EVENT_initiateProgramLoad)) { traceAndPrintDebugInfo(execResult); }
 
 
+    // --------------------------------------------------------------------------------------------
     // parsing error ? (program parsing error or immediate mode (command line or batch file) error)
     // --------------------------------------------------------------------------------------------
-
     if (result != result_parsing_OK) {
-        // program parsing error ? reset machine (but keep user variables and breakpoints) - this clears any newly created program variables 
+        
+        // reset machine (but keep user variables and breakpoints) - this clears any newly created program variables 
         // This will also close all open batch files when the corresponding flow control stack levels will be deleted.
         // The program file itself will be closed a little bit further down in this procedure.
+        // -----------------------------------------------------------------------------------------------------------
         if (_programMode) { resetMachine(false); isResetNow = true; }
 
+
         // parsing error in command line (or in a batch file) - no program is running 
+        // --------------------------------------------------------------------------
         else {
             // if parsing error occurred in a batch file, this will close it as well as any calling batch files and reset input stream to console
             int deleteImmModeCmdStackLevels{ 0 };
@@ -1206,12 +1211,18 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
 #endif
 
 
-    // 'clear memory' / 'clear all' command ? Is executed AFTER the execution phase, if no parsing or execution errors 
+    // --------------------------------------
+    // 'clear memory' / 'clear all' command ? 
+    // --------------------------------------
+    // Memory will be cleared AFTER the execution phase, if no parsing or execution errors 
     bool quitJustina{ false };
     // note: clearing a program is only allowed if no stopped programs (see 'clear program' command)
     if ((result == result_parsing_OK) && (execResult == result_execOK) && (clearIndicator != 0)) { clearMemory(clearIndicator, kill, quitJustina); }
 
-    // only reset a couple of items here
+
+    // --------------------------------------------------------------------------
+    // if a reset has not been performed, reset a couple of parser variables here
+    // --------------------------------------------------------------------------
     if (!isResetNow) {
         parsingStack.deleteList();
         _blockLevel = 0;                                        // current number of open block commands (during parsing) - block level + parenthesis level = parsing stack depth
@@ -1222,32 +1233,34 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
     }
 
 
-    // execution finished (not stopping in debug mode), with or without error: delete parsed strings in imm mode command : they are on the heap and not needed any more. 
-    // Identifiers must stay available.
-    // -> if stopping a program for debug, do not delete parsed strings (in imm. mode command), because that command line has now been pushed on...
-     // ...the parsed command line stack and included parsed constants will be deleted later (resetMachine routine).
+    // ----------------------------------------------------------------------
+    // not stopping in debug mode ? delete parsed strings in imm mode command 
+    // ----------------------------------------------------------------------
+    // note: Identifiers must stay available.
+    // -> if stopping a program for debug, do not delete parsed strings (in imm. mode command), because the parsed command line (or batch file line) defining these strings...
+     // ...is now pushed on the parsed statements stack.
     if ((execResult != EVENT_stopForDebug) && (execResult != EVENT_stopForBreakpoint)) { deleteConstStringObjects(_programStorage + _PROGRAM_MEMORY_SIZE); } // always
+    
 
+    // ------------------------------------------------------------
+    // init function flags, program counter, statement input stream 
+    // ------------------------------------------------------------
     resetFunctionFlags();
 
-    _programCounter = _programStorage + _PROGRAM_MEMORY_SIZE;               // start of 'immediate mode' program area
-    *(_programStorage + _PROGRAM_MEMORY_SIZE) = tok_no_token;               //  current end of program (immediate mode)
-
-
-    /* -------------------------------------------------------------------------------------------
-    the 'statement input stream' is the stream providing statements to the interpreter:
-    - program statements (from an external stream or SD card program file)
-    - immediate mode statements (from the stream currently set as console or an SD card batch file)
-    Next code block mainly handles the stream for immediate mode statements
-    -------------------------------------------------------------------------------------------- */
+    _programCounter = _programStorage + _PROGRAM_MEMORY_SIZE;                   // start of 'immediate mode' program area
+    *(_programStorage + _PROGRAM_MEMORY_SIZE) = tok_no_token;                   //  current end of program (immediate mode)
 
     static int statementInputStreamNumber = 0;  // console input stream number (default)
     static Stream* pStatementInputStream = _pConsoleIn;  // console input stream (default)
 
-    // INITIATING a program load ? Before loading a program, clear memory except user variables and breakpoints; do NOT close the currently active batch file
-    // note: initiating a program load is only allowed if no stopped programs (see 'load program' command)
+
+    // ---------------------------
+    // INITIATING a program load ? 
+    // ---------------------------
     if (execResult == EVENT_initiateProgramLoad) {
-        resetMachine(false, false, true); isResetNow = true;
+        // Before loading a program, clear memory except user variables and breakpoints; do NOT close the currently active batch file
+        // note: initiating a program load is only allowed if no stopped programs (see 'load program' command)
+        resetMachine(false, false, true); isResetNow = true;                    // but keep debug level batch file (if command launched from a batch file)
         _initiateProgramLoad = true;
         _programMode = true;
         _programCounter = _programStorage;
@@ -1265,11 +1278,13 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
         if (statementInputStreamNumber <= 0) { while (pStatementInputStream->available()) { readFrom(statementInputStreamNumber); } }
     }
 
-
-    // set correct statement input stream again; if a Justina program file is open, close it 
-    // -----------------------------------------------------------
+    // -----------------------------
+    // NOT initiating a program load  
+    // ----------------------------- 
     else {
-        // program load ended ? (program was loaded correctly, or program load ended with a program parsing error) 
+
+        // end of a program load ? 
+        // -----------------------
         if (_programMode) {                                                     // At this time, the stream is still the stream from where the program was loaded 
             _programMode = false;
 
@@ -1282,20 +1297,21 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
                     flushInputCharacters(stop, abort);                          // flush any remaining input characters (e.g. after a program parsing error)
                 }
             }
-            // program load (with or without success) from a file ?
+            // program load (with or without success) from a file ? Close it now
             else { SD_closeFile(_loadProgFromStreamNo); }                       // may close program file now 
 
             _loadProgFromStreamNo = 0;                                          // back to the default stream (console) for program load    
         }
 
+        // set the input stream again to console (or batch file) 
         statementInputStreamNumber = _activeFunctionData.statementInputStream;
         setCurrentStream(statementInputStreamNumber, pStatementInputStream, false, true);
     }
 
 
-    /* ---------------------------------------------
-    finalize: set application flags and print prompt
-    --------------------------------------------- */
+    // ------------------------------------------------
+    // finalize: set application flags and print prompt
+    // ------------------------------------------------
     bool isError = (result != result_parsing_OK) || ((execResult != result_execOK) && (execResult < EVENT_startOfEvents));
     isError ? (_appFlags |= appFlag_errorConditionBit) : (_appFlags &= ~appFlag_errorConditionBit);     // set or clear error condition flag 
     // status 'idle in debug mode' or 'idle' 
