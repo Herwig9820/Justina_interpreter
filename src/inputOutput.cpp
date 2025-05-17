@@ -1207,7 +1207,7 @@ void Justina::printExecError(execResult_type execResult, bool  showStopmessage) 
 
             while (((OpenFunctionData*)pFlowCtrlStackLvl)->blockType == block_eval) {
                 pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
-                pImmediateCmdStackLvl = parsedCommandLineStack.getPrevListElement(pImmediateCmdStackLvl);
+                pImmediateCmdStackLvl = parsedStatementLineStack.getPrevListElement(pImmediateCmdStackLvl);
             }
 
             // retrieve error statement pointers and function index (in case the 'function' block type is referring to immediate mode statements)

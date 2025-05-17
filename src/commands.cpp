@@ -226,14 +226,13 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             long parsedUserCmdLen = _lastUserCmdLineStep - (_programStorage + _PROGRAM_MEMORY_SIZE) + 1;
             deleteConstStringObjects(_programStorage + _PROGRAM_MEMORY_SIZE);
             memcpy((_programStorage + _PROGRAM_MEMORY_SIZE), _pParsedCommandLineStackTop + sizeof(char*), parsedUserCmdLen);
-            parsedCommandLineStack.deleteListElement(_pParsedCommandLineStackTop);
-            _pParsedCommandLineStackTop = parsedCommandLineStack.getLastListElement();
+            parsedStatementLineStack.deleteListElement(_pParsedCommandLineStackTop);
+            _pParsedCommandLineStackTop = parsedStatementLineStack.getLastListElement();
 
         #if PRINT_PARSED_CMD_STACK
             _pDebugOut->print("   >> POP parsed statements (Go): steps = "); _pDebugOut->println(_lastUserCmdLineStep - (_programStorage + _PROGRAM_MEMORY_SIZE));
         #endif
             --_openDebugLevels;
-            Serial.print("==== GO: POP parsed statements - open debug levels now = "); Serial.println(_openDebugLevels);
 
             _stepCmdExecuted = (_activeFunctionData.activeCmd_commandCode == cmdcod_step) ? db_singleStep :
                 (_activeFunctionData.activeCmd_commandCode == cmdcod_stepOut) ? db_stepOut :

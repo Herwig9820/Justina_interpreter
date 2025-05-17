@@ -2451,7 +2451,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 case 37:fcnResult.longConst = flowCtrlStack.getElementCount(); break;           // flow control stack element count (call stack depth + stack levels used by open blocks)
                 case 38:fcnResult.longConst = _callStackDepth; break;                           // call stack depth; this excludes stack levels used by blocks (while, if, ...)
                 case 39:fcnResult.longConst = _openDebugLevels; break;                          // number of stopped programs
-                case 40:fcnResult.longConst = parsedCommandLineStack.getElementCount(); break;  // immediate mode parsed programs stack element count: stopped program count + open eval() strings (being executed)
+                case 40:fcnResult.longConst = parsedStatementLineStack.getElementCount(); break;  // immediate mode parsed programs stack element count: stopped program count + open eval() strings (being executed)
 
                 case 41: fcnResult.longConst = evalStack.getCreatedObjectCount(); break;        // created list object count (across linked lists: count is static)
 

@@ -611,7 +611,7 @@ void Justina::constructorCommonPart() {
     parsingStack.setListName("parsing ");
     evalStack.setListName("eval    ");
     flowCtrlStack.setListName("flowCtrl");
-    parsedCommandLineStack.setListName("cmd line");
+    parsedStatementLineStack.setListName("cmd line");
 
     // create objects
     // --------------
@@ -1167,17 +1167,15 @@ bool Justina::finaliseParsing(parsingResult_type& result, bool& kill, long lineC
 
 bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type execResult, bool& kill, int& clearIndicator, bool isSilentOnOffStatement) {
     bool isResetNow{ false };
-    Serial.print("**** A1 - parsing result "); Serial.println(result); delay(100);
 
     // if in debug mode, trace expressions (if defined) and print debug info 
     // ---------------------------------------------------------------------
     if ((_openDebugLevels > 0) && (execResult != EVENT_kill) && (execResult != EVENT_quit) && (execResult != EVENT_initiateProgramLoad)) { traceAndPrintDebugInfo(execResult); }
-    Serial.print("**** A2 - parsing result "); Serial.println(result); delay(100);
 
 
     // parsing error ? (program parsing error or immediate mode (command line or batch file) error)
     // --------------------------------------------------------------------------------------------
-    
+
     if (result != result_parsing_OK) {
         // program parsing error ? reset machine (but keep user variables and breakpoints) - this clears any newly created program variables 
         // This will also close all open batch files when the corresponding flow control stack levels will be deleted.
@@ -1190,11 +1188,7 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
             int deleteImmModeCmdStackLevels{ 0 };
 
             // close any open batch files for the current (debug or 'root') command line
-            while (_activeFunctionData.blockType == block_batchFile) {
-                terminateBatchFile();
-                Serial.println("****    - deleting 1 level");
-            }
-            Serial.print("**** A3 - parsing result "); Serial.println(result); delay(100);
+            while (_activeFunctionData.blockType == block_batchFile) { terminateBatchFile(); }
 
             int streamNumber = _activeFunctionData.statementInputStream;        // this is now the console stream again
             bool stop{ false }, abort{ false };                 // dummy, as we are entering idle mode anyway
@@ -1212,13 +1206,10 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
 #endif
 
 
-    Serial.print("**** B - parsing result "); Serial.println(result); delay(100);
-
     // 'clear memory' / 'clear all' command ? Is executed AFTER the execution phase, if no parsing or execution errors 
     bool quitJustina{ false };
     // note: clearing a program is only allowed if no stopped programs (see 'clear program' command)
     if ((result == result_parsing_OK) && (execResult == result_execOK) && (clearIndicator != 0)) { clearMemory(clearIndicator, kill, quitJustina); }
-    Serial.println("**** C"); delay(100);
 
     // only reset a couple of items here
     if (!isResetNow) {
@@ -1249,8 +1240,6 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
     - immediate mode statements (from the stream currently set as console or an SD card batch file)
     Next code block mainly handles the stream for immediate mode statements
     -------------------------------------------------------------------------------------------- */
-
-    Serial.println("**** D"); delay(100);
 
     static int statementInputStreamNumber = 0;  // console input stream number (default)
     static Stream* pStatementInputStream = _pConsoleIn;  // console input stream (default)
@@ -1312,6 +1301,16 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
     // status 'idle in debug mode' or 'idle' 
     (_appFlags &= ~appFlag_statusMask);
     (_openDebugLevels > 0) ? (_appFlags |= appFlag_stoppedInDebug) : (_appFlags |= appFlag_idle);
+
+
+    //// temp
+    if (_lastPrintedIsPrompt) { printlnTo(0); }
+    Serial.print("==== flow ctrl stack elements = "); Serial.println(flowCtrlStack.getElementCount());
+    Serial.print("     parsed cmd line stack el = "); Serial.println(parsedStatementLineStack.getElementCount());
+    Serial.print("     open debug levels        = "); Serial.println(_openDebugLevels);
+    Serial.print("     call stack depth         = "); Serial.println(_callStackDepth);
+    _lastPrintedIsPrompt = true;
+
 
     // print new prompt and exit
     if (!_silent && (_promptAndEcho != 0) && (execResult != EVENT_initiateProgramLoad)) {
@@ -1887,7 +1886,7 @@ void Justina::initInterpreterVariables(bool fullReset, bool keepDebugLevelBatchF
 
     // reset counters for heap objects
     // -------------------------------
-    if (!keepDebugLevelBatchFile) {         // if open batch files, not all parsedCommandLineStack levels are cleared: corresponding parsed string objects are preserved  
+    if (!keepDebugLevelBatchFile) {         // if open batch files, not all parsedStatementLineStack levels are cleared: corresponding parsed string objects are preserved  
         _parsedStringConstObjectCount = 0;
     }
     _identifierNameStringObjectCount = 0;                                           // object count

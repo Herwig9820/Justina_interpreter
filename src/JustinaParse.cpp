@@ -26,7 +26,7 @@
 #include "Justina.h"
 
 #define PRINT_HEAP_OBJ_CREA_DEL 0
-#define PRINT_PARSED_TOKENS 1
+#define PRINT_PARSED_TOKENS 0
 #define PRINT_DEBUG_INFO 0
 
 

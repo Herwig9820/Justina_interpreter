@@ -1972,7 +1972,7 @@ private:
 
 // while at least one program is stopped (debug mode), the PARSED code of the original command line from where execution started is pushed to a separate stack, and popped again ...
 // ...when the program resumes, so that execution can continue there. If multiple programs are currently stopped (see: flow control stack), this stack will contain multiple entries
-    LinkedList parsedCommandLineStack;
+    LinkedList parsedStatementLineStack;
     char* _pParsedCommandLineStackTop{ nullptr };
     int _openDebugLevels{ 0 };                                              // number of stopped programs: equals parsed command line stack depth minus open eval() strings (= eval() strings being executed)
 
