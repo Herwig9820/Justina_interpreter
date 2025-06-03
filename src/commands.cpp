@@ -157,7 +157,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
         case cmdcod_abort:
         {
             if (_openDebugLevels == 0) { return result_noProgramStopped; }
-            return EVENT_abort;                               
+            return EVENT_abort;
         }
         break;
 
@@ -818,7 +818,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                 // external source specified ?
                 else if ((valueType[0] == value_isLong) || (valueType[0] == value_isFloat)) {                           // external source specified: console or alternate input
                     _loadProgFromStreamNo = ((valueType[0] == value_isLong) ? args[0].longConst : args[0].floatConst);
-                    if (_loadProgFromStreamNo == 0) {}                                                                  // do nothing
+                    if (_loadProgFromStreamNo == 0) {}
                     else if (_loadProgFromStreamNo > 0) { return result_IO_invalidStreamNumber; }
                     else if ((-_loadProgFromStreamNo) > _externIOstreamCount) { return result_IO_invalidStreamNumber; }
                     else if (_ppExternInputStreams[(-_loadProgFromStreamNo) - 1] == nullptr) { return result_IO_noDeviceOrNotForInput; }
@@ -856,7 +856,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
         {
             // use to end executing a batch file before the end of the file is reached
             int streamNumber = _activeFunctionData.statementInputStream;                            // stream assigned to the currently executing batch file
-            if (streamNumber <= 0) { return result_IO_noBatchFile; }                                // currently not executing a batch file
+            if (streamNumber <= 0) { return result_IO_onlyAllowedInBatchFile; }                                // currently not executing a batch file
 
             terminateBatchFile();
 
@@ -872,12 +872,12 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
         case cmdcod_gotoLabel:
         {
-            /* -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-                A label is defined as the first part of a single-line comment, which must start at the beginning of a line. It is terminated by two slashes, followed by an optional comment.
-                Spaces are allowed within a label. The starting and ending slashes themselves are not part of the label.
-                Label example (quotes added for clarity here): '//loop start// this is the start of a multi-line loop in a batch file'
+            /* ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                A label is defined as the first part of a single-line comment, which must start at the beginning of a line. It is terminated by two colons (':'), followed by an optional comment.
+                Spaces are allowed within a label. The starting slashes and the ending colons themselves are not part of the label.
+                Label example (quotes added for clarity here): '//loop start::' this is the start of a multi-line loop in a batch file'
                 Use the 'gotoLabel' command within a (while, if...) block structure to implement conditional back and forward jumps to a defined label within the batch file.
-            ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- */
+            ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- */
 
             // 1 argument: label name (arg. count check during parsing)
             bool argIsVar[1];
@@ -887,21 +887,20 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
 
             int streamNumber = _activeFunctionData.statementInputStream;                        // stream assigned to the currently executing batch file
-            if (streamNumber <= 0) { return result_IO_noBatchFile; }                            // currently not executing a batch file
+            if (streamNumber <= 0) { return result_IO_onlyAllowedInBatchFile; }                            // currently not executing a batch file
 
             if (valueType[0] != value_isStringPointer) { return result_arg_stringExpected; }    // label to look for must be a string
             if (args[0].pStringConst == nullptr) { return result_arg_nonEmptyStringExpected; }  // label to look for must be a non-empty string
-
-            File file = openFiles[streamNumber - 1].file;
-            unsigned long currentPosition = file.position();                                    // save current position in batch file
 
             int labelLength = 2 + strlen(args[0].pStringConst) + 2;                             // excluding terminating '\0'
             char label[labelLength + 1];
             strcpy(label, "//");
             strcat(label, args[0].pStringConst);
-            strcat(label, "//");
+            strcat(label, "::");
 
             // locate label position in batch file and move to the next line
+            File file = openFiles[streamNumber - 1].file;
+            unsigned long currentPosition = file.position();                                    // save current position in batch file
             file.seek(0);                                                                       // start at beginning of file
             bool isLabel = file.find(label);
             if (isLabel) {                                                                      // label with surrounding "//" found ?
@@ -951,7 +950,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             -------------------------------------------------------------------------------------------------------------------------------------------- */
 
             int streamNumber = _activeFunctionData.statementInputStream;
-            if (streamNumber <= 0) { return result_IO_noBatchFile; }
+            if (streamNumber <= 0) { return result_IO_onlyAllowedInBatchFile; }
 
             bool argIsVar[1];
             bool argIsArray[1];
@@ -961,7 +960,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             if ((valueType[0] != value_isLong) && (valueType[0] != value_isFloat)) { return result_arg_numberExpected; }
             _silent = bool((valueType[0] == value_isLong) ? (args[0].longConst) : (args[0].floatConst));
             openFiles[streamNumber - 1].silent = _silent ? 1 : 0;                   // not a boolean but a single bit
-
+            
             // clean up
             clearEvalStackLevels(cmdArgCount);                                      // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_commandCode = cmdcod_none;                // command execution ended
@@ -1123,7 +1122,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                     else { return result_arg_numberExpected; }
                 }
                 Stream* pStream{ nullptr };
-                execResult = setCurrentStream(IOstreamNumber, pStream, isSend);                     // perform checks and set EXTERNAL IO stream (for input OR output)
+                execResult = setActiveStreamTo(IOstreamNumber, pStream, isSend);                     // perform checks and set EXTERNAL IO stream (for input OR output)
                 if (execResult != result_execOK) {
                     return result_IO_invalidStreamNumber;
                 }
@@ -1214,7 +1213,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
                         if (isReceive && verbose) {
                             // set EXTERNAL stream to input from, again (it was changed to CONSOLE by getConsoleCharacters() method, to read user answer from CONSOLE)
-                            execResult = setCurrentStream(sourceStreamNumber, pSourceStream, false);        // perform checks and set input stream
+                            execResult = setActiveStreamTo(sourceStreamNumber, pSourceStream, false);        // perform checks and set input stream
                             if (execResult != result_execOK) { return result_IO_invalidStreamNumber; }
                         }
                     }
@@ -1254,7 +1253,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                     if (execResult != result_execOK) { return execResult; }
                     if (openFiles[sourceStreamNumber - 1].file.isDirectory()) { SD_closeFile(sourceStreamNumber); return result_SD_directoryNotAllowed; }
 
-                    execResult = setCurrentStream(sourceStreamNumber);                              // perform checks and set input stream (file)
+                    execResult = setActiveStreamTo(sourceStreamNumber);                              // perform checks and set input stream (file)
                     if (execResult != result_execOK) {
                         SD_closeFile(sourceStreamNumber);
                         return execResult;
@@ -1274,7 +1273,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                         if (isCopy) { SD_closeFile(sourceStreamNumber); return execResult; }        // source file was already open: close
                     }
 
-                    execResult = setCurrentStream(destinationStreamNumber, true);                   // perform checks and set output stream (file)
+                    execResult = setActiveStreamTo(destinationStreamNumber, true);                   // perform checks and set output stream (file)
                     if (execResult != result_execOK) {
                         if (isCopy) { SD_closeFile(sourceStreamNumber); }                           // source file was already open: close
                         SD_closeFile(destinationStreamNumber);
@@ -1478,7 +1477,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                     if ((argIsArray[1]) && (valueType[1] != value_isStringPointer)) { return result_array_valueTypeIsFixed; }   // an array cannot change type: it needs to be string to receive result
                     if (checkForDefault && (valueType[1] != value_isStringPointer)) { return result_arg_stringExpected; }       // default supplied: it needs to be string
 
-                    char s[80] = "===== Input (\\c to cancel";                                                                  // title static text
+                    char s[80] = "\r\n===== Input (\\c to cancel";                                                                  // title static text
                     char title[80 + MAX_ALPHA_CONST_LEN] = "";                                                                  // title static text + string contents of variable
                     strcat(s, checkForDefault ? ", \\d for default = '%s') =====" : "): =====");
                     sprintf(title, s, (args[1].pStringConst == nullptr) ? "" : args[1].pStringConst);
@@ -1496,7 +1495,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                     }
                     checkForDefault = false;
 
-                    char s[120] = "===== Information ";
+                    char s[120] = "\r\n===== Information ";
                     strcat(s, isInfoWithYesNo ? "(please answer Y or N" : "(please confirm by pressing ENTER");
                     printlnTo(0, strcat(s, checkForCancel ? ", \\c to cancel): =====" : "): ====="));
                 }
@@ -1611,7 +1610,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             long startPauseAt = millis();                                                               // if pause, not stop;
 
             // set _pStreamIn to console, for use by Justina methods
-            execResult = setCurrentStream(0); if (execResult != result_execOK) { return execResult; }   // perform checks and set input stream (to console)
+            execResult = setActiveStreamTo(0); if (execResult != result_execOK) { return execResult; }   // perform checks and set input stream (to console)
             while (_pConsoleIn->available() > 0) { read(); }                                            // empty console buffer first (to allow the user to type in a 'single' character)
             do {                                                                                        // until new line character encountered
                 char c{};
@@ -1693,7 +1692,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             char argSep[3] = "  "; argSep[0] = term_comma[0];
 
             int streamNumber{ isDebugPrint ? _debug_sourceStreamNumber : 0 };                                               // init
-            execResult = setCurrentStream(streamNumber, true);  if (execResult != result_execOK) { return execResult; }     // perform checks and set output stream
+            execResult = setActiveStreamTo(streamNumber, true);  if (execResult != result_execOK) { return execResult; }     // perform checks and set output stream
 
             // in case no stream argument provided (cout, ..., debugOut ...) , set stream print column pointer to current print column for default 'console' OR 'debug out' stream
             // pointer to print column for the current stream is used by tab() and col() functions 
@@ -1735,7 +1734,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                         streamNumber = opIsLong ? operand.longConst : operand.floatConst;
 
                         Stream* p{};
-                        execResult = setCurrentStream(streamNumber, p, true); if (execResult != result_execOK) { return execResult; }  // perform checks and set output stream
+                        execResult = setActiveStreamTo(streamNumber, p, true); if (execResult != result_execOK) { return execResult; }  // perform checks and set output stream
                         if (p == _pConsoleOut) { isConsolePrint = true; }                                                       // !!! from here on, also for streams < 0, if they POINT to console
                         // set pointers to current print column value for stream
                         pStreamPrintColumn = _pLastPrintColumn;
@@ -1958,7 +1957,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
         {
             bool isConsolePrint{ true };                                                                                    // init
             int streamNumber = 0;                                                                                           // init: console
-            execResult = setCurrentStream(streamNumber, true); if (execResult != result_execOK) { return execResult; }      // perform checks and set output stream
+            execResult = setActiveStreamTo(streamNumber, true); if (execResult != result_execOK) { return execResult; }      // perform checks and set output stream
             int* pStreamPrintColumn = _pConsolePrintColumn;                                                                 // init 
 
             if (cmdArgCount == 0) {
@@ -1975,7 +1974,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
                 // prepare for printing to stream
                 Stream* p{};
-                execResult = setCurrentStream(streamNumber, p, true); if (execResult != result_execOK) { return execResult; }   // perform checks and set output stream
+                execResult = setActiveStreamTo(streamNumber, p, true); if (execResult != result_execOK) { return execResult; }   // perform checks and set output stream
                 isConsolePrint = (p == _pConsoleOut);
                 pStreamPrintColumn = (streamNumber == 0) ? _pConsolePrintColumn : (streamNumber < 0) ? _pPrintColumns + (-streamNumber) - 1 : &(openFiles[streamNumber - 1].currentPrintColumn);
                 *pStreamPrintColumn = 0;                                                                                    // will not be used here, but must be set to zero

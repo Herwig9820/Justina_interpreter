@@ -82,8 +82,8 @@ Justina::execResult_type Justina::SD_open(int& fileNumber, const char* filePath,
     if (_openFileCount == MAX_OPEN_SD_FILES) { return result_SD_maxOpenFilesReached; }                                      // max. open files reached
 
     // create temp string
-    execResult_type execResult= pathValid(filePath);
-    if (execResult  != result_execOK) { return execResult; }                                         // is not a complete check, but it remedies a few flaws in SD library
+    execResult_type execResult = pathValid(filePath);
+    if (execResult != result_execOK) { return execResult; }                                         // is not a complete check, but it remedies a few flaws in SD library
 
     // create a new string, providing space for starting '/' if missing
     // always create the new char*, because if the file is closed later, Justina will assume that it must be deleted 
@@ -106,7 +106,7 @@ Justina::execResult_type Justina::SD_open(int& fileNumber, const char* filePath,
     if (((modeIsOnlyRead || fileMustExist) && !fileExists) || (fileMustNotExist && fileExists)) {
         delete[] filePathInCapitals;
         _systemStringObjectCount--;
-        return result_SD_fileNotFound;
+        return result_SD_fileNotFoundOrEmpty;
     }
 #else
     // if only reading file: does file exist ? (this check allows for a more specific error code, instead of 'could not open file' error code)
@@ -114,7 +114,7 @@ Justina::execResult_type Justina::SD_open(int& fileNumber, const char* filePath,
         if (!SD.exists(filePathInCapitals)) {
             delete[] filePathInCapitals;
             _systemStringObjectCount--;
-            return result_SD_fileNotFound;
+            return result_SD_fileNotFoundOrEmpty;
         }
     }
 #endif
@@ -333,7 +333,7 @@ Justina::execResult_type Justina::SD_listFiles() {
     if (!_SDinitOK) { return result_SD_noCardOrCardError; }
 
     // print to console (default), or to any other defined I/O device, or to a file, but without date and time stamp (unfortunately this fixed in SD library)
-    // before calling this function, output stream must be set by function 'setCurrentStream(...)'
+    // before calling this function, output stream must be set by function 'setActiveStreamTo(...)'
 
     // while printing directories, 2 files will be open at the same time (a directory and a file or subdirectory): make sure max. open file count will not be exceeded 
     if (_openFileCount > MAX_OPEN_SD_FILES - 2) { return result_SD_maxOpenFilesReached; }
@@ -354,7 +354,7 @@ Justina::execResult_type Justina::SD_listFiles() {
 void Justina::printDirectory(File dir, int indentLevel) {
     constexpr int step{ 2 }, defaultSizeAttrColumn{ 30 }, minimumColumnSpacing{ 4 };
 
-    // before calling this function, output stream must be set by function 'setCurrentStream(...)'
+    // before calling this function, output stream must be set by function 'setActiveStreamTo(...)'
 
     while (true) {
 
@@ -435,31 +435,30 @@ bool Justina::fileIsOpen(const char* path) {
 // *   this set either _streamNumberIn, _pStreamIn or _streamNumberOut, _pStreamOut         * 
 // ------------------------------------------------------------------------------------------
 
-Justina::execResult_type Justina::setCurrentStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, int& streamNumber, bool forOutput, bool allowSystemFiles) {
+Justina::execResult_type Justina::setActiveStreamTo(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, int& streamNumber, bool forOutput, bool allowSystemFiles) {
     // check file number (also perform related file and SD card object checks)
     if ((!(argIsLongBits & (0x1 << argIndex))) && (!(argIsFloatBits & (0x1 << argIndex)))) { return result_numberExpected; }    // file number
     streamNumber = (argIsLongBits & (0x1 << argIndex)) ? arg.longConst : arg.floatConst;
 
-    execResult_type execResult = setCurrentStream(streamNumber, forOutput, allowSystemFiles);
+    execResult_type execResult = setActiveStreamTo(streamNumber, forOutput, allowSystemFiles);
     return execResult;
 }
 
 
-Justina::execResult_type Justina::setCurrentStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, int& streamNumber, Stream*& pStream, bool forOutput, bool allowSystemFiles) {
+Justina::execResult_type Justina::setActiveStreamTo(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, int& streamNumber, Stream*& pStream, bool forOutput, bool allowSystemFiles) {
     // check file number (also perform related file and SD card object checks)
     if ((!(argIsLongBits & (0x1 << argIndex))) && (!(argIsFloatBits & (0x1 << argIndex)))) { return result_numberExpected; }    // file number
     streamNumber = (argIsLongBits & (0x1 << argIndex)) ? arg.longConst : arg.floatConst;
 
-    execResult_type execResult = setCurrentStream(streamNumber, pStream, forOutput, allowSystemFiles);
+    execResult_type execResult = setActiveStreamTo(streamNumber, pStream, forOutput, allowSystemFiles);
     return execResult;
 }
 
 
-Justina::execResult_type Justina::setCurrentStream(int streamNumber, bool forOutput, bool allowSystemFiles) {
+Justina::execResult_type Justina::setActiveStreamTo(int streamNumber, bool forOutput, bool allowSystemFiles) {
 
     Stream* pTemp;
-
-    execResult_type execResult = determineStream(streamNumber, pTemp, forOutput, allowSystemFiles);
+    execResult_type execResult = returnStreamRef(streamNumber, pTemp, forOutput, allowSystemFiles);
     if (execResult != result_execOK) { return execResult; }
     (forOutput ? _streamNumberOut : _streamNumberIn) = streamNumber;
     if (forOutput) { _pStreamOut = static_cast<Print*> (pTemp); }
@@ -470,9 +469,9 @@ Justina::execResult_type Justina::setCurrentStream(int streamNumber, bool forOut
 
 // this overload also returns the pointer to the set stream (pStream), in addition to _streamNumberIn, _pStreamIn or _streamNumberOut, _pStreamOut
 
-Justina::execResult_type Justina::setCurrentStream(int streamNumber, Stream*& pStream, bool forOutput, bool allowSystemFiles) {
+Justina::execResult_type Justina::setActiveStreamTo(int streamNumber, Stream*& pStream, bool forOutput, bool allowSystemFiles) {
 
-    execResult_type execResult = determineStream(streamNumber, pStream, forOutput, 1, allowSystemFiles);
+    execResult_type execResult = returnStreamRef(streamNumber, pStream, forOutput, 1, allowSystemFiles);
     if (execResult != result_execOK) { return execResult; }
     (forOutput ? _streamNumberOut : _streamNumberIn) = streamNumber;
     if (forOutput) { _pStreamOut = static_cast<Print*> (pStream); }
@@ -487,26 +486,25 @@ Justina::execResult_type Justina::setCurrentStream(int streamNumber, Stream*& pS
 // *   WITHOUT setting _streamNumberIn, _pStreamIn or _streamNumberOut, _pStreamOut                                              *
 // -------------------------------------------------------------------------------------------------------------------------------
 
-Justina::execResult_type Justina::determineStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex,
+Justina::execResult_type Justina::returnStreamRef(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex,
     Stream*& pStream, int& streamNumber, bool forOutput, int allowedFileTypes, bool allowSystemFiles) {
 
     // check file number (also perform related file and SD card object checks)
     if ((!(argIsLongBits & (0x1 << argIndex))) && (!(argIsFloatBits & (0x1 << argIndex)))) { return result_numberExpected; }    // stream number
     streamNumber = (argIsLongBits & (0x1 << argIndex)) ? arg.longConst : arg.floatConst;
-
-    return determineStream(streamNumber, pStream, forOutput, allowedFileTypes, allowSystemFiles);
+    return returnStreamRef(streamNumber, pStream, forOutput, allowedFileTypes, allowSystemFiles);
 }
 
 
-Justina::execResult_type  Justina::determineStream(int streamNumber, Stream*& pStream, bool forOutput, int allowedFileTypes, bool allowSystemFiles) {
+Justina::execResult_type  Justina::returnStreamRef(int streamNumber, Stream*& pStream, bool forOutput, int allowedFileTypes, bool allowSystemFiles) {
 
-    if (streamNumber == 0) { pStream = forOutput ? static_cast<Stream*> (_pConsoleOut) : _pConsoleIn; }  // init: assume console
+    if (streamNumber == 0) { pStream = forOutput ? (static_cast<Stream*> (_pConsoleOut)) : _pConsoleIn; }  // init: assume console
     else if ((-streamNumber) > _externIOstreamCount) { return result_IO_invalidStreamNumber; }
     else if (streamNumber < 0) {
         if ((forOutput ? _ppExternOutputStreams[(-streamNumber) - 1] : _ppExternInputStreams[(-streamNumber) - 1]) == nullptr) {
             return forOutput ? result_IO_noDeviceOrNotForOutput : result_IO_noDeviceOrNotForInput;
         }
-        pStream = forOutput ? static_cast<Stream*>(_ppExternOutputStreams[(-streamNumber) - 1]) : _ppExternInputStreams[(-streamNumber) - 1];
+        pStream = forOutput ? (static_cast<Stream*>(_ppExternOutputStreams[(-streamNumber) - 1])) : _ppExternInputStreams[(-streamNumber) - 1];
     }    // external IO: stream number -1 => array index 0, etc.
     else {
         File* pFile{};
@@ -570,7 +568,7 @@ Justina::execResult_type Justina::SD_fileChecks(File*& pFile, int fileNumber, in
 
 int Justina::readFrom(int streamNumber) {
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream) != result_execOK) { return 0; }          // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream) != result_execOK) { return 0; }          // if error, zero characters written but error is not returned to caller
     char c = pStream->read();
 
     if (c != 0xFF) {
@@ -585,7 +583,7 @@ int Justina::readFrom(int streamNumber) {
 
 int Justina::readFrom(int streamNumber, char* buffer, int length) {
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream) != result_execOK) { return 0; }          // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream) != result_execOK) { return 0; }          // if error, zero characters written but error is not returned to caller
     // NOTE: stream MUST be a file (check before call) -> appFlag_dataInOut must not be set
     return static_cast<File*>(pStream)->read((uint8_t*)buffer, length);
 }
@@ -596,14 +594,14 @@ int Justina::readFrom(int streamNumber, char* buffer, int length) {
 
 size_t Justina::writeTo(int streamNumber, char c) {                         // allow to write 0xff as well
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
     if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->write(c);
 }
 
 size_t Justina::writeTo(int streamNumber, char* s, int size) {
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
     if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->write(s);
 }
@@ -614,63 +612,63 @@ size_t Justina::writeTo(int streamNumber, char* s, int size) {
 
 size_t Justina::printTo(int streamNumber, char c) {
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
     if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->print(c);
 }
 
 size_t Justina::printTo(int streamNumber, unsigned char c) {
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
     if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->print(c);
 }
 
 size_t Justina::printTo(int streamNumber, int i) {
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
     if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->print(i);
 }
 
 size_t Justina::printTo(int streamNumber, unsigned int i) {
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
     if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->print(i);
 }
 
 size_t Justina::printTo(int streamNumber, long l) {
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
     if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->print(l);
 }
 
 size_t Justina::printTo(int streamNumber, unsigned long l) {
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
     if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->print(l);
 }
 
 size_t Justina::printTo(int streamNumber, double d) {
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
     if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->print(d);
 }
 
 size_t Justina::printTo(int streamNumber, char* s) {
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
     if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->print(s);
 }
 
 size_t Justina::printTo(int streamNumber, const char* s) {
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
     if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->print(s);
 }
@@ -681,63 +679,63 @@ size_t Justina::printTo(int streamNumber, const char* s) {
 
 size_t Justina::printlnTo(int streamNumber, char c) {
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
     if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->println(c);
 }
 
 size_t Justina::printlnTo(int streamNumber, unsigned char c) {
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
     if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->println(c);
 }
 
 size_t Justina::printlnTo(int streamNumber, int i) {
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
     if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->println(i);
 }
 
 size_t Justina::printlnTo(int streamNumber, unsigned int i) {
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
     if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->println(i);
 }
 
 size_t Justina::printlnTo(int streamNumber, long l) {
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
     if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->println(l);
 }
 
 size_t Justina::printlnTo(int streamNumber, unsigned long l) {
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
     if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->println(l);
 }
 
 size_t Justina::printlnTo(int streamNumber, double d) {
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
     if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->println(d);
 }
 
 size_t Justina::printlnTo(int streamNumber, char* s) {
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
     if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->println(s);
 }
 
 size_t Justina::printlnTo(int streamNumber, const char* s) {
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
     if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->println(s);
 }
@@ -745,7 +743,7 @@ size_t Justina::printlnTo(int streamNumber, const char* s) {
 
 size_t Justina::printlnTo(int streamNumber) {
     Stream* pStream{ nullptr };
-    if (determineStream(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
+    if (returnStreamRef(streamNumber, pStream, true) != result_execOK) { return 0; }    // if error, zero characters written but error is not returned to caller
     if (streamNumber <= 0) { _appFlags |= appFlag_dataInOut; }
     return pStream->println();
 }
@@ -754,7 +752,7 @@ size_t Justina::printlnTo(int streamNumber) {
 // --------------------------------------------------------------------------------------------------------
 // *   stream read and write functions, to a PRESET stream (NOT supplied as argument)                     *
 // *   this allows setting application flags before calling the respective Arduino functions              * 
-// *   function setCurrentStream() should be called first (to set the desired stream as input or output stream   *
+// *   function setActiveStreamTo() should be called first (to set the desired stream as input or output stream   *
 // --------------------------------------------------------------------------------------------------------
 
 
@@ -902,7 +900,7 @@ size_t Justina::println() {
 // *   read character, if available, from stream, and regularly perform a housekeeping callback   *
 // ------------------------------------------------------------------------------------------------
 
-// NOTE: the stream must be set beforehand by function setCurrentStream()
+// NOTE: the stream must be set beforehand by function setActiveStreamTo()
 
 char Justina::getCharacter(bool& charFetched, bool& kill, bool& forcedStop, bool& forcedAbort, bool& setStdConsole, bool allowWaitTime, bool useLongTimeout) {     // default: no time out, input from console
 
@@ -987,7 +985,7 @@ bool Justina::getConsoleCharacters(bool& forcedStop, bool& forcedAbort, bool& do
 
     int maxLength = length;  // init
     length = 0;
-    setCurrentStream(0);                                                                    // perform checks and set input stream (to console, for use by Justina methods)
+    setActiveStreamTo(0);                                                                    // perform checks and set input stream (to console, for use by Justina methods)
     do {                                                                                    // until new line character encountered
         // read a character, if available in buffer
         char c{ };                                                                          // init: no character available
@@ -1033,7 +1031,7 @@ void Justina::printVariables(bool userVars) {
     // user variables only: indicate whether they are used in the currently parsed program (if any)
     // arrays: indicate dimensions and number of elements
 
-    // before calling this function, output stream must be set by function 'setCurrentStream(...)'
+    // before calling this function, output stream must be set by function 'setActiveStreamTo(...)'
 
     // print table header
     char line[MAX_IDENT_NAME_LEN + 30];     // sufficient length for all line elements except the variable value itself
@@ -1112,60 +1110,71 @@ void Justina::printVariables(bool userVars) {
 // *   stopped programs (if there are) are included in the print                                          *
 // --------------------------------------------------------------------------------------------------------
 
-// before calling this function, output stream must be set by function 'setCurrentStream(...)'
+// before calling this function, output stream must be set by function 'setActiveStreamTo(...)'
 
 void Justina::printCallStack() {
-    if (_callStackDepth > 0) {      // including eval() stack levels but excluding open block (for, if, ...) stack levels
-        int indent = 0;
-        void* pFlowCtrlStackLvl = &_activeFunctionData;
-        int blockType = block_none;
 
-        // i: -1 -> _activeFunctionData; 0 to flowCtrlStack.getElementCount() - 1 -> flow control stack levels
-        for (int i = -1; i < flowCtrlStack.getElementCount(); ++i) {
-            char s[MAX_IDENT_NAME_LEN + 1] = "";
-            blockType = ((OpenBlockGeneric*)pFlowCtrlStackLvl)->blockType;
+    void* pFlowCtrlStackLvl = flowCtrlStack.getFirstListElement();           // nullptr if stack is empty
+    void* rootCommandLineLevel{ &_activeFunctionData };                     // init: root command level points to _activeFunctionData                              
+    int   blockType{};
 
-            // is an eval() string level
-            if (blockType == block_eval) {
-                for (int space = 0; space < indent - 4; ++space) { print(" "); }
-                if (indent > 0) { print("|__ "); }
-                println("eval() string");
-                indent += 4;
-            }
+    // look for root command line in flow ctrl stack (can have open blocks beneath it) - start from the first element created (the oldest)
+    while (pFlowCtrlStackLvl != nullptr) {
+        blockType = ((OpenBlockGeneric*)pFlowCtrlStackLvl)->blockType;
+        bool isCommandLineStackLevel = (blockType == block_JustinaFunction) ? ((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + _PROGRAM_MEMORY_SIZE) : false;
+        if (isCommandLineStackLevel) { rootCommandLineLevel = pFlowCtrlStackLvl; break; }       // stack level for root command level found
+        pFlowCtrlStackLvl = flowCtrlStack.getNextListElement(pFlowCtrlStackLvl);
+    };
 
-            // is a batch file level
-            else if (blockType == block_batchFile) {
-                int streamNumber = ((OpenFunctionData*)pFlowCtrlStackLvl)->statementInputStream;
-                for (int space = 0; space < indent - 4; ++space) { print(" "); }
-                if (indent > 0) { print("|__ "); }
-                print("batch file: "); println(openFiles[streamNumber - 1].filePath);
-                indent += 4;
-            }
+    int indent = 0;
+    blockType = block_none;
+    pFlowCtrlStackLvl = &_activeFunctionData;
 
-            // is a Justina function level or (debugging or initial) command level
-            else if (blockType == block_JustinaFunction) {                                                              // Justina function level
-                if (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep < (_programStorage + _PROGRAM_MEMORY_SIZE)) {
-                    for (int space = 0; space < indent - 4; ++space) { print(" "); }
-                    if (indent > 0) { print("|__ "); }
-                    int index = ((OpenFunctionData*)pFlowCtrlStackLvl)->functionIndex;                                  // print function name
-                    sprintf(s, "%s()", JustinaFunctionNames[index]);
-                    println(s);
-                    indent += 4;
-                }
+    // i: -1 -> _activeFunctionData; 0 to flowCtrlStack.getElementCount() - 1 -> flow control stack levels
+    for (int i = -1; i < flowCtrlStack.getElementCount(); ++i) {
+        blockType = ((OpenBlockGeneric*)pFlowCtrlStackLvl)->blockType;
 
-                else {                                                                                                  // command level
-                    for (int space = 0; space < indent - 4; ++space) { print(" "); }
-                    if (indent > 0) { print("|__ "); }
-                    println((i < flowCtrlStack.getElementCount() - 1) ? "debugging command line" : "command line");
-                    indent = 0;
-                    println();               // empty line
-                }
-            }
-
-            pFlowCtrlStackLvl = (i == -1) ? _pFlowCtrlStackTop : flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
+        // stack level is a command lines, Justina function, batch file line, eval() string ?
+        if ((blockType == block_eval) || (blockType == block_batchFile) || (blockType == block_JustinaFunction)) {
+            // print line header, indent according to level and print ' |__ ' to show relationship between two lines 
+            bool isCommandLineStackLevel = (blockType == block_JustinaFunction) ? ((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + _PROGRAM_MEMORY_SIZE) : false;
+            print((i == -1) ? (isCommandLineStackLevel ? "control  >> " : "control  >> ") : (rootCommandLineLevel == pFlowCtrlStackLvl) ? "root     >> " : (indent == 0) ? "stopped  >> " : "            ");
+            for (int space = 0; space < indent; space += 4) { print(". . "); }
+            if (indent > 0) { print("|__ "); }
         }
+
+        // is an eval() string level
+        if (blockType == block_eval) {
+            println("eval() string");
+            indent += 4;
+        }
+
+        // is a batch file level
+        else if (blockType == block_batchFile) {
+            int streamNumber = ((OpenFunctionData*)pFlowCtrlStackLvl)->statementInputStream;
+            print("batch file: "); println(openFiles[streamNumber - 1].filePath);
+            indent += 4;
+        }
+
+        // is a Justina function level or (debugging or initial) command level
+        else if (blockType == block_JustinaFunction) {                                                              // Justina function level
+            if (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep < (_programStorage + _PROGRAM_MEMORY_SIZE)) {
+                int index = ((OpenFunctionData*)pFlowCtrlStackLvl)->functionIndex;                                  // print function name
+                char s[20 + 2 * MAX_IDENT_NAME_LEN + 2] = "";
+                sprintf(s, "program %s: %s()", _programName, JustinaFunctionNames[index]);
+                println(s);
+                indent += 4;
+            }
+
+            else {                                                                                                  // command level
+                println((rootCommandLineLevel == pFlowCtrlStackLvl) ? "command line" : "debugging command line");
+                indent = 0;
+                println();               // empty line
+            }
+        }
+
+        pFlowCtrlStackLvl = (i == -1) ? _pFlowCtrlStackTop : flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
     }
-    else  println("(no program running)");
 }
 
 // --------------------------------------
@@ -1199,6 +1208,7 @@ void Justina::printExecError(execResult_type execResult, bool  showStopmessage) 
         char* errorStatementStartStep = _activeFunctionData.errorStatementStartStep;
         char* errorProgramCounter = _activeFunctionData.errorProgramCounter;
         int functionIndex = _activeFunctionData.functionIndex;          // init
+        int streamNumber = _activeFunctionData.statementInputStream;
 
         // info to identify and print the statement where the error occurred is on the flow ctrl stack ? find it there
         if (_activeFunctionData.blockType == block_eval) {
@@ -1224,16 +1234,35 @@ void Justina::printExecError(execResult_type execResult, bool  showStopmessage) 
         prettyPrintStatements(0, 1, errorStatementStartStep + programCounterOffset, errorProgramCounter + programCounterOffset, &sourceErrorPos);
         for (int i = 1; i <= sourceErrorPos; ++i) { printTo(0, " "); }
 
-        char execInfo[50 + MAX_IDENT_NAME_LEN] = "";
+        char execInfo[70 + MAX_IDENT_NAME_LEN] = "";    // check length
         sprintf(execInfo, "  ^\r\n  Exec error %d", execResult);                                                        // in main program level 
         printTo(0, execInfo);
 
         // errorProgramCounter is never pointing to a token directly contained in a parsed() eval() string 
-        if (errorProgramCounter >= (_programStorage + _PROGRAM_MEMORY_SIZE)) { sprintf(execInfo, ""); }
+        if (errorProgramCounter >= (_programStorage + _PROGRAM_MEMORY_SIZE)) {
+            if (streamNumber <= 0) { sprintf(execInfo, ""); }
+
+            // error in batch file: calculate the line number based on the file position
+            else {
+                File file = openFiles[streamNumber - 1].file;
+                uint32_t errorPosition = file.position();
+                long errorLine{ 0 };                                           // start search at beginning of file;
+                file.seek(0);
+                while (file.find("\r\n")) {
+                    if (file.position() > errorPosition) { break; }
+                    else { errorLine++; }                                       // find the source line containing the (part of) the statement leading to the execution error (could be a multi-line statement)
+                }
+                file.seek(errorPosition);                                           // restore file position
+                sprintf(execInfo, " in batch file %s, source line %ld", openFiles[streamNumber - 1].file.name(), errorLine);
+            }
+        }
+
+        // error in program file
         else {
             long sourceLine = _pBreakpoints->findLineNumberForBPstatement(errorStatementStartStep);
-            sprintf(execInfo, " in user function %s, source line %ld", JustinaFunctionNames[functionIndex], sourceLine);
+            sprintf(execInfo, " in program %s, user function %s, source line %ld", _programName, JustinaFunctionNames[functionIndex], sourceLine);
         }
+
         printTo(0, execInfo);
 
         if (execResult == result_eval_parsingError) { sprintf(execInfo, " (eval() parsing error %ld)\r\n", _evalParsingError); }
@@ -1250,7 +1279,7 @@ void Justina::printExecError(execResult_type execResult, bool  showStopmessage) 
     else if (execResult == EVENT_initiateProgramLoad) {}                                                                // (nothing to do here for this event)
     else { printTo(0, "\r\n+++ Event +++ "); printlnTo(0, execResult); }
 
-    _silent = false;
+    if (execResult != EVENT_initiateProgramLoad) { _silent = false; }
     _lastValueIsStored = false;                                                                                         // prevent printing last result (if any)
 }
 
@@ -1526,7 +1555,9 @@ void Justina::prettyPrintStatements(int outputStream, int instructionCount, char
 void Justina::printParsingResult(parsingResult_type result, int funcNotDefIndex, char* const pInstruction, long lineCount, char* pErrorPos) {
 
     bool checkBPstatusMsg{ false };
-    char parsingInfo[100 + MAX_IDENT_NAME_LEN] = "";                                        // provide sufficient room for longest possible message (int: no OK message in immediate mode)
+    char parsingInfo[130 + MAX_IDENT_NAME_LEN] = "";                                       // provide sufficient room for longest possible message (with some spare positions)
+
+    // no parsing error ?
     if (result == result_parsing_OK) {                                                      // prepare message with parsing result
         if (_programMode) {
             if (_lastProgramStep == _programStorage) { strcpy(parsingInfo, "\r\nNo program loaded\r\n"); }
@@ -1537,14 +1568,15 @@ void Justina::printParsingResult(parsingResult_type result, int funcNotDefIndex,
             }
         }
     }
-
+    // parsing error is undefined function or array ?
     else  if ((result == result_function_undefinedFunctionOrArray) && _programMode) {       // in program mode only 
         // during Justina function call parsing, it is not always known whether the function exists (because function can be defined after a call) 
         // -> a line number can not be given, but the undefined function can
-        sprintf(parsingInfo, "\r\n  Parsing error %d: function or array '%s' is not defined", (int)result, JustinaFunctionNames[funcNotDefIndex]);
+        sprintf(parsingInfo, "\r\n  Program parsing error %d: function or array '%s' is not defined", (int)result, JustinaFunctionNames[funcNotDefIndex]);
         _silent = false;
     }
 
+    // other parsing errors
     else {                                                                                  // parsing error
         // instruction not parsed (because of error): print source instruction where error is located (can not 'unparse' yet for printing instruction)
         if (result == result_statementTooLong) { pErrorPos = pInstruction; }
@@ -1556,8 +1588,38 @@ void Justina::printParsingResult(parsingResult_type result, int funcNotDefIndex,
         point[pErrorPos - pInstruction + 3] = '\0';
         printlnTo(0, point);
 
-        if (_programMode) { sprintf(parsingInfo, "  Parsing error %d: statement ending at line %ld", (int)result, lineCount + 1); }
-        else { sprintf(parsingInfo, "  Parsing error %d", (int)result); }
+
+        // error while loading a program ?
+        if (_programMode) {
+            // load program from file or from external source ?
+            if (_loadProgFromStreamNo > 0) {
+                sprintf(parsingInfo, "  Parsing error %d in program file %s: statement ending at line %ld", (int)result, openFiles[_loadProgFromStreamNo - 1].file.name(), lineCount + 1);
+            }
+            else { sprintf(parsingInfo, "  Parsing error %d: statement ending at line %ld", (int)result, lineCount + 1); }
+        }
+
+        else
+        {
+            uint32_t streamNumber = _activeFunctionData.statementInputStream;
+
+            // error in batch file ? calculate the line number based on the file position ()
+            if (streamNumber > 0) {
+                File file = openFiles[streamNumber - 1].file;
+                uint32_t errorPosition = file.position();
+                long errorLine{ 0 };                                           // start search at beginning of file (source line 1);
+                file.seek(0);
+                while (file.find("\r\n")) {
+                    if (file.position() > errorPosition) { break; }
+                    else { errorLine++; }                            // find the line containing an execution error
+                }
+                file.seek(errorPosition);                                           // restore file position
+                sprintf(parsingInfo, "  Parsing error %d in batch file %s, line %ld", (int)result, openFiles[streamNumber - 1].file.name(), errorLine);
+            }
+
+            // error in command line 
+            else { sprintf(parsingInfo, "  Parsing error %d", (int)result); }
+        }
+
         _silent = false;
     }
 

@@ -894,7 +894,7 @@ public:
         // SD card
         result_SD_noCardOrNotAllowed = 3600,
         result_SD_noCardOrCardError,
-        result_SD_fileNotFound,
+        result_SD_fileNotFoundOrEmpty,
         result_SD_couldNotOpenFile,                                     // or file does not exist 
         result_SD_fileIsNotOpen,
         result_SD_fileAlreadyOpen,
@@ -918,7 +918,7 @@ public:
         result_IO_invalidStreamNumber = 3700,
         result_IO_noDeviceOrNotForInput,
         result_IO_noDeviceOrNotForOutput,
-        result_IO_noBatchFile,
+        result_IO_onlyAllowedInBatchFile,
 
         // end of valid exec error range (tested upon return of user cpp functions containing an error code)
         result_endOfExecErrorRange = 4999,
@@ -1655,16 +1655,24 @@ private:
     //    if a function is ended, the corresponding flow control data will be COPIED to structure '_activeFunctionData' again before it is popped from the stack
 
     struct OpenBlockGeneric {
-        char blockType : 6{};                                             // command block: will identify stack level as a function block or an if...end, for...end, ... block
+        char blockType : 6{};                                           // command block: will identify stack level as a function block or an if...end, for...end, ... block
         char spareFlags : 2{};
+
+        char notUsed1 : 4{ 0 };                                         // statement input stream (0: console input; > 0: batch file input streams)
+        char withParsedStatementLine : 1{ 0 };                          // !!! MUST OCCUPY SAME POSITION as in OpenFunctionData 
+        char notUsed2 : 3{ 0 };
     };
 
     struct OpenBlockTestData {
-        char blockType : 6{};                                             // command block: will identify stack level as an if...end, for...end, ... block
+        char blockType : 6{};                                           // command block: will identify stack level as an if...end, for...end, ... block
         char spareFlags : 2{};
-        char loopControl{};                                               // flags: within iteration, request break from loop, test failed
-        char testValueType{};                                             // 'for' loop tests: value type used for loop tests
-        char spare{};                                                       // boundary alignment
+        
+        char notUsed1 : 4{ 0 };                                         // statement input stream (0: console input; > 0: batch file input streams)
+        char withParsedStatementLine : 1{ 0 };                          // !!! MUST OCCUPY SAME POSITION as in OpenFunctionData 
+        char notUsed2 : 3{ 0 };
+
+        char loopControl{};                                             // flags: within iteration, request break from loop, test failed
+        char testValueType{};                                           // 'for' loop tests: value type used for loop tests
 
         // FOR...END loop only
         char* pControlValueType;
@@ -1678,13 +1686,20 @@ private:
         char blockType : 6{ block_JustinaFunction};                     // command block: will identify stack level as a function block
         char trapEnable : 1{ 0 };                                       // enable error trapping
         char activeCmd_isInternal : 1{};                                // command is internal
-        char functionIndex{};                                           // user function index 
+
+        char statementInputStream : 4{ 0 };                             // statement input stream (0: console input; > 0: batch file input streams)
+        char withParsedStatementLine : 1{ 0 };                          // was pushed together with a parsedStatementLineStack element: POP together as well
+        char spareBits : 3{ 0 };
+
         char callerEvalStackLevels : 7{ 0 };                            // evaluation stack levels in use by caller(s) and main (call stack)
         char errorHandlerActive : 1{ 0 };                               // an error is being handled in the current function or batch file line
 
+        char functionIndex{};                                           // user function index 
+
         // within a function, as in immediate mode, only one command can be active at a time (ended by semicolon), in contrast to command blocks, which can be nested, so command data can be stored here:
         // data is stored when a keyword is processed and it is cleared when the ending semicolon (ending the command) is processed
-        char activeCmd_commandCode;                                     // keyword code (set to 'cmdcod_none' again when semicolon is processed)
+        char activeCmd_commandCode{};                                   // keyword code (set to 'cmdcod_none' again when semicolon is processed)
+        char spareChars[3]{ 0 };                                        // boundary alignment
 
         char* activeCmd_tokenAddress;                                   // address in program memory of parsed keyword token                                
 
@@ -1696,8 +1711,6 @@ private:
         char* pNextStep;                                                // next step to execute (look ahead)
         char* errorStatementStartStep;                                  // first token in statement where execution error occurs (error reporting)
         char* errorProgramCounter;                                      // token to point to in statement (^) if execution error occurs (error reporting)
-
-        char statementInputStream{ 0 };                                 // statement input stream (0: console input; > 0: batch file input streams)
     };
 
     // structure to maintain data about open files (SD card)
@@ -1713,7 +1726,7 @@ private:
 
         // batch files: argument count and addresses of copied arguments
         char silent : 1{0};                                             // controls prompt and echo during batch file execution
-        int argCount{};                                                 // exec command: argument cont (batch file name and optional arguments)
+        int argCount{};                                                 // exec command: argument count (batch file name and optional arguments)
         char* pValueType{ nullptr };                                    // arguments: value type (long, float, string)
         Val* pArgs{ nullptr };                                          // arguments: values
     };
@@ -2465,18 +2478,18 @@ private:
     void SD_closeFile(int fileNumber);
     execResult_type SD_listFiles();
 
-    execResult_type determineStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, Stream*& pStream, int& streamNumber, bool forOutput = false,
+    execResult_type returnStreamRef(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, Stream*& pStream, int& streamNumber, bool forOutput = false,
         int allowedFileTypes = 1, bool allowSystemFiles = 0);
-    execResult_type determineStream(int streamNumber, Stream*& pStream, bool forOutput = false, int allowedFileTypes = 1, bool allowSystemFiles = 0);
+    execResult_type returnStreamRef(int streamNumber, Stream*& pStream, bool forOutput = false, int allowedFileTypes = 1, bool allowSystemFiles = 0);
 
     execResult_type SD_fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File*& pFile, int allowedFileTypes = 1, bool allowSystemFiles = false);
     execResult_type SD_fileChecks(bool argIsLong, bool argIsFloat, Val arg, File*& pFile, int allowedFileTypes = 1, bool allowSystemFiles = false);
     execResult_type SD_fileChecks(File*& pFile, int fileNumber, int allowedFileTypes = 1, bool allowSystemFiles = false);
 
-    execResult_type setCurrentStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, int& streamNumber, bool forOutput = false, bool allowSystemFiles = false);
-    execResult_type setCurrentStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, int& streamNumber, Stream*& pStream, bool forOutput = false, bool allowSystemFiles = false);
-    execResult_type setCurrentStream(int streamNumber, bool forOutput = false, bool allowSystemFiles = false);
-    execResult_type setCurrentStream(int streamNumber, Stream*& pStream, bool forOutput = false, bool allowSystemFiles = false);
+    execResult_type setActiveStreamTo(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, int& streamNumber, bool forOutput = false, bool allowSystemFiles = false);
+    execResult_type setActiveStreamTo(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, int& streamNumber, Stream*& pStream, bool forOutput = false, bool allowSystemFiles = false);
+    execResult_type setActiveStreamTo(int streamNumber, bool forOutput = false, bool allowSystemFiles = false);
+    execResult_type setActiveStreamTo(int streamNumber, Stream*& pStream, bool forOutput = false, bool allowSystemFiles = false);
 
     execResult_type pathValid(const char* path);
     bool fileIsOpen(const char* path);

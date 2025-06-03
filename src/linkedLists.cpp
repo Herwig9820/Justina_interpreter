@@ -25,7 +25,7 @@
 
 #include "Justina.h"
 
-#define PRINT_LLIST_OBJ_CREA_DEL 1
+#define PRINT_LLIST_OBJ_CREA_DEL 0
 
 
 // *****************************************************************

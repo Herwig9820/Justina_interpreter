@@ -273,7 +273,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             Stream* pStream{};
             int streamNumber{};
             // perform checks and return stream (file)
-            execResult_type execResult = determineStream(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber, true, (functionCode == fnccod_close) ? 0 : 1, false);
+            execResult_type execResult = returnStreamRef(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber, true, (functionCode == fnccod_close) ? 0 : 1, false);
             if (execResult != result_execOK) { return execResult; }
             if (functionCode == fnccod_close) {
                 if (streamNumber <= 0) { return result_SD_invalidFileNumber; }
@@ -333,7 +333,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             if ((functionCode != fnccod_available) || (suppliedArgCount > 0)) {
                 // perform checks and set pointer to IO stream or file
                 // perform checks and return stream for input (required for available() function)
-                execResult_type execResult = determineStream(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber, false, 1, true);
+                execResult_type execResult = returnStreamRef(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber, false, 1, true);
                 if (execResult != result_execOK) { return execResult; }
                 if ((streamNumber <= 0) && (functionCode != fnccod_available)) { return result_SD_invalidFileNumber; }      // because a file number expected here
             }
@@ -365,7 +365,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             int streamNumber{ 0 };
 
             fcnResultValueType = value_isLong;
-            execResult_type execResult = determineStream(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber);     // perform checks and return stream for input 
+            execResult_type execResult = returnStreamRef(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber);     // perform checks and return stream for input 
             if (execResult != result_execOK) { return execResult; }
 
             // check second argument: timeout in milliseconds (set time out only)
@@ -457,7 +457,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // availableForWrite(stream number) returns the number of bytes available for write
             Stream* pStream{  };
             int streamNumber{  };
-            execResult_type execResult = determineStream(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber, true);   // perform checks and return output stream
+            execResult_type execResult = returnStreamRef(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber, true);   // perform checks and return output stream
             if (execResult != result_execOK) { return execResult; }
 
             fcnResultValueType = value_isLong;
@@ -488,10 +488,10 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 Stream* pStream{ _pConsoleIn };                                                 // init
                 int streamNumber{ 0 };
 
-                // note: commands cin and read use read() method, which uses internal stream variables _pStreamIn and _pStreamOut set by setCurrentStream(). 
-                //       peek() and available() methods below use local variable pStream, which is returned by determineStream() as well as setCurrentStream().
-                execResult_type execResult = (functionCode == fnccod_cin) ? setCurrentStream(streamNumber, pStream) :
-                    setCurrentStream(argIsLongBits, argIsFloatBits, args[0], 0, streamNumber, pStream);     // perform checks and set input stream
+                // note: commands cin and read use read() method, which uses internal stream variables _pStreamIn and _pStreamOut set by setActiveStreamTo(). 
+                //       peek() and available() methods below use local variable pStream, which is returned by returnStreamRef() as well as setActiveStreamTo().
+                execResult_type execResult = (functionCode == fnccod_cin) ? setActiveStreamTo(streamNumber, pStream) :
+                    setActiveStreamTo(argIsLongBits, argIsFloatBits, args[0], 0, streamNumber, pStream);     // perform checks and set input stream
                 if (execResult != result_execOK) { return execResult; }
 
                 // read character from stream now 
@@ -537,8 +537,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             bool isLineForm = ((functionCode == fnccod_cinLine) || (functionCode == fnccod_readLine));
             bool terminatorArgPresent = (!isLineForm) && (suppliedArgCount == ((functionCode == fnccod_cin) ? 2 : 3));
 
-            execResult = streamArgPresent ? setCurrentStream(argIsLongBits, argIsFloatBits, args[0], 0, streamNumber) :
-                setCurrentStream(streamNumber);                                                                             // perform checks and set input stream 
+            execResult = streamArgPresent ? setActiveStreamTo(argIsLongBits, argIsFloatBits, args[0], 0, streamNumber) :
+                setActiveStreamTo(streamNumber);                                                                             // perform checks and set input stream 
             if (execResult != result_execOK) { return execResult; }
 
             // check terminator charachter: first character in char * 
@@ -576,7 +576,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
 
             int charsRead{ 0 };                                                                                             // init
             if ((streamNumber > 0) && (terminator == 0xff)) {                                                               // reading from file and NOT searching for a terminator: read all bytes at once
-                charsRead = read(buffer, maxLineLength);                                                                    // if fewer bytes available, end reading WITHOUT time out; read() uses stream set by 'setCurrentStream()'
+                charsRead = read(buffer, maxLineLength);                                                                    // if fewer bytes available, end reading WITHOUT time out; read() uses stream set by 'setActiveStreamTo()'
             }
             else {                                                                                                          // external input OR (all streams) search for terminator 
                 bool kill{ false }, doStop{ false }, doAbort{ false }, stdConsDummy{ false };
@@ -683,8 +683,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 int streamNumber{ 0 };
 
                 // perform checks and set pointer to IO stream or file
-                execResult = sourceArgPresent ? setCurrentStream(argIsLongBits, argIsFloatBits, args[0], 0, streamNumber) :
-                    setCurrentStream(streamNumber);                                                                         // perform checks and set input stream 
+                execResult = sourceArgPresent ? setActiveStreamTo(argIsLongBits, argIsFloatBits, args[0], 0, streamNumber) :
+                    setActiveStreamTo(streamNumber);                                                                         // perform checks and set input stream 
                 if (execResult != result_execOK) { return execResult; }
 
                 // prepare to read characters
@@ -903,7 +903,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // findUntil(stream number, target string, terminator string)
 
             int streamNumber{ 0 };
-            execResult_type execResult = setCurrentStream(argIsLongBits, argIsFloatBits, args[0], 0, streamNumber);         // perform checks and set input stream
+            execResult_type execResult = setActiveStreamTo(argIsLongBits, argIsFloatBits, args[0], 0, streamNumber);         // perform checks and set input stream
             if (execResult != result_execOK) { return execResult; }
 
             // check target string 
@@ -1310,8 +1310,10 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // this function has one argument: the batch file parameter to retrieve. 0 will return the full name of the open batch file,...
             // ... 1..n will return the value of the (optional) arguments given when the batch file was called.
 
+            int blockType = _activeFunctionData.blockType;
+            if(blockType != block_batchFile){ return result_IO_onlyAllowedInBatchFile; }
+
             int streamNumber = _activeFunctionData.statementInputStream;
-            if (streamNumber <= 0) { return result_IO_noBatchFile; }
 
             if (!(argIsLongBits & (0x1 << 0)) && !(argIsFloatBits & (0x1 << 0))) { return result_arg_numberExpected; }
             int argNumber = (argIsLongBits & (0x1 << 0)) ? args[0].longConst : int(args[0].floatConst);
@@ -1630,11 +1632,11 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         case fnccod_bitSet:             // 2 arguments: long value, bit (0 to 31) to set. New value is returned 
         case fnccod_bitWrite:           // 3 arguments: long value, bit (0 to 31), new bit value (0 or 1). New value is returned 
 
-            // extra Justina byte manipulation functons. Byte argument indicates which byte to read or write
+        // extra Justina byte manipulation functons. Byte argument indicates which byte to read or write
         case fnccod_byteRead:           // 2 arguments: long, byte to read (0 to 3). Value returned is between 0x00 and 0xFF.     
         case fnccod_byteWrite:          // 3 arguments: long, byte to write (0 to 3), value to write (lowest 8 bits of argument). New value is returned    
 
-            // extra Justina bit manipulation functons. Mask argument indicates which bits to read, set, clear or write
+        // extra Justina bit manipulation functons. Mask argument indicates which bits to read, set, clear or write
         case fnccod_wordMaskedRead:     // 2 arguments: long value, mask. Returns masked value 
         case fnccod_wordMaskedClear:    // 2 arguments: long value, mask = bits to clear: bits indicated by mask are cleared. New value is returned
         case fnccod_wordMaskedSet:      // 2 arguments: long value, mask = bits to set: bits indicated by mask are set. New value is returned 
@@ -2453,7 +2455,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 case 39:fcnResult.longConst = _openDebugLevels; break;                          // number of stopped programs
                 case 40:fcnResult.longConst = parsedStatementLineStack.getElementCount(); break;  // immediate mode parsed programs stack element count: stopped program count + open eval() strings (being executed)
 
-                case 41: fcnResult.longConst = evalStack.getCreatedObjectCount(); break;        // created list object count (across linked lists: count is static)
+                case 41: fcnResult.longConst = evalStack.getCreatedObjectCount(); break;        // created list object count (cumulative and across linked lists: count is static)
 
                 case 42:                                                                        // current active object count
                 case 43:                                                                        // current accumulated object count errors since cold start
@@ -2510,8 +2512,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
     }                                                                                           // end switch
 
 
-        // post-process: delete function name token and arguments from evaluation stack, create stack entry for function result 
-        // -------------------------------------------------------------------------------------------------------------------
+    // post-process: delete function name token and arguments from evaluation stack, create stack entry for function result 
+    // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
