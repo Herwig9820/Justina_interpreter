@@ -38,7 +38,7 @@ constexpr int STOP_ABORT_PIN{ 4 };                                          // r
 // output pins: connect each output pin to the anode of a LED and connect each cathode to one terminal of a resistor. Wire the other terminal to ground. 
 constexpr int DATA_IO_PIN{ 5 };                                             // signals Justina is sending or receiving data (from any external IO device) 
 constexpr int STATUS_A_PIN{ 6 };                                            // status A and B: Justina status
-constexpr int STATUS_B_PIN{ 2 };//// D7 defect ???
+constexpr int STATUS_B_PIN{ 7 }; 
 constexpr int ERROR_PIN{ 8 };                                               // a Justina error occurred (e.g., division by zero)  
 constexpr int HEARTBEAT_PIN{ 9 };                                           // a square wave is output to indicate 'Justina is running'                                                
 

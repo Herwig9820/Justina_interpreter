@@ -87,7 +87,7 @@
 
 #define J_productName "Justina: JUST an INterpreter for Arduino"
 #define J_legalCopyright "Copyright 2024, 2025 Herwig Taveirne"
-#define J_version "1.3.3"            
+#define J_version "1.4.0"            
 #define J_buildDate "February 15, 2025" 
 
 
@@ -1277,10 +1277,10 @@ public:
     static constexpr long SD_notAllowed = 0x0;                          // card reader not present or card operations not allowed (maybe exclusively in use by Arduino program)
     static constexpr long SD_allowed = 0x1;                             // card reader is allowed but do not initialize card (maybe no SD card inserted, no SD card board present). This is the default
     static constexpr long SD_init = 0x2;                                // init SD card upon Justina begin() 
-    static constexpr long SD_runStart = 0x3;                            // init SD card upon Justina begin(); load program "start.jus(); execute start() 
+    static constexpr long SD_runAutoStart = 0x3;                            // init SD card upon Justina begin(); load program "start.jus(); execute start() 
     static constexpr long MAX_SETUP_ARGS = 8;                           // maximum number of tokens in a setup file line
 
-    static const char AUTOSTART_FILE_PATH[19];
+    inline static constexpr char AUTOSTART_FILE_PATH[]{"/Justina/autorun.jba"};
 
 private:
 
@@ -1666,7 +1666,7 @@ private:
     struct OpenBlockTestData {
         char blockType : 6{};                                           // command block: will identify stack level as an if...end, for...end, ... block
         char spareFlags : 2{};
-        
+
         char notUsed1 : 4{ 0 };                                         // statement input stream (0: console input; > 0: batch file input streams)
         char withParsedStatementLine : 1{ 0 };                          // !!! MUST OCCUPY SAME POSITION as in OpenFunctionData 
         char notUsed2 : 3{ 0 };
@@ -1832,7 +1832,7 @@ private:
 
     bool _constructorInvoked{};
     bool _coldStart{};                                              // is this a cold start (first call to Justina begin() method after Justina object creation) ? (this is unrelated to memory clear on quitting)
-    int _justinaStartupOptions{ 0 };                                // see constants SD_notAllowed, SD_allowed, SD_init, SD_runStart
+    int _justinaStartupOptions{ 0 };                                // see constants SD_notAllowed, SD_allowed, SD_init, SD_runAutoStart
     char _programName[MAX_IDENT_NAME_LEN + 1];
     char* _lastProgramStep{ nullptr };
     char* _lastUserCmdLineStep{ nullptr };                              // location in Justine imm. mode program memory where final 'tok_no_token' token is placed
@@ -1983,8 +1983,8 @@ private:
     int _callStackDepth{ 0 };                                               // number of currently open Justina functions + open eval() functions + open batch files + count of stopped programs...
                                                                             // ...(in debug mode): this equals flow ctrl stack depth MINUS open loops (if, for, ...)
 
-// while at least one program is stopped (debug mode), the PARSED code of the original command line from where execution started is pushed to a separate stack, and popped again ...
-// ...when the program resumes, so that execution can continue there. If multiple programs are currently stopped (see: flow control stack), this stack will contain multiple entries
+    // while at least one program is stopped (debug mode), the PARSED code of the original command line from where execution started is pushed to a separate stack, and popped again ...
+    // ...when the program resumes, so that execution can continue there. If multiple programs are currently stopped (see: flow control stack), this stack will contain multiple entries
     LinkedList parsedStatementLineStack;
     char* _pParsedCommandLineStackTop{ nullptr };
     int _openDebugLevels{ 0 };                                              // number of stopped programs: equals parsed command line stack depth minus open eval() strings (= eval() strings being executed)
@@ -2269,7 +2269,7 @@ public:
     // -----------------------------------
 
     void begin();                                                   // call from Arduino main program
-    void JustinaMainLoop(bool& loadingStartupProgram, bool& launchingStartFunction, bool& startJustinaWithoutAutostart, bool& parsedStatementStartsOnNewLine, bool& parsedStatementStartLinesAdjacent,
+    void JustinaMainLoop(bool& doAutoStart, bool& parsedStatementStartsOnNewLine, bool& parsedStatementStartLinesAdjacent,
         long& statementStartsAtLine, long& parsedStatementAllowingBPstartsAtLine, long& BPstartLine, long& BPendLine, long& BPpreviousEndLine, bool& kill);
 
     // Justina print functions
@@ -2515,7 +2515,7 @@ private:
     void printToString(int width, int precision, bool inputIsString, bool isIntFmt, char* valueType, Val* operands, char* fmtString,
         Val& fcnResult, int& charsPrinted, bool expandStrings = false);
 
-    // unparse statement and pretty print, print parsing result (OK or error number), print variables, print call stack, SD card directory
+    // 'unparse' statement and pretty print, print parsing result (OK or error number), print variables, print call stack, SD card directory
     void prettyPrintStatements(int outputStream, int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
     void printParsingResult(parsingResult_type result, int funcNotDefIndex, char* const pInputLine, long lineCount, char* pErrorPos);
     void printExecError(execResult_type execResult, bool showStopmessage);

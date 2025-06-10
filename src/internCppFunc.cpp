@@ -541,7 +541,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 setActiveStreamTo(streamNumber);                                                                             // perform checks and set input stream 
             if (execResult != result_execOK) { return execResult; }
 
-            // check terminator charachter: first character in char * 
+            // check terminator character: first character in char * 
             char terminator{ 0xff };                                                                                        // init: no terminator
             if (isLineForm) { terminator = '\n'; }
             else if (terminatorArgPresent) {                                                                                // terminator argument supplied ?

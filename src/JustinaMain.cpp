@@ -565,10 +565,6 @@ const Justina::SymbNumConsts Justina::_symbNumConsts[]{
     {"BOARD_NRF52840",      "4",                        symb_board,         valcod_board_nrf52840,  value_isLong }          // board architecture is NRF52840 (nano 33 BLE) 
 };
 
-// constant strings
-// ----------------
-const char Justina::AUTOSTART_FILE_PATH[] = "/Justina/start.jus";
-
 
 // ---------------------------
 // *   Justina constructor   *
@@ -717,7 +713,7 @@ void Justina::begin() {
     int index{}, semicolonBPallowed_index{}, semicolonBPset_index{}, matches{};
 
     for (index = _termTokenCount - 1, matches = 0; index >= 0; index--) {      // for all defined terminals
-        if (_terminals[index].terminalCode == termcod_semicolon_BPallowed) { semicolonBPallowed_index = index; matches; }   // token corresponds to terminal code ? Then exit loop    
+        if (_terminals[index].terminalCode == termcod_semicolon_BPallowed) { semicolonBPallowed_index = index; matches; }   // token corresponds to terminal code ? Then exit loop  //// moet 'matches++' zijn ???  
         if (_terminals[index].terminalCode == termcod_semicolon_BPset) { semicolonBPset_index = index; matches++; }         // token corresponds to terminal code ? Then exit loop    
         if (matches == 2) { break; }
     }
@@ -738,10 +734,10 @@ void Justina::begin() {
     setActiveStreamTo(0);                                                                    // perform checks and set input stream (to console)
 
     bool kill{ false };
-    bool loadingStartupProgram{ false }, launchingStartFunction{ false };                   // loading startup program resp. launching start() function
-    bool startJustinaWithoutAutostart{ true };
 
-   // initialize SD card now ?
+    resetMachine(false);                                                                                // if 'warm' start, previous program (with its variables) may still exist
+
+   // initialize SD card library now ?
     // 0 = no card reader, 1 = card reader present, do not yet initialize, 2 = initialize card now, 3 = init card & run startup file function start() now
     if ((_justinaStartupOptions & SD_mask) >= SD_init) {
         printlnTo(0, "\r\nLooking for an SD card...");
@@ -749,48 +745,27 @@ void Justina::begin() {
         printlnTo(0, _SDinitOK ? "SD card found" : "SD card error: SD card NOT found");
     }
 
-    if ((_justinaStartupOptions & SD_mask) == SD_runStart) {
-    // open startup file and retrieve file number (which would be one, normally)
-        _initiateProgramLoad = _SDinitOK;
-        if (_initiateProgramLoad) {
-            printlnTo(0, "Looking for autostart program file in /Justina folder...");
-            if (!SD.exists(AUTOSTART_FILE_PATH)) { _initiateProgramLoad = false; printlnTo(0, "Autostart program file NOT found in folder /Justina"); }      // ADD starting slash ! (required by ESP32 SD library)
-        }
+    bool doAutoStart{ false };
+    if ((_justinaStartupOptions & SD_mask) == SD_runAutoStart) {
+        // open startup file and retrieve file number (which would be one, normally)
+        doAutoStart = _SDinitOK;
+        if (doAutoStart) {
+            printTo(0, "Looking for Justina batch file \""); printTo(0, AUTOSTART_FILE_PATH); printlnTo(0, "\"");
 
-        if (_initiateProgramLoad) {
-            execResult_type execResult = SD_open(_loadProgFromStreamNo, AUTOSTART_FILE_PATH, READ_FILE);       // this performs a few card & file checks as well
-            _initiateProgramLoad = (execResult == result_execOK);
-            if (!_initiateProgramLoad) { printTo(0, "Could not open autostart program file - error "); printlnTo(0, execResult); }
+            if (SD.exists(AUTOSTART_FILE_PATH)) {
+                printTo(0, "Executing Justina batch file \""); printTo(0, AUTOSTART_FILE_PATH); printlnTo(0, "\"...");
 
-            // the SD library does not provide a way to check if the file is a directory, or it's empty, before the file is opened 
-            if (openFiles[_loadProgFromStreamNo - 1].file.isDirectory() || (openFiles[_loadProgFromStreamNo - 1].file.size() == 0)) {
-                SD_closeFile(_loadProgFromStreamNo);
-                _initiateProgramLoad = false;
-                printlnTo(0, "Autostart program file is empty or is directory");
+                // look up the 'exec' command keyword and fill source statement input buffer with 'exec batchFileName' statement
+                int index{ -1 }; do {} while (_internCommands[++index].commandCode != cmdcod_execBatchFile);
+                sprintf(_sourceStatement, "%s \"%s\";\0",  _internCommands[index]._commandName, AUTOSTART_FILE_PATH);            
+                _silent = true;
             }
-        }
-
-        if (_initiateProgramLoad) {                                                                             // !!! second 'if(_initiateProgramLoad)'
-            resetMachine(false);                                                                                // if 'warm' start, previous program (with its variables) may still exist
-            _programMode = true;
-            _programCounter = _programStorage;
-            loadingStartupProgram = true;
-            startJustinaWithoutAutostart = false;
-
-            parsedStatementStartsOnNewLine = false;
-            parsedStatementStartLinesAreAdjacent = false;
-            statementStartsAtLine = 0;
-            parsedStatementAllowingBPstartsAtLine = 0;
-            BPstartLine = 0;
-            BPendLine = 0;
-            BPpreviousEndLine = 0;
-
-            printTo(0, "Loading program file '"); printTo(0, AUTOSTART_FILE_PATH); printlnTo(0, "'...");
+            else { doAutoStart = false; printTo(0, "Justina batch file \""); printTo(0, AUTOSTART_FILE_PATH); printlnTo(0, "\" not found"); }
         }
     }
 
-    JustinaMainLoop(loadingStartupProgram, launchingStartFunction, startJustinaWithoutAutostart, parsedStatementStartsOnNewLine, parsedStatementStartLinesAreAdjacent,
-        statementStartsAtLine, parsedStatementAllowingBPstartsAtLine, BPstartLine, BPendLine, BPpreviousEndLine, kill);
+
+    JustinaMainLoop(doAutoStart, parsedStatementStartsOnNewLine, parsedStatementStartLinesAreAdjacent, statementStartsAtLine, parsedStatementAllowingBPstartsAtLine, BPstartLine, BPendLine, BPpreviousEndLine, kill);
 
 
     // returning control to Justina caller
@@ -822,7 +797,7 @@ void Justina::begin() {
 // *   Justina main loop   *
 // -------------------------
 
-void Justina::JustinaMainLoop(bool& loadingStartupProgram, bool& launchingStartFunction, bool& startJustinaWithoutAutostart, bool& parsedStatementStartsOnNewLine, bool& parsedStatementStartLinesAreAdjacent,
+void Justina::JustinaMainLoop(bool& doAutoStart, bool& parsedStatementStartsOnNewLine, bool& parsedStatementStartLinesAreAdjacent,
     long& statementStartsAtLine, long& parsedStatementAllowingBPstartsAtLine, long& BPstartLine, long& BPendLine, long& BPpreviousEndLine, bool& kill) {
 
     static bool flushAllUntilEOF{ false };
@@ -854,14 +829,10 @@ void Justina::JustinaMainLoop(bool& loadingStartupProgram, bool& launchingStartF
 
         _initiateProgramLoad = false;
 
-        if (startJustinaWithoutAutostart) { allCharsReceived = true; startJustinaWithoutAutostart = false; }
-
-        else if (launchingStartFunction) {                                                                      // autostart step 2: launch function
-            // do not read from console; instead insert characters here
-            strcpy(_sourceStatement, "start();");                                                               // NOTE: ending ';' is important
+        if (doAutoStart) {                                                                      // autostart step 2: launch function
             statementCharCount = strlen(_sourceStatement);
             allCharsReceived = true;                                                                            // ready for parsing
-            launchingStartFunction = false;                                                                     // nothing to prepare any more
+            doAutoStart = false;                                                                     // nothing to prepare any more
         }
 
         else {     // note: while waiting for first program character, allow a longer time out              
@@ -937,7 +908,7 @@ void Justina::JustinaMainLoop(bool& loadingStartupProgram, bool& launchingStartF
                 result = _pBreakpoints->addOneSourceLineRangePair(BPstartLine - BPpreviousEndLine - 1, BPendLine - BPstartLine + 1);
             }
 
-            // program mode: complete program read and parsed   /   imm. mode: all statements in command line read and parsed OR parsing error ?
+            // program mode: complete program now read and parsed   /  imm. mode: all statements in command line read and parsed OR parsing error ?
             if (allCharsReceived || (result != result_parsing_OK)) {                                            // note: if all statements have been read, they also have been parsed
                 if (kill) { quitNow = true; }
                 else {
@@ -958,18 +929,11 @@ void Justina::JustinaMainLoop(bool& loadingStartupProgram, bool& launchingStartF
                     quitNow = quitNow || prepareForIdleMode(result, execResult, kill, clearCmdIndicator, isSilentOnOffStatement);       // return value: quit Justina now
                 }
 
-                if (result == result_parsing_OK) {
-                    if (loadingStartupProgram) { launchingStartFunction = true; }
-                }
-                // parsing error occurred ? reset input controlling variables
-                else
-                {
+                if (result != result_parsing_OK) {
                     statementCharCount = 0;
                     withinString = false; withinStringEscSequence = false; within1LineComment = false; withinMultiLineComment = false;
                     lastCharWasSemiColon = false;
                 }
-
-                loadingStartupProgram = false;    // if this was a startup program load, then now it's aborted because of parsing error
 
                 // reset after program (or imm. mode line) is read and processed
                 lineCount = 0;
@@ -1327,7 +1291,7 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
     _pDebugOut->print("     call stack depth         = "); _pDebugOut->println(_callStackDepth);
     _pDebugOut->print("     eval stack elements      = "); _pDebugOut->println(evalStack.getElementCount());
 
-    _pDebugOut->print("  == input stream number      = "); _pDebugOut->println(statementInputStreamNumber); 
+    _pDebugOut->print("  == input stream number      = "); _pDebugOut->println(statementInputStreamNumber);
     if (statementInputStreamNumber > 0) {
         if (openFiles[statementInputStreamNumber - 1].fileNumberInUse) {
             _pDebugOut->print("         stream position      = ");  _pDebugOut->println(openFiles[statementInputStreamNumber - 1].file.position());
@@ -1339,12 +1303,16 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
     setActiveStreamTo(0, true);
     _lastPrintedIsPrompt = true;
 
+    int streamNumber = _activeFunctionData.statementInputStream;                                        // caller stream (batch file or command line)
+    if (streamNumber <= 0) { _silent = false; }                                                          // is true after autostart                    
+
+
     // print new prompt and exit
     if (!_silent && (_promptAndEcho != 0) && (execResult != EVENT_initiateProgramLoad)) {
 
         if (_lastPrintedIsPrompt) { printlnTo(0); };                            // avoid two prompts on the same line
-        printTo(0, "Justina> "); 
-        _lastPrintedIsPrompt = true; ////
+        printTo(0, "Justina> ");
+        _lastPrintedIsPrompt = true; 
     }
     else { _lastPrintedIsPrompt = false; }
 

@@ -7,7 +7,7 @@
 	
     This example Justina code is in the public domain
 
-    2024, Herwig Taveirne                                                                                                
+    2024-2025, Herwig Taveirne                                                                                                
 ------------------------------------------------------------------------------------------------------------------------*/
 
 
@@ -50,118 +50,75 @@ program calculatorWebServer; // this is a JUSTINA program
 	var last, r0, r1, r2, r3, r4, r5, r6, r7, r8, r9;											// 'last answer' register and user registers
 
 
-// webserver main loop: processes incoming HTTP client requests and, when the empty line... 
+// web server main loop: processes incoming HTTP client requests and, when the empty line... 
 // ...following the HTTP request header is encountered, sends a HTML response.
 // Calls 3 Justina user c++ functions defined within Justina_TCPIP.ino: 
 // - cpp_setVerbose(TRUE): allow TCP/IP library to print WiFi and TCP/IP state changes
 // - cpp_connState() : checks WiFi and TCP/IP client connection state
 // - cpp_stopClient(): stops TCP/IP client at the end of a request/response cycle 
+// - remoteIP(...)   : gets the client (remote) IP address 
 // -------------------------------------------------------------------------------------
 
 procedure webServer();
+    
+    // variables hidden from the web browser 'calculator' user
 	
-	// variables hidden from the web browser 'calculator' user
-	
-	const TCP_CONNECTED = 4;
+    const TCP_CONNECTED = 4;                                                                    // defined in TCPIP library
 	
 	const iconFile = "/justina/images/jus_icon.jpg";											// Justina icon file
 	const logoFile = "/justina/images/jus_logo.jpg";											// Justina logo file
-	
-	const asc_space = 0x20;
-	const EVAL_PARSING_ERROR = 3502;															// eval ("...") EXECUTION error: error while PARSING string argument
 	
 	static lastExpressions(10) = "";															// stores last 10 expressions entered
 	static lastResultsText(10) = "";															// stores last 10 results, as text (using current display formatting)
 	
 	var clientRequest=""; 																		// client request, as it is received
-	var expressionText = "", result = "";														// expression entered (as a string) and evaluation result (as a string, using current display formatting) 
-	var isMainPageRequest = FALSE, isLogoRequest = FALSE, isFaviconRequest = FALSE;
-	var executionError = 0, evalParsingError = 0;
-	
-	var inputLength =0, endPos=0;
-	var i = 0;
-	var charPos = 1;
-	
+	var isMainPageRequest = FALSE, isLogoRequest = FALSE, isFaviconRequest = FALSE;             // what page is requested ?
+    var skipThisLoop = TRUE;
+    var remoteIP = "";                                                                          // used for client validation
+    
 	startSD; 																					// make sure SD card is started
 																								
-	setTimeout(IO2, 500);																		// time out for readLine() function, in ms (NOT blocking for WiFi and TCP maintanance, handled in the background)		
+	setTimeout(IO2, 200);																		// time out for readLine() function, in ms (NOT blocking for WiFi and TCP maintanance, handled in the background)		
 	cpp_setVerbose(TRUE);																		// allow TCP/IP library to print WiFi and TCP/IP state changes 
 																								
 	
-	coutLine line(), "** Webserver started ** (Type '&' (ampersand) + ENTER to stop)";
+	coutLine line(), "** Web server started ** (Type '&' (ampersand) + ENTER to stop)";
 	
+    // main loop
 	while 1;                                                                                	
 		while cpp_connState() != TCP_CONNECTED;													// as long as HTTP client not connected
 			if cin() == asc("&"); 																// check console for ampersand button entry; exit web server if found
-				coutLine line(), "** Webserver stopped **";
+				coutLine line(), "** Web server stopped **";
 				return; 
 			end;				
 		end; 	                                                                            	
 																								
 		while cpp_connState() == TCP_CONNECTED;													// while client is connected 
-			while available(IO2);																// as long as characters are available (from HTTP client)
-				cout clientRequest=readLine(IO2);												// read request from HTTP client and echo on the Justina console (note: the request itself contains CRLF sequence)
-																								
-				if findStr(clientRequest, "GET / ") == 1;										// GET request to (re-)draw page ? 
-					result = "";                                                            	
-					isMainPageRequest = TRUE; 													// set flag to (re-) draw main page when request will be completemy received
-																								
-				elseif findStr(clientRequest, "GET /?inputBox=") == 1;							// GET request contains an expression to evaluate ? (as text)
-					result = ""; 																// init
-					endPos = findStr (clientRequest, " HTTP/1.1");								// isolate expression
-					inputLength = endPos - 16;                                              	
-					if inputLength > 0;                                                     	
-																								
-						// isolate expression within GET request                              	
-						urlDecode(expressionText = mid(clientRequest, 16, endPos - 16));		// replace '%hh' 3-character sequences by Ascii character with hex Ascii code 'hh'; replace '+' characters with spaces
-						expressionText	= trim(expressionText);
-						
-						// parse and evaluate expression entered by the user in the input box, and handle any error
-						if strCmp(expressionText, "") != 0;										// not an empty expression 
-							trapErrors TRUE;													// if error, than do not terminate but print error message in the answer box, instead of a result
-							
-							// first parse, than evaluate 'expressionText'
-							result = eval(expressionText);										// result (if no error: integer, float or string result)
-							
-							// if an error occurs while PARSING 'expressionText', a specific EXECUTION error is produced (EVAL_PARSING_ERROR) 
-							// and the err() argument 'evalParsingError' returns the parsing error
-							executionError = err(evalParsingError);								// return execution error and, possibly, an associated parsing number 
-							if executionError == EVAL_PARSING_ERROR; result = "! Error in formula: parsing error " + cStr(evalParsingError); 
-							elseif executionError != 0; result = "! Error in formula: evaluation error " + cStr(executionError); 			
-							else; last = result;
-							end;
-							trapErrors FALSE; 													// disable error trapping and clear err()
-							
-							// format result according to current display setting
-							if type(result) == INTEGER; result =  fmt(result, 0, sysVal(4), sysVal(6), sysVal(5));
-							elseif type(result) == FLOAT;  result = fmt(result, 0, sysVal(1), sysVal(3), sysVal(2));
-							end;	
-							
-							// update array with last 10 results (stored as text)
-							for i=9, 1, -1; 
-								lastExpressions(i+1)=lastExpressions(i);
-								lastResultsText(i+1)= lastResultsText(i); 
-							end; 
-							lastExpressions(1) = expressionText;
-							lastResultsText(1) = result;
-							
-							// ONLY for last results DISPLAY: replace spaces with 'non-breaking space' sequences
-							charPos=1; while (charPos > 0) && (charPos <= len( lastResultsText(1))); 
-								lastResultsText(1) = replaceStr( lastResultsText(1) , " ", "&nbsp;", charPos); 
-							end;
-							// ONLY for last results DISPLAY: replace control characters with ASCII code 129 (empty square)
-							charPos=0; while (++charPos <= len( lastResultsText(1))); 
-								if asc(lastResultsText(1), charPos) < asc_space; replaceChar(lastResultsText(1), 129, charPos); end; 
-							end;
-						end;	
-					end;
-					isMainPageRequest = TRUE;
+			cpp_remoteIP(remoteIP=space(15));
+            
+            while available(IO2);																// as long as characters are available (from HTTP client)
+				cout clientRequest=readLine(IO2);												// read request from HTTP client and echo on the Justina console (note: the request itself contains CRLF sequence)																			
+                
+                // validate client
+                // ---------------
+                skipThisLoop = validateClient(clientRequest, remoteIP, isMainPageRequest);
+                if isMainPageRequest; isLogoRequest = isFaviconRequest = FALSE; end;
+                if skipThisLoop; continue; end;
+
+                // handle HTTP requests
+                // --------------------
+                if findStr(clientRequest, "GET / ") == 1;									    // GET request to (re-)draw page ? 
+					isMainPageRequest = TRUE; isLogoRequest = isFaviconRequest = FALSE;													// set flag to (re-) draw main page when request will be completemy received
+                    
+                elseif findStr(clientRequest, "GET /?inputBox=") == 1;							// GET request contains an expression to evaluate ? (as text)
+                    handleInputBox(clientRequest, lastExpressions, lastResultsText);
+					isMainPageRequest = TRUE; isLogoRequest = isFaviconRequest = FALSE;
 				
 				elseif findStr(clientRequest, "GET " + logoFile) == 1;							// GET request to send logo ?					
-					isLogoRequest = TRUE;	
+					isLogoRequest = TRUE; isMainPageRequest = isFaviconRequest = FALSE;	
 					
 				elseif findStr(clientRequest, "GET /favicon") == 1;								// GET request to send favorite icon ?
-					isFaviconRequest = TRUE;	
+					isFaviconRequest = TRUE; isMainPageRequest = isLogoRequest = FALSE;	
 					
 				// empty line ? all request header lines have been received 
 				elseif  strCmp(clientRequest, line()) == 0;  									// all request header lines completely received (indicated by empty line) ?		    									
@@ -175,7 +132,7 @@ procedure webServer();
 						
 					elseif isFaviconRequest;													// request to send 'favorite icon' ? 
 						sendResponse_image(iconFile);											// send response message indicating 'no favorite icon'
-					isFaviconRequest=FALSE;														// reset flag
+                        isFaviconRequest=FALSE;														// reset flag
 					end; 	
 				end;	
 			end;	
@@ -183,6 +140,119 @@ procedure webServer();
 			cpp_stopClient(); 																	// no more incoming characters available: disconnect client
 		end;	
 	end;	
+end;
+
+
+// validate client
+// ---------------
+                
+function validateClient(clientRequest, remoteIP, isMainPageRequest);
+
+// lightweight HTTP request validation handling unauthorized connection attempts across the web (scanning)
+// if a request is not validated, the connection will be closed immediately
+// when a client wants to connect, the initial URL must include a query parameter, like this: 'IP:port/?token=' followed by a 'secret' token (see beginning of this procedure)
+
+    // >>>>>>>> CHANGE the secret token with your own secret <<<<<<<< !!!!
+    const secretToken = "mySecret";
+    
+    const exprStartPos = 13;                                                         // first 12 characters are 'GET /?token='
+    
+    static checkedRemoteIP = "";
+    
+    var exprEndPos = 0, inputLength = 0;
+    var expressionText = "";
+    var isAuthorized = FALSE;
+    var isValidToken=FALSE;
+    
+    if findStr(clientRequest, "GET /?token=") == 1;				    // GET request containng the secret token ? 
+        exprEndPos = findStr (clientRequest, " HTTP/1.1");								                // isolate expression
+        inputLength = exprEndPos - exprStartPos;                                              	                
+        if inputLength > 0;                                                     	                
+            // isolate expression within GET request                              	                
+            urlDecode(expressionText = mid(clientRequest, exprStartPos, inputLength));		                    // replace '%hh' 3-character sequences by Ascii character with hex Ascii code 'hh'; replace '+' characters with spaces
+            expressionText	= trim(expressionText);
+            isAuthorized = isValidToken = isMainPageRequest = strCmp(expressionText, secretToken) == 0; 
+            checkedRemoteIP = ifte(isValidToken, remoteIP, TRUE, "");
+        end;                            
+    else;                    
+        isAuthorized = strCmp(checkedRemoteIP, remoteIP) ==0;                    // IP was already validated ?
+    end;    
+
+    if !isAuthorized;                                                
+        printLine IO2, "HTTP/1.1 403 Forbidden";                                // send '403 Forbidden' message to client
+        cpp_stopClient(); 																	// no more incoming characters available: disconnect client
+        coutLine line(), "!! Unauthorized connection attempt !!";
+        while len(clientRequest =readLine(IO2)) > 0; clientRequest; end;                       // flush
+    end; 
+    
+    // nothing more to test or to do for this HTTP request ? (because the request is not authorized OR because the request has been handled here already: valid token)
+    return isValidToken || !isAuthorized;                               
+end;
+
+
+
+// handle HTTP request with text the user (client) entered in the served page input box    
+// ------------------------------------------------------------------------------------
+
+procedure handleInputBox(clientRequest, lastExpressions(), lastResultsText());
+  	const asc_space = 0x20;
+	const EVAL_PARSING_ERROR = 3502;															// eval ("...") EXECUTION error: error while PARSING string argument
+	const exprStartPos = 16;                                                                     // first 15 characters are 'GET /?inputBox='
+	
+    var expressionText = "", result = "";														// expression entered (as a string) and evaluation result (as a string, using current display formatting) 
+	var executionError = 0, evalParsingError = 0;
+	var inputLength =0;
+	var i = 0;
+	var charPos = 1, exprEndPos = 0;
+
+    result = ""; 																                // init
+    exprEndPos = findStr (clientRequest, " HTTP/1.1");								                // isolate expression
+    inputLength = exprEndPos - exprStartPos;                                              	                
+    
+    if inputLength > 0;                                                     	                
+        // isolate expression within GET request                              	                
+        urlDecode(expressionText = mid(clientRequest, exprStartPos, inputLength));		                    // replace '%hh' 3-character sequences by Ascii character with hex Ascii code 'hh'; replace '+' characters with spaces
+        expressionText	= trim(expressionText);
+    
+        // parse and evaluate expression entered by the user in the input box, and handle any error
+        if strCmp(expressionText, "") != 0;										                // not an empty expression 
+            trapErrors TRUE;													                // if error, than do not terminate but print error message in the answer box, instead of a result
+                            
+            // first parse, than evaluate 'expressionText'              
+            result = eval(expressionText);										                // result (if no error: integer, float or string result)
+            
+            // if an error occurs while PARSING 'expressionText', a specific EXECUTION error is produced (EVAL_PARSING_ERROR) 
+            // and the err() argument 'evalParsingError' returns the parsing error
+            executionError = err(evalParsingError);								                // return execution error and, possibly, an associated parsing number 
+            if executionError == EVAL_PARSING_ERROR; result = "! Error in formula: parsing error " + cStr(evalParsingError); 
+            elseif executionError != 0; result = "! Error in formula: evaluation error " + cStr(executionError); 			
+            else; last = result;
+            end;
+            trapErrors FALSE; 													                // disable error trapping and clear err()
+            
+            // format result according to current display setting
+            if type(result) == INTEGER; result =  fmt(result, 0, sysVal(4), sysVal(6), sysVal(5));
+            elseif type(result) == FLOAT;  result = fmt(result, 0, sysVal(1), sysVal(3), sysVal(2));
+            end;	
+            
+            // update array with last 10 results (stored as text)
+            for i=9, 1, -1; 
+                lastExpressions(i+1)=lastExpressions(i);
+                lastResultsText(i+1)= lastResultsText(i); 
+            end; 
+            lastExpressions(1) = expressionText;
+            lastResultsText(1) = result;
+            
+            // ONLY for last results DISPLAY: replace spaces with 'non-breaking space' sequences
+            charPos=1; while (charPos > 0) && (charPos <= len( lastResultsText(1))); 
+                lastResultsText(1) = replaceStr( lastResultsText(1) , " ", "&nbsp;", charPos); 
+            end;
+            // ONLY for last results DISPLAY: replace control characters with ASCII code 129 (empty square)
+            charPos=0; while (++charPos <= len( lastResultsText(1))); 
+                if asc(lastResultsText(1), charPos) < asc_space; replaceChar(lastResultsText(1), 129, charPos); end; 
+            end;
+        end;	
+    end;
 end;
 
 

@@ -75,8 +75,11 @@ Justina::execResult_type  Justina::exec(char* startHere) {
     _activeFunctionData.activeCmd_tokenAddress = nullptr;
     _activeFunctionData.errorStatementStartStep = _programCounter;
     _activeFunctionData.errorProgramCounter = _programCounter;
-    _activeFunctionData.trapEnable = 0;                                                 // start execution with error trapping disabled
-    _activeFunctionData.errorHandlerActive = 0;                                         // error handler is not active
+
+    if (_activeFunctionData.statementInputStream <= 0) {                                    // batch files: NOT set here (would be set for every batch file line)) BUT set when a batch file is launched
+        _activeFunctionData.trapEnable = 0;                                                 // start execution with error trapping disabled
+        _activeFunctionData.errorHandlerActive = 0;                                         // error handler is not active
+    }
 
     bool setCurrentPrintColumn{ false };                                                // for print commands only
 
@@ -344,7 +347,7 @@ Justina::execResult_type  Justina::exec(char* startHere) {
             }
             break;
 
-            
+
             // Case: process real or string constant token, variable token
             // -----------------------------------------------------------
 
@@ -902,6 +905,10 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
     bool trapErrorHere = (((_activeFunctionData.blockType == block_JustinaFunction) || (_activeFunctionData.blockType == block_batchFile))
         && (bool)_activeFunctionData.trapEnable && !(bool)_activeFunctionData.errorHandlerActive);
 
+    //Serial.print(">> active level: error trapped ? "); Serial.print(trapErrorHere); 
+    //    Serial.print(" (error trapping enabled ? ");  Serial.print((bool)_activeFunctionData.trapEnable);
+    //    Serial.print(", error handler was active ? "); Serial.print((bool)_activeFunctionData.errorHandlerActive); Serial.println(" )");
+
     // error trapping is NOT enabled where the error occurred (a Justina function or possibly an eval() string): check if error trapping is enabled for caller levels
     if (!trapErrorHere) {
         bool levelsBeneath = (_activeFunctionData.blockType == block_eval) ||
@@ -916,6 +923,11 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
             while (pFlowCtrlStackLvl != nullptr) {
                 trapErrorHere = (((pFlowCtrlStackLvl->blockType == block_JustinaFunction) || (pFlowCtrlStackLvl->blockType == block_batchFile))
                     && (bool)pFlowCtrlStackLvl->trapEnable && !(bool)pFlowCtrlStackLvl->errorHandlerActive);
+                
+                //Serial.print(" > lower level: error trapped ? "); Serial.print(trapErrorHere); 
+                //    Serial.print(" (error trapping enabled ? ");  Serial.print((bool)pFlowCtrlStackLvl->trapEnable); 
+                //    Serial.print(", error handler was active ? "); Serial.print((bool)pFlowCtrlStackLvl->errorHandlerActive); Serial.println(" )");
+                
                 if (trapErrorHere) { break; }
                 bool isCmdLevel = (pFlowCtrlStackLvl->blockType == block_JustinaFunction) && (pFlowCtrlStackLvl->pNextStep >= (_programStorage + _PROGRAM_MEMORY_SIZE));
                 if (isCmdLevel) { trapErrorHere = false; break; }           // (debug) command line reached and checked: do not search previously stopped programs
@@ -924,9 +936,8 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
         }
     }
 
-    if (!trapErrorHere) { return false; }           // error not trapped: quit
 
-    _activeFunctionData.errorHandlerActive = 1;     // error trapped: set 'handler is active for the current function'
+    if (!trapErrorHere) { return false; }           // error not trapped: quit
 
 
     // B. Terminate execution of Justina functions, open batch files and eval() strings until the function, open batch file line or (debug) command line...
@@ -935,30 +946,42 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
 
     bool returnedFromBatchFile{ false };
     do {
+//        Serial.println("** TERMINIATING level ? ");
+
         // clear evaluation stack levels for currently active block (function or eval block): get rid of expression(s) at the moment the error occurred
         clearEvalStackLevels(evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels);
 
         if (_activeFunctionData.blockType == block_eval) {
-            terminateEval();                                                                            // eval() function: always terminate and keep looking for function with error trapping
+  //          Serial.print(" * error NOT trapped at this level, terminating eval() - input stream: "); Serial.print((int)_activeFunctionData.statementInputStream); Serial.print(", block type : "); Serial.println((int)_activeFunctionData.blockType);
+            // eval() function: error is never trapped at this level, so always terminate and keep looking for function / batch file level with error trapping
+            terminateEval();
         }
 
         else if (_activeFunctionData.blockType == block_JustinaFunction) {                              // Justina function
             // NOT a void Justina function  -AND-  RETURN statement without expression, or END statement: return a zero
-            bool isVoidFunctionDef = (justinaFunctionData[_activeFunctionData.functionIndex].isVoidFunctionDef == 1);
-            if (!_activeFunctionData.trapEnable) {
-                // this function is not trapping errors: terminate function (and keep looking for function in the call stack with error trapping enabled)
+            bool trapErrorHere = ((bool)_activeFunctionData.trapEnable && !(bool)_activeFunctionData.errorHandlerActive);
+            if (!trapErrorHere) {
+            // this function is not trapping errors: terminate function (and keep looking for function in the call stack with error trapping enabled)
+//                Serial.print(" * error NOT trapped at this level, terminating Justina fnc - input stream: "); Serial.print((int)_activeFunctionData.statementInputStream); Serial.print(", block type : "); Serial.println((int)_activeFunctionData.blockType);
+
+                bool isVoidFunctionDef = (justinaFunctionData[_activeFunctionData.functionIndex].isVoidFunctionDef == 1);
                 terminateJustinaFunction(isVoidFunctionDef, !isVoidFunctionDef);                        // return zero, except when a void Justina function
             }
-            else { break; }                                                                             // function with error trapping found (always there, see previous test)
+            else {/* Serial.println(" * error TRAPPED at this level");*/ break; }                                                                             // function with error trapping found (always there, see previous test)
         }
         else if (_activeFunctionData.blockType == block_batchFile) {
-            if (!_activeFunctionData.trapEnable) {
+            bool trapErrorHere = ((bool)_activeFunctionData.trapEnable && !(bool)_activeFunctionData.errorHandlerActive);
+            if (!trapErrorHere) {
+                //Serial.print(" * error NOT trapped at this level, terminating batch file - input stream: "); Serial.print((int)_activeFunctionData.statementInputStream); Serial.print(", block type : "); Serial.println((int)_activeFunctionData.blockType);
+
                 terminateBatchFile();                                                                   // terminate batch file 
                 returnedFromBatchFile = true;                                                           // next program step is set already
             }
-            else { break; }
+            else {/* Serial.println(" * error TRAPPED at this level"); */ break; }
         }
     } while (true);
+
+    _activeFunctionData.errorHandlerActive = 1;     // error trapped: set 'handler is active' for the current function, batch file or command line (not necessarily the function, ... where the error occured)
 
 
     // C. If an error is trapped while executing the expression in a block structure command (if, elseif, while, for <expression>; ), execution should continue
@@ -1638,7 +1661,7 @@ void Justina::clearFlowCtrlStack(int& parsedCmdStackLevelsToPop, bool deleteSing
         else if (blockType == block_batchFile) {
             // when a batch file level was deleted from flowCtrlStack, a parsedStatementLineStack level must be popped from the parsed statement lines stack as well
 
-            if (deleteSingleProgramStackLevels && keepExecutingBatchFile) {  deleteCommandLineOpenBlocksOnly = true; }          // continue execution of batch file lines ? break 
+            if (deleteSingleProgramStackLevels && keepExecutingBatchFile) { deleteCommandLineOpenBlocksOnly = true; }          // continue execution of batch file lines ? break 
             else {
                 int streamNumber = _activeFunctionData.statementInputStream;                // > 0 because batch file
                 SD_closeFile(streamNumber);                                                 // will close batch file (is a system file)
@@ -1664,7 +1687,7 @@ void Justina::clearFlowCtrlStack(int& parsedCmdStackLevelsToPop, bool deleteSing
         blockType = ((OpenBlockGeneric*)_pFlowCtrlStackTop)->blockType;                 // block type: function, batch file, eval() statement, open block 
         if ((blockType == block_JustinaFunction) || (blockType == block_batchFile) || (blockType == block_eval)) {
 
-            if (deleteCommandLineOpenBlocksOnly) {  return; }   // open blocks of command level have been deleted: quit
+            if (deleteCommandLineOpenBlocksOnly) { return; }   // open blocks of command level have been deleted: quit
 
             _activeFunctionData = *((OpenFunctionData*)_pFlowCtrlStackTop);
             --_callStackDepth;
@@ -2789,8 +2812,9 @@ Justina::execResult_type Justina::launchBatchFileExecution(int cmdArgCount, LE_e
     openFiles[fileNumber - 1].argCount = cmdArgCount;                                                   // batch name and optional arguments
     openFiles[fileNumber - 1].pValueType = valueType;
     openFiles[fileNumber - 1].pArgs = args;
-    openFiles[fileNumber - 1].silent = 0;
-    _silent = false;                                                                                    // init
+    openFiles[fileNumber - 1].silent = 0;                                                               // init: silent mode off
+    _silent = false;
+
 
     // create string objects for batch file non-empty string arguments, but SKIP first argument (batch filename - already stored in openFiles[fileNumber - 1].filePath)
     for (int i = 1; i < cmdArgCount; i++) {

@@ -397,7 +397,7 @@ Justina::execResult_type Justina::pathValid(const char* path) {
     // SD library allows to run into issues if path is not valid (hanging, invalid creation of directories / files)
     // this routine performs a few basic checks: 
     // - path MUST start with a '/' (slash)
-    // - path should NOT end with a '/' or a space
+    // - path MUST NOT end with a '/' or a space
     // - never two '/' in a row
 
     if (path == nullptr) { return result_SD_pathIsNotValid; }                                                   // empty path is not valid

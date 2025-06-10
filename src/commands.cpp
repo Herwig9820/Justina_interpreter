@@ -757,7 +757,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             value.longConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pLongConst) : pStackLvl->varOrConst.value.longConst);    // line is valid for all value types  
             bool trapEnable = (valueType == value_isLong) ? (bool)value.longConst : (bool)value.floatConst;
             _activeFunctionData.trapEnable = (trapEnable ? 1 : 0);                                                        // counts for currently executing procedure only                                                       
-            _activeFunctionData.errorHandlerActive = 0;                     // error handler is not active (reset if set)
+            _activeFunctionData.errorHandlerActive = 0;                     // error handler status is reset (no event handler active)
             if (trapEnable) {
                 _trappedExecError = (int)result_execOK;                     // reset err() only when enabling, to allow testing for error after setting error trapping off
                 _trappedEvalParsingError = result_parsing_OK;               // eval() and list IO errors only
@@ -770,16 +770,18 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
         break;
 
 
-        // ------------------------
-        // Clear an execution error
-        // ------------------------
+        // ---------------------------------------------------------------
+        // Clear an execution error (this does NOT disable error trapping)
+        // ---------------------------------------------------------------
+
+        // this cancels the effect of a trapped error only; error trapping is not disabled
 
         case cmdcod_clearError:
         {
             // status of _activeFunctionData.trapEnable is not changed 
             _trappedExecError = (int)result_execOK;
             _trappedEvalParsingError = result_parsing_OK;                   // eval() and list IO errors only
-            _activeFunctionData.errorHandlerActive = 0;                     // error handler is not active
+            _activeFunctionData.errorHandlerActive = 0;                     // error handler status is reset (no event handler active)
 
             // clean up
             clearEvalStackLevels(cmdArgCount);                              // clear evaluation stack and intermediate strings 
