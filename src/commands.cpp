@@ -2005,7 +2005,6 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             clearEvalStackLevels(cmdArgCount);                                                                              // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_commandCode = cmdcod_none;                                                        // command execution ended
         }
-
         break;
 
 

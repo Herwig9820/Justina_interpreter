@@ -53,7 +53,7 @@ constexpr char menu[] = "Please type 'J' to start Justina interpreter\r\n";
 
 // variables
 unsigned long HEARTBEAT_PERIOD{ 1000 };                                     // 'long' heartbeat ON and OFF time: heartbeat led will blink at this (low) rate when control is not within Justina
-unsigned long CLIENT_ACTIVITY_TIMEOUT{ 30000 };                             // stop client if no activity for this period of time (ms)     
+unsigned long CLIENT_ACTIVITY_TIMEOUT{ 60000 * 5 };                         // stop client if no activity for this period of time (ms)     
 
 
 // -------------------------------

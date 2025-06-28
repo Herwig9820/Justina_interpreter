@@ -757,7 +757,7 @@ void Justina::begin() {
 
                 // look up the 'exec' command keyword and fill source statement input buffer with 'exec batchFileName' statement
                 int index{ -1 }; do {} while (_internCommands[++index].commandCode != cmdcod_execBatchFile);
-                sprintf(_sourceStatement, "%s \"%s\";\0",  _internCommands[index]._commandName, AUTOSTART_FILE_PATH);            
+                sprintf(_sourceStatement, "%s \"%s\";\0", _internCommands[index]._commandName, AUTOSTART_FILE_PATH);
                 _silent = true;
             }
             else { doAutoStart = false; printTo(0, "Justina batch file \""); printTo(0, AUTOSTART_FILE_PATH); printlnTo(0, "\" not found"); }
@@ -805,7 +805,7 @@ void Justina::JustinaMainLoop(bool& doAutoStart, bool& parsedStatementStartsOnNe
     bool isSilentOnOffStatement{ false };
     bool withinStringEscSequence{ false }, lastCharWasSemiColon{ false }, within1LineComment{ false }, withinMultiLineComment{ false }, withinString{ false }, redundantSemiColon = false;
     int clearCmdIndicator{ 0 };                                                             // 1 = clear program cmd, 2 = clear all cmd
-    long lineCount, statementCharCount{ 0 }, parsedStatementCount{ 0 };
+    long lineCount{ 0 }, statementCharCount{ 0 }, parsedStatementCount{ 0 };
 
     char c{};
     char* pErrorPos{};
@@ -919,7 +919,7 @@ void Justina::JustinaMainLoop(bool& doAutoStart, bool& parsedStatementStartsOnNe
                     if (!_programMode && (result == result_parsing_OK)) {
 
                         ////Serial.println("!!!! before exec");
-                        execResult = exec(_programStorage + _PROGRAM_MEMORY_SIZE);              // execute parsed user statements
+                        execResult = exec(_programStorage + _PROGRAM_MEMORY_SIZE);              // execute parsed user statements (and call programs from there)
                         ////Serial.println("!!!! after exec");
 
                         if (execResult == EVENT_kill) { kill = true; }
@@ -1132,6 +1132,8 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
     // ---------------------------------------------------------------------
     // if in debug mode, trace expressions (if defined) and print debug info 
     // ---------------------------------------------------------------------
+
+
     if ((_openDebugLevels > 0) && (execResult != EVENT_kill) && (execResult != EVENT_quit) && (execResult != EVENT_initiateProgramLoad)) { traceAndPrintDebugInfo(execResult); }
 
 
@@ -1312,7 +1314,7 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
 
         if (_lastPrintedIsPrompt) { printlnTo(0); };                            // avoid two prompts on the same line
         printTo(0, "Justina> ");
-        _lastPrintedIsPrompt = true; 
+        _lastPrintedIsPrompt = true;
     }
     else { _lastPrintedIsPrompt = false; }
 
@@ -1379,8 +1381,9 @@ void Justina::traceAndPrintDebugInfo(execResult_type execResult) {
     void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;
     int blockType = block_none;
     do {                                                                                                        // there is at least one open function in the call stack
+        // if within a batch file, skip the debug command line to reach the deepest open function
         blockType = ((OpenBlockGeneric*)pFlowCtrlStackLvl)->blockType;
-        if (blockType == block_JustinaFunction) { break; }
+        if (blockType == block_JustinaFunction) { if (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep < (_programStorage + _PROGRAM_MEMORY_SIZE)) { break; } }
         pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
     } while (true);
 
@@ -1414,7 +1417,6 @@ void Justina::traceAndPrintDebugInfo(execResult_type execResult) {
     if (isBreakpointStop) { parseAndExecTraceOrBPviewString(BPdataRow); }                                       // BP view string: may not contain keywords, Justina functions, generic names
     parseAndExecTraceOrBPviewString();                                                                          // trace string: may not contain keywords, Justina functions, generic names
 
-
     // print the source line, function and statement 
     // ---------------------------------------------
     // if source line has an entry in breakpoint table: retrieve source line from there. If not,...
@@ -1425,6 +1427,7 @@ void Justina::traceAndPrintDebugInfo(execResult_type execResult) {
     printTo(_debug_sourceStreamNumber, msg);
     prettyPrintStatements(_debug_sourceStreamNumber, 1, nextStatementPointer);                                  // print statement
     printTo(_debug_sourceStreamNumber, "\r\n");
+
     return;
 }
 

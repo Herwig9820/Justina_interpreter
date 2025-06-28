@@ -78,29 +78,33 @@ void Breakpoints::resetBreakpointsState() {
 // ******************************
 
 /*
-A user must be able to set a breakpoint for each source line having at least one statement STARTING at the source line.
-To accomplish that, during program parsing, the line numbers of these source lines must be 'remembered' and linked to parsed statements.
-To do this with a minimal use of memory, Justina stores pairs of line range sizes, as follows:
-each pair consists of the 'gap' size (number of lines) between the end of a previous range of valid lines (or the beginning of the source file) and
-the beginning of a next range of 'valid' source lines (lines where a breakpoint can be set). This information is stored in a table WITHOUT any impact
-on the memory required for parsed statements (program memory).
-- gap size is less than 8 source lines and valid range size is less than 16 source lines: 1 byte is required in range pair table
-- gap size is less than 128 source lines and valid range size is less than 128 source lines: 2 bytes are required in range pair table
-- gap size is less than 2048 source lines and valid range size is less than 2048 source lines: 3 bytes are required in range pair table
-Larger line range sizes will produce an error.
+    A user must be able to set a breakpoint for each source line having at least one statement STARTING at that source line.
+    To accomplish that, during program parsing, the line numbers of these source lines must be 'remembered' and linked to parsed statements.
 
-At the same time, during program parsing, statements for which setting a breakpoint is allowed, are marked by altering the statement separator token preceding
-the parsed statement. This does NOT consume any extra memory (it's merely a flag that is set).
+    To do this with a minimal use of memory AND with NO impact on program memory allocated to parsed program statements, Justina stores pairs of line range sizes in a separate table, as follows:
+    each pair consists of 
+    - the 'gap' size (number of lines) between the end of a previous range of valid source lines (or the beginning of the source file) and the beginning of a next range of 'valid' source lines
+    - the size of the next range of 'valid' source lines (lines where a breakpoint can be set)
+    
+    This information is stored in a table WITHOUT any impact on the memory required for parsed statements (program memory). 
+    - gap size is less than 8 source lines and valid range size is less than 16 source lines: 1 byte is required in range pair table
+    - gap size is less than 128 source lines and valid range size is less than 128 source lines: 2 bytes are required in range pair table
+    - gap size is less than 2048 source lines and valid range size is less than 2048 source lines: 3 bytes are required in range pair table
+    Larger line range sizes will produce an error.
 
-For each source line included in the range pair table, exactly one parsed statement receives the marking 'breakpoint allowed' (1-to-1).
-When a user sets, clears, ... a breakpoint later during debugging the program, the line sequence number of the source line in the range pair table
-is established first. Then the parsed program is scanned, counting only statements marked as 'breakpoint allowed', until the parsed statement matching
-the source line statement is found.
+    At the same time, during program parsing, statements for which setting a breakpoint is allowed, are marked by altering the statement separator token preceding
+    the parsed statement. This does NOT consume any extra memory (it's merely a flag that is set).
 
-Example: 'gap range-valid range' pairs 3,5,7,2 show that the source file consists of 3+5+7+2 = 17 lines; lines 4->8 and lines 16->17 are valid source lines.
-A total of 5+2 = 7 parsed statements have been marked as 'breakpoint allowed'.
-If the user wants to set a breakpoint for line 16 for example, as this is the 6th valid line, Justina will find the 6th parsed statement and alter the
-preceding statement separator token, to indicate that the breakpoint is now set. Additional breakpoint attributes will be maintained in a separate table.
+    For each source line included in the range pair table, exactly one parsed statement is marked as 'breakpoint allowed' (1-to-1).
+    When a user sets, clears, ... a breakpoint later during debugging the program, the line sequence number of the source line in the range pair table
+    is established first (a number from 1 to the number of source lines where a breakpoint can be set). 
+    Then the parsed program is scanned, counting only statements marked as 'breakpoint allowed', until the parsed statement matching
+    the source line sequence number is found. The breakpoint flag for that statement is then adapted in program memory.
+
+    Example: 'gap range-valid range' pairs 3,5,7,2 show that the source file consists at least of 3+5+7+2 = 17 lines; lines 4->8 and lines 16->17 are valid source lines.
+    Each valid source line contains exactly one statement where a breakpoint can be set (the first statement starting on that source line).
+    If the user wants to set a breakpoint for line 16 for example, as this is the 6th valid source line, Justina will find the 6th parsed statement and alter the
+    preceding statement separator token, to indicate that the breakpoint is now set. Additional breakpoint attributes will be maintained in a separate table.
 */
 
 // -----------------------------------------------------------------------------------------------------------------
@@ -112,12 +116,12 @@ Justina::parsingResult_type Breakpoints::collectSourceLineRangePairs(const char 
 
     static long gapLineRange{ 0 };
 
-    // if the statement yet to parse starts on the same line as the previous statement, it doesn't start on a new line
+    // if the statement yet to parse starts on the same line as the previous statement, it doesn't start on a new line (obviously)
     parsedStatementStartsOnNewLine = (statementStartsAtLine != parsedStatementAllowingBPstartsAtLine);
 
     if (!(_pJustina->_programMode && (parsedStatementStartsOnNewLine))) { return Justina::parsingResult_type::result_parsing_OK; }  // nothing to do
 
-    // 1. for each 'first' statement starting in a specific source line: alter the 'end of statement' token of the...
+    // 1. for each 'first' statement starting at a specific source line: alter the 'end of statement' token of the...
     //    ...previously parsed (preceding) statement to indicate 'setting breakpoint allowed' for the statement being parsed.
     // ----------------------------------------------------------------------------------------------------------------------
 

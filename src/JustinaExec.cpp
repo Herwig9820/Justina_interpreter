@@ -723,6 +723,8 @@ Justina::execResult_type  Justina::exec(char* startHere) {
 
             bool executingEvalString = (_activeFunctionData.blockType == block_eval);
 
+            bool isBatchFileLaunch = (_activeFunctionData.activeCmd_isInternal) ? (_activeFunctionData.activeCmd_commandCode == cmdcod_execBatchFile) : false;
+
             if (!_parsingExecutingTraceString && !_parsingExecutingTriggerString && !executingEvalString && (execResult == result_execOK)) {
                 bool isActiveBreakpoint{ false }, doStopForDebugNow{ false };
                 checkForStop(isActiveBreakpoint, doStopForDebugNow, appFlagsRequestStop, isFunctionReturn, programCnt_previousStatementStart);
@@ -923,11 +925,11 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
             while (pFlowCtrlStackLvl != nullptr) {
                 trapErrorHere = (((pFlowCtrlStackLvl->blockType == block_JustinaFunction) || (pFlowCtrlStackLvl->blockType == block_batchFile))
                     && (bool)pFlowCtrlStackLvl->trapEnable && !(bool)pFlowCtrlStackLvl->errorHandlerActive);
-                
+
                 //Serial.print(" > lower level: error trapped ? "); Serial.print(trapErrorHere); 
                 //    Serial.print(" (error trapping enabled ? ");  Serial.print((bool)pFlowCtrlStackLvl->trapEnable); 
                 //    Serial.print(", error handler was active ? "); Serial.print((bool)pFlowCtrlStackLvl->errorHandlerActive); Serial.println(" )");
-                
+
                 if (trapErrorHere) { break; }
                 bool isCmdLevel = (pFlowCtrlStackLvl->blockType == block_JustinaFunction) && (pFlowCtrlStackLvl->pNextStep >= (_programStorage + _PROGRAM_MEMORY_SIZE));
                 if (isCmdLevel) { trapErrorHere = false; break; }           // (debug) command line reached and checked: do not search previously stopped programs
@@ -2382,7 +2384,7 @@ Justina::execResult_type  Justina::execInfixOperation() {
     // (7) post process
     // ----------------
 
-    // Delete any intermediate result string objects used as operands 
+    // delete any intermediate result string objects used as operands 
 
     // if operands are intermediate constant strings, then delete char string object
     deleteIntermStringObject(_pEvalStackTop);
@@ -3179,6 +3181,10 @@ void Justina::terminateJustinaFunction(bool isVoidFunction, bool addZeroReturnVa
         _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
 
     } while ((blockType == block_while) || (blockType == block_for) || (blockType == block_if));                            // as long as deleted stack level was open block (for, while, if)  
+
+    int streamNumber = _activeFunctionData.statementInputStream;                                                            // > 0: batch file
+    _silent = (streamNumber > 0) ? bool(openFiles[streamNumber - 1].silent) : false;
+
     --_callStackDepth;                                                                                                      // caller reached: call stack depth decreased by 1
 
 
@@ -3221,6 +3227,9 @@ void Justina::terminateEval() {
     _activeFunctionData = *(OpenFunctionData*)_pFlowCtrlStackTop;
     flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);
     _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
+
+    int streamNumber = _activeFunctionData.statementInputStream;                                        // > 0: batch file
+    _silent = (streamNumber > 0) ? bool(openFiles[streamNumber - 1].silent) : false;
 
     --_callStackDepth;                                                                                  // caller reached: call stack depth decreased by 1
 

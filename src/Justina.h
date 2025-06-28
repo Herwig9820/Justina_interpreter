@@ -793,10 +793,6 @@ private:
         result_cmd_argumentMissing,
         result_cmd_tooManyArguments,
 
-        // user callback errors
-        result_userCB_allAliasesSet = 1900,
-        result_userCB_aliasRedeclared,
-
         // block command errors
         result_block_noBlockEnd = 2000,
         result_block_noOpenBlock,
@@ -2563,13 +2559,13 @@ private:
 
     struct BreakpointData {
         char BPenabled : 1;                             // breakpoint is enabled (program will stop)
-        char BPwithViewExpr : 1;
-        char BPwithHitCount : 1;
-        char BPwithTriggerExpr : 1;
+        char BPwithViewExpr : 1;                        // flag: breakpoint has (a) view expression(s)
+        char BPwithHitCount : 1;                        // flag: breakpoint has a hit count
+        char BPwithTriggerExpr : 1;                     // flag: breakpoint has a trigger expression
 
         long sourceLine{ 0 };                           // if breakpoint encountered, inform user on what source line
         char* pProgramStep{ nullptr };                  // compare with current program counter to find breakpoint entry 
-        char* pView{ nullptr };                         // pointer to view expression (string)
+        char* pView{ nullptr };                         // pointer to view expressions separated by semicolons (string)
         char* pTrigger{ nullptr };                      // pointer to trigger expression (string)
         long hitCount{ 0 };                             // pointer to number of hits triggering breakpoint
         long hitCounter{ 0 };                           // hit counter

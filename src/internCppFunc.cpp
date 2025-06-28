@@ -554,7 +554,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // limit string length, because object for it is created on the heap
             int maxLineLength = MAX_ALPHA_CONST_LEN - 1;        // init: input line -> length is not specified, line terminator '('\n') will be added at the end
             // input & read: check length
-            if (!isLineForm) {     // last argument pecifies maximum length
+            if (!isLineForm) {     // last argument specifies maximum length
                 int lengthArgIndex = suppliedArgCount - 1;            // base 0
                 if ((!(argIsLongBits & (0x1 << lengthArgIndex))) && (!(argIsFloatBits & (0x1 << lengthArgIndex)))) { return result_arg_numberExpected; }   // number of bytes to read
                 maxLineLength = (argIsLongBits & (0x1 << lengthArgIndex)) ? (args[lengthArgIndex].longConst) : (args[lengthArgIndex].floatConst);
@@ -580,7 +580,6 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             }
             else {                                                                                                          // external input OR (all streams) search for terminator 
                 bool kill{ false }, doStop{ false }, doAbort{ false }, stdConsDummy{ false };
-
                 for (int i = 0; i < maxLineLength; i++) {
                     // get a character if available and perform a regular housekeeping callback as well
                     bool charFetched{ false };
