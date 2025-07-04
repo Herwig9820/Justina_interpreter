@@ -1,0 +1,592 @@
+/*------------------------------------------------------------------------------------------------------------------------
+    Example JUSTINA language program for use with the Justina interpreter
+	
+    The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      
+    by the Free Software Foundation (https://www.gnu.org/licenses).                                                      
+    Refer to GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter            
+	
+    This example Justina code is in the public domain
+
+    2024-2025, Herwig Taveirne                                                                                                
+------------------------------------------------------------------------------------------------------------------------*/
+
+
+program calculatorWebServer; // this is a JUSTINA program
+
+/*
+	Example of a web server, creating a web page functioning as a scientific calculator.
+	An input box allows you to type in any expression (no commands) as long as it adheres to the Justina syntax:
+	internal Justina functions, Justina user functions and Justina user cpp functions are all allowed.
+	When submitted, the expression is evaluated by Justina ( eval() function) and the result (or the error, 
+	if an error is produced) is returned. The last 10 results are shown in an answer box below the input box. 
+	
+	This example is intended to be used with Justina library example Justina_TCPIP, which 
+	- configures your Arduino as a TCP server
+	- is responsible for maintaining the WiFi and the TCP connection
+	- sets the underlying TCP/IP client as Justina IO device 2 (IO2)
+	
+	This Justina language program implements the HTTP server on top, without having to worry about WiFi and TCP
+	connection maintenance. From the perspective of the HTTP server, this is a pure background process, executed regularly
+	by means of Justina system callbacks (see Justina_TCPIP library example).
+	
+    This HTTP server implements two interesting concepts: a simple form of user authentication (mainly to get rid of random IP scanners across the internet) 
+    and implementation of session time out (sliding expirarion, resetting the session timer each time the client sends data to the HTTP server).
+	This web server example uses the SD card: it expects to find a Justina logo file and icon file (jus_logo.jpg and jus_icon.jpg)
+	in SD card directory "/justina/images".
+	If an SD card is not connected or the image files are not found, the web page will still be displayed, but without
+	logo and icon. 
+	
+	NOTE: the image files are available in the Justina library in folder 'Justina_interpreter\extras\Justina_language_examples\images'
+
+	Procedure call: webServer();
+	While web client is not connected, press ampersand ( & ) to exit
+	
+	To test (or use !) the scientific calculator, open a web browser and type the complete url: http://nnn.nnn.nnn.nnn:port (fill in server IP address and port)
+*/
+
+
+// global constants and variables
+// ------------------------------
+
+	// program variables available to the web browser 'calculator' user 
+    // define all other program variables as local to shield them from the calculator user (Justina user variables, including arrays, ARE available to the calculator user)
+	var last, r0, r1, r2, r3, r4, r5, r6, r7, r8, r9;							        // 'last answer' register and user registers
+
+
+// web server main loop: processes incoming HTTP client requests and, when the empty line... 
+// ...following the HTTP request header is encountered, sends a HTML response.
+// Calls 3 Justina user c++ functions defined within Justina_TCPIP.ino: 
+// - cpp_setVerbose(TRUE): allow TCP/IP library to print WiFi and TCP/IP state changes
+// - cpp_connState() : checks WiFi and TCP/IP client connection state////
+// - cpp_stopClient(): stops TCP/IP client at the end of a request/response cycle 
+// - sessionIP(...)   : gets the client (remote) IP address 
+// -------------------------------------------------------------------------------------
+
+procedure webServer();
+    
+    // variables hidden from the web browser 'calculator' user
+	
+    const echoRequest = TRUE;                                                          // echo received HTTP requests to the console ?
+    const WIFI_CONNECTED = 2;                                                            // connection status constant as defined in TCPIP library
+    const sessionTimeOut = 120000;                                                      // two minutes inactivity ends session
+    const noPageRequested = 0, mainPageRequest = 1, logoRequest = 2, faviconRequest = 3;    // what web page is requested ?
+    const sessionCount = 3;
+    
+	const iconFile = "/justina/images/jus_icon.jpg";							        // Justina icon file
+	const logoFile = "/justina/images/jus_logo.jpg";							        // Justina logo file
+                                                                                        
+    var lastExpressions(10) = "";											        // stores last 10 user expressions entered
+	var lastResultsText(10) = "";											        // stores last 10 results, as text (using current display formatting)
+    
+    var lastHTTPrequestTime(3) = 0;                                                     // time of last HTTP request 
+    var validatedsessionIP(3) = "";                                                      // remote IP of the HTTP request containing a valid token                     
+    
+    var sessionID = 0;
+    var IOchannel = 0;
+    var sessionActive = FALSE;                                                       
+                                                                         
+    var clientRequest = ""; 													        // client request, as it is received
+    var pageRequested = 0;                                                              // init 
+    var acceptTokenRequest = FALSE, isValidClient = FALSE;                                
+	var HTTP_error = 0;                                                                 // HTTP error 
+    var clientSlot = 0, lastSessionActivity = 0;
+    var sessionClientIP = "---------------";                                                  // session IP address
+    var quitWebServer = FALSE;                                                          // quit HTTP server program and return to caller 
+                                                                                        
+	startSD; 																	        // make sure SD card is started
+    
+    setTimeout(IO2, 200);														        // time out for readLine() function, in ms (NOT blocking for WiFi and TCP maintanance, handled in the background)		
+    setTimeout(IO3, 200);														        // time out for readLine() function, in ms (NOT blocking for WiFi and TCP maintanance, handled in the background)		
+    setTimeout(IO4, 200);														        // time out for readLine() function, in ms (NOT blocking for WiFi and TCP maintanance, handled in the background)		
+	
+    cpp_WiFiOn();
+    cpp_TCPon();
+    cpp_setVerbose(TRUE);                                                              // allow TCP/IP library to print WiFi and TCP/IP state changes 
+																	  	
+	coutLine line(), "Web server started (Type '&' (ampersand) + ENTER to stop)";       
+     
+    for sessionID = 1, lastHTTPrequestTime(sessionID) = millis(); sessionCount; end;
+    
+    // main loop                                                                        
+	while 1;                                                                            	
+        for sessionID = 1, sessionCount;
+            sessionActive = cpp_getSessionData(sessionID, clientSlot, sessionClientIP=space(15));                                           // provide space for remote IP address in variable
+            /*
+            dboutLine "++ loop start: session active ? ", sessionActive; wait(200)////
+            // note that sessions without a connected client can be active (in between 2 connections) 
+            if sessionActive;                                                               
+                essionActive = (millis() < (lastHTTPrequestTime(sessionID) + sessionTimeOut));        // end session after a timeout (sliding expiration)
+                if ! sessionActive; 
+                    ////dboutLine "Session timeout: session ", sessionID, " ended"; 
+                end;
+            end;
+            */                                                                                
+            
+            if sessionActive && (clientSlot != -1);                                          // client is connected ? 
+                coutLine "**** A";
+                IOchannel  = IO2 + clientSlot;
+                while available(IOchannel);											            // as long as characters are available (from HTTP client)
+                    clientRequest = readLine(IOchannel);									        // read request from HTTP client																			
+                    cout "len=", len(clientRequest), " "; printClientRequest(clientRequest);									        // read request from HTTP client																			
+                                                                                            
+                    // validate client                                                      
+                    // ---------------
+                    isValidClient = validateClient(validatedsessionIP(sessionID), clientRequest, sessionClientIP, acceptTokenRequest, sessionActive, HTTP_error);  // avoid random connections from IP scanners across the web: close such connections immediately
+                    if isValidClient; lastHTTPrequestTime(sessionID) = millis(); end;                  // if request is accepted, re-init session timer 
+                                       
+                    // handle HTTP requests
+                    // --------------------
+
+                    if !isValidClient;  
+                        printHTTP_error(IOchannel, HTTP_error);                             // print HTTP error and flush client stream input buffer 
+                        break;                                                              // break loop and stop client connection
+                        
+                    elseif acceptTokenRequest; 
+                        pageRequested = mainPageRequest;                                    // valid token: display main page as well
+
+                    elseif findStr(clientRequest, "GET / ") == 1;							// GET request to (re-)draw page ? 
+                        pageRequested = mainPageRequest;		                            // set flag to (re-) draw main page when request will be completemy received
+                                                                                                  
+                    elseif findStr(clientRequest, "GET /?inputBox=") == 1;					// GET request contains an expression to evaluate ? (as text)
+                        handleInputBox(clientRequest, lastExpressions, lastResultsText);          
+                        pageRequested = mainPageRequest;           
+                                                                                                  
+                    elseif findStr(clientRequest, "GET " + logoFile) == 1;					// GET request to send logo ?					
+                        pageRequested = logoRequest;	          
+                                                                                                  
+                    elseif findStr(clientRequest, "GET /favicon") == 1;						// GET request to send favorite icon ?
+                        pageRequested = faviconRequest;	          
+                                                                                                  
+                    elseif findStr(clientRequest, "GET /") == 1;						    // GET request is invalid ? (== none of the above)
+                        printHTTP_error(IOchannel, 400);                                               // print HTTP error and flush client stream input buffer
+                        break;                                                              // break loop and stop client connection
+                        
+                    elseif  strCmp(clientRequest, line()) == 0;  				            // empty line ? all request header lines have been received. Send HTTP response now                    
+                        if pageRequested == mainPageRequest; 		                        // was a request to (re-)draw the 'main page' ? 
+                            sendResponse_mainPage(IOchannel, lastExpressions, lastResultsText, logoFile);  // send response message to draw main page; inform web browser what image to ask for in next GET
+                            
+                        elseif pageRequested == logoRequest;								// request to send logo ? 
+                            sendResponse_image(IOchannel, logoFile);									// send response message 
+                                                                                                  
+                        elseif pageRequested == faviconRequest;							    // request to send 'favorite icon' ? 
+                            sendResponse_image(IOchannel, iconFile);									// send response message indicating 'no favorite icon'
+                        
+                        else;                                                               // safety net: no GET request received when empty line encountered (POST, ... is not used here)                                                             
+                            printHTTP_error(IOchannel, 400);                                           // print HTTP error and flush client stream input buffer
+                            break;                                                          // break loop and stop client connection
+                        end;
+                        pageRequested = noPageRequested;
+                    end;                                                                          
+                                                                                                  
+                    if echoRequest; printClientRequest(clientRequest); end;                 // echo request to console
+                end;	
+                    
+                cpp_stopSessionClient(sessionID, sessionActive); 									        // disconnect client
+                pageRequested = noPageRequested;
+
+            elseif quitWebServer; break;                                                // HTTP client is currently not connected and flag requesting webser ver stop is set: stop web server 
+            end;
+            
+            
+            // flush console input buffer; if ampersand character found in stream, set flag requesting web server stop (if flag was not set yet)
+            while available(CONSOLE);
+                if (cin() == asc("&")) && !quitWebServer; 				                                                    
+                    coutLine line(), "Stopping web server...";        
+                    quitWebServer = TRUE;	
+                end;
+            end;    
+        end;
+            
+        if quitWebServer; break; end;
+	end;
+    coutLine line(), "Web server stopped";
+end;
+
+
+// validate client
+// ---------------
+                
+function validateClient(validatedsessionIP, clientRequest, sessionClientIP, acceptTokenRequest, sessionActive, HTTP_error);
+
+    // lightweight HTTP request validation handling unauthorized connection attempts across the web (scanning)
+    // if a request is not validated, the connection will be closed immediately
+    // when a client wants to connect, the initial URL must include a query parameter, like this: 'IP:port/?token=<secret token>' with <secret token> as defined below
+    // >>>>>>>> CHANGE the secret token with your own secret <<<<<<<< !!!!
+    
+    const exprStartPos = 13;                                                            // first character of token string in HTTP request (first 12 characters are 'GET /?token=')
+    const secretToken = "mySecret";                                                     // secret token
+    
+    
+    var exprEndPos = 0, inputLength = 0;
+    var expressionText = "";
+    
+    var isSameAsValidatedIP = FALSE;                                                    // the current request IP is the same as the previously validated IP 
+    var tokenOK = FALSE;
+    var isValidClient = FALSE;
+    
+    acceptTokenRequest = FALSE;                                                         // init
+    
+    isSameAsValidatedIP = sessionActive && (strCmp(validatedsessionIP, sessionClientIP) == 0);  // is the current request IP the same as a previously validated IP ?
+    if findStr(clientRequest, "GET /?token=") == 1;				                        // GET request containng the 'token' query ? 
+        exprEndPos = findStr (clientRequest, " HTTP/1.1");								// isolate token
+        inputLength = exprEndPos - exprStartPos;                                              	                
+        if inputLength > 0;                                                     	                
+            // isolate token within GET request                              	                
+            urlDecode(expressionText = mid(clientRequest, exprStartPos, inputLength));  // replace '%hh' 3-character sequences by Ascii character with hex Ascii code 'hh'; replace '+' characters with spaces
+            expressionText	= trim(expressionText);
+            tokenOK = (strCmp(expressionText, secretToken) == 0);                       // is the token correct ?
+        end;                            
+
+        // determine new status
+        acceptTokenRequest = isValidClient = tokenOK && (!sessionActive || isSameAsValidatedIP);   // request can be accepted ? (if within an active session, IP must be the validated IP)
+        if acceptTokenRequest; validatedsessionIP = sessionClientIP; end;                       // token OK ? Store IP as validated IP
+        sessionActive = acceptTokenRequest || !isSameAsValidatedIP;                     // wrong token but was other client: current client's session is not ended  
+
+        dbout ifte(acceptTokenRequest && ! isSameAsValidatedIP, "Session started" + line(), !acceptTokenRequest && isSameAsValidatedIP, "Session ended" + line(), ""); 
+    
+    else; isValidClient = sessionActive && isSameAsValidatedIP; end;                    // not a request with a token: accept if IP was validated earlier                                                                                           
+    
+    // what HTTP error should be displayed if request not accepted ? 
+    if !isValidClient; HTTP_error = ifte(sessionActive && !isSameAsValidatedIP, 503, 403 ); end;
+    
+    return isValidClient;
+end;
+
+
+// print a client request to debug stream
+// --------------------------------------
+    
+procedure printClientRequest(clientRequest);
+    var i = 0, c = 0;
+    for i = 1, len(clientRequest); 
+        c = asc(mid(clientRequest, i, 1));
+        if (c < 0x20) && (c != 0x0A) && (c != 0x0D); replaceChar(clientRequest, asc("~"), i);   // replace control characters with a tilde character
+        elseif (c > 0x7f); replaceChar(clientRequest, asc("~"), i);                             // replace ASCII codes > 127 with a tilde character
+        end;
+    end;    
+ 
+    dbout "[echo] ", clientRequest;    // echo request on the Justina console (note: the request itself contains CRLF sequence)
+end;
+
+
+// handle HTTP request with text the user (client) entered in the served page input box    
+// ------------------------------------------------------------------------------------
+
+procedure handleInputBox(clientRequest, lastExpressions(), lastResultsText());
+  	const asc_space = 0x20;
+	const EVAL_PARSING_ERROR = 3502;															// eval ("...") EXECUTION error: error while PARSING string argument
+	const exprStartPos = 16;                                                                    // first 15 characters are 'GET /?inputBox='
+	
+    var expressionText = "", result = "";														// expression entered (as a string) and evaluation result (as a string, using current display formatting) 
+	var executionError = 0, evalParsingError = 0;
+	var inputLength =0;
+	var i = 0;
+	var charPos = 1, exprEndPos = 0;
+
+    result = ""; 																                // init
+    exprEndPos = findStr (clientRequest, " HTTP/1.1");								            // isolate expression
+    inputLength = exprEndPos - exprStartPos;                                              	                
+    
+    if inputLength > 0;                                                     	                
+        // isolate expression within GET request                              	                
+        urlDecode(expressionText = mid(clientRequest, exprStartPos, inputLength));		        // replace '%hh' 3-character sequences by Ascii character with hex Ascii code 'hh'; replace '+' characters with spaces
+        expressionText	= trim(expressionText);
+    
+        // parse and evaluate expression entered by the user in the input box, and handle any error
+        if strCmp(expressionText, "") != 0;										                // not an empty expression 
+            trapErrors TRUE;													                // if error, than do not terminate but print error message in the answer box, instead of a result
+            result = eval(expressionText);										                // first parse, than evaluate 'expressionText'
+            trapErrors FALSE; 													                // disable error trapping (parsing / execution error number is maintained)
+            
+            // if an error occurs while PARSING 'expressionText', a specific EXECUTION error is produced (EVAL_PARSING_ERROR) 
+            // and the err() argument 'evalParsingError' returns the parsing error
+            executionError = err(evalParsingError);								                // return execution error and, possibly, an associated parsing number 
+            if executionError == EVAL_PARSING_ERROR; result = "! Error in formula: parsing error " + cStr(evalParsingError); 
+            elseif executionError != 0; result = "! Error in formula: evaluation error " + cStr(executionError); 			
+            else; last = result;
+            end;
+            
+            // format result according to current display setting
+            if type(result) == INTEGER; result =  fmt(result, 0, sysVal(4), sysVal(6), sysVal(5));
+            elseif type(result) == FLOAT;  result = fmt(result, 0, sysVal(1), sysVal(3), sysVal(2));
+            end;	
+            
+            // update array with last 10 results (stored as text)
+            for i=9, 1, -1; 
+                lastExpressions(i+1)=lastExpressions(i);
+                lastResultsText(i+1)= lastResultsText(i); 
+            end; 
+            lastExpressions(1) = expressionText;
+            lastResultsText(1) = result;
+            
+            // ONLY for last results DISPLAY: replace spaces with 'non-breaking space' sequences
+            charPos=1; while (charPos > 0) && (charPos <= len( lastResultsText(1))); 
+                lastResultsText(1) = replaceStr( lastResultsText(1) , " ", "&nbsp;", charPos); 
+            end;
+            // ONLY for last results DISPLAY: replace control characters with ASCII code 129 (empty square)
+            charPos=0; while (++charPos <= len( lastResultsText(1))); 
+                if asc(lastResultsText(1), charPos) < asc_space; replaceChar(lastResultsText(1), 129, charPos); end; 
+            end;
+        end;	
+    end;
+end;
+
+
+// send an HTTP error response
+// ---------------------------
+    
+procedure printHTTP_error(IOchannel, HTTP_error);    
+    const msg400 = "HTTP/1.1 400 Bad request";            
+    const msg403 = "HTTP/1.1 403 Forbidden";            
+    const msg503 = "HTTP/1.1 503 Server busy";          
+
+    var msg = "";
+    
+    printLine IOchannel, msg = switch(HTTP_error, 403, msg403, 503, msg503, 400, msg400);             // send HTTP error message to client (server busy or access denied)
+    printLine IOchannel, "Connection: close";
+    dboutLine "Request not accepted: ", msg;
+    
+    while available(IOchannel); read(IOchannel, 1); end;                                                    // flush client stream input buffer (read with time out) 
+end;
+
+
+// send HTML response message to (re-)draw main page
+// -------------------------------------------------
+
+procedure sendResponse_mainPage(IOchannel, lastExpressions(), lastResultsText(), logoFile);
+	
+	var i=0;
+	
+	// send response header
+	printLine IOchannel, "HTTP/1.1 200 OK";
+	printLine IOchannel, "Content-Type: text/html";
+	printLine IOchannel, "Connection: close";
+	printLine IOchannel;
+	print IOchannel, "<!DOCTYPE HTML>";
+	print IOchannel, "<html>";
+	
+	print IOchannel, "<head>";
+	print IOchannel, "<title>Justina calculator for Arduino</title>";
+	print IOchannel, "<link rel=\"icon\" href=\"" + logoFile + "\" type=\"image/jpeg\">";					
+	print IOchannel, "</head>";
+	
+	print IOchannel, "<style>";
+	print IOchannel, "h3 { font-family: Arial, sans-serif; font-size: 24px; color: #00979D; font-weight: 300; margin-top: 10px; }";
+	print IOchannel, "body { margin-left: 20px; }"; 
+	print IOchannel, "body { background-color: white; }";
+	print IOchannel, "#frame { border: 2px solid #00979D; padding: 15px 10px; background-color: #CFEFF1; max-width: 620px;margin-left: 10px; position: relative }"; 
+	print IOchannel, "#logo {position: absolute; top: 5px; /* Adjust this value to change the top margin */ right: 25px; /* Adjust this value to change the right margin */}";
+	
+	print IOchannel, "input[type='submit'] { margin-top: 20px; height: 2em;}"; 
+	
+	print IOchannel, "input[type='text'] {";
+	print IOchannel, " width: 84%;"; 
+	print IOchannel, " max-width: 600px;";
+	print IOchannel, " height: 2em;"; 
+	print IOchannel, " border: 1px solid lightgray;"; 
+	print IOchannel, "}";
+	
+	print IOchannel, ".additionalText {";
+	print IOchannel, "    font-family: Arial, sans-serif;";
+	print IOchannel, "    font-size: 12px; margin-top: 5px;"; 
+	print IOchannel, "    color: #008080;";
+	print IOchannel, "}";
+
+	print IOchannel, "#answerBox {";
+	print IOchannel, " width: 100%;";
+	print IOchannel, " max-width: 600px;";
+	print IOchannel, " border: 1px solid lightgray;";
+	print IOchannel, " height: 10em;";
+	print IOchannel, " overflow: auto;";
+	print IOchannel, " margin: 0;";
+	print IOchannel, " background-color: white;";
+	print IOchannel, " color: #008080;";
+	print IOchannel, "}";
+	
+	print IOchannel, ".title { font-family: Arial, sans-serif; margin-top: 20px; color: #008080; 	}";
+	print IOchannel, "form { margin-bottom: 20px; }";
+	print IOchannel, "#answerBox { border: 1px solid lightgray; height: 10em; overflow: auto; margin: 0; background-color: white; color: #008080; }"; 
+	
+	print IOchannel, ".info {";
+	print IOchannel, " font-family: Arial, sans-serif;";
+	print IOchannel, " font-size: 13px;"; 
+	print IOchannel, " color: #008080;font-weight: 300; margin-top: 20px;";
+	print IOchannel, " margin-bottom: 10px;";
+	print IOchannel, "}";
+	print IOchannel, "</style>";
+	
+	
+	print IOchannel, "<body onload='document.getElementById(\"inputBox\").focus();'>";
+	
+	print IOchannel, "<div id='frame'>"; 
+	
+	print IOchannel, "<img id=\"logo\" src=\"" +  logoFile  + "\" alt=\"Logo\" width=\"105\" height=\"105\">"; 			
+	print IOchannel, "<h3>Calculator for Arduino, powered by Justina</h3>";
+	print IOchannel, "<div>";
+	print IOchannel, "<form method='get'>";
+	print IOchannel, "<div><span class='title'>Enter an expression and tap the calculate button</span></div>"; 
+	print IOchannel, "<input list='history' id='inputBox' type='text' name='inputBox' autocomplete='off'>"; 
+	print IOchannel, "<datalist id='history'>"; 
+	
+	// input box dropdown: display 10 last expressions entered 
+	for i=1, 10;
+		print IOchannel, "    <option value='" + lastExpressions(i) + "'>"; 
+	end;
+	
+	print IOchannel, "</datalist>"; 
+	print IOchannel, "<input type='submit' value='Calculate'>";
+	print IOchannel, "<div class='additionalText'>Assign results to registers r0 to r9. Last result is stored in 'last'. Last expressions under dropdown.<br>";
+	print IOchannel, "Numbers without decimal point or exponent are treated as integer types. Enter strings between \"quotes\".<br>";
+	print IOchannel, "Expressions only (no commands). Consult the Justina interpreter user manual for detailed information.</div>";
+	print IOchannel, "</form>";
+	print IOchannel, "</div>";
+	print IOchannel, "<div>";
+	
+	print IOchannel, "<span class='title'>Last answers</span>"; 
+	
+	print IOchannel, "<p id='answerBox'></p>"; 
+	print IOchannel, "</div>";
+	
+	print IOchannel, "<div class=\"info\">Justina: <u>J</u>ust an <u>In</u>terpreter for <u>A</u>rduino. Full documentation on ";
+	print IOchannel, "<a href=\"https://github.com/Herwig9820/Justina_interpreter\">GitHub</a>"; 
+	print IOchannel, "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 2024, Herwig Taveirne</div>";
+	
+	print IOchannel, "</div>";	// frame
+	
+	print IOchannel, "</body>";	// body end
+	
+	print IOchannel, "</html>";	// HTML end
+	
+	print IOchannel, "<script>" ;
+	print IOchannel, "var answerBox = document.getElementById('answerBox');" ;
+	
+	// answer box: display 10 last answers
+	for i=1, 10; 
+		print IOchannel, "answerBox.innerHTML += '" + cStr(i) + ": " + lastResultsText(i) + "<br>';"; 
+	end;
+	printLine IOchannel, "</script>";
+end;
+
+
+// send response message with image (OK for logo as well as icon)
+// --------------------------------------------------------------
+
+procedure sendResponse_image(IOchannel, imageFile);
+	
+	var fileFound = FALSE;
+	
+	trapErrors TRUE; 
+	fileFound = exists(imageFile);
+	if err() != 0; fileFound = FALSE; end;
+	trapErrors FALSE;
+	
+	if fileFound;
+		printLine IOchannel, "HTTP/1.1 200 OK";
+		printLine IOchannel, "Content-Type: image/jpeg";						
+		printLine IOchannel, "Connection: close";
+		printLine IOchannel ;
+		sendFile imageFile, IOchannel, FALSE;
+		printLine IOchannel ;
+		
+	else;
+		printLine IOchannel, "Content-type:text/html";
+		printLine IOchannel, "Connection: close";
+	end;
+end;	
+
+
+// ---------------
+// helper routines
+// ---------------
+
+// remove control characters ('%hh' 3-character sequences with hh < 0x20); 
+// replace '%hh' 3-character sequences by Ascii character with hex Ascii code 'hh'; replace '+' characters with spaces 
+// -------------------------------------------------------------------------------------------------------------------
+
+procedure urlDecode(url);
+	const asc_space = 0x20, asc_plus = 0x2b, asc_percent = 0x25;
+	var sourceLength = 0;
+	var src=1, dest=1;												// source and destination character indexes (in the same string)
+	var ascii = 0;
+	
+	sourceLength = len(url);
+	dest=src=1;														// init
+	for src, sourceLength;
+		if asc(url, src) == asc_plus; 
+			replaceChar(url, 0x20, dest); 
+			dest++;
+		elseif asc(url, src) == asc_percent; 
+			ascii = hexStrToAsc(url, ++src);						// convert two ASCII characters, containing ASCII code for hex digits, to ASCII code with these two hex digits
+			++src;													// in total, two extra characters to skip 
+			replaceChar(url, ascii, dest); 
+			dest++;
+		else;
+			replaceChar(url, asc(url, src), dest); 					// move character left, from position i to position j
+			dest++;
+		end;
+	end;
+	if (dest<src); 
+		replaceChar(url, 0x00, dest);								// terminator
+	end;
+end;	
+
+
+// ----------------------------------------------------------------------------------
+// user functions to set display format for floating point numbers resp. integers
+// we need these functions because Justina commands are not allowed in the webbrowser
+// input box, so we wrap these commands in Justina user functons
+// ----------------------------------------------------------------------------------
+
+
+// set floating point number format
+// arguments are entered as in 'floatFmt' command (flags:  optional arguments)
+// ---------------------------------------------------------------------------
+
+function floatFormat(precision, specifier, flags = -1);			// floating point number format (note that 'flags' is optional)
+	// set floating point number format
+	if (flags == -1); floatFmt precision, specifier;			// keep current flag settings
+	else; floatFmt precision, specifier, flags;	  
+	end; 
+	return "ok";												// avoid returning zero
+end;
+
+
+// set integer number format
+// arguments are entered as in intFmt command (flags:  optional arguments)
+//
+// this example is a little more complicated: instead of "OK" (as in previous
+// example), the current integer number formatting is returned as functon result
+// -----------------------------------------------------------------------------
+
+function intFormat(precision, specifier, flags=-1);								
+	
+	var out;
+	var holdFmtPrecision, holdFmtspecifier, holdFmtFlags;
+	
+	// set integer number format
+	if (flags == -1); intFmt precision, specifier;				// argument 'flag' = -1 or not present :keep current flag settings
+	else; intFmt precision, specifier, flags;	  
+	end; 
+	
+	// retrieve current integer number formatting flags (even if flags were not changed now -> optional parameter)
+	flags = sysVal(5);
+	
+	// we will use the fmt() function to force argument 'precision' to be printed correctly: remember current fmt() precision, specifier and flags
+	holdFmtPrecision = sysVal(11); holdFmtspecifier = sysVal(13); holdFmtFlags = sysVal(12);
+	
+	// print formatted output to a variable
+	vprintLine out, "integer format: ", fmt(precision, 1, DEC, FMT_NONE), ",  ", 
+		quote(specifier), 
+		ifte(flags & (FMT_LEFT | FMT_SIGN | FMT_SPACE | FMT_0X) , ", flags set: ", ""),  
+		ifte(flags & FMT_LEFT, "left ", ""),
+		ifte(flags & FMT_SIGN, "sign  ", ""),
+		ifte(flags & FMT_SPACE, "space  ", ""),
+		ifte(flags & FMT_0X, "0x", "");
+	
+	// dummy fmt(), only to restore fmt() precision, specifier and flags
+	fmt(0, holdFmtPrecision, holdFmtspecifier, holdFmtFlags);					
+	
+	return out;											
+end;	
+
+

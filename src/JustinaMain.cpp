@@ -522,6 +522,7 @@ const Justina::SymbNumConsts Justina::_symbNumConsts[]{
     {"FILE3",               "3",                        symb_IOstream,      valcod_file3,           value_isLong},          // IO: read from / print to open SD file 3 
     {"FILE4",               "4",                        symb_IOstream,      valcod_file4,           value_isLong},          // IO: read from / print to open SD file 4 
     {"FILE5",               "5",                        symb_IOstream,      valcod_file5,           value_isLong},          // IO: read from / print to open SD file 5 
+    {"DISCARD",             "99",                       symb_IOstream,      valcod_discard,         value_isLong},          // debug print only: discard output 
 
     // file access type on open: constants can be bitwise 'or'ed                     
     // READ can be combined with WRITE or APPEND; APPEND automatically includes WRITE (but only possible to append)

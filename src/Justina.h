@@ -611,6 +611,7 @@ private:
         valcod_file3,
         valcod_file4,
         valcod_file5,
+        valcod_discard,
 
         // file access group
         valcod_read,
@@ -1497,7 +1498,7 @@ private:
     static const InternCppFuncDef _internCppFunctions[142];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
 #if (defined ARDUINO_ARCH_ESP32) 
-    static const SymbNumConsts _symbNumConsts[82];                                                                              // predefined constants
+    static const SymbNumConsts _symbNumConsts[83];                                                                              // predefined constants
 #else
     static const SymbNumConsts _symbNumConsts[79];                                                                              // predefined constants
 #endif

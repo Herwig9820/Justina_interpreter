@@ -962,7 +962,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             if ((valueType[0] != value_isLong) && (valueType[0] != value_isFloat)) { return result_arg_numberExpected; }
             _silent = bool((valueType[0] == value_isLong) ? (args[0].longConst) : (args[0].floatConst));
             openFiles[streamNumber - 1].silent = _silent ? 1 : 0;                   // not a boolean but a single bit
-            
+
             // clean up
             clearEvalStackLevels(cmdArgCount);                                      // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_commandCode = cmdcod_none;                // command execution ended
@@ -987,11 +987,16 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             if ((valueType[0] != value_isLong) && (valueType[0] != value_isFloat)) { return result_arg_numberExpected; }
             int streamNumber = (valueType[0] == value_isLong) ? args[0].longConst : args[0].floatConst;
 
-            if ((streamNumber >= MAX_OPEN_SD_FILES) || ((-streamNumber) > _externIOstreamCount) || (streamNumber == 0)) { return result_IO_invalidStreamNumber; }
-            if ((streamNumber > 0) && (_activeFunctionData.activeCmd_commandCode != cmdcod_setDebugOut)) { return result_SD_fileNotAllowedHere; }
-
             // set debug out ? 
             bool setDebugOut = (_activeFunctionData.activeCmd_commandCode == cmdcod_setDebugOut);
+            /* //// discard option voor debug out
+            if (setDebugOut) {
+                for (int i=0; i < _symbvalueCount; i++){if (_symbNumConsts[i].symbolCode == valcod_discard){} }
+            }
+            */
+            if ((streamNumber >= MAX_OPEN_SD_FILES) || ((-streamNumber) > _externIOstreamCount) || (streamNumber == 0))  {return result_IO_invalidStreamNumber;}
+            if ((streamNumber > 0) && (_activeFunctionData.activeCmd_commandCode != cmdcod_setDebugOut)) { return result_SD_fileNotAllowedHere; }
+
             if (setDebugOut) {
                 if (streamNumber < 0) {
                     if (_ppExternOutputStreams[(-streamNumber) - 1] == nullptr) { return result_IO_noDeviceOrNotForOutput; }
