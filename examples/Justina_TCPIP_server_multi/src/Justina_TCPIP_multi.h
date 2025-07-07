@@ -72,6 +72,8 @@ private:
     bool _WiFiEnabled{};
     bool _TCPenabled{};
 
+    Stream* _pDebugStream {&Serial};
+
     // state machine: WiFi and client connection state
     connectionState _WiFiState{ conn_0_WiFi_notConnected };              // init
     unsigned long _WiFiWaitingForConnectonAt{ millis() };               // timestamps in milliseconds
@@ -87,7 +89,7 @@ private:
 
     struct SessionData {                                                 // application level sessions
         bool active{ false };
-        int clientSlotNumber{ -1 };                                       // link to client slot number (-1 = unassigned)
+        int clientSlotID{ -1 };                                       // link to client slot number (-1 = unassigned)
         long lastActivity{};
         IPAddress IP{};
     };
@@ -117,11 +119,12 @@ public:
     
     WiFiServer* getServer();                                            // (only if configured as server)
     WiFiClient* getSessionClient(int sessionID);
-    bool getSessionData(int sessionID, int &clientSlotNumber, IPAddress &IP);                               // function returns 'session active' status
+    bool getSessionData(int sessionID, int &clientSlotID, IPAddress &IP);                               // function returns 'session active' status
     connectionState getWiFiState();
     long getTCPclientCount();
 
     void setVerbose(bool verbose);
+    void setDebugStream(Stream* debugStream);
     void WiFiOff();
     void WiFiOn();
     void TCPdisable();

@@ -7,7 +7,7 @@
 *                                                                                                                        *
 *   This example code is in the public domain                                                                            *
 *                                                                                                                        *
-*   2024, Herwig Taveirne                                                                                                *
+*   2024, 2025, Herwig Taveirne                                                                                                *
 *************************************************************************************************************************/
 
 #include "Justina.h"
@@ -147,11 +147,16 @@ bool getSessionData(void** const pdata, const char* const valueType, const int a
 // Define records with Justina user c++ function attributes
 // --------------------------------------------------------
 
-// arguments: Justina alias, c++ function, min. & max. argument count (checked during parsing in Justina) 
+// Here, you define which Justina function or command name must be used in a Justina program to call the corresponding c++ function.
+// Each record consists of the Justina name, the c++ function name, and the minimum and maximum argument count (checked during parsing in Justina). 
+// Records must be grouped by function return type.
+// See the documentation for an overview of all function return types. It also explains how to define your own Justina commands.
+
+// NOTE: the 'cpp_' prefix in next aliases is not a requirement, but it indicates the function nature AND it highlights such function names if notepad++
+// is used as an editor (the Justina language extension must be installed).
 
 // user c++ functions returning nothing as function result
 Justina::CppVoidFunction  const cppVoidFunctions[]{
-    // NOTE: cpp_ prefix in next aliases is not a requirement, but it indicates the function nature AND it highlights such function names in notepad++ (Justina language extension must be installed)
     {"cpp_WiFiOff", WiFiOff, 0, 0},
     {"cpp_WiFiOn", WiFiOn, 0, 0},
     {"cpp_TCPoff", TCPoff, 0, 0},
@@ -161,17 +166,16 @@ Justina::CppVoidFunction  const cppVoidFunctions[]{
     {"cpp_getLocalIP", getLocalIP, 1, 1},                                              // parameter: local IP (passed on exit)
 };
 
-// user c++ functions returning a long integer value
+// user c++ functions returning a Justina integer value (32-bit signed integer)
 Justina::CppLongFunction const cppLongFunctions[]{
     {"cpp_getWiFiState", getWiFiState, 0, 0},                                    // return WiFi connection state (enumeration)
     {"cpp_getClientCount", getTCPclientCount, 0, 0 }                                     // return WiFi client connection count or -1 (no WiFi or TCP not enabled)
 };
 
-// user c++ functions returning a bool value
+// user c++ functions returning a bool value. The function value will be converted to a Justina integer (32-bit signed integer) upon return
 Justina::CppBoolFunction const cppBoolFunctions[]{
-    {"cpp_getSessionData", getSessionData, 3,3}                                 // entry: arg1 = sessionID; exit: next args = clientSlot, IP 
+    {"cpp_getSessionData", getSessionData, 3,3}                                  
 };
-
 
 // -------------------------------
 // *   Arduino setup() routine   *
@@ -212,14 +216,11 @@ void setup() {
 
     // TCP connection
     // --------------
-    // output stream pointers are identical to input stream pointers and are set here
+    // output stream pointers (set here) are identical to input stream pointers (set in 'TCPconnection' constructor) but must still be defined
     for (int i = 1; i <= 3; i++) { pExternalOutputs[i] = static_cast<Print*> (pExternalInputs[i]); }            // i=0: Serial port (pointer already in place)
 
-    for (int i = 1; i <= 3; i++) {
-        Serial.printf("client address: ", &myTCPconnection._pWiFiClientData[i - 1].client, ", ", pExternalInputs[i]);
-    }
-
     myTCPconnection.setVerbose(true);                                               // true: enable debug messages from within myTCPconnection
+    myTCPconnection.setDebugStream(&Serial);
     myTCPconnection.TCPdisable();                                                   // disable TCP IO (will be enabled by Justina program)
     myTCPconnection.WiFiOn();
 
@@ -392,14 +393,13 @@ void TCPon(void** const pdata, const char* const valueType, const int argCount, 
     cpp_stopSessionClient(sessionID, keepSessionActive);
 */
 
-// this does not change session activity status (active/inactive) 
+// stop the TCPIP client currently linked to a session  
 
 void stopSessionClient(void** const pdata, const char* const valueType, const int argCount, int& execError) {
     // NOTE: if you trust the Justina caller and you know the argument type (long or float), you can skip the tests
     int sessionID{};
     bool keepSessionActive{ true };
     bool isLong[2]{};
-
     for (int i = 0; i <= 1; i++) {
         isLong[i] = ((valueType[i] & Justina::value_typeMask) == Justina::value_isLong);
         bool isFloat = ((valueType[i] & Justina::value_typeMask) == Justina::value_isFloat);
@@ -408,8 +408,7 @@ void stopSessionClient(void** const pdata, const char* const valueType, const in
     sessionID = isLong ? (*(long*)pdata[0] - 1) : ((long)(*(float*)pdata[0])) - 1;                                      // Justina caller uses base 1 for session ID
     if ((sessionID < 0) || (sessionID >= TCPclientSlots)) { execError = 3100; return; }                // argument outside range
 
-    keepSessionActive = (bool)isLong[1] ? *(long*)pdata[1] : *(float*)pdata[1];
-
+    keepSessionActive = (bool)isLong[1] ? (bool)(*(long*)pdata[1]) : (bool)(*(float*)pdata[1]);
     myTCPconnection.stopSessionClient(sessionID, keepSessionActive);
 };
 
