@@ -67,6 +67,9 @@ procedure webServer();
     // variables hidden from the web browser 'calculator' user
 	
     const echoRequest = TRUE;                                                          // echo received HTTP requests to the console ?
+    const logging = TRUE;
+    
+    
     const WIFI_CONNECTED = 2;                                                            // connection status constant as defined in TCPIP library
     const sessionTimeOut = 120000;                                                      // two minutes inactivity ends session
     const noPageRequested = 0, mainPageRequest = 1, logoRequest = 2, faviconRequest = 3;    // what web page is requested ?
@@ -75,8 +78,8 @@ procedure webServer();
 	const iconFile = "/justina/images/jus_icon.jpg";							        // Justina icon file
 	const logoFile = "/justina/images/jus_logo.jpg";							        // Justina logo file
     
-    var lastExpressions(10) = "";											        // stores last 10 user expressions entered
-	var lastResultsText(10) = "";											        // stores last 10 results, as text (using current display formatting)
+    var lastExpressions(3, 10) = "";											        // stores last 10 user expressions entered
+	var lastResultsText(3, 10) = "";											        // stores last 10 results, as text (using current display formatting)
     
     
     var sessionActive(3) = FALSE;                                                       
@@ -87,41 +90,47 @@ procedure webServer();
                                                                          
     var clientRequest = ""; 													        // client request, as it is received
     var pageRequested = 0;                                                              // init 
+    var isNewSession = FALSE;
+    
     var isTokenRequest = FALSE, requestLineAuthorized = FALSE;                                
 	var HTTP_error = 0;                                                                 // HTTP error 
-    var clientSlot = 0; 
+    var clientSlot = -1;                                                                // no client connected
     var sessionClientIP = "---------------";                                                  // session IP address
     var quitWebServer = FALSE;                                                          // quit HTTP server program and return to caller 
                                                                                         
 	startSD; 																	        // make sure SD card is started
     
-    setTimeout(IO2, 200);														        // time out for readLine() function, in ms (NOT blocking for WiFi and TCP maintanance, handled in the background)		
-    setTimeout(IO3, 200);														        // time out for readLine() function, in ms (NOT blocking for WiFi and TCP maintanance, handled in the background)		
-    setTimeout(IO4, 200);														        // time out for readLine() function, in ms (NOT blocking for WiFi and TCP maintanance, handled in the background)		
+    setTimeout(IO2, 200);														        // time out for readLine() function, in ms (NOT blocking, handled in the background - NO delay(n) used)		
+    setTimeout(IO3, 200);														        		
+    setTimeout(IO4, 200);														        		
 	
     cpp_WiFiOn();
     cpp_TCPon();
+    cpp_setConnectionTimeout(10000);
     cpp_setVerbose(TRUE);                                                              // allow TCP/IP library to print WiFi and TCP/IP state changes 
 																	  	
-	coutLine line(), "Web server started (Type '&' (ampersand) + ENTER to stop)";       
+    coutLine line(), "WS at ", fmt(millis()/1000., 11, 3, FIXED),"s: web server started (Type '&' (ampersand) + ENTER to stop)"; 
      
     // main loop                                                                        
 	while 1;                                                                            	
         for sessionID = 1, sessionCount;
-            cpp_getSessionData(sessionID, clientSlot, sessionClientIP=space(15));      // sessionIP: info only. Note: provide space for remote IP address in variable (15 characters)
-            /*
-            coutLine "++ loop start: session active ? ", sessionActive; wait(200)////
             // note that sessions without a connected client can be active (in between 2 connections) 
-            if sessionActive;                                                               
-                essionActive = (millis() < (lastHTTPrequestTime(sessionID) + sessionTimeOut));        // end session after a timeout (sliding expiration)
-                if ! sessionActive; 
-                    ////coutLine "Session timeout: session ", sessionID, " ended"; 
+            clientSlot = cpp_getSessionData(sessionID, sessionClientIP=space(15));
+            isNewSession = (!sessionActive(sessionID)) && (clientSlot >=0);      // sessionIP: info only. Note: provide space for remote IP address in variable (15 characters)
+            if isNewSession; 
+                lastHTTPrequestTime(sessionID) = millis();                               // init 
+                if logging; coutLine "WS at ", fmt(millis()/1000., 11, 3, FIXED),"s: STARTING session ", sessionID -1, ", IP = ", sessionClientIP; end;
+            
+            elseif sessionActive(sessionID);                                            // session was active already                                                            
+                sessionActive(sessionID) = (millis() < (lastHTTPrequestTime(sessionID) + sessionTimeOut));        // end session after a timeout (sliding expiration)
+                if ! sessionActive(sessionID); 
+                    cpp_stopSessionClient(sessionID, TRUE); 									        // end session; disconnect client if connected
+                    clientSlot = -1;
+                    if logging; coutLine "WS at ", fmt(millis()/1000., 11, 3, FIXED), "s: session timeout. ENDING session ", sessionID -1; end;
                 end;
             end;
-            */                                                                                
-            ////if (clientSlot >= 0); coutLine "**** A", sessionActive, " ", clientSlot; end; 
             
-            if /*sessionActive && //// */ (clientSlot != -1);                                          // client is connected ? 
+            if (clientSlot != -1);                                                              // client is connected ? 
                 IOchannel  = IO2 - clientSlot;
                 while available(IOchannel);											            // as long as characters are available (from HTTP client)
                     clientRequest = readLine(IOchannel);									        // read request from HTTP client																			
@@ -135,7 +144,7 @@ procedure webServer();
                     // --------------------
 
                     if !requestLineAuthorized;  
-                        printHTTP_error(IOchannel, HTTP_error);                             // print HTTP error and flush client stream input buffer 
+                        printHTTP_error(IOchannel, HTTP_error, logging);                             // print HTTP error and flush client stream input buffer 
                         break;                                                              // break loop and stop client connection
                         
                     elseif isTokenRequest; 
@@ -145,7 +154,7 @@ procedure webServer();
                         pageRequested = mainPageRequest;		                            // set flag to (re-) draw main page when request will be completemy received
                                                                                                   
                     elseif findStr(clientRequest, "GET /?inputBox=") == 1;					// GET request contains an expression to evaluate ? (as text)
-                        handleInputBox(clientRequest, sessionID, lastExpressions, lastResultsText);          
+                        handleInputBox(clientRequest, sessionID, lastExpressions, lastResultsText, logging);          
                         pageRequested = mainPageRequest;           
                                                                                                   
                     elseif findStr(clientRequest, "GET " + logoFile) == 1;					// GET request to send logo ?					
@@ -155,21 +164,20 @@ procedure webServer();
                         pageRequested = faviconRequest;	          
                                                                                                   
                     elseif findStr(clientRequest, "GET /") == 1;						    // GET request is invalid ? (== none of the above)
-                        printHTTP_error(IOchannel, 400);                                               // print HTTP error and flush client stream input buffer
                         break;                                                              // break loop and stop client connection
                         
                     elseif  strCmp(clientRequest, line()) == 0;  				            // empty line ? all request header lines have been received. Send HTTP response now                    
                         if pageRequested == mainPageRequest; 		                        // was a request to (re-)draw the 'main page' ? 
-                        sendResponse_mainPage(IOchannel, lastExpressions, lastResultsText, logoFile);  // send response message to draw main page; inform web browser what image to ask for in next GET
+                        sendResponse_mainPage(IOchannel, sessionID, lastExpressions, lastResultsText, logoFile, logging);  // send response message to draw main page; inform web browser what image to ask for in next GET
                             
                         elseif pageRequested == logoRequest;								// request to send logo ? 
-                            sendResponse_image(IOchannel, logoFile);									// send response message 
+                            sendResponse_image(IOchannel, logoFile, logging);									// send response message 
                                                                                                   
                         elseif pageRequested == faviconRequest;							    // request to send 'favorite icon' ? 
-                            sendResponse_image(IOchannel, iconFile);									// send response message indicating 'no favorite icon'
+                            sendResponse_image(IOchannel, iconFile, logging);									// send response message indicating 'no favorite icon'
                         
-                        else;                                                               // safety net: no GET request received when empty line encountered (POST, ... is not used here)                                                             
-                            printHTTP_error(IOchannel, 400);                                           // print HTTP error and flush client stream input buffer
+                        else;                                                               // safety: no GET request received when empty line encountered (POST, ... is not used here)                                                             
+                            printHTTP_error(IOchannel, 400, logging);                                           // print HTTP error and flush client stream input buffer
                             break;                                                          // break loop and stop client connection
                         end;
                         pageRequested = noPageRequested;
@@ -179,26 +187,35 @@ procedure webServer();
                     if echoRequest; printClientRequest(clientRequest); end;                 // echo request to console
                 end;	
                 
-                coutLine "     STOPPING client for session ", sessionID, " - keep active: ", sessionActive(sessionID);
-                cpp_stopSessionClient(sessionID, sessionActive(sessionID)); 									        // disconnect client
+                // when printing session ID, subtract 1 (TCP server: session ID is base 0)
+                if logging; 
+                    cout "WS at ", fmt(millis()/1000., 11, 3, FIXED);
+                    if sessionActive(sessionID); coutLine "s: STOPPING client for session ", sessionID -1;
+                    else;coutLine "s: not authorized. ENDING session ", sessionID -1; 
+                    end;
+                end;
+                
+                cpp_stopSessionClient(sessionID, !sessionActive(sessionID));                // disconnect client and/or end session
                 pageRequested = noPageRequested;
 
-            elseif quitWebServer; break;                                                // HTTP client is currently not connected and flag requesting webser ver stop is set: stop web server 
             end;
             
             
             // flush console input buffer; if ampersand character found in stream, set flag requesting web server stop (if flag was not set yet)
             while available(CONSOLE);
                 if (cin() == asc("&")) && !quitWebServer; 				                                                    
-                    coutLine line(), "Stopping web server...";        
-                    quitWebServer = TRUE;	
+                    if logging; coutLine line(), "WS at ", fmt(millis()/1000., 11, 3, FIXED),"s: stopping web server..."; end;        
+                    quitWebServer = TRUE;
+                    break;
                 end;
             end;    
+            
+            if quitWebServer; break; end;
         end;
             
         if quitWebServer; break; end;
 	end;
-    coutLine line(), "Web server stopped";
+    coutLine line(), "WS at ", fmt(millis()/1000., 11, 3, FIXED),"s: web server stopped";
 end;
 
 
@@ -261,14 +278,14 @@ procedure printClientRequest(clientRequest);
         end;
     end;    
  
-    dbout "[echo] ", clientRequest;    // echo request on the Justina console (note: the request itself contains CRLF sequence)
+    cout "echo> ", clientRequest;    // echo request on the Justina console (note: the request itself contains CRLF sequence)
 end;
 
 
 // handle HTTP request with text the user (client) entered in the served page input box    
 // ------------------------------------------------------------------------------------
 
-procedure handleInputBox(clientRequest, sessionID, lastExpressions(), lastResultsText());
+procedure handleInputBox(clientRequest, sessionID, lastExpressions(), lastResultsText(), logging);
   	const asc_space = 0x20;
 	const EVAL_PARSING_ERROR = 3502;															// eval ("...") EXECUTION error: error while PARSING string argument
 	const exprStartPos = 16;                                                                    // first 15 characters are 'GET /?inputBox='
@@ -297,6 +314,8 @@ procedure handleInputBox(clientRequest, sessionID, lastExpressions(), lastResult
         // parse and evaluate expression entered by the user in the input box, and handle any error
         if strCmp(expressionText, "") != 0;										                // not an empty expression 
             
+            if logging; coutLine "WS at ", fmt(millis()/1000., 11, 3, FIXED),"s: ..evaluating expression"; end;
+            
             // move internal user data storage for this session to user registers
             if sessionID==1;     last=lastS1; r0=reg0S1; r1=reg1S1;  r2=reg2S1; r3=reg3S1; r4=reg4S1; r5=reg5S1; r6=reg6S1; r7=reg7S1; r8=reg8S1; r9=reg9S1;
             elseif sessionID==2; last=lastS2; r0=reg0S2; r1=reg1S2;  r2=reg2S2; r3=reg3S2; r4=reg4S2; r5=reg5S2; r6=reg6S2; r7=reg7S2; r8=reg8S2; r9=reg9S2;
@@ -315,29 +334,32 @@ procedure handleInputBox(clientRequest, sessionID, lastExpressions(), lastResult
             executionError = err(evalParsingError);								                // return execution error and, possibly, an associated parsing number 
             if executionError == EVAL_PARSING_ERROR; result = "! Error in formula: parsing error " + cStr(evalParsingError); 
             elseif executionError != 0; result = "! Error in formula: evaluation error " + cStr(executionError); 			
-            else; last = result;
+            else; 
+                if sessionID==1;     lastS1=result;             
+                elseif sessionID==2; lastS2=result;             
+                else;                lastS3=result;             // format result according to current display setting
+                end;    
             end;
-            
-            // format result according to current display setting
+                    
             if type(result) == INTEGER; result =  fmt(result, 0, sysVal(4), sysVal(6), sysVal(5));
             elseif type(result) == FLOAT;  result = fmt(result, 0, sysVal(1), sysVal(3), sysVal(2));
             end;	
             
             // update array with last 10 results (stored as text)
             for i=9, 1, -1; 
-                lastExpressions(i+1)=lastExpressions(i);
-                lastResultsText(i+1)= lastResultsText(i); 
+                lastExpressions(sessionID, i+1)=lastExpressions(sessionID, i);
+                lastResultsText(sessionID, i+1)= lastResultsText(sessionID, i); 
             end; 
-            lastExpressions(1) = expressionText;
-            lastResultsText(1) = result;
+            lastExpressions(sessionID, 1) = expressionText;
+            lastResultsText(sessionID, 1) = result;
             
             // ONLY for last results DISPLAY: replace spaces with 'non-breaking space' sequences
-            charPos=1; while (charPos > 0) && (charPos <= len( lastResultsText(1))); 
-                lastResultsText(1) = replaceStr( lastResultsText(1) , " ", "&nbsp;", charPos); 
+            charPos=1; while (charPos > 0) && (charPos <= len( lastResultsText(sessionID, 1))); 
+                lastResultsText(sessionID, 1) = replaceStr( lastResultsText(sessionID, 1) , " ", "&nbsp;", charPos); 
             end;
             // ONLY for last results DISPLAY: replace control characters with ASCII code 129 (empty square)
-            charPos=0; while (++charPos <= len( lastResultsText(1))); 
-                if asc(lastResultsText(1), charPos) < asc_space; replaceChar(lastResultsText(1), 129, charPos); end; 
+            charPos=0; while (++charPos <= len( lastResultsText(sessionID, 1))); 
+                if asc(lastResultsText(sessionID, 1), charPos) < asc_space; replaceChar(lastResultsText(sessionID, 1), 129, charPos); end; 
             end;
         end;	
     end;
@@ -347,7 +369,7 @@ end;
 // send an HTTP error response
 // ---------------------------
     
-procedure printHTTP_error(IOchannel, HTTP_error);    
+procedure printHTTP_error(IOchannel, HTTP_error, logging);    
     const msg400 = "HTTP/1.1 400 Bad request";            
     const msg403 = "HTTP/1.1 403 Forbidden";            
     const msg503 = "HTTP/1.1 503 Server busy";          
@@ -356,7 +378,9 @@ procedure printHTTP_error(IOchannel, HTTP_error);
     
     printLine IOchannel, msg = switch(HTTP_error, 403, msg403, 503, msg503, 400, msg400);             // send HTTP error message to client (server busy or access denied)
     printLine IOchannel, "Connection: close";
-    
+
+    if logging; coutLine "WS at ", fmt(millis()/1000., 11, 3, FIXED),"s: ..sending HTTP error response ", msg; end;
+
     while available(IOchannel); read(IOchannel, 1); end;                                                    // flush client stream input buffer (read with time out) 
 end;
 
@@ -364,11 +388,13 @@ end;
 // send HTML response message to (re-)draw main page
 // -------------------------------------------------
 
-procedure sendResponse_mainPage(IOchannel, lastExpressions(), lastResultsText(), logoFile);
+procedure sendResponse_mainPage(IOchannel, sessionID, lastExpressions(), lastResultsText(), logoFile, logging);
 	
 	var i=0;
 	
-	// send response header
+    if logging; coutLine "WS at ", fmt(millis()/1000., 11, 3, FIXED),"s: ..sending calculator page"; end;
+
+    // send response header
 	printLine IOchannel, "HTTP/1.1 200 OK";
 	printLine IOchannel, "Content-Type: text/html";
 	printLine IOchannel, "Connection: close";
@@ -441,7 +467,7 @@ procedure sendResponse_mainPage(IOchannel, lastExpressions(), lastResultsText(),
 	
 	// input box dropdown: display 10 last expressions entered 
 	for i=1, 10;
-		print IOchannel, "    <option value='" + lastExpressions(i) + "'>"; 
+		print IOchannel, "    <option value='" + lastExpressions(sessionID, i) + "'>"; 
 	end;
 	
 	print IOchannel, "</datalist>"; 
@@ -473,7 +499,7 @@ procedure sendResponse_mainPage(IOchannel, lastExpressions(), lastResultsText(),
 	
 	// answer box: display 10 last answers
 	for i=1, 10; 
-		print IOchannel, "answerBox.innerHTML += '" + cStr(i) + ": " + lastResultsText(i) + "<br>';"; 
+		print IOchannel, "answerBox.innerHTML += '" + cStr(i) + ": " + lastResultsText(sessionID, i) + "<br>';"; 
 	end;
 	printLine IOchannel, "</script>";
 end;
@@ -482,7 +508,7 @@ end;
 // send response message with image (OK for logo as well as icon)
 // --------------------------------------------------------------
 
-procedure sendResponse_image(IOchannel, imageFile);
+procedure sendResponse_image(IOchannel, imageFile, logging);
 	
 	var fileFound = FALSE;
 	
@@ -492,6 +518,8 @@ procedure sendResponse_image(IOchannel, imageFile);
 	trapErrors FALSE;
 	
 	if fileFound;
+        if logging; coutLine "WS at ", fmt(millis()/1000., 11, 3, FIXED),"s: ..sending file ", imageFile; end;
+        
 		printLine IOchannel, "HTTP/1.1 200 OK";
 		printLine IOchannel, "Content-Type: image/jpeg";						
 		printLine IOchannel, "Connection: close";

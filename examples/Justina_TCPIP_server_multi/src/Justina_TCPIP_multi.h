@@ -62,20 +62,23 @@ private:
     static constexpr unsigned long WIFI_UP_CHECK_INTERVAL{ 500 };       // minimum delay between two attempts to connect to WiFi (milliseconds) 
     static constexpr unsigned long WIFI_REPORT_INTERVAL{ 5000 };
 
+
     static constexpr int MAX_CLIENT_SLOTS{ 4 };
 
     bool _verbose{};
     bool _resetWiFi{};
-    bool _setupAsClient{}; //// aanvullen of weglaten
+    bool _setupAsClient{};                                              // NOTE: CLIENT FUNCTIONALITY IS NOT IMPLEMENTED
     int _serverPort{};
 
     bool _WiFiEnabled{};
     bool _TCPenabled{};
 
-    Stream* _pDebugStream {&Serial};
+    Stream* _pDebugStream{ &Serial };
 
     // state machine: WiFi and client connection state
     connectionState _WiFiState{ conn_0_WiFi_notConnected };              // init
+
+    unsigned long _TCPconnectionTimeout{ 10000 };                       // stop client if no activity for this period of time (ms)     
     unsigned long _WiFiWaitingForConnectonAt{ millis() };               // timestamps in milliseconds
     unsigned long _lastWiFiMaintenanceTime{ millis() };
 
@@ -84,21 +87,19 @@ private:
     struct WiFiClientData {                                             // WiFi client data objects (maximum is 3)
         WiFiClient client{};
         ClientState state{ IDLE };
+        unsigned long connectedAt{};
         int sessionIndex = -1;                                          // link to session index (-1 = unassigned)
     };
 
     struct SessionData {                                                 // application level sessions
         bool active{ false };
         int clientSlotID{ -1 };                                       // link to client slot number (-1 = unassigned)
-        long lastActivity{};
         IPAddress IP{};
     };
 
 
-public:   //// temp
     WiFiClientData* _pWiFiClientData{};
-    SessionData*  _pSessionData{};
-private: //// temp
+    SessionData* _pSessionData{};
     int _TCPclientSlots, _maxSessions;                                                // as specified by user application (maximum is 3)
 
 
@@ -110,16 +111,19 @@ public:
     // constructor: connect as server (with static server IP address)
     TCPconnection(const char SSID[], const char PASS[], const IPAddress serverAddress, const IPAddress  gatewayAddress, const IPAddress subnetMask,
         const IPAddress  DNSaddress, const int serverPort, bool WiFiEnable, bool TCPenable, Stream** pStream, int TCPclientSlots);
-    
+
     // destructor
     ~TCPconnection();
 
     // utilities
     void maintainConnection();
-    
+
     WiFiServer* getServer();                                            // (only if configured as server)
     WiFiClient* getSessionClient(int sessionID);
-    bool getSessionData(int sessionID, int &clientSlotID, IPAddress &IP);                               // function returns 'session active' status
+    
+    void setConnectionTimeout(unsigned long TCPconnectionTimeout);
+
+    int getSessionClient(int sessionID, IPAddress& IP);                               // function returns 'session active' status
     connectionState getWiFiState();
     long getTCPclientCount();
 
@@ -129,7 +133,7 @@ public:
     void WiFiOn();
     void TCPdisable();
     void TCPenable();
-    
+
     void stopSessionClient(int session, bool keepSessionActive = true);
 };
 
