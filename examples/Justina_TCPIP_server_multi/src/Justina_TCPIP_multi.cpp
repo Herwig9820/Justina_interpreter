@@ -7,24 +7,19 @@
 *                                                                                                                        *
 *   This example code is in the public domain                                                                            *
 *                                                                                                                        *
-*   2024, Herwig Taveirne                                                                                                *
+*   2024, 2025 Herwig Taveirne                                                                                                *
 *************************************************************************************************************************/
 
 #include "Justina_TCPIP_multi.h"
 
 /*
-    Setup an Arduino as a TCP/IP server or client.
+    Setup an Arduino as a TCP/IP server.
     This code also maintains the connection: method maintainConnection() MUST BE CALLED REGULARLY from your program main loop.
     This allows you to isolate your application (an HTTP server, ...) from this TCP/IP maintenance code.
 
-    The constructor called will define whether Arduino is set up as a server or a client.
-    WiFi maintenance and TCP/IP connection maintenance is split into two different methods.
-    Variable '_WiFiState' maintains the state of the connection ('state machine'). If this maintained state
-    (e.g., 'WiFi connected') does not correspond to the actual state (e.g., WiFi connection was lost) OR your application
-    requests a state change (e.g., 'switch off WiFi'), action is taken.
+    WiFi maintenance and TCP/IP client connection maintenance is split into two different methods.
 
     A number of utility functions are provided to switch WiFi on or off, to allow a TCP/IP connections or not, etc.
-    --------------------------------------------------------------------------------------------------------------------------
 */
 
 
@@ -54,15 +49,15 @@ TCPconnection::TCPconnection(const char SSID[], const char PASS[],
     _WiFiEnabled = WiFiEnable;
     _TCPenabled = TCPenable;
 
-    _TCPclientSlots = _maxSessions = min(TCPclientSlots, MAX_CLIENT_SLOTS - 1);     // MAX_CLIENT_SLOTS: depends on board type. -1: for temporary 'new client' object
+    _TCPclientSlots = _maxSessions = min(TCPclientSlots, TCP_SOCKET_COUNT - 1);     // TCP_SOCKET_COUNT: depends on board type; -1: for temporary 'new client' object
 
     // pointer to array of client data
-    _pWiFiClientData = new WiFiClientData[_TCPclientSlots];              // this is the maximum for ESP32 & nano 33 IoT, given that there is a temporary 'newClient' as well (max 4 concurrent clients)
-    _pSessionData = new SessionData[_TCPclientSlots];                      // equal size of _pWiFiClientData
+    _pWiFiClientData = new WiFiClientData[_TCPclientSlots];                         
+    _pSessionData = new SessionData[_TCPclientSlots];                               // equal size of _pWiFiClientData
 
     // store stream pointers to the client objects: pass to the calling c++ program
     for (int i = 0; i < _TCPclientSlots; i++) {
-        pStream[i] = static_cast <Stream*>(&_pWiFiClientData[i].client);
+        pStream[i] = static_cast <Stream*>(&_pWiFiClientData[i].client); 
     }
 }
 
@@ -99,6 +94,11 @@ void TCPconnection::maintainConnection() {
 // ---------------------------------------------------------------------
 
 void TCPconnection::maintainWiFiConnection() {
+
+    // Variable '_WiFiState' maintains the state of the WiFiconnection('state machine').If this maintained state
+    // (e.g., 'WiFi connected') does not correspond to the actual state(e.g., WiFi connection was lost) OR your application
+    // requests a state change (e.g., 'switch off WiFi'), action is taken.
+
     switch (_WiFiState) {
 
         // state: WiFi is currently not connected
@@ -108,7 +108,7 @@ void TCPconnection::maintainWiFiConnection() {
             // WiFi is enabled AND it's time for a next WiFi connection attempt ?
             if (_WiFiEnabled && (_lastWiFiMaintenanceTime + WIFI_UP_CHECK_INTERVAL < millis())) {
 
-                if (!_setupAsClient) {                                                       // is server side ? set static server IP
+                if (!_setupAsClient) {                                                      // is server side ? set static server IP
                 #if defined ARDUINO_ARCH_ESP32
                     WiFi.config(_serverAddress, _gatewayAddress, _subnetMask, _DNSaddress);
                 #else
@@ -118,9 +118,9 @@ void TCPconnection::maintainWiFiConnection() {
 
                 WiFi.begin((const char*)_SSID, (const char*)_PASS);
                 _WiFiState = conn_1_WiFi_waitForConnecton;
-                if (_verbose) { _pDebugStream->printf("-- at %11.3fs: %s", millis() / 1000., (_setupAsClient ? "-- Trying to connect WiFi..." : "-- Trying to connect TCP/IP server to WiFi...")); }
+                if (_verbose) { _pDebugStream->printf("-- at %11.3fs: %s\r\n", millis() / 1000., (_setupAsClient ? "-- Trying to connect WiFi..." : "-- Trying to connect TCP/IP server to WiFi...")); }
                 // remember time of this WiFi connection attempt
-                _WiFiWaitingForConnectonAt = _lastWiFiMaintenanceTime = millis();       // remember time of last WiFi maintenance AND time of this WiFi connection attempt
+                _WiFiWaitingForConnectonAt = _lastWiFiMaintenanceTime = millis();           // remember time of last WiFi maintenance AND time of this WiFi connection attempt
                 _resetWiFi = false;
             }
         }
@@ -133,8 +133,8 @@ void TCPconnection::maintainWiFiConnection() {
         {
             // WiFi is enabled AND it's time for a next WiFi connection check ?
             if (_WiFiEnabled && (_lastWiFiMaintenanceTime + WIFI_UP_CHECK_INTERVAL < millis())) {
-                if (WiFi.status() == WL_CONNECTED) {                                    // WiFi is now connected ?
-                    if (!_setupAsClient) { _server.begin(); }                                // if Arduino as server, start server
+                if (WiFi.status() == WL_CONNECTED) {                                        // WiFi is now connected ?
+                    if (!_setupAsClient) { _server.begin(); }                               // if Arduino as server, start server
                     _WiFiState = conn_2_WiFi_connected;
                     if (_verbose) {
                         IPAddress IP = WiFi.localIP();
@@ -143,15 +143,15 @@ void TCPconnection::maintainWiFiConnection() {
                     }
                 }
 
-                else {                                                                  // WiFi is not yet connected
+                else {                                                                      // WiFi is not yet connected
                     // regularly report status ('still trying...' etc.)
                     if (_WiFiWaitingForConnectonAt + WIFI_REPORT_INTERVAL < millis() && _verbose) {
-                        _WiFiWaitingForConnectonAt = millis();                          // for printing only
+                        _WiFiWaitingForConnectonAt = millis();                              // for printing only
                         if (_verbose) { _pDebugStream->print("."); }
                     }
                 }
-                _lastWiFiMaintenanceTime = millis();                                    // remember time of last WiFi maintenance 
-                _resetWiFi = false;                                                     // could have been set while not connected to WiFi
+                _lastWiFiMaintenanceTime = millis();                                        // remember time of last WiFi maintenance 
+                _resetWiFi = false;                                                         // could have been set while not connected to WiFi
             }
         }
         break;
@@ -169,7 +169,7 @@ void TCPconnection::maintainWiFiConnection() {
             #if !defined ARDUINO_ARCH_ESP32
                 WiFi.end();
             #endif
-                _lastWiFiMaintenanceTime = millis();                                    // remember time of last WiFi maintenance 
+                _lastWiFiMaintenanceTime = millis();                                        // remember time of last WiFi maintenance 
                 _resetWiFi = false;
             }
         }
@@ -177,71 +177,49 @@ void TCPconnection::maintainWiFiConnection() {
 }
 
 
-// ---------------------------------------------------------------------------
-// *   maintain TCP connections, for Arduino set up as client or as server   *
-// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// *   maintain TCP client connections, for Arduino set up as server   *
+// ---------------------------------------------------------------------
 
 void TCPconnection::maintainTCPclients() {
 
     /*
-        An array of type WiFiClientData maintains data of connected TCPIP clients in maximum 4 client slots.
+        An array of type 'WiFiClientData' maintains data of connected TCPIP clients in maximum 3 client slots.
         If a client slot has state CONNECTED, it does currently contain data about a connected client. If IDLE, the associated client is currently not connected.
 
-        An array of type 'SessionData' maintains basic data about active sessions. Sessions are not handled here (by the 'TCPIP layer') but by the application
-        communicating with connected clients, by example a simple HTTP (web) server.
+        An array of type 'SessionData' maintains basic data about active sessions. 
+        If a session has status ACTIVE, it is reserved for communication with a specific client IP address. A total of 3 sessions is available.
+        
+        The TCP layer (TCPIP server) connects and stops individual TCP clients and maintains TCP client connection states ('state machine').
+        
+        If a client connects, the TCPIP server will first try to link the client to an active session, based on the client IP address. 
+        If no match occurs, the client is considered 'new' and it will be linked to an inactive session (if available); that session will then receive the state ACTIVE. 
+        
+        The higher level application (e.g., a HTTP server) that makes use of the TCPIP server for its communication must regularly scan for active sessions and, 
+        if it finds one, communicate with the associated client (it will receive client requests and send responses).
 
-        Only the TCP layer can connect a client, link it to a session and set the sessioni status 'active'
-        -> a new client (based on IP) is linked to a currently inactive session, an existing client is linked to the currently active session for that client
-
-        The application layer (e.g., e HTTP web server) can request to disconnect a client (for instance after sending a response to a client's request) by calling
-        method 'stopSessionClient', indicating the session ID.
-        At the same time, it can request to end the session (using the same method) in which case the client will be disconnected and stopped.
-        ONLY the application client can request to end a session. This is typically the case after a failed logon attempt, a log off or a session time out (all
-        handled by the application layer).
-
-        Clients are disconnected if the application requests it (see above), if an event happens (remote end disconnects, network failure, ...),
-        if there's no free client slot or no available session. This always removes client-session links (if currently linked) but sets the session status
-        to inactive only of requested by the application layer.
-
-
-        // nalezen en weg
-        client and session data are now decoupled (links removed), the client slot is now IDLE and can receive a new connection
-        BUT THE SESSION STAYS ACTIVE WITH THE IP THAT WAS STORED THERE.
-        if the client ('new client') connects again (same IP), client data may be stored in any free client slot,
-        and the link will be made with the same 'session data' element (same session ID).
-
-        ONLY the TCP layer (this and other TCP server routines) can connect a client, but only if it can set a link to a 'session data' element:
-            - (1) a 'session data' element is currently active, and IP addresses match: the link is valid and will be updated
-            - (2) if not (1), a 'session data' element is found that is currently inactive: a valid link is created
-
-        ONLY the application layer (e.g. HTTP server) can set a session free (not active) again (e.g. after a session timeout, an invalid 'log on' or a 'log off').
-        this will stop a connected client (if there is one).
-
+        Once a response is sent, the application will instruct the TCPIP server to stop the client: the client state will then change to IDLE.
+        If the application determines that no further communication with the client is needed, it informs the TCP server to change the session state to INACTIVE as well. 
+        Example: if a HTTP client does not provide correct credentials or a session timeout occurs, the HTTP server can instruct the TCP server not only to stop the client, 
+        but to end the session as well. The TCPIP server will NOT end a session by its own initiative. 
     */
 
-    // A. Process active clients
-    // -------------------------
-
-    /*
-        If a client disconnected, the (mutual) link between client and session data is broken (links to clientSlot and sessionIndex set to '-1'),
-        the client is stopped and is flagged 'IDLE'.
-
-        Session and client data are now decoupled, but the session is still flagged active. The application layer must take care of deactivating the session.
-        As long as the session stays active, a new client connecting will again be linked to the same session, as long as the IP addresses match.
-    */
+    // A. Process currently CONNECTED clients
+    // --------------------------------------
 
     for (int i = 0; i < _TCPclientSlots; i++) {
         if (_pWiFiClientData[i].state == CONNECTED) {
             bool connectionLost = (!_pWiFiClientData[i].client.connected()) || (_WiFiState < conn_2_WiFi_connected) || !_TCPenabled;
-            bool connectionTimedOut = (millis() - _pWiFiClientData[i].connectedAt > _TCPconnectionTimeout) ;
+            bool connectionTimedOut = (millis() - _pWiFiClientData[i].connectedAt > _TCPconnectionTimeout);
 
+            // if connection lost or connection timeout: stop the client
             if (connectionLost || connectionTimedOut) {
 
-                // client disconnection was NOT initiated by the server: client must still be stopped
-                IPAddress clientIP{ 0,0,0,0 };                                        // init, in case session index would be inconsistent (safety)
+                // client MUST still be stopped !
+                IPAddress clientIP{ 0,0,0,0 };                                      // init, in case session index would be inconsistent (safety)
                 int sessionID = _pWiFiClientData[i].sessionIndex;
                 int slot{ -1 };
-                if (sessionID >= 0 && sessionID < _maxSessions) {                       // safety
+                if (sessionID >= 0 && sessionID < _maxSessions) {                   // safety
                     slot = _pSessionData[sessionID].clientSlotID;
                     clientIP = _pSessionData[sessionID].IP;
                     _pSessionData[sessionID].clientSlotID = -1;                     // remove reverse link from session data
@@ -264,46 +242,38 @@ void TCPconnection::maintainTCPclients() {
     // B. Process a new client
     // -----------------------
 
-    /*
-        if a new client is connecting (client 'newClient' evaluates to true, below)
-        -> first check if this is really a new client (server.available() on each pass here, as long as WiFi is on and TCPIP is enabled)
-        -> if an active session is found with the new client's IP address, this is actually an existing client
-        -> if a new client, then
-           -> assign to a free client slot(if none available, stop() client again - connection is refused)
-           -> try to link with an active session, based on client IP. If client and session IP's match, link client with session
-           -> if no such session found, find a free session, set it to active, store client IP and link client with session
-              (if no free session available, stop() client again - connection is refused)
-    */
-
-    WiFiClient newClient = _server.available();
-    IPAddress clientIP = newClient.remoteIP();
+    WiFiClient nextClient = _server.available();
+    IPAddress clientIP = nextClient.remoteIP();
     int sessionID{};
     int clientSlot{};
     bool clientSlotFound{ false };
 
-    if (!newClient) { return; }
+    if (!nextClient) { return; }
 
-    if (_verbose) { _pDebugStream->printf("-- at %11.3fs: 'new' client found\r\n", millis() / 1000.); }
+    // next message is not really needed
+    // if (_verbose) { _pDebugStream->printf("-- at %11.3fs: 'new' client found\r\n", millis() / 1000.); }
 
-    // B.1 check whether this is an existing client, currently linked to an active session, that was 'found' already
-    // -------------------------------------------------------------------------------------------------------------
 
-    // note: this is possible because we continuously call _server.available()
+    // B.1 check whether this is a CONNECTED client that is 'found' more than once
+    //     note: this is possible because we continuously call _server.available()
+    // ---------------------------------------------------------------------------
+
+    // a client slot with state CONNECTED is always linked to an ACTIVE session: check if such a session exists
     for (sessionID = 0; sessionID < _maxSessions; sessionID++) {
-        if (_pSessionData[sessionID].IP != clientIP) { continue; }             // client with this IP is already linked to a session ? (If not, continue the search)
-        if (!_pSessionData[sessionID].active) { continue; }                    // session is active ? (If not, continue the search)
+        if (!_pSessionData[sessionID].active) { continue; }                         // session is active ? (If not, continue the search)
+        if (_pSessionData[sessionID].IP != clientIP) { continue; }                  // client with this IP is already linked to a session ? (If not, continue the search)
 
         // found an active session for this IP: retrieve client slot the session is linked with
-        clientSlot = _pSessionData[sessionID].clientSlotID;                     // retrieve the client slot that session uses
-        if ((clientSlot < 0) || (clientSlot >= _TCPclientSlots)) { break; }    //safety: prevent writing to an invalid memory location                   
+        clientSlot = _pSessionData[sessionID].clientSlotID;                         // retrieve the client slot that session uses
+        if ((clientSlot < 0) || (clientSlot >= _TCPclientSlots)) { break; }         //safety: prevent writing to an invalid memory location                   
 
-        // NOTE: DO NOT replace the current client with the 'new' client ('... = newClient'): this will temporarily stall the connection
-        _pWiFiClientData[clientSlot].state = CONNECTED;                     // safety: set client state to 'connected' (it should already be, because of the client slot link, just above)
-        _pWiFiClientData[clientSlot].connectedAt=millis();                  // used for connection timeout
-        _pWiFiClientData[clientSlot].sessionIndex = sessionID;              // safety: reverse link
-        clientSlotFound = true;                                             // session data updated as well; nothing more to do
+        // NOTE: DO NOT replace the current client with the 'new' client ('... = nextClient'): this will temporarily stall the connection
+        _pWiFiClientData[clientSlot].state = CONNECTED;                             // safety: set client state to 'connected' (it should already be, because of the client slot link, just above)
+        _pWiFiClientData[clientSlot].connectedAt = millis();                        // used for connection timeout
+        _pWiFiClientData[clientSlot].sessionIndex = sessionID;                      // safety: reverse link
+        clientSlotFound = true;                                                     // session data updated as well; nothing more to do
 
-        return;                                                             // OK: the 'new' client is an existing client, already linked to an active session
+        return;                                                                     // OK: the 'new' client is an existing client, currently connected and linked to an active session
     }
 
 
@@ -312,45 +282,47 @@ void TCPconnection::maintainTCPclients() {
     for (clientSlot = 0; clientSlot < _TCPclientSlots; clientSlot++) {
         if (_pWiFiClientData[clientSlot].state == IDLE) {
             _pWiFiClientData[clientSlot].state = CONNECTED;
-            _pWiFiClientData[clientSlot].connectedAt = millis();                  // used for connection timeout
-            _pWiFiClientData[clientSlot].client = newClient;
+            _pWiFiClientData[clientSlot].connectedAt = millis();                    // used for connection timeout
+            _pWiFiClientData[clientSlot].client = nextClient;
             clientSlotFound = true;
             break;
         }
     }
 
-    if (!clientSlotFound) {                                                 // no free slots: stop the new client, not assigned to a session
-        newClient.stop();                                                   // stop the new client: all slots are currently taken
+    if (!clientSlotFound) {                                                         // no free slots: stop the new client, not assigned to a session
+        nextClient.stop();                                                          // stop the new client: all slots are currently taken
         if (_verbose) { _pDebugStream->printf("-- at %11.3fs: new client REJECTED: no free client slots\r\n", millis() / 1000.); }
 
-        return;                                                             // NOK (no free client slots)
+        return;                                                                     // NOK (no free client slots)
     }
 
     // a free client slot was found. Next: update the session data
     bool sessionDataUpdated{ false };
-    bool isNewSession{ false };                                             // for debug print only
+    bool isNewSession{ false };                                                     // for debug print only
+
 
     // B.3 check whether the new client can be linked to an existing (active) session (based on IP address) 
     // ----------------------------------------------------------------------------------------------------
     for (sessionID = 0; sessionID < _maxSessions; sessionID++) {
         if ((_pSessionData[sessionID].IP == clientIP) && (_pSessionData[sessionID].active)) {
-            _pSessionData[sessionID].clientSlotID = clientSlot;           // link to client data
-            _pWiFiClientData[clientSlot].sessionIndex = sessionID;           // reverse link from client data
+            _pSessionData[sessionID].clientSlotID = clientSlot;                     // link to client data
+            _pWiFiClientData[clientSlot].sessionIndex = sessionID;                  // reverse link from client data
             sessionDataUpdated = true;
             break;
         }
     }
+
 
     // B.4 if the client could not be linked to an active session, check whether it can be linked to a new session
     // -----------------------------------------------------------------------------------------------------------
     if (!sessionDataUpdated) {
         for (sessionID = 0; sessionID < _maxSessions; sessionID++) {
             if (!_pSessionData[sessionID].active) {
-                _pSessionData[sessionID].active = true;                                 // .active is set by the TCP server only (here) and is reset by the application layer
+                _pSessionData[sessionID].active = true;                             // .active is set by the TCP server only (here) and is reset by the application layer
                 _pSessionData[sessionID].IP = clientIP;
-                _pSessionData[sessionID].clientSlotID = clientSlot;                        // link to client data
+                _pSessionData[sessionID].clientSlotID = clientSlot;                 // link to client data
 
-                _pWiFiClientData[clientSlot].sessionIndex = sessionID;                       // reverse link from client data
+                _pWiFiClientData[clientSlot].sessionIndex = sessionID;              // reverse link from client data
                 sessionDataUpdated = isNewSession = true;
                 break;
             }
@@ -367,7 +339,7 @@ void TCPconnection::maintainTCPclients() {
     else {
         _pWiFiClientData[clientSlot].state = IDLE;
         _pWiFiClientData[clientSlot].sessionIndex = -1;
-        newClient.stop();
+        nextClient.stop();
         if (_verbose) { _pDebugStream->printf("-- at %11.3fs: new client REJECTED: no free session\r\n", millis() / 1000.); }
     }
 }
@@ -390,7 +362,7 @@ WiFiClient* TCPconnection::getSessionClient(int sessionID) {
     if (!_pSessionData[sessionID].active) { return nullptr; }
 
     int clientSlot = _pSessionData[sessionID].clientSlotID;
-    if ((clientSlot < 0) || (clientSlot >= _TCPclientSlots)) { return nullptr; }         // safety check: client slot must be valid
+    if ((clientSlot < 0) || (clientSlot >= _TCPclientSlots)) { return nullptr; }        // safety check: client slot must be valid
 
     if (_pWiFiClientData[clientSlot].state == IDLE) { return nullptr; }
     else { return &(_pWiFiClientData[clientSlot].client); }
@@ -405,31 +377,31 @@ WiFiClient* TCPconnection::getSessionClient(int sessionID) {
 // this stops the TCP connection linked to a session and / or ends the session
 
 void TCPconnection::stopSessionClient(int sessionID, bool endSession) {
-    if ((_WiFiState < conn_2_WiFi_connected) || !_TCPenabled) { return; }       // exit if WiFi is not connected or TCP is disabled
-    if ((sessionID < 0) || (sessionID >= _maxSessions)) { return; }             // safety check: session index must be valid
-    if (!_pSessionData[sessionID].active) { return; }                           // safety
+    if ((_WiFiState < conn_2_WiFi_connected) || !_TCPenabled) { return; }           // exit if WiFi is not connected or TCP is disabled
+    if ((sessionID < 0) || (sessionID >= _maxSessions)) { return; }                 // safety check: session index must be valid
+    if (!_pSessionData[sessionID].active) { return; }                               // safety
 
     int clientSlot = _pSessionData[sessionID].clientSlotID;
-    if ((clientSlot < -1) || (clientSlot >= _TCPclientSlots)) { return; }         // safety check: client slot must be valid OR -1 (no client for session)
+    if ((clientSlot < -1) || (clientSlot >= _TCPclientSlots)) { return; }           // safety check: client slot must be valid OR -1 (no client for session)
 
     // If client is connected, stop it and clean up client state
     if (clientSlot != -1) {
-        if (_pWiFiClientData[clientSlot].state == CONNECTED) {                       // If client is connected, stop it and clean up client state
+        if (_pWiFiClientData[clientSlot].state == CONNECTED) {                      // If client is connected, stop it and clean up client state
             _pWiFiClientData[clientSlot].client.stop();
             _pWiFiClientData[clientSlot].state = IDLE;
             _pWiFiClientData[clientSlot].sessionIndex = -1;
 
-            _pSessionData[sessionID].clientSlotID = -1;                               // Mark session as inactive and remove client link
+            _pSessionData[sessionID].clientSlotID = -1;                             // Mark session as inactive and remove client link
 
         }
     }
 
     // if 'keepSessionActive' is false, end session  
-    if (endSession) { _pSessionData[sessionID].active = false; }               // .active is set by the TCP server only and is reset by the application layer (here)
+    if (endSession) { _pSessionData[sessionID].active = false; }                    // .active is set by the TCP server only and is reset by the application layer (here)
 
      // Log disconnection if verbose mode is enabled
     if (_verbose) {
-        IPAddress clientIP = _pSessionData[sessionID].IP;                             // Get client slot and IP for this session
+        IPAddress clientIP = _pSessionData[sessionID].IP;                           // Get client slot and IP for this session
         if (clientSlot >= 0) {
             _pDebugStream->printf("-- at %11.3fs: session %d %s: client (slot %d) STOPPED, remote IP %d.%d.%d.%d\r\n",
                 millis() / 1000., sessionID, (endSession ? "END   " : "(KEEP)"), clientSlot, clientIP[0], clientIP[1], clientIP[2], clientIP[3]);
@@ -447,22 +419,22 @@ void TCPconnection::stopSessionClient(int sessionID, bool endSession) {
 
 // if a session is active AND a client is currently connected, the function returns TRUE. Otherwise, it returns FALSE. 
 
-int TCPconnection::getSessionClient(int sessionID, IPAddress& IP) {                           // function returns 'session active' status
-    int clientSlot = -1;                                                                    // init
+int TCPconnection::getSessionClient(int sessionID, IPAddress& IP) {                 // function returns 'session active' status
+    int clientSlot = -1;                                                            // init
     IP = { 0,0,0,0 };
 
     // note: if wifi is off or TCP is not enabled (temporarily for instance), sessions may still be active
-    if ((sessionID < 0) || (sessionID >= _maxSessions)) { return -1; }             // Safety check: session index must be valid
+    if ((sessionID < 0) || (sessionID >= _maxSessions)) { return -1; }              // Safety check: session index must be valid
 
     bool sessionActive = _pSessionData[sessionID].active;
     if (sessionActive) {
-        IP = _pSessionData[sessionID].IP;                                                   // Get client slot and IP for this session
+        IP = _pSessionData[sessionID].IP;                                           // Get client slot and IP for this session
 
-        if ((_WiFiState < conn_2_WiFi_connected) || !_TCPenabled) { return -1; }         // WiFi is not connected or TCP is disabled: session can still be active
+        if ((_WiFiState < conn_2_WiFi_connected) || !_TCPenabled) { return -1; }    // WiFi is not connected or TCP is disabled: session can still be active
 
         clientSlot = _pSessionData[sessionID].clientSlotID;
-        if ((clientSlot < 0) || (clientSlot >= _TCPclientSlots)) { clientSlot = -1; return -1; }           // safety check: client slot must be valid
-        else if (_pWiFiClientData[clientSlot].state == IDLE) { clientSlot = -1; return -1; }          // is client connected ?
+        if ((clientSlot < 0) || (clientSlot >= _TCPclientSlots)) { clientSlot = -1; return -1; }    // safety check: client slot must be valid
+        else if (_pWiFiClientData[clientSlot].state == IDLE) { clientSlot = -1; return -1; }        // is client connected ?
     }
 
     // return connected client slot currently linked to active TCP session

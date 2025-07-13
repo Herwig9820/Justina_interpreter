@@ -1,0 +1,39 @@
+silent TRUE
+
+// check if 'local' variable must be created
+// -----------------------------------------
+trapErrors TRUE 
+eval("autorun_millis")
+if (err() == 0); gotoLabel "OK"; end 
+var autorun_millis = 0, autorun_ditch = FALSE;                                                                       // user variables (not program variables)
+//OK::
+trapErrors FALSE
+
+
+//nextLoop:: <-- this is a batch file label
+    
+// flush console input buffer 
+while available(CONSOLE); read(CONSOLE); end
+
+// check for console input during a 4 second time out
+coutLine line(), line(), "To prevent starting the web server, press Enter now"
+autorun_millis= millis(); 
+while millis() < autorun_millis + 4000; wait(200); cout "-"; if available(CONSOLE); break; end; end      // 40 x 100 ms = 4 seconden 
+coutLine;
+
+// ditch batch file if console characters were found before time out. Any way, flush console input buffer before proceeding.
+autorun_ditch=FALSE;
+while available (CONSOLE); if read(CONSOLE) == asc("\n"); autorun_ditch = TRUE; end; end      
+if autorun_ditch; ditch; end
+
+// load and start web server program
+// ---------------------------------
+loadProg "/justina/web_cal2.jus"
+coutLine "Starting web server..."
+webServer()
+
+// start another batch file loop
+// -----------------------------
+gotoLabel "nextLoop"
+
+

@@ -7,7 +7,7 @@
 *                                                                                                                        *
 *   This example code is in the public domain                                                                            *
 *                                                                                                                        *
-*   2024, Herwig Taveirne                                                                                                *
+*   2024, 2025 Herwig Taveirne                                                                                                *
 *************************************************************************************************************************/
 
 #ifndef _JUSTINA_TCP_h
@@ -24,18 +24,13 @@
 #include "Arduino.h"
 
 /*
-    Setup an Arduino as a TCP/IP server or client.
+    Setup an Arduino as a TCP/IP server.
     This code also maintains the connection: method maintainConnection() MUST BE CALLED REGULARLY from your program main loop.
     This allows you to isolate your application (an HTTP server, ...) from this TCP/IP maintenance code.
 
-    The constructor called will define whether Arduino is set up as a server or a client.
-    WiFi maintenance and TCP/IP connection maintenance is split into two different methods.
-    Variable '_WiFiState' maintains the state of the connection ('state machine'). If this maintained state
-    (e.g., 'WiFi connected') does not correspond to the actual state (e.g., WiFi connection was lost) OR your application
-    requests a state change (e.g., 'switch off WiFi'), action is taken.
+    WiFi maintenance and TCP/IP client connection maintenance is split into two different methods.
 
     A number of utility functions are provided to switch WiFi on or off, to allow a TCP/IP connections or not, etc.
-    --------------------------------------------------------------------------------------------------------------------------
 */
 
 
@@ -62,8 +57,8 @@ private:
     static constexpr unsigned long WIFI_UP_CHECK_INTERVAL{ 500 };       // minimum delay between two attempts to connect to WiFi (milliseconds) 
     static constexpr unsigned long WIFI_REPORT_INTERVAL{ 5000 };
 
-
-    static constexpr int MAX_CLIENT_SLOTS{ 4 };
+    // ESP32 & nano 33 IoT have 4 TCP sockets
+    static constexpr int TCP_SOCKET_COUNT{ 4 };
 
     bool _verbose{};
     bool _resetWiFi{};
@@ -76,7 +71,7 @@ private:
     Stream* _pDebugStream{ &Serial };
 
     // state machine: WiFi and client connection state
-    connectionState _WiFiState{ conn_0_WiFi_notConnected };              // init
+    connectionState _WiFiState{ conn_0_WiFi_notConnected };             // init
 
     unsigned long _TCPconnectionTimeout{ 10000 };                       // stop client if no activity for this period of time (ms)     
     unsigned long _WiFiWaitingForConnectonAt{ millis() };               // timestamps in milliseconds
@@ -91,21 +86,21 @@ private:
         int sessionIndex = -1;                                          // link to session index (-1 = unassigned)
     };
 
-    struct SessionData {                                                 // application level sessions
+    struct SessionData {                                                // application level sessions
         bool active{ false };
-        int clientSlotID{ -1 };                                       // link to client slot number (-1 = unassigned)
+        int clientSlotID{ -1 };                                         // link to client slot number (-1 = unassigned)
         IPAddress IP{};
     };
 
 
     WiFiClientData* _pWiFiClientData{};
     SessionData* _pSessionData{};
-    int _TCPclientSlots, _maxSessions;                                                // as specified by user application (maximum is 3)
+    int _TCPclientSlots, _maxSessions;                                  // as specified by user application (maximum is 3)
 
 
     // private methods
     void maintainWiFiConnection();                                      // attempt to (re-)connect to WiFi
-    void maintainTCPclients();                                       // attempt to (re-)connect to a client, if available
+    void maintainTCPclients();                                          // attempt to (re-)connect to a client, if available
 
 public:
     // constructor: connect as server (with static server IP address)
@@ -120,10 +115,10 @@ public:
 
     WiFiServer* getServer();                                            // (only if configured as server)
     WiFiClient* getSessionClient(int sessionID);
-    
+
     void setConnectionTimeout(unsigned long TCPconnectionTimeout);
 
-    int getSessionClient(int sessionID, IPAddress& IP);                               // function returns 'session active' status
+    int getSessionClient(int sessionID, IPAddress& IP);                 // function returns 'session active' status
     connectionState getWiFiState();
     long getTCPclientCount();
 

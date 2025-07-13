@@ -14,197 +14,233 @@
 program calculatorWebServer; // this is a JUSTINA program
 
 /*
-	Example of a web server, creating a web page functioning as a scientific calculator.
+	Example of a web server, serving a working scientific calculator as a web page to maximum 3 concurrent HTTP clients.
+    
 	An input box allows you to type in any expression (no commands) as long as it adheres to the Justina syntax:
 	internal Justina functions, Justina user functions and Justina user cpp functions are all allowed.
 	When submitted, the expression is evaluated by Justina ( eval() function) and the result (or the error, 
 	if an error is produced) is returned. The last 10 results are shown in an answer box below the input box. 
 	
-	This example is intended to be used with Justina library example Justina_TCPIP, which 
+	This example is intended to be used with Justina library example Justina_TCP/IP_multi, which 
 	- configures your Arduino as a TCP server
-	- is responsible for maintaining the WiFi and the TCP connection
-	- sets the underlying TCP/IP client as Justina IO device 2 (IO2)
+	- is responsible for maintaining the WiFi and the TCP connection for maximum 3 concurrent TCP/IP clients
+	- sets the underlying TCP/IP streams as Justina IO devices referred to by Justina constants IO2 (-2), IO3 (-3) and IO4 (-4) 
 	
 	This Justina language program implements the HTTP server on top, without having to worry about WiFi and TCP
 	connection maintenance. From the perspective of the HTTP server, this is a pure background process, executed regularly
-	by means of Justina system callbacks (see Justina_TCPIP library example).
+	by means of Justina system callbacks.
 	
     This HTTP server implements two interesting concepts: a simple form of user authentication (mainly to get rid of random IP scanners across the internet) 
-    and implementation of session time out (sliding expirarion, resetting the session timer each time the client sends data to the HTTP server).
-	This web server example uses the SD card: it expects to find a Justina logo file and icon file (jus_logo.jpg and jus_icon.jpg)
-	in SD card directory "/justina/images".
-	If an SD card is not connected or the image files are not found, the web page will still be displayed, but without
-	logo and icon. 
+    and implementation of sessions and session time out (sliding expirarion, resetting the session timer each time the client sends data to the HTTP server).
 	
+    This web server example uses the SD card: it expects to find a Justina logo file and icon file (jus_logo.jpg and jus_icon.jpg)
+	in SD card directory "/justina/images".
+	If an SD card is not connected or the image files are not found, the web page will still be displayed, but without logo and icon. 
 	NOTE: the image files are available in the Justina library in folder 'Justina_interpreter\extras\Justina_language_examples\images'
 
 	Procedure call: webServer();
-	While web client is not connected, press ampersand ( & ) to exit
 	
 	To test (or use !) the scientific calculator, open a web browser and type the complete url: http://nnn.nnn.nnn.nnn:port (fill in server IP address and port)
+	
+    Press ampersand ( & ) to exit the web server.
 */
 
 
+// ------------------------------
 // global constants and variables
 // ------------------------------
 
-	// program variables available to the web browser 'calculator' user 
-    // define all other program variables as local to shield them from the calculator user (Justina user variables, including arrays, ARE available to the calculator user)
-	var last, r0, r1, r2, r3, r4, r5, r6, r7, r8, r9;							        // 'last answer' register and user registers
+// program variables available to the 'calculator' users (HTTP clients)
+// every HTTP client will 'see' his only private copy of these program variables (see further down) 
+var last, r0, r1, r2, r3, r4, r5, r6, r7, r8, r9;							        // 'last answer' register and user registers
+
+// all other program variables are defined as local to shield them from calculator users (HTTP clients) 
+// NOTE: any Justina USER variables, including arrays, ARE available to HTTP clients, however their values are shared (public) accross HTTP clients 
 
 
+// -----------------------------------------------------------------------------------------
 // web server main loop: processes incoming HTTP client requests and, when the empty line... 
 // ...following the HTTP request header is encountered, sends a HTML response.
-// Calls 3 Justina user c++ functions defined within Justina_TCPIP.ino: 
-// - cpp_setVerbose(TRUE): allow TCP/IP library to print WiFi and TCP/IP state changes
-// - cpp_connState() : checks WiFi and TCP/IP client connection state////
-// - cpp_stopClient(): stops TCP/IP client at the end of a request/response cycle 
-// - sessionIP(...)   : gets the client (remote) IP address 
-// -------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------
 
 procedure webServer();
     
-    // variables hidden from the web browser 'calculator' user
-	
-    const echoRequest = TRUE;                                                          // echo received HTTP requests to the console ?
-    const logging = TRUE;
+    // variables hidden from web browser 'calculator' users
+	// ----------------------------------------------------
     
+    const echoRequest = FALSE;                                                      // echo received HTTP requests to the console ?
+    const logging = TRUE;                                                           // log web server actions ? (sending a response, ending a session, ...)
     
-    const WIFI_CONNECTED = 2;                                                            // connection status constant as defined in TCPIP library
-    const sessionTimeOut = 120000;                                                      // two minutes inactivity ends session
-    const noPageRequested = 0, mainPageRequest = 1, logoRequest = 2, faviconRequest = 3;    // what web page is requested ?
+    const sessionTimeOut = 120000;                                                  // two minutes inactivity ends session (sliding expiration)
+    const noPageRequested = 0, mainPageRequest = 1, logoRequest = 2, faviconRequest = 3;    // what HTTP request is received ?
     const sessionCount = 3;
     
-	const iconFile = "/justina/images/jus_icon.jpg";							        // Justina icon file
-	const logoFile = "/justina/images/jus_logo.jpg";							        // Justina logo file
-    
-    var lastExpressions(3, 10) = "";											        // stores last 10 user expressions entered
-	var lastResultsText(3, 10) = "";											        // stores last 10 results, as text (using current display formatting)
-    
-    
-    var sessionActive(3) = FALSE;                                                       
-    var lastHTTPrequestTime(3) = 0;                                                     // time of last HTTP request 
-    
-    var sessionID = 0;
-    var IOchannel = 0;
-                                                                         
-    var clientRequest = ""; 													        // client request, as it is received
-    var pageRequested = 0;                                                              // init 
-    var isNewSession = FALSE;
-    
-    var isTokenRequest = FALSE, requestLineAuthorized = FALSE;                                
-	var HTTP_error = 0;                                                                 // HTTP error 
-    var clientSlot = -1;                                                                // no client connected
-    var sessionClientIP = "---------------";                                                  // session IP address
-    var quitWebServer = FALSE;                                                          // quit HTTP server program and return to caller 
-                                                                                        
-	startSD; 																	        // make sure SD card is started
-    
-    setTimeout(IO2, 200);														        // time out for readLine() function, in ms (NOT blocking, handled in the background - NO delay(n) used)		
-    setTimeout(IO3, 200);														        		
-    setTimeout(IO4, 200);														        		
-	
-    cpp_WiFiOn();
-    cpp_TCPon();
-    cpp_setConnectionTimeout(10000);
-    cpp_setVerbose(TRUE);                                                              // allow TCP/IP library to print WiFi and TCP/IP state changes 
-																	  	
-    coutLine line(), "WS at ", fmt(millis()/1000., 11, 3, FIXED),"s: web server started (Type '&' (ampersand) + ENTER to stop)"; 
+	const iconFile = "/justina/images/jus_icon.jpg";							    // path to Justina icon file on SD card
+	const logoFile = "/justina/images/jus_logo.jpg";							    // path to Justina logo file on SD card
+        
+    var lastExpressions(3, 10) = "";											    // stores last 10 user expressions entered, for a maximum of 3 concurrent sessions
+	var lastResultsText(3, 10) = "";											    // stores last 10 results, as text, for a maximum of 3 concurrent client sessions (using current display formatting)
+        
+    var sessionValid(3) = FALSE;                                                   // maintains the session activity state: active or inactive
+    var lastHTTPrequestTime(3) = 0;                                                 // time of last HTTP request, per session 
+        
+    var sessionID = 0;                                                              // session being processed, from 1 to 3  
+    var IOchannel = 0;  
+                                                                            
+    var clientRequest = ""; 													    // client request (text), as it is received
+    var pageRequested = 0;                                                          // page requested (0 = no page)
+    var isNewSession = FALSE;                                                       // the session is new   
+        
+    var isValidTokenRequest = FALSE;                                                // the HTTP request contained a valid token (this 'logs on' a client)
+    var requestLineAuthorized = FALSE;                                              // the current request is authorized (the client is 'logged on')
+	var HTTP_errorNum = 0, HTTP_errorMsg;                                           // current HTTP error 
+    var clientSlot = -1;                                                            // session underlying client slot, from 0 to 2 (-1: no client connected)
+    var sessionClientIP = "---------------";                                        // session IP address
+    var quitWebServer = FALSE;                                                      // if TRUE, then quit HTTP server program and return to caller 
+ 
+ 
+	// start execution
+    // ---------------
+    startSD; 																	    // make sure SD card is started
+        
+    setTimeout(IO2, 200);														    // time out for readLine() function, in ms (NOT blocking for callbacks, internally NO delay() function is used)		
+    setTimeout(IO3, 200);														    		
+    setTimeout(IO4, 200);														    		
+        
+    cpp_setVerbose(TRUE);                                                           // allow TCP/IP library to print WiFi and TCP/IP state changes to console
+    cpp_WiFiOn();                                                                   // switch WiFi and TCP server on   
+    cpp_TCPon();    
+    cpp_setConnectionTimeout(10000);                                                // set individual connection timeout (from the time a new client connects) - not to be confused with session timeout)     
+                                                                            
+    coutLine line(), "WS at ", getTime(), "s: web server started (Type '&' (ampersand) + ENTER to stop)"; 
+     
      
     // main loop                                                                        
-	while 1;                                                                            	
+	// ---------
+    while 1;                                                                            	
         for sessionID = 1, sessionCount;
-            // note that sessions without a connected client can be active (in between 2 connections) 
-            clientSlot = cpp_getSessionData(sessionID, sessionClientIP=space(15));
-            isNewSession = (!sessionActive(sessionID)) && (clientSlot >=0);      // sessionIP: info only. Note: provide space for remote IP address in variable (15 characters)
-            if isNewSession; 
-                lastHTTPrequestTime(sessionID) = millis();                               // init 
-                if logging; coutLine "WS at ", fmt(millis()/1000., 11, 3, FIXED),"s: STARTING session ", sessionID -1, ", IP = ", sessionClientIP; end;
             
-            elseif sessionActive(sessionID);                                            // session was active already                                                            
-                sessionActive(sessionID) = (millis() < (lastHTTPrequestTime(sessionID) + sessionTimeOut));        // end session after a timeout (sliding expiration)
-                if ! sessionActive(sessionID); 
-                    cpp_stopSessionClient(sessionID, TRUE); 									        // end session; disconnect client if connected
+            // if the underlying TCP/IP session is active AND it currently has a client connected, this call returns the client slot (and, for information only, the session IP address). 
+            // if -1 is returned, the TCP/IP sesion signals that either it is not active or it currently has no client connected.    
+            clientSlot = cpp_getSessionData(sessionID, sessionClientIP=space(15));  // Note: on entry, provide space for remote IP address in variable (15 characters)
+            
+            // To reject unauthorized connection attempts across the web (scanning), the HTTP server looks for a specific query string (see further).
+            // Once received, the session is validated (authorized) - the client is then considered 'logged on'.
+            // A session stays valid, across multiple connections, until 1) the client sends again a query string and it's invalid, 2) a session timeout occurs. These events 'log off' the client.   
+            
+            // NOT a validated HTTP session ?   
+            if !sessionValid(sessionID);
+                // the underlying TCP server signaled a connection (to a NEW client: it cannot be a client connected to another session), based on IP address ? 
+                if (clientSlot >=0);                                                    
+                    lastHTTPrequestTime(sessionID) = millis();                      // this is a NEW session: init 'last request' time (for sliding expiration)
+                    handleInputBox("", sessionID, lastExpressions, lastResultsText);// clear internal user storage (empty request)
+                    if logging; coutLine "WS at ", getTime(),
+                            "s: STARTING session ", sessionID -1, ", IP = ", sessionClientIP; end;
+                end;    
+
+            // session was validated previously ? check for session timeout
+            else;                                                                                                    
+                sessionValid(sessionID) = (millis() < (lastHTTPrequestTime(sessionID) + sessionTimeOut));  // end session after a timeout (sliding expiration)
+                if ! sessionValid(sessionID);                                       // session timeout ?
+                    cpp_stopSessionClient(sessionID, TRUE); 				        // end session (and disconnect client if currently connected)
                     clientSlot = -1;
-                    if logging; coutLine "WS at ", fmt(millis()/1000., 11, 3, FIXED), "s: session timeout. ENDING session ", sessionID -1; end;
+                    if logging; coutLine "WS at ", getTime(), 
+                            "s: session timeout. ENDING session ", sessionID -1; end;
                 end;
             end;
             
-            if (clientSlot != -1);                                                              // client is connected ? 
-                IOchannel  = IO2 - clientSlot;
-                while available(IOchannel);											            // as long as characters are available (from HTTP client)
-                    clientRequest = readLine(IOchannel);									        // read request from HTTP client																			
+            
+            
+            // the TCP/IP server reported an active session AND it currently has a client connected ? (if the session is NEW, it is not yet validated)
+            if (clientSlot != -1);                                                      // client is connected ? 
+                IOchannel  = IO2 - clientSlot;                                          // determine the IO channel for the session (client slot 0 to 2: IO channel IO2 (-2) to IO4 (-4)
+                while available(IOchannel);											    // as long as characters are available (from HTTP client)
+                    // read a single request line from HTTP client, with stream timeout applied 
+                    clientRequest = readLine(IOchannel);							    // note: read timeout NOT blocking for callbacks, internally NO delay() function is used																			
                     
                     // accept (authorize) request line                                                      
                     // -------------------------------
-                    requestLineAuthorized = AcceptRequestLine(clientRequest, isTokenRequest, sessionActive(sessionID), HTTP_error);  // avoid random connections from IP scanners across the web: close such connections immediately
-                    if requestLineAuthorized; lastHTTPrequestTime(sessionID) = millis(); end;                  // if request is accepted, re-init session timer 
+                    // avoid random connections from IP scanners across the web: close such connections immediately
+                    requestLineAuthorized = AcceptRequestLine(clientRequest, isValidTokenRequest, sessionValid(sessionID), HTTP_errorNum);  
+                    if requestLineAuthorized; lastHTTPrequestTime(sessionID) = millis(); end;   // if request is accepted, re-init session timer 
                     
                     // handle HTTP requests
                     // --------------------
 
                     if !requestLineAuthorized;  
-                        printHTTP_error(IOchannel, HTTP_error, logging);                             // print HTTP error and flush client stream input buffer 
-                        break;                                                              // break loop and stop client connection
-                        
-                    elseif isTokenRequest; 
-                        pageRequested = mainPageRequest;                                    // valid token: display main page as well
-
-                    elseif findStr(clientRequest, "GET / ") == 1;							// GET request to (re-)draw page ? 
-                        pageRequested = mainPageRequest;		                            // set flag to (re-) draw main page when request will be completemy received
-                                                                                                  
-                    elseif findStr(clientRequest, "GET /?inputBox=") == 1;					// GET request contains an expression to evaluate ? (as text)
-                        handleInputBox(clientRequest, sessionID, lastExpressions, lastResultsText, logging);          
+                        printHTTP_error(IOchannel, HTTP_errorNum, HTTP_errorMsg);       // print HTTP error and flush client stream input buffer 
+                        if logging; coutLine "WS at ", getTime(),
+                                "s: ..sending HTTP error response ", HTTP_errorMsg; end;
+                        break;                                                          // break loop and stop client connection
+                            
+                    elseif isValidTokenRequest;     
+                        pageRequested = mainPageRequest;                                // valid token: display main page as well
+    
+                    elseif findStr(clientRequest, "GET / ") == 1;					    // GET request to (re-)draw page ? 
+                        pageRequested = mainPageRequest;		                        // set flag to (re-) draw main page when request will be completemy received
+                                                                                            
+                    elseif findStr(clientRequest, "GET /?inputBox=") == 1;			    // GET request contains an expression to evaluate ? (as text)
+                        if logging; coutLine "WS at ", getTime(),
+                                "s: ..evaluating expression"; end;
+                        handleInputBox(clientRequest, sessionID, lastExpressions, lastResultsText);          
                         pageRequested = mainPageRequest;           
                                                                                                   
-                    elseif findStr(clientRequest, "GET " + logoFile) == 1;					// GET request to send logo ?					
-                        pageRequested = logoRequest;	          
-                                                                                                  
-                    elseif findStr(clientRequest, "GET /favicon") == 1;						// GET request to send favorite icon ?
-                        pageRequested = faviconRequest;	          
-                                                                                                  
-                    elseif findStr(clientRequest, "GET /") == 1;						    // GET request is invalid ? (== none of the above)
-                        break;                                                              // break loop and stop client connection
+                    elseif findStr(clientRequest, "GET " + logoFile) == 1;			    // GET request to send logo ?					
+                        pageRequested = logoRequest;	            
+                                                                                                    
+                    elseif findStr(clientRequest, "GET /favicon") == 1;				    // GET request to send favorite icon ?
+                        pageRequested = faviconRequest;	            
+                                                                                                    
+                    elseif findStr(clientRequest, "GET /") == 1;			            // GET request is invalid ? (== none of the above)
+                        break;                                                          // break loop and stop client connection
                         
-                    elseif  strCmp(clientRequest, line()) == 0;  				            // empty line ? all request header lines have been received. Send HTTP response now                    
-                        if pageRequested == mainPageRequest; 		                        // was a request to (re-)draw the 'main page' ? 
-                        sendResponse_mainPage(IOchannel, sessionID, lastExpressions, lastResultsText, logoFile, logging);  // send response message to draw main page; inform web browser what image to ask for in next GET
+                    elseif  strCmp(clientRequest, line()) == 0;  				        // empty line ? all request header lines have been received. Send HTTP response now                    
+                        if pageRequested == mainPageRequest; 		                    // was a request to (re-)draw the 'main page' ? 
+                            if logging; coutLine "WS at ", getTime(),"s: ..sending calculator page"; end;
+                            sendResponse_mainPage(IOchannel, sessionID, lastExpressions, lastResultsText, logoFile);  // send response message to draw main page; inform web browser what image to ask for in next GET
                             
-                        elseif pageRequested == logoRequest;								// request to send logo ? 
-                            sendResponse_image(IOchannel, logoFile, logging);									// send response message 
-                                                                                                  
-                        elseif pageRequested == faviconRequest;							    // request to send 'favorite icon' ? 
-                            sendResponse_image(IOchannel, iconFile, logging);									// send response message indicating 'no favorite icon'
+                        elseif pageRequested == logoRequest;					        // request to send logo ? 
+                            if logging; coutLine "WS at ", getTime(),
+                                "s: ..sending file ", logoFile; end;
+                            sendResponse_image(IOchannel, logoFile);		            // send response message 
+                                                                                               
+                        elseif pageRequested == faviconRequest;						    // request to send 'favorite icon' ? 
+                            if logging; coutLine "WS at ", getTime(), 
+                                "s: ..sending file ", iconFile; end;
+                            sendResponse_image(IOchannel, iconFile);		            // send response message indicating 'no favorite icon'
                         
-                        else;                                                               // safety: no GET request received when empty line encountered (POST, ... is not used here)                                                             
-                            printHTTP_error(IOchannel, 400, logging);                                           // print HTTP error and flush client stream input buffer
-                            break;                                                          // break loop and stop client connection
+                        else;                                                           // safety: no GET request received when empty line encountered (POST, ... is not used here)                                                             
+                            printHTTP_error(IOchannel, 400, HTTP_errorMsg);             // print HTTP error and flush client stream input buffer
+                            if logging; coutLine "WS at ", getTime(),
+                                "s: ..sending HTTP error response ", HTTP_errorMsg; end;
+                            break;                                                      // break loop and stop client connection
                         end;
                         pageRequested = noPageRequested;
                     else;
                     end;                                                                          
                                                                                                   
-                    if echoRequest; printClientRequest(clientRequest); end;                 // echo request to console
+                    if echoRequest; printClientRequest(clientRequest); end;             // echo request to console
                 end;	
                 
-                // when printing session ID, subtract 1 (TCP server: session ID is base 0)
-                if logging; 
-                    cout "WS at ", fmt(millis()/1000., 11, 3, FIXED);
-                    if sessionActive(sessionID); coutLine "s: STOPPING client for session ", sessionID -1;
+                
+                if logging;                                                             // note: when printing session ID, subtract 1 (TCP server: session ID is base 0)
+                    cout "WS at ", getTime();
+                    if sessionValid(sessionID); coutLine "s: STOPPING client for session ", sessionID -1;
                     else;coutLine "s: not authorized. ENDING session ", sessionID -1; 
                     end;
                 end;
                 
-                cpp_stopSessionClient(sessionID, !sessionActive(sessionID));                // disconnect client and/or end session
+                // STOP the session CLIENT; IF the session client is not yet 'logged on' or was 'logged out' (see validation), END the SESSION
+                cpp_stopSessionClient(sessionID, !sessionValid(sessionID));             // disconnect client and/or end session
                 pageRequested = noPageRequested;
 
             end;
             
             
-            // flush console input buffer; if ampersand character found in stream, set flag requesting web server stop (if flag was not set yet)
+            // flush console input buffer; if ampersand character found in console stream, set flag requesting web server stop (if flag was not set yet)
             while available(CONSOLE);
                 if (cin() == asc("&")) && !quitWebServer; 				                                                    
-                    if logging; coutLine line(), "WS at ", fmt(millis()/1000., 11, 3, FIXED),"s: stopping web server..."; end;        
+                    if logging; coutLine line(), "WS at ", getTime(),"s: stopping web server..."; end;        
                     quitWebServer = TRUE;
                     break;
                 end;
@@ -215,17 +251,16 @@ procedure webServer();
             
         if quitWebServer; break; end;
 	end;
-    coutLine line(), "WS at ", fmt(millis()/1000., 11, 3, FIXED),"s: web server stopped";
+    coutLine line(), "WS at ", getTime(),"s: web server stopped";
 end;
 
 
 // accept (authorize) request line
 // -------------------------------
                 
-function AcceptRequestLine(clientRequest, isTokenRequest, sessionActive, HTTP_error);
+function AcceptRequestLine(clientRequest, isValidTokenRequest, sessionValid, HTTP_errorNum);
 
-    // lightweight HTTP request validation handling unauthorized connection attempts across the web (scanning)
-    // if a request is not validated, the connection will be closed immediately
+    // lightweight HTTP request validation, handling unauthorized connection attempts across the web (scanning)
     // when a client wants to connect, the initial URL must include a query parameter, like this: 'IP:port/?token=<secret token>' with <secret token> as defined below
     // >>>>>>>> CHANGE the secret token with your own secret <<<<<<<< !!!!
     
@@ -236,10 +271,10 @@ function AcceptRequestLine(clientRequest, isTokenRequest, sessionActive, HTTP_er
     var exprEndPos = 0, inputLength = 0;                                                // used in string search
     var expressionText = "";
     
-    var requestLineAuthorized = FALSE;                                                        // the request is authorized ?
+    var requestLineAuthorized = FALSE;                                                  // the request is authorized ?
     
     // start 
-    isTokenRequest = FALSE;                                                         // init
+    isValidTokenRequest = FALSE;                                                        // init
     
         if findStr(clientRequest, "GET /?token=") == 1;				                    // GET request containng the 'token' query ? 
              
@@ -250,17 +285,17 @@ function AcceptRequestLine(clientRequest, isTokenRequest, sessionActive, HTTP_er
             // isolate token within GET request                              	                
             urlDecode(expressionText = mid(clientRequest, exprStartPos, inputLength));  // replace '%hh' 3-character sequences by Ascii character with hex Ascii code 'hh'; replace '+' characters with spaces
             expressionText	= trim(expressionText);
-            isTokenRequest = (strCmp(expressionText, secretToken) == 0);            // is the token correct ? Then accept the token request
+            isValidTokenRequest = (strCmp(expressionText, secretToken) == 0);           // is the token correct ? Then accept the token request
         end;                            
 
         // if token is OK, dan authorize this request line. Otherwise reject. It doesn't matter if this session was already active or not.
         // in addition, remember that this session is now active (if it wasn't already). This will authorize other (non-token) requests for this session.
-        requestLineAuthorized = sessionActive = isTokenRequest;   
+        requestLineAuthorized = sessionValid = isValidTokenRequest;   
         
-    else; requestLineAuthorized = sessionActive; end;                    // not a request with a token: accept if session was validated earlier                                                                                           
+    else; requestLineAuthorized = sessionValid; end;                                    // not a request with a token: accept if session was validated earlier                                                                                           
     
     // what HTTP error should be displayed if request not accepted ? 
-    if !requestLineAuthorized; HTTP_error = ifte(sessionActive, 503, 403 ); end;      //// nummers te checken
+    if !requestLineAuthorized; HTTP_errorNum = 403; end;                                // access denied
 
     return requestLineAuthorized;
 end;
@@ -282,16 +317,17 @@ procedure printClientRequest(clientRequest);
 end;
 
 
-// handle HTTP request with text the user (client) entered in the served page input box    
-// ------------------------------------------------------------------------------------
+// handle HTTP request with the expression entered in the served page input box    
+// ----------------------------------------------------------------------------
 
-procedure handleInputBox(clientRequest, sessionID, lastExpressions(), lastResultsText(), logging);
+procedure handleInputBox(clientRequest, sessionID, lastExpressions(), lastResultsText());
   	const asc_space = 0x20;
 	const EVAL_PARSING_ERROR = 3502;															// eval ("...") EXECUTION error: error while PARSING string argument
 	const exprStartPos = 16;                                                                    // first 15 characters are 'GET /?inputBox='
 	
-    // internal user data storage for each session
+    // 10 registers and 'last result' register: internal user data storage for each session
     // internal storage cannot use arrays because an array can only store values with the same value type (e.g., reg2S1, reg2S2 and reg2S3)
+    // these must be declared here as static, because this would require a lot of arguments to transfer    
     static lastS1, reg0S1, reg1S1,  reg2S1, reg3S1, reg4S1, reg5S1, reg6S1, reg7S1, reg8S1, reg9S1;
     static lastS2, reg0S2, reg1S2,  reg2S2, reg3S2, reg4S2, reg5S2, reg6S2, reg7S2, reg8S2, reg9S2;
     static lastS3, reg0S3, reg1S3,  reg2S3, reg3S3, reg4S3, reg5S3, reg6S3, reg7S3, reg8S3, reg9S3;
@@ -302,6 +338,24 @@ procedure handleInputBox(clientRequest, sessionID, lastExpressions(), lastResult
 	var i = 0;
 	var charPos = 1, exprEndPos = 0;
 
+
+    // if called with an empty client request string, clear session internal storage and exit
+    // --------------------------------------------------------------------------------------
+    if strCmp(clientRequest, "") == 0;
+        if sessionID==1;        lastS1 = reg0S1 = reg1S1 = reg2S1 = reg3S1 = r3 = reg4S1 = reg5S1 = reg6S1 = reg7S1 = reg8S1 = reg9S1 = 0;
+        elseif sessionID == 2;  lastS2 = reg0S2 = reg1S2 = reg2S2 = reg3S2 = r3 = reg4S2 = reg5S2 = reg6S2 = reg7S2 = reg8S2 = reg9S2 = 0;
+        else;                   lastS3 = reg0S3 = reg1S3 = reg2S3 = reg3S3 = r3 = reg4S3 = reg5S3 = reg6S3 = reg7S3 = reg8S3 = reg9S3 = 0; end;
+    
+        for i=1, 10; 
+            lastExpressions(sessionID, i) = "";
+            lastResultsText(sessionID, i) = ""; 
+        end; 
+        return;
+    end;
+    
+    
+    // evaluate user expression
+    // ------------------------
     result = ""; 																                // init
     exprEndPos = findStr (clientRequest, " HTTP/1.1");								            // isolate expression
     inputLength = exprEndPos - exprStartPos;                                              	                
@@ -313,9 +367,7 @@ procedure handleInputBox(clientRequest, sessionID, lastExpressions(), lastResult
     
         // parse and evaluate expression entered by the user in the input box, and handle any error
         if strCmp(expressionText, "") != 0;										                // not an empty expression 
-            
-            if logging; coutLine "WS at ", fmt(millis()/1000., 11, 3, FIXED),"s: ..evaluating expression"; end;
-            
+                        
             // move internal user data storage for this session to user registers
             if sessionID==1;     last=lastS1; r0=reg0S1; r1=reg1S1;  r2=reg2S1; r3=reg3S1; r4=reg4S1; r5=reg5S1; r6=reg6S1; r7=reg7S1; r8=reg8S1; r9=reg9S1;
             elseif sessionID==2; last=lastS2; r0=reg0S2; r1=reg1S2;  r2=reg2S2; r3=reg3S2; r4=reg4S2; r5=reg5S2; r6=reg6S2; r7=reg7S2; r8=reg8S2; r9=reg9S2;
@@ -325,6 +377,7 @@ procedure handleInputBox(clientRequest, sessionID, lastExpressions(), lastResult
             result = eval(expressionText);										                // first parse, than evaluate 'expressionText'
             trapErrors FALSE; 													                // disable error trapping (parsing / execution error number is maintained)
             
+            // store the user register contents safely in internal data storage for this session
             if sessionID==1;     lastS1=last; reg0S1=r0;  reg1S1=r1;   reg2S1=r2;  reg3S1=r3;  reg4S1=r4;  reg5S1=r5;  reg6S1=r6;  reg7S1=r7;  reg8S1=r8;  reg9S1=r9;
             elseif sessionID==2; lastS2=last; reg0S2=r0;  reg1S2=r1;   reg2S2=r2;  reg3S2=r3;  reg4S2=r4;  reg5S2=r5;  reg6S2=r6;  reg7S2=r7;  reg8S2=r8;  reg9S2=r9;
             else;                lastS3=last; reg0S3=r0;  reg1S3=r1;   reg2S3=r2;  reg3S3=r3;  reg4S3=r4;  reg5S3=r5;  reg6S3=r6;  reg7S3=r7;  reg8S3=r8;  reg9S3=r9; end;
@@ -335,12 +388,14 @@ procedure handleInputBox(clientRequest, sessionID, lastExpressions(), lastResult
             if executionError == EVAL_PARSING_ERROR; result = "! Error in formula: parsing error " + cStr(evalParsingError); 
             elseif executionError != 0; result = "! Error in formula: evaluation error " + cStr(executionError); 			
             else; 
+                // if no error, then store calculation result safely in internal storage for this session
                 if sessionID==1;     lastS1=result;             
                 elseif sessionID==2; lastS2=result;             
-                else;                lastS3=result;             // format result according to current display setting
+                else;                lastS3=result;             
                 end;    
             end;
-                    
+            
+            // now, apply current display formatting to result, for storage in lastResultsText() array
             if type(result) == INTEGER; result =  fmt(result, 0, sysVal(4), sysVal(6), sysVal(5));
             elseif type(result) == FLOAT;  result = fmt(result, 0, sysVal(1), sysVal(3), sysVal(2));
             end;	
@@ -369,31 +424,25 @@ end;
 // send an HTTP error response
 // ---------------------------
     
-procedure printHTTP_error(IOchannel, HTTP_error, logging);    
+procedure printHTTP_error(IOchannel, HTTP_errorNum, HTTP_errorMsg);    
     const msg400 = "HTTP/1.1 400 Bad request";            
     const msg403 = "HTTP/1.1 403 Forbidden";            
-    const msg503 = "HTTP/1.1 503 Server busy";          
+    const msg503 = "HTTP/1.1 503 Server busy";                          // not used here                        
 
-    var msg = "";
-    
-    printLine IOchannel, msg = switch(HTTP_error, 403, msg403, 503, msg503, 400, msg400);             // send HTTP error message to client (server busy or access denied)
+    printLine IOchannel, HTTP_errorMsg = switch(HTTP_errorNum, 403, msg403, 503, msg503, 400, msg400);   // send HTTP error message to client (server busy or access denied)
     printLine IOchannel, "Connection: close";
 
-    if logging; coutLine "WS at ", fmt(millis()/1000., 11, 3, FIXED),"s: ..sending HTTP error response ", msg; end;
-
-    while available(IOchannel); read(IOchannel, 1); end;                                                    // flush client stream input buffer (read with time out) 
+    while available(IOchannel); read(IOchannel, 1); end;                // flush client stream input buffer (read with time out) 
 end;
 
 
 // send HTML response message to (re-)draw main page
 // -------------------------------------------------
 
-procedure sendResponse_mainPage(IOchannel, sessionID, lastExpressions(), lastResultsText(), logoFile, logging);
+procedure sendResponse_mainPage(IOchannel, sessionID, lastExpressions(), lastResultsText(), logoFile);
 	
 	var i=0;
 	
-    if logging; coutLine "WS at ", fmt(millis()/1000., 11, 3, FIXED),"s: ..sending calculator page"; end;
-
     // send response header
 	printLine IOchannel, "HTTP/1.1 200 OK";
 	printLine IOchannel, "Content-Type: text/html";
@@ -508,7 +557,7 @@ end;
 // send response message with image (OK for logo as well as icon)
 // --------------------------------------------------------------
 
-procedure sendResponse_image(IOchannel, imageFile, logging);
+procedure sendResponse_image(IOchannel, imageFile);
 	
 	var fileFound = FALSE;
 	
@@ -518,8 +567,6 @@ procedure sendResponse_image(IOchannel, imageFile, logging);
 	trapErrors FALSE;
 	
 	if fileFound;
-        if logging; coutLine "WS at ", fmt(millis()/1000., 11, 3, FIXED),"s: ..sending file ", imageFile; end;
-        
 		printLine IOchannel, "HTTP/1.1 200 OK";
 		printLine IOchannel, "Content-Type: image/jpeg";						
 		printLine IOchannel, "Connection: close";
@@ -538,6 +585,15 @@ end;
 // helper routines
 // ---------------
 
+
+// convert millis to seconds.millis, provide n columns
+// ---------------------------------------------------
+
+function getTime(columns = 11);                                 // default: print 11 characters       
+    return fmt(millis()/1000., columns, 3, FIXED);
+end;
+
+
 // remove control characters ('%hh' 3-character sequences with hh < 0x20); 
 // replace '%hh' 3-character sequences by Ascii character with hex Ascii code 'hh'; replace '+' characters with spaces 
 // -------------------------------------------------------------------------------------------------------------------
@@ -545,27 +601,27 @@ end;
 procedure urlDecode(url);
 	const asc_space = 0x20, asc_plus = 0x2b, asc_percent = 0x25;
 	var sourceLength = 0;
-	var src=1, dest=1;												// source and destination character indexes (in the same string)
+	var src=1, dest=1;										    // source and destination character indexes (in the same string)
 	var ascii = 0;
 	
 	sourceLength = len(url);
-	dest=src=1;														// init
+	dest=src=1;												    // init
 	for src, sourceLength;
 		if asc(url, src) == asc_plus; 
 			replaceChar(url, 0x20, dest); 
 			dest++;
 		elseif asc(url, src) == asc_percent; 
-			ascii = hexStrToAsc(url, ++src);						// convert two ASCII characters, containing ASCII code for hex digits, to ASCII code with these two hex digits
-			++src;													// in total, two extra characters to skip 
+			ascii = hexStrToAsc(url, ++src);				    // convert two ASCII characters, containing ASCII code for hex digits, to ASCII code with these two hex digits
+			++src;											    // in total, two extra characters to skip 
 			replaceChar(url, ascii, dest); 
 			dest++;
 		else;
-			replaceChar(url, asc(url, src), dest); 					// move character left, from position i to position j
+			replaceChar(url, asc(url, src), dest); 			    // move character left, from position i to position j
 			dest++;
 		end;
 	end;
 	if (dest<src); 
-		replaceChar(url, 0x00, dest);								// terminator
+		replaceChar(url, 0x00, dest);						    // terminator
 	end;
 end;	
 
