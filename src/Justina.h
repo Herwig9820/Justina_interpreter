@@ -2138,8 +2138,10 @@ private:
     Stream* _pConsoleIn{ nullptr };
     Print* _pConsoleOut{ nullptr }, * _pDebugOut{ nullptr };
     int _consoleIn_sourceStreamNumber{}, _consoleOut_sourceStreamNumber{}, _debug_sourceStreamNumber{};     // != 0: always originating stream (external or SD)
+    int _discardOut_streamNumber{0};
 
-    int* _pPrintColumns{};                                          // maintains current print column per output stream ( points to array on the heap)
+    int* _pExternPrintColumns{};                                    // maintains current print column per external output stream ( points to array on the heap)
+
     int* _pConsolePrintColumn{ nullptr }, * _pDebugPrintColumn{ nullptr };
     int* _pLastPrintColumn{ nullptr };
 
@@ -2148,6 +2150,7 @@ private:
     int _streamNumberIn{ 0 }, _streamNumberOut{ 0 };
 
     int _externIOstreamCount = 0;                                   // maximum is 4
+    bool _withUserDebug {true};
 
 #if !defined ARDUINO_ARCH_ESP32
     Sd2Card _SDcard{};

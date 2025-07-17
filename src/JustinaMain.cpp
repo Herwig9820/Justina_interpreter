@@ -438,7 +438,7 @@ const Justina::TerminalDef Justina::_terminals[]{
 const Justina::SymbNumConsts Justina::_symbNumConsts[]{
 
     // symbol name          value                       symbol group code   symbol_code             value type
-    //                                                  <-     currently not used-    >         
+    //                                                  <curr. not used >         
     // -----------          -----                       -----------------   -----------             ----------
 
     // boolean values                                                                    
@@ -613,11 +613,11 @@ void Justina::constructorCommonPart() {
     // create objects
     // --------------
     // current print column is maintained for each stream separately: init
-    _pPrintColumns = new int[_externIOstreamCount];                                                 // maximum 4 external streams
+    _pExternPrintColumns = new int[_externIOstreamCount];                                           // maximum 4 external streams
     for (int i = 0; i < _externIOstreamCount; i++) {
         // NOTE: will only have effect for currently established connections (e.g. TCP)
         if (_ppExternInputStreams[i] != nullptr) { _ppExternInputStreams[i]->setTimeout(DEFAULT_READ_TIMEOUT); }
-        _pPrintColumns[i] = 0;
+        _pExternPrintColumns[i] = 0;
     }
 
     // create a 'breakpoints' object, containing the breakpoints table, and responsible for handling breakpoints 
@@ -628,13 +628,17 @@ void Justina::constructorCommonPart() {
     _consoleIn_sourceStreamNumber = _consoleOut_sourceStreamNumber = _debug_sourceStreamNumber = -1;
     _pConsoleIn = _ppExternInputStreams[0];
     _pConsoleOut = _pDebugOut = _ppExternOutputStreams[0];
-    _pConsolePrintColumn = _pDebugPrintColumn = _pPrintColumns;                                     //  point to its current print column
-    _pLastPrintColumn = _pPrintColumns;
+    _pConsolePrintColumn = _pDebugPrintColumn = _pLastPrintColumn = _pExternPrintColumns;           //  point to its current print column (IO1)
 
+    // find and store long associated with 'DISCARD' symbolic constant name
+    for (int index = 0; index <_symbvalueCount; index++) {                            
+        if(_symbNumConsts[index].symbolCode == valcod_discard) {_discardOut_streamNumber = strtol(_symbNumConsts[index].symbolValue, nullptr, 0); break; } // valueType MUST be long value_isLong
+    }
+    
     // set linked list debug printing. Pointer to debug out stream pointer: will follow if debug stream is changed
     parsingStack.setDebugOutStream(&_pDebugOut);                                                    // for debug printing within linked list object
 
-    initInterpreterVariables(true, false);                                                                 // init internal variables 
+    initInterpreterVariables(true, false);                                                          // init internal variables 
 };
 
 
@@ -648,7 +652,7 @@ Justina::~Justina() {
 
     // NOTE: object count of objects created / deleted in constructors / destructors is not maintained
     delete _pBreakpoints;                                                                           // not an array: use 'delete'
-    delete[] _pPrintColumns;
+    delete[] _pExternPrintColumns;
 };
 
 
@@ -691,7 +695,6 @@ void Justina::begin() {
     static long BPpreviousEndLine{ 0 };
 
     _appFlags = 0x0000L;                                                                    // init application flags (for communication with Justina caller, using callbacks)
-
     printlnTo(0);
     for (int i = 0; i < 13; i++) { printTo(0, "*"); } printTo(0, "____");
     for (int i = 0; i < 4; i++) { printTo(0, "*"); } printTo(0, "__");
@@ -1110,7 +1113,7 @@ bool Justina::finaliseParsing(parsingResult_type& result, bool& kill, long lineC
             _consoleIn_sourceStreamNumber = _consoleOut_sourceStreamNumber = -1;
             _pConsoleIn = _ppExternInputStreams[0];                                                             // set console to stream -1 (NOT debug out)
             _pConsoleOut = _ppExternOutputStreams[0];                                                           // set console to stream -1 (NOT debug out)
-            _pConsolePrintColumn = &_pPrintColumns[0];
+            _pConsolePrintColumn = &_pExternPrintColumns[0];
             *_pConsolePrintColumn = 0;
 
         }

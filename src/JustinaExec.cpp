@@ -188,17 +188,17 @@ Justina::execResult_type  Justina::exec(char* startHere) {
                 // If any of the print command arguments contains a pos() function, the correct position will then be returned.
 
                 switch (_activeFunctionData.activeCmd_commandCode) {
-                    // Print to console out, print to debug out ? The stream is known at this point (which is the LAUNCH op the print command, not yet the execution). Store the last column printed to
+                    // Print to console out, print to debug out ? The stream is known at this point (which is the LAUNCH of the print command, not yet the execution). Store the last column printed to
 
                     case cmdcod_dbout:
                     case cmdcod_dboutLine:
-                    { _pLastPrintColumn = _pDebugPrintColumn; }
+                    { _pLastPrintColumn = _pDebugPrintColumn; }                         // place maintaining current print column is known here (no print column argument in these commands) 
                     break;
 
                     case cmdcod_cout:
                     case cmdcod_coutLine:
                     case cmdcod_coutList:
-                    { _pLastPrintColumn = _pConsolePrintColumn; }
+                    { _pLastPrintColumn = _pConsolePrintColumn; }                       // place maintaining current print column is known here (no print column argument in these commands)
                     break;
 
 
@@ -466,7 +466,8 @@ Justina::execResult_type  Justina::exec(char* startHere) {
                         int streamNumber = opIsLong ? value.longConst : value.floatConst;                                                                   // always a long or a float value
 
                         // set pointer to last printed column (current position: start of line = 0) for this stream
-                        _pLastPrintColumn = (streamNumber == 0) ? _pConsolePrintColumn : (streamNumber < 0) ? _pPrintColumns + (-streamNumber) - 1 : &(openFiles[streamNumber - 1].currentPrintColumn);
+                        _pLastPrintColumn = (streamNumber == 0) ? _pConsolePrintColumn : 
+                            (streamNumber < 0) ? _pExternPrintColumns + (-streamNumber) - 1 : &(openFiles[streamNumber - 1].currentPrintColumn);
                         setCurrentPrintColumn = false;      // reset
                     }
                 }

@@ -987,22 +987,27 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             if ((valueType[0] != value_isLong) && (valueType[0] != value_isFloat)) { return result_arg_numberExpected; }
             int streamNumber = (valueType[0] == value_isLong) ? args[0].longConst : args[0].floatConst;
 
+            if (_activeFunctionData.activeCmd_commandCode == cmdcod_setDebugOut) {
+                if (((streamNumber > MAX_OPEN_SD_FILES) && (streamNumber != _discardOut_streamNumber)) || ((-streamNumber) > _externIOstreamCount) || (streamNumber == 0)) { return result_IO_invalidStreamNumber; }
+            }
+            else {
+                if ((streamNumber >= 0) || ((-streamNumber) > _externIOstreamCount)) { return result_SD_invalidFileNumber; }
+            }
+
             // set debug out ? 
             bool setDebugOut = (_activeFunctionData.activeCmd_commandCode == cmdcod_setDebugOut);
-            /* //// discard option voor debug out
-            if (setDebugOut) {
-                for (int i=0; i < _symbvalueCount; i++){if (_symbNumConsts[i].symbolCode == valcod_discard){} }
-            }
-            */
-            if ((streamNumber >= MAX_OPEN_SD_FILES) || ((-streamNumber) > _externIOstreamCount) || (streamNumber == 0))  {return result_IO_invalidStreamNumber;}
-            if ((streamNumber > 0) && (_activeFunctionData.activeCmd_commandCode != cmdcod_setDebugOut)) { return result_SD_fileNotAllowedHere; }
 
             if (setDebugOut) {
                 if (streamNumber < 0) {
                     if (_ppExternOutputStreams[(-streamNumber) - 1] == nullptr) { return result_IO_noDeviceOrNotForOutput; }
                     _debug_sourceStreamNumber = streamNumber;
                     _pDebugOut = _ppExternOutputStreams[(-streamNumber) - 1];                        // external IO (stream number -1 => array index 0, etc.)
-                    _pDebugPrintColumn = &_pPrintColumns[(-streamNumber) - 1];
+                    _pDebugPrintColumn = &_pExternPrintColumns[(-streamNumber) - 1];
+                    _withUserDebug = true;
+                }
+                else if (streamNumber == _discardOut_streamNumber) {
+                    // keep the current debug stream (will still be used for Justina c++ application debugging; only user debug statements will not be executed)
+                    _withUserDebug = false;
                 }
                 else {
                     // NOTE: debug out (in contrast to console in & out) can point to an SD file
@@ -1013,6 +1018,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                     _debug_sourceStreamNumber = streamNumber;
                     _pDebugOut = static_cast<Stream*> (pFile);
                     _pDebugPrintColumn = &openFiles[streamNumber - 1].currentPrintColumn;
+                    _withUserDebug = true;
                 }
             }
             else {
@@ -1065,7 +1071,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                         if (_ppExternOutputStreams[(-streamNumber) - 1] == nullptr) { return result_IO_noDeviceOrNotForOutput; }
                         _consoleOut_sourceStreamNumber = streamNumber;
                         _pConsoleOut = _ppExternOutputStreams[(-streamNumber) - 1];      // external IO (stream number -1 => array index 0, etc.)
-                        _pConsolePrintColumn = &_pPrintColumns[(-streamNumber) - 1];
+                        _pConsolePrintColumn = &_pExternPrintColumns[(-streamNumber) - 1];
                     }
                     // only after all tests are done !
                     if (setConsIn || setConsole) {
@@ -1693,257 +1699,260 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                 || (_activeFunctionData.activeCmd_commandCode == cmdcod_coutList) || (_activeFunctionData.activeCmd_commandCode == cmdcod_printList)
                 || (_activeFunctionData.activeCmd_commandCode == cmdcod_printListToVar));
 
-            if (isDebugPrint && (_pDebugOut == _pConsoleOut)) { isConsolePrint = true; }
+            if (!(isDebugPrint && !_withUserDebug)) {
 
-            LE_evalStack* pFirstArgStackLvl = pStackLvl;
-            char argSep[3] = "  "; argSep[0] = term_comma[0];
+                if (isDebugPrint && (_pDebugOut == _pConsoleOut)) { isConsolePrint = true; }
 
-            int streamNumber{ isDebugPrint ? _debug_sourceStreamNumber : 0 };                                               // init
-            execResult = setActiveStreamTo(streamNumber, true);  if (execResult != result_execOK) { return execResult; }     // perform checks and set output stream
+                LE_evalStack* pFirstArgStackLvl = pStackLvl;
+                char argSep[3] = "  "; argSep[0] = term_comma[0];
 
-            // in case no stream argument provided (cout, ..., debugOut ...) , set stream print column pointer to current print column for default 'console' OR 'debug out' stream
-            // pointer to print column for the current stream is used by tab() and col() functions 
-            int* pStreamPrintColumn = _pLastPrintColumn;                                                                    // init (OK if no stream number provided)
-            int varPrintColumn{ 0 };                                                                                        // only for printing to string variable: current print column
-            char* assembledString{ nullptr };                                                                               // only for printing to string variable: intermediate string
+                int streamNumber{ isDebugPrint ? _debug_sourceStreamNumber : 0 };                                               // init
+                execResult = setActiveStreamTo(streamNumber, true);  if (execResult != result_execOK) { return execResult; }    // perform checks and set output stream
 
-            char intFmtStr[10] = "%#.*l";
-            strcat(intFmtStr, doPrintList ? "d" : _dispIntegerSpecifier);
-            char floatFmtStr[10] = "%#.*";
-            strcat(floatFmtStr, doPrintList ? "e" : _dispFloatSpecifier);
+                // in case no stream argument provided (cout, ..., debugOut ...) , set stream print column pointer to current print column for default 'console' OR 'debug out' stream
+                // pointer to print column for the current stream is used by tab() and col() functions 
+                int* pStreamPrintColumn = _pLastPrintColumn;                                                                    // init (OK if no stream number provided)
+                int varPrintColumn{ 0 };                                                                                        // only for printing to string variable: current print column
+                char* assembledString{ nullptr };                                                                               // only for printing to string variable: intermediate string
 
-            for (int i = 1; i <= cmdArgCount; i++) {
-                bool operandIsVar = (pStackLvl->varOrConst.tokenType == tok_isVariable);
-                char valueType = operandIsVar ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
-                bool opIsLong = ((uint8_t)valueType == value_isLong);
-                bool opIsFloat = ((uint8_t)valueType == value_isFloat);
-                bool opIsString = ((uint8_t)valueType == value_isStringPointer);
-                char* printString = nullptr;
-                Val operand;
+                char intFmtStr[10] = "%#.*l";
+                strcat(intFmtStr, doPrintList ? "d" : _dispIntegerSpecifier);
+                char floatFmtStr[10] = "%#.*";
+                strcat(floatFmtStr, doPrintList ? "e" : _dispFloatSpecifier);
 
-                // next line is valid for values of all types (same memory locations are copied)
-                operand.floatConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pFloatConst) : pStackLvl->varOrConst.value.floatConst);
+                for (int i = 1; i <= cmdArgCount; i++) {
+                    bool operandIsVar = (pStackLvl->varOrConst.tokenType == tok_isVariable);
+                    char valueType = operandIsVar ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
+                    bool opIsLong = ((uint8_t)valueType == value_isLong);
+                    bool opIsFloat = ((uint8_t)valueType == value_isFloat);
+                    bool opIsString = ((uint8_t)valueType == value_isStringPointer);
+                    char* printString = nullptr;
+                    Val operand;
 
-                // print to stream or variable: first argument is stream number or receiving variable
-                if (i < firstValueIndex) {                                                                                  // cout, .... have an implicit stream: skip
+                    // next line is valid for values of all types (same memory locations are copied)
+                    operand.floatConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pFloatConst) : pStackLvl->varOrConst.value.floatConst);
 
-                    if (isPrintToVar) {      // print to variable
-                        if (!operandIsVar) { return result_arg_variableExpected; }
-                        bool isArray = (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_isArray);
-                        if (isArray && !opIsString) { return result_array_valueTypeIsFixed; }
-                        pStreamPrintColumn = &varPrintColumn;       // NOTE: '_pLastPrintColumn' (pointer to last print position of last printed stream) is not altered by variable print 
-                        *pStreamPrintColumn = 0;    // reset each time a new print to variable command is executed, because each time you start with an empty string variable
+                    // print to stream or variable: first argument is stream number or receiving variable
+                    if (i < firstValueIndex) {                                                                                  // cout, .... have an implicit stream: skip
+
+                        if (isPrintToVar) {      // print to variable
+                            if (!operandIsVar) { return result_arg_variableExpected; }
+                            bool isArray = (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_isArray);
+                            if (isArray && !opIsString) { return result_array_valueTypeIsFixed; }
+                            pStreamPrintColumn = &varPrintColumn;       // NOTE: '_pLastPrintColumn' (pointer to last print position of last printed stream) is not altered by variable print 
+                            *pStreamPrintColumn = 0;    // reset each time a new print to variable command is executed, because each time you start with an empty string variable
+                        }
+
+                        else {     // print to given stream number
+                            // check stream number (if file, also perform related file and SD card object checks)
+                            if ((!opIsLong) && (!opIsFloat)) { return result_arg_numberExpected; }                              // file number
+                            streamNumber = opIsLong ? operand.longConst : operand.floatConst;
+
+                            Stream* p{};
+                            execResult = setActiveStreamTo(streamNumber, p, true); if (execResult != result_execOK) { return execResult; }  // perform checks and set output stream
+                            if (p == _pConsoleOut) { isConsolePrint = true; }                                                       // !!! from here on, also for streams < 0, if they POINT to console
+                            // set pointers to current print column value for stream
+                            pStreamPrintColumn = _pLastPrintColumn;
+                        }
                     }
 
-                    else {     // print to given stream number
-                        // check stream number (if file, also perform related file and SD card object checks)
-                        if ((!opIsLong) && (!opIsFloat)) { return result_arg_numberExpected; }                              // file number
-                        streamNumber = opIsLong ? operand.longConst : operand.floatConst;
+                    // process a value for printing
+                    else {
+                        // if argument is the result of a tab() or col() function, do NOT print the value these functions return, but advance the print position by the number of tabs specified by the ...
+                        // ...  function result OR to the column specified by the function result (if greater then the current column)
+                        // this only works if the tab() or col() function itself is not part of a larger expression (otherwise values attributes 'isPrintTabRequest' and 'isPrintColumnRequest' are lost)
+                        bool isTabFunction{ false }, isColFunction{ false }, isCurrentColFunction{ false };
+                        if (!operandIsVar) {         // we are looking for an intermediate constant (result of a tab() function occurring as direct argument of the print command)
+                            isTabFunction = (pStackLvl->varOrConst.valueAttributes & isPrintTabRequest);
+                            isColFunction = (pStackLvl->varOrConst.valueAttributes & isPrintColumnRequest);
 
-                        Stream* p{};
-                        execResult = setActiveStreamTo(streamNumber, p, true); if (execResult != result_execOK) { return execResult; }  // perform checks and set output stream
-                        if (p == _pConsoleOut) { isConsolePrint = true; }                                                       // !!! from here on, also for streams < 0, if they POINT to console
-                        // set pointers to current print column value for stream
-                        pStreamPrintColumn = _pLastPrintColumn;
-                    }
-                }
+                            if (isTabFunction || isColFunction) {
+                                int spaceLength{};
+                                if (isTabFunction) {
+                                    int tabCount = pStackLvl->varOrConst.value.longConst;                                       // is an intermediate constant (function result), not a variable
+                                    spaceLength = _tabSize - (*pStreamPrintColumn % _tabSize) + (tabCount - 1) * _tabSize;
+                                }
+                                else {                                                                                          // goto print column function
+                                    int requestedColumn = pStackLvl->varOrConst.value.longConst;
+                                    spaceLength = (requestedColumn > *pStreamPrintColumn) ? requestedColumn - 1 - *pStreamPrintColumn : 0;
+                                }
 
-                // process a value for printing
-                else {
-                    // if argument is the result of a tab() or col() function, do NOT print the value these functions return, but advance the print position by the number of tabs specified by the ...
-                    // ...  function result OR to the column specified by the function result (if greater then the current column)
-                    // this only works if the tab() or col() function itself is not part of a larger expression (otherwise values attributes 'isPrintTabRequest' and 'isPrintColumnRequest' are lost)
-                    bool isTabFunction{ false }, isColFunction{ false }, isCurrentColFunction{ false };
-                    if (!operandIsVar) {         // we are looking for an intermediate constant (result of a tab() function occurring as direct argument of the print command)
-                        isTabFunction = (pStackLvl->varOrConst.valueAttributes & isPrintTabRequest);
-                        isColFunction = (pStackLvl->varOrConst.valueAttributes & isPrintColumnRequest);
-
-                        if (isTabFunction || isColFunction) {
-                            int spaceLength{};
-                            if (isTabFunction) {
-                                int tabCount = pStackLvl->varOrConst.value.longConst;                                       // is an intermediate constant (function result), not a variable
-                                spaceLength = _tabSize - (*pStreamPrintColumn % _tabSize) + (tabCount - 1) * _tabSize;
+                                printString = nullptr;                                                                          // init
+                                if (spaceLength > 0) {
+                                    _intermediateStringObjectCount++;
+                                    printString = new char[spaceLength + 1];
+                                    memset(printString, ' ', spaceLength);
+                                    printString[spaceLength] = '\0';
+                                #if PRINT_HEAP_OBJ_CREA_DEL
+                                    _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)assembledString, HEX);
+                                    _pDebugOut->print("  cmd: coutList (1) ");   _pDebugOut->println(assembledString);
+                                #endif
+                                }
                             }
-                            else {                                                                                          // goto print column function
-                                int requestedColumn = pStackLvl->varOrConst.value.longConst;
-                                spaceLength = (requestedColumn > *pStreamPrintColumn) ? requestedColumn - 1 - *pStreamPrintColumn : 0;
-                            }
+                        }
 
-                            printString = nullptr;                                                                          // init
-                            if (spaceLength > 0) {
+                        if (!isTabFunction && !isColFunction) {                                                                 // go for normal flow
+                            // prepare one value for printing
+                            if (opIsLong || opIsFloat) {
+                                // at least long enough to print long values, or float values with "G" specifier, without leading characters
+                                char s[20];
+                                printString = s;                                                                                // pointer
+                                // next line is valid for long values as well (same memory locations are copied)
+                                operand.floatConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pFloatConst) : pStackLvl->varOrConst.value.floatConst);
+
+                                // print (line): take into account precision and specifier; printList: print met max. accuracy, integers: base 10, float: general format.
+                                // do not take into account formatting flags: integers: always precede hex with '0x', floats: always print decimal point.
+                                if (opIsLong) { if (doPrintList) { sprintf(s, "%#ld", operand.longConst); } else { sprintf(s, intFmtStr, _dispIntegerPrecision, operand.longConst); } }
+                                else { if (doPrintList) { sprintf(s, "%#G", operand.floatConst); } else { sprintf(s, floatFmtStr, _dispFloatPrecision, operand.floatConst); } }
+                            }
+                            else {
+                                operand.pStringConst = operandIsVar ? (*pStackLvl->varOrConst.value.ppStringConst) : pStackLvl->varOrConst.value.pStringConst;
+                                // no need to copy string - just print the original, directly from stack (it's still there)
+                                printString = operand.pStringConst;                                                             // attention: null pointers not transformed into zero-length strings here
+                                if (doPrintList) { quoteAndExpandEscSeq(printString); }
+                            }
+                        }
+
+                        // print one value
+
+                        // NOTE that there is no limit on the number of characters printed here (MAX_PRINT_WIDTH not checked)
+
+                        if (isPrintToVar) {        // print to string ?
+                            // remember 'old' string length and pointer to 'old' string
+                            char* oldAssembString = assembledString;
+
+                            // calculate length of new string: provide room for argument AND
+                            // - if print list: for all value arguments except the last one: sufficient room for argument separator 
+                            // - if print new line: if last argument, provide room for new line sequence
+                            if (printString != nullptr) { varPrintColumn += strlen(printString); }                              // provide room for new string
+                            if (doPrintList && (i < cmdArgCount)) { varPrintColumn += strlen(argSep); }                         // provide room for argument separator
+
+                            // create new string object with sufficient room for argument AND extras (arg. separator and new line sequence, if applicable)
+                            if (varPrintColumn > 0) {
                                 _intermediateStringObjectCount++;
-                                printString = new char[spaceLength + 1];
-                                memset(printString, ' ', spaceLength);
-                                printString[spaceLength] = '\0';
+                                assembledString = new char[varPrintColumn + 1]; assembledString[0] = '\0';
                             #if PRINT_HEAP_OBJ_CREA_DEL
                                 _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)assembledString, HEX);
-                                _pDebugOut->print("  cmd: coutList (1) ");   _pDebugOut->println(assembledString);
+                                _pDebugOut->print("  cmd: coutList (2) ");   _pDebugOut->println("[init empty]");
                             #endif
                             }
+
+                            // copy string with all previous arguments (if not empty)
+                            if (oldAssembString != nullptr) strcpy(assembledString, oldAssembString);
+                            if (printString != nullptr) { strcat(assembledString, printString); }
+                            // if applicable, copy argument separator or new line sequence
+                            if (doPrintList && (i < cmdArgCount)) { strcat(assembledString, argSep); }
+
+                            // delete previous assembled string
+                            if (oldAssembString != nullptr) {
+                            #if PRINT_HEAP_OBJ_CREA_DEL
+                                _pDebugOut->print("\r\n----- (Intermd str) "); _pDebugOut->println((uint32_t)oldAssembString, HEX);
+                                _pDebugOut->print("  cmd: coutList (3) "); _pDebugOut->println(oldAssembString);
+                            #endif
+                                _intermediateStringObjectCount--;
+                                delete[] oldAssembString;
+                            }
                         }
-                    }
 
-                    if (!isTabFunction && !isColFunction) {                                                                 // go for normal flow
-                        // prepare one value for printing
-                        if (opIsLong || opIsFloat) {
-                            // at least long enough to print long values, or float values with "G" specifier, without leading characters
-                            char s[20];
-                            printString = s;                                                                                // pointer
-                            // next line is valid for long values as well (same memory locations are copied)
-                            operand.floatConst = (operandIsVar ? (*pStackLvl->varOrConst.value.pFloatConst) : pStackLvl->varOrConst.value.floatConst);
-
-                            // print (line): take into account precision and specifier; printList: print met max. accuracy, integers: base 10, float: general format.
-                            // do not take into account formatting flags: integers: always precede hex with '0x', floats: always print decimal point.
-                            if (opIsLong) { if (doPrintList) { sprintf(s, "%#ld", operand.longConst); } else { sprintf(s, intFmtStr, _dispIntegerPrecision, operand.longConst); } }
-                            else { if (doPrintList) { sprintf(s, "%#G", operand.floatConst); } else { sprintf(s, floatFmtStr, _dispFloatPrecision, operand.floatConst); } }
+                        else {      // print to external stream, file or console ?
+                            if (printString != nullptr) {
+                                // if a direct argument of a print function ENDS with CR or LF, reset print column to 0
+                                long printed = print(printString);                                                                          // we need the position in the string of the last character printed
+                                if ((printString[printed - 1] == '\r') || (printString[printed - 1] == '\n')) { *pStreamPrintColumn = 0; }  // reset print column for stream to 0
+                                else { *pStreamPrintColumn += printed; }                                                                    // not a CR or LF character at end of string ? adapt print column for stream 
+                            }
+                            if ((i < cmdArgCount) && doPrintList) { *pStreamPrintColumn += print(argSep); }
                         }
-                        else {
-                            operand.pStringConst = operandIsVar ? (*pStackLvl->varOrConst.value.ppStringConst) : pStackLvl->varOrConst.value.pStringConst;
-                            // no need to copy string - just print the original, directly from stack (it's still there)
-                            printString = operand.pStringConst;                                                             // attention: null pointers not transformed into zero-length strings here
-                            if (doPrintList) { quoteAndExpandEscSeq(printString); }
-                        }
-                    }
 
-                    // print one value
-
-                    // NOTE that there is no limit on the number of characters printed here (MAX_PRINT_WIDTH not checked)
-
-                    if (isPrintToVar) {        // print to string ?
-                        // remember 'old' string length and pointer to 'old' string
-                        char* oldAssembString = assembledString;
-
-                        // calculate length of new string: provide room for argument AND
-                        // - if print list: for all value arguments except the last one: sufficient room for argument separator 
-                        // - if print new line: if last argument, provide room for new line sequence
-                        if (printString != nullptr) { varPrintColumn += strlen(printString); }                              // provide room for new string
-                        if (doPrintList && (i < cmdArgCount)) { varPrintColumn += strlen(argSep); }                         // provide room for argument separator
-
-                        // create new string object with sufficient room for argument AND extras (arg. separator and new line sequence, if applicable)
-                        if (varPrintColumn > 0) {
-                            _intermediateStringObjectCount++;
-                            assembledString = new char[varPrintColumn + 1]; assembledString[0] = '\0';
+                        // if printString is an object on the heap, delete it (note: if printString is created above in quoteAndExpandEscSeq(): it's never a nullptr)
+                        if (((isTabFunction || isColFunction) && !(printString == nullptr)) || (opIsString && doPrintList)) {
                         #if PRINT_HEAP_OBJ_CREA_DEL
-                            _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)assembledString, HEX);
-                            _pDebugOut->print("  cmd: coutList (2) ");   _pDebugOut->println("[init empty]");
-                        #endif
-                        }
-
-                        // copy string with all previous arguments (if not empty)
-                        if (oldAssembString != nullptr) strcpy(assembledString, oldAssembString);
-                        if (printString != nullptr) { strcat(assembledString, printString); }
-                        // if applicable, copy argument separator or new line sequence
-                        if (doPrintList && (i < cmdArgCount)) { strcat(assembledString, argSep); }
-
-                        // delete previous assembled string
-                        if (oldAssembString != nullptr) {
-                        #if PRINT_HEAP_OBJ_CREA_DEL
-                            _pDebugOut->print("\r\n----- (Intermd str) "); _pDebugOut->println((uint32_t)oldAssembString, HEX);
-                            _pDebugOut->print("  cmd: coutList (3) "); _pDebugOut->println(oldAssembString);
+                            _pDebugOut->print("\r\n----- (Intermd str) "); _pDebugOut->println((uint32_t)printString, HEX);
+                            _pDebugOut->print("  cmd: coutList (4) "); _pDebugOut->println(printString);
                         #endif
                             _intermediateStringObjectCount--;
-                            delete[] oldAssembString;
+                            delete[] printString;
                         }
                     }
 
-                    else {      // print to file or console ?
-                        if (printString != nullptr) {
-                            // if a direct argument of a print function ENDS with CR or LF, reset print column to 0
-                            long printed = print(printString);                                                                          // we need the position in the string of the last character printed
-                            if ((printString[printed - 1] == '\r') || (printString[printed - 1] == '\n')) { *pStreamPrintColumn = 0; }  // reset print column for stream to 0
-                            else { *pStreamPrintColumn += printed; }                                                                    // not a CR or LF character at end of string ? adapt print column for stream 
-                        }
-                        if ((i < cmdArgCount) && doPrintList) { *pStreamPrintColumn += print(argSep); }
-                    }
-
-                    // if printString is an object on the heap, delete it (note: if printString is created above in quoteAndExpandEscSeq(): it's never a nullptr)
-                    if (((isTabFunction || isColFunction) && !(printString == nullptr)) || (opIsString && doPrintList)) {
-                    #if PRINT_HEAP_OBJ_CREA_DEL
-                        _pDebugOut->print("\r\n----- (Intermd str) "); _pDebugOut->println((uint32_t)printString, HEX);
-                        _pDebugOut->print("  cmd: coutList (4) "); _pDebugOut->println(printString);
-                    #endif
-                        _intermediateStringObjectCount--;
-                        delete[] printString;
-                    }
+                    pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
                 }
 
-                pStackLvl = (LE_evalStack*)evalStack.getNextListElement(pStackLvl);
-            }
+                // finalize
+                if (isPrintToVar) {                                                                                             // print to string ? save in variable
+                    // receiving argument is a variable, and if it's an array element, it has string type 
 
-            // finalize
-            if (isPrintToVar) {                                                                                             // print to string ? save in variable
-                // receiving argument is a variable, and if it's an array element, it has string type 
+                    // if currently the variable contains a string object, delete it
+                    // NOTE: error can not occur, because 
+                    execResult = deleteVarStringObject(pFirstArgStackLvl);                                                      // if not empty; checks done above (is variable, is not a numeric array)     
+                    if (execResult != result_execOK) {
+                        if (assembledString != nullptr) {
+                        #if PRINT_HEAP_OBJ_CREA_DEL
+                            _pDebugOut->print("\r\n----- (Intermd str) "); _pDebugOut->println((uint32_t)assembledString, HEX);
+                            _pDebugOut->print("  cmd: coutList (5) "); _pDebugOut->println(assembledString);
+                        #endif
+                            _intermediateStringObjectCount--;
+                            delete[] assembledString;
+                        }
+                        return execResult;
+                    }
 
-                // if currently the variable contains a string object, delete it
-                // NOTE: error can not occur, because 
-                execResult = deleteVarStringObject(pFirstArgStackLvl);                                                      // if not empty; checks done above (is variable, is not a numeric array)     
-                if (execResult != result_execOK) {
+                        // print line end without supplied arguments for printing: a string object does not exist yet, so create it now
+                    if (doPrintLineEnd) {
+                        *pStreamPrintColumn = 0;                                                                                // to be consistent with handling of printing line end for printing to non-variable streams, but initialized to zero already 
+                        if (cmdArgCount == 1) {                                                                                 // only receiving variable supplied: no string created yet     
+                            _intermediateStringObjectCount++;
+                            assembledString = new char[3]; assembledString[0] = '\r'; assembledString[1] = '\n'; assembledString[2] = '\0';
+                        #if PRINT_HEAP_OBJ_CREA_DEL
+                            _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)assembledString, HEX);
+                            _pDebugOut->print("  cmd: coutList (6) ");   _pDebugOut->println(assembledString);
+                        #endif
+                        }
+                    }
+
+                    // save new string in variable 
+                    *pFirstArgStackLvl->varOrConst.value.ppStringConst = assembledString;                                       // init: copy pointer (OK if string length not above limit)
+                    *pFirstArgStackLvl->varOrConst.varTypeAddress = (*pFirstArgStackLvl->varOrConst.varTypeAddress & ~value_typeMask) | value_isStringPointer;
+
+                    // string stored in variable: clip to maximum length
+                    if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) {
+                        _systemStringObjectCount++;
+                        char* clippedString = new char[MAX_ALPHA_CONST_LEN];
+                        memcpy(clippedString, assembledString, MAX_ALPHA_CONST_LEN);                                            // copy the string, not the pointer
+                        clippedString[MAX_ALPHA_CONST_LEN] = '\0';
+                        *pFirstArgStackLvl->varOrConst.value.ppStringConst = clippedString;
+                    }
+
                     if (assembledString != nullptr) {
-                    #if PRINT_HEAP_OBJ_CREA_DEL
-                        _pDebugOut->print("\r\n----- (Intermd str) "); _pDebugOut->println((uint32_t)assembledString, HEX);
-                        _pDebugOut->print("  cmd: coutList (5) "); _pDebugOut->println(assembledString);
-                    #endif
-                        _intermediateStringObjectCount--;
-                        delete[] assembledString;
-                    }
-                    return execResult;
-                }
+                        // non-empty string, adapt object counters (change from intermediate to variable string)
+                        _intermediateStringObjectCount--;        // but do not delete the object: it became a variable string
+                        char varScope = (pFirstArgStackLvl->varOrConst.sourceVarScopeAndFlags & var_scopeMask);
+                        (varScope == var_isUser) ? _userVarStringObjectCount++ : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount++ : _localVarStringObjectCount++;
 
-                    // print line end without supplied arguments for printing: a string object does not exist yet, so create it now
-                if (doPrintLineEnd) {
-                    *pStreamPrintColumn = 0;                                                                                // to be consistent with handling of printing line end for printing to non-variable streams, but initialized to zero already 
-                    if (cmdArgCount == 1) {                                                                                 // only receiving variable supplied: no string created yet     
-                        _intermediateStringObjectCount++;
-                        assembledString = new char[3]; assembledString[0] = '\r'; assembledString[1] = '\n'; assembledString[2] = '\0';
                     #if PRINT_HEAP_OBJ_CREA_DEL
-                        _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)assembledString, HEX);
-                        _pDebugOut->print("  cmd: coutList (6) ");   _pDebugOut->println(assembledString);
-                    #endif
+                        _pDebugOut->print("\r\n----- (Intermd str) ");   _pDebugOut->println((uint32_t)assembledString, HEX);
+                        _pDebugOut->print("  cmd: coutList (7) ");   _pDebugOut->println(assembledString);
+
+                        _pDebugOut->print((varScope == var_isUser) ? "\r\n+++++ (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "\r\n+++++ (var string ) " : "\r\n+++++ (loc var str) ");
+                        _pDebugOut->println((uint32_t)*pFirstArgStackLvl->varOrConst.value.ppStringConst, HEX);
+                        _pDebugOut->print("  cmd: coutList (8) "); _pDebugOut->println(*pFirstArgStackLvl->varOrConst.value.ppStringConst);
+                    #endif              
+                    }
+
+                    if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) {
+                        delete[] assembledString;                             // not referenced in eval. stack (clippedString is), so will not be deleted as part of cleanup
+                        _systemStringObjectCount--;
                     }
                 }
 
-                // save new string in variable 
-                *pFirstArgStackLvl->varOrConst.value.ppStringConst = assembledString;                                       // init: copy pointer (OK if string length not above limit)
-                *pFirstArgStackLvl->varOrConst.varTypeAddress = (*pFirstArgStackLvl->varOrConst.varTypeAddress & ~value_typeMask) | value_isStringPointer;
-
-                // string stored in variable: clip to maximum length
-                if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) {
-                    _systemStringObjectCount++;
-                    char* clippedString = new char[MAX_ALPHA_CONST_LEN];
-                    memcpy(clippedString, assembledString, MAX_ALPHA_CONST_LEN);                                            // copy the string, not the pointer
-                    clippedString[MAX_ALPHA_CONST_LEN] = '\0';
-                    *pFirstArgStackLvl->varOrConst.value.ppStringConst = clippedString;
-                }
-
-                if (assembledString != nullptr) {
-                    // non-empty string, adapt object counters (change from intermediate to variable string)
-                    _intermediateStringObjectCount--;        // but do not delete the object: it became a variable string
-                    char varScope = (pFirstArgStackLvl->varOrConst.sourceVarScopeAndFlags & var_scopeMask);
-                    (varScope == var_isUser) ? _userVarStringObjectCount++ : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? _globalStaticVarStringObjectCount++ : _localVarStringObjectCount++;
-
-                #if PRINT_HEAP_OBJ_CREA_DEL
-                    _pDebugOut->print("\r\n----- (Intermd str) ");   _pDebugOut->println((uint32_t)assembledString, HEX);
-                    _pDebugOut->print("  cmd: coutList (7) ");   _pDebugOut->println(assembledString);
-
-                    _pDebugOut->print((varScope == var_isUser) ? "\r\n+++++ (usr var str) " : ((varScope == var_isGlobal) || (varScope == var_isStaticInFunc)) ? "\r\n+++++ (var string ) " : "\r\n+++++ (loc var str) ");
-                    _pDebugOut->println((uint32_t)*pFirstArgStackLvl->varOrConst.value.ppStringConst, HEX);
-                    _pDebugOut->print("  cmd: coutList (8) "); _pDebugOut->println(*pFirstArgStackLvl->varOrConst.value.ppStringConst);
-                #endif              
-                }
-
-                if (strlen(assembledString) > MAX_ALPHA_CONST_LEN) {
-                    delete[] assembledString;                             // not referenced in eval. stack (clippedString is), so will not be deleted as part of cleanup
-                    _systemStringObjectCount--;
+                else {      // print to file or external IO
+                    if (doPrintLineEnd) {
+                        println();
+                        *pStreamPrintColumn = 0;
+                    }
                 }
             }
-
-            else {      // print to file or external IO
-                if (doPrintLineEnd) {
-                    println();
-                    *pStreamPrintColumn = 0;
-                }
-            }
-
+            
             // clean up
             clearEvalStackLevels(cmdArgCount);                                                                              // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_commandCode = cmdcod_none;                                                        // command execution ended
@@ -1983,7 +1992,8 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                 Stream* p{};
                 execResult = setActiveStreamTo(streamNumber, p, true); if (execResult != result_execOK) { return execResult; }   // perform checks and set output stream
                 isConsolePrint = (p == _pConsoleOut);
-                pStreamPrintColumn = (streamNumber == 0) ? _pConsolePrintColumn : (streamNumber < 0) ? _pPrintColumns + (-streamNumber) - 1 : &(openFiles[streamNumber - 1].currentPrintColumn);
+                pStreamPrintColumn = (streamNumber == 0) ? _pConsolePrintColumn :
+                    (streamNumber < 0) ? _pExternPrintColumns + (-streamNumber) - 1 : &(openFiles[streamNumber - 1].currentPrintColumn);
                 *pStreamPrintColumn = 0;                                                                                    // will not be used here, but must be set to zero
             }
 
