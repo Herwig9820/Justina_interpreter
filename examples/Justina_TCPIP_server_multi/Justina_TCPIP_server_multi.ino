@@ -141,16 +141,16 @@ Justina::CppVoidFunction  const cppVoidFunctions[]{
     {"cpp_TCPoff", TCPoff, 0, 0},
     {"cpp_TCPon", TCPon, 0, 0},
     {"cpp_setConnectionTimeout", setConnectionTimeout, 1, 1},
-    {"cpp_stopSessionClient", stopSessionClient, 2,2},                              // parameters: sessionID, keepSessionActive 
-    {"cpp_setVerbose", setVerbose, 1, 1},                                           // parameter: verbose (true) or silent (false)
-    {"cpp_getLocalIP", getLocalIP, 1, 1},                                           // parameter: local IP (passed on exit)
+    {"cpp_stopSessionClient", stopSessionClient, 2,2},                              // stop the TCP client linked to a session. parameters: sessionID, keepSessionActive 
+    {"cpp_setVerbose", setVerbose, 1, 1},                                           // set verbose mode. parameter: verbose (true) or silent (false)
+    {"cpp_getLocalIP", getLocalIP, 1, 1},                                           // get server IP address. parameter: local IP (passed on exit)
 };
 
 // user c++ functions returning a Justina integer value (32-bit signed integer)
 Justina::CppLongFunction const cppLongFunctions[]{
     {"cpp_getWiFiState", getWiFiState, 0, 0},                                       // return WiFi connection state (enumeration)
-    {"cpp_getClientCount", getTCPclientCount, 0, 0},                                // return WiFi client connection count or -1 (no WiFi or TCP not enabled)
-    {"cpp_getSessionData", getSessionClient, 2,2}
+    {"cpp_getClientCount", getTCPclientCount, 0, 0},                                // return TCP client connection count or -1 (no WiFi or TCP not enabled)
+    {"cpp_getSessionData", getSessionClient, 2, 2}                                  // return TCP client slot linked to a session. Parameters: session ID, (return parameter): client IP
 };
 
 // -------------------------------
@@ -200,8 +200,8 @@ void setup() {
     myTCPconnection.TCPdisable();                                                   // disable TCP IO (will be enabled by Justina program)
     myTCPconnection.WiFiOn();
 
-    // Justina library
-    // ---------------
+    // register system callback function and user (cpp) Justina extensions 
+    // -------------------------------------------------------------------
     justina.setSystemCallbackFunction(&Justina_housekeeping);                       // set system callback function (see below); it will be called regularly while control is within Justina 
 
     justina.registerVoidUserCppFunctions(cppVoidFunctions, 8);                      // register user c++ functions returning nothing

@@ -35,7 +35,7 @@
 // *****************************************************
 
 // --------------------------------------------------------------------------------------------------------------------
-// *   parse ONE statement in a character string, ended by an optional ';' character and a '\0' mandatory character   *
+// *   parse ONE statement in a character string, ended by an optional ';' character and a mandatory '\0' character   *
 // --------------------------------------------------------------------------------------------------------------------
 
 Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& pNextParseStatement, int& clearIndicator, bool& isSilentOnOffStatement) {
@@ -247,14 +247,22 @@ bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, 
     // external (user cpp) commands: check if specified usage restriction is valid
     // note: external commands are always executable (not 'parsing only')
     if (!commandIsInternal && (cmdRestriction != cmd_noRestrictions) && (cmdRestriction != cmd_onlyInFunctionBlock)
-        && (cmdRestriction != cmd_onlyImmediate) && (cmdRestriction != cmd_onlyImmOrInsideFuncBlock)) {
+        && (cmdRestriction != cmd_onlyImmediate) && (cmdRestriction != cmd_onlyCommandLine) && (cmdRestriction != cmd_onlyInBatchFile) && (cmdRestriction != cmd_onlyImmOrInsideFuncBlock)) {
         result = result_cmd_usageRestrictionNotValid; return false;
     }
 
+    int statementInputStreamNumber = _activeFunctionData.statementInputStream;              // note: if > 0, then either program file being parsed or batch file being executed
+    bool isBatchFileInput = (!_programMode && (statementInputStreamNumber > 0));
+    bool isCommandLineInput = (!_programMode && (statementInputStreamNumber == 0));         // (commands do not appear in trace strings, breakpoint trigger and view strings)
+
     if ((cmdRestriction == cmd_onlyProgramTop) && (_lastTokenStep != 0)) { result = result_cmd_onlyProgramStart; return false; }        // not a 'program' command
     if ((cmdRestriction != cmd_onlyProgramTop) && (_lastTokenStep == 0)) { result = result_cmd_programCmdMissing; return false; }
-    if ((cmdRestriction == cmd_onlyImmModeTop) && (_programCounter != _programStorage + _PROGRAM_MEMORY_SIZE + sizeof(Token_internalCommand) - (hasTokenStep ? 0 : 2))) { result = result_cmd_onlyImmModeFirstStatement; return false; }
+    if ((cmdRestriction == cmd_onlyCommandLineStart) && (isBatchFileInput || (_programCounter != _programStorage + _PROGRAM_MEMORY_SIZE + 
+        sizeof(Token_internalCommand) - (hasTokenStep ? 0 : 2)))) { result = result_cmd_onlyCommandLineStart; return false; }
+     
     if (_programMode && (cmdRestriction == cmd_onlyImmediate)) { result = result_cmd_onlyImmediateMode; return false; }
+    if ((_programMode || isBatchFileInput) && (cmdRestriction == cmd_onlyCommandLine)) { result = result_cmd_onlyCommandLine; return false; }
+    if ((_programMode || isCommandLineInput) && (cmdRestriction == cmd_onlyInBatchFile)) { result = result_cmd_onlyInBatchFile; return false; }
     if (!_programMode && (cmdRestriction == cmd_onlyInProgram)) { result = result_cmd_onlyInsideProgram; return false; }
     if (!_justinaFunctionBlockOpen && (cmdRestriction == cmd_onlyInFunctionBlock)) { result = result_cmd_onlyInsideFunction; return false; }
     if (_justinaFunctionBlockOpen && (cmdRestriction == cmd_onlyOutsideFunctionBlock)) { result = result_cmd_onlyOutsideFunction; return false; }
@@ -263,12 +271,17 @@ bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, 
     if ((_programMode || (_blockLevel > 0)) && (cmdRestriction == cmd_onlyImmediateNotWithinBlock)) { result = result_cmd_onlyImmediateNotWithinBlock; return false; }
     if (_justinaFunctionBlockOpen && _isJustinaFunctionCmd) { result = result_function_defsCannotBeNested; return false; }       // separate message to indicate 'no nesting'
 
-   // not a block command: nothing more to do here 
-    if (cmdBlockDef.blockType == block_none) { return true; }                                                       // (always for external commands) 
+    // command is allowed while (not) in debug mode ?
+    // this can be tested during parsing, because these commands are allowed in imm. mode only (command line and/or batch file line) 
+    if ((_internCommands[commandIndex].usageRestrictions & cmd_notInDebugMode) && (_openDebugLevels > 0)) { result = result_cmd_notInDebugMode;  return false; }
+    if ((_internCommands[commandIndex].usageRestrictions & cmd_onlyInDebugMode) && (_openDebugLevels == 0)) { result = result_cmd_onlyInDebugMode;  return false; }
 
 
     // perform specific checks related to block commands
     // -------------------------------------------------
+
+    // not a block command: nothing more to do here 
+    if (cmdBlockDef.blockType == block_none) { return true; }                                                       // (always for external commands) 
 
     if (cmdBlockDef.blockPosOrAction == block_startPos) {                                                           // is a block start command ?                          
         _blockLevel++;                                                                                              // increment stack counter and create corresponding list element
@@ -422,8 +435,6 @@ bool Justina::checkCommandArgToken(parsingResult_type& result, int& clearIndicat
         // NOTE: clear program / memory command will be executed when normal execution ends (before entering idle mode, waiting for input)
         if (_isClearProgCmd) {
             clearIndicator = 1;                                                                // clear program: set flag 
-            //a program can not be cleared while stopped programs exist (it would abort all these stopped programs)
-            if (_openDebugLevels > 0) { result = result_cmd_noProgClearInDebugMode;  return false; }                 // this is a PARSING error
         }
         else if (_isClearAllCmd) {
             clearIndicator = 2;                                                                                     // clear all: set flag
@@ -2123,7 +2134,7 @@ bool Justina::parseAsVariable(char*& pNext, parsingResult_type& result) {
                 // retrieve data about this function now.
 
                  // in debug mode (program stopped), the name could refer to a local or static variable within the currently stopped function (open function).
-                 // if parsing a BP trigger string, debug mode is not active yet (function is not stopped yet- will depend of trigger string execution result)   
+                 // if parsing a BP trigger string, debug mode is not active yet (function is not stopped yet - will depend on trigger string execution result)   
 
                 if ((_openDebugLevels > 0) || _parsingExecutingTriggerString) {
                     void* pFlowCtrlStackLvl{};

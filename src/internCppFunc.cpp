@@ -261,9 +261,9 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         break;
 
 
-        // --------------------------------------------------
-        // SD card: close or flush file / stream (flush only)
-        // --------------------------------------------------
+        // -------------------------------------
+        // SD card: close or flush file / stream
+        // -------------------------------------
 
         case fnccod_close:                                                                                                  // close a file
         case fnccod_flush:                                                                                                  // empty output buffer

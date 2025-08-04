@@ -41,7 +41,7 @@
 // *   execute parsed statements   *
 // ---------------------------------
 
-Justina::execResult_type  Justina::exec(char* startHere) {
+Justina::execResult_type Justina::exec(char* startHere) {
 
 #if PRINT_PROCESSED_TOKEN
     _pDebugOut->print("\r\n**** enter exec: eval stack depth: "); _pDebugOut->println(evalStack.getElementCount());
@@ -76,14 +76,17 @@ Justina::execResult_type  Justina::exec(char* startHere) {
     _activeFunctionData.errorStatementStartStep = _programCounter;
     _activeFunctionData.errorProgramCounter = _programCounter;
 
-    if (_activeFunctionData.statementInputStream <= 0) {                                    // batch files: NOT set here (would be set for every batch file line)) BUT set when a batch file is launched
+    if (_activeFunctionData.statementInputStream <= 0) {                                    // batch files: NOT set here (would be set for every batch file line) BUT set when a batch file is launched
         _activeFunctionData.trapEnable = 0;                                                 // start execution with error trapping disabled
         _activeFunctionData.errorHandlerActive = 0;                                         // error handler is not active
     }
 
     bool setCurrentPrintColumn{ false };                                                // for print commands only
 
-    _lastValueIsStored = false;
+    // only reset at the start of execution, and NOT when starting batch file execution
+    if ((_programCounter == _programStorage + _PROGRAM_MEMORY_SIZE) && (_activeFunctionData.blockType != block_batchFile)) {
+        _lastValueIsStored = false;
+    }
 
 
     // --------------------------
@@ -466,7 +469,7 @@ Justina::execResult_type  Justina::exec(char* startHere) {
                         int streamNumber = opIsLong ? value.longConst : value.floatConst;                                                                   // always a long or a float value
 
                         // set pointer to last printed column (current position: start of line = 0) for this stream
-                        _pLastPrintColumn = (streamNumber == 0) ? _pConsolePrintColumn : 
+                        _pLastPrintColumn = (streamNumber == 0) ? _pConsolePrintColumn :
                             (streamNumber < 0) ? _pExternPrintColumns + (-streamNumber) - 1 : &(openFiles[streamNumber - 1].currentPrintColumn);
                         setCurrentPrintColumn = false;      // reset
                     }
@@ -585,7 +588,7 @@ Justina::execResult_type  Justina::exec(char* startHere) {
                             // simple expression statement result
                             else {                                                                                                  // not an eval() block, not tracing
                                 // in main program level ? store as last value (for now, we don't know if it will be followed by other 'last' values)
-                                if (_programCounter >= (_programStorage + _PROGRAM_MEMORY_SIZE)) {
+                                if ((_programCounter >= (_programStorage + _PROGRAM_MEMORY_SIZE)) && (_activeFunctionData.blockType != block_batchFile)) {
                                     saveLastValue(_lastValueIsStored);
                                 }                                                                                                   // save last result in FIFO and delete stack level
                                 else { clearEvalStackLevels(1); }                                                                   // NOT main program level: we don't need to keep the statement result
@@ -789,8 +792,10 @@ Justina::execResult_type  Justina::exec(char* startHere) {
     else {
         if (execResult == result_execOK) {              // no error: print last result
 
-            if (*_pConsolePrintColumn != 0) { printlnTo(0); *_pConsolePrintColumn = 0; }
-            if (!_silent && _lastValueIsStored && (_printLastResult > 0)) {
+            // test for block type: prevent printing a last value when jumping to a batch file (batch file block type was set when 'launching' batch file execution;
+            // however current execution of the caller still needs to finish, to allow parsing and execution of batch file lines
+            if ((_activeFunctionData.blockType != block_batchFile) && _lastValueIsStored && (_printLastResult > 0)) {
+                if (*_pConsolePrintColumn != 0) { printlnTo(0); *_pConsolePrintColumn = 0; }
 
                 bool isLong = (lastResultTypeFiFo[0] == value_isLong);
                 bool isFloat = (lastResultTypeFiFo[0] == value_isFloat);
@@ -910,7 +915,7 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
 
     //Serial.print(">> active level: error trapped ? "); Serial.print(trapErrorHere); 
     //    Serial.print(" (error trapping enabled ? ");  Serial.print((bool)_activeFunctionData.trapEnable);
-    //    Serial.print(", error handler was active ? "); Serial.print((bool)_activeFunctionData.errorHandlerActive); Serial.println(" )");
+    //    Serial.print(", error handler was active ? "); Serial.print((bool)_activeFunctionData.errorHandlerActive); Serial.println(" )"); ////
 
     // error trapping is NOT enabled where the error occurred (a Justina function or possibly an eval() string): check if error trapping is enabled for caller levels
     if (!trapErrorHere) {
@@ -929,7 +934,7 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
 
                 //Serial.print(" > lower level: error trapped ? "); Serial.print(trapErrorHere); 
                 //    Serial.print(" (error trapping enabled ? ");  Serial.print((bool)pFlowCtrlStackLvl->trapEnable); 
-                //    Serial.print(", error handler was active ? "); Serial.print((bool)pFlowCtrlStackLvl->errorHandlerActive); Serial.println(" )");
+                //    Serial.print(", error handler was active ? "); Serial.print((bool)pFlowCtrlStackLvl->errorHandlerActive); Serial.println(" )"); ////
 
                 if (trapErrorHere) { break; }
                 bool isCmdLevel = (pFlowCtrlStackLvl->blockType == block_JustinaFunction) && (pFlowCtrlStackLvl->pNextStep >= (_programStorage + _PROGRAM_MEMORY_SIZE));
@@ -949,13 +954,13 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
 
     bool returnedFromBatchFile{ false };
     do {
-//        Serial.println("** TERMINIATING level ? ");
+////    Serial.println("** TERMINIATING level ? ");
 
         // clear evaluation stack levels for currently active block (function or eval block): get rid of expression(s) at the moment the error occurred
         clearEvalStackLevels(evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels);
 
         if (_activeFunctionData.blockType == block_eval) {
-  //          Serial.print(" * error NOT trapped at this level, terminating eval() - input stream: "); Serial.print((int)_activeFunctionData.statementInputStream); Serial.print(", block type : "); Serial.println((int)_activeFunctionData.blockType);
+////        Serial.print(" * error NOT trapped at this level, terminating eval() - input stream: "); Serial.print((int)_activeFunctionData.statementInputStream); Serial.print(", block type : "); Serial.println((int)_activeFunctionData.blockType);
             // eval() function: error is never trapped at this level, so always terminate and keep looking for function / batch file level with error trapping
             terminateEval();
         }
@@ -965,7 +970,7 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
             bool trapErrorHere = ((bool)_activeFunctionData.trapEnable && !(bool)_activeFunctionData.errorHandlerActive);
             if (!trapErrorHere) {
             // this function is not trapping errors: terminate function (and keep looking for function in the call stack with error trapping enabled)
-//                Serial.print(" * error NOT trapped at this level, terminating Justina fnc - input stream: "); Serial.print((int)_activeFunctionData.statementInputStream); Serial.print(", block type : "); Serial.println((int)_activeFunctionData.blockType);
+////              Serial.print(" * error NOT trapped at this level, terminating Justina fnc - input stream: "); Serial.print((int)_activeFunctionData.statementInputStream); Serial.print(", block type : "); Serial.println((int)_activeFunctionData.blockType);
 
                 bool isVoidFunctionDef = (justinaFunctionData[_activeFunctionData.functionIndex].isVoidFunctionDef == 1);
                 terminateJustinaFunction(isVoidFunctionDef, !isVoidFunctionDef);                        // return zero, except when a void Justina function
@@ -1455,7 +1460,7 @@ int Justina::findTokenStep(char*& pStep, bool excludeCurrent, char lookForTokenT
 void Justina::saveLastValue(bool& overWritePrevious) {
     if (!(evalStack.getElementCount() > _activeFunctionData.callerEvalStackLevels)) { return; }                 // data available ?
 
-  // if overwrite 'previous' last result, then remove first item (newest item - if there is one) and stop (all done)
+  // if overwrite 'previous' last result, then remove first item (newest item - if there is one) 
     // if not overwriting 'previous' last result and FiFo is full, then remove last (oldest) item before proceeding
     int itemToRemove = overWritePrevious ? ((_lastValuesCount >= 1) ? 0 : -1) :
         ((_lastValuesCount == MAX_LAST_RESULT_DEPTH) ? MAX_LAST_RESULT_DEPTH - 1 : -1);
@@ -2815,9 +2820,10 @@ Justina::execResult_type Justina::launchBatchFileExecution(int cmdArgCount, LE_e
     openFiles[fileNumber - 1].argCount = cmdArgCount;                                                   // batch name and optional arguments
     openFiles[fileNumber - 1].pValueType = valueType;
     openFiles[fileNumber - 1].pArgs = args;
+    openFiles[fileNumber - 1].lineEndsInMultiLineComment = 0;
     openFiles[fileNumber - 1].silent = 0;                                                               // init: silent mode off
     _silent = false;
-
+    _withinMultiLineComment = false;
 
     // create string objects for batch file non-empty string arguments, but SKIP first argument (batch filename - already stored in openFiles[fileNumber - 1].filePath)
     for (int i = 1; i < cmdArgCount; i++) {
@@ -3183,8 +3189,11 @@ void Justina::terminateJustinaFunction(bool isVoidFunction, bool addZeroReturnVa
 
     } while ((blockType == block_while) || (blockType == block_for) || (blockType == block_if));                            // as long as deleted stack level was open block (for, while, if)  
 
+    /* //// weg ?
     int streamNumber = _activeFunctionData.statementInputStream;                                                            // > 0: batch file
     _silent = (streamNumber > 0) ? bool(openFiles[streamNumber - 1].silent) : false;
+    _withinMultiLineComment = (streamNumber > 0) ? bool(openFiles[streamNumber - 1].lineEndsInMultiLineComment) : false;
+    */
 
     --_callStackDepth;                                                                                                      // caller reached: call stack depth decreased by 1
 
@@ -3229,9 +3238,11 @@ void Justina::terminateEval() {
     flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);
     _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
 
+    /* //// weg ?
     int streamNumber = _activeFunctionData.statementInputStream;                                        // > 0: batch file
     _silent = (streamNumber > 0) ? bool(openFiles[streamNumber - 1].silent) : false;
-
+    _withinMultiLineComment = (streamNumber > 0) ? bool(openFiles[streamNumber - 1].lineEndsInMultiLineComment) : false;
+    */
     --_callStackDepth;                                                                                  // caller reached: call stack depth decreased by 1
 
     clearParsedCommandLineStack(1);
@@ -3264,10 +3275,11 @@ void Justina::terminateBatchFile() {
 
     int streamNumber = _activeFunctionData.statementInputStream;                                        // caller stream (batch file or command line)
     _silent = (streamNumber > 0) ? bool(openFiles[streamNumber - 1].silent) : false;
+    _withinMultiLineComment = (streamNumber > 0) ? bool(openFiles[streamNumber - 1].lineEndsInMultiLineComment) : false;
 
     clearParsedCommandLineStack(1);
-
 }
+
 
 // -----------------------------------------------
 // *   push terminal token to evaluation stack   *

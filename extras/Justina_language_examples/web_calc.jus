@@ -20,7 +20,7 @@ program calculatorWebServer; // this is a JUSTINA program
 	When submitted, the expression is evaluated by Justina ( eval() function) and the result (or the error, 
 	if an error is produced) is returned. The last 10 results are shown in an answer box below the input box. 
 	
-	This example is intended to be used with Justina library example Justina_TCPIP, which 
+	This example is intended to be used with Justina library example 'Justina_TCPIP', which 
 	- configures your Arduino as a TCP server
 	- is responsible for maintaining the WiFi and the TCP connection
 	- sets the underlying TCP/IP client as Justina IO device 2 (IO2)

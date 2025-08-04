@@ -1,48 +1,66 @@
-// ------------------------------------------------------------------------------------------------------------------------
-// Example JUSTINA language batch file for use with the Justina interpreter
-//
-// The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      
-// by the Free Software Foundation (https://www.gnu.org/licenses).                                                      
-// Refer to GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter            
-//
-// This example Justina code is in the public domain
-//
-// 2024-2025, Herwig Taveirne                                                                                                
-// ----------------------------------------------------------------------------------------------------------------------*/
+/*------------------------------------------------------------------------------------------------------------------------
+    Example JUSTINA language batch file for use with the Justina interpreter
+	
+    The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      
+    by the Free Software Foundation (https://www.gnu.org/licenses).                                                      
+    Refer to GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter            
+	
+    This example Justina code is in the public domain
 
-silent TRUE
+    2024-2025, Herwig Taveirne                                                                                                
+------------------------------------------------------------------------------------------------------------------------*/
 
-// check if 'local' variable must be created
-// -----------------------------------------
+
+/*
+    This is an example of a Justina batch file (.jba extension) used a startup file.
+    --------------------------------------------------------------------------------
+    It loads program 'calculatorWebServer_multiSessions' (program file "web_cal2.jus") and subsuequently 
+    starts function 'webServer()'.
+*/
+    
+    
+silent TRUE    // do not echo executed batch file statements 
+
+
+// check if needed user variables exist or must be created
+// -------------------------------------------------------
+// test if 1 variable exists; if not, the program assumes none of next 3 variables exist and must be created
 trapErrors TRUE 
 eval("autorun_millis")
-if (err() == 0); gotoLabel "OK"; end 
-var autorun_millis = 0, autorun_ditch = FALSE;                                                                       // user variables (not program variables)
+if (err() == 0); gotoLabel "OK"; end                                        
+var autorun_millis = 0, autorun_ditch = FALSE, webServer_loaded = FALSE  
 //OK::
 trapErrors FALSE
 
 
-//nextLoop:: <-- this is a batch file label
+//nextLoop:: <<-- label; will jump to here if the web server program was stopped by the user   
     
+    
+// the user has 4 seconds to quit this batch file without starting the web server
+// ------------------------------------------------------------------------------ 
 // flush console input buffer 
 while available(CONSOLE); read(CONSOLE); end
 
 // check for console input during a 4 second time out
-coutLine line(), line(), "To prevent starting the web server, press Enter now"
+coutLine line(), "To prevent starting the web server, press Enter now"
+
 autorun_millis= millis(); 
-while millis() < autorun_millis + 4000; wait(200); cout "-"; if available(CONSOLE); break; end; end      // 40 x 100 ms = 4 seconden 
-coutLine;
+while millis() < autorun_millis + 4000; wait(200); cout "."; if available(CONSOLE); break; end; end    // 40 x 100 ms = 4 seconden 
+// silent mode is off: 'coutLine;' not needed here
 
 // ditch batch file if console characters were found before time out. Any way, flush console input buffer before proceeding.
 autorun_ditch=FALSE;
 while available (CONSOLE); if read(CONSOLE) == asc("\n"); autorun_ditch = TRUE; end; end      
-if autorun_ditch; ditch; end
+if autorun_ditch; coutLine; ditch; end
+
 
 // load and start web server program
 // ---------------------------------
-loadProg "/justina/web_cal2.jus"
+if !webServer_loaded; loadProg "/justina/web_cal2.jus"; end    // if program is not yet loaded, load it now
+webServer_loaded = TRUE;
 coutLine "Starting web server..."
 webServer()
+
 
 // start another batch file loop
 // -----------------------------

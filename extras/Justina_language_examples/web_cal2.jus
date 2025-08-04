@@ -11,17 +11,17 @@
 ------------------------------------------------------------------------------------------------------------------------*/
 
 
-program calculatorWebServer; // this is a JUSTINA program
+program calculatorWebServer_multiSessions; // this is a JUSTINA program
 
 /*
-	Example of a web server, serving a working scientific calculator as a web page to maximum 3 concurrent HTTP clients.
+	Example of a web server, serving a working scientific calculator as a web page to (maximum) 3 concurrent HTTP clients.
     
 	An input box allows you to type in any expression (no commands) as long as it adheres to the Justina syntax:
 	internal Justina functions, Justina user functions and Justina user cpp functions are all allowed.
 	When submitted, the expression is evaluated by Justina ( eval() function) and the result (or the error, 
 	if an error is produced) is returned. The last 10 results are shown in an answer box below the input box. 
 	
-	This example is intended to be used with Justina library example Justina_TCP/IP_multi, which 
+	This example is intended to be used with Justina library example 'Justina_TCP/IP_multi', which 
 	- configures your Arduino as a TCP server
 	- is responsible for maintaining the WiFi and the TCP connection for maximum 3 concurrent TCP/IP clients
 	- sets the underlying TCP/IP streams as Justina IO devices referred to by Justina constants IO2 (-2), IO3 (-3) and IO4 (-4) 
@@ -251,10 +251,13 @@ procedure webServer();
             
         if quitWebServer; break; end;
 	end;
+
+    cpp_TCPoff();                                                                       // but leave WiFi on    
     coutLine line(), "WS at ", getTime(),"s: web server stopped";
 end;
 
 
+// -------------------------------
 // accept (authorize) request line
 // -------------------------------
                 
@@ -301,6 +304,7 @@ function AcceptRequestLine(clientRequest, isValidTokenRequest, sessionValid, HTT
 end;
 
 
+// --------------------------------------
 // print a client request to debug stream
 // --------------------------------------
     
@@ -317,6 +321,7 @@ procedure printClientRequest(clientRequest);
 end;
 
 
+// ----------------------------------------------------------------------------
 // handle HTTP request with the expression entered in the served page input box    
 // ----------------------------------------------------------------------------
 
@@ -421,6 +426,7 @@ procedure handleInputBox(clientRequest, sessionID, lastExpressions(), lastResult
 end;
 
 
+// ---------------------------
 // send an HTTP error response
 // ---------------------------
     
@@ -436,6 +442,7 @@ procedure printHTTP_error(IOchannel, HTTP_errorNum, HTTP_errorMsg);
 end;
 
 
+// -------------------------------------------------
 // send HTML response message to (re-)draw main page
 // -------------------------------------------------
 
@@ -554,6 +561,7 @@ procedure sendResponse_mainPage(IOchannel, sessionID, lastExpressions(), lastRes
 end;
 
 
+// --------------------------------------------------------------
 // send response message with image (OK for logo as well as icon)
 // --------------------------------------------------------------
 
@@ -586,6 +594,7 @@ end;
 // ---------------
 
 
+// ---------------------------------------------------
 // convert millis to seconds.millis, provide n columns
 // ---------------------------------------------------
 
@@ -594,6 +603,7 @@ function getTime(columns = 11);                                 // default: prin
 end;
 
 
+// -------------------------------------------------------------------------------------------------------------------
 // remove control characters ('%hh' 3-character sequences with hh < 0x20); 
 // replace '%hh' 3-character sequences by Ascii character with hex Ascii code 'hh'; replace '+' characters with spaces 
 // -------------------------------------------------------------------------------------------------------------------
@@ -633,6 +643,7 @@ end;
 // ----------------------------------------------------------------------------------
 
 
+// ---------------------------------------------------------------------------
 // set floating point number format
 // arguments are entered as in 'floatFmt' command (flags:  optional arguments)
 // ---------------------------------------------------------------------------
@@ -646,6 +657,7 @@ function floatFormat(precision, specifier, flags = -1);			// floating point numb
 end;
 
 
+// -----------------------------------------------------------------------------
 // set integer number format
 // arguments are entered as in intFmt command (flags:  optional arguments)
 //

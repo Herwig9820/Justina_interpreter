@@ -53,14 +53,17 @@ const Justina::internCmdDef Justina::_internCommands[]{
     {"const",           cmdcod_constVar,        cmd_noRestrictions | cmd_skipDuringExec,                1,15,   cmdArgSeq_102,  cmdBlockNone},
     {"static",          cmdcod_static,          cmd_onlyInFunctionBlock | cmd_skipDuringExec,           1,15,   cmdArgSeq_102,  cmdBlockNone},
 
-    {"delete",          cmdcod_deleteVar,       cmd_onlyImmModeTop | cmd_skipDuringExec,                1,15,   cmdArgSeq_110,  cmdBlockNone},      // can only delete user variables (imm. mode)
+    {"delete",          cmdcod_deleteVar,       cmd_onlyCommandLineStart | cmd_skipDuringExec
+                                                                                | cmd_notInDebugMode,   1,15,   cmdArgSeq_110,  cmdBlockNone},      // can only delete user variables (command line only)
 
-    {"clearMem",        cmdcod_clearAll,        cmd_onlyImmediate | cmd_skipDuringExec,                 0,0,    cmdArgSeq_100,  cmdBlockNone},      // executed AFTER execution phase ends
-    {"clearProg",       cmdcod_clearProg,       cmd_onlyImmediate | cmd_skipDuringExec,                 0,0,    cmdArgSeq_100,  cmdBlockNone},      // executed AFTER execution phase ends
+    {"clearMem",        cmdcod_clearAll ,       cmd_onlyImmediate | cmd_skipDuringExec
+                                                                                | cmd_notInDebugMode,   0,0,    cmdArgSeq_100,  cmdBlockNone},      // executed AFTER execution phase ends
+    {"clearProg",       cmdcod_clearProg,       cmd_onlyImmediate | cmd_skipDuringExec
+                                                                                | cmd_notInDebugMode,   0,0,    cmdArgSeq_100,  cmdBlockNone},      // executed AFTER execution phase ends
 
     // program and flow control commands
     // ---------------------------------
-    {"loadProg",        cmdcod_loadProg,        cmd_onlyImmediate,                                      0,1,    cmdArgSeq_101,  cmdBlockNone},
+    {"loadProg",        cmdcod_loadProg,        cmd_onlyImmediate | cmd_notInDebugMode,                 0,1,    cmdArgSeq_101,  cmdBlockNone},
 
     {"program",         cmdcod_program,         cmd_onlyProgramTop | cmd_skipDuringExec,                1,1,    cmdArgSeq_110,  cmdBlockNone},
     {"function",        cmdcod_function,        cmd_onlyInProgram | cmd_skipDuringExec,                 1,1,    cmdArgSeq_109,  cmdBlockJustinaFunction},
@@ -83,24 +86,25 @@ const Justina::internCmdDef Justina::_internCommands[]{
     // batch file commands
     // -------------------
     {"exec",            cmdcod_execBatchFile,   cmd_onlyImmediate,                                      1,10,   cmdArgSeq_101,  cmdBlockNone},      // execute a batch file (not a program) and pass optional arguments, return to calling batch file or console
-    {"ditch",           cmdcod_ditchBatchFile,  cmd_onlyImmediate,                                      0,0,    cmdArgSeq_100,  cmdBlockNone},      // stop executing a batch file (not a program)
-    {"gotoLabel",       cmdcod_gotoLabel,       cmd_onlyImmediate,                                      1,1,    cmdArgSeq_101,  cmdBlockNone},      // jump to a label in a batch file     
-    {"silent",          cmdcod_silent,          cmd_onlyImmediate,                                      1,1,    cmdArgSeq_101,  cmdBlockNone},      // batch files only: no prompt, no last results     
+    {"ditch",           cmdcod_ditchBatchFile,  cmd_onlyInBatchFile,                                    0,0,    cmdArgSeq_100,  cmdBlockNone},      // stop executing a batch file (not a program)
+    {"gotoLabel",       cmdcod_gotoLabel,       cmd_onlyInBatchFile,                                    1,1,    cmdArgSeq_101,  cmdBlockNone},      // jump to a label in a batch file     
+    {"silent",          cmdcod_silent,          cmd_onlyInBatchFile,                                    1,1,    cmdArgSeq_101,  cmdBlockNone},      // batch files only: no prompt, no last results     
 
     // debugging commands
     // ------------------
     {"stop",            cmdcod_stop,            cmd_onlyInFunctionBlock,                                0,0,    cmdArgSeq_100,  cmdBlockNone},
     {"nop",             cmdcod_nop,             cmd_onlyInFunctionBlock | cmd_skipDuringExec,           0,0,    cmdArgSeq_100,  cmdBlockNone},      // insert two bytes in program, do nothing
 
-    {"go",              cmdcod_go,              cmd_onlyImmediate,                                      0,0,    cmdArgSeq_100,  cmdBlockNone},
-    {"step",            cmdcod_step,            cmd_onlyImmediate,                                      0,0,    cmdArgSeq_100,  cmdBlockNone},
-    {"stepOut",         cmdcod_stepOut,         cmd_onlyImmediate,                                      0,0,    cmdArgSeq_100,  cmdBlockNone},
-    {"stepOver",        cmdcod_stepOver,        cmd_onlyImmediate,                                      0,0,    cmdArgSeq_100,  cmdBlockNone},
-    {"bStepOut",        cmdcod_stepOutOfBlock,  cmd_onlyImmediate,                                      0,0,    cmdArgSeq_100,  cmdBlockNone},
-    {"loop",            cmdcod_stepToBlockEnd,  cmd_onlyImmediate,                                      0,0,    cmdArgSeq_100,  cmdBlockNone},
-    {"setNextLine",     cmdcod_setNextLine,     cmd_onlyImmediate,                                      1,1,    cmdArgSeq_101,  cmdBlockNone},
+    {"go",              cmdcod_go,              cmd_onlyCommandLine | cmd_onlyInDebugMode,              0,0,    cmdArgSeq_100,  cmdBlockNone},      // not allowed in a batch file
+    {"step",            cmdcod_step,            cmd_onlyCommandLine | cmd_onlyInDebugMode,              0,0,    cmdArgSeq_100,  cmdBlockNone},
+    {"stepOut",         cmdcod_stepOut,         cmd_onlyCommandLine | cmd_onlyInDebugMode,              0,0,    cmdArgSeq_100,  cmdBlockNone},
+    {"stepOver",        cmdcod_stepOver,        cmd_onlyCommandLine | cmd_onlyInDebugMode,              0,0,    cmdArgSeq_100,  cmdBlockNone},
+    {"bStepOut",        cmdcod_stepOutOfBlock,  cmd_onlyCommandLine | cmd_onlyInDebugMode,              0,0,    cmdArgSeq_100,  cmdBlockNone},
+    {"loop",            cmdcod_stepToBlockEnd,  cmd_onlyCommandLine | cmd_onlyInDebugMode,              0,0,    cmdArgSeq_100,  cmdBlockNone},
+    {"setNextLine",     cmdcod_setNextLine,     cmd_onlyCommandLine | cmd_onlyInDebugMode,              1,1,    cmdArgSeq_101,  cmdBlockNone},
 
-    {"abort",           cmdcod_abort,           cmd_onlyImmediate,                                      0,0,    cmdArgSeq_100,  cmdBlockNone},
+    {"abort",           cmdcod_abort,           cmd_onlyCommandLine | cmd_onlyInDebugMode,              0,0,    cmdArgSeq_100,  cmdBlockNone},
+
     {"debug",           cmdcod_debug,           cmd_onlyImmediate,                                      0,0,    cmdArgSeq_100,  cmdBlockNone},
 
     {"trace",           cmdcod_trace,           cmd_onlyImmOrInsideFuncBlock,                           1,1,    cmdArgSeq_101,  cmdBlockNone},
@@ -548,7 +552,7 @@ const Justina::SymbNumConsts Justina::_symbNumConsts[]{
     {"HEX",                 "x",                        symb_fmtSpec,       valcod_hex,             value_isStringPointer}, // base 16 (hex), digits a..f
 
     // formatting: specifier for character strings                                       
-    {"CHARS",               "s",                        symb_fmtSpec,       valcod_chars,           value_isStringPointer },// character string   
+    {"CHARS",               "s",                        symb_fmtSpec,       valcod_chars,           value_isStringPointer },// format character string   
 
     // formatting: flags                                                                 
     {"FMT_LEFT",            "0x01",                     symb_fmtFlag,       valcod_fmt_left,        value_isLong},          // align output left within the print field 
@@ -631,10 +635,10 @@ void Justina::constructorCommonPart() {
     _pConsolePrintColumn = _pDebugPrintColumn = _pLastPrintColumn = _pExternPrintColumns;           //  point to its current print column (IO1)
 
     // find and store long associated with 'DISCARD' symbolic constant name
-    for (int index = 0; index <_symbvalueCount; index++) {                            
-        if(_symbNumConsts[index].symbolCode == valcod_discard) {_discardOut_streamNumber = strtol(_symbNumConsts[index].symbolValue, nullptr, 0); break; } // valueType MUST be long value_isLong
+    for (int index = 0; index < _symbvalueCount; index++) {
+        if (_symbNumConsts[index].symbolCode == valcod_discard) { _discardOut_streamNumber = strtol(_symbNumConsts[index].symbolValue, nullptr, 0); break; } // valueType MUST be long value_isLong
     }
-    
+
     // set linked list debug printing. Pointer to debug out stream pointer: will follow if debug stream is changed
     parsingStack.setDebugOutStream(&_pDebugOut);                                                    // for debug printing within linked list object
 
@@ -695,16 +699,16 @@ void Justina::begin() {
     static long BPpreviousEndLine{ 0 };
 
     _appFlags = 0x0000L;                                                                    // init application flags (for communication with Justina caller, using callbacks)
-    printlnTo(0);
+    Serial.print("");  printlnTo(0);
     for (int i = 0; i < 13; i++) { printTo(0, "*"); } printTo(0, "____");
     for (int i = 0; i < 4; i++) { printTo(0, "*"); } printTo(0, "__");
     for (int i = 0; i < 14; i++) { printTo(0, "*"); } printTo(0, "_");
-    for (int i = 0; i < 10; i++) { printTo(0, "*"); }printlnTo(0);
+    for (int i = 0; i < 10; i++) { printTo(0, "*"); }Serial.print("");  printlnTo(0);
 
     printTo(0, "    "); printlnTo(0, J_productName);
     printTo(0, "    "); printlnTo(0, J_legalCopyright);
     printTo(0, "    Version: "); printlnTo(0, J_version);
-    for (int i = 0; i < 48; i++) { printTo(0, "*"); } printlnTo(0);
+    for (int i = 0; i < 48; i++) { printTo(0, "*"); } Serial.print("");  printlnTo(0);
 
 #if PRINT_HEAP_OBJ_CREA_DEL
     int col{};
@@ -807,17 +811,16 @@ void Justina::JustinaMainLoop(bool& doAutoStart, bool& parsedStatementStartsOnNe
     static bool flushAllUntilEOF{ false };
 
     bool isSilentOnOffStatement{ false };
-    bool withinStringEscSequence{ false }, lastCharWasSemiColon{ false }, within1LineComment{ false }, withinMultiLineComment{ false }, withinString{ false }, redundantSemiColon = false;
-    int clearCmdIndicator{ 0 };                                                             // 1 = clear program cmd, 2 = clear all cmd
-    long lineCount{ 0 }, statementCharCount{ 0 }, parsedStatementCount{ 0 };
-
+    bool withinStringEscSequence{ false }, lastCharWasSemiColon{ false }, within1LineComment{ false }, withinString{ false }, redundantSemiColon = false;
+    int clearCmdIndicator{ 0 };
+    long lineCount{ -1 }, statementCharCount{ 0 }, parsedStatementCount{ 0 };              // 1 = clear program cmd, 2 = clear all cmd
     char c{};
     char* pErrorPos{};
     parsingResult_type result{ result_parsing_OK };                                         // init
 
     do {
-        // when loading a program, as soon as first printable character of a PROGRAM is read, each subsequent character needs to follow after the previous one within a fixed time delay, handled by getCharacter().
-        // program reading ends when no character is read within this time window.
+        // when loading a program, as soon as first printable character of a PROGRAM is read, each subsequent character needs to follow after the previous one within a fixed time delay, 
+        // this is handled by getCharacter(). Program reading ends when no character is read within this time window.
         // when processing immediate mode statements (single line), reading ends when a New Line terminating character is received
         bool programCharsReceived = _programMode && !_initiateProgramLoad;                                      // _initiateProgramLoad is set during execution of the command to read a program source file from the console
         bool waitForFirstProgramCharacter = _initiateProgramLoad && (_loadProgFromStreamNo <= 0);
@@ -833,7 +836,7 @@ void Justina::JustinaMainLoop(bool& doAutoStart, bool& parsedStatementStartsOnNe
 
         _initiateProgramLoad = false;
 
-        if (doAutoStart) {                                                                      // autostart step 2: launch function
+        if (doAutoStart) {
             statementCharCount = strlen(_sourceStatement);
             allCharsReceived = true;                                                                            // ready for parsing
             doAutoStart = false;                                                                     // nothing to prepare any more
@@ -854,7 +857,7 @@ void Justina::JustinaMainLoop(bool& doAutoStart, bool& parsedStatementStartsOnNe
             if (!charFetched && !allCharsReceived && !forcedAbort && !stdConsole) { continue; }                  // no character: keep waiting for input (except when program or imm. mode line is read)
 
             // if no character added: nothing to do, wait for next
-            noCharAdded = !addCharacterToInput(lastCharWasSemiColon, withinString, withinStringEscSequence, within1LineComment, withinMultiLineComment, redundantSemiColon, allCharsReceived,
+            noCharAdded = !addCharacterToInput(lastCharWasSemiColon, withinString, withinStringEscSequence, within1LineComment, _withinMultiLineComment, redundantSemiColon, allCharsReceived,
                 bufferOverrun, flushAllUntilEOF, lineCount, statementCharCount, c);
             currentSourceLine = lineCount + 1;      // adjustment only
         }
@@ -868,7 +871,7 @@ void Justina::JustinaMainLoop(bool& doAutoStart, bool& parsedStatementStartsOnNe
 
             // if a statement is complete (terminated by a semicolon or end of input), maintain breakpoint line ranges and parse statement
             // ---------------------------------------------------------------------------------------------------------------------------
-            bool isStatementSeparator = (!withinString) && (!within1LineComment) && (!withinMultiLineComment) && (c == term_semicolon[0]) && !redundantSemiColon;
+            bool isStatementSeparator = (!withinString) && (!within1LineComment) && (!_withinMultiLineComment) && (c == term_semicolon[0]) && !redundantSemiColon;
             isStatementSeparator = isStatementSeparator || (withinString && (c == '\n'));  // a new line character within a string is sent to parser as well
 
             bool statementReadyForParsing = !bufferOverrun && !forcedAbort && !stdConsole && !kill && (isStatementSeparator || (allCharsReceived && (statementCharCount > 0)));
@@ -890,6 +893,7 @@ void Justina::JustinaMainLoop(bool& doAutoStart, bool& parsedStatementStartsOnNe
                     statementStartsAtLine, parsedStatementAllowingBPstartsAtLine, BPstartLine, BPendLine, BPpreviousEndLine);
 
                 // if no error, parse ONE statement
+                ////Serial.print("[parse:] "); Serial.println(pStatement);
                 if (result == result_parsing_OK) { result = parseStatement(pStatement, pNextStatement, clearCmdIndicator, isSilentOnOffStatement); }
 
                 if (!_silent && ((++parsedStatementCount & 0x0f) == 0)) {
@@ -902,7 +906,12 @@ void Justina::JustinaMainLoop(bool& doAutoStart, bool& parsedStatementStartsOnNe
 
                 // reset after each statement read 
                 statementCharCount = 0;
-                withinString = false; withinStringEscSequence = false; within1LineComment = false; withinMultiLineComment = false;
+                withinString = false; withinStringEscSequence = false; within1LineComment = false;
+
+                // as long as statement input is from a batch file, do not reset _withinMultiLineComment after a statement is parsed 
+                bool isBatchFile = !_programMode && (_activeFunctionData.statementInputStream > 0);
+                if (!isBatchFile) { _withinMultiLineComment = false; }
+
                 lastCharWasSemiColon = false;
                 parsedStatementStartsOnNewLine = false;         // reset flag (prepare for next statement)
             }
@@ -925,7 +934,6 @@ void Justina::JustinaMainLoop(bool& doAutoStart, bool& parsedStatementStartsOnNe
                         ////Serial.println("!!!! before exec");
                         execResult = exec(_programStorage + _PROGRAM_MEMORY_SIZE);              // execute parsed user statements (and call programs from there)
                         ////Serial.println("!!!! after exec");
-
                         if (execResult == EVENT_kill) { kill = true; }
                         if (kill || (execResult == EVENT_quit)) { printlnTo(0); quitNow = true; }               // make sure Justina prompt will be printed on a new line
                     }
@@ -935,12 +943,12 @@ void Justina::JustinaMainLoop(bool& doAutoStart, bool& parsedStatementStartsOnNe
 
                 if (result != result_parsing_OK) {
                     statementCharCount = 0;
-                    withinString = false; withinStringEscSequence = false; within1LineComment = false; withinMultiLineComment = false;
+                    withinString = false; withinStringEscSequence = false; within1LineComment = false; _withinMultiLineComment = false;
                     lastCharWasSemiColon = false;
                 }
 
                 // reset after program (or imm. mode line) is read and processed
-                lineCount = 0;
+                lineCount = -1;                                                                                 // flag: reset 'addCharacterToInput' static variables
                 parsedStatementCount = 0;
                 flushAllUntilEOF = false;
                 _sourceStatement[statementCharCount] = '\0';                                                    // add string terminator
@@ -976,16 +984,19 @@ bool Justina::addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString
     const char commentOuterDelim = '/'; // twice: single line comment; followed by inner delimiter: start of multi-line comment; preceded by inner delimiter: end of multi-line comment 
     const char commentInnerDelim = '*';
 
-    static bool lastCharWasWhiteSpace{ false };
-    static char lastCommentChar{ '\0' };                                                                        // init: none
-
     bool redundantSpaces = false;
+
+    static bool lastCharWasWhiteSpace{ false };
+    static char lastCommentChar{ '\0' };                                                                        
+
+    // init static vars at first character to be evaluated (flag: lineCount == -1)
+    if (lineCount == -1) { lineCount++; lastCharWasWhiteSpace = false; lastCommentChar = '\0'; }
 
     bufferOverrun = false;
     if (c == '\t') { c = ' '; };                                                                                // replace TAB characters by space characters
     if ((c < ' ') && (c != '\n')) { return false; }                                                             // skip all other control-chars except new line and EOF character
 
-    // when a imm. mode line or program is completely read and the last character (part of the last statement) received from input stream is not a semicolon, add it
+    // when an imm. mode line or program is completely read and the last character (part of the last statement) received from input stream is not a semicolon, add it
     if (ImmModeLineOrProgramRead) {
         if (statementCharCount > 0) {
             if (_sourceStatement[statementCharCount - 1] != term_semicolon[0]) {
@@ -996,7 +1007,9 @@ bool Justina::addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString
         }
 
         within1LineComment = false;
-        withinMultiLineComment = false;
+
+        bool isBatchFile = !_programMode && (_activeFunctionData.statementInputStream > 0);
+        if (!isBatchFile) { withinMultiLineComment = false; }
     }
 
     // not at end of program or imm. mode line: process character   
@@ -1091,14 +1104,20 @@ bool Justina::finaliseParsing(parsingResult_type& result, bool& kill, long lineC
             // parsing OK message (program mode only - no message in immediate mode)  
             if (!_silent) { printParsingResult(result, funcNotDefIndex, _sourceStatement, lineCount, pErrorPos); }
         }
+        // no parsing errors and not silent
         else {
             if (!_silent && !isSilentOnOffStatement) {
-                if (_promptAndEcho == 2) { prettyPrintStatements(0, 0); printlnTo(0); }                         // immediate mode and result OK: pretty print input line
-                else if (_promptAndEcho == 1) { printlnTo(0); }
+                // echo enabled ? pretty print input line (echo input), then advance a line if input did not come from batch file OR the last thing printed was not a prompt 
+                if (_promptAndEcho == 2) { prettyPrintStatements(0, 0); }
+                if (_promptAndEcho >= 1) {
+                    if (!_lastPrintedIsPrompt) {
+                        printlnTo(0); *_pConsolePrintColumn = 0;
+                    }
+                }
             }
         }
     }
-    else {          // parsing error, abort or kill during parsing
+    else {                                                                                                      // parsing error, abort or kill during parsing
         if (_programMode && (_loadProgFromStreamNo <= 0)) {
             if (result == result_parse_abort) { printTo(0, "\r\nAbort: "); }                                    // not for other parsing errors
             else { printTo(0, "\r\nParsing error: "); }
@@ -1164,7 +1183,7 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
             clearFlowCtrlStack(parsedCmdLevelsToClear, true, false, false);
             clearParsedCommandLineStack(parsedCmdLevelsToClear);
 
-            int streamNumber = _activeFunctionData.statementInputStream;        // this is now the console stream again
+            int streamNumber = _activeFunctionData.statementInputStream;        // this is now the console input stream again
             bool stop{ false }, abort{ false };                 // dummy, as we are entering idle mode anyway
             setActiveStreamTo(streamNumber);                     // perform checks and set input stream to current statement input (console or batch file) 
             flushInputCharacters(stop, abort);                  // flush any remaining input characters (e.g. after a program load) 
@@ -1234,7 +1253,7 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
         _programMode = true;
         _programCounter = _programStorage;
 
-        if (_lastPrintedIsPrompt) { printlnTo(0); }                             // print new line if last printed was a prompt
+        if (_lastPrintedIsPrompt) { Serial.print("");  printlnTo(0); }                             // print new line if last printed was a prompt
         if (_loadProgFromStreamNo > 0) { if (!_silent) { printTo(0, "Loading program "); printTo(0, openFiles[_loadProgFromStreamNo - 1].filePath); printTo(0, "...\r\n"); } }
         else { printTo(0, "Waiting for program...\r\n"); }                      // even if silent, print (hint for the user)
         _lastPrintedIsPrompt = false;
@@ -1290,7 +1309,7 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
     (_openDebugLevels > 0) ? (_appFlags |= appFlag_stoppedInDebug) : (_appFlags |= appFlag_idle);
 
 #if PRINT_DEBUG_INFO
-    if (_lastPrintedIsPrompt) { printlnTo(0); }
+    if (_lastPrintedIsPrompt) { Serial.print("");  printlnTo(0); }
     _pDebugOut->print("==== flow ctrl stack elements = "); _pDebugOut->println(flowCtrlStack.getElementCount());
     _pDebugOut->print("     parsed cmd line stack el = "); _pDebugOut->println(parsedStatementLineStack.getElementCount());
     _pDebugOut->print("     open debug levels        = "); _pDebugOut->println(_openDebugLevels);
@@ -1307,20 +1326,23 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
 #endif
 
     setActiveStreamTo(0, true);
-    _lastPrintedIsPrompt = true;
 
-    int streamNumber = _activeFunctionData.statementInputStream;                                        // caller stream (batch file or command line)
-    if (streamNumber <= 0) { _silent = false; }                                                          // is true after autostart                    
+    // statement input from file: batch file input (it cannot be a program here)
+    int streamNumber = _activeFunctionData.statementInputStream;  //// ook bij program load ?                                      // caller stream (batch file or command line)
+    bool isBatchFile = (streamNumber > 0);
 
+    if (!isBatchFile) { _silent = false; }                                                          // is true after autostart                    
 
-    // print new prompt and exit
-    if (!_silent && (_promptAndEcho != 0) && (execResult != EVENT_initiateProgramLoad)) {
+    // if batch file, then only print prompt if not in silent mode and the last thing printed was not a prompt (this avoids printing a lot of Justina prompts followed by empty lines)
+    bool promptPrinting = (_promptAndEcho != 0) && (execResult != EVENT_initiateProgramLoad);   // only print prompts if enabled, and you're not waiting for an external program file
+    promptPrinting = promptPrinting && (!isBatchFile || (!_silent && !_lastPrintedIsPrompt));   // batch file: do not print prompt for every empty, comment... line 
 
-        if (_lastPrintedIsPrompt) { printlnTo(0); };                            // avoid two prompts on the same line
-        printTo(0, "Justina> ");
-        _lastPrintedIsPrompt = true;
+    if (promptPrinting) {
+        if (_lastPrintedIsPrompt) { printlnTo(0); }                                                // still positioned after the previous prompt: avoid two prompts on the same line
+        printTo(0, "Justina> ");                                                                    // and stay on that line
+        _lastPrintedIsPrompt = true;                                                                    // signal that a prompt is printed now
+        *_pConsolePrintColumn = 9;                                                                  // prompt character length 
     }
-    else { _lastPrintedIsPrompt = false; }
 
     execResult = result_execOK;
     return quitJustina;
@@ -1727,9 +1749,9 @@ void Justina::resetMachine(bool withUserVariables, bool withBreakpoints, bool ke
         _pBreakpoints->_BPlineRangeStorageUsed = 0;
 
         if (!_silent && !wasDraft && _pBreakpoints->_breakpointsStatusDraft) {
-            printlnTo(0); for (int i = 1; i <= 40; i++) { printTo(0, '*'); }
+            Serial.print("");  printlnTo(0); for (int i = 1; i <= 40; i++) { printTo(0, '*'); }
             printlnTo(0, "\r\n** Breakpoint status now set to DRAFT **");                                       // because table not empty
-            for (int i = 1; i <= 40; i++) { printTo(0, '*'); } printlnTo(0);
+            for (int i = 1; i <= 40; i++) { printTo(0, '*'); } Serial.print("");  printlnTo(0);
         }
     }
 

@@ -156,7 +156,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
         case cmdcod_abort:
         {
-            if (_openDebugLevels == 0) { return result_noProgramStopped; }
+            // this command is only available from the command line, and only if at least one program is stopped for debug (tested during parsing)
             return EVENT_abort;
         }
         break;
@@ -168,6 +168,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
         // these commands behave as if an error occurred, in order to follow the same processing logic  
         // the commands are issued from the command line and (except the abort command) restart a program stopped for debug
+        // these commands are only available from the command line, and only if at least one program is stopped for debug (tested during parsing)
 
         case cmdcod_step:
         case cmdcod_stepOver:
@@ -188,8 +189,6 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
             bool OpenBlock{ true };
             char nextStepBlockAction{ block_na };          // init
-
-            if (_openDebugLevels == 0) { return result_noProgramStopped; }
 
             // is this a debugging command requiring an open block ? (-> step out of block, step to block end commands)
             if (((_activeFunctionData.activeCmd_commandCode == cmdcod_stepOutOfBlock) ||
@@ -372,9 +371,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
         case cmdcod_setNextLine:
         {
-            // is at least one program stopped in debug mode ?
-            if (_openDebugLevels == 0) { return result_noProgramStopped; }
-
+            // this command is only available from the command line, and only if at least one program is stopped for debug (tested during parsing)
 
             // A. check argument (source line)
             // -------------------------------
@@ -796,7 +793,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
         case cmdcod_loadProg:
         {
-            if (_openDebugLevels > 0) { return result_noProgLoadLoadInDebugMode; }       // no program can be loaded while stopped programs exist (it would abort all these stopped programs)
+            // this command is only available in immediate mode (cmd line or batch file), and only if no programs are stopped for debug (tested during parsing)
             if (_openFileCount == MAX_OPEN_SD_FILES) { return result_SD_maxOpenFilesReached; }                                      // max. open files reached
 
             _loadProgFromStreamNo = 0;                                      // init: load from console 
@@ -857,8 +854,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
         case cmdcod_ditchBatchFile:
         {
             // use to end executing a batch file before the end of the file is reached
-            int streamNumber = _activeFunctionData.statementInputStream;                            // stream assigned to the currently executing batch file
-            if (streamNumber <= 0) { return result_IO_onlyAllowedInBatchFile; }                                // currently not executing a batch file
+            // this command is only available from inside a batch file (tested during parsing)
 
             terminateBatchFile();
 
@@ -881,56 +877,129 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                 Use the 'gotoLabel' command within a (while, if...) block structure to implement conditional back and forward jumps to a defined label within the batch file.
             ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- */
 
+            // this command is only available from inside a batch file (tested during parsing)
+
             // 1 argument: label name (arg. count check during parsing)
             bool argIsVar[1];
             bool argIsArray[1];
             char valueType[1];
             Val args[1];
             copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
-
-            int streamNumber = _activeFunctionData.statementInputStream;                        // stream assigned to the currently executing batch file
-            if (streamNumber <= 0) { return result_IO_onlyAllowedInBatchFile; }                            // currently not executing a batch file
-
+            // test argument (label to find)
             if (valueType[0] != value_isStringPointer) { return result_arg_stringExpected; }    // label to look for must be a string
             if (args[0].pStringConst == nullptr) { return result_arg_nonEmptyStringExpected; }  // label to look for must be a non-empty string
 
+            // prepare a string with the label to find, followed by two ending colons (::) - the starting slashes (//) are not included            
             int labelLength = 2 + strlen(args[0].pStringConst) + 2;                             // excluding terminating '\0'
             char label[labelLength + 1];
-            strcpy(label, "//");
-            strcat(label, args[0].pStringConst);
+            strcpy(label, args[0].pStringConst);
             strcat(label, "::");
 
-            // locate label position in batch file and move to the next line
-            File file = openFiles[streamNumber - 1].file;
-            unsigned long currentPosition = file.position();                                    // save current position in batch file
-            file.seek(0);                                                                       // start at beginning of file
-            bool isLabel = file.find(label);
-            if (isLabel) {                                                                      // label with surrounding "//" found ?
-                if (file.position() > labelLength) {                                            // not at beginning of file ?
-                    unsigned long p = file.seek(file.position() - labelLength - 1);             // go back to the character preceding the label text
-                    isLabel = (file.read() == '\n');                                            // preceding character must be '\n' (end of previous line)
+            // state machine: while reading the file, keep track of the current reading state (within string, within comment, ...) 
+            textState state{ lineStart };                                                       // currently at the start of a line
+            bool flag_isLabelCandidate{ true };                                                 // a label is still possible, based on last characters read 
+            bool labelFound{ false };
+
+            int streamNumber = _activeFunctionData.statementInputStream;                        // stream assigned to the currently executing batch file
+            File* pfile = &openFiles[streamNumber - 1].file;                                    // file number = stream number -1
+            pfile->seek(0);                                                                     // go to beginning of file
+
+            // find specified label in the batch file, starting from BOF
+            // ---------------------------------------------------------
+            // note that we cannot simply look for the label using pfile->find(...), because the label character pattern ("//...::") could be part of a single- or multi-line comment or a string
+
+            while (pfile->available())
+            {
+                bool exitNow{ false };
+                char c = pfile->read();
+
+                switch (state) {
+                    case defaultState:                                          // not within a comment or string, not at line start either (somewhere within a line)
+                    case lineStart:                                             // the first character of a line is next to read
+                    {
+                        flag_isLabelCandidate = (state == defaultState) ? (c == '\n') : (c == '/');     // label is possible ? (depending on next characters)
+                        if (c == '\"') { state = withinString; break; }         // quote: start of a string
+                        if (c == '/') { state = afterFirstCommentSlash; break; }// slash: start of a comment
+                        if (c == '\n') { state = lineStart; break; }            // back at line start
+                        state = defaultState;                                   // now somewhere within a line, but not at line start and not within a comment or a string
+                    }
+                    break;
+
+                    case withinString:
+                    {
+                        flag_isLabelCandidate = (c == '\n');                    // label is possible ? (depending on next characters)
+                        if (c == '\\') { state = stringEscCharRead; break; }    // backslash: start of a 2-character string escape sequence
+                        if (c == '\"') { state = defaultState; break; }         // quote (and not within an escape sequence): end string 
+                        if (c == '\n') { state = lineStart; break; }            // the string does not have an ending quote (note: parsing this line will lead to a parsing error) 
+                        // if other character, then state doesn't change (within a string)
+                    }
+                    break;
+
+                    case stringEscCharRead:
+                    {
+                        // note: parsing this line will produce an error if c is not one of these four characters: r,n,\ or " (completing the escape sequence)
+                        flag_isLabelCandidate = (c == '\n');                    // (c: 0x0a, NOT 'n') the backslash is the last character on that source line ?
+                        if (c == '\n') { state = lineStart; break; }            // the string does not have an ending quote(note: parsing this line will lead to a parsing error)
+                        state = withinString;
+                    }
+                    break;
+
+                    case afterFirstCommentSlash:                                // after the slash of what could become a comment start sequence ('//' or '/*')
+                    {
+                        if (c == '/') {                                         // second slash: single-line comment
+                            if (flag_isLabelCandidate) {                        // preceded by newline and slash
+                                unsigned long position = pfile->position();     // remember file position
+                                if (!pfile->findUntil(label, "\n")) { state = lineStart; break; }   // line end ('\n') was found before the label: at the start of a line now (continue searching) 
+                                if ((pfile->position() - position) != strlen(label)) {  // label did not start right after '//'
+                                    pfile->find('\n'); state = lineStart; break;        //  go to next line and continue the search
+                                }
+                                pfile->find('\n');  labelFound = exitNow = true; break; // label is FOUND (exit)
+                            }
+                            else { pfile->find("\n"); flag_isLabelCandidate = true; state = lineStart; break; }    // go to next line to continue the search
+                        }
+
+                        if (c == '*') {
+                            flag_isLabelCandidate = false;                      // label is not possible within a multi-line comment
+                            if (!pfile->find("*/")) { exitNow = true; break; }  // the multi-line comment does not have an ending '*/' sequence: the label is NOT FOUND (exit)
+                            state = defaultState; break;                        // now somewhere within a line  
+                        }
+
+                        flag_isLabelCandidate = (c == '\n');                    // a new line is required to start looking for a label
+                        if (c == '\n') { state = lineStart; break; }            // back at line start 
+                        state = defaultState;                                   // now somewhere within a line
+                    }
+                    break;
                 }
+
+                if (exitNow) { break; }                                         // flag_isLabelCandidate indicates whether a label is found or not
             }
-            if (isLabel) { file.find("\n"); }                                                   // skip remainder of current line - find start of next line (could be end of file) 
-            else { file.seek(currentPosition); }                                                // label not found: return to original position
+
+            if (!labelFound) { return result_IO_batchFileLabelNotFound; }    // label was not found ? error exit
+
+
+            // end execution of the line containing the 'gotoLabel' command
+            // ------------------------------------------------------------
 
             // if 'gotoLabel' command is part of a control structure (for, while,...), remove open blocks; but KEEP current batch file 
-            char blockType{ block_none };                                                       // init
+            char blockType{ block_none };                                               // init
             do {
-                blockType = ((OpenBlockGeneric*)_pFlowCtrlStackTop)->blockType;                 // always at least one level present for caller (because returning to it)
+                blockType = ((OpenBlockGeneric*)_pFlowCtrlStackTop)->blockType;         // always at least one level present for caller (because returning to it)
                 if ((blockType == block_for) || (blockType == block_while) || (blockType == block_if)) {
-                    flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);                            // delete FLOW CONTROL stack level (only if (optional) CALLED function open block stack level)
+                    flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);                // delete FLOW CONTROL stack level (only if (optional) CALLED function open block stack level)
                     _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
                 }
                 else { break; }
             } while (true);
 
-            // in program memory, move to the end of this parsed line containing the 'gotoLabel' statement (there's nothing more to execute on that line, as we are jumping to the label)
-            findTokenStep(_activeFunctionData.pNextStep, false, tok_no_token);                  // find end of parsed line 
+            // in program memory, move to the end of this parsed line containing the 'gotoLabel' statement (there's nothing more to execute on that line)
+            // the next line to be parsed starts at the current file position, being the line after the label that was found 
+            findTokenStep(_activeFunctionData.pNextStep, false, tok_no_token);          // find end of parsed line 
 
-             // clean up
-            clearEvalStackLevels(cmdArgCount);                                                  // clear evaluation stack ("exec" command arguments and associated intermediate strings) 
-            _activeFunctionData.activeCmd_commandCode = cmdcod_none;                            // command execution ended
+
+            // clean up
+            // --------
+            clearEvalStackLevels(cmdArgCount);                                          // clear evaluation stack ("exec" command arguments and associated intermediate strings) 
+            _activeFunctionData.activeCmd_commandCode = cmdcod_none;                    // command execution ended
         }
         break;
 
@@ -951,8 +1020,9 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                 The silent command itself is never echoed
             -------------------------------------------------------------------------------------------------------------------------------------------- */
 
+            // this command is only available from inside a batch file (tested during parsing)
+
             int streamNumber = _activeFunctionData.statementInputStream;
-            if (streamNumber <= 0) { return result_IO_onlyAllowedInBatchFile; }
 
             bool argIsVar[1];
             bool argIsArray[1];
@@ -1952,7 +2022,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                     }
                 }
             }
-            
+
             // clean up
             clearEvalStackLevels(cmdArgCount);                                                                              // clear evaluation stack and intermediate strings 
             _activeFunctionData.activeCmd_commandCode = cmdcod_none;                                                        // command execution ended
