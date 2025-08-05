@@ -87,8 +87,8 @@
 
 #define J_productName "Justina: JUST an INterpreter for Arduino"
 #define J_legalCopyright "Copyright 2024, 2025 Herwig Taveirne"
-#define J_version "1.4.0"            
-#define J_buildDate "February 15, 2025" 
+#define J_version "1.4.1"            
+#define J_buildDate "February 15, 2025" ////
 
 
 // ******************************************************************
@@ -189,7 +189,7 @@ private:
         block_genericEnd,                                               // ends any type of open block
 
         block_eval,                                                     // execution only, signals execution of parsed eval() string 
-        block_trigger,                                                  // execution only, signals execution of parsed trigger string
+        block_condition,                                                  // execution only, signals execution of parsed condition string
 
         // value 2, 3, 4: position in open block, min & max position of previous block command within same block level
         block_na,                                                       // not applicable for this block type
@@ -244,9 +244,9 @@ private:
         cmdcod_stepOutOfBlock,
         cmdcod_stepToBlockEnd,
         cmdcod_setNextLine,
-        cmdcod_trace,
-        cmdcod_traceExprOn,
-        cmdcod_traceExprOff,
+        cmdcod_watch,
+        cmdcod_watchExprOn,
+        cmdcod_watchExprOff,
         cmdcod_debug,
         cmdcod_BPon,
         cmdcod_BPoff,
@@ -670,7 +670,7 @@ private:
         tok_isTerminalGroup2,                                           // if index between 16 and 31
         tok_isTerminalGroup3,                                           // if index between 32 and 47
 
-        tok_isEvalEnd,                                                  // execution only, signals end of parsed eval() statements and of trigger strings
+        tok_isEvalEnd,                                                  // execution only, signals end of parsed eval() statements and of condition strings
     };
 
 
@@ -809,19 +809,19 @@ private:
         result_block_notAllowedInThisOpenBlock,
         result_block_wrongBlockSequence,
 
-        // tracing, eval() and other PARSING errors during EXECUTION phase
-        result_trace_eval_commandNotAllowed = 2100,
-        result_trace_eval_genericNameNotAllowed,
-        result_trace_userFunctonNotAllowed,                             // tracing restriction only
-        result_trace_evalFunctonNotAllowed,                             // tracing restriction only
+        // expression watching, eval() and other PARSING errors during EXECUTION phase
+        result_watch_eval_commandNotAllowed = 2100,
+        result_watch_eval_genericNameNotAllowed,
+        result_watch_userFunctonNotAllowed,                             // expression watching restriction only
+        result_watch_evalFunctonNotAllowed,                             // expression watching restriction only
         result_parseList_stringNotComplete,
         result_parseList_valueToParseExpected,
 
         // breakpoint errors
         result_BP_lineRangeTooLong,
         result_BP_lineTableMemoryFull,
-        result_BP_emptyTriggerString,
-        result_BP_triggerString_nothingToEvaluate,
+        result_BP_emptyConditionString,
+        result_BP_conditionString_nothingToEvaluate,
 
         // other program errors
         result_parse_abort = 2200,
@@ -991,8 +991,8 @@ private:
     // ------------------------------------------------------------------------------------------------------
 
     // (1) display and (2) fmt() settings
-    // -> display: last values, command line echo, tracing, print commands
-    // -------------------------------------------------------------------
+    // -> display: last values, command line echo, expression watching, print commands
+    // -------------------------------------------------------------------------------
 
 
     // maximum values
@@ -2008,8 +2008,8 @@ private:
     bool _silent{ false };
     bool _withinMultiLineComment{ false };
 
-    // display settings (last values, command line echo, tracing, print commands
-    // -------------------------------------------------------------------------
+    // display settings (last values, command line echo, expression watching, print commands
+    // -------------------------------------------------------------------------------------
 
     int _dispWidth = DEFAULT_DISP_WIDTH;
 
@@ -2056,7 +2056,7 @@ private:
     int _stepFlowCtrlStackLevels{ 0 };                                      // total flow control stack levels at the moment of a step, ... debugging command
     int _stepCmdExecuted{ db_continue };                                    // type of debugging command executed (step, ...)
     bool _debugCmdExecuted{ false };                                        // a debug command was executed
-    bool _pendingStopForDebug{ false };                                     // remember to stop anyway if trigger string result (not yet calculated) is zero
+    bool _pendingStopForDebug{ false };                                     // remember to stop anyway if condition string result (not yet calculated) is zero
 
     Breakpoints* _pBreakpoints{ nullptr };
 
@@ -2066,19 +2066,19 @@ private:
     int _trappedExecError{ (int)result_execOK };
     int _trappedEvalParsingError{ (int)result_parsing_OK };
 
-    // evaluation strings (eval("...")), trace and trigger strings
-    // -----------------------------------------------------------
+    // evaluation strings (eval("...")), watch and condition strings
+    // -------------------------------------------------------------
 
     bool _parsingEvalString{ false };
     long _evalParsingError{ 0L };
 
-    bool _parsingExecutingTraceString{ false };
-    bool _printTraceValueOnly{ false };                                     // do not print trace expression, only print trace evaluation result (value)
-    char* _pTraceString{ nullptr };
-    Val _traceResultValue{};
-    char _traceResultValueType{};
+    bool _parsingExecutingWatchString{ false };
+    bool _printWatchValueOnly{ false };                                     // do not print watch expression, only print watch evaluation result (value)
+    char* _pwatchString{ nullptr };
+    Val _watchResultValue{};
+    char _watchResultValueType{};
 
-    bool _parsingExecutingTriggerString{ false };
+    bool _parsingExecutingConditionString{ false };
 
 
     // counting of heap objects
@@ -2510,15 +2510,15 @@ private:
     bool fileIsOpen(const char* path);
 
 
-    // Justina error handling, debugging, tracing
-    // ------------------------------------------
+    // Justina error handling, debugging, expression watching
+    // ------------------------------------------------------
 
     bool trapError(bool& isEndOfStatementSeparator, execResult_type& execResult);
-    void checkTriggerResult(execResult_type& execResult);
+    void checkConditionResult(execResult_type& execResult);
     void checkForStop(bool& isActiveBreakpoint, bool& doStopForDebugNow, bool& appFlagsRequestStop, bool& isFunctionReturn, char* programCnt_previousStatementStart);
-    void parseAndExecTraceOrBPviewString(int BPindex = -1);
-    void traceAndPrintDebugInfo(execResult_type execResult);
-    parsingResult_type parseTriggerString(int BPindex);
+    void parseAndExecWatchOrBPwatchString(int BPindex = -1);
+    void watchAndPrintDebugInfo(execResult_type execResult);
+    parsingResult_type parseConditionString(int BPindex);
 
     // printing
     // --------    
@@ -2578,14 +2578,14 @@ private:
 
     struct BreakpointData {
         char BPenabled : 1;                             // breakpoint is enabled (program will stop)
-        char BPwithViewExpr : 1;                        // flag: breakpoint has (a) view expression(s)
+        char BPwithWatchExpr : 1;                       // flag: breakpoint has (a) watch expression(s)
         char BPwithHitCount : 1;                        // flag: breakpoint has a hit count
-        char BPwithTriggerExpr : 1;                     // flag: breakpoint has a trigger expression
+        char BPwithConditionExpr : 1;                     // flag: breakpoint has a condition expression
 
         long sourceLine{ 0 };                           // if breakpoint encountered, inform user on what source line
         char* pProgramStep{ nullptr };                  // compare with current program counter to find breakpoint entry 
-        char* pView{ nullptr };                         // pointer to view expressions separated by semicolons (string)
-        char* pTrigger{ nullptr };                      // pointer to trigger expression (string)
+        char* pWatch{ nullptr };                         // pointer to watch expressions separated by semicolons (string)
+        char* pCondition{ nullptr };                      // pointer to condition expression (string)
         long hitCount{ 0 };                             // pointer to number of hits triggering breakpoint
         long hitCounter{ 0 };                           // hit counter
     };
@@ -2611,14 +2611,14 @@ private:
     Justina::parsingResult_type addOneSourceLineRangePair(long gapLineRange, long adjacentLineRange);
 
     // maintaining breakpoints
-    Justina::execResult_type maintainBP(long breakpointLine, char actionCmdCode, int extraAttribCount = 0, const char* viewString = nullptr, long hitCount = 0, const char* triggerString = nullptr);
+    Justina::execResult_type maintainBP(long breakpointLine, char actionCmdCode, int extraAttribCount = 0, const char* watchString = nullptr, long hitCount = 0, const char* conditionString = nullptr);
     Justina::execResult_type findParsedStatementForSourceLine(long sourceLine, char*& pProgramStep);
 
     // utilities
     long BPsourceLineFromToBPlineSequence(long BPsourceLineOrIndex, bool toIndex = true);
     Justina::execResult_type progMem_getSetClearBP(long lineSequenceNum, char*& pProgramStep, bool doSet = false, bool doClear = false);
     Justina::execResult_type maintainBreakpointTable(long sourceLine, char* pProgramStep, bool doSet, bool doClear, bool doEnable, bool doDisable,
-        int extraAttribCount, const char* viewString, long hitCount, const char* triggerString);
+        int extraAttribCount, const char* watchString, long hitCount, const char* conditionString);
     BreakpointData* findBPtableRow(char* pParsedStatement, int& row);
     long findLineNumberForBPstatement(char* pProgramStepToFind);
     void  printBreakpoints();

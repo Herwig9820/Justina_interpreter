@@ -12,8 +12,8 @@
 
 
 /*
-    This is an example of a Justina batch file (.jba extension) used a startup file.
-    --------------------------------------------------------------------------------
+    This is an example of a Justina batch file (.jba extension) used as startup file.
+    ---------------------------------------------------------------------------------
     It loads program 'calculatorWebServer_multiSessions' (program file "web_cal2.jus") and subsuequently 
     starts function 'webServer()'.
 */

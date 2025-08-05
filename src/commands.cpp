@@ -266,10 +266,10 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
 
         // ------------------------
-        // Define Trace expressions
+        // Define watch expressions
         // ------------------------
 
-        case cmdcod_trace:
+        case cmdcod_watch:
         {
             bool operandIsVar = (pStackLvl->varOrConst.tokenType == tok_isVariable);
             char valueType = operandIsVar ? (*pStackLvl->varOrConst.varTypeAddress & value_typeMask) : pStackLvl->varOrConst.valueType;
@@ -279,7 +279,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             bool opIsString = ((uint8_t)valueType == value_isStringPointer);
             if (!opIsString) { return result_arg_stringExpected; }
 
-            setNewSystemExpression(_pTraceString, value.pStringConst);
+            setNewSystemExpression(_pwatchString, value.pStringConst);
 
             // clean up
             clearEvalStackLevels(cmdArgCount);                              // clear evaluation stack and intermediate strings
@@ -288,14 +288,14 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
         break;
 
 
-        // -----------------------------------------------------------------
-        // while tracing: view values only, or preceded by trace expressions
-        // -----------------------------------------------------------------
+        // ------------------------------------------------------------------------------
+        // while expression watching: watch values only, or preceded by watch expressions
+        // ------------------------------------------------------------------------------
 
-        case cmdcod_traceExprOn:
-        case cmdcod_traceExprOff:
+        case cmdcod_watchExprOn:
+        case cmdcod_watchExprOff:
         {
-            _printTraceValueOnly = (_activeFunctionData.activeCmd_commandCode == cmdcod_traceExprOff);
+            _printWatchValueOnly = (_activeFunctionData.activeCmd_commandCode == cmdcod_watchExprOff);
 
             // clean up
             clearEvalStackLevels(cmdArgCount);                              // clear evaluation stack and intermediate strings 
@@ -520,24 +520,24 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
         case cmdcod_disableBP:
         {
             // set/clear/enable/disable breakpoints: source line number [, source line number, ...]
-            // set breakpoint                      : source line number, view string [, trigger string] - or -
-            //                                       source line number, view string , hit count
+            // set breakpoint                      : source line number, watch string [, condition string] - or -
+            //                                       source line number, watch string , hit count
 
             bool argIsVar;
             bool argIsArray;
             char valueType;
             Val arg;
 
-            bool isWithViewExpression{ false };
+            bool isWithWatchExpression{ false };
             bool isWithHitCount{ false };
             long sourceLine{ 0 };
             long hitCount{ 0 };
-            char* triggerExpr{ nullptr }, * viewExpr{ nullptr };
+            char* conditionExpr{ nullptr }, * watchExpr{ nullptr };
             LE_evalStack* pArg1StackLvl = pStackLvl;
 
             if ((_activeFunctionData.activeCmd_commandCode == cmdcod_setBP) && ((cmdArgCount == 2) || (cmdArgCount == 3))) {
-                // possibly a single breakpoint with view expression (can be empty string) and hit count,
-                //      or,                                                                and optional view expression (both can be empty strings)
+                // possibly a single breakpoint with watch expression (can be empty string) and hit count,
+                //      or,                                                                and optional watch expression (both can be empty strings)
                 for (int i = 1; i <= cmdArgCount; i++) {
                     copyValueArgsFromStack(pStackLvl, 1, &argIsVar, &argIsArray, &valueType, &arg);
 
@@ -545,26 +545,26 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                         sourceLine = (valueType == value_isLong) ? arg.longConst : (long)arg.floatConst;
                         if ((sourceLine < 1) || (sourceLine > 99999)) { return result_BP_invalidSourceLine; }
                     }
-                    else if (i == 2) {       // if string, this is a view string
-                        isWithViewExpression = (valueType == value_isStringPointer);
-                        if (isWithViewExpression) { viewExpr = arg.pStringConst; }
-                        else { break; }       // not a single breakpoint with view expression and optional hit count or trigger expression
+                    else if (i == 2) {       // if string, this is a watch string
+                        isWithWatchExpression = (valueType == value_isStringPointer);
+                        if (isWithWatchExpression) { watchExpr = arg.pStringConst; }
+                        else { break; }       // not a single breakpoint with watch expression and optional hit count or condition expression
                     }
                     else if (i == 3) {
-                        isWithHitCount = ((valueType == value_isLong) || (valueType == value_isFloat));     // third arg must be string (view expression, if provided)
+                        isWithHitCount = ((valueType == value_isLong) || (valueType == value_isFloat));     // third arg must be string (watch expression, if provided)
                         if (isWithHitCount) {
                             hitCount = (valueType == value_isLong ? arg.longConst : (long)arg.floatConst);
                             if ((hitCount < 1) || (hitCount > 100000)) { return result_BP_hitcountNotWithinRange; }
                         }
-                        else { triggerExpr = arg.pStringConst; }
+                        else { conditionExpr = arg.pStringConst; }
                     }
                 }
             }
 
-            // set one breakpoint with view expression and, optionally, hit count or trigger expression ?
-            if (isWithViewExpression) {
-                int extraAttribCount = cmdArgCount - 1;                         // 0: no extra attributes supplied, 1: with view expression, 2: idem, + hit count or trigger expression 
-                execResult = _pBreakpoints->maintainBP(sourceLine, _activeFunctionData.activeCmd_commandCode, extraAttribCount, viewExpr, hitCount, triggerExpr);
+            // set one breakpoint with watch expression and, optionally, hit count or condition expression ?
+            if (isWithWatchExpression) {
+                int extraAttribCount = cmdArgCount - 1;                         // 0: no extra attributes supplied, 1: with watch expression, 2: idem, + hit count or condition expression 
+                execResult = _pBreakpoints->maintainBP(sourceLine, _activeFunctionData.activeCmd_commandCode, extraAttribCount, watchExpr, hitCount, conditionExpr);
                 if (execResult != result_execOK) { return execResult; }
             }
 
@@ -650,11 +650,11 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             char valueType;
             Val arg;
 
-            bool isWithViewExpression{ false };
+            bool isWithWatchExpression{ false };
             bool isWithHitCount{ false };
             long sourceLine[2];
             long hitCount{ 0 };
-            char* triggerExpr{ nullptr }, * viewExpr{ nullptr };
+            char* conditionExpr{ nullptr }, * watchExpr{ nullptr };
             LE_evalStack* pArg1StackLvl = pStackLvl;
 
             pStackLvl = pArg1StackLvl;          // points to first argument again
@@ -686,21 +686,21 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
 
 
             // recover breakpoint attributes for 'sending' source line
-            setNewSystemExpression(viewExpr, _pBreakpoints->_pBreakpointData[sourceEntry].pView);
-            setNewSystemExpression(triggerExpr, _pBreakpoints->_pBreakpointData[sourceEntry].pTrigger);
+            setNewSystemExpression(watchExpr, _pBreakpoints->_pBreakpointData[sourceEntry].pWatch);
+            setNewSystemExpression(conditionExpr, _pBreakpoints->_pBreakpointData[sourceEntry].pCondition);
             hitCount = _pBreakpoints->_pBreakpointData[sourceEntry].hitCount;
 
             // clear BP for 'sending' source line first (this ensures that there will be place in the BP table for the 'receiving' source line BP)
             execResult = _pBreakpoints->maintainBP(sourceLine[0], cmdcod_clearBP);
             if (execResult != result_execOK) { return execResult; }
 
-            // set BP for 'receiving' source line (extra attributes = 2: view expression, + hit count or trigger expression, supplied)
-            execResult = _pBreakpoints->maintainBP(sourceLine[1], cmdcod_setBP, 2, viewExpr, hitCount, triggerExpr);
+            // set BP for 'receiving' source line (extra attributes = 2: watch expression, + hit count or condition expression, supplied)
+            execResult = _pBreakpoints->maintainBP(sourceLine[1], cmdcod_setBP, 2, watchExpr, hitCount, conditionExpr);
             if (execResult != result_execOK) { return execResult; }
 
             // recover breakpoint attributes for 'sending' source line
-            setNewSystemExpression(viewExpr, nullptr);
-            setNewSystemExpression(triggerExpr, nullptr);
+            setNewSystemExpression(watchExpr, nullptr);
+            setNewSystemExpression(conditionExpr, nullptr);
 
             // current breakpoint status is draft ? If last BP has now been cleared, activate breakpoints again. Otherwise, print reminder message.
             if (_pBreakpoints->_breakpointsStatusDraft) {
@@ -2161,7 +2161,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                 intFmt precision [, specifier]  [, flags] ]      : set formatting for integers
                 NOTE: string printing : NOT affected
 
-                these settings are used for printing last calculation result, user input echo, print commands output and values traced in debug mode('trace' command)
+                these settings are used for printing last calculation result, user input echo, print commands output and expressions watched in debug mode('watch' command)
 
                 precision:
                 floatFmt command with 'f', 'e' or 'E' specifier: number of digits printed after the decimal point

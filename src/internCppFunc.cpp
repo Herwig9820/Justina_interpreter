@@ -2409,14 +2409,14 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 }
                 break;
 
-                case 20:                                                                        // trace string
+                case 20:                                                                        // watch string
                 {
                     fcnResultValueType = value_isStringPointer;
                     fcnResult.pStringConst = nullptr;                                           // init (empty string)
-                    if (_pTraceString != nullptr) {
+                    if (_pwatchString != nullptr) {
                         _intermediateStringObjectCount++;
-                        fcnResult.pStringConst = new char[strlen(_pTraceString) + 1];
-                        strcpy(fcnResult.pStringConst, _pTraceString);
+                        fcnResult.pStringConst = new char[strlen(_pwatchString) + 1];
+                        strcpy(fcnResult.pStringConst, _pwatchString);
                     #if PRINT_HEAP_OBJ_CREA_DEL
                         _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
                         _pDebugOut->print("         sysval(20) ");   _pDebugOut->println(fcnResult.pStringConst);
@@ -2425,7 +2425,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 }
                 break;
 
-                case 21: fcnResult.longConst = _printTraceValueOnly; break;                     // view traced values without expression texts ?
+                case 21: fcnResult.longConst = _printWatchValueOnly; break;                     // view watched expression results without expression texts ?
 
                 // product info
                 // ------------

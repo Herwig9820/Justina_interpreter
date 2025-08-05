@@ -543,7 +543,7 @@ Justina::execResult_type Justina::exec(char* startHere) {
                     bool doCaseBreak{ false };
                     isEndOfStatementSeparator = true;
 
-                    if (_parsingExecutingTriggerString) { break; }                                                  // evaluating a trigger string ? nothing to do here
+                    if (_parsingExecutingConditionString) { break; }                                                  // evaluating a condition string ? nothing to do here
 
                     // simple expression statement (not a command)
                     // -------------------------------------------
@@ -552,8 +552,8 @@ Justina::execResult_type Justina::exec(char* startHere) {
                         // more than one 'result' in evaluation stack: 
                         if (evalStack.getElementCount() > (_activeFunctionData.callerEvalStackLevels + 1)) {
                         #if PRINT_OBJECT_COUNT_ERRORS
-                            if (!_parsingExecutingTraceString && !_parsingExecutingTriggerString) {
-                                // if tracing, message would not be correct. Eval stack levels will be deleted right after printing a traced value (or trace execution error)
+                            if (!_parsingExecutingWatchString && !_parsingExecutingConditionString) {
+                                // if watching expressions, message would not be correct. Eval stack levels will be deleted right after printing the value of a watch expression (or 'expression watch' execution error)
                                 _pDebugOut->print("**** Evaluation stack error. Remaining stack levels for current program level: "); _pDebugOut->println(evalStack.getElementCount() - (_activeFunctionData.callerEvalStackLevels + 1));
                             }
                         #endif
@@ -578,15 +578,15 @@ Justina::execResult_type Justina::exec(char* startHere) {
                                 if (tokenType != tok_isEvalEnd) { clearEvalStackLevels(1); }
                             }
 
-                            // trace or a BP trace expression result ? Store result and delete evaluation stack level
-                            else if (_parsingExecutingTraceString) {
-                                _traceResultValue.floatConst = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? *_pEvalStackTop->varOrConst.value.pFloatConst : _pEvalStackTop->varOrConst.value.floatConst;  // OK for all value types
-                                _traceResultValueType = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pEvalStackTop->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackTop->varOrConst.valueType;
+                            // watch or BP watch expression result ? Store result and delete evaluation stack level
+                            else if (_parsingExecutingWatchString) {
+                                _watchResultValue.floatConst = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? *_pEvalStackTop->varOrConst.value.pFloatConst : _pEvalStackTop->varOrConst.value.floatConst;  // OK for all value types
+                                _watchResultValueType = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable) ? (*_pEvalStackTop->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackTop->varOrConst.valueType;
                                 clearEvalStackLevels(1);
                             }
 
                             // simple expression statement result
-                            else {                                                                                                  // not an eval() block, not tracing
+                            else {                                                                                                  // not an eval() block, not expression watching
                                 // in main program level ? store as last value (for now, we don't know if it will be followed by other 'last' values)
                                 if ((_programCounter >= (_programStorage + _PROGRAM_MEMORY_SIZE)) && (_activeFunctionData.blockType != block_batchFile)) {
                                     saveLastValue(_lastValueIsStored);
@@ -656,19 +656,19 @@ Justina::execResult_type Justina::exec(char* startHere) {
         // if error trapping is on, trap any error. This effectively clears the error condition. A subsequent call to err() will return the error number 
         // ---------------------------------------------------------------------------------------------------------------------------------------------
         // did an error occur in a Justina function, the (debug) command line or an eval() string ? 
-        if (!_parsingExecutingTraceString && !_parsingExecutingTriggerString && (execResult != result_execOK) && (execResult < EVENT_startOfEvents)) {    // Trap the error if error trapping is enabled
+        if (!_parsingExecutingWatchString && !_parsingExecutingConditionString && (execResult != result_execOK) && (execResult < EVENT_startOfEvents)) {    // Trap the error if error trapping is enabled
             bool errorTrapped = trapError(isEndOfStatementSeparator, execResult);                               // if error trapped, execResult will be reset (no error)
             // reset 'isComma', because error trapping moves the next step to first step after the statement producing an execution error, in the function were error trapping is enabled 
             if (errorTrapped) { isComma = false; }
         }
 
-        // If a trigger string was evaluated (with or without execution error), then check evaluation result. Only if (numeric AND not equal to zero), stop for breakpoint 
-        // ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+        // If a condition string was evaluated (with or without execution error), then check evaluation result. Only if (numeric AND not equal to zero), stop for breakpoint 
+        // -------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-        if (_parsingExecutingTriggerString) {
+        if (_parsingExecutingConditionString) {
             // stop evaluation if done evaluating OR if an execution error occurred during evaluation
-            bool isTriggerEvalEnd = (isEndOfStatementSeparator || (execResult != result_execOK) && (execResult < EVENT_startOfEvents));
-            if (isTriggerEvalEnd) { checkTriggerResult(execResult); isEndOfStatementSeparator = false; }     // avoid end of statement processing (below)
+            bool isConditionEvalEnd = (isEndOfStatementSeparator || (execResult != result_execOK) && (execResult < EVENT_startOfEvents));
+            if (isConditionEvalEnd) { checkConditionResult(execResult); isEndOfStatementSeparator = false; }     // avoid end of statement processing (below)
 
         }
 
@@ -723,16 +723,16 @@ Justina::execResult_type Justina::exec(char* startHere) {
             // process debugging commands (entered from the command line, or forced abort / stop requests received while a program is running  
             // ------------------------------------------------------------------------------------------------------------------------------
 
-            // note: skip while executing trace expressions, parsed eval() expressions or quitting Justina
+            // note: skip while executing watch expressions, parsed eval() expressions or quitting Justina
 
             bool executingEvalString = (_activeFunctionData.blockType == block_eval);
 
             bool isBatchFileLaunch = (_activeFunctionData.activeCmd_isInternal) ? (_activeFunctionData.activeCmd_commandCode == cmdcod_execBatchFile) : false;
 
-            if (!_parsingExecutingTraceString && !_parsingExecutingTriggerString && !executingEvalString && (execResult == result_execOK)) {
+            if (!_parsingExecutingWatchString && !_parsingExecutingConditionString && !executingEvalString && (execResult == result_execOK)) {
                 bool isActiveBreakpoint{ false }, doStopForDebugNow{ false };
                 checkForStop(isActiveBreakpoint, doStopForDebugNow, appFlagsRequestStop, isFunctionReturn, programCnt_previousStatementStart);
-                tokenType = *_programCounter & 0x0F;             // adapt next token type (could be changed by a breakpoint trigger string)
+                tokenType = *_programCounter & 0x0F;             // adapt next token type (could be changed by a  string)
 
                 if (appFlagsRequestAbort) { execResult = EVENT_abort; }
                 else if (doStopForDebugNow) { execResult = (isActiveBreakpoint ? EVENT_stopForBreakpoint : EVENT_stopForDebug); }
@@ -750,19 +750,19 @@ Justina::execResult_type Justina::exec(char* startHere) {
     // did the execution produce a result ? print it
     // ---------------------------------------------
 
-    if (_parsingExecutingTraceString) {
+    if (_parsingExecutingWatchString) {
 
-        // execution of TRACE or BP view string (so at least one program is stopped)
-        // NOTE that execution of a breakpoint TRIGGER string is inserted in normal execution flow, so control doesn't pass here (same as eval() function execution)
+        // execution of watch or BP watch string (so at least one program is stopped)
+        // NOTE that execution of a breakpoint condition string is inserted in normal execution flow, so control doesn't pass here (same as eval() function execution)
         int charsPrinted{  };                                                                                           // required but not used
         Val toPrint;
         if (execResult == result_execOK) {
-            bool isLong = (_traceResultValueType == value_isLong);
-            bool isFloat = (_traceResultValueType == value_isFloat);
+            bool isLong = (_watchResultValueType == value_isLong);
+            bool isFloat = (_watchResultValueType == value_isFloat);
             char* fmtString = isLong ? _dispIntegerFmtString : isFloat ? _dispFloatFmtString : _dispStringFmtString;
             // printToString() expects long, float or char*: remove extra level of indirection (variables only)
             printToString(0, isLong ? _dispIntegerPrecision : isFloat ? _dispFloatPrecision : MAX_STRCHAR_TO_PRINT,
-                (!isLong && !isFloat), isLong, &_traceResultValueType, &_traceResultValue, fmtString, toPrint, charsPrinted);
+                (!isLong && !isFloat), isLong, &_watchResultValueType, &_watchResultValue, fmtString, toPrint, charsPrinted);
         }
         else {
             char valTyp = value_isStringPointer;
@@ -778,7 +778,7 @@ Justina::execResult_type Justina::exec(char* startHere) {
             printTo(_debug_sourceStreamNumber, toPrint.pStringConst);
         #if PRINT_HEAP_OBJ_CREA_DEL
             _pDebugOut->print("\r\n----- (Intermd str) "); _pDebugOut->println((uint32_t)toPrint.pStringConst, HEX);
-            _pDebugOut->print("  par/exe trace str "); _pDebugOut->println(toPrint.pStringConst);
+            _pDebugOut->print("  par/exe watch str "); _pDebugOut->println(toPrint.pStringConst);
         #endif
             _intermediateStringObjectCount--;
             delete[] toPrint.pStringConst;
@@ -788,7 +788,7 @@ Justina::execResult_type Justina::exec(char* startHere) {
         clearEvalStackLevels(evalStack.getElementCount() - (int)_activeFunctionData.callerEvalStackLevels);
     }
 
-    // not a trace string: normal execution 
+    // not a watch string: normal execution 
     else {
         if (execResult == result_execOK) {              // no error: print last result
 
@@ -1093,8 +1093,8 @@ void Justina::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNo
     }
 
 
-    // B. is a breakpoint set for this statement, is it enabled and does it have a hit count or trigger condition ?
-    // -----------------------------------------------------------------------------------------------------------
+    // B. is a breakpoint set for this statement, is it enabled and does it have a hit count or condition expression ?
+    // ---------------------------------------------------------------------------------------------------------------
 
     Breakpoints::BreakpointData* pBreakpointDataRow = nullptr;
     int BPdataRow = -1;                                                                                     // init: no valid row
@@ -1113,16 +1113,16 @@ void Justina::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNo
             if (isActiveBreakpoint) { pBreakpointDataRow->hitCounter = 0; }                                 // if hit count reached, reset hit counter
         }
 
-        // enabled breakpoint has a trigger expression set as trigger condition ? parse trigger expression
+        // enabled breakpoint has a condition expression set as trigger condition ? parse condition expression
         // if parsing error, then condition is considered false (no breakpoint set)
-        // if no parsing error, then launch execution of trigger expression
-        else if (pBreakpointDataRow->BPwithTriggerExpr == 0b1) {
-            parsingResult_type result = parseTriggerString(BPdataRow);
-            isActiveBreakpoint = (result == result_parsing_OK);                                                         // but trigger string must still be evaluated
+        // if no parsing error, then launch execution of condition expression
+        else if (pBreakpointDataRow->BPwithConditionExpr == 0b1) {
+            parsingResult_type result = parseConditionString(BPdataRow);
+            isActiveBreakpoint = (result == result_parsing_OK);                                                         // but condition string must still be evaluated
 
-            if (isActiveBreakpoint) {                                                                                   // trigger string was parsed without errors
-                _parsingExecutingTriggerString = true;
-                isActiveBreakpoint = false;                                                                             // reset, because trigger string must still be evaluated
+            if (isActiveBreakpoint) {                                                                                   // condition string was parsed without errors
+                _parsingExecutingConditionString = true;
+                isActiveBreakpoint = false;                                                                             // reset, because condition string must still be evaluated
 
                 // push caller function data on FLOW CONTROL stack 
                 // -----------------------------------------------
@@ -1130,7 +1130,7 @@ void Justina::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNo
                 *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                                         // push caller function data to stack
                 ((OpenFunctionData*)_pFlowCtrlStackTop)->withParsedStatementLine = 1;
 
-                _activeFunctionData.blockType = block_trigger;                                                          // now executing parsed 'trigger eval' string
+                _activeFunctionData.blockType = block_condition;                                                          // now executing parsed 'condition eval' string
                 _activeFunctionData.activeCmd_commandCode = cmdcod_none;                                                // command execution ended 
                 _activeFunctionData.callerEvalStackLevels = evalStack.getElementCount();                                // store evaluation stack levels in use by callers (call stack)
                 _activeFunctionData.trapEnable = 0;
@@ -1138,10 +1138,10 @@ void Justina::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNo
                 _activeFunctionData.statementInputStream = 0;                                                           // input stream is console
 
 
-                // set next step to start of parsed trigger string
-                // -----------------------------------------------
+                // set next step to start of parsed condition string
+                // -------------------------------------------------
                 _programCounter = _programStorage + _PROGRAM_MEMORY_SIZE;                                               // first step in first statement in parsed eval() string
-                int tokenType = *_programCounter & 0x0F;             // adapt next token type (could be changed by a breakpoint trigger string)
+                int tokenType = *_programCounter & 0x0F;             // adapt next token type (could be changed by a breakpoint condition string)
                 int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(Token_terminal) : (tokenType == tok_isConstant) ? sizeof(Token_constant) :
                     (tokenType == tok_isSymbolicConstant) ? sizeof(Token_symbolicConstant) : (*_programCounter >> 4) & 0x0F;
                 _activeFunctionData.pNextStep = _programCounter + tokenLength;                                          // look ahead
@@ -1177,10 +1177,10 @@ void Justina::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNo
     isFunctionReturn = false;
 
     if (requestStopForDebugNow) {
-        if (_parsingExecutingTriggerString) {
-            // if trigger string evaluation (not yet done) result would be zero, perform a normal stop for debug at that moment, not now (we don't know yet if this will be a breakpoint stop)
+        if (_parsingExecutingConditionString) {
+            // if condition string evaluation (not yet done) result would be zero, perform a normal stop for debug at that moment, not now (we don't know yet if this will be a breakpoint stop)
             _pendingStopForDebug = true;
-            requestStopForDebugNow = false;                         // reset, because trigger string must still be evaluated
+            requestStopForDebugNow = false;                         // reset, because condition string must still be evaluated
         }
 
         appFlagsRequestStop = false;
@@ -1191,26 +1191,26 @@ void Justina::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNo
 }
 
 
-// ----------------------------------------
-// *   parse trigger string expressions   *
-// ----------------------------------------
+// ------------------------------------------
+// *   parse condition string expressions   *
+// ------------------------------------------
 
-// trace string may not contain keywords, user functions, generic names
+// watch string may not contain keywords, user functions, generic names
 
-Justina::parsingResult_type Justina::parseTriggerString(int BPindex) {
+Justina::parsingResult_type Justina::parseConditionString(int BPindex) {
 
-    char* pTriggerParsingInput = _pBreakpoints->_pBreakpointData[BPindex].pTrigger;                                                 // copy pointer to start of trace string
-    if (pTriggerParsingInput == nullptr) { return result_BP_emptyTriggerString; }                                                   // no trace string: nothing to trace
+    char* pconditionParsingInput = _pBreakpoints->_pBreakpointData[BPindex].pCondition;                                                 // copy pointer to start of watch string
+    if (pconditionParsingInput == nullptr) { return result_BP_emptyConditionString; }                                                   // no watch string: nothing to watch
 
     // skip any spaces and semi-colons in the input stream
-    while ((pTriggerParsingInput[0] == ' ') || (pTriggerParsingInput[0] == term_semicolon[0])) { pTriggerParsingInput++; }
-    if (*pTriggerParsingInput == '\0') { return result_BP_triggerString_nothingToEvaluate; }                                        // no expression: trigger result = false
+    while ((pconditionParsingInput[0] == ' ') || (pconditionParsingInput[0] == term_semicolon[0])) { pconditionParsingInput++; }
+    if (*pconditionParsingInput == '\0') { return result_BP_conditionString_nothingToEvaluate; }                                        // no expression: condition result = false
 
-    // push current command line storage to command line stack, to make room for the parsed trigger string (will be parsed now) 
-    // ------------------------------------------------------------------------------------------------------------------------
+    // push current command line storage to command line stack, to make room for the parsed condition string (will be parsed now) 
+    // --------------------------------------------------------------------------------------------------------------------------
 
 #if PRINT_PARSED_CMD_STACK
-    _pDebugOut->print("   >> PUSH parsed statements (start parsing trigger string): steps = "); _pDebugOut->println(_lastUserCmdLineStep - (_programStorage + _PROGRAM_MEMORY_SIZE));
+    _pDebugOut->print("   >> PUSH parsed statements (start parsing condition string): steps = "); _pDebugOut->println(_lastUserCmdLineStep - (_programStorage + _PROGRAM_MEMORY_SIZE));
 #endif
     long parsedUserCmdLen = _lastUserCmdLineStep - (_programStorage + _PROGRAM_MEMORY_SIZE) + 1;
     _pParsedCommandLineStackTop = (char*)parsedStatementLineStack.appendListElement(sizeof(char*) + parsedUserCmdLen);
@@ -1218,21 +1218,21 @@ Justina::parsingResult_type Justina::parseTriggerString(int BPindex) {
     memcpy(_pParsedCommandLineStackTop + sizeof(char*), (_programStorage + _PROGRAM_MEMORY_SIZE), parsedUserCmdLen);
     *(_programStorage + _PROGRAM_MEMORY_SIZE) = tok_no_token;                                                   // init command line storage (to be used for batch file parsing)
 
-    // parse trigger string
-    // --------------------
+    // parse condition string
+    // ----------------------
     char* pDummy{};
     char* holdProgramCounter = _programCounter;
     _programCounter = _programStorage + _PROGRAM_MEMORY_SIZE;                                                    // parsed statements go to immediate mode program memory
 
-    // parse ONE trigger string expression only
+    // parse ONE condition string expression only
 
 
     // note: application flags are not adapted (would not be passed to caller immediately)
     int dummyInt{}; bool dummyBool{};
 
-    _parsingExecutingTriggerString = true;         // after the last 'error' return in this procedure
-    parsingResult_type parsingResult = parseStatement(pTriggerParsingInput, pDummy, dummyInt, dummyBool);
-    _parsingExecutingTriggerString = false;
+    _parsingExecutingConditionString = true;         // after the last 'error' return in this procedure
+    parsingResult_type parsingResult = parseStatement(pconditionParsingInput, pDummy, dummyInt, dummyBool);
+    _parsingExecutingConditionString = false;
 
     if (parsingResult != result_parsing_OK) {
 
@@ -1249,7 +1249,7 @@ Justina::parsingResult_type Justina::parseTriggerString(int BPindex) {
         _pParsedCommandLineStackTop = (char*)parsedStatementLineStack.getLastListElement();
 
     #if PRINT_PARSED_CMD_STACK
-        _pDebugOut->print("   >> POP parsed statements (trigger string parsing error): steps = "); _pDebugOut->println(_lastUserCmdLineStep - (_programStorage + _PROGRAM_MEMORY_SIZE));
+        _pDebugOut->print("   >> POP parsed statements (condition string parsing error): steps = "); _pDebugOut->println(_lastUserCmdLineStep - (_programStorage + _PROGRAM_MEMORY_SIZE));
     #endif
     }
 
@@ -1258,13 +1258,13 @@ Justina::parsingResult_type Justina::parseTriggerString(int BPindex) {
 }
 
 
-// --------------------------------------------------------------------------------------------------
-// trigger expression is evaluated, with or without error: determine whether breakpoint should be set
-// --------------------------------------------------------------------------------------------------
+// ----------------------------------------------------------------------------------------------------
+// condition expression is evaluated, with or without error: determine whether breakpoint should be set
+// ----------------------------------------------------------------------------------------------------
 
-void Justina::checkTriggerResult(execResult_type& execResult) {
+void Justina::checkConditionResult(execResult_type& execResult) {
 
-    // pop parsed statement stack (imm. mode program storage was used to store parsed trigger string, which has been evaluated now))
+    // pop parsed statement stack (imm. mode program storage was used to store parsed condition string, which has been evaluated now))
     _lastUserCmdLineStep = *(char**)_pParsedCommandLineStackTop;
     long parsedUserCmdLen = _lastUserCmdLineStep - (_programStorage + _PROGRAM_MEMORY_SIZE) + 1;
     deleteConstStringObjects(_programStorage + _PROGRAM_MEMORY_SIZE);      // string constants that were created just now 
@@ -1273,10 +1273,10 @@ void Justina::checkTriggerResult(execResult_type& execResult) {
     _pParsedCommandLineStackTop = (char*)parsedStatementLineStack.getLastListElement();
 
 #if PRINT_PARSED_CMD_STACK
-    _pDebugOut->print("   >> POP parsed statements (trigger evaluation done): steps = "); _pDebugOut->println(_lastUserCmdLineStep - (_programStorage + _PROGRAM_MEMORY_SIZE));
+    _pDebugOut->print("   >> POP parsed statements (condition evaluation done): steps = "); _pDebugOut->println(_lastUserCmdLineStep - (_programStorage + _PROGRAM_MEMORY_SIZE));
 #endif
 
-    // trigger expression executed without error ? If evaluation result is numeric and net equal to zero, then stop at breakpoint 
+    // condition expression executed without error ? If evaluation result is numeric and net equal to zero, then stop at breakpoint 
     bool isActiveBreakpoint{ false };
     if (execResult == result_execOK) {
         bool isVar = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable);
@@ -1295,10 +1295,10 @@ void Justina::checkTriggerResult(execResult_type& execResult) {
     _activeFunctionData = *(OpenFunctionData*)_pFlowCtrlStackTop;
     flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);
     _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
-    _parsingExecutingTriggerString = false;
+    _parsingExecutingConditionString = false;
 
-    // if trigger expression evaluated to true, return with breakpoint event
-    // if not, but a 'stop' command was pending (until after execution of trigger string, so until now), return with stop event
+    // if condition expression evaluated to true, return with breakpoint event
+    // if not, but a 'stop' command was pending (until after execution of condition string, so until now), return with stop event
     execResult = isActiveBreakpoint ? EVENT_stopForBreakpoint : _pendingStopForDebug ? EVENT_stopForDebug : result_execOK;
     _pendingStopForDebug = false;
 
@@ -2702,7 +2702,7 @@ Justina::execResult_type  Justina::launchEval(LE_evalStack*& pFunctionStackLvl, 
     char* pParsingInput_temp = pEvalParsingInput;                                                   // temp, because value will be changed upon return (preserve original pointer value)
     // note: application flags are not adapted (would not be passed to caller immediately)
     int dummyInt{}; bool dummyBool{};
-    parsingResult_type result = parseStatement(pParsingInput_temp, pDummy, dummyInt, dummyBool);    // parse all eval() expressions in ONE go (which is not the case for standard parsing and trace string parsing)
+    parsingResult_type result = parseStatement(pParsingInput_temp, pDummy, dummyInt, dummyBool);    // parse all eval() expressions in ONE go (which is not the case for standard parsing and watch string parsing)
 #if PRINT_HEAP_OBJ_CREA_DEL
     _pDebugOut->print("\r\n----- (system exp str) "); _pDebugOut->println((uint32_t)pEvalParsingInput, HEX);
     _pDebugOut->print("       launch eval (2) "); _pDebugOut->println(pEvalParsingInput);
@@ -3502,8 +3502,8 @@ void* Justina::fetchVarBaseAddress(Token_variable* pVarToken, char*& sourceVarTy
 
         bool isStoppedFunctionVar = (blockType == block_JustinaFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + _PROGRAM_MEMORY_SIZE)) : true;
 
-        // if a trigger string is being executed, this means a program is running. Function data for the function where control is, is currently stored in _activeFunctionData
-        if (isStoppedFunctionVar && !_parsingExecutingTriggerString) {
+        // if a condition string is being executed, this means a program is running. Function data for the function where control is, is currently stored in _activeFunctionData
+        if (isStoppedFunctionVar && !_parsingExecutingConditionString) {
             bool isDebugCmdLevel = (blockType == block_JustinaFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + _PROGRAM_MEMORY_SIZE)) : false;
 
             if (!isDebugCmdLevel) {       // find debug level in flow control stack instead

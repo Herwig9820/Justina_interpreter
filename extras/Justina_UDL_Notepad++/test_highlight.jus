@@ -1,51 +1,51 @@
-
+    Justina version 1.4.1
 
     list with all defined symbols in Justina, with proper highlighting
     ------------------------------------------------------------------
     
-    commands (control block stat.: bold)	functions																			predefined constants									operators			
-    ------------------------------------    --------------------------------------------------------------------------------    ---------------------------------------------------		----------------    
-    	
-    var             	moveBP            	sqrt					tone				ascToHexStr			fmt					e					CANCELED			BOARD_ESP32		=					
-    const           	enableBP            sin						pulseIn             hexStrToAsc			tab					PI                  OK		 							+=					
-    static          	disableBP           cos						shiftIn             quote				col                 HALF_PI             NOK 								-=					
-    delete          	raiseError          tan						shiftOut            isAlpha				pos                 QUART_PI            CONSOLE 							*=				
-    clearMem			trapErrors          asin					random              isAlphaNumeric		open                TWO_PI              IO1           						/=					
-    clearProg       	clearError          acos					randomSeed          isDigit				close               DEG_TO_RAD          IO2 								%=					
-    loadProg        	quit                atan					bit                 isHexDigit			position            RAD_TO_DEG          IO3 								<<=					
-    program         	dispWidth           ln						bitRead             isControl			size                RADIANS             IO4									>>=					
-    function        	floatFmt            lnp1					bitClear            isGraph				seek                DEGREES             FILE1           					&=					                   
-    procedure    		intFmt              log10            		bitSet				isPrintable			name				INTEGER           	FILE2								|=					
-    for           		dispMode            exp						bitWrite			isPunct				fullName            FLOAT               FILE3								^=					
-    while           	tabSize             expm1					byteRead            isWhitespace		isDirectory         STRING             	FILE4           					++	
-    if              	angleMode           round					byteWrite           isAscii				rewindDirectory     FALSE               FILE5           					--					
-    elseif          	setConsole          ceil					maskedWordRead      isLowerCase			openNext            TRUE              	READ            					<					
-    else            	setConsoleIn        floor					maskedWordClear     isUpperCase			exists              OFF                 WRITE           					>					
-    end             	setConsoleOut       trunc					maskedWordSet       eval				createDirectory     ON                  APPEND          					<=					
-    break           	setDebugOut         min						maskedWordWrite     ubound				removeDirectory     LOW                 SYNC            					>=	 				
-    continue        	info                max						mem32Read           dims				remove              HIGH                NEW_OK          					!=					
-    return          	input               abs						mem32Write          type				fileNum             INPUT               NEW_ONLY        					==					
-    pause           	startSD             signBit					mem8Read            r					isInUse             OUTPUT              TRUNC           					+	
-    halt            	stopSD              fmod					mem8Write           err					closeAll            INPUT_PULLUP        EOF             					-	
-    stop            	receiveFile         ifte					char                isColdStart	                            INPUT_PULLDOWN      FIXED           					*	
-    nop             	sendFile            switch					len                 sysVal	                                LED_BUILTIN         EXP             					/	
-    go              	copyFile            index					line                cin	                                    LED_RED             EXP_U           					%	
-    step            	dbout               choose					asc                 cinLine	                                LED_GREEN           SHORT           					**	
-    stepOut         	dboutLine           cInt					rtrim               cinList	                                LED_BLUE            SHORT_U         					&&	
-    stepOver        	cout                cFloat					ltrim               read	                                LSBFIRST            DEC             					||	
-    bStepOut        	coutLine            cStr					trim                readLine	                            MSBFIRST            HEX             					!	
-    loop				coutList            millis					left                readList	                            NO_PROMPT           HEX_U           					<<	
-    trace           	print               micros					mid                 vreadList	                            PROMPT              CHARS								>>	
-    viewExprOn			printLine           wait					right               find	                                ECHO                FMT_LEFT       						&	
-    viewExprOff			printList           digitalRead				toUpper             findUntil	                            NO_RESULTS          FMT_SIGN       						|	
-    setNextLine			vprint              digitalWrite			toLower             peek	                                RESULTS             FMT_SPACE      						^	
-    abort           	vprintLine          pinMode					space               available	                            QUOTE_RES           FMT_POINT      						~	
-    debug           	vprintList          analogRead				repeatChar          flush	                                ENTER               FMT_0X         						;	
-    BPon				listCallStack       analogReference			replaceChar         setTimeout	                            ENTER_CANCEL        FMT_000        						,	
-    BPoff				listBP              analogWrite				findStr             getTimeout	                            YES_NO              FMT_NONE       						(	
-    BPactivate			listVars            analogReadResolution	replaceStr      	availableForWrite	                    YN_CANCEL           BOARD_OTHER     					)	
-    setBP	            listFiles           analogWriteResolution	strCmp          	getWriteError	                        NO_DEFAULT          BOARD_SAMD      				
-	clearBP		        listFilesToSerial   noTone			   		strCaseCmp          clearWriteError	                        ALLOW_DEFAULT 		BOARD_RP2040    	
+    commands (control block stat.: bold)	                        functions																			predefined constants									operators			
+    ------------------------------------------------------------    --------------------------------------------------------------------------------    ---------------------------------------------------		----------------    
+                                                                    
+    var             	moveBP            	exec                    sqrt					tone				ascToHexStr			fmt					e					CANCELED			BOARD_RP2040    =					
+    const           	enableBP            ditch                   sin						pulseIn             hexStrToAsc			tab					PI                  OK		 			BOARD_ESP32		+=					
+    static          	disableBP           gotoLabel               cos						shiftIn             quote				col                 HALF_PI             NOK 				BOARD_NRF52840	-=					
+    delete          	raiseError          silent                  tan						shiftOut            isAlpha				pos                 QUART_PI            CONSOLE 							*=				
+    clearMem			trapErrors                                  asin					random              isAlphaNumeric		open                TWO_PI              IO1           						/=					
+    clearProg       	clearError                                  acos					randomSeed          isDigit				close               DEG_TO_RAD          IO2 								%=					
+    loadProg        	quit                                        atan					bit                 isHexDigit			position            RAD_TO_DEG          IO3 								<<=					
+    program         	dispWidth                                   ln						bitRead             isControl			size                RADIANS             IO4									>>=					
+    function        	floatFmt                                    lnp1					bitClear            isGraph				seek                DEGREES             FILE1           					&=					                   
+    procedure    		intFmt                                      log10            		bitSet				isPrintable			name				INTEGER           	FILE2								|=					
+    for           		dispMode                                    exp						bitWrite			isPunct				fullName            FLOAT               FILE3								^=					
+    while           	tabSize                                     expm1					byteRead            isWhitespace		isDirectory         STRING             	FILE4           					++	
+    if              	angleMode                                   round					byteWrite           isAscii				rewindDirectory     FALSE               FILE5           					--					
+    elseif          	setConsole                                  ceil					maskedWordRead      isLowerCase			openNext            TRUE              	DISCARD            					<					
+    else            	setConsoleIn                                floor					maskedWordClear     isUpperCase			exists              OFF                 READ            					>					
+    end             	setConsoleOut                               trunc					maskedWordSet       eval				createDirectory     ON                  WRITE           					<=					
+    break           	setDebugOut                                 min						maskedWordWrite     ubound				removeDirectory     LOW                 APPEND          					>=	 				
+    continue        	info                                        max						mem32Read           dims				remove              HIGH                SYNC            					!=					
+    return          	input                                       abs						mem32Write          type				fileNum             INPUT               NEW_OK          					==					
+    pause           	startSD                                     signBit					mem8Read            r					isInUse             OUTPUT              NEW_ONLY        					+	
+    halt            	stopSD                                      fmod					mem8Write           err					closeAll            INPUT_PULLUP        TRUNC           					-	
+    stop            	receiveFile                                 ifte					char                isColdStart	                            INPUT_PULLDOWN      EOF             					*	
+    nop             	sendFile                                    switch					len                 sysVal	            p                   LED_BUILTIN         FIXED           					/	
+    go              	copyFile                                    index					line                cin	                                    LED_RED             EXP             					%	
+    step            	dbout                                       choose					asc                 cinLine	                                LED_GREEN           EXP_U           					**	
+    stepOut         	dboutLine                                   cInt					rtrim               cinList	                                LED_BLUE            SHORT           					&&	
+    stepOver        	cout                                        cFloat					ltrim               read	                                LSBFIRST            SHORT_U         					||	
+    bStepOut        	coutLine                                    cStr					trim                readLine	                            MSBFIRST            DEC             					!	
+    loop				coutList                                    millis					left                readList	                            NO_PROMPT           HEX             					<<	
+    trace           	print                                       micros					mid                 vreadList	                            PROMPT              HEX_U           					>>	
+    viewExprOn			printLine                                   wait					right               find	                                ECHO                CHARS								&	
+    viewExprOff			printList                                   digitalRead				toUpper             findUntil	                            NO_RESULTS          FMT_LEFT       						|	
+    setNextLine			vprint                                      digitalWrite			toLower             peek	                                RESULTS             FMT_SIGN       						^	
+    abort           	vprintLine                                  pinMode					space               available	                            QUOTE_RES           FMT_SPACE      						~	
+    debug           	vprintList                                  analogRead				repeatChar          flush	                                ENTER               FMT_POINT      						;	
+    BPon				listCallStack                               analogReference			replaceChar         setTimeout	                            ENTER_CANCEL        FMT_0X         						,	
+    BPoff				listBP                                      analogWrite				findStr             getTimeout	                            YES_NO              FMT_000        						(	
+    BPactivate			listVars                                    analogReadResolution	replaceStr      	availableForWrite	                    YN_CANCEL           FMT_NONE       						)	
+    setBP	            listFiles                                   analogWriteResolution	strCmp          	getWriteError	                        NO_DEFAULT          BOARD_OTHER     				
+	clearBP		        listFilesToSerial                           noTone			   		strCaseCmp          clearWriteError	                        ALLOW_DEFAULT 		BOARD_SAMD      	
     -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	literal constants (examples)					    			user c++ routines (prefix to force highlight)               comments
     -----------------------------------                 			---------------------------------------------               --------

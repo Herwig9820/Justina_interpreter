@@ -62,8 +62,8 @@ Breakpoints::~Breakpoints() {
 
 void Breakpoints::resetBreakpointsState() {
     for (int i = 0; i < _breakpointsUsed; i++) {
-        _pJustina->setNewSystemExpression(_pBreakpointData[i].pView, nullptr);        // remove any heap objects created for non-empty view or trigger strings    
-        _pJustina->setNewSystemExpression(_pBreakpointData[i].pTrigger, nullptr);
+        _pJustina->setNewSystemExpression(_pBreakpointData[i].pWatch, nullptr);        // remove any heap objects created for non-empty watch or condition strings    
+        _pJustina->setNewSystemExpression(_pBreakpointData[i].pCondition, nullptr);
     }
 
     _BPlineRangeStorageUsed = 0;
@@ -211,7 +211,7 @@ Justina::parsingResult_type Breakpoints::addOneSourceLineRangePair(long gapLineR
 // *   adapt a breakpoint for a source line   *
 // --------------------------------------------
 
-Justina::execResult_type Breakpoints::maintainBP(long breakpointLine, char actionCmdCode, int extraAttribCount, const char* viewString, long hitCount, const char* triggerString) {
+Justina::execResult_type Breakpoints::maintainBP(long breakpointLine, char actionCmdCode, int extraAttribCount, const char* watchString, long hitCount, const char* conditionString) {
 
     Justina::execResult_type execResult{ Justina::result_execOK };
 
@@ -251,7 +251,7 @@ Justina::execResult_type Breakpoints::maintainBP(long breakpointLine, char actio
     // NOTE: if the breakpoint table currently has status 'DRAFT', there is no link with 'real' source lines (any source line is valid), nor with parsed program statements. ...
     //       ...(a program may even not exist). 
     //       compatibility between action requested and BP existence is not tested: test in 'maintainBreakpointTable()'
-    execResult = maintainBreakpointTable(breakpointLine, pProgramStep, doSet, doClear, doEnable, doDisable, extraAttribCount, viewString, hitCount, triggerString);
+    execResult = maintainBreakpointTable(breakpointLine, pProgramStep, doSet, doClear, doEnable, doDisable, extraAttribCount, watchString, hitCount, conditionString);
 
     return execResult;
 }
@@ -329,7 +329,7 @@ Justina::execResult_type Breakpoints::progMem_getSetClearBP(long lineSequenceNum
 // ----------------------------------------------------------------------
 
 Justina::execResult_type Breakpoints::maintainBreakpointTable(long sourceLine, char* pProgramStep, bool doSet, bool doClear, bool doEnable, bool doDisable,
-    int extraArribCount, const char* viewString, long hitCount, const char* triggerString) {
+    int extraArribCount, const char* watchString, long hitCount, const char* conditionString) {
 
     int entry{ 0 };
     bool BPwasSet{ false }, doInsertNewBP{ false };
@@ -357,29 +357,29 @@ Justina::execResult_type Breakpoints::maintainBreakpointTable(long sourceLine, c
         _pBreakpointData[entry].BPenabled = 0b1;
         _pBreakpointData[entry].sourceLine = sourceLine;
         _pBreakpointData[entry].pProgramStep = pProgramStep;                            // if status DRAFT, then pProgramStep is dummy
-        _pBreakpointData[entry].pView = nullptr;
-        _pBreakpointData[entry].pTrigger = nullptr;
+        _pBreakpointData[entry].pWatch = nullptr;
+        _pBreakpointData[entry].pCondition = nullptr;
         _breakpointsUsed++;
         doInsertNewBP = true;
     }
 
     if (doSet or doClear) {     // adapt attributes
-        // keep view, hit count or trigger if setting a breakpoint that was already set, AND those attributes are not supplied
-        bool keepView = (BPwasSet && doSet && (extraArribCount == 0));          // 'set' for an existing breakpoint: only change view string if supplied (0: no attributes supplied, 1: view string supplied)
-        bool keepCondition = (BPwasSet && doSet && (extraArribCount <= 1));     // 'set' for an existing breakpoint: only change hit count or trigger string if supplied (2: condition supplied)
+        // keep watch string, hit count or condition string if setting a breakpoint that was already set, AND those attributes are not supplied
+        bool keepWatch = (BPwasSet && doSet && (extraArribCount == 0));          // 'set' for an existing breakpoint: only change watch string if supplied (0: no attributes supplied, 1: watch string supplied)
+        bool keepCondition = (BPwasSet && doSet && (extraArribCount <= 1));     // 'set' for an existing breakpoint: only change hit count or condition string if supplied (2: condition supplied)
 
-        // save view string and hit count value / trigger string
-        if (!keepView) {
-            _pBreakpointData[entry].BPwithViewExpr = (viewString == nullptr) ? 0b0 : 0b1;
-            _pJustina->setNewSystemExpression(_pBreakpointData[entry].pView, viewString);
+        // save watch string and hit count value / condition string
+        if (!keepWatch) {
+            _pBreakpointData[entry].BPwithWatchExpr = (watchString == nullptr) ? 0b0 : 0b1;
+            _pJustina->setNewSystemExpression(_pBreakpointData[entry].pWatch, watchString);
         }
         if (!keepCondition) {
             _pBreakpointData[entry].BPwithHitCount = (hitCount > 0) ? 0b1 : 0b0;
-            _pBreakpointData[entry].BPwithTriggerExpr = (triggerString == nullptr) ? 0b0 : 0b1;
+            _pBreakpointData[entry].BPwithConditionExpr = (conditionString == nullptr) ? 0b0 : 0b1;
 
             _pBreakpointData[entry].hitCount = hitCount;
             _pBreakpointData[entry].hitCounter = 0;
-            _pJustina->setNewSystemExpression(_pBreakpointData[entry].pTrigger, triggerString);
+            _pJustina->setNewSystemExpression(_pBreakpointData[entry].pCondition, conditionString);
         }
     }
 
@@ -414,7 +414,7 @@ void Breakpoints::printBreakpoints() {
     // print table header lines
 
     _pJustina->print("Breakpoints are currently "); _pJustina->println(_breakpointsAreOn ? "ON\r\n" : "OFF\r\n");
-    _pJustina->println("source   enabled   view &\r\n  line             trigger\r\n------   -------   -------");
+    _pJustina->println("source   enabled   watch &\r\n  line             condition\r\n------   -------   -------");
 
     char line[50];     // sufficient length for all line elements in first sprintf
 
@@ -422,15 +422,15 @@ void Breakpoints::printBreakpoints() {
     for (int i = 0; i < _breakpointsUsed; i++) {
 
         // print breakpoint settings line 1
-        sprintf(line, "%6ld%7c      view : ", _pBreakpointData[i].sourceLine, _pBreakpointData[i].BPenabled == 0b1 ? 'x' : ' ');
+        sprintf(line, "%6ld%7c      watch: ", _pBreakpointData[i].sourceLine, _pBreakpointData[i].BPenabled == 0b1 ? 'x' : ' ');
         _pJustina->print(line);
-        _pJustina->println(_pBreakpointData[i].BPwithViewExpr == 0b1 ? _pBreakpointData[i].pView : "-");
+        _pJustina->println(_pBreakpointData[i].BPwithWatchExpr == 0b1 ? _pBreakpointData[i].pWatch : "-");
 
         // print breakpoint settings line 2
-        sprintf(line, "%19s%0s", "", _pBreakpointData[i].BPwithHitCount == 0b1 ? "hit count: " : _pBreakpointData[i].BPwithTriggerExpr == 0b1 ? "trigger: " : "always trigger\r\n");
+        sprintf(line, "%19s%0s", "", _pBreakpointData[i].BPwithHitCount == 0b1 ? "hit count: " : _pBreakpointData[i].BPwithConditionExpr == 0b1 ? "trigger: " : "always trigger\r\n");
         _pJustina->print(line);
 
-        if (_pBreakpointData[i].BPwithTriggerExpr == 0b1) { _pJustina->println(_pBreakpointData[i].pTrigger); }
+        if (_pBreakpointData[i].BPwithConditionExpr == 0b1) { _pJustina->println(_pBreakpointData[i].pCondition); }
         else if (_pBreakpointData[i].BPwithHitCount == 0b1) {
             sprintf(line, "%1ld (current is %0ld)", _pBreakpointData[i].hitCount, _pBreakpointData[i].hitCounter);
             _pJustina->println(line);

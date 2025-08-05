@@ -116,8 +116,8 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
         while (pNext[0] == ' ') { pNext++; }                                                                        // skip leading spaces
         if (pNext[0] == '\0') { pNextParseStatement = pNext; break; }                                            // end of statement: prepare to quit parsing  
 
-        // trace, BP view or BP trigger string ? parse one statement at a time, then execute it first (note: within BP trigger strings, only the first expression will be parsed and executed)
-        if ((_parsingExecutingTraceString || _parsingExecutingTriggerString) && isSemicolon) { pNextParseStatement = pNext;  break; }
+        // watch, BP watch or BP condition string ? parse one statement at a time, then execute it first (note: within BP condition strings, only the first expression will be parsed and executed)
+        if ((_parsingExecutingWatchString || _parsingExecutingConditionString) && isSemicolon) { pNextParseStatement = pNext;  break; }
 
 
         _lastTokenType_hold = _lastTokenType;                                                                       // remember the last parsed token during parsing of a next token
@@ -253,7 +253,7 @@ bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, 
 
     int statementInputStreamNumber = _activeFunctionData.statementInputStream;              // note: if > 0, then either program file being parsed or batch file being executed
     bool isBatchFileInput = (!_programMode && (statementInputStreamNumber > 0));
-    bool isCommandLineInput = (!_programMode && (statementInputStreamNumber == 0));         // (commands do not appear in trace strings, breakpoint trigger and view strings)
+    bool isCommandLineInput = (!_programMode && (statementInputStreamNumber == 0));         // (commands do not appear in watch strings, breakpoint condition and watch strings)
 
     if ((cmdRestriction == cmd_onlyProgramTop) && (_lastTokenStep != 0)) { result = result_cmd_onlyProgramStart; return false; }        // not a 'program' command
     if ((cmdRestriction != cmd_onlyProgramTop) && (_lastTokenStep == 0)) { result = result_cmd_programCmdMissing; return false; }
@@ -483,9 +483,9 @@ bool Justina::parseAsInternCommand(char*& pNext, parsingResult_type& result) {
         if (strlen(_internCommands[commandIndex]._commandName) != pNext - pch) { continue; }                    // token has correct length ? If not, skip remainder of loop ('continue')                            
         if (strncmp(_internCommands[commandIndex]._commandName, pch, pNext - pch) != 0) { continue; }           // token corresponds to keyword ? If not, skip remainder of loop ('continue') 
 
-        // commands (starting with a keyword) are not allowed within trace, BP view, BP trigger strings and in eval() strings.
+        // commands (starting with a keyword) are not allowed within watch, BP watch, BP condition strings and in eval() strings.
         // if not allowed, reset pointer to first character to parse, indicate error and return
-        if (_parsingExecutingTraceString || _parsingExecutingTriggerString || _parsingEvalString) { pNext = pch; result = result_trace_eval_commandNotAllowed; return false; }
+        if (_parsingExecutingWatchString || _parsingExecutingConditionString || _parsingEvalString) { pNext = pch; result = result_watch_eval_commandNotAllowed; return false; }
 
         if (_parenthesisLevel > 0) { pNext = pch; result = result_commandNotAllowedHere; return false; }
 
@@ -563,9 +563,9 @@ bool Justina::parseAsExternCommand(char*& pNext, parsingResult_type& result) {
 
         if (pNext - pch > MAX_IDENT_NAME_LEN) { pNext = pch; result = result_identifierTooLong;  return false; }   // function name is too long
 
-        // commands are not allowed within trace, BP view, BP trigger strings and in eval() strings.
+        // commands are not allowed within watch, BP watch, BP condition strings and in eval() strings.
         // if not allowed, reset pointer to first character to parse, indicate error and return
-        if (_parsingExecutingTraceString || _parsingExecutingTriggerString || _parsingEvalString) { pNext = pch; result = result_trace_eval_commandNotAllowed; return false; }
+        if (_parsingExecutingWatchString || _parsingExecutingConditionString || _parsingEvalString) { pNext = pch; result = result_watch_eval_commandNotAllowed; return false; }
 
         if (_parenthesisLevel > 0) { pNext = pch; result = result_commandNotAllowedHere; return false; }
 
@@ -1541,10 +1541,10 @@ bool Justina::parseAsInternCPPfunction(char*& pNext, parsingResult_type& result)
         if (_isAnyVarCmd) { pNext = pch; result = result_variableNameExpected; return false; }          // is a variable declaration: cpp function name not allowed
         if (_isDeleteVarCmd) { pNext = pch; result = result_variableNameExpected; return false; }
 
-        // eval() function can not occur within a trace, BP view or BP trigger string (all other internal functions can)
+        // eval() function can not occur within a watch, BP watch or BP condition string (all other internal functions can)
         // note: an eval() functions are allowed in other eval() function
-        if (_parsingExecutingTraceString || _parsingExecutingTriggerString) {
-            if (_internCppFunctions[funcIndex].functionCode == fnccod_eval) { pNext = pch; result = result_trace_evalFunctonNotAllowed; return false; }
+        if (_parsingExecutingWatchString || _parsingExecutingConditionString) {
+            if (_internCppFunctions[funcIndex].functionCode == fnccod_eval) { pNext = pch; result = result_watch_evalFunctonNotAllowed; return false; }
         }
 
         // token is an internal cpp function, and it's allowed here
@@ -1687,8 +1687,8 @@ bool Justina::parseAsJustinaFunction(char*& pNext, parsingResult_type& result) {
     index = getIdentifier(userVarNames, _userVarCount, MAX_USERVARNAMES, pch, pNext - pch, createNewName, true);
     if (index != -1) { pNext = pch; return true; }                                                                      // is a user variable
 
-    // user functions cannot occur within a trace, BP view or BP trigger string (they are allowed in eval() strings, however)
-    if (_parsingExecutingTraceString || _parsingExecutingTriggerString) { pNext = pch; result = result_trace_userFunctonNotAllowed; return false; }
+    // user functions cannot occur within a watch, BP watch or BP condition string (they are allowed in eval() strings, however)
+    if (_parsingExecutingWatchString || _parsingExecutingConditionString) { pNext = pch; result = result_watch_userFunctonNotAllowed; return false; }
 
     if ((_isJustinaFunctionCmd) && (_parenthesisLevel > 0)) { pNext = pch; return true; }                               // only array parameter allowed now
 
@@ -2134,11 +2134,11 @@ bool Justina::parseAsVariable(char*& pNext, parsingResult_type& result) {
                 // retrieve data about this function now.
 
                  // in debug mode (program stopped), the name could refer to a local or static variable within the currently stopped function (open function).
-                 // if parsing a BP trigger string, debug mode is not active yet (function is not stopped yet - will depend on trigger string execution result)   
+                 // if parsing a BP condition string, debug mode is not active yet (function is not stopped yet - will depend on condition string execution result)   
 
-                if ((_openDebugLevels > 0) || _parsingExecutingTriggerString) {
+                if ((_openDebugLevels > 0) || _parsingExecutingConditionString) {
                     void* pFlowCtrlStackLvl{};
-                    if (_parsingExecutingTriggerString) {
+                    if (_parsingExecutingConditionString) {
                         pFlowCtrlStackLvl = &_activeFunctionData;                        // program not yet stopped: function data reside in _activeFunctionData
                     }
                     else {
@@ -2408,9 +2408,9 @@ bool Justina::parseAsIdentifierName(char*& pNext, parsingResult_type& result) {
     if (!isalpha(pNext[0]) && (pNext[0] != '#')) { return true; }                               // first character is not a letter ? Then it's not an identifier name (it can still be something else)
     while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                                 // do until first character after alphanumeric token (can be anything, including '\0')
 
-    // generic identifiers cannot occur within a trace, BP view or BP trigger string, and not within an eval() string
+    // generic identifiers cannot occur within a watch, BP watch or BP condition string, and not within an eval() string
     // if not allowed here, reset pointer to first character to parse, indicate error and return
-    if (_parsingExecutingTraceString || _parsingExecutingTriggerString || _parsingEvalString) { pNext = pch; result = result_trace_eval_genericNameNotAllowed; return false; }
+    if (_parsingExecutingWatchString || _parsingExecutingConditionString || _parsingEvalString) { pNext = pch; result = result_watch_eval_genericNameNotAllowed; return false; }
 
     if (_parenthesisLevel > 0) { pNext = pch; result = result_identifierNotAllowedHere; return false; }
     if (_isDeleteVarCmd) {        // delete variable: previous token can only be a command ("delete") or a comma (token group one)

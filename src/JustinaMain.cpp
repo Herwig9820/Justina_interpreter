@@ -107,9 +107,9 @@ const Justina::internCmdDef Justina::_internCommands[]{
 
     {"debug",           cmdcod_debug,           cmd_onlyImmediate,                                      0,0,    cmdArgSeq_100,  cmdBlockNone},
 
-    {"trace",           cmdcod_trace,           cmd_onlyImmOrInsideFuncBlock,                           1,1,    cmdArgSeq_101,  cmdBlockNone},
-    {"viewExprOn",      cmdcod_traceExprOn,     cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdArgSeq_100,  cmdBlockNone},
-    {"viewExprOff",     cmdcod_traceExprOff,    cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdArgSeq_100,  cmdBlockNone},
+    {"watch",           cmdcod_watch,           cmd_onlyImmOrInsideFuncBlock,                           1,1,    cmdArgSeq_101,  cmdBlockNone},
+    {"watchExprOn",     cmdcod_watchExprOn,     cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdArgSeq_100,  cmdBlockNone},
+    {"watchExprOff",    cmdcod_watchExprOff,    cmd_onlyImmOrInsideFuncBlock,                           0,0,    cmdArgSeq_100,  cmdBlockNone},
 
     {"BPon",            cmdcod_BPon,            cmd_onlyImmediate,                                      0,0,    cmdArgSeq_100,  cmdBlockNone},
     {"BPoff",           cmdcod_BPoff,           cmd_onlyImmediate,                                      0,0,    cmdArgSeq_100,  cmdBlockNone},
@@ -651,7 +651,7 @@ void Justina::constructorCommonPart() {
 // --------------------------
 
 Justina::~Justina() {
-    // delete all objects created on the heap, including user variables (+ FiFo stack), with trace expression and breakpoints
+    // delete all objects created on the heap, including user variables (+ FiFo stack), with watch expression and breakpoints
     resetMachine(true, true);
 
     // NOTE: object count of objects created / deleted in constructors / destructors is not maintained
@@ -794,7 +794,7 @@ void Justina::begin() {
     for (int i = 0; i < 48; i++) { printTo(0, "="); } printlnTo(0, "\r\n");
 
     // If data is NOT kept in memory, objects that will be deleted are: variable and function names; parsed, intermediate and variable string objects,...
-    // ...array objects, stack entries, last values FiFo, open function data, breakpoint trigger and view strings, ...
+    // ...array objects, stack entries, last values FiFo, open function data,  and watch strings, ...
     // Objects that are not deleted now, will be deleted when the Justina object is deleted (destructor).  
     // (program and variable memory itself is only freed when the Justina object itself is deleted).
     return;                                                                                                     // return to calling program
@@ -883,8 +883,8 @@ void Justina::JustinaMainLoop(bool& doAutoStart, bool& parsedStatementStartsOnNe
                 _sourceStatement[statementCharCount] = '\0';                                                    // add string terminator
 
                 char* pStatement = _sourceStatement;                                                            // because passed by reference 
-                _parsingExecutingTraceString = false;                                                           // init
-                _parsingExecutingTriggerString = false;
+                _parsingExecutingWatchString = false;                                                           // init
+                _parsingExecutingConditionString = false;
                 _parsingEvalString = false;
 
                 // The user can set breakpoints for source lines having at least one statement starting on that line (given that the statement is not 'parsing only').
@@ -1153,11 +1153,11 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
     bool isResetNow{ false };
 
     // ---------------------------------------------------------------------
-    // if in debug mode, trace expressions (if defined) and print debug info 
+    // if in debug mode, watch expressions (if defined) and print debug info 
     // ---------------------------------------------------------------------
 
 
-    if ((_openDebugLevels > 0) && (execResult != EVENT_kill) && (execResult != EVENT_quit) && (execResult != EVENT_initiateProgramLoad)) { traceAndPrintDebugInfo(execResult); }
+    if ((_openDebugLevels > 0) && (execResult != EVENT_kill) && (execResult != EVENT_quit) && (execResult != EVENT_initiateProgramLoad)) { watchAndPrintDebugInfo(execResult); }
 
 
     // --------------------------------------------------------------------------------------------
@@ -1389,10 +1389,10 @@ void Justina::clearMemory(int& clearIndicator, bool& kill, bool& quitJustina) { 
 
 
 // -------------------------------------------------------------------------
-// *   trace expressions as defined in trace statement, print debug info   *
+// *   watch expressions as defined in watch statement, print debug info   *
 // -------------------------------------------------------------------------
 
-void Justina::traceAndPrintDebugInfo(execResult_type execResult) {
+void Justina::watchAndPrintDebugInfo(execResult_type execResult) {
     // count of programs in debug:
     // - if an error occurred in a RUNNING program, the program is terminated and the number of STOPPED programs ('in debug mode') does not change.
     // - if an error occurred while executing a command line, then this count is not changed either
@@ -1430,18 +1430,18 @@ void Justina::traceAndPrintDebugInfo(execResult_type execResult) {
     strcpy(msg + i, "\r\n");                                                                                    // this adds terminating \0 as well
     printTo(_debug_sourceStreamNumber, msg);
 
-    // print trace and breakpoint trace string, if any
+    // print watch and breakpoint watch string, if any
     // -----------------------------------------------
-    // if this is a breakpoint stop, parse and evaluate expression (if any) stored in BP view string
-    // for all stops: parse and evaluate expression (if any) stored in overall trace string
+    // if this is a breakpoint stop, parse and evaluate expression (if any) stored in BP watch string
+    // for all stops: parse and evaluate expression (if any) stored in overall watch string
     Breakpoints::BreakpointData* pBreakpointDataRow{ nullptr };
     int BPdataRow{};
-    bool lineHasBPtableEntry = (*(nextStatementPointer - 1) == _semicolonBPset_token);                          // (note that BP can be disabled, hit count not yet reached or trigger result = false)
+    bool lineHasBPtableEntry = (*(nextStatementPointer - 1) == _semicolonBPset_token);                          // (note that BP can be disabled, hit count not yet reached or condition result = false)
     if (lineHasBPtableEntry) {                                                                                  // check attributes in breakpoints table
         pBreakpointDataRow = _pBreakpoints->findBPtableRow(nextStatementPointer, BPdataRow);                    // find table entry
     }
-    if (isBreakpointStop) { parseAndExecTraceOrBPviewString(BPdataRow); }                                       // BP view string: may not contain keywords, Justina functions, generic names
-    parseAndExecTraceOrBPviewString();                                                                          // trace string: may not contain keywords, Justina functions, generic names
+    if (isBreakpointStop) { parseAndExecWatchOrBPwatchString(BPdataRow); }                                       // BP watch string: may not contain keywords, Justina functions, generic names
+    parseAndExecWatchOrBPwatchString();                                                                          // watch string: may not contain keywords, Justina functions, generic names
 
     // print the source line, function and statement 
     // ---------------------------------------------
@@ -1459,26 +1459,26 @@ void Justina::traceAndPrintDebugInfo(execResult_type execResult) {
 
 
 // -----------------------------------------------
-// *   parse and exec trace string expressions   *
+// *   parse and exec watch string expressions   *
 // -----------------------------------------------
 
-// trace string may not contain keywords, user functions, generic names
+// watch string may not contain keywords, user functions, generic names
 
-void Justina::parseAndExecTraceOrBPviewString(int BPindex) {
+void Justina::parseAndExecWatchOrBPwatchString(int BPindex) {
     char* pNextParseStatement{};
 
-    char* pTraceParsingInput = ((BPindex == -1) ? _pTraceString : _pBreakpoints->_pBreakpointData[BPindex].pView);      // copy pointer to start of trace string
-    if (pTraceParsingInput == nullptr) { return; }                                                                      // no trace string: nothing to trace
+    char* pwatchParsingInput = ((BPindex == -1) ? _pwatchString : _pBreakpoints->_pBreakpointData[BPindex].pWatch);      // copy pointer to start of watch string
+    if (pwatchParsingInput == nullptr) { return; }                                                                      // no watch string: nothing to watch
 
-    // trace string expressions will be parsed and executed from immediate mode program storage: 
+    // watch string expressions will be parsed and executed from immediate mode program storage: 
     // before overwriting user statements that were just parsed and executed, delete parsed strings
     deleteConstStringObjects(_programStorage + _PROGRAM_MEMORY_SIZE);
 
     bool valuePrinted{ false };
 
-    _parsingExecutingTraceString = true;
+    _parsingExecutingWatchString = true;
 
-    printTo(_debug_sourceStreamNumber, (BPindex == -1) ? "<TRACE> " : "<BP TR> ");
+    printTo(_debug_sourceStreamNumber, (BPindex == -1) ? "<watch> " : "<BP wa> ");
 
     // in each loop, parse and execute ONE expression 
     do {
@@ -1487,39 +1487,39 @@ void Justina::parseAndExecTraceOrBPviewString(int BPindex) {
         _programCounter = _programStorage + _PROGRAM_MEMORY_SIZE;                                               // start of 'immediate mode' program area
 
         // skip any spaces and semi-colons in the input stream
-        while ((pTraceParsingInput[0] == ' ') || (pTraceParsingInput[0] == term_semicolon[0])) { pTraceParsingInput++; }
-        if (*pTraceParsingInput == '\0') { break; }                                                             // could occur if semicolons skipped
+        while ((pwatchParsingInput[0] == ' ') || (pwatchParsingInput[0] == term_semicolon[0])) { pwatchParsingInput++; }
+        if (*pwatchParsingInput == '\0') { break; }                                                             // could occur if semicolons skipped
 
-        // parse multiple trace string expressions ? print a comma in between
+        // parse multiple watch string expressions ? print a comma in between
         if (valuePrinted) { printTo(_debug_sourceStreamNumber, ", "); }                                         // separate values (if more than one)
 
         // note: application flags are not adapted (would not be passed to caller immediately)
         int dummyInt{}; bool dummyBool{};
-        parsingResult_type result = parseStatement(pTraceParsingInput, pNextParseStatement, dummyInt, dummyBool);     // parse ONE statement
+        parsingResult_type result = parseStatement(pwatchParsingInput, pNextParseStatement, dummyInt, dummyBool);     // parse ONE statement
         if (result == result_parsing_OK) {
-            if (!_printTraceValueOnly) {
+            if (!_printWatchValueOnly) {
                 // do NOT pretty print if parsing error, to avoid bad-looking partially printed statements (even if there will be an execution error later)
                 prettyPrintStatements(_debug_sourceStreamNumber, 0);
                 printTo(_debug_sourceStreamNumber, ": ");                                                       // resulting value will follow
-                pTraceParsingInput = pNextParseStatement;
+                pwatchParsingInput = pNextParseStatement;
             }
         }
         else {
             char  errStr[12];                                                                                   // includes place for terminating '\0'
-            // if parsing error, print error instead of value AND CONTINUE with next trace expression (if any)
+            // if parsing error, print error instead of value AND CONTINUE with next watch expression (if any)
             sprintf(errStr, "<ErrP%d>", (int)result);
             printTo(_debug_sourceStreamNumber, errStr);
             // pNextParseStatement not yet correctly positioned: set to next statement
-            while ((pTraceParsingInput[0] != term_semicolon[0]) && (pTraceParsingInput[0] != '\0')) { ++pTraceParsingInput; }
-            if (pTraceParsingInput[0] == term_semicolon[0]) { ++pTraceParsingInput; }
+            while ((pwatchParsingInput[0] != term_semicolon[0]) && (pwatchParsingInput[0] != '\0')) { ++pwatchParsingInput; }
+            if (pwatchParsingInput[0] == term_semicolon[0]) { ++pwatchParsingInput; }
         }
 
         // if parsing went OK: execute ONE parsed expression (just parsed now)
         execResult_type execResult{ result_execOK };
         if (result == result_parsing_OK) {
-            ////Serial.println("!!!! before exec - TRACE");
+            ////Serial.println("!!!! before exec - watch");
             execResult = exec(_programStorage + _PROGRAM_MEMORY_SIZE);                                          // note: value or exec. error is printed from inside exec()
-            ////Serial.println("!!!! after exec - TRACE");
+            ////Serial.println("!!!! after exec - watch");
         }
 
         valuePrinted = true;
@@ -1528,9 +1528,9 @@ void Justina::parseAndExecTraceOrBPviewString(int BPindex) {
         deleteConstStringObjects(_programStorage + _PROGRAM_MEMORY_SIZE);                                       // always
         *(_programStorage + _PROGRAM_MEMORY_SIZE) = tok_no_token;                                               // current end of program (immediate mode)
 
-    } while (*pTraceParsingInput != '\0');                                                                      // exit loop if all expressions handled
+    } while (*pwatchParsingInput != '\0');                                                                      // exit loop if all expressions handled
 
-    _parsingExecutingTraceString = false;
+    _parsingExecutingWatchString = false;
     printlnTo(_debug_sourceStreamNumber);       // go to next output line
 
     return;
@@ -1727,16 +1727,16 @@ void Justina::resetMachine(bool withUserVariables, bool withBreakpoints, bool ke
     // delete parsing stack (keeps track of open parentheses and open command blocks during parsing)
     parsingStack.deleteList();
 
-    // delete trace string and delete breakpoint view and trigger strings ?
+    // delete watch string and delete breakpoint watch and condition strings ?
     if (withBreakpoints) {
-        if (_pTraceString != nullptr) {        // internal trace 'variable'
+        if (_pwatchString != nullptr) {        // internal watch 'variable'
         #if PRINT_HEAP_OBJ_CREA_DEL
-            _pDebugOut->print("\r\n----- (system exp str) "); _pDebugOut->println((uint32_t)_pTraceString, HEX);
-            _pDebugOut->print("reset mach.: trace str "); _pDebugOut->println(_pTraceString);
+            _pDebugOut->print("\r\n----- (system exp str) "); _pDebugOut->println((uint32_t)_pwatchString, HEX);
+            _pDebugOut->print("reset mach.: watch str "); _pDebugOut->println(_pwatchString);
         #endif
             _systemStringObjectCount--;
-            delete[] _pTraceString;
-            _pTraceString = nullptr;                                                                            // old trace string
+            delete[] _pwatchString;
+            _pwatchString = nullptr;                                                                            // old watch string
         }
 
         _pBreakpoints->resetBreakpointsState();                                                                 // '_breakpointsStatusDraft' is set false (breakpoint table empty) 
@@ -1977,7 +1977,7 @@ void Justina::initInterpreterVariables(bool fullReset, bool keepDebugLevelBatchF
         _promptAndEcho = 2, _printLastResult = 1;
         _angleMode = 0;
 
-        _printTraceValueOnly = 0;                                               // init: view expression texts and values during tracing
+        _printWatchValueOnly = 0;                                               // init: watch expression texts and values during expression watching
     }
 }
 
