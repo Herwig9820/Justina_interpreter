@@ -3189,12 +3189,6 @@ void Justina::terminateJustinaFunction(bool isVoidFunction, bool addZeroReturnVa
 
     } while ((blockType == block_while) || (blockType == block_for) || (blockType == block_if));                            // as long as deleted stack level was open block (for, while, if)  
 
-    /* //// weg ?
-    int streamNumber = _activeFunctionData.statementInputStream;                                                            // > 0: batch file
-    _silent = (streamNumber > 0) ? bool(openFiles[streamNumber - 1].silent) : false;
-    _withinMultiLineComment = (streamNumber > 0) ? bool(openFiles[streamNumber - 1].lineEndsInMultiLineComment) : false;
-    */
-
     --_callStackDepth;                                                                                                      // caller reached: call stack depth decreased by 1
 
 
@@ -3237,12 +3231,6 @@ void Justina::terminateEval() {
     _activeFunctionData = *(OpenFunctionData*)_pFlowCtrlStackTop;
     flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);
     _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
-
-    /* //// weg ?
-    int streamNumber = _activeFunctionData.statementInputStream;                                        // > 0: batch file
-    _silent = (streamNumber > 0) ? bool(openFiles[streamNumber - 1].silent) : false;
-    _withinMultiLineComment = (streamNumber > 0) ? bool(openFiles[streamNumber - 1].lineEndsInMultiLineComment) : false;
-    */
     --_callStackDepth;                                                                                  // caller reached: call stack depth decreased by 1
 
     clearParsedCommandLineStack(1);

@@ -2517,7 +2517,7 @@ private:
     void checkConditionResult(execResult_type& execResult);
     void checkForStop(bool& isActiveBreakpoint, bool& doStopForDebugNow, bool& appFlagsRequestStop, bool& isFunctionReturn, char* programCnt_previousStatementStart);
     void parseAndExecWatchOrBPwatchString(int BPindex = -1);
-    void watchAndPrintDebugInfo(execResult_type execResult);
+    void printDebugInfo(execResult_type execResult);
     parsingResult_type parseConditionString(int BPindex);
 
     // printing

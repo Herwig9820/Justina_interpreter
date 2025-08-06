@@ -1157,7 +1157,7 @@ bool Justina::prepareForIdleMode(parsingResult_type result, execResult_type exec
     // ---------------------------------------------------------------------
 
 
-    if ((_openDebugLevels > 0) && (execResult != EVENT_kill) && (execResult != EVENT_quit) && (execResult != EVENT_initiateProgramLoad)) { watchAndPrintDebugInfo(execResult); }
+    if ((_openDebugLevels > 0) && (execResult != EVENT_kill) && (execResult != EVENT_quit) && (execResult != EVENT_initiateProgramLoad)) { printDebugInfo(execResult); }
 
 
     // --------------------------------------------------------------------------------------------
@@ -1392,7 +1392,7 @@ void Justina::clearMemory(int& clearIndicator, bool& kill, bool& quitJustina) { 
 // *   watch expressions as defined in watch statement, print debug info   *
 // -------------------------------------------------------------------------
 
-void Justina::watchAndPrintDebugInfo(execResult_type execResult) {
+void Justina::printDebugInfo(execResult_type execResult) {
     // count of programs in debug:
     // - if an error occurred in a RUNNING program, the program is terminated and the number of STOPPED programs ('in debug mode') does not change.
     // - if an error occurred while executing a command line, then this count is not changed either
