@@ -82,11 +82,11 @@ void Breakpoints::resetBreakpointsState() {
     To accomplish that, during program parsing, the line numbers of these source lines must be 'remembered' and linked to parsed statements.
 
     To do this with a minimal use of memory AND with NO impact on program memory allocated to parsed program statements, Justina stores pairs of line range sizes in a separate table, as follows:
-    each pair consists of 
+    each pair consists of
     - the 'gap' size (number of lines) between the end of a previous range of valid source lines (or the beginning of the source file) and the beginning of a next range of 'valid' source lines
     - the size of the next range of 'valid' source lines (lines where a breakpoint can be set)
-    
-    This information is stored in a table WITHOUT any impact on the memory required for parsed statements (program memory). 
+
+    This information is stored in a table WITHOUT any impact on the memory required for parsed statements (program memory).
     - gap size is less than 8 source lines and valid range size is less than 16 source lines: 1 byte is required in range pair table
     - gap size is less than 128 source lines and valid range size is less than 128 source lines: 2 bytes are required in range pair table
     - gap size is less than 2048 source lines and valid range size is less than 2048 source lines: 3 bytes are required in range pair table
@@ -97,7 +97,7 @@ void Breakpoints::resetBreakpointsState() {
 
     For each source line included in the range pair table, exactly one parsed statement is marked as 'breakpoint allowed' (1-to-1).
     When a user sets, clears, ... a breakpoint later during debugging the program, the line sequence number of the source line in the range pair table
-    is established first (a number from 1 to the number of source lines where a breakpoint can be set). 
+    is established first (a number from 1 to the number of source lines where a breakpoint can be set).
     Then the parsed program is scanned, counting only statements marked as 'breakpoint allowed', until the parsed statement matching
     the source line sequence number is found. The breakpoint flag for that statement is then adapted in program memory.
 
@@ -414,7 +414,7 @@ void Breakpoints::printBreakpoints() {
     // print table header lines
 
     _pJustina->print("Breakpoints are currently "); _pJustina->println(_breakpointsAreOn ? "ON\r\n" : "OFF\r\n");
-    _pJustina->println("source   enabled   watch &\r\n  line             condition\r\n------   -------   -------");
+    _pJustina->println("source   enabled   watch expressions\r\n  line             break condition\r\n------   -------   -------");
 
     char line[50];     // sufficient length for all line elements in first sprintf
 
@@ -427,7 +427,7 @@ void Breakpoints::printBreakpoints() {
         _pJustina->println(_pBreakpointData[i].BPwithWatchExpr == 0b1 ? _pBreakpointData[i].pWatch : "-");
 
         // print breakpoint settings line 2
-        sprintf(line, "%19s%0s", "", _pBreakpointData[i].BPwithHitCount == 0b1 ? "hit count: " : _pBreakpointData[i].BPwithConditionExpr == 0b1 ? "trigger: " : "always trigger\r\n");
+        sprintf(line, "%19s%0s", "", _pBreakpointData[i].BPwithHitCount == 0b1 ? "hit count: " : _pBreakpointData[i].BPwithConditionExpr == 0b1 ? "condition: " : "always break\r\n");
         _pJustina->print(line);
 
         if (_pBreakpointData[i].BPwithConditionExpr == 0b1) { _pJustina->println(_pBreakpointData[i].pCondition); }
@@ -495,6 +495,27 @@ long Breakpoints::findLineNumberForBPstatement(char* pProgramStepToFind) {
     // 2. find the source line number (base 1) corresponding to a line sequence number (base 0)  
     long sourceLineNumber = BPsourceLineFromToBPlineSequence(lineSequenceNumber, false);
     return sourceLineNumber;
+}
+
+
+Justina::execResult_type Breakpoints::tryBPactivation() {
+    if (_breakpointsStatusDraft) {
+        if ((_breakpointsUsed > 0) && (*_pJustina->_programStorage == '\0')) { return Justina::execResult_type::result_BP_noProgram; }
+
+        for (int i = 1; i <= 2; i++) {                                                          // 1: dry run (checks only), 2 = set BP in memory
+            for (int entry = 0; entry < _breakpointsUsed; entry++) {
+                // get line sequence number
+                long lineSequenceNum = BPsourceLineFromToBPlineSequence(_pBreakpointData[entry].sourceLine, true);
+                if (lineSequenceNum == -1) { return Justina::execResult_type::result_BP_notAllowedForSourceLinesInTable; }      // not a valid source line to set breakpoints
+                // check that statement is executable
+                char* pProgramStep{ nullptr };
+                Justina::execResult_type execResult = progMem_getSetClearBP(lineSequenceNum, pProgramStep, (i == 2));   // i=1: check for errors only, 2 = set BP in memory
+                if (execResult != Justina::result_execOK) { return Justina::execResult_type::result_BP_nonExecStatementsInTable; }
+            }
+        }
+        _breakpointsStatusDraft = false;
+    }
+    return Justina::execResult_type::result_execOK;
 }
 
 
@@ -574,9 +595,9 @@ long Breakpoints::BPsourceLineFromToBPlineSequence(long BPlineOrIndex, bool toIn
 // ----------------------------------------------------------------------------------------
 
 void Breakpoints::printLineRangesToDebugOut(Stream* output) {
-    
+
     // note that these ranges contain lines with the start of non-executable statements as well (var, ...)
-    
+
     int i = 0;
     long BPpreviousEndLine{ 0 };                        // introduce offset 1 here
     int bytes{ 0 };
@@ -608,14 +629,14 @@ void Breakpoints::printLineRangesToDebugOut(Stream* output) {
             adjacentLineRange = (temp >> 13) & 0x7FF;
             bytes = 3;
         }
-        
+
         i += bytes;
-        
+
         long BPstartLine = BPpreviousEndLine + gapLineRange + 1;
         long BPendLine = BPstartLine + adjacentLineRange - 1;
         BPpreviousEndLine = BPendLine;
 
-        sprintf(s, "%d bytes: gap range %ld, valid range %ld lines (valid from/to %ld-%ld)", bytes,gapLineRange, adjacentLineRange, BPstartLine, BPendLine);
+        sprintf(s, "%d bytes: gap range %ld, valid range %ld lines (valid from/to %ld-%ld)", bytes, gapLineRange, adjacentLineRange, BPstartLine, BPendLine);
         output->println(s);
     }
 

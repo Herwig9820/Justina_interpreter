@@ -516,9 +516,9 @@ Justina::execResult_type  Justina::returnStreamRef(int streamNumber, Stream*& pS
 }
 
 
-// -------------------------------------------------------------------
-// *   perform file checks prior to performing actions on the file   *
-// -------------------------------------------------------------------
+// -----------------------------------------------------------------------
+// *   perform file checks prior to performing actions on an OPEN file   *
+// -----------------------------------------------------------------------
 
 Justina::execResult_type Justina::SD_fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File*& pFile, int allowedFileTypes, bool allowSystemFiles)
 {
@@ -1218,112 +1218,6 @@ void Justina::printCallStack() {
     }
 }
 
-// --------------------------------------
-// *   print execution error or event   *
-// --------------------------------------
-
-void Justina::printExecError(execResult_type execResult, bool  showStopmessage) {
-    if (*_pConsolePrintColumn != 0) { printlnTo(0);  *_pConsolePrintColumn = 0; }
-
-    bool isEvent = (execResult >= EVENT_startOfEvents);                                                                // not an error but an event ?
-
-    // plain error, or event ? 
-    if (!isEvent) {
-        int sourceErrorPos{ 0 };
-        int functionNameLength{ 0 };
-        long programCounterOffset{ 0 };
-
-        /* -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-            if an execution error occurs, normally the info needed to correctly identify and print the statement and the function (if not an imm. mode statement) where the error occurred...
-            will be found in structure _activeFunctionData.
-            But if the cause of the STATEMENT execution error is actually a PARSING or EXECUTION error in a (nested or not) eval() string, the info MAY be found in the flow ctrl stack
-
-            [1] If a PARSING error occurs while parsing an UNNESTED eval() string, as in statement  a = 3 + eval("2+5*")   (the asterisk will produce a parsing error),
-            then the info pointing to the correct statement ('caller' of the eval() function) is still available in the active function data structure (block type 'block_JustinaFunction'),
-            because the data has not yet been pushed to the flow ctrl stack
-
-            [2] If a PARSING error occurs while parsing a NESTED eval() string, or an EXECUTION error occurs while executing ANY parsed eval() string (nested or not),
-            the info pointing to the correct statement has been pushed to the flow ctrl stack already
-        ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- */
-
-        char* errorStatementStartStep = _activeFunctionData.errorStatementStartStep;
-        char* errorProgramCounter = _activeFunctionData.errorProgramCounter;
-        int functionIndex = _activeFunctionData.functionIndex;          // init
-        int streamNumber = _activeFunctionData.statementInputStream;
-
-        // info to identify and print the statement where the error occurred is on the flow ctrl stack ? find it there
-        if (_activeFunctionData.blockType == block_eval) {
-            void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                                                               // one level below _activeFunctionData
-            char* pImmediateCmdStackLvl = _pParsedCommandLineStackTop;
-
-            while (((OpenFunctionData*)pFlowCtrlStackLvl)->blockType == block_eval) {
-                pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
-                pImmediateCmdStackLvl = parsedStatementLineStack.getPrevListElement(pImmediateCmdStackLvl);
-            }
-
-            // retrieve error statement pointers and function index (in case the 'function' block type is referring to immediate mode statements)
-            errorStatementStartStep = ((OpenFunctionData*)pFlowCtrlStackLvl)->errorStatementStartStep;
-            errorProgramCounter = ((OpenFunctionData*)pFlowCtrlStackLvl)->errorProgramCounter;
-            functionIndex = ((OpenFunctionData*)pFlowCtrlStackLvl)->functionIndex;
-
-            // if the error statement pointers refer to immediate mode code (not to a program), pretty print directly from the imm.mode parsed command stack: add an offset to the pointers 
-            bool isImmMode = (errorStatementStartStep >= (_programStorage + _PROGRAM_MEMORY_SIZE));
-            if (isImmMode) { programCounterOffset = pImmediateCmdStackLvl + sizeof(char*) - (_programStorage + _PROGRAM_MEMORY_SIZE); }
-        }
-
-        printTo(0, "\r\n  ");
-        prettyPrintStatements(0, 1, errorStatementStartStep + programCounterOffset, errorProgramCounter + programCounterOffset, &sourceErrorPos);
-        for (int i = 1; i <= sourceErrorPos; ++i) { printTo(0, " "); }
-
-        char execInfo[70 + MAX_IDENT_NAME_LEN] = "";    // check length
-        sprintf(execInfo, "  ^\r\n  Exec error %d", execResult);                                                        // in main program level 
-        printTo(0, execInfo);
-
-        // errorProgramCounter is never pointing to a token directly contained in a parsed() eval() string 
-        if (errorProgramCounter >= (_programStorage + _PROGRAM_MEMORY_SIZE)) {
-            if (streamNumber <= 0) { sprintf(execInfo, ""); }
-
-            // error in batch file: calculate the line number based on the file position
-            else {
-                File* pfile = &openFiles[streamNumber - 1].file;
-                uint32_t errorPosition = pfile->position();
-                long errorLine{ 0 };                                           // start search at beginning of file;
-                pfile->seek(0);
-                while (pfile->find("\r\n")) {
-                    if (pfile->position() > errorPosition) { break; }
-                    else { errorLine++; }                                       // find the source line containing the (part of) the statement leading to the execution error (could be a multi-line statement)
-                }
-                pfile->seek(errorPosition);                                           // restore file position
-                sprintf(execInfo, " in batch file %s, source line %ld", openFiles[streamNumber - 1].file.name(), errorLine);
-            }
-        }
-
-        // error in program file
-        else {
-            long sourceLine = _pBreakpoints->findLineNumberForBPstatement(errorStatementStartStep);
-            sprintf(execInfo, " in program %s, user function %s, source line %ld", _programName, JustinaFunctionNames[functionIndex], sourceLine);
-        }
-
-        printTo(0, execInfo);
-
-        if (execResult == result_eval_parsingError) { sprintf(execInfo, " (eval() parsing error %ld)\r\n", _evalParsingError); }
-        else if (execResult == result_list_parsingError) { sprintf(execInfo, " (list input parsing error %ld)\r\n", _evalParsingError); }
-        else { sprintf(execInfo, "\r\n"); }
-        printTo(0, execInfo);
-    }
-
-    else if (execResult == EVENT_quit) { printTo(0, "\r\nExecuting 'quit' command\r\n"); }
-    else if (execResult == EVENT_kill) {}                                                                               // (nothing to do here for this event)
-    else if (execResult == EVENT_abort) { printTo(0, "\r\n+++ Abort: code execution terminated +++\r\n"); }
-    else if (execResult == EVENT_stopForDebug) { if (showStopmessage) { printTo(0, "\r\n+++ Program stopped +++\r\n"); } }
-    else if (execResult == EVENT_stopForBreakpoint) { if (showStopmessage) { printTo(0, "\r\n+++ Breakpoint +++\r\n"); } }
-    else if (execResult == EVENT_initiateProgramLoad) {}                                                                // (nothing to do here for this event)
-    else { printTo(0, "\r\n+++ Event +++ "); printlnTo(0, execResult); }
-
-    if (execResult != EVENT_initiateProgramLoad) { _silent = false; }
-    _lastValueIsStored = false;                                                                                         // prevent printing last result (if any)
-}
-
 // -----------------------------------------
 // *   pretty print a parsed instruction   *
 // -----------------------------------------
@@ -1598,7 +1492,6 @@ void Justina::prettyPrintStatements(int outputStream, int instructionCount, char
 
 void Justina::printParsingResult(parsingResult_type result, int funcNotDefIndex, char* const pInstruction, long lineCount, char* pErrorPos) {
 
-    bool checkBPstatusMsg{ false };
     char parsingInfo[130 + MAX_IDENT_NAME_LEN] = "";                                       // provide sufficient room for longest possible message (with some spare positions)
 
     // no parsing error ?
@@ -1608,7 +1501,6 @@ void Justina::printParsingResult(parsingResult_type result, int funcNotDefIndex,
             else {
                 sprintf(parsingInfo, "\r\nProgram '%s' parsed without errors.\r\n%lu %% of program memory used (%lu of %lu bytes)\r\n",
                     _programName, (uint32_t)(((_lastProgramStep - _programStorage + 1) * 100) / _PROGRAM_MEMORY_SIZE), (uint32_t)(_lastProgramStep - _programStorage + 1), _PROGRAM_MEMORY_SIZE);
-                checkBPstatusMsg = true;
             }
         }
     }
@@ -1647,14 +1539,16 @@ void Justina::printParsingResult(parsingResult_type result, int funcNotDefIndex,
         {
             uint32_t streamNumber = _activeFunctionData.statementInputStream;
 
-            // error in batch file ? calculate the line number based on the file position ()
+            // parsing error in batch file: calculate the line number based on the file position 
+            // the file pointer is at the error position: this is either at the end of the line where the parsing error occurs,...
+            // or somewhere within that line
             if (streamNumber > 0) {
                 File* pfile = &openFiles[streamNumber - 1].file;                   // batch file (currently open)
                 uint32_t errorPosition = pfile->position();
                 long errorLine{ 1 };                                           // start search at beginning of file (source line 1);
                 pfile->seek(0);
                 while (pfile->find("\r\n")) {
-                    if (pfile->position() > errorPosition) { break; }
+                    if (pfile->position() >= errorPosition) { break; }
                     else { errorLine++; }                            // find the line containing an execution error
                 }
                 pfile->seek(errorPosition);                                           // restore file position
@@ -1669,9 +1563,116 @@ void Justina::printParsingResult(parsingResult_type result, int funcNotDefIndex,
     }
 
     if (strlen(parsingInfo) > 0) { printlnTo(0, parsingInfo); }
-
-    if (checkBPstatusMsg && _pBreakpoints->_breakpointsStatusDraft) { printlnTo(0, "NOTE: Breakpoints have status DRAFT:\r\n      Review and activate breakpoints if required\r\n"); }
 };
+
+
+// --------------------------------------
+// *   print execution error or event   *
+// --------------------------------------
+
+void Justina::printExecError(execResult_type execResult, bool  showStopmessage) {
+    if (*_pConsolePrintColumn != 0) { printlnTo(0);  *_pConsolePrintColumn = 0; }
+
+    bool isEvent = (execResult >= EVENT_startOfEvents);                                                                // not an error but an event ?
+
+    // plain error, or event ? 
+    if (!isEvent) {
+        int sourceErrorPos{ 0 };
+        int functionNameLength{ 0 };
+        long programCounterOffset{ 0 };
+
+        /* -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+            if an execution error occurs, normally the info needed to correctly identify and print the statement and the function (if not an imm. mode statement) where the error occurred...
+            will be found in structure _activeFunctionData.
+            But if the cause of the STATEMENT execution error is actually a PARSING or EXECUTION error in a (nested or not) eval() string, the info MAY be found in the flow ctrl stack
+
+            [1] If a PARSING error occurs while parsing an UNNESTED eval() string, as in statement  a = 3 + eval("2+5*")   (the asterisk will produce a parsing error),
+            then the info pointing to the correct statement ('caller' of the eval() function) is still available in the active function data structure (block type 'block_JustinaFunction'),
+            because the data has not yet been pushed to the flow ctrl stack
+
+            [2] If a PARSING error occurs while parsing a NESTED eval() string, or an EXECUTION error occurs while executing ANY parsed eval() string (nested or not),
+            the info pointing to the correct statement has been pushed to the flow ctrl stack already
+        ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- */
+
+        char* errorStatementStartStep = _activeFunctionData.errorStatementStartStep;
+        char* errorProgramCounter = _activeFunctionData.errorProgramCounter;
+        int functionIndex = _activeFunctionData.functionIndex;          // init
+        int streamNumber = _activeFunctionData.statementInputStream;
+
+        // info to identify and print the statement where the error occurred is on the flow ctrl stack ? find it there
+        if (_activeFunctionData.blockType == block_eval) {
+            void* pFlowCtrlStackLvl = _pFlowCtrlStackTop;                                                               // one level below _activeFunctionData
+            char* pImmediateCmdStackLvl = _pParsedCommandLineStackTop;
+
+            while (((OpenFunctionData*)pFlowCtrlStackLvl)->blockType == block_eval) {
+                pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
+                pImmediateCmdStackLvl = parsedStatementLineStack.getPrevListElement(pImmediateCmdStackLvl);
+            }
+
+            // retrieve error statement pointers and function index (in case the 'function' block type is referring to immediate mode statements)
+            errorStatementStartStep = ((OpenFunctionData*)pFlowCtrlStackLvl)->errorStatementStartStep;
+            errorProgramCounter = ((OpenFunctionData*)pFlowCtrlStackLvl)->errorProgramCounter;
+            functionIndex = ((OpenFunctionData*)pFlowCtrlStackLvl)->functionIndex;
+
+            // if the error statement pointers refer to immediate mode code (not to a program), pretty print directly from the imm.mode parsed command stack: add an offset to the pointers 
+            bool isImmMode = (errorStatementStartStep >= (_programStorage + _PROGRAM_MEMORY_SIZE));
+            if (isImmMode) { programCounterOffset = pImmediateCmdStackLvl + sizeof(char*) - (_programStorage + _PROGRAM_MEMORY_SIZE); }
+        }
+
+        printTo(0, "\r\n  ");
+        prettyPrintStatements(0, 1, errorStatementStartStep + programCounterOffset, errorProgramCounter + programCounterOffset, &sourceErrorPos);
+        for (int i = 1; i <= sourceErrorPos; ++i) { printTo(0, " "); }
+
+        char execInfo[70 + MAX_IDENT_NAME_LEN] = "";    // check length
+        sprintf(execInfo, "  ^\r\n  Exec error %d", execResult);                                                        // in main program level 
+        printTo(0, execInfo);
+
+        // errorProgramCounter is never pointing to a token directly contained in a parsed() eval() string 
+        if (errorProgramCounter >= (_programStorage + _PROGRAM_MEMORY_SIZE)) {
+            if (streamNumber <= 0) { sprintf(execInfo, ""); }
+
+            // execution error in batch file: calculate the line number based on the file position.
+            // because batch file lines are read one by one during parsing and the statements it contains are executed immediately,...
+            // ...the file pointer is at the end of the line when an execution error occurs in a statement contained in that line
+            else {
+                File* pfile = &openFiles[streamNumber - 1].file;
+                uint32_t errorPosition = pfile->position();
+                long errorLine{ 1 };                                           // start search at beginning of file;
+                pfile->seek(0);
+                while (pfile->find("\r\n")) {
+                    if (pfile->position() >= errorPosition) { break; }          // use '>=' instead of '==' for safety 
+                    else { errorLine++; }                                       // find the source line containing the (part of) the statement leading to the execution error (could be a multi-line statement)
+                }
+                pfile->seek(errorPosition);                                           // restore file position
+                sprintf(execInfo, " in batch file %s, source line %ld", openFiles[streamNumber - 1].file.name(), errorLine);
+            }
+        }
+
+        // error in program file
+        else {
+            long sourceLine = _pBreakpoints->findLineNumberForBPstatement(errorStatementStartStep);
+            sprintf(execInfo, " in program %s, user function %s, source line %ld", _programName, JustinaFunctionNames[functionIndex], sourceLine);
+        }
+
+        printTo(0, execInfo);
+
+        if (execResult == result_eval_parsingError) { sprintf(execInfo, " (eval() parsing error %ld)\r\n", _evalParsingError); }
+        else if (execResult == result_list_parsingError) { sprintf(execInfo, " (list input parsing error %ld)\r\n", _evalParsingError); }
+        else { sprintf(execInfo, "\r\n"); }
+        printTo(0, execInfo);
+    }
+
+    else if (execResult == EVENT_quit) { printTo(0, "\r\nExecuting 'quit' command\r\n"); }
+    else if (execResult == EVENT_kill) {}                                                                               // (nothing to do here for this event)
+    else if (execResult == EVENT_abort) { printTo(0, "\r\n+++ Abort: code execution terminated +++\r\n"); }
+    else if (execResult == EVENT_stopForDebug) { if (showStopmessage) { printTo(0, "\r\n+++ Program stopped +++\r\n"); } }
+    else if (execResult == EVENT_stopForBreakpoint) { if (showStopmessage) { printTo(0, "\r\n+++ Breakpoint +++\r\n"); } }
+    else if (execResult == EVENT_initiateProgramLoad) {}                                                                // (nothing to do here for this event)
+    else { printTo(0, "\r\n+++ Event +++ "); printlnTo(0, execResult); }
+
+    if (execResult != EVENT_initiateProgramLoad) { _silent = false; }
+    _lastValueIsStored = false;                                                                                         // prevent printing last result (if any)
+}
 
 
 // -----------------------------------------------------------------------------------------

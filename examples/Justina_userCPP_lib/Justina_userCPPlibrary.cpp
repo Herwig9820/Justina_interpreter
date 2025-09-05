@@ -14,7 +14,7 @@
 
 /*
     Example code demonstrating how to write a user c++ function library for use by the Justina interpreter
-	------------------------------------------------------------------------------------------------------
+    ------------------------------------------------------------------------------------------------------
 */
 
 
@@ -28,7 +28,7 @@ bool JustinaComplex::cmplxAdd(void** const pdata, const char* const valueType, c
     ------------------------------------------------------------
     var a(2), b(2), sum(2);             // arrays for 3 complex numbers
     ...                                 // input : a(1), b(1) = real part, a(2), b(2) = imaginary part
-    cpp_cmplxAdd(a(1), b(1), sum(1));   // return: sum(1) = real part, sum(2) = imaginary (always pass an array element, not an array name)
+    usrc_cmplxAdd(a(1), b(1), sum(1));  // return: sum(1) = real part, sum(2) = imaginary (always pass an array element, not an array name)
 
 */
 
@@ -36,7 +36,7 @@ bool JustinaComplex::cmplxAdd(void** const pdata, const char* const valueType, c
     if (((valueType[0] & Justina::value_typeMask) != Justina::value_isFloat) ||     // floating point arrays expected
         ((valueType[1] & Justina::value_typeMask) != Justina::value_isFloat) ||
         ((valueType[2] & Justina::value_typeMask) != Justina::value_isFloat)) {
-        execError = 3102;                                                           // 3102: floating point type arguments expected
+        execError = Justina::execResult_type::result_arg_floatTypeExpected;         // floating point type arguments expected
         return false;                                                               // an error occurred
     }
 
@@ -66,14 +66,14 @@ bool JustinaComplex::cmplxCtoP(void** const pdata, const char* const valueType, 
     --------------------------------------------------------------
     var cart(2), polar(2);              // arrays for Cartesian and polar coordinates, respectively
     ...                                 // input : cart(1) = real part, cart(2) = imaginary part
-    cpp_cmplxCtoP(cart(1), polar(1));   // return: polar(1) = radius, polar(2) = angle (always pass an array element, not an array name)
+    usrc_cmplxCtoP(cart(1), polar(1));  // return: polar(1) = radius, polar(2) = angle (always pass an array element, not an array name)
 
 */
 
     // test arguments
     if (((valueType[0] & Justina::value_typeMask) != Justina::value_isFloat) ||     // floating point arrays expected
         ((valueType[1] & Justina::value_typeMask) != Justina::value_isFloat)) {
-        execError = 3102;                                                           // error 3102: floating point type arguments expected
+        execError = Justina::execResult_type::result_arg_floatTypeExpected;         // floating point type arguments expected
         return false;                                                               // an error occurred
     }
 

@@ -40,7 +40,7 @@ constexpr int STOP_ABORT_PIN{ 4 };                                          // r
 // output pins: connect each output pin to the anode of a LED and connect each cathode to one terminal of a resistor. Wire the other terminal to ground. 
 constexpr int DATA_IO_PIN{ 5 };                                             // signals Justina is sending or receiving data (from any external IO device) 
 constexpr int STATUS_A_PIN{ 6 };                                            // status A and B: Justina status
-constexpr int STATUS_B_PIN{ 2 /*7: pin output defect*/ };
+constexpr int STATUS_B_PIN{ 7 };
 constexpr int ERROR_PIN{ 8 };                                               // a Justina error occurred (e.g., division by zero)  
 constexpr int HEARTBEAT_PIN{ 9 };                                           // a square wave is output to indicate 'Justina is running'                                                
 
@@ -72,7 +72,7 @@ Stream* pExternalInputs[terminalCount]{ &Serial, nullptr, nullptr, nullptr };   
 Print* pExternalOutputs[terminalCount]{ &Serial, nullptr, nullptr, nullptr };       // Justina output streams (nullptr: TCP/IP output stream to be added)                                                       
 
 // create Justina interpreter object
-Justina justina(pExternalInputs, pExternalOutputs, terminalCount, 3);
+Justina justina(pExternalInputs, pExternalOutputs, terminalCount, Justina::SD_runAutoStart);
 
 
 // -------------------------------
@@ -84,19 +84,19 @@ constexpr char SSID[] = SERVER_SSID, PASS[] = SERVER_PASS;                      
 
 // enter the correct server STATIC IP address and port here (CHECK / ADAPT your ROUTER settings as well)
 // (if configured as a HTTP/IP client, this is the IP address and port of the server to connect to) 
-const IPAddress serverAddress(192, 168, 0, 95);                                     // STATIC server IP (LAN)
+const IPAddress serverAddress(192, 168, 1, 45);                                     // STATIC server IP (LAN)
 const int serverPort = 8085;                                                        // server port
 
 // enter gateway address, subnet mask and DNS address here (only relevant if configured as server)
-const IPAddress gatewayAddress(192, 168, 0, 1);
+const IPAddress gatewayAddress(192, 168, 1, 254);
 const IPAddress subnetMask(255, 255, 255, 0);
 const IPAddress DNSaddress(195, 130, 130, 5);
 
 
 // create TCP connection object to connect Arduino as TCP server
-// last argument: desired connection state (choose WiFi not connected, WiFi connected or TCP connected)
-TCPconnection myTCPconnection(SSID, PASS, serverAddress, gatewayAddress, subnetMask, DNSaddress, serverPort, true, true, pExternalInputs + 1, TCPclientSlots);
-
+Stream** pClientStreams = &(pExternalInputs[1]);                                      // new variable for clarity only; pExternalInputs[0] : Serial stream
+// external output streams will be set to external input streams in setup()
+TCPconnection myTCPconnection(SSID, PASS, serverAddress, gatewayAddress, subnetMask, DNSaddress, serverPort, true, true, pClientStreams, TCPclientSlots);
 
 // --------------------
 // forward declarations
@@ -131,26 +131,26 @@ long getTCPclientCount(void** const pdata, const char* const valueType, const in
 // Records must be grouped by function return type.
 // See the documentation for an overview of all function return types. It also explains how to define your own Justina commands.
 
-// NOTE: the 'cpp_' prefix in next aliases is not a requirement, but it indicates the function nature AND it highlights such function names if notepad++
+// NOTE: the 'uf_' prefix in next aliases is not a requirement, but it indicates the function nature AND it highlights such function names if notepad++
 // is used as an editor (the Justina language extension must be installed).
 
 // user c++ functions returning nothing as function result
 Justina::CppVoidFunction  const cppVoidFunctions[]{
-    {"cpp_WiFiOff", WiFiOff, 0, 0},
-    {"cpp_WiFiOn", WiFiOn, 0, 0},
-    {"cpp_TCPoff", TCPoff, 0, 0},
-    {"cpp_TCPon", TCPon, 0, 0},
-    {"cpp_setConnectionTimeout", setConnectionTimeout, 1, 1},
-    {"cpp_stopSessionClient", stopSessionClient, 2,2},                              // stop the TCP client linked to a session. parameters: sessionID, keepSessionActive 
-    {"cpp_setVerbose", setVerbose, 1, 1},                                           // set verbose mode. parameter: verbose (true) or silent (false)
-    {"cpp_getLocalIP", getLocalIP, 1, 1},                                           // get server IP address. parameter: local IP (passed on exit)
+    {"uf_WiFiOff", WiFiOff, 0, 0},
+    {"uf_WiFiOn", WiFiOn, 0, 0},
+    {"uf_TCPoff", TCPoff, 0, 0},
+    {"uf_TCPon", TCPon, 0, 0},
+    {"uf_setConnectionTimeout", setConnectionTimeout, 1, 1},
+    {"uf_stopSessionClient", stopSessionClient, 2,2},                               // stop the TCP client linked to a session. parameters: sessionID, keepSessionActive 
+    {"uf_setVerbose", setVerbose, 1, 1},                                            // set verbose mode. parameter: verbose (true) or silent (false)
+    {"uf_getLocalIP", getLocalIP, 1, 1},                                            // get server IP address. parameter: local IP (passed on exit)
 };
 
 // user c++ functions returning a Justina integer value (32-bit signed integer)
 Justina::CppLongFunction const cppLongFunctions[]{
-    {"cpp_getWiFiState", getWiFiState, 0, 0},                                       // return WiFi connection state (enumeration)
-    {"cpp_getClientCount", getTCPclientCount, 0, 0},                                // return TCP client connection count or -1 (no WiFi or TCP not enabled)
-    {"cpp_getSessionData", getSessionClient, 2, 2}                                  // return TCP client slot linked to a session. Parameters: session ID, (return parameter): client IP
+    {"uf_getWiFiState", getWiFiState, 0, 0},                                        // return WiFi connection state (enumeration)
+    {"uf_getClientCount", getTCPclientCount, 0, 0},                                 // return TCP client connection count or -1 (no WiFi or TCP not enabled)
+    {"uf_getSessionData", getSessionClient, 2, 2}                                   // return TCP client slot linked to a session. Parameters: session ID, (return parameter): client IP
 };
 
 // -------------------------------
@@ -246,15 +246,15 @@ void heartbeat() {
     // ...but the passing of MINIMUM time intervals 
 
     static bool ledOn{ false };
-    static uint32_t lastHeartbeat{ 0 };                                                         // last heartbeat time in ms
+    static uint32_t lastHeartbeat{ 0 };                                                     // last heartbeat time in ms
     static uint32_t previousTime{ 0 };
 
     uint32_t currentTime = millis();
     // also handle millis() overflow after about 47 days
-    if ((lastHeartbeat + heartbeatPeriod < currentTime) || (currentTime < previousTime)) {     // heartbeat period has passed
+    if ((lastHeartbeat + heartbeatPeriod < currentTime) || (currentTime < previousTime)) {  // heartbeat period has passed
         lastHeartbeat = currentTime;
         ledOn = !ledOn;
-        digitalWrite(HEARTBEAT_PIN, ledOn);                                                     // change led state
+        digitalWrite(HEARTBEAT_PIN, ledOn);                                                 // change led state
     }
     previousTime = currentTime;
 }
@@ -304,11 +304,11 @@ void setConnectionStatusLeds() {
  /*
     Justina call:
     -------------
-    cpp_WiFiOff();
-    cpp_WiFiRestart();
-    cpp_TCPoff();
-    cpp_TCPon();
-    cpp_setConnectionTimeout(connectionTimeout);
+    uf_WiFiOff();
+    uf_WiFiRestart();
+    uf_TCPoff();
+    uf_TCPon();
+    uf_setConnectionTimeout(connectionTimeout);
 */
 
 // switch off WiFi antenna
@@ -335,7 +335,7 @@ void TCPon(void** const pdata, const char* const valueType, const int argCount, 
 void setConnectionTimeout(void** const pdata, const char* const valueType, const int argCount, int& execError) {
     bool isLong = ((valueType[0] & Justina::value_typeMask) == Justina::value_isLong);
     bool isFloat = ((valueType[0] & Justina::value_typeMask) == Justina::value_isFloat);
-    if (!isLong && !isFloat) { execError = 3104; return; }                                  // numeric argument expected                 
+    if (!isLong && !isFloat) { execError = Justina::execResult_type::result_arg_numberExpected; return; }    // numeric argument expected                 
 
     // get values or pointers to values
     unsigned long TCPconnectionTimeout = isLong ? *(long*)pdata[0] : *(float*)pdata[0];     // fraction is lost 
@@ -350,7 +350,7 @@ void setConnectionTimeout(void** const pdata, const char* const valueType, const
  /*
     Justina call:
     -------------
-    cpp_stopSessionClient(sessionID, endSession);
+    uf_stopSessionClient(sessionID, endSession);
 */
 
 // stop the TCPIP client currently linked to a session
@@ -364,10 +364,10 @@ void stopSessionClient(void** const pdata, const char* const valueType, const in
     for (int i = 0; i <= 1; i++) {
         isLong[i] = ((valueType[i] & Justina::value_typeMask) == Justina::value_isLong);
         bool isFloat = ((valueType[i] & Justina::value_typeMask) == Justina::value_isFloat);
-        if (!isLong[i] && !isFloat) { execError = 3104; return; }                           // numeric argument expected                 
+        if (!isLong[i] && !isFloat) { execError = Justina::execResult_type::result_arg_numberExpected; return; }      // numeric argument expected                 
     }
-    sessionID = isLong ? (*(long*)pdata[0] - 1) : ((long)(*(float*)pdata[0])) - 1;          // Justina caller uses base 1 for session ID: convert
-    if ((sessionID < 0) || (sessionID >= TCPclientSlots)) { execError = 3100; return; }     // argument outside range
+    sessionID = isLong ? (*(long*)pdata[0] - 1) : ((long)(*(float*)pdata[0])) - 1;              // Justina caller uses base 1 for session ID: convert
+    if ((sessionID < 0) || (sessionID >= TCPclientSlots)) { execError = Justina::execResult_type::result_arg_outsideRange; return; }    // argument outside range
 
     endSession = (bool)isLong[1] ? (bool)(*(long*)pdata[1]) : (bool)(*(float*)pdata[1]);
     myTCPconnection.stopSessionClient(sessionID, endSession);
@@ -381,7 +381,7 @@ void stopSessionClient(void** const pdata, const char* const valueType, const in
  /*
     Justina call:
     -------------
-    cpp_setVerbose(state);                                                                  // state = 0: silent, 1: verbose
+    uf_setVerbose(state);                   // state = 0: silent, 1: verbose
 */
 
 void setVerbose(void** const pdata, const char* const valueType, const int argCount, int& execError) {
@@ -389,11 +389,11 @@ void setVerbose(void** const pdata, const char* const valueType, const int argCo
     // NOTE: if you trust the Justina caller and you know the argument type (long or float), you can skip the tests
     bool isLong = ((valueType[0] & Justina::value_typeMask) == Justina::value_isLong);
     bool isFloat = ((valueType[0] & Justina::value_typeMask) == Justina::value_isFloat);
-    if (!isLong && !isFloat) { execError = 3104; return; }                                  // numeric argument expected                 
+    if (!isLong && !isFloat) { execError = Justina::execResult_type::result_arg_numberExpected; return; }           // numeric argument expected                 
 
     // get values or pointers to values
-    long state = isLong ? *(long*)pdata[0] : *(float*)pdata[0];                             // fraction is lost 
-    if ((state < 0) || (state > 1)) { execError = 3100; return; }                           // argument outside range
+    long state = isLong ? *(long*)pdata[0] : *(float*)pdata[0];                                                     // fraction is lost 
+    if ((state < 0) || (state > 1)) { execError = Justina::execResult_type::result_arg_outsideRange; return; }      // argument outside range
 
     myTCPconnection.setVerbose(bool(state));
 };
@@ -408,7 +408,7 @@ long getWiFiState(void** const pdata, const char* const valueType, const int arg
  /*
     Justina call:
     -------------
-    cpp_getWiFiState();
+    uf_getWiFiState();
 
     connection state returned:
     0: WiFi not connected
@@ -416,7 +416,7 @@ long getWiFiState(void** const pdata, const char* const valueType, const int arg
     2: WiFi connected
  */
 
-    return (long)myTCPconnection.getWiFiState();                                            // state = 0 to 4 (see connectionState enumeration)
+    return (long)myTCPconnection.getWiFiState();                    // state = 0 to 4 (see connectionState enumeration)
 };
 
 
@@ -429,14 +429,14 @@ long getTCPclientCount(void** const pdata, const char* const valueType, const in
  /*
     Justina call:
     -------------
-    cpp_getTCPstate();
+    uf_getTCPstate();
 
     connection state returned:
     -1:     no WiFi or TCP disabled
     0 to n: number of connected clients
  */
 
-    return (long)myTCPconnection.getTCPclientCount();                                       // -1 = WiFi off and/or TCP disabled
+    return (long)myTCPconnection.getTCPclientCount();               // -1 = WiFi off and/or TCP disabled
 };
 
 
@@ -455,13 +455,13 @@ void getLocalIP(void** const pdata, const char* const valueType, const int argCo
     Justina call:
     -------------
     var a = "";
-    cpp_getLocalIP(a=space(15));
+    uf_getLocalIP(a=space(15));
 */
 
-    if (!(valueType[0] & 0x80)) { execError = 3110; return; }
+    if (!(valueType[0] & 0x80)) { execError = Justina::execResult_type::result_arg_variableExpected; return; }
     bool isString = ((valueType[0] & Justina::value_typeMask) == Justina::value_isString);
-    if (!isString) { execError = 3103; return; }                                            // string expected      
-    if (strlen(((char*)pdata[0])) < 15) { execError = 3106; return; }                       // string too short (to contain IP as string)
+    if (!isString) { execError = Justina::execResult_type::result_arg_stringExpected; return; }                         // string expected      
+    if (strlen(((char*)pdata[0])) < 15) { execError = Justina::execResult_type::result_arg_stringTooShort; return; }    // string too short (to contain IP as string)
 
 
     *(char*)pdata[0] = '\0';                                                                // init
@@ -488,7 +488,7 @@ long getSessionClient(void** const pdata, const char* const valueType, const int
     Justina call:
     -------------
     var a = "";
-    clientSlot = cpp_getSessionData(sessionID, IP=space(15));                                   // IP must be a variable long enough to receive a 15-character string
+    clientSlot = uf_getSessionData(sessionID, IP=space(15));                                    // IP must be a variable long enough to receive a 15-character string
 */
 
     // NOTE: if you trust the Justina caller and you know the argument type (long or float), you can skip the tests
@@ -497,16 +497,16 @@ long getSessionClient(void** const pdata, const char* const valueType, const int
     // ----------------------------------------------------
     bool isLong = ((valueType[0] & Justina::value_typeMask) == Justina::value_isLong);
     bool isFloat = ((valueType[0] & Justina::value_typeMask) == Justina::value_isFloat);
-    if (!isLong && !isFloat) { execError = 3104; return -1; }                                   // numeric argument expected                 
+    if (!isLong && !isFloat) { execError = Justina::execResult_type::result_arg_numberExpected; return -1; }   // numeric argument expected                 
 
     int sessionID = isLong ? (*(long*)pdata[0] - 1) : ((long)(*(float*)pdata[0])) - 1;          // Justina caller uses base 1 for session ID
-    if ((sessionID < 0) || (sessionID >= TCPclientSlots)) { execError = 3100; return -1; }      // argument outside range
+    if ((sessionID < 0) || (sessionID >= TCPclientSlots)) { execError = Justina::execResult_type::result_arg_outsideRange; return -1; }      // argument outside range
 
     // IP argument: must be a 15-character string on entry on entry
-    if (!(valueType[1] & 0x80)) { execError = 3110; return -1; }
+    if (!(valueType[1] & 0x80)) { execError = Justina::execResult_type::result_arg_variableExpected; return -1; }
     bool isString = ((valueType[1] & Justina::value_typeMask) == Justina::value_isString);
-    if (!isString) { execError = 3103; return -1; }                                             // string expected      
-    if (strlen(((char*)pdata[1])) < 15) { execError = 3106; return -1; }                        // string too short (to contain IP as string)
+    if (!isString) { execError = Justina::execResult_type::result_arg_stringExpected; return -1; }                          // string expected      
+    if (strlen(((char*)pdata[1])) < 15) { execError = Justina::execResult_type::result_arg_stringTooShort; return -1; }     // string too short (to contain IP as string)
 
 
     // call TCPconnection method 'getSessionClient'
@@ -518,7 +518,7 @@ long getSessionClient(void** const pdata, const char* const valueType, const int
     // populate return argument
     // ------------------------
 
-    *(char*)pdata[1] = '\0';                                                                    // init
+    *(char*)pdata[1] = '\0';                                                        // init
     sprintf((char*)pdata[1], "%d.%d.%d.%d", IP[0], IP[1], IP[2], IP[3]);
 
     // return the client slot and IP address of a currently connected client for a session. If no connected client, return -1 

@@ -56,7 +56,7 @@ const Justina::internCmdDef Justina::_internCommands[]{
     {"delete",          cmdcod_deleteVar,       cmd_onlyCommandLineStart | cmd_skipDuringExec
                                                                                 | cmd_notInDebugMode,   1,15,   cmdArgSeq_110,  cmdBlockNone},      // can only delete user variables (command line only)
 
-    {"clearMem",        cmdcod_clearAll ,       cmd_onlyImmediate | cmd_skipDuringExec
+    {"clearMem",        cmdcod_clearAll ,       cmd_onlyCommandLine | cmd_skipDuringExec
                                                                                 | cmd_notInDebugMode,   0,0,    cmdArgSeq_100,  cmdBlockNone},      // executed AFTER execution phase ends
     {"clearProg",       cmdcod_clearProg,       cmd_onlyImmediate | cmd_skipDuringExec
                                                                                 | cmd_notInDebugMode,   0,0,    cmdArgSeq_100,  cmdBlockNone},      // executed AFTER execution phase ends
@@ -745,6 +745,8 @@ void Justina::begin() {
 
     resetMachine(false);                                                                                // if 'warm' start, previous program (with its variables) may still exist
 
+    bool doAutoStart{ false };
+
    // initialize SD card library now ?
     // 0 = no card reader, 1 = card reader present, do not yet initialize, 2 = initialize card now, 3 = init card & run startup file function start() now
     if ((_justinaStartupOptions & SD_mask) >= SD_init) {
@@ -753,7 +755,6 @@ void Justina::begin() {
         printlnTo(0, _SDinitOK ? "SD card found" : "SD card error: SD card NOT found");
     }
 
-    bool doAutoStart{ false };
     if ((_justinaStartupOptions & SD_mask) == SD_runAutoStart) {
         // open startup file and retrieve file number (which would be one, normally)
         doAutoStart = _SDinitOK;
@@ -772,6 +773,11 @@ void Justina::begin() {
         }
     }
 
+    if (!doAutoStart) {
+        printTo(0, "Justina> ");                                                                    // and stay on that line
+        _lastPrintedIsPrompt = true;                                                                // signal that a prompt is printed now
+        *_pConsolePrintColumn = 9;                                                                  // prompt character length 
+    }
 
     JustinaMainLoop(doAutoStart, parsedStatementStartsOnNewLine, parsedStatementStartLinesAreAdjacent, statementStartsAtLine, parsedStatementAllowingBPstartsAtLine, BPstartLine, BPendLine, BPpreviousEndLine, kill);
 
@@ -893,7 +899,6 @@ void Justina::JustinaMainLoop(bool& doAutoStart, bool& parsedStatementStartsOnNe
                     statementStartsAtLine, parsedStatementAllowingBPstartsAtLine, BPstartLine, BPendLine, BPpreviousEndLine);
 
                 // if no error, parse ONE statement
-                ////Serial.print("[parse:] "); Serial.println(pStatement);
                 if (result == result_parsing_OK) { result = parseStatement(pStatement, pNextStatement, clearCmdIndicator, isSilentOnOffStatement); }
 
                 if (!_silent && ((++parsedStatementCount & 0x0f) == 0)) {
@@ -931,9 +936,7 @@ void Justina::JustinaMainLoop(bool& doAutoStart, bool& parsedStatementStartsOnNe
                     execResult_type execResult{ result_execOK };
                     if (!_programMode && (result == result_parsing_OK)) {
 
-                        ////Serial.println("!!!! before exec");
                         execResult = exec(_programStorage + _PROGRAM_MEMORY_SIZE);              // execute parsed user statements (and call programs from there)
-                        ////Serial.println("!!!! after exec");
                         if (execResult == EVENT_kill) { kill = true; }
                         if (kill || (execResult == EVENT_quit)) { printlnTo(0); quitNow = true; }               // make sure Justina prompt will be printed on a new line
                     }
@@ -987,7 +990,7 @@ bool Justina::addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString
     bool redundantSpaces = false;
 
     static bool lastCharWasWhiteSpace{ false };
-    static char lastCommentChar{ '\0' };                                                                        
+    static char lastCommentChar{ '\0' };
 
     // init static vars at first character to be evaluated (flag: lineCount == -1)
     if (lineCount == -1) { lineCount++; lastCharWasWhiteSpace = false; lastCommentChar = '\0'; }
@@ -1101,10 +1104,19 @@ bool Justina::finaliseParsing(parsingResult_type& result, bool& kill, long lineC
 
     if (result == result_parsing_OK) {
         if (_programMode) {
-            // parsing OK message (program mode only - no message in immediate mode)  
+            // parsing OK message (program mode only - no message if not in program mode)  
             if (!_silent) { printParsingResult(result, funcNotDefIndex, _sourceStatement, lineCount, pErrorPos); }
+
+            if (*_programStorage != '\0') {                      // a program was loaded: try to activate breakpoints (if defined)
+                execResult_type execError = _pBreakpoints->tryBPactivation();
+                if (_pBreakpoints->_breakpointsUsed > 0) {
+                    printlnTo(0, (_pBreakpoints->_breakpointsStatusDraft) ?        // even if _silent mode
+                    "WARNING: defined breakpoints could not be activated; breakpoint status remains draft\r\n" : "Breakpoints are now active\r\n");
+                }
+            }
         }
-        // no parsing errors and not silent
+
+        // not in program mode; no parsing errors and not silent
         else {
             if (!_silent && !isSilentOnOffStatement) {
                 // echo enabled ? pretty print input line (echo input), then advance a line if input did not come from batch file OR the last thing printed was not a prompt 
@@ -1517,9 +1529,7 @@ void Justina::parseAndExecWatchOrBPwatchString(int BPindex) {
         // if parsing went OK: execute ONE parsed expression (just parsed now)
         execResult_type execResult{ result_execOK };
         if (result == result_parsing_OK) {
-            ////Serial.println("!!!! before exec - watch");
             execResult = exec(_programStorage + _PROGRAM_MEMORY_SIZE);                                          // note: value or exec. error is printed from inside exec()
-            ////Serial.println("!!!! after exec - watch");
         }
 
         valuePrinted = true;
@@ -1747,12 +1757,6 @@ void Justina::resetMachine(bool withUserVariables, bool withBreakpoints, bool ke
         bool wasDraft = _pBreakpoints->_breakpointsStatusDraft;
         _pBreakpoints->_breakpointsStatusDraft = (_pBreakpoints->_breakpointsUsed > 0);                         // '_breakpointsStatusDraft' set according to existence of entries in breakpoint table
         _pBreakpoints->_BPlineRangeStorageUsed = 0;
-
-        if (!_silent && !wasDraft && _pBreakpoints->_breakpointsStatusDraft) {
-            Serial.print("");  printlnTo(0); for (int i = 1; i <= 40; i++) { printTo(0, '*'); }
-            printlnTo(0, "\r\n** Breakpoint status now set to DRAFT **");                                       // because table not empty
-            for (int i = 1; i <= 40; i++) { printTo(0, '*'); } Serial.print("");  printlnTo(0);
-        }
     }
 
     // check that all heap objects are deleted (in fact only the count is checked)

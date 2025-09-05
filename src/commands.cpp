@@ -340,23 +340,9 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
         // -----------------------------------------------------
 
         case cmdcod_BPactivate:
-        {
-            if (_pBreakpoints->_breakpointsStatusDraft) {
-                if ((_pBreakpoints->_breakpointsUsed > 0) && (*_programStorage == '\0')) { return result_BP_noProgram; }
-
-                for (int i = 1; i <= 2; i++) {                                                          // 1: dry run (checks only), 2 = set BP in memory
-                    for (int entry = 0; entry < _pBreakpoints->_breakpointsUsed; entry++) {
-                        // get line sequence number
-                        long lineSequenceNum = _pBreakpoints->BPsourceLineFromToBPlineSequence(_pBreakpoints->_pBreakpointData[entry].sourceLine, true);
-                        if (lineSequenceNum == -1) { return result_BP_notAllowedForSourceLinesInTable; }      // not a valid source line to set breakpoints
-                        // check that statement is executable
-                        char* pProgramStep{ nullptr };
-                        execResult = _pBreakpoints->progMem_getSetClearBP(lineSequenceNum, pProgramStep, (i == 2));   // i=1: check for errors only, 2 = set BP in memory
-                        if (execResult != Justina::result_execOK) { return result_BP_nonExecStatementsInTable; }
-                    }
-                }
-                _pBreakpoints->_breakpointsStatusDraft = false;
-            }
+        {          
+            execResult_type execError = _pBreakpoints->tryBPactivation();
+            if (execError != result_execOK){return execError;}
 
             // clean up
             clearEvalStackLevels(cmdArgCount);                              // clear evaluation stack and intermediate strings 
@@ -1193,8 +1179,24 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
             int sourceStreamNumber{ 0 }, destinationStreamNumber{ 0 };      // init: console
             Stream* pSourceStream{};
 
-            // send or receive file: send or receive data to / from external IO stream 
-            if (isSend || isReceive) {
+            int receivingFileArgIndex{};    // (receive or copy file only) 
+            bool proceed{ true };           // init (in silent mode, overwrite without asking)
+
+
+            // verbose argument supplied ? test and store value
+            // ------------------------------------------------
+            bool verbose = true;
+            if (cmdArgCount == 3) {
+                if ((valueType[2] == value_isLong) || (valueType[2] == value_isFloat)) { verbose = (bool)((valueType[2] == value_isLong) ? args[2].longConst : (long)args[2].floatConst); }
+                else { return result_arg_numberExpected; }
+            }
+
+
+            // preliminary tests
+            // -----------------
+
+            // send or receive: test and store external (sending or receiving) stream number 
+            if (isSend || isReceive) {                                                                                          // send or receive file: send or receive data to / from external IO stream
                 int IOstreamNumber{ 0 };
                 if (cmdArgCount >= 2) {                                                                                         // source (receive) / destination (send) specified ?
                     int IOstreamArgIndex = (_activeFunctionData.activeCmd_commandCode == cmdcod_sendFile ? 1 : 0);              // init (default for send and receive only, if not specified)
@@ -1206,59 +1208,53 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                 }
                 Stream* pStream{ nullptr };
                 execResult = setActiveStreamTo(IOstreamNumber, pStream, isSend);                     // perform checks and set EXTERNAL IO stream (for input OR output)
-                if (execResult != result_execOK) {
-                    return result_IO_invalidStreamNumber;
-                }
+
+                if (execResult != result_execOK) { return result_IO_invalidStreamNumber; }
                 (isReceive ? sourceStreamNumber : destinationStreamNumber) = IOstreamNumber;
                 if (isReceive) { pSourceStream = pStream; }                                         // only needed for external source stream (see further)
             }
 
-            // send or copy file: source is a file
-            if (isSend || isCopy) {
+            // send or copy file: test for valid source file path
+            if (isSend || isCopy) {                                                                                 // send or copy file: source is a file
                 if (valueType[0] != value_isStringPointer) { return result_arg_stringExpected; }    // mandatory file name
                 if ((execResult = pathValid(args[0].pStringConst)) != result_execOK) { return execResult; }
-
-                // don't open source file yet: wait until all other checks are done
             }
 
-            // verbose argument supplied ?
-            bool verbose = true;
-            if (cmdArgCount == 3) {
-                if ((valueType[2] == value_isLong) || (valueType[2] == value_isFloat)) { verbose = (bool)((valueType[2] == value_isLong) ? args[2].longConst : (long)args[2].floatConst); }
-                else { return result_arg_numberExpected; }
-            }
-
-            int receivingFileArgIndex{};
-            bool proceed{ true };        // init (in silent mode, overwrite without asking)
-
-            // receive or copy file: destination is a file
-            if ((isReceive) || (isCopy)) {
+            // receive or copy file: test for valid receiving file path
+            if ((isReceive) || (isCopy)) {                                                      // receive or copy file: destination is a file
                 receivingFileArgIndex = (cmdArgCount == 1) ? 0 : 1;
                 if (valueType[receivingFileArgIndex] != value_isStringPointer) { return result_arg_stringExpected; }    // mandatory file name
                 if ((execResult = pathValid(args[receivingFileArgIndex].pStringConst)) != result_execOK) { return execResult; }
 
-                if (isCopy) {
-                    long sourceStart = (args[0].pStringConst[0] == '/') ? 1 : 0;
-                    long destinStart = (args[1].pStringConst[0] == '/') ? 1 : 0;
-                    // because this is a simple string compare, and a leading '/' is optional in the file path, make sure identical file paths are always discovered
-                    if (strcasecmp(args[0].pStringConst + sourceStart, args[1].pStringConst + destinStart) == 0) { return result_SD_sourceIsDestination; }   // 8.3 file format: NOT case sensitive
+            }
+
+            // copy file: test dat source file is not the destination file
+            if (isCopy) {
+                long sourceStart = (args[0].pStringConst[0] == '/') ? 1 : 0;
+                long destinStart = (args[1].pStringConst[0] == '/') ? 1 : 0;
+                // because this is a simple string compare, and a leading '/' is optional in the file path, make sure identical file paths are always discovered
+                if (strcasecmp(args[0].pStringConst + sourceStart, args[1].pStringConst + destinStart) == 0) { return result_SD_sourceIsDestination; }   // 8.3 file format: NOT case sensitive
+            }
+
+
+            // receiving file (receive or copy): if the file exists, test that it's not open and, if verbose, ask if it may be overwritten 
+            // ---------------------------------------------------------------------------------------------------------------------------
+            if ((isReceive) || (isCopy)) {                                                      // receive or copy file: destination is a file
+
+                // if receiving file is open, return error; if the file exists (but is not open), ask if overwriting it is OK
+                char* filePath = args[receivingFileArgIndex].pStringConst;             // init
+                bool fileExists = (long)SD.exists(filePath);
+
+                // test for open receiving file: although this test is performed further on when opening the file, the test is advanced to this point, to prevent (receive file only)...
+                // ... the file from being sent if the receiving file is open (the sending side is an external stream, which is not under the control of Justina) 
+                if (fileExists && (_openFileCount > 0)) {
+                    for (int i = 0; i < MAX_OPEN_SD_FILES; ++i) {
+                        if (openFiles[i].fileNumberInUse) {
+                            if (strcasecmp(openFiles[i].filePath, filePath) == 0) { return result_SD_fileAlreadyOpen; }                                // 8.3 file format: NOT case sensitive  
+                        }
+                    }
                 }
 
-                // if receiving file exists, ask if overwriting it is OK
-                // ESP32 requires that the path starts with a slash
-                char* filePathWithSlash = args[receivingFileArgIndex].pStringConst;             // init
-                int len = strlen(filePathWithSlash);
-                if (filePathWithSlash[0] != '/') {                                              // starting '/' missing)
-                    _systemStringObjectCount++;
-                    filePathWithSlash = new char[1 + len + 1];                                  // include space for starting '/' and ending '\0'
-                    filePathWithSlash[0] = '/';
-                    strcpy(filePathWithSlash + 1, args[receivingFileArgIndex].pStringConst);    // copy original string
-                }
-                bool fileExists = (long)SD.exists(filePathWithSlash);
-                if (filePathWithSlash != args[receivingFileArgIndex].pStringConst) {
-                    delete[] filePathWithSlash;                                                 // if pointers are not equal, a new char* was created: delete it
-                    _systemStringObjectCount--;
-                }
                 if (fileExists) {       // file to receive exists already ?
                     if (verbose) {
                         printlnTo(0, "\r\n===== File exists already. Overwrite ? (please answer Y or N) =====");
@@ -1329,6 +1325,9 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                 }
             }
 
+
+            // open file(s), set streams, execute send / receive / copy command
+            // ----------------------------------------------------------------
             if (proceed) {
                 if (isSend || isCopy) {
                     // open source file
@@ -1349,11 +1348,12 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                     // NOTE: for ESP32, CREATE_FILE and TRUNC_FILE will have no effect (ESP32 SD library only knows read, write and append modes)
                     execResult = SD_open(destinationStreamNumber, args[receivingFileArgIndex].pStringConst, WRITE_FILE | CREATE_FILE | TRUNC_FILE);
                     if (execResult == result_execOK) {
-                        if (openFiles[destinationStreamNumber - 1].file.isDirectory()) { execResult == result_SD_directoryNotAllowed; SD_closeFile(destinationStreamNumber); }
+                        if (openFiles[destinationStreamNumber - 1].file.isDirectory()) { execResult = result_SD_directoryNotAllowed; SD_closeFile(destinationStreamNumber); }
                     }
 
                     if (execResult != result_execOK) {
-                        if (isCopy) { SD_closeFile(sourceStreamNumber); return execResult; }        // source file was already open: close
+                        if (isCopy) { SD_closeFile(sourceStreamNumber); }                          // source file was already open: close
+                        return execResult;
                     }
 
                     execResult = setActiveStreamTo(destinationStreamNumber, true);                   // perform checks and set output stream (file)
@@ -1363,6 +1363,7 @@ Justina::execResult_type Justina::execInternalCommand(bool& isFunctionReturn, bo
                         return execResult;
                     }
                 }
+
 
                 // copy data from source stream to destination stream now
                 // ------------------------------------------------------

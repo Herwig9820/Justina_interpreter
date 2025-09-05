@@ -13,7 +13,7 @@
 #ifndef _JUSTINA_TCP_h
 #define _JUSTINA_TCP_h
 #
-#if defined(ARDUINO_ARCH_RP2040)
+#if defined(ARDUINO_ARCH_RP2040) 
 #include <WiFiNINA_Generic.h>
 #elif defined (ARDUINO_ARCH_ESP32)
 #include <WiFi.h>
@@ -21,7 +21,7 @@
 #include <WiFiNINA.h>
 #endif
 
-#include "Arduino.h"
+#include "Arduino.h" 
 
 /*
     Setup an Arduino as a TCP/IP server.
@@ -73,7 +73,7 @@ private:
     // state machine: WiFi and client connection state
     connectionState _WiFiState{ conn_0_WiFi_notConnected };             // init
 
-    unsigned long _TCPconnectionTimeout{ 10000 };                       // stop client if no activity for this period of time (ms)     
+    unsigned long _TCPconnectionTimeout{ 10000 };                       // stop client if no activity during this period of time (ms), in absence of WiFi library TCP timeout function  
     unsigned long _WiFiWaitingForConnectonAt{ millis() };               // timestamps in milliseconds
     unsigned long _lastWiFiMaintenanceTime{ millis() };
 

@@ -138,8 +138,8 @@ void TCPconnection::maintainWiFiConnection() {
                     _WiFiState = conn_2_WiFi_connected;
                     if (_verbose) {
                         IPAddress IP = WiFi.localIP();
-                        _pDebugStream->printf("-- at %11.3fs: %sWiFi connected, local IP %d.%d.%d.%d (%ld dBm)\r\n",
-                            millis() / 1000., (_setupAsClient ? "" : "TCP/IP server started. "), IP[0], IP[1], IP[2], IP[3], WiFi.RSSI());
+                        _pDebugStream->printf("-- at %11.3fs: WiFi connected, %sLocal IP %d.%d.%d.%d (%ld dBm)\r\n",
+                            millis() / 1000., (_setupAsClient ? "" : "TCP/IP server started, "), IP[0], IP[1], IP[2], IP[3], WiFi.RSSI());
                     }
                 }
 
@@ -215,7 +215,7 @@ void TCPconnection::maintainTCPclients() {
             // if connection lost or connection timeout: stop the client
             if (connectionLost || connectionTimedOut) {
 
-                // client MUST still be stopped !
+                // client MUST still be stopped (.stop() method) !
                 IPAddress clientIP{ 0,0,0,0 };                                      // init, in case session index would be inconsistent (safety)
                 int sessionID = _pWiFiClientData[i].sessionIndex;
                 int slot{ -1 };
@@ -251,7 +251,7 @@ void TCPconnection::maintainTCPclients() {
     if (!nextClient) { return; }
 
     // next message is not really needed
-    // if (_verbose) { _pDebugStream->printf("-- at %11.3fs: 'new' client found\r\n", millis() / 1000.); }
+    // if (_verbose) { _pDebugStream->printf("-- at %11.3fs: client connected\r\n", millis() / 1000.); }
 
 
     // B.1 check whether this is a CONNECTED client that is 'found' more than once
@@ -264,7 +264,7 @@ void TCPconnection::maintainTCPclients() {
         if (_pSessionData[sessionID].IP != clientIP) { continue; }                  // client with this IP is already linked to a session ? (If not, continue the search)
 
         // found an active session for this IP: retrieve client slot the session is linked with
-        clientSlot = _pSessionData[sessionID].clientSlotID;                         // retrieve the client slot that session uses
+        clientSlot = _pSessionData[sessionID].clientSlotID;                         // retrieve the client slot used by that session
         if ((clientSlot < 0) || (clientSlot >= _TCPclientSlots)) { break; }         //safety: prevent writing to an invalid memory location                   
 
         // NOTE: DO NOT replace the current client with the 'new' client ('... = nextClient'): this will temporarily stall the connection

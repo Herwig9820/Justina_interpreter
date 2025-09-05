@@ -41,6 +41,16 @@
 // *   execute parsed statements   *
 // ---------------------------------
 
+/*
+    Routine exec() is called and ended as follows:
+    - command line or batch file line has been parsed without errors : call exec()
+    - 'exec' command is encountered (in command line or batch file)  : end exec() -> parse batch file line -> call exec()
+    - 'ditch' command or end of batch file is encountered            : continue exec in caller
+    - end of command line execution                                  : end exec()
+    In other words this mechanism does not call for recursive exec() calls
+    Ending execution after an exec() command allows proper parsing of a the first batch file line
+*/
+
 Justina::execResult_type Justina::exec(char* startHere) {
 
 #if PRINT_PROCESSED_TOKEN
@@ -658,7 +668,7 @@ Justina::execResult_type Justina::exec(char* startHere) {
         // did an error occur in a Justina function, the (debug) command line or an eval() string ? 
         if (!_parsingExecutingWatchString && !_parsingExecutingConditionString && (execResult != result_execOK) && (execResult < EVENT_startOfEvents)) {    // Trap the error if error trapping is enabled
             bool errorTrapped = trapError(isEndOfStatementSeparator, execResult);                               // if error trapped, execResult will be reset (no error)
-            // reset 'isComma', because error trapping moves the next step to first step after the statement producing an execution error, in the function were error trapping is enabled 
+            // reset 'isComma', because error trapping moves the next step to the first step after the statement producing an execution error, in the function were error trapping is enabled 
             if (errorTrapped) { isComma = false; }
         }
 
@@ -837,7 +847,7 @@ Justina::execResult_type Justina::exec(char* startHere) {
     }
 
 
-    // 2. Events: EVENT_stopForDebug or EVENT_stopForBreakpoint ? (can only occur n a user function)
+    // 2. Events: EVENT_stopForDebug or EVENT_stopForBreakpoint ? (can only occur in a user function)
     else if ((execResult == EVENT_stopForDebug) || (execResult == EVENT_stopForBreakpoint)) {               // stopping for debug now ('STOP' command or single step)
         // push caller function data (or main = user entry level in immediate mode) on FLOW CONTROL stack 
         _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
@@ -913,10 +923,6 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
     bool trapErrorHere = (((_activeFunctionData.blockType == block_JustinaFunction) || (_activeFunctionData.blockType == block_batchFile))
         && (bool)_activeFunctionData.trapEnable && !(bool)_activeFunctionData.errorHandlerActive);
 
-    //Serial.print(">> active level: error trapped ? "); Serial.print(trapErrorHere); 
-    //    Serial.print(" (error trapping enabled ? ");  Serial.print((bool)_activeFunctionData.trapEnable);
-    //    Serial.print(", error handler was active ? "); Serial.print((bool)_activeFunctionData.errorHandlerActive); Serial.println(" )"); ////
-
     // error trapping is NOT enabled where the error occurred (a Justina function or possibly an eval() string): check if error trapping is enabled for caller levels
     if (!trapErrorHere) {
         bool levelsBeneath = (_activeFunctionData.blockType == block_eval) ||
@@ -931,10 +937,6 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
             while (pFlowCtrlStackLvl != nullptr) {
                 trapErrorHere = (((pFlowCtrlStackLvl->blockType == block_JustinaFunction) || (pFlowCtrlStackLvl->blockType == block_batchFile))
                     && (bool)pFlowCtrlStackLvl->trapEnable && !(bool)pFlowCtrlStackLvl->errorHandlerActive);
-
-                //Serial.print(" > lower level: error trapped ? "); Serial.print(trapErrorHere); 
-                //    Serial.print(" (error trapping enabled ? ");  Serial.print((bool)pFlowCtrlStackLvl->trapEnable); 
-                //    Serial.print(", error handler was active ? "); Serial.print((bool)pFlowCtrlStackLvl->errorHandlerActive); Serial.println(" )"); ////
 
                 if (trapErrorHere) { break; }
                 bool isCmdLevel = (pFlowCtrlStackLvl->blockType == block_JustinaFunction) && (pFlowCtrlStackLvl->pNextStep >= (_programStorage + _PROGRAM_MEMORY_SIZE));
@@ -954,13 +956,10 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
 
     bool returnedFromBatchFile{ false };
     do {
-////    Serial.println("** TERMINIATING level ? ");
-
         // clear evaluation stack levels for currently active block (function or eval block): get rid of expression(s) at the moment the error occurred
         clearEvalStackLevels(evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels);
 
         if (_activeFunctionData.blockType == block_eval) {
-////        Serial.print(" * error NOT trapped at this level, terminating eval() - input stream: "); Serial.print((int)_activeFunctionData.statementInputStream); Serial.print(", block type : "); Serial.println((int)_activeFunctionData.blockType);
             // eval() function: error is never trapped at this level, so always terminate and keep looking for function / batch file level with error trapping
             terminateEval();
         }
@@ -970,8 +969,6 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
             bool trapErrorHere = ((bool)_activeFunctionData.trapEnable && !(bool)_activeFunctionData.errorHandlerActive);
             if (!trapErrorHere) {
             // this function is not trapping errors: terminate function (and keep looking for function in the call stack with error trapping enabled)
-////              Serial.print(" * error NOT trapped at this level, terminating Justina fnc - input stream: "); Serial.print((int)_activeFunctionData.statementInputStream); Serial.print(", block type : "); Serial.println((int)_activeFunctionData.blockType);
-
                 bool isVoidFunctionDef = (justinaFunctionData[_activeFunctionData.functionIndex].isVoidFunctionDef == 1);
                 terminateJustinaFunction(isVoidFunctionDef, !isVoidFunctionDef);                        // return zero, except when a void Justina function
             }
@@ -1107,13 +1104,13 @@ void Justina::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNo
         // breakpoint is not enabled ? breakpoint is not active
         if (pBreakpointDataRow->BPenabled == 0b0) { isActiveBreakpoint = false; }
 
-        // enabled breakpoint has a hit count set as trigger condition ? check hit count
+        // enabled breakpoint has a hit count set as break condition ? check hit count
         else if (pBreakpointDataRow->BPwithHitCount == 0b1) {
             isActiveBreakpoint = (pBreakpointDataRow->hitCount == ++pBreakpointDataRow->hitCounter);        // hit count reached ?
             if (isActiveBreakpoint) { pBreakpointDataRow->hitCounter = 0; }                                 // if hit count reached, reset hit counter
         }
 
-        // enabled breakpoint has a condition expression set as trigger condition ? parse condition expression
+        // enabled breakpoint has a condition expression set as break condition ? parse condition expression
         // if parsing error, then condition is considered false (no breakpoint set)
         // if no parsing error, then launch execution of condition expression
         else if (pBreakpointDataRow->BPwithConditionExpr == 0b1) {
@@ -3189,6 +3186,10 @@ void Justina::terminateJustinaFunction(bool isVoidFunction, bool addZeroReturnVa
 
     } while ((blockType == block_while) || (blockType == block_for) || (blockType == block_if));                            // as long as deleted stack level was open block (for, while, if)  
 
+    int streamNumber = _activeFunctionData.statementInputStream;                                        // caller stream (batch file or command line)
+    _silent = (streamNumber > 0) ? bool(openFiles[streamNumber - 1].silent) : false;
+    _withinMultiLineComment = (streamNumber > 0) ? bool(openFiles[streamNumber - 1].lineEndsInMultiLineComment) : false;
+
     --_callStackDepth;                                                                                                      // caller reached: call stack depth decreased by 1
 
 
@@ -3232,6 +3233,10 @@ void Justina::terminateEval() {
     flowCtrlStack.deleteListElement(_pFlowCtrlStackTop);
     _pFlowCtrlStackTop = flowCtrlStack.getLastListElement();
     --_callStackDepth;                                                                                  // caller reached: call stack depth decreased by 1
+
+    int streamNumber = _activeFunctionData.statementInputStream;                                        // caller stream (batch file or command line)
+    _silent = (streamNumber > 0) ? bool(openFiles[streamNumber - 1].silent) : false;
+    _withinMultiLineComment = (streamNumber > 0) ? bool(openFiles[streamNumber - 1].lineEndsInMultiLineComment) : false;
 
     clearParsedCommandLineStack(1);
 }

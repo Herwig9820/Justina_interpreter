@@ -88,7 +88,7 @@
 #define J_productName "Justina: JUST an INterpreter for Arduino"
 #define J_legalCopyright "Copyright 2024, 2025 Herwig Taveirne"
 #define J_version "1.4.1"            
-#define J_buildDate "February 15, 2025" ////
+#define J_buildDate "September 5, 2025" 
 
 
 // ******************************************************************
@@ -776,8 +776,8 @@ private:
         result_cmd_programCmdMissing = 1800,
         result_cmd_onlyProgramStart,
         result_cmd_onlyImmediateMode,
-        result_cmd_onlyCommandLine,
         result_cmd_onlyCommandLineStart,
+        result_cmd_onlyCommandLine,
         result_cmd_onlyInBatchFile,
         result_cmd_onlyInsideProgram,
         result_cmd_onlyInsideFunction,
@@ -831,6 +831,8 @@ private:
 
 public:
     // error codes for all EXECUTION errors
+    // if error trapping is enabled, execution errors that occur do not terminate the program; instead the execution error code is returned
+    // the program can then test the returned error code against specific execution error codes as defined beneath 
     enum execResult_type {
         result_execOK = 0,
 
@@ -1153,9 +1155,11 @@ private:
 
     // external (user cpp) Justina commands only: usage restriction keys 
 public:
-    static constexpr char userCmd_noRestriction = cmd_onlyImmOrInsideFuncBlock;     // != cmd_noRestrictions value !
-    static constexpr char userCmd_programOnly = cmd_onlyInFunctionBlock;
-    static constexpr char userCmd_commandLineOnly = cmd_onlyImmediate;//// naming, check !!!
+    static constexpr char userCmd_noRestriction = cmd_onlyImmOrInsideFuncBlock;     // user cpp command is only allowed inside a function block or in immediate mode  
+    static constexpr char userCmd_programOnly = cmd_onlyInFunctionBlock;            // user cpp command is only allowed inside a function block
+    static constexpr char userCmd_immModeOnly = cmd_onlyImmediate;                  // user cpp command is only allowed in immediate mode (command line or batch file line)
+    static constexpr char userCmd_commandLineOnly = cmd_onlyCommandLine;            // user cpp command is only allowed in command line
+    static constexpr char userCmd_BatchFileOnly = cmd_onlyInBatchFile;              // user cpp command is only allowed in a batch file
 private:
 
 
@@ -1992,6 +1996,7 @@ private:
 
     // while at least one program is stopped (debug mode), the PARSED code of the original command line from where execution started is pushed to a separate stack, and popped again ...
     // ...when the program resumes, so that execution can continue there. If multiple programs are currently stopped (see: flow control stack), this stack will contain multiple entries
+    // note that this separate 'parsed command line' stack is also used for other purposes 
     LinkedList parsedStatementLineStack;
     char* _pParsedCommandLineStackTop{ nullptr };
     int _openDebugLevels{ 0 };                                              // number of stopped programs: equals parsed command line stack depth minus open eval() strings (= eval() strings being executed)
@@ -2620,6 +2625,7 @@ private:
     Justina::execResult_type maintainBreakpointTable(long sourceLine, char* pProgramStep, bool doSet, bool doClear, bool doEnable, bool doDisable,
         int extraAttribCount, const char* watchString, long hitCount, const char* conditionString);
     BreakpointData* findBPtableRow(char* pParsedStatement, int& row);
+    Justina::execResult_type tryBPactivation();
     long findLineNumberForBPstatement(char* pProgramStepToFind);
     void  printBreakpoints();
     void printLineRangesToDebugOut(Stream* output);

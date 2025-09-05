@@ -10,8 +10,8 @@ Justina (short for 'Just an Interpreter for Arduino') was developed and built ar
 
 Justina does not impose any requirements or restrictions related to hardware (pin assignments, interrupts, timers,... - it does not use any), nor does it need to have any knowledge about it for proper operation.
 The Justina syntax has been kept as simple as possible. A program consists of statements. A statement either consists of
-*	a single expression (always yielding a result).
-*	a command, starting with a keyword, optionally followed by a list of expressions (such a statement is called a command, because it ‘does’ something without actually calculating a result)
+* a single expression (always yielding a result).
+* a command, starting with a keyword, optionally followed by a list of expressions (such a statement is called a command, because it ‘does’ something without actually calculating a result)
 
 ![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/6e3fd8ab-006c-4d4a-bc63-2192c335afcb)
 
@@ -33,14 +33,14 @@ The result of  the last expression entered in the command line is printed on the
 
 
 # A few highlights
-*	More than 250 built-in functions, commands and operators, 70+ predefined symbolic constants.
-*	More than 30 functions directly targeting Arduino IO ports and memory, including some new.
-*	Extended operator set includes relational, logical, bitwise operators, compound assignment operators, pre- and postfix increment operators.
-*	Two angle modes: radians and degrees.
-*	Scalar and array variables.
-*	Floating-point, integer and string data types.
-*	Perform integer arithmetic and bitwise operations in decimal or hexadecimal number format.
-*	Display settings define how to display calculation results: output width, number of digits / decimals to display, alignment, base (decimal, hex), …
+* More than 250 built-in functions, commands and operators, 70+ predefined symbolic constants.
+* More than 30 functions directly targeting Arduino IO ports and memory, including some new.
+* Extended operator set includes relational, logical, bitwise operators, compound assignment operators, pre- and postfix increment operators.
+* Two angle modes: radians and degrees.
+* Scalar and array variables.
+* Floating-point, integer and string data types.
+* Perform integer arithmetic and bitwise operations in decimal or hexadecimal number format.
+* Display settings define how to display calculation results: output width, number of digits / decimals to display, alignment, base (decimal, hex), …
 * Input and output: Justina reads data from / writes data to multiple input and output devices (connected via Serial, TCP IP, SPI, I2C...). You can even switch the console from the default (typically Serial) to another input or output device (for instance, switch console output to an OLED screen).
 * With an SD card breakout board connected via SPI, Justina creates, reads and writes SD card files...
 
@@ -60,6 +60,13 @@ The result of  the last expression entered in the command line is printed on the
 * If Justina program files are available on an SD card (assuming an SD card board is connected), they can be directly read and parsed from there. Alternatively, your computer can send Justina program files to an Arduino, provided you use a Terminal app that can send files (the Arduino IDE does not provide that functionality; however, a very good—and free—choice is YAT Terminal).
 
 
+# Batch files
+* batch files can call other batch files, passing up to 9 arguments
+* labels, conditional jumps or loops
+* load and execute programs automatically
+* autostart functionality (if SD card connected): executes batch file 'autorun.jba' after power on or reset  
+
+
 # Justina program editing
 You can use any text editor to write and edit your programs. But you might consider using Notepad++ as text editor, because a specific 'User Defined Language' (UDL) file for Justina is available to provide Justina syntax highlighting.
 
@@ -67,9 +74,11 @@ You can use any text editor to write and edit your programs. But you might consi
 
 
 # Debugging
-When a program is stopped (either by execution of the ‘stop’ command, by user intervention or by an active breakpoint) debug mode is entered. You can then single step the program, execute statements until the end of a loop, a next breakpoint…
-
-Breakpoints can be activated based on a trigger expression or a hit count. You can also include a list of ‘view expressions’ for each breakpoint, and Justina will automatically trace specific variables or even expressions, letting you watch their values change as you single step through the program or a breakpoint is hit.
+When a program is stopped (either by execution of the ‘stop’ command, by user intervention or by an active breakpoint) debug mode is entered:
+* Single step the program, execute statements until the end of a loop, until a next breakpoint is encountered...
+* Change the next line to execute
+* Activate breakpoints based on a condition or a hit count
+* Watch specific variables or even expressions automatically as you single step through the program or a breakpoint is hit
 
 ![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/96a40004-d578-4241-8725-36363f49b295)
 
@@ -77,8 +86,8 @@ Breakpoints can be activated based on a trigger expression or a hit count. You c
 While a procedure is stopped in debug mode, you can also manually review the procedure’s local and static variable contents or view the call stack.
 
 # Integration with c++
-1.	If enabled, system callbacks allow the Arduino program to perform periodic housekeeping tasks beyond the control of Justina (e.g., maintaining a TCP connection, producing a beep when an error is encountered, aborting, or stopping a Justina program...). For that purpose, a set of system flags passes information back and forth between the main Arduino program and Justina at regular intervals (without the need for interrupts).
-2.	Time-critical user routines, functions targeting specific hardware and functions extending Justina functionality in general can be written in c++, given an alias and 'registered' (using a standard mechanism), informing Justina about the minimum and maximum number of arguments and the return type. From then onward, these C++ functions can be called just like any other Justina function, with the same syntax, using the alias as function name and passing scalar or array variables as arguments.
+1. If enabled, system callbacks allow the Arduino program to perform periodic housekeeping tasks beyond the control of Justina (e.g., maintaining a TCP connection, producing a beep when an error is encountered, aborting, or stopping a Justina program...). For that purpose, a set of system flags passes information back and forth between the main Arduino program and Justina at regular intervals (without the need for interrupts).
+2. Time-critical user routines, functions targeting specific hardware and functions extending Justina functionality in general can be written in c++, given an alias and 'registered' (using a standard mechanism), informing Justina about the minimum and maximum number of arguments and the return type. From then onward, these C++ functions can be called just like any other Justina function, with the same syntax, using the alias as function name and passing scalar or array variables as arguments.
 
 # Arduino c++ examples
 A number of c++ example files, demonstrating how to call Justina, are provided in the repository folder 'examples':
@@ -97,6 +106,7 @@ and this without the need for Justina to have any knowledge about the hardware (
   * setting up a TCP/IP server for use as an additional Justina IO channel
   * using Justina system callbacks to maintain the TCP/IP connection, blink a heartbeat LED and set status LEDs to indicate the TCP/IP connection state
   * using Justina user c++ functions to control the TCP/IP connection from within Justina
+  * Justina_TCPIP_multi:same as Justina_TCPIP, but for multiple concurrent TCP/IP clients and with managed client sessions
 
 # Justina language examples
 A few Justina language example files are provided in the repository folder 'extras/Justina_language_examples'. These text files obey the 8.3 file format, to make them compatible with the Arduino SD card file system. Also, they all have the '.jus' extension: opening these files in Notepad++ will automatically invoke Justina language highlighting (if the Justina language extension is installed).
@@ -112,6 +122,7 @@ The example files are:
 * SD_test.jus: perform some basic SD card tests
 * SD_parse.jus: write formatted data to an SD card, read it back and immediately parse this data into variables
 * web_calc.jus: a web server creating a web page giving access to a scientific calculator 
+* web_cal2.jus: same as web_calc.jus, but for multiple concurrent HTTP clients and with managed client sessions 
 ![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/7c0fa15c-bede-4925-8398-661a0ea572b0)
 
 # Documentation

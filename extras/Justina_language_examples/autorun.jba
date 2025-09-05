@@ -14,10 +14,9 @@
 /*
     This is an example of a Justina batch file (.jba extension) used as startup file.
     ---------------------------------------------------------------------------------
-    It loads program 'calculatorWebServer_multiSessions' (program file "web_cal2.jus") and subsuequently 
-    starts function 'webServer()'.
+    It loads program 'calculatorWebServer_multiSessions' (program file "web_cal2.jus" in SD card folder "/justina") and subsuequently 
+    starts function 'webServer()'. Please refer to the Justina user manual for more information.
 */
-    
     
 silent TRUE    // do not echo executed batch file statements 
 
@@ -25,19 +24,19 @@ silent TRUE    // do not echo executed batch file statements
 // check if needed user variables exist or must be created
 // -------------------------------------------------------
 // test if 1 variable exists; if not, the program assumes none of next 3 variables exist and must be created
-trapErrors TRUE 
+trapErrors TRUE
 eval("autorun_millis")
 if (err() == 0); gotoLabel "OK"; end                                        
 var autorun_millis = 0, autorun_ditch = FALSE, webServer_loaded = FALSE  
 //OK::
 trapErrors FALSE
-
+webServer_loaded = FALSE;
 
 //nextLoop:: <<-- label; will jump to here if the web server program was stopped by the user   
     
     
-// the user has 4 seconds to quit this batch file without starting the web server
-// ------------------------------------------------------------------------------ 
+// the user has 4 seconds to quit this batch file instead of starting the webServer again
+// --------------------------------------------------------------------------------------
 // flush console input buffer 
 while available(CONSOLE); read(CONSOLE); end
 
@@ -58,6 +57,7 @@ if autorun_ditch; coutLine; ditch; end
 // ---------------------------------
 if !webServer_loaded; loadProg "/justina/web_cal2.jus"; end    // if program is not yet loaded, load it now
 webServer_loaded = TRUE;
+
 coutLine "Starting web server..."
 webServer()
 
@@ -65,5 +65,3 @@ webServer()
 // start another batch file loop
 // -----------------------------
 gotoLabel "nextLoop"
-
-

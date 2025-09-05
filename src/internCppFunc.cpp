@@ -757,7 +757,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
 
                 do {    // one loop only
                     if (argIndex > firstArgIndex) {      // first look for a separator
-                        // do not look for trailing space, to use strncmp() wih number of non-space characters found, because a space is not required after an operator
+                        // do not look for trailing space, to use strncmp() with number of non-space characters found, because a space is not required after an operator
                         bool isComma = (strncmp(term_comma, pch, commaLength) == 0);                                        // token corresponds to terminal name ? Then exit loop    
                         if (!isComma) { parsingResult = result_separatorExpected;  break; }
                         pNext += commaLength;                                                                               // move to next character
@@ -1310,7 +1310,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // ... 1..n will return the value of the (optional) arguments given when the batch file was called.
 
             int blockType = _activeFunctionData.blockType;
-            if(blockType != block_batchFile){ return result_IO_onlyAllowedInBatchFile; }
+            if (blockType != block_batchFile) { return result_IO_onlyAllowedInBatchFile; }
 
             int streamNumber = _activeFunctionData.statementInputStream;
 
@@ -2426,6 +2426,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 break;
 
                 case 21: fcnResult.longConst = _printWatchValueOnly; break;                     // view watched expression results without expression texts ?
+
+                case 22: fcnResult.longConst = _pBreakpoints->_breakpointsStatusDraft ? 0 : 1; break;       // breakpoints are active ?
 
                 // product info
                 // ------------
