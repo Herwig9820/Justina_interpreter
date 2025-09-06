@@ -109,12 +109,13 @@ and this without the need for Justina to have any knowledge about the hardware (
   * setting up a TCP/IP server for use as an additional Justina IO channel
   * using Justina system callbacks to maintain the TCP/IP connection, blink a heartbeat LED and set status LEDs to indicate the TCP/IP connection state
   * using Justina user c++ functions to control the TCP/IP connection from within Justina
-  * Justina_TCPIP_multi:same as Justina_TCPIP, but for multiple concurrent TCP/IP clients and with managed client sessions
+  * Justina_TCPIP_multi: same as Justina_TCPIP, but for multiple concurrent TCP/IP clients and with managed client sessions
 
 # Justina language examples
 A few Justina language example files are provided in the repository folder 'extras/Justina_language_examples'. These text files obey the 8.3 file format, to make them compatible with the Arduino SD card file system. Also, they all have the '.jus' extension: opening these files in Notepad++ will automatically invoke Justina language highlighting (if the Justina language extension is installed).
 
 ![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/f8e80375-9b27-4d3e-8fe0-ad082e6a198b)
+
 
 The example files are:
 * start.jus: can be used as startup program (if your Arduino is equipped with an SD card board). It sets things like the angle mode, number formatting etc.
@@ -125,8 +126,10 @@ The example files are:
 * SD_test.jus: perform some basic SD card tests
 * SD_parse.jus: write formatted data to an SD card, read it back and immediately parse this data into variables
 * web_calc.jus: a web server creating a web page giving access to a scientific calculator 
-* web_cal2.jus: same as web_calc.jus, but for multiple concurrent HTTP clients and with managed client sessions 
+* web_cal2.jus: same as web_calc.jus, but for multiple concurrent HTTP clients and with managed client sessions
+
 ![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/7c0fa15c-bede-4925-8398-661a0ea572b0)
+
 
 # Documentation
 Full documentation is provided in the repository ' extras' folder. 
