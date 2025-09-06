@@ -60,17 +60,17 @@ The result of  the last expression entered in the command line is printed on the
 * If Justina program files are available on an SD card (assuming an SD card board is connected), they can be directly read and parsed from there. Alternatively, your computer can send Justina program files to an Arduino, provided you use a Terminal app that can send files (the Arduino IDE does not provide that functionality; however, a very good—and free—choice is YAT Terminal).
 
 
+# Justina program editing
+You can use any text editor to write and edit your programs. But you might consider using Notepad++ as text editor, because a specific 'User Defined Language' (UDL) file for Justina is available to provide Justina syntax highlighting.
+
+<img width="765" height="583" alt="image" src="https://github.com/user-attachments/assets/c1381602-1a4b-4291-b82a-9da3e418d818" />
+
+
 # Batch files
 * batch files can call other batch files, passing up to 9 arguments
 * labels, conditional jumps or loops
 * load and execute programs automatically
 * autostart functionality (if SD card connected): executes batch file 'autorun.jba' after power on or reset  
-
-
-# Justina program editing
-You can use any text editor to write and edit your programs. But you might consider using Notepad++ as text editor, because a specific 'User Defined Language' (UDL) file for Justina is available to provide Justina syntax highlighting.
-
-![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/82598732-6f96-42e5-979b-1b75cf208d6f)
 
 
 # Debugging
