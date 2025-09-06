@@ -80,10 +80,13 @@ When a program is stopped (either by execution of the ‘stop’ command, by use
 * Activate breakpoints based on a condition or a hit count
 * Watch specific variables or even expressions automatically as you single step through the program or a breakpoint is hit
 
-![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/96a40004-d578-4241-8725-36363f49b295)
+<img width="416" height="222" alt="image" src="https://github.com/user-attachments/assets/04d0c046-f3d9-4486-8e40-6ae04459f31f" />
 
 
 While a procedure is stopped in debug mode, you can also manually review the procedure’s local and static variable contents or view the call stack.
+
+<img width="514" height="255" alt="image" src="https://github.com/user-attachments/assets/2c7c1ff5-ec04-4205-9afe-faf6bd9b6ea1" />
+
 
 # Integration with c++
 1. If enabled, system callbacks allow the Arduino program to perform periodic housekeeping tasks beyond the control of Justina (e.g., maintaining a TCP connection, producing a beep when an error is encountered, aborting, or stopping a Justina program...). For that purpose, a set of system flags passes information back and forth between the main Arduino program and Justina at regular intervals (without the need for interrupts).
