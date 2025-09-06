@@ -63,7 +63,7 @@ The result of  the last expression entered in the command line is printed on the
 # Justina program editing
 You can use any text editor to write and edit your programs. But you might consider using Notepad++ as text editor, because a specific 'User Defined Language' (UDL) file for Justina is available to provide Justina syntax highlighting.
 
-![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/82598732-6f96-42e5-979b-1b75cf208d6f)
+<img width="666" height="545" alt="image" src="https://github.com/user-attachments/assets/4a965061-dcdb-4196-bd80-5a2e6a939f76" />
 
 
 # Debugging
