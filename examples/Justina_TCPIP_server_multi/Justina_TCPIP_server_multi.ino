@@ -305,7 +305,7 @@ void setConnectionStatusLeds() {
     Justina call:
     -------------
     uf_WiFiOff();
-    uf_WiFiRestart();
+    uf_WiFiOn();
     uf_TCPoff();
     uf_TCPon();
     uf_setConnectionTimeout(connectionTimeout);

@@ -52,12 +52,12 @@ TCPconnection::TCPconnection(const char SSID[], const char PASS[],
     _TCPclientSlots = _maxSessions = min(TCPclientSlots, TCP_SOCKET_COUNT - 1);     // TCP_SOCKET_COUNT: depends on board type; -1: for temporary 'new client' object
 
     // pointer to array of client data
-    _pWiFiClientData = new WiFiClientData[_TCPclientSlots];                         
+    _pWiFiClientData = new WiFiClientData[_TCPclientSlots];
     _pSessionData = new SessionData[_TCPclientSlots];                               // equal size of _pWiFiClientData
 
     // store stream pointers to the client objects: pass to the calling c++ program
     for (int i = 0; i < _TCPclientSlots; i++) {
-        pStream[i] = static_cast <Stream*>(&_pWiFiClientData[i].client); 
+        pStream[i] = static_cast <Stream*>(&_pWiFiClientData[i].client);
     }
 }
 
@@ -86,6 +86,7 @@ void TCPconnection::maintainConnection() {
     // variable '_WiFiState' controls proper sequencing of tasks in these procedures:
     maintainWiFiConnection();
     maintainTCPclients();
+    yield();                    // only for RTOS based MCU's (e.g. nano esp32)
 }
 
 
@@ -118,7 +119,10 @@ void TCPconnection::maintainWiFiConnection() {
 
                 WiFi.begin((const char*)_SSID, (const char*)_PASS);
                 _WiFiState = conn_1_WiFi_waitForConnecton;
-                if (_verbose) { _pDebugStream->printf("-- at %11.3fs: %s\r\n", millis() / 1000., (_setupAsClient ? "-- Trying to connect WiFi..." : "-- Trying to connect TCP/IP server to WiFi...")); }
+                if (_verbose) {
+                    char s[100]; sprintf(s, "-- at %11.3fs: %s\r\n", millis() / 1000., (_setupAsClient ? "-- Trying to connect WiFi..." : "-- Trying to connect TCP/IP server to WiFi..."));
+                    _pDebugStream->print(s);
+                }
                 // remember time of this WiFi connection attempt
                 _WiFiWaitingForConnectonAt = _lastWiFiMaintenanceTime = millis();           // remember time of last WiFi maintenance AND time of this WiFi connection attempt
                 _resetWiFi = false;
@@ -138,8 +142,9 @@ void TCPconnection::maintainWiFiConnection() {
                     _WiFiState = conn_2_WiFi_connected;
                     if (_verbose) {
                         IPAddress IP = WiFi.localIP();
-                        _pDebugStream->printf("-- at %11.3fs: WiFi connected, %sLocal IP %d.%d.%d.%d (%ld dBm)\r\n",
+                        char s[120]; sprintf(s, "-- at %11.3fs: WiFi connected, %sLocal IP %d.%d.%d.%d (%ld dBm)\r\n",
                             millis() / 1000., (_setupAsClient ? "" : "TCP/IP server started, "), IP[0], IP[1], IP[2], IP[3], WiFi.RSSI());
+                        _pDebugStream->print(s);
                     }
                 }
 
@@ -164,7 +169,10 @@ void TCPconnection::maintainWiFiConnection() {
             //  prepare for reconnection if connection is lost OR per user program request 
             if (_resetWiFi || (WiFi.status() != WL_CONNECTED)) {
                 _WiFiState = conn_0_WiFi_notConnected;
-                if (_verbose) { _pDebugStream->printf("-- at %11.3fs: %s\r\n", millis() / 1000., _setupAsClient ? "WiFi disconnected" : "WiFi disconnected, TCP/IP server stopped"); }
+                if (_verbose) {
+                    char s[100]; sprintf(s, "-- at %11.3fs: %s\r\n", millis() / 1000., _setupAsClient ? "WiFi disconnected" : "WiFi disconnected, TCP/IP server stopped");
+                    _pDebugStream->print(s);
+                }
                 WiFi.disconnect();
             #if !defined ARDUINO_ARCH_ESP32
                 WiFi.end();
@@ -187,21 +195,21 @@ void TCPconnection::maintainTCPclients() {
         An array of type 'WiFiClientData' maintains data of connected TCPIP clients in maximum 3 client slots.
         If a client slot has state CONNECTED, it does currently contain data about a connected client. If IDLE, the associated client is currently not connected.
 
-        An array of type 'SessionData' maintains basic data about active sessions. 
+        An array of type 'SessionData' maintains basic data about active sessions.
         If a session has status ACTIVE, it is reserved for communication with a specific client IP address. A total of 3 sessions is available.
-        
+
         The TCP layer (TCPIP server) connects and stops individual TCP clients and maintains TCP client connection states ('state machine').
-        
-        If a client connects, the TCPIP server will first try to link the client to an active session, based on the client IP address. 
-        If no match occurs, the client is considered 'new' and it will be linked to an inactive session (if available); that session will then receive the state ACTIVE. 
-        
-        The higher level application (e.g., a HTTP server) that makes use of the TCPIP server for its communication must regularly scan for active sessions and, 
+
+        If a client connects, the TCPIP server will first try to link the client to an active session, based on the client IP address.
+        If no match occurs, the client is considered 'new' and it will be linked to an inactive session (if available); that session will then receive the state ACTIVE.
+
+        The higher level application (e.g., a HTTP server) that makes use of the TCPIP server for its communication must regularly scan for active sessions and,
         if it finds one, communicate with the associated client (it will receive client requests and send responses).
 
         Once a response is sent, the application will instruct the TCPIP server to stop the client: the client state will then change to IDLE.
-        If the application determines that no further communication with the client is needed, it informs the TCP server to change the session state to INACTIVE as well. 
-        Example: if a HTTP client does not provide correct credentials or a session timeout occurs, the HTTP server can instruct the TCP server not only to stop the client, 
-        but to end the session as well. The TCPIP server will NOT end a session by its own initiative. 
+        If the application determines that no further communication with the client is needed, it informs the TCP server to change the session state to INACTIVE as well.
+        Example: if a HTTP client does not provide correct credentials or a session timeout occurs, the HTTP server can instruct the TCP server not only to stop the client,
+        but to end the session as well. The TCPIP server will NOT end a session by its own initiative.
     */
 
     // A. Process currently CONNECTED clients
@@ -229,8 +237,9 @@ void TCPconnection::maintainTCPclients() {
                 _pWiFiClientData[i].sessionIndex = -1;
 
                 if (_verbose) {
-                    _pDebugStream->printf("-- at %11.3fs: session %d (CURR): TCP connection %s. client (slot %d) stopped, remote IP %d.%d.%d.%d\r\n",
+                    char s[140]; sprintf(s, "-- at %11.3fs: session %d (CURR): TCP connection %s. client (slot %d) stopped, remote IP %d.%d.%d.%d\r\n",
                         millis() / 1000., sessionID, (connectionLost ? "lost" : "timeout"), slot, clientIP[0], clientIP[1], clientIP[2], clientIP[3]);
+                    _pDebugStream->print(s);
                 }
             }
         }
@@ -251,14 +260,17 @@ void TCPconnection::maintainTCPclients() {
     if (!nextClient) { return; }
 
     // next message is not really needed
-    // if (_verbose) { _pDebugStream->printf("-- at %11.3fs: client connected\r\n", millis() / 1000.); }
+    if (_verbose) {
+        char s[100]; sprintf(s, "-- at %11.3fs: client connected\r\n", millis() / 1000.);
+        _pDebugStream->print(s);
+    }
 
 
-    // B.1 check whether this is a CONNECTED client that is 'found' more than once
-    //     note: this is possible because we continuously call _server.available()
-    // ---------------------------------------------------------------------------
+// B.1 check whether this is a CONNECTED client that is 'found' more than once
+//     note: this is possible because we continuously call _server.available()
+// ---------------------------------------------------------------------------
 
-    // a client slot with state CONNECTED is always linked to an ACTIVE session: check if such a session exists
+// a client slot with state CONNECTED is always linked to an ACTIVE session: check if such a session exists
     for (sessionID = 0; sessionID < _maxSessions; sessionID++) {
         if (!_pSessionData[sessionID].active) { continue; }                         // session is active ? (If not, continue the search)
         if (_pSessionData[sessionID].IP != clientIP) { continue; }                  // client with this IP is already linked to a session ? (If not, continue the search)
@@ -291,7 +303,10 @@ void TCPconnection::maintainTCPclients() {
 
     if (!clientSlotFound) {                                                         // no free slots: stop the new client, not assigned to a session
         nextClient.stop();                                                          // stop the new client: all slots are currently taken
-        if (_verbose) { _pDebugStream->printf("-- at %11.3fs: new client REJECTED: no free client slots\r\n", millis() / 1000.); }
+        if (_verbose) {
+            char s[80]; sprintf(s, "-- at %11.3fs: new client REJECTED: no free client slots\r\n", millis() / 1000.);
+            _pDebugStream->print(s);
+        }
 
         return;                                                                     // NOK (no free client slots)
     }
@@ -331,8 +346,9 @@ void TCPconnection::maintainTCPclients() {
 
     if (sessionDataUpdated) {
         if (_verbose) {
-            _pDebugStream->printf("-- at %11.3fs: session %d (%s): client (slot %d) connected, remote IP %d.%d.%d.%d\r\n",
+            char s[120]; sprintf(s, "-- at %11.3fs: session %d (%s): client (slot %d) connected, remote IP %d.%d.%d.%d\r\n",
                 millis() / 1000., sessionID, (isNewSession ? "NEW " : "CURR"), clientSlot, clientIP[0], clientIP[1], clientIP[2], clientIP[3]);
+            _pDebugStream->print(s);
         }
     }
 
@@ -340,7 +356,10 @@ void TCPconnection::maintainTCPclients() {
         _pWiFiClientData[clientSlot].state = IDLE;
         _pWiFiClientData[clientSlot].sessionIndex = -1;
         nextClient.stop();
-        if (_verbose) { _pDebugStream->printf("-- at %11.3fs: new client REJECTED: no free session\r\n", millis() / 1000.); }
+        if (_verbose) {
+            char s[80]; sprintf(s, "-- at %11.3fs: new client REJECTED: no free session\r\n", millis() / 1000.);
+            _pDebugStream->print(s);
+        }
     }
 }
 
@@ -403,11 +422,13 @@ void TCPconnection::stopSessionClient(int sessionID, bool endSession) {
     if (_verbose) {
         IPAddress clientIP = _pSessionData[sessionID].IP;                           // Get client slot and IP for this session
         if (clientSlot >= 0) {
-            _pDebugStream->printf("-- at %11.3fs: session %d %s: client (slot %d) STOPPED, remote IP %d.%d.%d.%d\r\n",
+            char s[120]; sprintf(s, "-- at %11.3fs: session %d %s: client (slot %d) STOPPED, remote IP %d.%d.%d.%d\r\n",
                 millis() / 1000., sessionID, (endSession ? "END   " : "(KEEP)"), clientSlot, clientIP[0], clientIP[1], clientIP[2], clientIP[3]);
+            _pDebugStream->print(s);
         }
         else {
-            _pDebugStream->printf("-- at %11.3fs: session %d END\r\n", millis() / 1000., sessionID);
+            char s[50]; sprintf(s, "-- at %11.3fs: session %d END\r\n", millis() / 1000., sessionID);
+            _pDebugStream->print(s);
         }
     }
 }

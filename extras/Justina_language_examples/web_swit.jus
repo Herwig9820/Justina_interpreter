@@ -1,7 +1,7 @@
 /*------------------------------------------------------------------------------------------------------------------------
     Example JUSTINA language program for use with the Justina interpreter
-	
- 	The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      
+    
+    The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      
     by the Free Software Foundation (https://www.gnu.org/licenses).                                                      
     Refer to GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter            
                                                                                                                          
@@ -14,115 +14,115 @@
 program simpleWebServer; // this is a JUSTINA program
 
 /*
-	Example of a simple web server.
-	Adapted from an example found here: https://forum.arduino.cc/index.php?topic=683079.0
-	
-	This example draws a webpage with 5 'on/off' buttons, and maintains the state of 5 'switches'.
-	Buttons representing a switch that is currently 'on' are drawn in a red color. Clicking a switch acts like a toggle.
-	Switch states maintained can then be used to interact with specific hardware (leds, switching transistors,...) 
-	
-	HTTP requests received and processed by the webserver:
-	GET / HTTP/1.1				: (re-)draw page
-	GET /t HTTP/1.1   			: set swith on or off and redraw page
-								(t: tag identifying the button clicked)
-	GET /favicon.ico HTTP/1.1	: request to send favorite icon (which isn't available, so it will not be sent)	
-	
-	This example is intended to be used with Justina library example Justina_TCPIP, which configures your Arduino as
-	a TCP server and is responsible for maintaining the WiFi and the TCP connection.
-	
-	This Justina language program implements the HTTP server on top of that, without having to worry about WiFi and TCP
-	connection maintenance. From the perspective of the HTTP server, this is a pure background process and continues
-	even when the webserver is waiting for characters to come in (readLine() functon).
-	
-	Procedure call: webServer();
-	While web client is not connected, press ampersand ( & ) to exit
-	
-	To test it out, open a web browser and type the complete url: http://nnn.nnn.nnn.nnn:port (fill in server IP address and port)
+    Example of a simple web server.
+    Adapted from an example found here: https://forum.arduino.cc/index.php?topic=683079.0
+    
+    This example draws a webpage with 5 'on/off' buttons, and maintains the state of 5 'switches'.
+    Buttons representing a switch that is currently 'on' are drawn in a red color. Clicking a switch acts like a toggle.
+    Switch states maintained can then be used to interact with specific hardware (leds, switching transistors,...) 
+    
+    HTTP requests received and processed by the webserver:
+    GET / HTTP/1.1              : (re-)draw page
+    GET /t HTTP/1.1             : set swith on or off and redraw page
+                                (t: tag identifying the button clicked)
+    GET /favicon.ico HTTP/1.1   : request to send favorite icon (which isn't available, so it will not be sent) 
+    
+    This example is intended to be used with Justina library example Justina_TCPIP, which configures your Arduino as
+    a TCP server and is responsible for maintaining the WiFi and the TCP connection.
+    
+    This Justina language program implements the HTTP server on top of that, without having to worry about WiFi and TCP
+    connection maintenance. From the perspective of the HTTP server, this is a pure background process and continues
+    even when the webserver is waiting for characters to come in (readLine() functon).
+    
+    Procedure call: webServer();
+    While web client is not connected, press ampersand ( & ) to exit
+    
+    To test it out, open a web browser and type the complete url: http://nnn.nnn.nnn.nnn:port (fill in server IP address and port)
 */
 
 
 // global constants and variables
 // ------------------------------
 
-const SWITCH_COUNT = 5;	     																// number of switches
-const buttonTags = "abcde";																	// tags identifying 'on' buttons (first group) and 'off' buttons (second group)
+const SWITCH_COUNT = 5;                                                                     // number of switches
+const buttonTags = "abcde";                                                                 // tags identifying 'on' buttons (first group) and 'off' buttons (second group)
 
-var switchStates(5) =  0 ; 																	// default: all switches off
+var switchStates(5) =  0 ;                                                                  // default: all switches off
 
 
-//	webserver main	
+//  webserver main  
 // ---------------
 
 procedure webServer();
-	
-	const TCP_CONNECTED = 4;
+    
+    const TCP_CONNECTED = 4;
 
-	var clientRequest=""; 
-	var tag = " ";
-	var buttonIndex = -1;
-	var isMainPageRequest = FALSE, isFaviconRequest = FALSE;
-	
-	setTimeout(IO2, 500);																	// time out for readLine() function, in ms (NOT blocking for WiFi and TCP maintanance, handled in the background)
-	cpp_setVerbose(TRUE);																	// allow TCP/IP library to print WiFi and TCP/IP state changes 
-	
-	coutLine line(), "** Webserver started ** (Type '&' (ampersand) + ENTER to stop)";
+    var clientRequest=""; 
+    var tag = " ";
+    var buttonIndex = -1;
+    var isMainPageRequest = FALSE, isFaviconRequest = FALSE;
+    
+    setTimeout(IO2, 500);                                                                   // time out for readLine() function, in ms (NOT blocking for WiFi and TCP maintanance, handled in the background)
+    uf_setVerbose(TRUE);                                                                    // allow TCP/IP library to print WiFi and TCP/IP state changes 
+    
+    coutLine line(), "** Webserver started ** (Type '&' (ampersand) + ENTER to stop)";
 
-	while 1;
-		while cpp_connState() != TCP_CONNECTED;												// as long as HTTP client not connected															
-			if cin() == asc("&"); 														    // check console for ampersand button entry; exit web server if found
-				coutLine line(), "** Webserver stopped **";
-				return; 
-			end;				
-		end; 	
-			
-		while cpp_connState()==4;															// while client is connected 
-			while available(IO2);
-				cout clientRequest=readLine(IO2);											// read request from HTTP client and echo on the Justina console (note: the request itself contains CRLF sequence)
-				
-				if findStr(clientRequest, "GET / ") == 1;									// GET request to (re-)draw page ? 
-						buttonIndex = -1;  													// button states do not change
-						isMainPageRequest = TRUE; 											// set flag to (re-) draw main page when request will be completemy received
-				
-				elseif (findStr(clientRequest, "GET /") == 1) && (len(clientRequest) >=7);
-					if (asc(clientRequest, 7)== 0x20); 										// GET request with button tag ?
-						tag = mid(clientRequest, 6, 1); 									// get button index and adapt switch state
-						buttonIndex = findStr(buttonTags, tag);							    // 1 to number of switches 					
-						switchStates(buttonIndex) = ! switchStates(buttonIndex); 	
-						isMainPageRequest = TRUE;											// set flag to redraw main page when request will be completemy received 									  
-					else;																	// GET request to send favorite icon 
-						isFaviconRequest = TRUE; 											// set flag to send 'no favorite icon' message when request will be completemy received
-					end;		
-				
+    while 1;
+        while uf_connState() != TCP_CONNECTED;                                              // as long as HTTP client not connected                                                         
+            if cin() == asc("&");                                                           // check console for ampersand button entry; exit web server if found
+                coutLine line(), "** Webserver stopped **";
+                return; 
+            end;                
+        end;    
+            
+        while uf_connState()==4;                                                            // while client is connected 
+            while available(IO2);
+                cout clientRequest=readLine(IO2);                                           // read request from HTTP client and echo on the Justina console (note: the request itself contains CRLF sequence)
+                
+                if findStr(clientRequest, "GET / ") == 1;                                   // GET request to (re-)draw page ? 
+                        buttonIndex = -1;                                                   // button states do not change
+                        isMainPageRequest = TRUE;                                           // set flag to (re-) draw main page when request will be completemy received
+                
+                elseif (findStr(clientRequest, "GET /") == 1) && (len(clientRequest) >=7);
+                    if (asc(clientRequest, 7)== 0x20);                                      // GET request with button tag ?
+                        tag = mid(clientRequest, 6, 1);                                     // get button index and adapt switch state
+                        buttonIndex = findStr(buttonTags, tag);                             // 1 to number of switches                  
+                        switchStates(buttonIndex) = ! switchStates(buttonIndex);    
+                        isMainPageRequest = TRUE;                                           // set flag to redraw main page when request will be completemy received                                      
+                    else;                                                                   // GET request to send favorite icon 
+                        isFaviconRequest = TRUE;                                            // set flag to send 'no favorite icon' message when request will be completemy received
+                    end;        
+                
  
-				elseif  strCmp(clientRequest, line()) == 0;  								// request header completely received (indicated by empty line) ?		    									
-					if isMainPageRequest; 													// was a request to (re-)draw the 'main page' ? 
-						sendMainPageResponse();												// send response message to draw main page
-						isMainPageRequest = FALSE;											// reset flag
+                elseif  strCmp(clientRequest, line()) == 0;                                 // request header completely received (indicated by empty line) ?                                               
+                    if isMainPageRequest;                                                   // was a request to (re-)draw the 'main page' ? 
+                        sendMainPageResponse();                                             // send response message to draw main page
+                        isMainPageRequest = FALSE;                                          // reset flag
 
-					elseif isFaviconRequest;												// request to send 'favorite icon' ? 
-						sendFaviconResponse();												// send response message indicating 'no favorite icon'
-						isFaviconRequest=FALSE;												// reset flag
-					end; 
-				end;
-			end;
+                    elseif isFaviconRequest;                                                // request to send 'favorite icon' ? 
+                        sendFaviconResponse();                                              // send response message indicating 'no favorite icon'
+                        isFaviconRequest=FALSE;                                             // reset flag
+                    end; 
+                end;
+            end;
 
-			cpp_stopClient(); 																// no more request characters: disconnect client
-		end;
-	end;	
-	
-	 
+            uf_stopClient();                                                                // no more request characters: disconnect client
+        end;
+    end;    
+    
+     
 end;
-	
+    
 
 // send response message to (re-)draw main page
 // --------------------------------------------
 
 procedure sendMainPageResponse();
-	
-	// send response header
-	printLine IO2, ("HTTP/1.1 200 OK");
+    
+    // send response header
+    printLine IO2, ("HTTP/1.1 200 OK");
     printLine IO2, ("Content-type:text/html");
-	printLine IO2, "Connection: keep-alive";
+    printLine IO2, "Connection: keep-alive";
     printLine IO2;
     printLine IO2, ("<style>");
     printLine IO2, (".button {");
@@ -143,22 +143,22 @@ procedure sendMainPageResponse();
     printLine IO2, (".button5 {background-color: #555555;} /* Black */");
     printLine IO2, ("</style>");
 
-	// send response body
+    // send response body
     print IO2, ("<html>");
     print IO2, ("<body>");
 
     print IO2, ("<h1>Arduino as a simple web server</h1>");
     
-	var buttonIndex;
-	
-	// draw buttons 
-	for buttonIndex = 1, SWITCH_COUNT;
-		// active button ? color RED
-        if (switchStates(buttonIndex) == 1); 				
+    var buttonIndex;
+    
+    // draw buttons 
+    for buttonIndex = 1, SWITCH_COUNT;
+        // active button ? color RED
+        if (switchStates(buttonIndex) == 1);                
             print IO2, ("<button href=\"#\" class=\"button button3\" type=\"button\" onclick= \"window.location.href='");
         else;
             print IO2, ("<button href=\"#\" class=\"button button4\" type=\"button\" onclick= \"window.location.href='");
-		end;
+        end;
 
         //calculate button index
         print IO2, mid(buttonTags, buttonIndex, 1);
@@ -168,7 +168,7 @@ procedure sendMainPageResponse();
     end;
     print IO2, ("<br>");
     
-	print IO2, ("</body>");
+    print IO2, ("</body>");
     print IO2, ("</html>");
 end;
 
@@ -177,7 +177,7 @@ end;
 // ---------------------------------------------------
 
 procedure sendFaviconResponse();
-	printLine IO2, "HTTP/1.1 404 Not Found";
+    printLine IO2, "HTTP/1.1 404 Not Found";
     printLine IO2, ("Content-type:text/html");
-	printLine IO2, "Connection: keep-alive";
-end;	
+    printLine IO2, "Connection: keep-alive";
+end;    

@@ -1,7 +1,7 @@
 /*------------------------------------------------------------------------------------------------------------------------
     Example JUSTINA language program for use with the Justina interpreter
-	
- 	The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      
+    
+    The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      
     by the Free Software Foundation (https://www.gnu.org/licenses).                                                      
     Refer to GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter            
                                                                                                                          
@@ -14,12 +14,12 @@
 program SD_parseRecords; // this is a JUSTINA program
 
 /*
-	This example demonstrates how to write records with formatted data to an SD card file and how to 
-	read back these records and parse the values they contain into variables of the correct data types.
-	
-	Procedure call: writeRecords();
-	Function call: parseAndPrintRecords(toFile);  // toFile: numeric expression; if FALSE, will send output to console instead of to file 'table.txt'
-	         returns: number of incomplete records
+    This example demonstrates how to write records with formatted data to an SD card file and how to 
+    read back these records and parse the values they contain into variables of the correct data types.
+    
+    Procedure call: writeRecords();
+    Function call: parseAndPrintRecords(toFile);  // toFile: numeric expression; if FALSE, will send output to console instead of to file 'table.txt'
+             returns: number of incomplete records
 */
 
 
@@ -28,87 +28,87 @@ program SD_parseRecords; // this is a JUSTINA program
 // ------------------------------------------------------------------------------
 
 procedure writeRecords();
-	startSD;																	// in case the SD card was not yet initialized
-		
-	var testFile = 0;															// init as integer
-	if (testFile = fileNum("people.txt")) > 0; close (testFile); end;			// verify the file is closed			
+    startSD;                                                                    // in case the SD card was not yet initialized
+        
+    var testFile = 0;                                                           // init as integer
+    if (testFile = fileNum("people.txt")) > 0; close (testFile); end;           // verify the file is closed            
 
-	// using printList instead of printLine:
-	// - strings will be printed with surrounding quotes (safe for strings containing double quotes themselves)
-	// - numbers will be written with full accuracy
-	testFile = open("people.txt", WRITE | TRUNC | NEW_OK);						// note: nano ESP32 ALWAYS truncates on WRITE (discards TRUNC constant)
-	printList testFile, "John", "blue", "gray", 172, 78.3, 23;	
-	printList testFile, "Percy", "brown", "brown", 168, 75.7, 58;	
-	printList testFile, "Tracy", "green", "gray", 175, 58.4, 42;	
-	printList testFile, "Basil", "blue", "red", 177, 81.2, 51;	
-	printList testFile, "Caroline", "green"; 									// incomplete record
-	printList testFile, "Irene", "brown", "gray", 169, 61.8, 75;	
-	printList testFile, "no\\na\"me";											// enter backslash and double quote characters by preceding them with a backslash
-	printList testFile, "Charles", "green", "blond", 172, 79.3, 48;	
-	
-	close(testFile);
+    // using printList instead of printLine:
+    // - strings will be printed with surrounding quotes (safe for strings containing double quotes themselves)
+    // - numbers will be written with full accuracy
+    testFile = open("people.txt", WRITE | TRUNC | NEW_OK);                      // note: nano ESP32 ALWAYS truncates on WRITE (discards TRUNC constant)
+    printList testFile, "John", "blue", "gray", 172, 78.3, 23;  
+    printList testFile, "Percy", "brown", "brown", 168, 75.7, 58;   
+    printList testFile, "Tracy", "green", "gray", 175, 58.4, 42;    
+    printList testFile, "Basil", "blue", "red", 177, 81.2, 51;  
+    printList testFile, "Caroline", "green";                                    // incomplete record
+    printList testFile, "Irene", "brown", "gray", 169, 61.8, 75;    
+    printList testFile, "no\\na\"me";                                           // enter backslash and double quote characters by preceding them with a backslash
+    printList testFile, "Charles", "green", "blond", 172, 79.3, 48; 
+    
+    close(testFile);
 
-	// read back and print to console: 
-	testFile = open("people.txt", READ);
-	while (available(testFile) > 0);
-		cout readLine(testFile);
-	end;
-	close(testFile);
-	
-	return;
+    // read back and print to console: 
+    testFile = open("people.txt", READ);
+    while (available(testFile) > 0);
+        cout readLine(testFile);
+    end;
+    close(testFile);
+    
+    return;
 end;
 
 
 //  this function reads records, containing formatted data, from an SD card file and
 //  parses the values into variables. Then the list is output in a tabular format.
 //  if function argument is false, then send the output to the console; otherwise to file '"table.txt'.
-// 	the function returns the number of incomplete records found.
+//  the function returns the number of incomplete records found.
 // ----------------------------------------------------------------------------------------------------
 
-function parseAndPrintRecords(toFile = FALSE);									// optional argument (default is CONSOLE)
-		
-	startSD;																	// in case the SD card was not yet initialized
-	
-	var streamOut = CONSOLE; 													// init output stream to console
-		
-	var fileIn = 0, fileOut = 0;												// init file numbers attributed to open files
-	if (fileIn = fileNum("people.txt")) > 0; close (fileIn); end;				// verify the input file is closed			
-	fileIn = open("people.txt", READ);	
-	
-	if toFile;		 															
-		if (fileOut = fileNum("table.txt")) > 0; close (fileOut); end;			// verify the output file is closed	
-		streamOut = open("table.txt", WRITE | TRUNC | NEW_OK);
-	end;
-	
-	var givenName ="", eyeColor="", hairColor="", length=0, weight=0., age = 0;	// initialise variables
-	
-	// print table header to output stream
-	printLine streamOut, line(), "name", col(12), "eyes", col(20), "hair", 
-		col(26), " length", " weight", "   age";
-	printLine streamOut, repeatChar("-", 26+7+7+6-1);
-	
-	// now parse each record read from the input file to a number of variables
-	var variablesRead=0, incompleteRecords =0;
-	while (available(fileIn) > 0);
-		
-		// reset variables in each loop, in case records read are incomplete
-		variablesRead = readList(fileIn, givenName, eyeColor="", hairColor="", 
-			length=0, weight=0, age=0);
-		if variablesRead < 5; incompleteRecords++; end;							// count number of incomplete records
-		
-		// print the record read to the output stream (console or file) in tabular format
-		// use the fmt() function to format and right align table columns length, weight and age
-		printLine streamOut, givenName, col(12), eyeColor, col(20), hairColor, 
-			col(26), fmt(length, 7, 0, DEC), fmt(weight, 7, 1, FIXED), fmt(age, 6, 0, DEC);
-	end;
-	
-	// close all files; if output was sent to a file, send it to console now 
-	close(fileIn);
-	if toFile; 
-		close(streamOut); 
-		coutLine;
-		sendFile "table.txt", CONSOLE;
-	end;
-	
-	return incompleteRecords;
+function parseAndPrintRecords(toFile = FALSE);                                  // optional argument (default is CONSOLE)
+        
+    startSD;                                                                    // in case the SD card was not yet initialized
+    
+    var streamOut = CONSOLE;                                                    // init output stream to console
+        
+    var fileIn = 0, fileOut = 0;                                                // init file numbers attributed to open files
+    if (fileIn = fileNum("people.txt")) > 0; close (fileIn); end;               // verify the input file is closed          
+    fileIn = open("people.txt", READ);  
+    
+    if toFile;                                                                  
+        if (fileOut = fileNum("table.txt")) > 0; close (fileOut); end;          // verify the output file is closed 
+        streamOut = open("table.txt", WRITE | TRUNC | NEW_OK);
+    end;
+    
+    var givenName ="", eyeColor="", hairColor="", length=0, weight=0., age = 0; // initialise variables
+    
+    // print table header to output stream
+    printLine streamOut, line(), "name", col(12), "eyes", col(20), "hair", 
+        col(26), " length", " weight", "   age";
+    printLine streamOut, repeatChar("-", 26+7+7+6-1);
+    
+    // now parse each record read from the input file to a number of variables
+    var variablesRead=0, incompleteRecords =0;
+    while (available(fileIn) > 0);
+        
+        // reset variables in each loop, in case records read are incomplete
+        variablesRead = readList(fileIn, givenName, eyeColor="", hairColor="", 
+            length=0, weight=0, age=0);
+        if variablesRead < 5; incompleteRecords++; end;                         // count number of incomplete records
+        
+        // print the record read to the output stream (console or file) in tabular format
+        // use the fmt() function to format and right align table columns length, weight and age
+        printLine streamOut, givenName, col(12), eyeColor, col(20), hairColor, 
+            col(26), fmt(length, 7, 0, DEC), fmt(weight, 7, 1, FIXED), fmt(age, 6, 0, DEC);
+    end;
+    
+    // close all files; if output was sent to a file, send it to console now 
+    close(fileIn);
+    if toFile; 
+        close(streamOut); 
+        coutLine;
+        sendFile "table.txt", CONSOLE;
+    end;
+    
+    return incompleteRecords;
 end;

@@ -66,11 +66,10 @@ Justina::execResult_type Justina::exec(char* startHere) {
     bool isEndOfStatementSeparator = false;                                             // false, because this is already the start of a new instruction
     bool lastWasEndOfStatementSeparator = false;                                        // false, because this is already the start of a new instruction
 
-    bool appFlagsRequestStop{ false }, appFlagsRequestAbort{ false };
+    bool appFlagsRequestAbort{ false };
     bool abortCommandReceived{ false };
-    bool showStopmessage{ false };
 
-    execResult_type execResult = result_execOK;
+    execResult_type execResult = result_exec_OK;
     char* holdProgramCnt_StatementStart{ nullptr }, * programCnt_previousStatementStart{ nullptr };
     char* holdErrorProgramCnt_StatementStart{ nullptr }, * errorProgramCnt_previousStatement{ nullptr };
 
@@ -86,9 +85,9 @@ Justina::execResult_type Justina::exec(char* startHere) {
     _activeFunctionData.errorStatementStartStep = _programCounter;
     _activeFunctionData.errorProgramCounter = _programCounter;
 
-    if (_activeFunctionData.statementInputStream <= 0) {                                    // batch files: NOT set here (would be set for every batch file line) BUT set when a batch file is launched
-        _activeFunctionData.trapEnable = 0;                                                 // start execution with error trapping disabled
-        _activeFunctionData.errorHandlerActive = 0;                                         // error handler is not active
+    if (_activeFunctionData.statementInputStream <= 0) {                                // batch files: NOT set here (would be set for every batch file line) BUT set when a batch file is launched
+        _activeFunctionData.trapEnable = 0;                                             // start execution with error trapping disabled
+        _activeFunctionData.errorHandlerActive = 0;                                     // error handler is not active
     }
 
     bool setCurrentPrintColumn{ false };                                                // for print commands only
@@ -103,17 +102,17 @@ Justina::execResult_type Justina::exec(char* startHere) {
     // process tokens, one by one
     // --------------------------
 
-    while (true) {                                                 // for all tokens in token list
+    while (true) {                                                                      // for all tokens in token list
 
         // if all tokens in the last parsed line in a batch file are processed and a 'ditch' command was not encountered, terminate the batch file here.
         // then continue applying the same logic for caller batch files, if any, until the command line is reached. 
-        if (tokenType == tok_no_token) {                                         // one parsed line has been executed 
-            if (_activeFunctionData.blockType == block_batchFile) {                 // that line came from a batch file
+        if (tokenType == tok_no_token) {                                                // one parsed line has been executed 
+            if (_activeFunctionData.blockType == block_batchFile) {                     // that line came from a batch file
                 int streamNumber = _activeFunctionData.statementInputStream;
-                if (openFiles[streamNumber - 1].file.available() == 0) {               // EOF reached: the last line of the batch file was executed. Nothing more to parse and execute in the batch file
+                if (openFiles[streamNumber - 1].file.available() == 0) {                // EOF reached: the last line of the batch file was executed. Nothing more to parse and execute in the batch file
                     terminateBatchFile();                                               // so it's time to terminate the batch file
-                    _programCounter = _activeFunctionData.pNextStep;                                                    // note: will be altered when calling a Justina function and upon return of a called function
-                    tokenType = *_activeFunctionData.pNextStep & 0x0F;                                                  // next token type (could be token within caller, if returning now)
+                    _programCounter = _activeFunctionData.pNextStep;                    // note: will be altered when calling a Justina function and upon return of a called function
+                    tokenType = *_activeFunctionData.pNextStep & 0x0F;                  // next token type (could be token within caller, if returning now)
                 }
                 else { break; }
             }
@@ -356,7 +355,7 @@ Justina::execResult_type Justina::exec(char* startHere) {
                 // check if (an) operation(s) can be executed. 
                 // when an operation is executed, check whether lower priority operations can now be executed as well (example: 3+5*7: first execute 5*7 yielding 35, then execute 3+35)
                 execResult = execAllProcessedOperators();
-                if (execResult != result_execOK) { break; }
+                if (execResult != result_exec_OK) { break; }
             }
             break;
 
@@ -399,7 +398,7 @@ Justina::execResult_type Justina::exec(char* startHere) {
                 // when an operation is executed, check whether lower priority operations can now be executed as well (example: 3+5*7: first execute 5*7 yielding 35, then execute 3+35)
 
                 execResult = execAllProcessedOperators();
-                if (execResult != result_execOK) { break; }
+                if (execResult != result_exec_OK) { break; }
             }
             break;
 
@@ -444,8 +443,8 @@ Justina::execResult_type Justina::exec(char* startHere) {
                         bool isPostfixOperator = (_terminals[_pEvalStackTop->terminal.index & 0x7F].postfix_priority != 0);
                         if (isPostfixOperator) {
                             execResult = execUnaryOperation(false);                                                                     // flag postfix operation
-                            if (execResult == result_execOK) { execResult = execAllProcessedOperators(); }
-                            if (execResult != result_execOK) { doCaseBreak = true; }
+                            if (execResult == result_exec_OK) { execResult = execAllProcessedOperators(); }
+                            if (execResult != result_exec_OK) { doCaseBreak = true; }
                         }
                     }
 
@@ -523,18 +522,18 @@ Justina::execResult_type Justina::exec(char* startHere) {
                     _pEvalStackMinus2 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackMinus1);
 
                     // execute internal cpp, external cpp or Justina function, OR (if array closing parenthesis) calculate array element address OR remove parenthesis around single argument 
-                    execResult = execParenthesesPair(pPrecedingStackLvl, pStackLvl, argCount, appFlagsRequestStop, appFlagsRequestAbort);
+                    execResult = execParenthesesPair(pPrecedingStackLvl, pStackLvl, argCount, appFlagsRequestAbort);
                 #if PRINT_PROCESSED_TOKEN
                     _pDebugOut->print("   right par.: exec parentheses pair. Error = "); _pDebugOut->println(execResult);
                     _pDebugOut->print("   eval stack depth "); _pDebugOut->println(evalStack.getElementCount());
                 #endif
-                    if (execResult != result_execOK) { doCaseBreak = true; }
+                    if (execResult != result_exec_OK) { doCaseBreak = true; }
 
                     // the left parenthesis and the argument(s) are now removed and replaced by a single scalar (function result, array element, single argument)
                     // check if additional operators preceding the left parenthesis can now be executed.
                     // when an operation is executed, check whether lower priority operations can now be executed as well (example: 3+5*7: first execute 5*7 yielding 35, then execute 3+35)
                     if (!doCaseBreak) {
-                        execResult = execAllProcessedOperators(); if (execResult != result_execOK) { doCaseBreak = true; }
+                        execResult = execAllProcessedOperators(); if (execResult != result_exec_OK) { doCaseBreak = true; }
                     }
 
                     if (doCaseBreak) { break; }
@@ -553,7 +552,7 @@ Justina::execResult_type Justina::exec(char* startHere) {
                     bool doCaseBreak{ false };
                     isEndOfStatementSeparator = true;
 
-                    if (_parsingExecutingConditionString) { break; }                                                  // evaluating a condition string ? nothing to do here
+                    if (_parsingExecutingConditionString) { break; }                                                // evaluating a condition string ? nothing to do here
 
                     // simple expression statement (not a command)
                     // -------------------------------------------
@@ -613,9 +612,10 @@ Justina::execResult_type Justina::exec(char* startHere) {
                         setCurrentPrintColumn = false;                                                                              // reset (used by print commands only)
 
                         // NOTE: STOP and ABORT commands do NOT set 'appFlagsRequestStop' & 'appFlagsRequestAbort', but return a 'stop' or 'abort' error instead
-                        execResult = execInternalCommand(isFunctionReturn, appFlagsRequestStop, appFlagsRequestAbort);
+                        execResult = execInternalCommand(isFunctionReturn, appFlagsRequestAbort);
+
                         if (execResult == EVENT_abort) { abortCommandReceived = true; }                                             // user typed
-                        if (execResult != result_execOK) { doCaseBreak = true; }                                                    // error: break (case label) immediately
+                        if (execResult != result_exec_OK) { doCaseBreak = true; }                                                   // error: break (case label) immediately
                     }
 
                     // external (user cpp) command
@@ -653,7 +653,7 @@ Justina::execResult_type Justina::exec(char* startHere) {
                 terminateEval();
                 if (evalStack.getElementCount() - _activeFunctionData.callerEvalStackLevels >= 1) {
                     execResult = execAllProcessedOperators();                                                           // process operators OUTSIDE terminating eval() function
-                    if (execResult != result_execOK) { break; }
+                    if (execResult != result_exec_OK) { break; }
                 }
 
                 // after evaluation stack has been updated and before breaking, because of error
@@ -666,8 +666,8 @@ Justina::execResult_type Justina::exec(char* startHere) {
         // if error trapping is on, trap any error. This effectively clears the error condition. A subsequent call to err() will return the error number 
         // ---------------------------------------------------------------------------------------------------------------------------------------------
         // did an error occur in a Justina function, the (debug) command line or an eval() string ? 
-        if (!_parsingExecutingWatchString && !_parsingExecutingConditionString && (execResult != result_execOK) && (execResult < EVENT_startOfEvents)) {    // Trap the error if error trapping is enabled
-            bool errorTrapped = trapError(isEndOfStatementSeparator, execResult);                               // if error trapped, execResult will be reset (no error)
+        if (!_parsingExecutingWatchString && !_parsingExecutingConditionString && (execResult != result_exec_OK) && (execResult < EVENT_startOfEvents)) {    // Trap the error if error trapping is enabled
+            bool errorTrapped = trapError(isEndOfStatementSeparator, execResult);                           // if error trapped, execResult will be reset (no error)
             // reset 'isComma', because error trapping moves the next step to the first step after the statement producing an execution error, in the function were error trapping is enabled 
             if (errorTrapped) { isComma = false; }
         }
@@ -677,8 +677,8 @@ Justina::execResult_type Justina::exec(char* startHere) {
 
         if (_parsingExecutingConditionString) {
             // stop evaluation if done evaluating OR if an execution error occurred during evaluation
-            bool isConditionEvalEnd = (isEndOfStatementSeparator || (execResult != result_execOK) && (execResult < EVENT_startOfEvents));
-            if (isConditionEvalEnd) { checkConditionResult(execResult); isEndOfStatementSeparator = false; }     // avoid end of statement processing (below)
+            bool isConditionEvalEnd = (isEndOfStatementSeparator || (execResult != result_exec_OK) && (execResult < EVENT_startOfEvents));
+            if (isConditionEvalEnd) { checkConditionResult(execResult); isEndOfStatementSeparator = false; }  // avoid end of statement processing (below)
 
         }
 
@@ -711,7 +711,7 @@ Justina::execResult_type Justina::exec(char* startHere) {
             programCnt_previousStatementStart = holdProgramCnt_StatementStart;
             holdProgramCnt_StatementStart = _programCounter;
 
-            if (execResult == result_execOK) {                                                              // no error ? 
+            if (execResult == result_exec_OK) {                                                             // no error ? 
                 if (!isFunctionReturn) {                                                                    // adapt error program step pointers
                     // note: if returning from user function, error statement pointers retrieved from flow control stack 
                     _activeFunctionData.errorStatementStartStep = _programCounter;
@@ -722,13 +722,11 @@ Justina::execResult_type Justina::exec(char* startHere) {
             // examine kill, stop and abort requests from Justina caller ('shell')
             // -------------------------------------------------------------------
 
-            bool kill, forcedStop{}, forcedAbort{};
+            bool kill, forcedAbort{};
 
-            execPeriodicHousekeeping(&kill, &forcedStop, &forcedAbort);
+            execPeriodicHousekeeping(&kill, &forcedAbort);
             if (kill) { execResult = EVENT_kill; return execResult; }                                       // kill Justina interpreter ? (buffer is now flushed until next line character)
-            appFlagsRequestStop = appFlagsRequestStop || forcedStop;
             appFlagsRequestAbort = appFlagsRequestAbort || forcedAbort;
-            if (appFlagsRequestStop) { showStopmessage = true; }                                            // relevant for message only
 
             // process debugging commands (entered from the command line, or forced abort / stop requests received while a program is running  
             // ------------------------------------------------------------------------------------------------------------------------------
@@ -739,17 +737,16 @@ Justina::execResult_type Justina::exec(char* startHere) {
 
             bool isBatchFileLaunch = (_activeFunctionData.activeCmd_isInternal) ? (_activeFunctionData.activeCmd_commandCode == cmdcod_execBatchFile) : false;
 
-            if (!_parsingExecutingWatchString && !_parsingExecutingConditionString && !executingEvalString && (execResult == result_execOK)) {
+            if (!_parsingExecutingWatchString && !_parsingExecutingConditionString && !executingEvalString && (execResult == result_exec_OK)) {
                 bool isActiveBreakpoint{ false }, doStopForDebugNow{ false };
-                checkForStop(isActiveBreakpoint, doStopForDebugNow, appFlagsRequestStop, isFunctionReturn, programCnt_previousStatementStart);
+                checkForStop(isActiveBreakpoint, doStopForDebugNow, isFunctionReturn, programCnt_previousStatementStart);
                 tokenType = *_programCounter & 0x0F;             // adapt next token type (could be changed by a  string)
-
                 if (appFlagsRequestAbort) { execResult = EVENT_abort; }
                 else if (doStopForDebugNow) { execResult = (isActiveBreakpoint ? EVENT_stopForBreakpoint : EVENT_stopForDebug); }
             }
         }
 
-        if (execResult != result_execOK) { break; }
+        if (execResult != result_exec_OK) { break; }
     }
 
 
@@ -764,9 +761,9 @@ Justina::execResult_type Justina::exec(char* startHere) {
 
         // execution of watch or BP watch string (so at least one program is stopped)
         // NOTE that execution of a breakpoint condition string is inserted in normal execution flow, so control doesn't pass here (same as eval() function execution)
-        int charsPrinted{  };                                                                                           // required but not used
+        int charsPrinted{  };                                                                               // required but not used
         Val toPrint;
-        if (execResult == result_execOK) {
+        if (execResult == result_exec_OK) {
             bool isLong = (_watchResultValueType == value_isLong);
             bool isFloat = (_watchResultValueType == value_isFloat);
             char* fmtString = isLong ? _dispIntegerFmtString : isFloat ? _dispFloatFmtString : _dispStringFmtString;
@@ -776,7 +773,7 @@ Justina::execResult_type Justina::exec(char* startHere) {
         }
         else {
             char valTyp = value_isStringPointer;
-            char  errStr[12];                                                                                           // includes place for terminating '\0'
+            char  errStr[12];                                                                               // includes place for terminating '\0'
             sprintf(errStr, "<ErrE%d>", (int)execResult);
             Val temp;
             temp.pStringConst = errStr;
@@ -800,7 +797,7 @@ Justina::execResult_type Justina::exec(char* startHere) {
 
     // not a watch string: normal execution 
     else {
-        if (execResult == result_execOK) {              // no error: print last result
+        if (execResult == result_exec_OK) {              // no error: print last result
 
             // test for block type: prevent printing a last value when jumping to a batch file (batch file block type was set when 'launching' batch file execution;
             // however current execution of the caller still needs to finish, to allow parsing and execution of batch file lines
@@ -809,7 +806,7 @@ Justina::execResult_type Justina::exec(char* startHere) {
 
                 bool isLong = (lastResultTypeFiFo[0] == value_isLong);
                 bool isFloat = (lastResultTypeFiFo[0] == value_isFloat);
-                int charsPrinted{  };                                                                                   // required but not used
+                int charsPrinted{  };                                                                       // required but not used
                 Val toPrint;
                 char* fmtString = isLong ? _dispIntegerFmtString : isFloat ? _dispFloatFmtString : _dispStringFmtString;
                 printToString(_dispWidth, isLong ? _dispIntegerPrecision : isFloat ? _dispFloatPrecision : MAX_STRCHAR_TO_PRINT,
@@ -827,7 +824,7 @@ Justina::execResult_type Justina::exec(char* startHere) {
             }
         }
         else {
-            printExecError(execResult, showStopmessage);
+            printExecError(execResult);
         }
     }
 
@@ -837,7 +834,7 @@ Justina::execResult_type Justina::exec(char* startHere) {
 
     // 1. (program, command line, batch file line) execution ERROR (could be an app flags abort request) OR Event: EVENT_abort,...
     //    while at least one other program is currently stopped in debug mode ?
-    if (((execResult != result_execOK) && (execResult < EVENT_startOfEvents)) || (execResult == EVENT_abort)) {
+    if (((execResult != result_exec_OK) && (execResult < EVENT_startOfEvents)) || (execResult == EVENT_abort)) {
         int deleteImmModeCmdStackLevels{ 0 };
         clearFlowCtrlStack(deleteImmModeCmdStackLevels, true, abortCommandReceived);                        // first argument returns imm. mode command stack levels to delete
         clearParsedCommandLineStack(deleteImmModeCmdStackLevels);                                           // do not delete all stack levels but only supplied level count
@@ -887,7 +884,7 @@ Justina::execResult_type Justina::exec(char* startHere) {
     just to clarify: the two cases below do not require any action
 
     // 3. Events other than the ones handled above
-    else if (execResult != result_execOK) {}
+    else if (execResult != result_exec_OK) {}
 
 
     // 4. no execution error
@@ -972,17 +969,15 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
                 bool isVoidFunctionDef = (justinaFunctionData[_activeFunctionData.functionIndex].isVoidFunctionDef == 1);
                 terminateJustinaFunction(isVoidFunctionDef, !isVoidFunctionDef);                        // return zero, except when a void Justina function
             }
-            else {/* Serial.println(" * error TRAPPED at this level");*/ break; }                                                                             // function with error trapping found (always there, see previous test)
+            else { break; }                                                                              // function with error trapping found (always there, see previous test)
         }
         else if (_activeFunctionData.blockType == block_batchFile) {
             bool trapErrorHere = ((bool)_activeFunctionData.trapEnable && !(bool)_activeFunctionData.errorHandlerActive);
             if (!trapErrorHere) {
-                //Serial.print(" * error NOT trapped at this level, terminating batch file - input stream: "); Serial.print((int)_activeFunctionData.statementInputStream); Serial.print(", block type : "); Serial.println((int)_activeFunctionData.blockType);
-
                 terminateBatchFile();                                                                   // terminate batch file 
                 returnedFromBatchFile = true;                                                           // next program step is set already
             }
-            else {/* Serial.println(" * error TRAPPED at this level"); */ break; }
+            else { break; }
         }
     } while (true);
 
@@ -1043,7 +1038,7 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
     _trappedExecError = (int)execResult;
     _trappedEvalParsingError = ((_trappedExecError == result_eval_parsingError) || (_trappedExecError == result_list_parsingError)) ? _evalParsingError : result_parsing_OK;
 
-    execResult = result_execOK; _evalParsingError = result_parsing_OK;                                  // clear the error condition
+    execResult = result_exec_OK; _evalParsingError = result_parsing_OK;                                 // clear the error condition
 
     _activeFunctionData.activeCmd_commandCode = cmdcod_none;                                            // if processing command, prevent further execution of that command 
 
@@ -1061,7 +1056,7 @@ bool Justina::trapError(bool& isEndOfStatementSeparator, execResult_type& execRe
 // *   check if program should enter breakpoint / debug mode   *
 // -------------------------------------------------------------
 
-void Justina::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNow, bool& appFlagsRequestStop, bool& isFunctionReturn, char* programCnt_previousStatementStart) {
+void Justina::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNow, bool& isFunctionReturn, char* programCnt_previousStatementStart) {
 
     // A. prohibit breakpoint / stop when specific conditions are met
     // --------------------------------------------------------------
@@ -1115,33 +1110,33 @@ void Justina::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNo
         // if no parsing error, then launch execution of condition expression
         else if (pBreakpointDataRow->BPwithConditionExpr == 0b1) {
             parsingResult_type result = parseConditionString(BPdataRow);
-            isActiveBreakpoint = (result == result_parsing_OK);                                                         // but condition string must still be evaluated
+            isActiveBreakpoint = (result == result_parsing_OK);                                             // but condition string must still be evaluated
 
-            if (isActiveBreakpoint) {                                                                                   // condition string was parsed without errors
+            if (isActiveBreakpoint) {                                                                       // condition string was parsed without errors
                 _parsingExecutingConditionString = true;
-                isActiveBreakpoint = false;                                                                             // reset, because condition string must still be evaluated
+                isActiveBreakpoint = false;                                                                 // reset, because condition string must still be evaluated
 
                 // push caller function data on FLOW CONTROL stack 
                 // -----------------------------------------------
                 _pFlowCtrlStackTop = (OpenFunctionData*)flowCtrlStack.appendListElement(sizeof(OpenFunctionData));
-                *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                                         // push caller function data to stack
+                *((OpenFunctionData*)_pFlowCtrlStackTop) = _activeFunctionData;                             // push caller function data to stack
                 ((OpenFunctionData*)_pFlowCtrlStackTop)->withParsedStatementLine = 1;
 
-                _activeFunctionData.blockType = block_condition;                                                          // now executing parsed 'condition eval' string
-                _activeFunctionData.activeCmd_commandCode = cmdcod_none;                                                // command execution ended 
-                _activeFunctionData.callerEvalStackLevels = evalStack.getElementCount();                                // store evaluation stack levels in use by callers (call stack)
+                _activeFunctionData.blockType = block_condition;                                            // now executing parsed 'condition eval' string
+                _activeFunctionData.activeCmd_commandCode = cmdcod_none;                                    // command execution ended 
+                _activeFunctionData.callerEvalStackLevels = evalStack.getElementCount();                    // store evaluation stack levels in use by callers (call stack)
                 _activeFunctionData.trapEnable = 0;
-                _activeFunctionData.errorHandlerActive = 0;                                                             // error handler is not active
-                _activeFunctionData.statementInputStream = 0;                                                           // input stream is console
+                _activeFunctionData.errorHandlerActive = 0;                                                 // error handler is not active
+                _activeFunctionData.statementInputStream = 0;                                               // input stream is console
 
 
                 // set next step to start of parsed condition string
                 // -------------------------------------------------
-                _programCounter = _programStorage + _PROGRAM_MEMORY_SIZE;                                               // first step in first statement in parsed eval() string
+                _programCounter = _programStorage + _PROGRAM_MEMORY_SIZE;                                   // first step in first statement in parsed eval() string
                 int tokenType = *_programCounter & 0x0F;             // adapt next token type (could be changed by a breakpoint condition string)
                 int tokenLength = (tokenType >= tok_isTerminalGroup1) ? sizeof(Token_terminal) : (tokenType == tok_isConstant) ? sizeof(Token_constant) :
                     (tokenType == tok_isSymbolicConstant) ? sizeof(Token_symbolicConstant) : (*_programCounter >> 4) & 0x0F;
-                _activeFunctionData.pNextStep = _programCounter + tokenLength;                                          // look ahead
+                _activeFunctionData.pNextStep = _programCounter + tokenLength;                              // look ahead
 
                 _activeFunctionData.errorStatementStartStep = _programStorage + _PROGRAM_MEMORY_SIZE;
                 _activeFunctionData.errorProgramCounter = _programStorage + _PROGRAM_MEMORY_SIZE;
@@ -1169,18 +1164,18 @@ void Justina::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNo
 
     // STOP if (1) breakpoint stop, (2) application flags requested stop, (3) a debug command was executed,... 
     // ...(4) one of the step commands was executed (imm. mode). NOTE: (5) the program encountered a stop command: not handled here. See 'stop' command
-    requestStopForDebugNow = (isActiveBreakpoint || appFlagsRequestStop || _debugCmdExecuted || isStepCommand)
+    requestStopForDebugNow = (isActiveBreakpoint || _appFlagStopRequestIsStored || _debugCmdExecuted || isStepCommand)
         && !isFunctionReturn;                                       // skip remainder of line where call to function occurred
     isFunctionReturn = false;
 
     if (requestStopForDebugNow) {
         if (_parsingExecutingConditionString) {
             // if condition string evaluation (not yet done) result would be zero, perform a normal stop for debug at that moment, not now (we don't know yet if this will be a breakpoint stop)
-            _pendingStopForDebug = true;
+            _holdStopForDebugWhileConditionEval = true;
             requestStopForDebugNow = false;                         // reset, because condition string must still be evaluated
         }
 
-        appFlagsRequestStop = false;
+        _appFlagStopRequestIsStored = false;                        // may forget now 
         _debugCmdExecuted = false;                                  // reset main program request to stop program
     }
 
@@ -1196,12 +1191,12 @@ void Justina::checkForStop(bool& isActiveBreakpoint, bool& requestStopForDebugNo
 
 Justina::parsingResult_type Justina::parseConditionString(int BPindex) {
 
-    char* pconditionParsingInput = _pBreakpoints->_pBreakpointData[BPindex].pCondition;                                                 // copy pointer to start of watch string
-    if (pconditionParsingInput == nullptr) { return result_BP_emptyConditionString; }                                                   // no watch string: nothing to watch
+    char* pconditionParsingInput = _pBreakpoints->_pBreakpointData[BPindex].pCondition;                         // copy pointer to start of watch string
+    if (pconditionParsingInput == nullptr) { return result_BP_emptyConditionString; }                           // no watch string: nothing to watch
 
     // skip any spaces and semi-colons in the input stream
     while ((pconditionParsingInput[0] == ' ') || (pconditionParsingInput[0] == term_semicolon[0])) { pconditionParsingInput++; }
-    if (*pconditionParsingInput == '\0') { return result_BP_conditionString_nothingToEvaluate; }                                        // no expression: condition result = false
+    if (*pconditionParsingInput == '\0') { return result_BP_conditionString_nothingToEvaluate; }                // no expression: condition result = false
 
     // push current command line storage to command line stack, to make room for the parsed condition string (will be parsed now) 
     // --------------------------------------------------------------------------------------------------------------------------
@@ -1219,7 +1214,7 @@ Justina::parsingResult_type Justina::parseConditionString(int BPindex) {
     // ----------------------
     char* pDummy{};
     char* holdProgramCounter = _programCounter;
-    _programCounter = _programStorage + _PROGRAM_MEMORY_SIZE;                                                    // parsed statements go to immediate mode program memory
+    _programCounter = _programStorage + _PROGRAM_MEMORY_SIZE;                                                   // parsed statements go to immediate mode program memory
 
     // parse ONE condition string expression only
 
@@ -1250,7 +1245,7 @@ Justina::parsingResult_type Justina::parseConditionString(int BPindex) {
     #endif
     }
 
-    _programCounter = holdProgramCounter;                                                                   // original program counter 
+    _programCounter = holdProgramCounter;                                                                       // original program counter 
     return parsingResult;
 }
 
@@ -1275,7 +1270,7 @@ void Justina::checkConditionResult(execResult_type& execResult) {
 
     // condition expression executed without error ? If evaluation result is numeric and net equal to zero, then stop at breakpoint 
     bool isActiveBreakpoint{ false };
-    if (execResult == result_execOK) {
+    if (execResult == result_exec_OK) {
         bool isVar = (_pEvalStackTop->varOrConst.tokenType == tok_isVariable);
         char valueType = isVar ? (*_pEvalStackTop->varOrConst.varTypeAddress & value_typeMask) : _pEvalStackTop->varOrConst.valueType;
         bool isLong = ((uint8_t)valueType == value_isLong);
@@ -1296,8 +1291,8 @@ void Justina::checkConditionResult(execResult_type& execResult) {
 
     // if condition expression evaluated to true, return with breakpoint event
     // if not, but a 'stop' command was pending (until after execution of condition string, so until now), return with stop event
-    execResult = isActiveBreakpoint ? EVENT_stopForBreakpoint : _pendingStopForDebug ? EVENT_stopForDebug : result_execOK;
-    _pendingStopForDebug = false;
+    execResult = isActiveBreakpoint ? EVENT_stopForBreakpoint : _holdStopForDebugWhileConditionEval ? EVENT_stopForDebug : result_exec_OK;
+    _holdStopForDebugWhileConditionEval = false;
 
     return;
 }
@@ -1740,19 +1735,19 @@ void Justina::clearParsedCommandLineStack(int n) {
 // *   execute internal cpp, external cpp or Justina function, calculate array element address or remove parentheses around single argument   *
 // --------------------------------------------------------------------------------------------------------------------------------------------
 
-Justina::execResult_type Justina::execParenthesesPair(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& firstArgStackLvl, int argCount, bool& forcedStopRequest, bool& forcedAbortRequest) {
+Justina::execResult_type Justina::execParenthesesPair(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& firstArgStackLvl, int argCount, bool& forcedAbortRequest) {
 
     // NOTE: removing a parenthesis pair around a variable, constant or expression results in an intermediate constant
 
     // no lower stack levels before left parenthesis (removed in the meantime) ? Is a simple parentheses pair
     if (pPrecedingStackLvl == nullptr) {
         makeIntermediateConstant(_pEvalStackTop);                                                               // left parenthesis already removed from evaluation stack
-        return result_execOK;
+        return result_exec_OK;
     }
 
     // stack level preceding left parenthesis is internal cpp function ? execute function
     else if (pPrecedingStackLvl->genericToken.tokenType == tok_isInternCppFunction) {
-        execResult_type execResult = execInternalCppFunction(pPrecedingStackLvl, firstArgStackLvl, argCount, forcedStopRequest, forcedAbortRequest);
+        execResult_type execResult = execInternalCppFunction(pPrecedingStackLvl, firstArgStackLvl, argCount, forcedAbortRequest);
 
         return execResult;
     }
@@ -1781,7 +1776,7 @@ Justina::execResult_type Justina::execParenthesesPair(LE_evalStack*& pPrecedingS
 
     // none of the above: simple parenthesis pair ? If variable inside, make it an intermediate constant on the stack 
     makeIntermediateConstant(_pEvalStackTop);                                                                   // left parenthesis already removed from evaluation stack
-    return result_execOK;
+    return result_exec_OK;
 }
 
 // -----------------------------------------------------------------------------------------------------------------
@@ -1837,7 +1832,7 @@ Justina::execResult_type Justina::arrayAndSubscriptsToarrayElement(LE_evalStack*
 
     clearEvalStackLevels(argCount);
 
-    return result_execOK;
+    return result_exec_OK;
 }
 
 // ---------------------------------------
@@ -1899,15 +1894,15 @@ Justina::execResult_type  Justina::execAllProcessedOperators() {                
         }
         if (minus1IsOperator) {     // operator before current token
             bool isPrefixOperator = true;             // prefix or infix operator ?
-            if (evalStack.getElementCount() >= _activeFunctionData.callerEvalStackLevels + 3) {                         // TWO preceding tokens exist on the stack               
+            if (evalStack.getElementCount() >= _activeFunctionData.callerEvalStackLevels + 3) {                 // TWO preceding tokens exist on the stack               
                 isPrefixOperator = (!(_pEvalStackMinus2->genericToken.tokenType == tok_isConstant) && !(_pEvalStackMinus2->genericToken.tokenType == tok_isVariable));
                 // comma separators are not pushed to the evaluation stack, but if it is followed by a (prefix) operator, a flag is set in order not to mistake a token sequence as two operands and an infix operation
-                if (_pEvalStackMinus1->terminal.index & 0x80) { isPrefixOperator = true; }                              // e.g. print 5, -6 : prefix operation on second expression ('-6') and not '5-6' as infix operation
+                if (_pEvalStackMinus1->terminal.index & 0x80) { isPrefixOperator = true; }                      // e.g. print 5, -6 : prefix operation on second expression ('-6') and not '5-6' as infix operation
             }
 
             // check operator priority
             int priority{ 0 };
-            if (isPrefixOperator) { priority = _terminals[terminalIndex].prefix_priority & 0x1F; }                      // bits b4..0 = priority
+            if (isPrefixOperator) { priority = _terminals[terminalIndex].prefix_priority & 0x1F; }              // bits b4..0 = priority
             else { priority = _terminals[terminalIndex].infix_priority & 0x1F; }
             bool RtoLassociativity = isPrefixOperator ? true : _terminals[terminalIndex].infix_priority & op_RtoL;
 
@@ -1915,32 +1910,32 @@ Justina::execResult_type  Justina::execAllProcessedOperators() {                
             // pending (not yet processed) token (always present and always a terminal token after a variable or constant token)
             // pending token can be any terminal token: infix operator, left or right parenthesis, comma or semicolon 
             // it can not be a prefix operator because it follows an operand (on top of stack)
-            pendingTokenType = *_activeFunctionData.pNextStep & 0x0F;                                                   // there's always minimum one token pending (even if it is a semicolon)
-            pendingTokenIndex = (*_activeFunctionData.pNextStep >> 4) & 0x0F;                                           // terminal token only: index stored in high 4 bits of token type 
+            pendingTokenType = *_activeFunctionData.pNextStep & 0x0F;                                           // there's always minimum one token pending (even if it is a semicolon)
+            pendingTokenIndex = (*_activeFunctionData.pNextStep >> 4) & 0x0F;                                   // terminal token only: index stored in high 4 bits of token type 
             pendingTokenIndex += ((pendingTokenType == tok_isTerminalGroup2) ? 0x10 : (pendingTokenType == tok_isTerminalGroup3) ? 0x20 : 0);
             bool pendingIsPostfixOperator = (_terminals[pendingTokenIndex].postfix_priority != 0);                      // postfix or infix operator ?
 
             // check pending operator priority
             pendingTokenPriority = (pendingIsPostfixOperator ? (_terminals[pendingTokenIndex].postfix_priority & 0x1F) :// bits b4..0 = priority
-                (_terminals[pendingTokenIndex].infix_priority) & 0x1F);                                                 // pending terminal is either an infix or a postfix operator
+                (_terminals[pendingTokenIndex].infix_priority) & 0x1F);                                         // pending terminal is either an infix or a postfix operator
 
 
             // determine final priority
             currentOpHasPriority = (priority >= pendingTokenPriority);
             if ((priority == pendingTokenPriority) && (RtoLassociativity)) { currentOpHasPriority = false; }
 
-            if (!currentOpHasPriority) { break; }                                                                       // exit while() loop
+            if (!currentOpHasPriority) { break; }                                                               // exit while() loop
 
             // execute operator
             execResult_type execResult = (isPrefixOperator) ? execUnaryOperation(true) : execInfixOperation();
-            if (execResult != result_execOK) { return execResult; }
+            if (execResult != result_exec_OK) { return execResult; }
         }
 
         // token preceding the operand is not an operator ? (it can be a left parenthesis or a generic name) ? exit while loop (nothing to do for now)
         else { break; }
     }
 
-    return result_execOK;
+    return result_exec_OK;
 }
 
 
@@ -2022,11 +2017,11 @@ Justina::execResult_type  Justina::execUnaryOperation(bool isPrefix) {
     // -------------------------------------------------------------------------------------------------------------------------------
 
 
-    execResult_type execResult = result_execOK;                                                                 // init  
+    execResult_type execResult = result_exec_OK;                                                                // init  
 
     if (!opIsLong && !opIsFloat) { execResult = result_numberExpected; }                                        // value is numeric ? (no prefix / postfix operators for strings)
     if (!opIsLong && requiresLongOp) { execResult = result_integerTypeExpected; }                               // only integer value type allowed
-    if (execResult != result_execOK) { return execResult; }
+    if (execResult != result_exec_OK) { return execResult; }
 
     // (3) fetch operand - note that line is valid for long integers as well
     // ---------------------------------------------------------------------
@@ -2084,7 +2079,7 @@ Justina::execResult_type  Justina::execUnaryOperation(bool isPrefix) {
     _pEvalStackMinus1 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackTop);
     _pEvalStackMinus2 = (LE_evalStack*)evalStack.getPrevListElement(_pEvalStackMinus1);
 
-    return result_execOK;
+    return result_exec_OK;
 }
 
 
@@ -2319,7 +2314,7 @@ Justina::execResult_type  Justina::execInfixOperation() {
 
     if (operationIncludesAssignment) {    // assign the value (parsed constant, variable value or intermediate result) to the variable
         // if variable currently holds a non-empty string (indicated by a nullptr), delete char string object
-        execResult_type execResult = deleteVarStringObject(_pEvalStackMinus2); if (execResult != result_execOK) { return execResult; }
+        execResult_type execResult = deleteVarStringObject(_pEvalStackMinus2); if (execResult != result_exec_OK) { return execResult; }
 
         // the value to be assigned is numeric? upcast or downcast if needed (only for receiving array elements, because arrays cannot change value type)
         if (opResultLong || opResultFloat) {
@@ -2422,7 +2417,7 @@ Justina::execResult_type  Justina::execInfixOperation() {
     _pDebugOut->print("   result = "); _pDebugOut->println(_pEvalStackTop->varOrConst.value.longConst);
     _pDebugOut->print("   list element address: "); _pDebugOut->println((uint32_t)_pEvalStackTop, HEX);
 #endif
-    return result_execOK;
+    return result_exec_OK;
 }
 
 
@@ -2475,7 +2470,7 @@ Justina::execResult_type Justina::execExternalCppFncOrCmd(LE_evalStack*& pFuncti
         }
     }
 
-    int integerExecResult{ (int)result_execOK };
+    int integerExecResult{ (int)result_exec_OK };
 
     switch (returnValueType) {
         // external functions
@@ -2553,10 +2548,10 @@ Justina::execResult_type Justina::execExternalCppFncOrCmd(LE_evalStack*& pFuncti
     }
 
     // external command: command name was NOT pushed to evaluation stack: delete one level less than for external function
-    clearEvalStackLevels(suppliedArgCount + ((returnValueType == 7) ? 0 : 1));                        // clean up: delete [function name token and] supplied arguments from evaluation stack 
+    clearEvalStackLevels(suppliedArgCount + ((returnValueType == 7) ? 0 : 1));                      // clean up: delete [function name token and] supplied arguments from evaluation stack 
 
     // external command does NOT push a result to evaluation stack: return
-    if (returnValueType == 7) { return result_execOK; }
+    if (returnValueType == 7) { return result_exec_OK; }
 
 
     // push result to stack
@@ -2572,7 +2567,7 @@ Justina::execResult_type Justina::execExternalCppFncOrCmd(LE_evalStack*& pFuncti
     _pEvalStackTop->varOrConst.sourceVarScopeAndFlags = 0x00;                                       // not an array, not an array element (it's a constant) 
     _pEvalStackTop->varOrConst.valueAttributes = constIsIntermediate;
 
-    return result_execOK;
+    return result_exec_OK;
 }
 
 
@@ -2649,7 +2644,7 @@ Justina::execResult_type  Justina::launchJustinaFunction(LE_evalStack*& pFunctio
     _activeFunctionData.errorStatementStartStep = calledFunctionTokenStep;
     _activeFunctionData.errorProgramCounter = calledFunctionTokenStep;
 
-    return  result_execOK;
+    return  result_exec_OK;
 }
 
 
@@ -2659,7 +2654,7 @@ Justina::execResult_type  Justina::launchJustinaFunction(LE_evalStack*& pFunctio
 
 Justina::execResult_type  Justina::launchEval(LE_evalStack*& pFunctionStackLvl, char* parsingInput) {
 
-    execResult_type execResult{ result_execOK };
+    execResult_type execResult{ result_exec_OK };
 
     if (parsingInput == nullptr) { return result_eval_emptyString; }
 
@@ -2676,7 +2671,7 @@ Justina::execResult_type  Justina::launchEval(LE_evalStack*& pFunctionStackLvl, 
     _pParsedCommandLineStackTop = (char*)parsedStatementLineStack.appendListElement(sizeof(char*) + parsedUserCmdLen);
     *(char**)_pParsedCommandLineStackTop = _lastUserCmdLineStep;
     memcpy(_pParsedCommandLineStackTop + sizeof(char*), (_programStorage + _PROGRAM_MEMORY_SIZE), parsedUserCmdLen);
-    *(_programStorage + _PROGRAM_MEMORY_SIZE) = tok_no_token;                            // init command line storage (to be used for batch file parsing)
+    *(_programStorage + _PROGRAM_MEMORY_SIZE) = tok_no_token;                                       // init command line storage (to be used for batch file parsing)
 
     // parse eval() string
     // -------------------
@@ -2765,7 +2760,7 @@ Justina::execResult_type  Justina::launchEval(LE_evalStack*& pFunctionStackLvl, 
     _activeFunctionData.errorStatementStartStep = _programStorage + _PROGRAM_MEMORY_SIZE;
     _activeFunctionData.errorProgramCounter = _programStorage + _PROGRAM_MEMORY_SIZE;
 
-    return  result_execOK;
+    return  result_exec_OK;
 }
 
 
@@ -2793,7 +2788,7 @@ Justina::execResult_type Justina::launchBatchFileExecution(int cmdArgCount, LE_e
     char* valueType = new char[cmdArgCount];
     Val* args = new Val[cmdArgCount];
 
-    execResult_type execResult{ result_execOK };
+    execResult_type execResult{ result_exec_OK };
 
     // arguments: source file name and 0 to 9 additional scalar arguments
     copyValueArgsFromStack(pStackLvl, cmdArgCount, argIsVar, argIsArray, valueType, args);
@@ -2808,7 +2803,7 @@ Justina::execResult_type Justina::launchBatchFileExecution(int cmdArgCount, LE_e
 
     int fileNumber{};
     execResult = SD_open(fileNumber, args[0].pStringConst, READ_FILE);                                  // this performs a few card & file checks as well
-    if (execResult != result_execOK) { delete[]valueType; delete[]args; return execResult; }
+    if (execResult != result_exec_OK) { delete[]valueType; delete[]args; return execResult; }
     // the SD library does not provide a way to check if the file is a directory, or it's empty, before the file is opened
     if (openFiles[fileNumber - 1].file.isDirectory()) { SD_closeFile(fileNumber); delete[]valueType; delete[]args;  return result_SD_directoryNotAllowed; }
     if (openFiles[fileNumber - 1].file.size() == 0) { SD_closeFile(fileNumber); delete[]valueType; delete[]args;  return result_SD_fileIsEmpty; }
@@ -2852,7 +2847,7 @@ Justina::execResult_type Justina::launchBatchFileExecution(int cmdArgCount, LE_e
     _pParsedCommandLineStackTop = (char*)parsedStatementLineStack.appendListElement(sizeof(char*) + parsedUserCmdLen);
     *(char**)_pParsedCommandLineStackTop = _lastUserCmdLineStep;                            // first 4 butes: store pointer to the end of the user command
     memcpy(_pParsedCommandLineStackTop + sizeof(char*), (_programStorage + _PROGRAM_MEMORY_SIZE), parsedUserCmdLen);
-    *(_programStorage + _PROGRAM_MEMORY_SIZE) = tok_no_token;                            // init command line storage (to be used for batch file parsing)
+    *(_programStorage + _PROGRAM_MEMORY_SIZE) = tok_no_token;                               // init command line storage (to be used for batch file parsing)
 
     // create FLOW CONTROL stack entry to keep track of newly opened batch file
     // ------------------------------------------------------------------------
@@ -2878,7 +2873,7 @@ Justina::execResult_type Justina::launchBatchFileExecution(int cmdArgCount, LE_e
     _activeFunctionData.errorStatementStartStep = _programStorage + _PROGRAM_MEMORY_SIZE;
     _activeFunctionData.errorProgramCounter = _programStorage + _PROGRAM_MEMORY_SIZE;
 
-    return result_execOK;
+    return result_exec_OK;
 }
 
 

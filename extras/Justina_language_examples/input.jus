@@ -1,7 +1,7 @@
 /*------------------------------------------------------------------------------------------------------------------------
     Example JUSTINA language program for use with the Justina interpreter
-	
- 	The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      
+    
+    The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      
     by the Free Software Foundation (https://www.gnu.org/licenses).                                                      
     Refer to GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter            
                                                                                                                          
@@ -14,36 +14,36 @@
 program evalInput; // this is a JUSTINA program
 
 /*
-	This example demonstrates how to use
-	- the input command, to request user input
-	- the eval() function, to parse and evaluate expressions stored in a string, during execution
-	- error trapping
-	
-	The program asks to enter a series of amounts of an unnamed material, in metric ton.
-	All amounts are added up and finally, when the user cancels further input, the...
-	... total amount is printed to the console, in kilograms.
-	
-	Procedure call: evalInput();
+    This example demonstrates how to use
+    - the input command, to request user input
+    - the eval() function, to parse and evaluate expressions stored in a string, during execution
+    - error trapping
+    
+    The program asks to enter a series of amounts of an unnamed material, in metric ton.
+    All amounts are added up and finally, when the user cancels further input, the...
+    ... total amount is printed to the console, in kilograms.
+    
+    Procedure call: evalInput();
 */
 
 
 procedure evalInput();
-	var question, answer, flag;
-	var amount = 0, totalAmount = 0; 
-	
-	coutLine;
-	while 1;
-		// initialize 'answer' and 'flag'
-		input question = "Enter an amount in metric ton (an expression is allowed)", 
-			answer = "", flag = NO_DEFAULT; 
-		if flag == CANCELED; break; end;												// the user entered '\c' (cancel): exit while...end structure now
-		
-		trapErrors TRUE;																// allow trapping errors (this resets err() to zero)
-		totalAmount += amount = eval(answer) * 1000;  									// in case the user made an invalid entry, the error will be trapped 
-		trapErrors FALSE;																// disable error trapping again (this does not reset err() )
-		if err() ; coutLine line(), "!!! Please enter a valid amount !!!", line(); 		// if an error occured, print an error message
-		else; coutLine "amount entered = ", amount, " kg", line();end;					// if NO error occured, add up the new amount
-	end;
-	
-	coutLine line(), "*** total amount = ", totalAmount, " kg", line();
+    var question, answer, flag;
+    var amount = 0, totalAmount = 0; 
+    
+    coutLine;
+    while 1;
+        // initialize 'answer' and 'flag'
+        input question = "Enter an amount in metric ton (an expression is allowed)", 
+            answer = "", flag = NO_DEFAULT; 
+        if flag == CANCELED; break; end;                                                // the user entered '\c' (cancel): exit while...end structure now
+        
+        trapErrors TRUE;                                                                // allow trapping errors (this resets err() to zero)
+        totalAmount += amount = eval(answer) * 1000;                                    // in case the user made an invalid entry, the error will be trapped 
+        trapErrors FALSE;                                                               // disable error trapping again (this does not reset err() )
+        if err() ; coutLine line(), "!!! Please enter a valid amount !!!", line();      // if an error occured, print an error message
+        else; coutLine "amount entered = ", amount, " kg", line();end;                  // if NO error occured, add up the new amount
+    end;
+    
+    coutLine line(), "*** total amount = ", totalAmount, " kg", line();
 end;

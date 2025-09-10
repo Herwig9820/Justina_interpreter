@@ -161,12 +161,12 @@ Justina::parsingResult_type Breakpoints::collectSourceLineRangePairs(const char 
 }
 
 
-// ---------------------------------------------------------------------------------------------------------------------------------
-// *   store a pair of program file line range lengths: gap line range length and adjacent line range length                     ***
-// *   - gap source line range length: number of source file lines between previous and this adjacent line range                 ***
-// *   - 'adjacent' source line range length: number of adjacent source file lines with a new statement starting at that line    *** 
-// *   purpose: keep track of source lines where setting a breakpoint (debug mode) is allowed, in a relatively dense format      *** 
-// ---------------------------------------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------------------------------------
+// *   store a pair of program file line range lengths: gap line range length and adjacent line range length                     *
+// *   - gap source line range length: number of source file lines between previous and this adjacent line range                 *
+// *   - 'adjacent' source line range length: number of adjacent source file lines with a new statement starting at that line    * 
+// *   purpose: keep track of source lines where setting a breakpoint (debug mode) is allowed, in a relatively dense format      * 
+// -------------------------------------------------------------------------------------------------------------------------------
 
 Justina::parsingResult_type Breakpoints::addOneSourceLineRangePair(long gapLineRange, long adjacentLineRange) {
 
@@ -213,7 +213,7 @@ Justina::parsingResult_type Breakpoints::addOneSourceLineRangePair(long gapLineR
 
 Justina::execResult_type Breakpoints::maintainBP(long breakpointLine, char actionCmdCode, int extraAttribCount, const char* watchString, long hitCount, const char* conditionString) {
 
-    Justina::execResult_type execResult{ Justina::result_execOK };
+    Justina::execResult_type execResult{ Justina::result_exec_OK };
 
     char* pProgramStep{ nullptr };
     bool doSet = (actionCmdCode == Justina::cmdcod_setBP);
@@ -238,7 +238,7 @@ Justina::execResult_type Breakpoints::maintainBP(long breakpointLine, char actio
         // note: the FIRST statement STARTING on that source line must be an executable statement. Otherwise that source line does not accept breakpoints
 
         execResult = progMem_getSetClearBP(lineSequenceNum, pProgramStep, doSet, doClear);
-        if (execResult != Justina::result_execOK) { return execResult; }
+        if (execResult != Justina::result_exec_OK) { return execResult; }
     }
 
     // 3. Maintain breakpoint settings in breakpoint data table, for all breakpoints currently set  
@@ -320,7 +320,7 @@ Justina::execResult_type Breakpoints::progMem_getSetClearBP(long lineSequenceNum
     // set preceding separator token in program memory to indicate 'breakpoint set' or 'breakpoint allowed'
     if (doSet || doClear) { ((Justina::Token_terminal*)(pProgramStep - 1))->tokenTypeAndIndex = doSet ? _pJustina->_semicolonBPset_token : _pJustina->_semicolonBPallowed_token; }                                 // flag 'breakpoint set'
 
-    return Justina::result_execOK;
+    return Justina::result_exec_OK;
 }
 
 
@@ -341,7 +341,7 @@ Justina::execResult_type Breakpoints::maintainBreakpointTable(long sourceLine, c
     // action is set BP:              continue (even if BP was already set: attributes could change)
     //           clear BP:            if BP is currently set, continue. Otherwise, return (all done) 
     //           enable / disable BP: if BP is currently set, continue. Otherwise, return error (cannot enable/disable nonexistent BP)
-    if (!BPwasSet && !doSet) { return doClear ? Justina::result_execOK : Justina::result_BP_wasNotSet; }
+    if (!BPwasSet && !doSet) { return doClear ? Justina::result_exec_OK : Justina::result_BP_wasNotSet; }
 
     if (BPwasSet) {                                                                     // if BP was set, all actions are allowed
         // clear, enable, disable BP (if BP was not set, then control returned to caller already)
@@ -401,7 +401,7 @@ Justina::execResult_type Breakpoints::maintainBreakpointTable(long sourceLine, c
         }
     }
 
-    return Justina::result_execOK;
+    return Justina::result_exec_OK;
 }
 
 
@@ -510,12 +510,12 @@ Justina::execResult_type Breakpoints::tryBPactivation() {
                 // check that statement is executable
                 char* pProgramStep{ nullptr };
                 Justina::execResult_type execResult = progMem_getSetClearBP(lineSequenceNum, pProgramStep, (i == 2));   // i=1: check for errors only, 2 = set BP in memory
-                if (execResult != Justina::result_execOK) { return Justina::execResult_type::result_BP_nonExecStatementsInTable; }
+                if (execResult != Justina::result_exec_OK) { return Justina::execResult_type::result_BP_nonExecStatementsInTable; }
             }
         }
         _breakpointsStatusDraft = false;
     }
-    return Justina::execResult_type::result_execOK;
+    return Justina::execResult_type::result_exec_OK;
 }
 
 

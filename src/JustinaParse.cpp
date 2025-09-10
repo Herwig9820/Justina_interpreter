@@ -114,7 +114,7 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
 
         // move to the first non-space character of next token 
         while (pNext[0] == ' ') { pNext++; }                                                                        // skip leading spaces
-        if (pNext[0] == '\0') { pNextParseStatement = pNext; break; }                                            // end of statement: prepare to quit parsing  
+        if (pNext[0] == '\0') { pNextParseStatement = pNext; break; }                                               // end of statement: prepare to quit parsing  
 
         // watch, BP watch or BP condition string ? parse one statement at a time, then execute it first (note: within BP condition strings, only the first expression will be parsed and executed)
         if ((_parsingExecutingWatchString || _parsingExecutingConditionString) && isSemicolon) { pNextParseStatement = pNext;  break; }
@@ -189,7 +189,7 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
 // *   Start of a command only: apply additional command syntax rules   *
 // ----------------------------------------------------------------------
 
-bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, bool commandIsInternal, bool& isSilentKeyword) {           // command syntax checks
+bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, bool commandIsInternal, bool& isSilentKeyword) {   // command syntax checks
 
 #if PRINT_PARSED_TOKENS
     _pDebugOut->println("   checking command keyword");
@@ -257,9 +257,11 @@ bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, 
 
     if ((cmdRestriction == cmd_onlyProgramTop) && (_lastTokenStep != 0)) { result = result_cmd_onlyProgramStart; return false; }        // not a 'program' command
     if ((cmdRestriction != cmd_onlyProgramTop) && (_lastTokenStep == 0)) { result = result_cmd_programCmdMissing; return false; }
-    if ((cmdRestriction == cmd_onlyCommandLineStart) && (isBatchFileInput || (_programCounter != _programStorage + _PROGRAM_MEMORY_SIZE + 
-        sizeof(Token_internalCommand) - (hasTokenStep ? 0 : 2)))) { result = result_cmd_onlyCommandLineStart; return false; }
-     
+    if ((cmdRestriction == cmd_onlyCommandLineStart) && (isBatchFileInput || (_programCounter != _programStorage + _PROGRAM_MEMORY_SIZE +
+        sizeof(Token_internalCommand) - (hasTokenStep ? 0 : 2)))) {
+        result = result_cmd_onlyCommandLineStart; return false;
+    }
+
     if (_programMode && (cmdRestriction == cmd_onlyImmediate)) { result = result_cmd_onlyImmediateMode; return false; }
     if ((_programMode || isBatchFileInput) && (cmdRestriction == cmd_onlyCommandLine)) { result = result_cmd_onlyCommandLine; return false; }
     if ((_programMode || isCommandLineInput) && (cmdRestriction == cmd_onlyInBatchFile)) { result = result_cmd_onlyInBatchFile; return false; }
@@ -273,7 +275,7 @@ bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, 
 
     // command is allowed while (not) in debug mode ?
     // this can be tested during parsing, because these commands are allowed in imm. mode only (command line and/or batch file line) 
-    if ((_internCommands[commandIndex].usageRestrictions & cmd_notInDebugMode) && (_openDebugLevels > 0)) { result = result_cmd_notInDebugMode;  return false; }
+    if ((_internCommands[commandIndex].usageRestrictions & cmd_notInDebugMode) && (_openDebugLevels > 0)) { result = result_cmd_notAllowedInDebugMode;  return false; }
     if ((_internCommands[commandIndex].usageRestrictions & cmd_onlyInDebugMode) && (_openDebugLevels == 0)) { result = result_cmd_onlyInDebugMode;  return false; }
 
 
@@ -434,12 +436,12 @@ bool Justina::checkCommandArgToken(parsingResult_type& result, int& clearIndicat
     if (isSemiColonSep) {                                                                                           // semicolon: end of command                                                    
         // NOTE: clear program / memory command will be executed when normal execution ends (before entering idle mode, waiting for input)
         if (_isClearProgCmd) {
-            clearIndicator = 1;                                                                // clear program: set flag 
+            clearIndicator = 1;                                                                                     // clear program: set flag 
         }
         else if (_isClearAllCmd) {
             clearIndicator = 2;                                                                                     // clear all: set flag
         }
-        return true;                                                                                               // nothing more to do for this command
+        return true;                                                                                                // nothing more to do for this command
     }
 
 
@@ -2139,7 +2141,7 @@ bool Justina::parseAsVariable(char*& pNext, parsingResult_type& result) {
                 if ((_openDebugLevels > 0) || _parsingExecutingConditionString) {
                     void* pFlowCtrlStackLvl{};
                     if (_parsingExecutingConditionString) {
-                        pFlowCtrlStackLvl = &_activeFunctionData;                        // program not yet stopped: function data reside in _activeFunctionData
+                        pFlowCtrlStackLvl = &_activeFunctionData;      // program not yet stopped: function data reside in _activeFunctionData
                     }
                     else {
 
@@ -2372,9 +2374,9 @@ bool Justina::parseAsVariable(char*& pNext, parsingResult_type& result) {
     pToken->tokenType = tok_isVariable | (sizeof(Token_variable) << 4);
     // identInfo only contains variable scope info (parameter, local, static, global), 'is array' flag, is constant var flag, and 'is forced function variable in debug mode' flag (for printing only) 
     pToken->identInfo = varScope | (isArray ? var_isArray : 0) | (varIsConstantVar ? var_isConstantVar : 0) |
-        (debug_functionVarOnly ? var_isForcedFunctionVar : 0);                                     // qualifier, array flag ? (is fixed for a variable -> can be stored in token)  
+        (debug_functionVarOnly ? var_isForcedFunctionVar : 0);                                  // qualifier, array flag ? (is fixed for a variable -> can be stored in token)  
     pToken->identNameIndex = varNameIndex;
-    pToken->identValueIndex = valueIndex;                                                          // points to storage area element for the variable  
+    pToken->identValueIndex = valueIndex;                                                       // points to storage area element for the variable  
 
 
     _lastTokenStep = _programCounter - _programStorage;
